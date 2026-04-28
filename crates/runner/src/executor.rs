@@ -1109,31 +1109,52 @@ async fn download_storages(
     Ok(())
 }
 
-/// Write Claude Code session history into the guest filesystem.
+/// Write CLI agent session history into the guest filesystem.
 ///
-/// Only Claude Code uses `.jsonl` session files; other agent types are skipped.
+/// Dispatches on `cli_agent_type`:
+/// - `claude-code` (or empty, the default) → plain `.jsonl` under `~/.claude/projects/-{project}/`.
+/// - `codex` → zstd-compressed `.jsonl.zst` under `~/.codex/sessions/YYYY/MM/DD/`.
+/// - anything else → skipped with a warning (forward-compatible with future agents).
 async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    if !(context.cli_agent_type.is_empty() || context.cli_agent_type == "claude-code") {
-        return Ok(());
-    }
-
-    let project_name = context
-        .working_dir
-        .trim_start_matches('/')
-        .replace('/', "-");
-    let session_dir = format!("/home/user/.claude/projects/-{project_name}");
-
-    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore)
+    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore).
+    // Applied up-front so unknown frameworks still reject malformed IDs in case the
+    // skip branch is ever upgraded to a write.
     if !is_valid_session_id(&session.session_id) {
         return Err(RunnerError::Internal(format!(
             "invalid session_id: {}",
             session.session_id
         )));
     }
+
+    match context.cli_agent_type.as_str() {
+        "" | "claude-code" => restore_claude_session(sandbox, context, session).await,
+        "codex" => restore_codex_session(sandbox, context, session).await,
+        other => {
+            warn!(
+                run_id = %context.run_id,
+                framework = %other,
+                "skipping session restore for unknown framework"
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Write a Claude Code session history file at `~/.claude/projects/-{project}/{id}.jsonl`.
+async fn restore_claude_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &ResumeSession,
+) -> RunnerResult<()> {
+    let project_name = context
+        .working_dir
+        .trim_start_matches('/')
+        .replace('/', "-");
+    let session_dir = format!("/home/user/.claude/projects/-{project_name}");
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
     let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
@@ -1148,8 +1169,71 @@ async fn restore_session(
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
         .await?;
-    info!(run_id = %context.run_id, path = %session_path, "restored session history");
+    info!(run_id = %context.run_id, path = %session_path, "restored claude session history");
     Ok(())
+}
+
+/// Write a Codex session history file as zstd-compressed JSONL at
+/// `~/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
+///
+/// The date partition uses today's UTC date — `codex exec resume` walks the
+/// `sessions/` tree and resolves files by thread_id, so the partition is a
+/// hint, not a lookup key. Compression level 3 matches `guest-mock-codex`
+/// fixtures so round-trips are byte-stable across host and guest.
+async fn restore_codex_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &ResumeSession,
+) -> RunnerResult<()> {
+    let today = chrono::Utc::now().date_naive();
+    let session_path = build_codex_session_path(today, &session.session_id);
+    let session_dir = codex_session_parent_dir(&session_path);
+
+    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
+    sandbox
+        .exec(&ExecRequest {
+            cmd: &mkdir_cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: false,
+        })
+        .await?;
+
+    let compressed = zstd::encode_all(session.session_history.as_bytes(), 3)
+        .map_err(|e| RunnerError::Internal(format!("zstd encode failed: {e}")))?;
+    sandbox.write_file(&session_path, &compressed).await?;
+
+    info!(
+        run_id = %context.run_id,
+        path = %session_path,
+        bytes_in = session.session_history.len(),
+        bytes_out = compressed.len(),
+        "restored codex session history",
+    );
+    Ok(())
+}
+
+/// Build the codex session file path for a given UTC date and thread id.
+///
+/// Layout matches the real codex CLI (and `guest-mock-codex`):
+/// `/home/user/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
+fn build_codex_session_path(today: chrono::NaiveDate, thread_id: &str) -> String {
+    format!(
+        "/home/user/.codex/sessions/{}/{}/{}/{}.jsonl.zst",
+        today.format("%Y"),
+        today.format("%m"),
+        today.format("%d"),
+        thread_id,
+    )
+}
+
+/// Strip the trailing filename component from a codex session path. Internal
+/// helper kept tiny so the dispatch in `restore_codex_session` reads linearly.
+fn codex_session_parent_dir(session_path: &str) -> String {
+    match session_path.rfind('/') {
+        Some(idx) => session_path[..idx].to_string(),
+        None => String::new(),
+    }
 }
 
 /// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
@@ -2273,7 +2357,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_session_skips_non_claude_agent() {
+    async fn restore_session_skips_unknown_framework() {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "custom-agent".into();
@@ -2281,8 +2365,9 @@ mod tests {
             session_id: "sess-1".into(),
             session_history: "data".into(),
         };
-        // Should return Ok without calling exec or write_file.
-        // Push an error to detect unexpected calls.
+        // Unknown frameworks must no-op silently (warn-and-skip) so a typo in
+        // CLI_AGENT_TYPE does not block the run. Pushing an exec error detects
+        // any accidental fallthrough into either framework's restore path.
         sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         restore_session(&sandbox, &ctx, &session).await.unwrap();
     }
@@ -2298,6 +2383,75 @@ mod tests {
         };
         // Should proceed (empty agent type treated as claude-code).
         restore_session(&sandbox, &ctx, &session).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_session_writes_codex_session() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let session = ResumeSession {
+            session_id: "01jzm-thread-id".into(),
+            session_history: "{\"type\":\"thread.started\"}\n".into(),
+        };
+        // mkdir exec + write_file — both succeed by default. The codex branch
+        // performs an additional zstd::encode_all call before write_file; this
+        // test fails fast if that path errors out.
+        restore_session(&sandbox, &ctx, &session).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_session_rejects_invalid_codex_session_id() {
+        // Path-traversal validation runs before framework dispatch, so codex
+        // shares the same allow-list as claude-code.
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let session = ResumeSession {
+            session_id: "../../etc/passwd".into(),
+            session_history: "{}".into(),
+        };
+        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+        assert!(err.to_string().contains("invalid session_id"));
+    }
+
+    #[test]
+    fn build_codex_session_path_zero_pads_and_includes_thread_id() {
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        let path = build_codex_session_path(date, "abc-123");
+        assert_eq!(
+            path,
+            "/home/user/.codex/sessions/2026/01/05/abc-123.jsonl.zst"
+        );
+    }
+
+    #[test]
+    fn build_codex_session_path_handles_year_end_boundary() {
+        let date = chrono::NaiveDate::from_ymd_opt(2026, 12, 31).unwrap();
+        let path = build_codex_session_path(date, "uuid-deadbeef");
+        assert_eq!(
+            path,
+            "/home/user/.codex/sessions/2026/12/31/uuid-deadbeef.jsonl.zst"
+        );
+    }
+
+    #[test]
+    fn codex_session_parent_dir_strips_trailing_filename() {
+        let path = "/home/user/.codex/sessions/2026/01/05/abc.jsonl.zst";
+        assert_eq!(
+            codex_session_parent_dir(path),
+            "/home/user/.codex/sessions/2026/01/05"
+        );
+    }
+
+    #[test]
+    fn codex_session_zstd_round_trip_recovers_bytes() {
+        // The runner compresses session bytes before write; the guest decompresses
+        // on read. This guards against a level/header drift between the two ends.
+        let input = "{\"type\":\"thread.started\",\"thread_id\":\"x\"}\n";
+        let compressed = zstd::encode_all(input.as_bytes(), 3).unwrap();
+        let decoded = zstd::decode_all(compressed.as_slice()).unwrap();
+        assert_eq!(decoded, input.as_bytes());
     }
 
     #[tokio::test]
