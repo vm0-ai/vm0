@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { createApp } from "../../../app-factory";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -223,6 +224,23 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
     );
 
     expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns 400 for an invalid threadId path param BEFORE consulting auth", async () => {
+    // Validation must run before authRoute so a malformed path returns 400
+    // even without an Authorization header. The typed client throws on
+    // undeclared statuses, so use the raw Hono app to assert.
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/v1/chat-threads/not-a-uuid", {
+      method: "GET",
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as {
+      error: { message: string; code: string };
+    };
+    expect(body.error.code).toBe("BAD_REQUEST");
+    expect(body.error.message).toContain("threadId");
   });
 
   it("returns 401 with web's 'API key required' phrasing when no Authorization header is provided", async () => {
