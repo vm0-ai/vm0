@@ -13,7 +13,7 @@ import { UnsubscribeFooter } from "./unsubscribe-footer";
 interface AgentReplyEmailProps {
   agentName: string;
   output: string;
-  logsUrl: string;
+  logsUrl?: string;
   unsubscribeUrl?: string;
 }
 
@@ -37,10 +37,15 @@ export function AgentReplyEmail({
           <Hr style={hrStyle} />
           <Text style={signatureStyle}>{agentName} from VM0</Text>
           <Text style={footerStyle}>
-            <Link href={logsUrl} style={linkStyle}>
-              Audit
-            </Link>{" "}
-            · Reply to continue
+            {logsUrl ? (
+              <>
+                <Link href={logsUrl} style={linkStyle}>
+                  Audit
+                </Link>{" "}
+                ·{" "}
+              </>
+            ) : null}
+            Reply to continue
           </Text>
           <UnsubscribeFooter unsubscribeUrl={unsubscribeUrl} />
         </Container>

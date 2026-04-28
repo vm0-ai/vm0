@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render } from "@react-email/components";
+import type { CreateEmailOptions } from "resend";
 
 import { Resend } from "resend";
 import { POST } from "../route";
@@ -14,8 +16,10 @@ import {
   createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { findTestEmailThreadSession } from "../../../../../../../src/__tests__/db-test-assertions/email";
+import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
 import { generateReplyToken } from "../../../../../../../src/lib/zero/email/handlers/shared";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);
@@ -31,6 +35,17 @@ interface TriggerCallbackPayload {
   subject?: string;
   replyRecipientTo?: string[];
   replyRecipientCc?: string[];
+}
+
+async function renderLastEmailHtml(): Promise<string> {
+  const sentCall = mockResend.emails.send.mock.calls.at(-1);
+  expect(sentCall).toBeDefined();
+  const payload = sentCall![0] as CreateEmailOptions;
+  expect(payload).toHaveProperty("react");
+  if (!("react" in payload) || payload.react == null) {
+    throw new Error("Expected react property on email payload");
+  }
+  return render(payload.react);
 }
 
 describe("POST /api/zero/email/callbacks/trigger", () => {
@@ -163,6 +178,50 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
         "In-Reply-To": "<orig-msg-id@example.com>",
         References: "<orig-msg-id@example.com>",
       });
+      const html = await renderLastEmailHtml();
+      expect(html).not.toContain("Audit");
+      expect(html).not.toContain(`/activities/${runId}`);
+      expect(html).toContain("Reply to continue");
+    });
+
+    it("should include audit link when AuditLink switch is on", async () => {
+      const user = await context.setupUser({ prefix: "trigger-audit-on" });
+      mockClerk({ userId: user.userId });
+      const agentName = uniqueId("trigger-agent");
+      const { composeId, agentId } = await createTestCompose(agentName);
+      const { runId } = await createTestRun(composeId, "Test prompt");
+      await completeTestRun(user.userId, runId);
+      await seedUserFeatureSwitches(user.orgId, user.userId, {
+        [FeatureSwitchKey.AuditLink]: true,
+      });
+
+      const replyToken = generateReplyToken(crypto.randomUUID());
+      const payload: TriggerCallbackPayload = {
+        senderEmail: "sender@example.com",
+        agentId,
+        userId: user.userId,
+        inboundEmailId: "email-audit-on",
+        replyToken,
+      };
+
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/zero/email/callbacks/trigger",
+        payload: { ...payload },
+      });
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/trigger",
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const html = await renderLastEmailHtml();
+      expect(html).toContain("Audit");
+      expect(html).toContain(`/activities/${runId}`);
     });
 
     it("should strip existing Re: prefix to prevent duplication", async () => {

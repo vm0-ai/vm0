@@ -9,7 +9,7 @@ interface AgentReplyTemplate {
   props: {
     agentName: string;
     output: string;
-    logsUrl: string;
+    logsUrl?: string;
     unsubscribeUrl?: string;
   };
 }
