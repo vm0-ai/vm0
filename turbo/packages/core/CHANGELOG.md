@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.239.1](https://github.com/vm0-ai/vm0/compare/core-v8.239.0...core-v8.239.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* gate audit links behind feature switch ([#11296](https://github.com/vm0-ai/vm0/issues/11296)) ([b77853d](https://github.com/vm0-ai/vm0/commit/b77853d60d2c3f4c26244d616c16d7bde341fb6e))
+
 ## [8.239.0](https://github.com/vm0-ai/vm0/compare/core-v8.238.0...core-v8.239.0) (2026-04-27)
 
 

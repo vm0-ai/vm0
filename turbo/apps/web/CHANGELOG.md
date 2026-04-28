@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.306.0](https://github.com/vm0-ai/vm0/compare/web-v12.305.0...web-v12.306.0) (2026-04-28)
+
+
+### Features
+
+* **api:** proxy unmatched requests to the web app ([#11308](https://github.com/vm0-ai/vm0/issues/11308)) ([5edb547](https://github.com/vm0-ai/vm0/commit/5edb547217e654556839e1b57fdf6de9c9d03d70))
+* support audio uploads in chat preview ([#11311](https://github.com/vm0-ai/vm0/issues/11311)) ([985bd28](https://github.com/vm0-ai/vm0/commit/985bd28d4637404b6217a73254af9d77e01fdd25))
+
+
+### Refactoring
+
+* clarify usage time semantics ([#11303](https://github.com/vm0-ai/vm0/issues/11303)) ([904efc3](https://github.com/vm0-ai/vm0/commit/904efc3df284be87d37338561bcabfd680ab17aa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.239.1
+
 ## [12.305.0](https://github.com/vm0-ai/vm0/compare/web-v12.304.0...web-v12.305.0) (2026-04-28)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.96.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.4...runner-rs-v0.96.5) (2026-04-28)
+
+
+### Bug Fixes
+
+* **runner:** isolate axiom tracing filter ([#11300](https://github.com/vm0-ai/vm0/issues/11300)) ([d999241](https://github.com/vm0-ai/vm0/commit/d9992419e3c93628ee6ed15aefa60c889ee40f0c))
+
+
+### Refactoring
+
+* **runner:** require leases for budget reservations ([#11301](https://github.com/vm0-ai/vm0/issues/11301)) ([d48d3d3](https://github.com/vm0-ai/vm0/commit/d48d3d3e4106f97531b41049fe30956289bb8738))
+
 ## [0.96.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.3...runner-rs-v0.96.4) (2026-04-28)
 
 

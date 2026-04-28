@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.299.0](https://github.com/vm0-ai/vm0/compare/app-v0.298.2...app-v0.299.0) (2026-04-28)
+
+
+### Features
+
+* support audio uploads in chat preview ([#11311](https://github.com/vm0-ai/vm0/issues/11311)) ([985bd28](https://github.com/vm0-ai/vm0/commit/985bd28d4637404b6217a73254af9d77e01fdd25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.239.1
+
 ## [0.298.2](https://github.com/vm0-ai/vm0/compare/app-v0.298.1...app-v0.298.2) (2026-04-28)
 
 
