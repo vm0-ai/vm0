@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.304.0](https://github.com/vm0-ai/vm0/compare/web-v12.303.1...web-v12.304.0) (2026-04-28)
+
+
+### Features
+
+* include usage events in usage insight reporting ([#11275](https://github.com/vm0-ai/vm0/issues/11275)) ([d6cb241](https://github.com/vm0-ai/vm0/commit/d6cb2412bb429544e2382755b926f4d81bf2eb03))
+* include usage events in usage reporting ([#11269](https://github.com/vm0-ai/vm0/issues/11269)) ([55c3c19](https://github.com/vm0-ai/vm0/commit/55c3c1988f17032207cc6f610e4047584afe0e19))
+* shadow web /api/v1/chat-threads read routes against new api handlers ([#11278](https://github.com/vm0-ai/vm0/issues/11278)) ([df01cb6](https://github.com/vm0-ai/vm0/commit/df01cb601d221a19a26b44e19d20b337a6e83758))
+
+
+### Bug Fixes
+
+* **api:** align auth resolution with web app for shadow comparison ([#11271](https://github.com/vm0-ai/vm0/issues/11271)) ([2df9c36](https://github.com/vm0-ai/vm0/commit/2df9c36c126c25da1898e727eb64f6ef5b06169f))
+
+
+### Refactoring
+
+* extract legacy usage reporting ledger ([#11264](https://github.com/vm0-ai/vm0/issues/11264)) ([e92f1e5](https://github.com/vm0-ai/vm0/commit/e92f1e514c0adf709530fcdb38d54274f2e34c73))
+* split legacy usage insight queries ([#11274](https://github.com/vm0-ai/vm0/issues/11274)) ([c94968b](https://github.com/vm0-ai/vm0/commit/c94968b05da9171224f0525d399f48ad972eb5f8))
+* **use-cases:** replace Operations with Sales category ([#10945](https://github.com/vm0-ai/vm0/issues/10945)) ([1ed6b20](https://github.com/vm0-ai/vm0/commit/1ed6b209013236cf8622602d7ea33b352325b5d5))
+
 ## [12.303.1](https://github.com/vm0-ai/vm0/compare/web-v12.303.0...web-v12.303.1) (2026-04-27)
 
 

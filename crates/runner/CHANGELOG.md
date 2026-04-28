@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.96.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.3...runner-rs-v0.96.4) (2026-04-28)
+
+
+### Bug Fixes
+
+* **runner:** cap storage cache downloads ([#11254](https://github.com/vm0-ai/vm0/issues/11254)) ([8c0764f](https://github.com/vm0-ai/vm0/commit/8c0764f7454d22f4afd891854833e6ee15735840))
+* **runner:** gate parking during soft drain transitions ([#11272](https://github.com/vm0-ai/vm0/issues/11272)) ([ccfe41b](https://github.com/vm0-ai/vm0/commit/ccfe41b4c9aa7334623119b679807592588cd703))
+
 ## [0.96.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.2...runner-rs-v0.96.3) (2026-04-27)
 
 

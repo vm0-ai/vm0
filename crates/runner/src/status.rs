@@ -456,6 +456,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delayed_cleanup_snapshot_does_not_overwrite_newer_replacement_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+        let original_id = SandboxId::new_v4();
+        let replacement_id = SandboxId::new_v4();
+
+        tracker.write_initial().await;
+        assert!(
+            tracker
+                .set_idle_info_at_revision(
+                    1,
+                    vec![IdleVm {
+                        session_id: "sess-replaced".into(),
+                        sandbox_id: original_id,
+                    }],
+                )
+                .await
+        );
+
+        // A cleanup/pressure eviction path captured this empty snapshot after
+        // removing the original VM, then got delayed before publishing it.
+        let delayed_cleanup_revision = 2;
+        let delayed_cleanup_snapshot = Vec::new();
+
+        // Meanwhile the same session is parked again with a newer sandbox.
+        assert!(
+            tracker
+                .set_idle_info_at_revision(
+                    3,
+                    vec![IdleVm {
+                        session_id: "sess-replaced".into(),
+                        sandbox_id: replacement_id,
+                    }],
+                )
+                .await
+        );
+
+        assert!(
+            !tracker
+                .set_idle_info_at_revision(delayed_cleanup_revision, delayed_cleanup_snapshot)
+                .await
+        );
+
+        let status = read_status(&path);
+        let vms = status["idle_vms"].as_array().unwrap();
+        assert_eq!(vms.len(), 1);
+        assert_eq!(vms[0]["session_id"], "sess-replaced");
+        assert_eq!(vms[0]["sandbox_id"], replacement_id.to_string());
+    }
+
+    #[tokio::test]
     async fn add_run_with_idle_info_revision_preserves_newer_idle_snapshot() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
