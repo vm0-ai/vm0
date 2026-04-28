@@ -8,10 +8,13 @@ import {
   createTestCompose,
   ensureOrgRow,
   findInsightsDaily,
+  insertTestUsageEvent,
   seedCreditUsageRecord,
+  seedInsightsDaily,
   seedUserCacheEntry,
   setOrgCredits,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
 import { seedCompletedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -35,7 +38,10 @@ function cronRequest(secret?: string) {
  */
 function recentDate(): { date: Date; dateStr: string } {
   const now = new Date();
-  const date = new Date(now.getTime() - 120_000);
+  const dayStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
+  const date = new Date(Math.max(dayStart.getTime(), now.getTime() - 120_000));
   return { date, dateStr: todayDateStr() };
 }
 
@@ -51,6 +57,7 @@ function todayDateStr(): string {
 
 describe("GET /api/cron/aggregate-insights", () => {
   let composeVersionId: string;
+  let composeName: string;
   let userId: string;
   let orgId: string;
 
@@ -61,8 +68,11 @@ describe("GET /api/cron/aggregate-insights", () => {
     const user = await context.setupUser();
     userId = user.userId;
     orgId = user.orgId;
-    const { versionId } = await createTestCompose(uniqueId("insights-agent"));
+    const { versionId, name } = await createTestCompose(
+      uniqueId("insights-agent"),
+    );
     composeVersionId = versionId;
+    composeName = name;
 
     // Ensure org has metadata row for credit balance lookup
     await ensureOrgRow(orgId);
@@ -103,17 +113,15 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
-    // Second run
-    const run2Start = new Date(date.getTime() + 60000);
     await seedCompletedTestRun({
       composeVersionId,
       userId,
-      createdAt: run2Start,
-      startedAt: run2Start,
-      completedAt: new Date(run2Start.getTime() + 8000),
+      createdAt: date,
+      startedAt: date,
+      completedAt: date,
     });
 
     const response = await GET(cronRequest("test-cron-secret"));
@@ -140,7 +148,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     await seedUserCacheEntry(userId, "test@example.com");
@@ -170,6 +178,233 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(teamUsage[0]!.credits).toBe(500);
   });
 
+  it("should count credits by processedAt when the run finished on an earlier day", async () => {
+    const { date } = recentDate();
+    const previousDay = new Date(date.getTime() - 48 * 60 * 60_000);
+
+    const runId = await seedCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: previousDay,
+      startedAt: previousDay,
+      completedAt: new Date(previousDay.getTime() + 5000),
+    });
+
+    await seedUserCacheEntry(userId, "test@example.com");
+    await seedCreditUsageRecord({
+      runId,
+      orgId,
+      userId,
+      creditsCharged: 600,
+      createdAt: previousDay,
+      processedAt: date,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+    expect(row!.data.creditsUsed).toBe(600);
+
+    const agents = row!.data.agents as Array<{
+      agentName: string;
+      runs: number;
+      credits: number;
+    }>;
+    expect(agents).toHaveLength(1);
+    expect(agents[0]!.runs).toBe(0);
+    expect(agents[0]!.credits).toBe(600);
+  });
+
+  it("should count runs by completedAt when the run was created earlier", async () => {
+    const { date } = recentDate();
+    const previousDay = new Date(date.getTime() - 48 * 60 * 60_000);
+
+    await seedCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: previousDay,
+      startedAt: previousDay,
+      completedAt: date,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+
+    const agents = row!.data.agents as Array<{ runs: number; credits: number }>;
+    expect(agents).toHaveLength(1);
+    expect(agents[0]!.runs).toBe(1);
+    expect(agents[0]!.credits).toBe(0);
+  });
+
+  it("should include runless usage events as Other usage", async () => {
+    const { date } = recentDate();
+    await seedUserCacheEntry(userId, "test@example.com");
+
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId: null,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 333,
+      status: "processed",
+      processedAt: date,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+    expect(row!.data.creditsUsed).toBe(333);
+
+    const agents = row!.data.agents as Array<{
+      agentName: string;
+      runs: number;
+      credits: number;
+    }>;
+    expect(agents).toEqual([
+      { agentId: null, agentName: "Other usage", runs: 0, credits: 333 },
+    ]);
+
+    const teamUsage = row!.data.teamUsage as Array<{
+      agentNames: string[];
+      agentCredits: Record<string, number>;
+      credits: number;
+    }>;
+    expect(teamUsage).toHaveLength(1);
+    expect(teamUsage[0]!.credits).toBe(333);
+    expect(teamUsage[0]!.agentNames).toEqual(["Other usage"]);
+    expect(teamUsage[0]!.agentCredits).toEqual({ "Other usage": 333 });
+  });
+
+  it("should reprocess activity at the previous aggregation watermark", async () => {
+    const { date } = recentDate();
+    await seedUserCacheEntry(userId, "test@example.com");
+    await seedInsightsDaily(
+      orgId,
+      todayDateStr(),
+      {
+        agents: [],
+        creditsUsed: 0,
+        creditBalance: 0,
+        teamUsage: [],
+        topTask: null,
+        services: [],
+        permissions: [],
+      },
+      userId,
+      { updatedAt: date },
+    );
+
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId: null,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 444,
+      status: "processed",
+      processedAt: date,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+    expect(row!.data.creditsUsed).toBe(444);
+  });
+
+  it("should keep agents with the same display name separate", async () => {
+    const { date } = recentDate();
+    const secondAgent = await createTestCompose(uniqueId("insights-agent"));
+
+    await createTestZeroAgent(orgId, composeName, {
+      displayName: "Shared display",
+    });
+    await createTestZeroAgent(orgId, secondAgent.name, {
+      displayName: "Shared display",
+    });
+
+    const run1Id = await seedCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: date,
+      startedAt: date,
+      completedAt: date,
+    });
+    const run2Id = await seedCompletedTestRun({
+      composeVersionId: secondAgent.versionId,
+      userId,
+      createdAt: date,
+      startedAt: date,
+      completedAt: date,
+    });
+
+    await seedCreditUsageRecord({
+      runId: run1Id,
+      orgId,
+      userId,
+      creditsCharged: 100,
+      createdAt: date,
+    });
+    await seedCreditUsageRecord({
+      runId: run2Id,
+      orgId,
+      userId,
+      creditsCharged: 200,
+      createdAt: date,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+
+    const agents = row!.data.agents as Array<{
+      agentId: string | null;
+      agentName: string;
+      runs: number;
+      credits: number;
+    }>;
+    expect(agents).toHaveLength(2);
+    expect(
+      agents.map((agent) => {
+        return agent.agentName;
+      }),
+    ).toEqual(["Shared display", "Shared display"]);
+    expect(
+      new Set(
+        agents.map((agent) => {
+          return agent.agentId;
+        }),
+      ).size,
+    ).toBe(2);
+    expect(
+      agents.map((agent) => {
+        return agent.runs;
+      }),
+    ).toEqual([1, 1]);
+    expect(
+      agents
+        .map((agent) => {
+          return agent.credits;
+        })
+        .sort((a, b) => {
+          return a - b;
+        }),
+    ).toEqual([100, 200]);
+  });
+
   it("should include credit balance from org metadata", async () => {
     const { date } = recentDate();
 
@@ -178,7 +413,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     const response = await GET(cronRequest("test-cron-secret"));
@@ -198,7 +433,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     // Mock Axiom to return network logs referencing this run
@@ -270,6 +505,67 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(slackPerm!.denied).toBe(1);
   });
 
+  it("should attribute current-day network logs for older runs by runId", async () => {
+    const { date } = recentDate();
+    const previousDay = new Date(date.getTime() - 48 * 60 * 60_000);
+
+    const runId = await seedCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: previousDay,
+      startedAt: previousDay,
+      completedAt: new Date(previousDay.getTime() + 5000),
+    });
+
+    await insertTestUsageEvent(orgId, {
+      userId,
+      runId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 25,
+      status: "processed",
+      processedAt: date,
+    });
+
+    context.mocks.axiom.queryAxiom.mockResolvedValue([
+      {
+        _time: date.toISOString(),
+        runId,
+        host: "api.slack.com",
+        firewall_name: "slack",
+        firewall_permission: "send_message",
+        action: "ALLOW",
+      },
+    ]);
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+    expect(row!.data.creditsUsed).toBe(25);
+
+    const agents = row!.data.agents as Array<{
+      agentName: string;
+      runs: number;
+      credits: number;
+    }>;
+    expect(agents).toHaveLength(1);
+    expect(agents[0]!.runs).toBe(0);
+    expect(agents[0]!.credits).toBe(25);
+
+    const services = row!.data.services as Array<{
+      domain: string;
+      calls: number;
+      agentNames: string[];
+    }>;
+    expect(services).toEqual([
+      { domain: "slack", calls: 1, agentNames: [expect.any(String)] },
+    ]);
+  });
+
   it("should record denied requests with empty firewall_permission", async () => {
     const { date } = recentDate();
 
@@ -278,7 +574,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     context.mocks.axiom.queryAxiom.mockResolvedValue([
@@ -346,7 +642,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     context.mocks.axiom.queryAxiom.mockRejectedValue(
@@ -377,7 +673,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     await seedUserCacheEntry(userId, "test@example.com");
@@ -413,7 +709,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     await seedUserCacheEntry(userId, "alice@example.com", "Alice");
@@ -448,7 +744,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     // Seed cache entry without name (name=null)
@@ -484,7 +780,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       userId,
       createdAt: date,
       startedAt: date,
-      completedAt: new Date(date.getTime() + 5000),
+      completedAt: date,
     });
 
     // First run

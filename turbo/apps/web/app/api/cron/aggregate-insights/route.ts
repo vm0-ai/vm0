@@ -7,6 +7,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
@@ -23,13 +24,16 @@ import {
 import { clerkClient } from "@clerk/nextjs/server";
 
 const log = logger("cron:aggregate-insights");
+const OTHER_USAGE_AGENT_NAME = "Other usage";
+const NETWORK_RUN_ATTRIBUTION_BATCH_SIZE = 10_000;
+const AGGREGATION_REPROCESS_OVERLAP_MS = 5 * 60_000;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface AgentInfo {
-  agentId: string;
+  agentId: string | null;
   agentName: string;
   runs: number;
   credits: number;
@@ -118,6 +122,10 @@ function getLocalToday(
     day: "2-digit",
   }).format(now);
   return { targetDate, dayStart, dayEnd };
+}
+
+function normalizeDbDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
 }
 
 // ---------------------------------------------------------------------------
@@ -298,7 +306,7 @@ function aggregateNetworkDataPerUser(
 interface InsightData {
   agents: {
     agentName: string;
-    agentId: string;
+    agentId: string | null;
     runs: number;
     credits: number;
   }[];
@@ -412,6 +420,35 @@ interface OrgCreditsInfo {
   teamUsage: TeamUsageEntry[];
 }
 
+interface LedgerCreditRow {
+  orgId: string;
+  userId: string;
+  agentId: string | null;
+  agentName: string;
+  credits: number;
+}
+
+interface RunCountRow {
+  orgId: string;
+  userId: string;
+  agentId: string;
+  agentName: string;
+  runs: number;
+}
+
+interface ActiveUserRow {
+  orgId: string;
+  userId: string;
+  lastActivity: Date;
+}
+
+interface NetworkRunAgentRow {
+  runId: string;
+  orgId: string;
+  userId: string;
+  agentName: string;
+}
+
 function aggregateOrgCredits(
   memberRows: {
     orgId: string;
@@ -476,6 +513,364 @@ function aggregateOrgCredits(
   return orgCreditsMap;
 }
 
+function mergeActiveUserRows(rows: ActiveUserRow[]): ActiveUserRow[] {
+  const byUser = new Map<string, ActiveUserRow>();
+  for (const row of rows) {
+    const normalizedRow = {
+      ...row,
+      lastActivity: normalizeDbDate(row.lastActivity),
+    };
+    const key = `${row.orgId}:${row.userId}`;
+    const existing = byUser.get(key);
+    if (!existing || normalizedRow.lastActivity > existing.lastActivity) {
+      byUser.set(key, normalizedRow);
+    }
+  }
+  return [...byUser.values()];
+}
+
+async function queryActiveUsers(lookbackStart: Date): Promise<ActiveUserRow[]> {
+  const db = globalThis.services.db;
+  const [completedRuns, legacyUsage, eventUsage] = await Promise.all([
+    db
+      .select({
+        orgId: agentRuns.orgId,
+        userId: agentRuns.userId,
+        lastActivity: sql<Date>`MAX(${agentRuns.completedAt})`.as(
+          "last_activity",
+        ),
+      })
+      .from(agentRuns)
+      .where(
+        and(
+          gte(agentRuns.completedAt, lookbackStart),
+          isNotNull(agentRuns.completedAt),
+        ),
+      )
+      .groupBy(agentRuns.orgId, agentRuns.userId),
+    db
+      .select({
+        orgId: creditUsage.orgId,
+        userId: creditUsage.userId,
+        lastActivity: sql<Date>`MAX(${creditUsage.processedAt})`.as(
+          "last_activity",
+        ),
+      })
+      .from(creditUsage)
+      .where(
+        and(
+          eq(creditUsage.status, "processed"),
+          gte(creditUsage.processedAt, lookbackStart),
+          isNotNull(creditUsage.processedAt),
+        ),
+      )
+      .groupBy(creditUsage.orgId, creditUsage.userId),
+    db
+      .select({
+        orgId: usageEvent.orgId,
+        userId: usageEvent.userId,
+        lastActivity: sql<Date>`MAX(${usageEvent.processedAt})`.as(
+          "last_activity",
+        ),
+      })
+      .from(usageEvent)
+      .where(
+        and(
+          eq(usageEvent.status, "processed"),
+          gte(usageEvent.processedAt, lookbackStart),
+          isNotNull(usageEvent.processedAt),
+        ),
+      )
+      .groupBy(usageEvent.orgId, usageEvent.userId),
+  ]);
+
+  return mergeActiveUserRows([...completedRuns, ...legacyUsage, ...eventUsage]);
+}
+
+function mergeAgentRows(
+  runRows: RunCountRow[],
+  creditRows: LedgerCreditRow[],
+  users: Array<{ orgId: string; userId: string }>,
+): Map<string, AgentInfo[]> {
+  const wantedUsers = new Set(
+    users.map((user) => {
+      return `${user.orgId}:${user.userId}`;
+    }),
+  );
+  const byUser = new Map<string, Map<string, AgentInfo>>();
+
+  const add = (
+    orgId: string,
+    userId: string,
+    agentName: string,
+    agentId: string | null,
+    runs: number,
+    credits: number,
+  ) => {
+    const userKey = `${orgId}:${userId}`;
+    if (!wantedUsers.has(userKey)) return;
+
+    const userAgents = byUser.get(userKey) ?? new Map<string, AgentInfo>();
+    const agentKey = agentId ?? `unattributed:${agentName}`;
+    const existing = userAgents.get(agentKey) ?? {
+      agentId,
+      agentName,
+      runs: 0,
+      credits: 0,
+    };
+    existing.agentId = existing.agentId ?? agentId;
+    existing.runs += runs;
+    existing.credits += credits;
+    userAgents.set(agentKey, existing);
+    byUser.set(userKey, userAgents);
+  };
+
+  for (const row of runRows) {
+    add(row.orgId, row.userId, row.agentName, row.agentId, row.runs, 0);
+  }
+  for (const row of creditRows) {
+    add(
+      row.orgId,
+      row.userId,
+      row.agentName,
+      row.agentId,
+      0,
+      Number(row.credits),
+    );
+  }
+
+  const result = new Map<string, AgentInfo[]>();
+  for (const [userKey, agents] of byUser) {
+    const list = [...agents.values()];
+    list.sort((a, b) => {
+      return (
+        b.credits - a.credits ||
+        b.runs - a.runs ||
+        a.agentName.localeCompare(b.agentName)
+      );
+    });
+    result.set(userKey, list);
+  }
+
+  return result;
+}
+
+async function queryCompletedRunCounts(
+  db: typeof globalThis.services.db,
+  orgIds: string[],
+  userIds: string[],
+  dayStart: Date,
+  dayEnd: Date,
+): Promise<RunCountRow[]> {
+  const rows = await db
+    .select({
+      orgId: agentRuns.orgId,
+      userId: agentRuns.userId,
+      agentId: zeroAgents.id,
+      agentName:
+        sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
+          "agent_name",
+        ),
+      runs: sql<number>`COUNT(DISTINCT ${agentRuns.id})::int`.as("runs"),
+    })
+    .from(agentRuns)
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+    )
+    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+    .where(
+      and(
+        inArray(agentRuns.orgId, orgIds),
+        inArray(agentRuns.userId, userIds),
+        gte(agentRuns.completedAt, dayStart),
+        lt(agentRuns.completedAt, dayEnd),
+        isNotNull(agentRuns.completedAt),
+      ),
+    )
+    .groupBy(
+      agentRuns.orgId,
+      agentRuns.userId,
+      zeroAgents.id,
+      zeroAgents.displayName,
+      zeroAgents.name,
+    );
+
+  return rows.map((row) => {
+    return {
+      orgId: row.orgId,
+      userId: row.userId,
+      agentId: row.agentId,
+      agentName: row.agentName,
+      runs: Number(row.runs),
+    };
+  });
+}
+
+async function queryLegacyCreditRows(
+  db: typeof globalThis.services.db,
+  orgIds: string[],
+  dayStart: Date,
+  dayEnd: Date,
+): Promise<LedgerCreditRow[]> {
+  const isRunless = sql`${creditUsage.runId} IS NULL`;
+  const rows = await db
+    .select({
+      orgId: creditUsage.orgId,
+      userId: creditUsage.userId,
+      agentId: sql<
+        string | null
+      >`CASE WHEN ${isRunless} THEN NULL ELSE ${zeroAgents.id}::text END`.as(
+        "agent_id",
+      ),
+      agentName:
+        sql<string>`CASE WHEN ${isRunless} THEN ${OTHER_USAGE_AGENT_NAME} ELSE COALESCE(${zeroAgents.displayName}, ${zeroAgents.name}, 'Unknown agent') END`.as(
+          "agent_name",
+        ),
+      credits:
+        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
+          "credits",
+        ),
+    })
+    .from(creditUsage)
+    .leftJoin(agentRuns, eq(creditUsage.runId, agentRuns.id))
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+    )
+    .leftJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+    .where(
+      and(
+        inArray(creditUsage.orgId, orgIds),
+        eq(creditUsage.status, "processed"),
+        gte(creditUsage.processedAt, dayStart),
+        lt(creditUsage.processedAt, dayEnd),
+        isNotNull(creditUsage.processedAt),
+      ),
+    )
+    .groupBy(
+      creditUsage.orgId,
+      creditUsage.userId,
+      isRunless,
+      zeroAgents.id,
+      zeroAgents.displayName,
+      zeroAgents.name,
+    );
+
+  return rows.map((row) => {
+    return { ...row, credits: Number(row.credits) };
+  });
+}
+
+async function queryUsageEventCreditRows(
+  db: typeof globalThis.services.db,
+  orgIds: string[],
+  dayStart: Date,
+  dayEnd: Date,
+): Promise<LedgerCreditRow[]> {
+  const isRunless = sql`${usageEvent.runId} IS NULL`;
+  const rows = await db
+    .select({
+      orgId: usageEvent.orgId,
+      userId: usageEvent.userId,
+      agentId: sql<
+        string | null
+      >`CASE WHEN ${isRunless} THEN NULL ELSE ${zeroAgents.id}::text END`.as(
+        "agent_id",
+      ),
+      agentName:
+        sql<string>`CASE WHEN ${isRunless} THEN ${OTHER_USAGE_AGENT_NAME} ELSE COALESCE(${zeroAgents.displayName}, ${zeroAgents.name}, 'Unknown agent') END`.as(
+          "agent_name",
+        ),
+      credits:
+        sql<number>`COALESCE(SUM(${usageEvent.creditsCharged}), 0)::bigint`.as(
+          "credits",
+        ),
+    })
+    .from(usageEvent)
+    .leftJoin(agentRuns, eq(usageEvent.runId, agentRuns.id))
+    .leftJoin(
+      agentComposeVersions,
+      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+    )
+    .leftJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+    .where(
+      and(
+        inArray(usageEvent.orgId, orgIds),
+        eq(usageEvent.status, "processed"),
+        gte(usageEvent.processedAt, dayStart),
+        lt(usageEvent.processedAt, dayEnd),
+        isNotNull(usageEvent.processedAt),
+      ),
+    )
+    .groupBy(
+      usageEvent.orgId,
+      usageEvent.userId,
+      isRunless,
+      zeroAgents.id,
+      zeroAgents.displayName,
+      zeroAgents.name,
+    );
+
+  return rows.map((row) => {
+    return { ...row, credits: Number(row.credits) };
+  });
+}
+
+async function queryLedgerCreditRows(
+  db: typeof globalThis.services.db,
+  orgIds: string[],
+  dayStart: Date,
+  dayEnd: Date,
+): Promise<LedgerCreditRow[]> {
+  const [legacyRows, eventRows] = await Promise.all([
+    queryLegacyCreditRows(db, orgIds, dayStart, dayEnd),
+    queryUsageEventCreditRows(db, orgIds, dayStart, dayEnd),
+  ]);
+  return [...legacyRows, ...eventRows];
+}
+
+async function queryNetworkRunAgentRows(
+  db: typeof globalThis.services.db,
+  orgIds: string[],
+  userIds: string[],
+  runIds: string[],
+): Promise<NetworkRunAgentRow[]> {
+  const rows: NetworkRunAgentRow[] = [];
+  for (let i = 0; i < runIds.length; i += NETWORK_RUN_ATTRIBUTION_BATCH_SIZE) {
+    const batch = runIds.slice(i, i + NETWORK_RUN_ATTRIBUTION_BATCH_SIZE);
+    rows.push(
+      ...(await db
+        .select({
+          runId: agentRuns.id,
+          orgId: agentRuns.orgId,
+          userId: agentRuns.userId,
+          agentName:
+            sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
+              "agent_name",
+            ),
+        })
+        .from(agentRuns)
+        .innerJoin(
+          agentComposeVersions,
+          eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+        )
+        .innerJoin(
+          zeroAgents,
+          eq(agentComposeVersions.composeId, zeroAgents.id),
+        )
+        .where(
+          and(
+            inArray(agentRuns.orgId, orgIds),
+            inArray(agentRuns.userId, userIds),
+            inArray(agentRuns.id, batch),
+          ),
+        )),
+    );
+  }
+  return rows;
+}
+
 // ---------------------------------------------------------------------------
 // Window group processing
 // ---------------------------------------------------------------------------
@@ -507,154 +902,23 @@ async function processWindowGroup(
     ),
   ];
 
-  // ── Agent runs per user ────────────────────────────────────────────
+  // ── Completed runs and processed ledger credits ─────────────────────
 
-  const agentRows = await db
-    .select({
-      orgId: agentRuns.orgId,
-      userId: agentRuns.userId,
-      agentId: zeroAgents.id,
-      agentName:
-        sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
-          "agent_name",
-        ),
-      runCount: sql<number>`COUNT(DISTINCT ${agentRuns.id})::int`.as(
-        "run_count",
-      ),
-      credits:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits",
-        ),
-    })
-    .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
-    .leftJoin(
-      creditUsage,
-      and(
-        eq(creditUsage.runId, agentRuns.id),
-        eq(creditUsage.status, "processed"),
-      ),
-    )
-    .where(
-      and(
-        inArray(agentRuns.orgId, orgIds),
-        inArray(agentRuns.userId, userIds),
-        gte(agentRuns.createdAt, dayStart),
-        lt(agentRuns.createdAt, dayEnd),
-        isNotNull(agentRuns.completedAt),
-      ),
-    )
-    .groupBy(
-      agentRuns.orgId,
-      agentRuns.userId,
-      zeroAgents.id,
-      zeroAgents.displayName,
-      zeroAgents.name,
-    );
-
-  // key: `orgId:userId`
-  const userAgentMap = new Map<string, AgentInfo[]>();
-  for (const row of agentRows) {
-    const key = `${row.orgId}:${row.userId}`;
-    const list = userAgentMap.get(key) ?? [];
-    list.push({
-      agentId: row.agentId,
-      agentName: row.agentName,
-      runs: row.runCount,
-      credits: Number(row.credits),
-    });
-    userAgentMap.set(key, list);
-  }
-
-  // ── runId → user mapping for Axiom cross-reference ─────────────────
-
-  const runAgentRows = await db
-    .select({
-      runId: agentRuns.id,
-      orgId: agentRuns.orgId,
-      userId: agentRuns.userId,
-      agentName:
-        sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
-          "agent_name",
-        ),
-    })
-    .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
-    .where(
-      and(
-        inArray(agentRuns.orgId, orgIds),
-        inArray(agentRuns.userId, userIds),
-        gte(agentRuns.createdAt, dayStart),
-        lt(agentRuns.createdAt, dayEnd),
-      ),
-    );
-
-  const runIdToInfo = new Map<
-    string,
-    { orgId: string; userId: string; agentName: string }
-  >();
-  for (const row of runAgentRows) {
-    runIdToInfo.set(row.runId, {
-      orgId: row.orgId,
-      userId: row.userId,
-      agentName: row.agentName,
-    });
-  }
-
-  // ── Org-wide credits with agent breakdown ────────────────────────────
-
-  const memberRows = await db
-    .select({
-      orgId: creditUsage.orgId,
-      userId: creditUsage.userId,
-      agentName:
-        sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
-          "agent_name",
-        ),
-      credits:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits",
-        ),
-    })
-    .from(creditUsage)
-    .innerJoin(agentRuns, eq(creditUsage.runId, agentRuns.id))
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
-    .where(
-      and(
-        inArray(creditUsage.orgId, orgIds),
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.createdAt, dayStart),
-        lt(creditUsage.createdAt, dayEnd),
-      ),
-    )
-    .groupBy(
-      creditUsage.orgId,
-      creditUsage.userId,
-      zeroAgents.displayName,
-      zeroAgents.name,
-    );
+  const [runRows, ledgerCreditRows] = await Promise.all([
+    queryCompletedRunCounts(db, orgIds, userIds, dayStart, dayEnd),
+    queryLedgerCreditRows(db, orgIds, dayStart, dayEnd),
+  ]);
+  const userAgentMap = mergeAgentRows(runRows, ledgerCreditRows, users);
 
   const allCreditUserIds = [
     ...new Set(
-      memberRows.map((r) => {
+      ledgerCreditRows.map((r) => {
         return r.userId;
       }),
     ),
   ];
   const userNameMap = await resolveUserNames(allCreditUserIds);
-  const orgCreditsMap = aggregateOrgCredits(memberRows, userNameMap);
+  const orgCreditsMap = aggregateOrgCredits(ledgerCreditRows, userNameMap);
 
   // ── Credit balances ────────────────────────────────────────────────
 
@@ -695,6 +959,34 @@ async function processWindowGroup(
     });
   }
 
+  // Network rows are already time-windowed by Axiom `_time`; use `runId` only
+  // for attribution so old runs with current-day network activity still map.
+  const networkRunIds = [
+    ...new Set(
+      networkRows
+        .map((row) => {
+          return row.runId;
+        })
+        .filter(Boolean),
+    ),
+  ];
+  const runAgentRows =
+    networkRunIds.length > 0
+      ? await queryNetworkRunAgentRows(db, orgIds, userIds, networkRunIds)
+      : [];
+
+  const runIdToInfo = new Map<
+    string,
+    { orgId: string; userId: string; agentName: string }
+  >();
+  for (const row of runAgentRows) {
+    runIdToInfo.set(row.runId, {
+      orgId: row.orgId,
+      userId: row.userId,
+      agentName: row.agentName,
+    });
+  }
+
   const userNetworkMap = aggregateNetworkDataPerUser(networkRows, runIdToInfo);
 
   // ── Upsert per user ────────────────────────────────────────────────
@@ -715,12 +1007,14 @@ async function processWindowGroup(
       axiomDegraded,
     );
 
+    // `updatedAt` is the aggregation watermark. Keep it at the window end so
+    // rows landing after this snapshot are picked up by the next cron run.
     await db
       .insert(insightsDaily)
-      .values({ orgId, userId, date: targetDate, data })
+      .values({ orgId, userId, date: targetDate, data, updatedAt: dayEnd })
       .onConflictDoUpdate({
         target: [insightsDaily.orgId, insightsDaily.userId, insightsDaily.date],
-        set: { data, updatedAt: new Date() },
+        set: { data, updatedAt: dayEnd },
       });
 
     upserted++;
@@ -749,34 +1043,19 @@ export async function GET(request: Request): Promise<Response> {
   const db = globalThis.services.db;
   const now = new Date();
 
-  // ── Step 1: Find (org, user) pairs with new completed runs ─────────────
+  // ── Step 1: Find (org, user) pairs with new completed runs or ledger usage
   // 25h lookback covers "today" in all timezones (UTC-12 to UTC+14)
 
   const lookbackStart = new Date(now.getTime() - 25 * 3600_000);
 
-  const activeUsers = await db
-    .select({
-      orgId: agentRuns.orgId,
-      userId: agentRuns.userId,
-      lastCompleted: sql<Date>`MAX(${agentRuns.completedAt})`.as(
-        "last_completed",
-      ),
-    })
-    .from(agentRuns)
-    .where(
-      and(
-        gte(agentRuns.completedAt, lookbackStart),
-        isNotNull(agentRuns.completedAt),
-      ),
-    )
-    .groupBy(agentRuns.orgId, agentRuns.userId);
+  const activeUsers = await queryActiveUsers(lookbackStart);
 
   if (activeUsers.length === 0) {
-    log.info("No users with new runs, skipping aggregation");
+    log.info("No users with new runs or ledger usage, skipping aggregation");
     return NextResponse.json({ users: 0, skipped: true });
   }
 
-  // ── Step 1b: Filter out users whose last run is older than last aggregation
+  // ── Step 1b: Filter out users whose latest activity predates aggregation
 
   const activeOrgIds = [
     ...new Set(
@@ -812,14 +1091,19 @@ export async function GET(request: Request): Promise<Response> {
 
   const lastAggMap = new Map(
     lastAggRows.map((r) => {
-      return [`${r.orgId}:${r.userId}`, r.lastUpdated];
+      return [`${r.orgId}:${r.userId}`, normalizeDbDate(r.lastUpdated)];
     }),
   );
 
   const usersToAggregate = activeUsers.filter((u) => {
     const lastAgg = lastAggMap.get(`${u.orgId}:${u.userId}`);
     if (!lastAgg) return true;
-    return u.lastCompleted > lastAgg;
+    // Reprocess a small overlap around the previous watermark so rows committed
+    // near the snapshot boundary are not skipped by the activity prefilter.
+    const lastCovered = new Date(
+      lastAgg.getTime() - AGGREGATION_REPROCESS_OVERLAP_MS,
+    );
+    return u.lastActivity >= lastCovered;
   });
 
   if (usersToAggregate.length === 0) {
