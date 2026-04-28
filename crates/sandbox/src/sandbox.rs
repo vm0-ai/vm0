@@ -70,6 +70,14 @@ use crate::types::{ExecRequest, ExecResult, ProcessExit, SpawnHandle};
 /// tasks, hence `Send + Sync`. The `Any` bound allows
 /// [`SandboxFactory::destroy()`](crate::SandboxFactory::destroy) to
 /// downcast back to the concrete type for backend-specific cleanup.
+///
+/// # Panic/drop cleanup contract
+/// Production backends must make dropping an active sandbox a best-effort
+/// emergency cleanup path. If runner-side code unwinds before calling
+/// [`SandboxFactory::destroy()`](crate::SandboxFactory::destroy), `Drop`
+/// must not silently leave a VM process and associated host resources alive.
+/// This fallback is only a safety net: callers must not treat drop-triggered
+/// cleanup as proof that explicit destroy completed.
 #[async_trait]
 pub trait Sandbox: Send + Sync + Any {
     // -- identity --

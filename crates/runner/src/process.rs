@@ -305,6 +305,16 @@ pub async fn discover_all() -> DiscoveredProcesses {
     }
 }
 
+/// Return true when the discovered Firecracker list contains `sandbox_id`.
+pub fn firecracker_process_exists_for_sandbox_id(
+    firecrackers: &[FirecrackerProcessInfo],
+    sandbox_id: &str,
+) -> bool {
+    firecrackers
+        .iter()
+        .any(|process| process.sandbox_id == sandbox_id)
+}
+
 // ---------------------------------------------------------------------------
 // Orphan detection
 // ---------------------------------------------------------------------------
@@ -602,6 +612,24 @@ mod tests {
     #[test]
     fn is_firecracker_empty() {
         assert!(!is_firecracker_cmdline(&[]));
+    }
+
+    #[test]
+    fn firecracker_process_exists_for_sandbox_id_matches_exact_id() {
+        let processes = vec![FirecrackerProcessInfo {
+            pid: 42,
+            ppid: Some(1),
+            sandbox_id: "sandbox-a".to_string(),
+            base_dir: None,
+        }];
+
+        assert!(firecracker_process_exists_for_sandbox_id(
+            &processes,
+            "sandbox-a"
+        ));
+        assert!(!firecracker_process_exists_for_sandbox_id(
+            &processes, "sandbox"
+        ));
     }
 
     // -- Mitmdump parser tests --
