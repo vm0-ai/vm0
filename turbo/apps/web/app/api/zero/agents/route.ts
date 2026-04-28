@@ -10,7 +10,8 @@ import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { serverSideCompose } from "../../../../src/lib/infra/compose/server-side-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { buildComposeContent } from "../../../../src/lib/zero/build-compose-content";
 import { validateCustomSkills } from "../../../../src/lib/zero/validate-custom-skills";
 import { logger } from "../../../../src/lib/shared/logger";
@@ -28,6 +29,18 @@ const router = tsr.router(zeroAgentsMainContract, {
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
+
+    // Enforce maximum 7 agents per organization
+    const [{ value: agentCount }] = await globalThis.services.db
+      .select({ value: count() })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.orgId, org.orgId));
+    if (agentCount >= 7) {
+      return createErrorResponse(
+        "CONFLICT",
+        "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
+      );
+    }
 
     // Generate UUID agent name
     const agentName = crypto.randomUUID();
