@@ -375,6 +375,22 @@
   color: hsl(var(--muted-foreground));
 }
 
+.uc-subsection {
+  margin-top: 32px;
+}
+
+.uc-subsection:first-child {
+  margin-top: 0;
+}
+
+.uc-subsection-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  letter-spacing: -0.2px;
+  margin-bottom: 12px;
+}
+
 /* ---------------------------------------------------------------------------
    Prompt variants (tabs)
    --------------------------------------------------------------------------- */

@@ -160,12 +160,9 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             </div>
           </header>
 
-          {/* Screenshot preview */}
+          {/* Section 1: What Zero delivers */}
           {useCase.screenshot && (
-            <div className="uc-screenshot-preview" style={{ marginBottom: 48 }}>
-              <div className="uc-screenshot-label">
-                {t("whatZeroDelivers")}
-              </div>
+            <Section title={t("whatZeroDelivers")}>
               <div className="uc-screenshot-frame">
                 <Image
                   src={useCase.screenshot}
@@ -176,115 +173,132 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                   priority
                 />
               </div>
-            </div>
+            </Section>
           )}
 
-          {/* Scenario */}
+          {/* Section 2: The problem */}
           <Section title={t(`content.${slug}.headings.scenario`)}>
             <p className="uc-section-body">{t(`content.${slug}.scenario`)}</p>
           </Section>
 
-          {/* Step 1: Connect your tools */}
-          <Section title={t(`content.${slug}.headings.connect`)}>
-            <div className="uc-connect-grid">
-              {useCase.integrations.map((integration, i) => {
-                return (
-                  <div key={i} className="uc-connect-card">
-                    <div className="uc-connect-card-header">
-                      {integration.connector.icon && (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
-                          <Image
-                            src={integration.connector.icon}
-                            alt={integration.connector.label}
-                            width={32}
-                            height={32}
-                            className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}${integration.connector.looseViewBox ? " scale-[2.2]" : ""}`}
-                          />
+          {/* Section 3: How Zero fixes it */}
+          <Section title={t("howZeroFixesIt")}>
+            {/* Connect your tools */}
+            <div className="uc-subsection">
+              <h3 className="uc-subsection-title">
+                {t(`content.${slug}.headings.connect`)}
+              </h3>
+              <div className="uc-connect-grid">
+                {useCase.integrations.map((integration, i) => {
+                  return (
+                    <div key={i} className="uc-connect-card">
+                      <div className="uc-connect-card-header">
+                        {integration.connector.icon && (
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
+                            <Image
+                              src={integration.connector.icon}
+                              alt={integration.connector.label}
+                              width={32}
+                              height={32}
+                              className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}${integration.connector.looseViewBox ? " scale-[2.2]" : ""}`}
+                            />
+                          </div>
+                        )}
+                        <div className="uc-connect-card-info">
+                          <div className="uc-connect-card-name">
+                            {integration.connector.label}
+                          </div>
+                          <span
+                            className={`uc-integration-required ${
+                              integration.required
+                                ? "uc-integration-required--yes"
+                                : "uc-integration-required--no"
+                            }`}
+                          >
+                            {integration.required
+                              ? t("required")
+                              : t("optional")}
+                          </span>
                         </div>
-                      )}
-                      <div className="uc-connect-card-info">
-                        <div className="uc-connect-card-name">
-                          {integration.connector.label}
-                        </div>
-                        <span
-                          className={`uc-integration-required ${
-                            integration.required
-                              ? "uc-integration-required--yes"
-                              : "uc-integration-required--no"
-                          }`}
-                        >
-                          {integration.required
-                            ? t("required")
-                            : t("optional")}
-                        </span>
+                      </div>
+                      <div className="uc-connect-card-desc">
+                        {t(`content.${slug}.integrations.${i}.description`)}
+                      </div>
+                      <a
+                        href={`${platformUrl}/connectors/${integration.connector.id}/connect`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="uc-connect-btn"
+                      >
+                        {t("connectLabel")}
+                        <IconArrowUpRight size={14} />
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Prompt */}
+            <div className="uc-subsection">
+              <h3 className="uc-subsection-title">
+                {t(`content.${slug}.headings.prompt`)}
+              </h3>
+              <PromptVariants
+                variants={promptVariants}
+                connectors={useCase.connectors}
+                platformUrl={platformUrl}
+                tryItLabel={t("tryIt")}
+              />
+            </div>
+
+            {/* Steps */}
+            <div className="uc-subsection">
+              <h3 className="uc-subsection-title">
+                {t(`content.${slug}.headings.steps`)}
+              </h3>
+              <div className="uc-steps">
+                {steps.map((step, i) => {
+                  return (
+                    <div key={i} className="uc-step">
+                      <div className="uc-step-title">{step.title}</div>
+                      <div className="uc-step-desc">{step.description}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Next actions */}
+            <div className="uc-subsection">
+              <h3 className="uc-subsection-title">
+                {t(`content.${slug}.headings.nextActions`)}
+              </h3>
+              <div className="uc-next-actions">
+                {nextActions.map((action, i) => {
+                  return (
+                    <div key={i} className="uc-next-action">
+                      <div className="uc-next-action-title">
+                        {action.title}
+                      </div>
+                      <div className="uc-next-action-desc">
+                        {action.description}
+                      </div>
+                      <div className="uc-next-action-prompt group">
+                        {action.examplePrompt}
+                        <TryItLink
+                          href={buildPromptHref(
+                            action.examplePrompt,
+                            useCase.connectors,
+                            platformUrl,
+                          )}
+                          label={t("tryIt")}
+                        />
                       </div>
                     </div>
-                    <div className="uc-connect-card-desc">
-                      {t(`content.${slug}.integrations.${i}.description`)}
-                    </div>
-                    <a
-                      href={`${platformUrl}/connectors/${integration.connector.id}/connect`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="uc-connect-btn"
-                    >
-                      {t("connectLabel")}
-                      <IconArrowUpRight size={14} />
-                    </a>
-                  </div>
-                );
-              })}
-            </div>
-          </Section>
-
-          {/* Prompt */}
-          <Section title={t(`content.${slug}.headings.prompt`)}>
-            <PromptVariants
-              variants={promptVariants}
-              connectors={useCase.connectors}
-              platformUrl={platformUrl}
-              tryItLabel={t("tryIt")}
-            />
-          </Section>
-
-          {/* Steps */}
-          <Section title={t(`content.${slug}.headings.steps`)}>
-            <div className="uc-steps">
-              {steps.map((step, i) => {
-                return (
-                  <div key={i} className="uc-step">
-                    <div className="uc-step-title">{step.title}</div>
-                    <div className="uc-step-desc">{step.description}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </Section>
-
-          {/* Next actions */}
-          <Section title={t(`content.${slug}.headings.nextActions`)}>
-            <div className="uc-next-actions">
-              {nextActions.map((action, i) => {
-                return (
-                  <div key={i} className="uc-next-action">
-                    <div className="uc-next-action-title">{action.title}</div>
-                    <div className="uc-next-action-desc">
-                      {action.description}
-                    </div>
-                    <div className="uc-next-action-prompt group">
-                      {action.examplePrompt}
-                      <TryItLink
-                        href={buildPromptHref(
-                          action.examplePrompt,
-                          useCase.connectors,
-                          platformUrl,
-                        )}
-                        label={t("tryIt")}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </Section>
 
