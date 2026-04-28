@@ -225,14 +225,19 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("returns 401 when no Authorization header is provided", async () => {
+  it("returns 401 with web's 'API key required' phrasing when no Authorization header is provided", async () => {
+    // Mirrors web's `requireApiKeyAuth` 401 message so the response shadow
+    // does not flag matching auth failures as divergent.
     const client = setupApp({ context })(chatThreadV1GetContract);
     const response = await accept(
       client.get({ params: { threadId: randomUUID() }, headers: {} }),
       [401],
     );
 
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
+    expect(response.body.error).toEqual({
+      message: "API key required",
+      code: "UNAUTHORIZED",
+    });
   });
 
   it("returns 403 when authenticated with a sandbox token", async () => {
