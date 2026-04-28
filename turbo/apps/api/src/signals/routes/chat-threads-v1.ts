@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { computed } from "ccstate";
 import {
   chatThreadV1GetContract,
   chatThreadV1MessagesContract,
@@ -16,7 +16,7 @@ import type { RouteEntry } from "../route";
 
 const GENERIC_BAD_REQUEST = Object.freeze({ path: [], message: "Bad request" });
 
-const getThreadHandler$ = command(async ({ get }, _signal: AbortSignal) => {
+const getThreadHandler$ = computed(async (get) => {
   const auth = get(authContext$);
   const request = get(request$);
 
@@ -36,42 +36,40 @@ const getThreadHandler$ = command(async ({ get }, _signal: AbortSignal) => {
   return { status: 200 as const, body: thread };
 });
 
-const getThreadMessagesHandler$ = command(
-  async ({ get }, _signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const request = get(request$);
+const getThreadMessagesHandler$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const request = get(request$);
 
-    const params = chatThreadV1MessagesContract.list.pathParams.safeParse({
-      threadId: request.param("threadId"),
-    });
-    if (!params.success) {
-      return badRequest(params.error.issues[0] ?? GENERIC_BAD_REQUEST);
-    }
+  const params = chatThreadV1MessagesContract.list.pathParams.safeParse({
+    threadId: request.param("threadId"),
+  });
+  if (!params.success) {
+    return badRequest(params.error.issues[0] ?? GENERIC_BAD_REQUEST);
+  }
 
-    const query = chatThreadV1MessagesContract.list.query.safeParse({
-      sinceId: request.query("sinceId"),
-      beforeId: request.query("beforeId"),
-      limit: request.query("limit"),
-    });
-    if (!query.success) {
-      return badRequest(query.error.issues[0] ?? GENERIC_BAD_REQUEST);
-    }
+  const query = chatThreadV1MessagesContract.list.query.safeParse({
+    sinceId: request.query("sinceId"),
+    beforeId: request.query("beforeId"),
+    limit: request.query("limit"),
+  });
+  if (!query.success) {
+    return badRequest(query.error.issues[0] ?? GENERIC_BAD_REQUEST);
+  }
 
-    const messages = await get(
-      chatThreadMessagesV1({
-        threadId: params.data.threadId,
-        userId: auth.userId,
-        sinceId: query.data.sinceId,
-        beforeId: query.data.beforeId,
-        limit: query.data.limit,
-      }),
-    );
-    if (messages === null) {
-      return notFound("Chat thread not found");
-    }
-    return { status: 200 as const, body: { messages: [...messages] } };
-  },
-);
+  const messages = await get(
+    chatThreadMessagesV1({
+      threadId: params.data.threadId,
+      userId: auth.userId,
+      sinceId: query.data.sinceId,
+      beforeId: query.data.beforeId,
+      limit: query.data.limit,
+    }),
+  );
+  if (messages === null) {
+    return notFound("Chat thread not found");
+  }
+  return { status: 200 as const, body: { messages: [...messages] } };
+});
 
 const getThread$ = authRoute({ accept: ["pat"] }, getThreadHandler$);
 const getThreadMessages$ = authRoute(
