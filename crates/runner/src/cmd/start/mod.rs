@@ -2530,6 +2530,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn completion_ready_does_not_remove_reinserted_active_run() {
+        let (budget, lease) = test_budget_lease();
+        let budget_count_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
+        let active_runs_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let provider = CompletionOrderProvider {
+            budget: Arc::clone(&budget),
+            budget_count_at_complete,
+            active_runs_at_complete,
+            status_path: status_path.clone(),
+        };
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let completed_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, completed_sandbox_id).await;
+        status.add_run(run_id, current_sandbox_id).await;
+
+        CompletionReady::new(
+            test_completion_payload(run_id, completed_sandbox_id),
+            BudgetOwnership::active(ActiveBudgetLease::new(lease)),
+        )
+        .complete_and_release(&provider, &status, &cleanup_state)
+        .await;
+
+        assert_eq!(
+            status_active_run_records(&status_path).await,
+            vec![(run_id.to_string(), current_sandbox_id.to_string())],
+        );
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::StatusRemoved,
+        );
+        assert_eq!(budget.allocated().2, 0);
+    }
+
+    #[tokio::test]
     async fn rejected_park_budget_is_recovered_as_active_and_released_after_completion() {
         let (budget, lease) = test_budget_lease();
         let budget_count_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
@@ -2693,6 +2732,47 @@ mod tests {
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&status_path).await;
         assert!(active_runs.is_empty());
+        assert_eq!(orphans.len().await, 0);
+    }
+
+    #[tokio::test]
+    async fn panic_cleanup_destroy_completed_does_not_remove_reinserted_active_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let orphans = OrphanedActiveRuns::new();
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let completed_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, completed_sandbox_id).await;
+        status.add_run(run_id, current_sandbox_id).await;
+        tokens.lock().await.insert(run_id, CancellationToken::new());
+        cleanup_state.mark_destroy_completed();
+
+        cleanup_panicked_job(
+            run_id,
+            completed_sandbox_id,
+            Arc::clone(&tokens),
+            Arc::clone(&status),
+            idle_pool,
+            cleanup_state,
+            orphans.clone(),
+        )
+        .await;
+
+        assert!(!tokens.lock().await.contains_key(&run_id));
+        assert_eq!(
+            status_active_run_records(&status_path).await,
+            vec![(run_id.to_string(), current_sandbox_id.to_string())],
+        );
         assert_eq!(orphans.len().await, 0);
     }
 
@@ -5253,6 +5333,24 @@ mod tests {
             .collect();
         run_ids.sort_unstable();
         (sessions, run_ids)
+    }
+
+    async fn status_active_run_records(status_path: &std::path::Path) -> Vec<(String, String)> {
+        let raw = tokio::fs::read_to_string(status_path).await.unwrap();
+        let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let mut records: Vec<(String, String)> = status["active_runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|run| {
+                (
+                    run["run_id"].as_str().unwrap().to_string(),
+                    run["sandbox_id"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        records.sort_unstable();
+        records
     }
 
     async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
