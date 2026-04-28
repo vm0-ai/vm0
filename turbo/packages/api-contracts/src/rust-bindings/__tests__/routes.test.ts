@@ -52,6 +52,17 @@ const expectedBindings = [
   },
 ] as const;
 
+function validBinding(
+  overrides: Partial<RustRouteBinding> = {},
+): RustRouteBinding {
+  return {
+    route: { method: "POST", path: "/api/webhooks/agent/events" },
+    rustModulePath: ["webhooks", "agent_events"],
+    rustConstName: "SEND",
+    ...overrides,
+  };
+}
+
 describe("Rust route bindings", () => {
   it("contains exactly the initial guest-agent webhook route set", () => {
     const actualBindings = rustRouteBindings.map((binding) => {
@@ -89,15 +100,75 @@ describe("Rust route bindings", () => {
 
   it("fails clearly when a registry entry is malformed", () => {
     const malformedBindings = [
-      {
+      validBinding({
         route: { method: "TRACE", path: "/api/webhooks/agent/events" },
-        rustModulePath: ["webhooks", "agent_events"],
-        rustConstName: "SEND",
-      },
-    ] satisfies readonly RustRouteBinding[];
+      }),
+    ];
 
     expect(() => {
       normalizeRouteBindings(malformedBindings);
     }).toThrow("unsupported HTTP method");
+  });
+
+  it("fails clearly when a route path is invalid", () => {
+    const malformedBindings = [
+      validBinding({
+        route: { method: "POST", path: "api/webhooks/agent/events" },
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("route path must start with '/'");
+  });
+
+  it("fails clearly when a Rust module segment is invalid", () => {
+    const malformedBindings = [
+      validBinding({
+        rustModulePath: ["webhooks", "agent-events"],
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("invalid Rust module segment");
+  });
+
+  it("fails clearly when a Rust const name is invalid", () => {
+    const malformedBindings = [
+      validBinding({
+        rustConstName: "send",
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("invalid Rust const name");
+  });
+
+  it("fails clearly when Rust route names are duplicated", () => {
+    const malformedBindings = [
+      validBinding(),
+      validBinding({
+        route: { method: "POST", path: "/api/webhooks/agent/heartbeat" },
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("duplicate Rust route binding");
+  });
+
+  it("fails clearly when method and path route pairs are duplicated", () => {
+    const malformedBindings = [
+      validBinding(),
+      validBinding({
+        rustModulePath: ["webhooks", "agent_heartbeat"],
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("duplicate route binding");
   });
 });
