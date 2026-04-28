@@ -25,7 +25,10 @@ type ModelUsageEventDraft = ModelUsageTokenQuantity & {
   provider: string;
 };
 
-const MODEL_USAGE_EVENT_IDEMPOTENCY_PREFIX = "vm0:model-usage-event:v1";
+// UUIDv5 namespace for legacy model-usage webhook idempotency keys. Do not
+// change after release; changing it would make webhook retries insert new rows.
+const MODEL_USAGE_EVENT_IDEMPOTENCY_NAMESPACE =
+  "18a22204-d25e-4170-8973-86477f864bfb";
 
 export function getPositiveModelUsageTokenQuantities(
   usage: LegacyModelUsage,
@@ -75,19 +78,25 @@ function deriveModelUsageEventIdempotencyKey(params: {
   messageId: string;
   category: string;
 }): string {
-  return deterministicUuid([params.runId, params.messageId, params.category]);
+  return uuidV5(
+    MODEL_USAGE_EVENT_IDEMPOTENCY_NAMESPACE,
+    encodeUuidName([params.runId, params.messageId, params.category]),
+  );
 }
 
-function deterministicUuid(parts: readonly string[]): string {
-  const hash = createHash("sha256");
-  hash.update(MODEL_USAGE_EVENT_IDEMPOTENCY_PREFIX);
+function encodeUuidName(parts: readonly string[]): string {
+  return parts
+    .map((part) => {
+      return `${Buffer.byteLength(part)}:${part}`;
+    })
+    .join("\0");
+}
 
-  for (const part of parts) {
-    hash.update("\0");
-    hash.update(String(Buffer.byteLength(part)));
-    hash.update(":");
-    hash.update(part);
-  }
+function uuidV5(namespace: string, name: string): string {
+  const namespaceBytes = Buffer.from(namespace.replaceAll("-", ""), "hex");
+  const hash = createHash("sha1");
+  hash.update(namespaceBytes);
+  hash.update(name);
 
   const bytes = Uint8Array.from(hash.digest().subarray(0, 16));
   bytes[6] = (bytes[6]! & 0x0f) | 0x50;
