@@ -396,5 +396,7 @@ describe("POST /api/telegram/register", () => {
 
     expect(response.status).toBe(502);
     expect(body.error.code).toBe("BAD_GATEWAY");
+    expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);
+    await expect(getTestTelegramBotToken(botId)).resolves.toBeNull();
   });
 });

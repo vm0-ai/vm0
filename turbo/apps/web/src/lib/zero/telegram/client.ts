@@ -1,8 +1,9 @@
 import { logger } from "../../shared/logger";
+import { env } from "../../../env";
 
 const log = logger("telegram:client");
 
-const TELEGRAM_API_BASE = "https://api.telegram.org/bot";
+const DEFAULT_TELEGRAM_API_BASE = "https://api.telegram.org/bot";
 const MAX_RETRIES = 3;
 
 interface TelegramApiResponse<T> {
@@ -65,6 +66,37 @@ export interface TelegramClient {
   token: string;
 }
 
+function isE2eTelegramMockEnabled(): boolean {
+  const flag = env().E2E_TELEGRAM_MOCK_ENABLED;
+  return flag === "1" || flag === "true";
+}
+
+function resolveTelegramApiBase(): string {
+  const e = env();
+  if (e.TELEGRAM_API_URL) return e.TELEGRAM_API_URL;
+
+  if (!isE2eTelegramMockEnabled()) return DEFAULT_TELEGRAM_API_BASE;
+  if (!e.VERCEL_URL) {
+    throw new Error(
+      "E2E_TELEGRAM_MOCK_ENABLED=1 but VERCEL_URL is unset; cannot redirect Telegram Bot API traffic to the preview mock routes",
+    );
+  }
+  return `https://${e.VERCEL_URL}/api/test/telegram-mock/bot`;
+}
+
+function buildTelegramApiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (isE2eTelegramMockEnabled()) {
+    const bypass = env().VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypass) {
+      headers["x-vercel-protection-bypass"] = bypass;
+    }
+  }
+  return headers;
+}
+
 /**
  * Create a Telegram Bot API client
  */
@@ -86,11 +118,11 @@ export async function callTelegramApi<T>(
   params?: Record<string, unknown>,
   _retryCount = 0,
 ): Promise<T> {
-  const url = `${TELEGRAM_API_BASE}${token}/${method}`;
+  const url = `${resolveTelegramApiBase()}${token}/${method}`;
 
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildTelegramApiHeaders(),
     body: params ? JSON.stringify(params) : undefined,
   });
 

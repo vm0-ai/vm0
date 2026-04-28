@@ -8,7 +8,15 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import {
   createTestCompose,
+  createTestAgentSession,
+  createTelegramInstallationForCompose,
+  createTelegramThreadSession,
   createTestTelegramInstallation,
+  countTestTelegramMessages,
+  insertTelegramMessage,
+  insertTestTelegramUserLink,
+  telegramThreadSessionExists,
+  telegramUserLinkExists,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
@@ -37,6 +45,15 @@ function routeParams(botId: string) {
 function telegramDeleteWebhook() {
   return http.post(/api\.telegram\.org\/bot.*\/deleteWebhook/, () => {
     return HttpResponse.json({ ok: true, result: true });
+  });
+}
+
+function telegramDeleteWebhookFailure() {
+  return http.post(/api\.telegram\.org\/bot.*\/deleteWebhook/, () => {
+    return HttpResponse.json(
+      { ok: false, description: "Telegram unavailable" },
+      { status: 500 },
+    );
   });
 }
 
@@ -383,6 +400,70 @@ describe("/api/integrations/telegram/[botId]", () => {
 
       const getResponse = await GET(botRequest("GET"), routeParams(botId));
       expect(getResponse.status).toBe(404);
+    });
+
+    it("deletes installation even when webhook removal fails", async () => {
+      const user = await context.setupUser();
+      const botId = uniqueId("bot");
+      await createTestTelegramInstallation({
+        ownerUserId: user.userId,
+        telegramBotId: botId,
+        orgId: user.orgId,
+      });
+      const deleteHandler = telegramDeleteWebhookFailure();
+      server.use(deleteHandler.handler);
+
+      const response = await DELETE(botRequest("DELETE"), routeParams(botId));
+
+      expect(response.status).toBe(204);
+      expect(deleteHandler.mocked).toHaveBeenCalledTimes(1);
+
+      const getResponse = await GET(botRequest("GET"), routeParams(botId));
+      expect(getResponse.status).toBe(404);
+    });
+
+    it("cascades links, messages, and thread sessions for the deleted bot", async () => {
+      const user = await context.setupUser();
+      const { composeId } = await createTestCompose(uniqueId("agent"));
+      const botId = await createTelegramInstallationForCompose(
+        composeId,
+        user.userId,
+        "cascade-test-token",
+      );
+      const userLink = await insertTestTelegramUserLink({
+        installationId: botId,
+        telegramUserId: "99077",
+        vm0UserId: user.userId,
+      });
+      await insertTelegramMessage({
+        installationId: botId,
+        chatId: "77001",
+        messageId: "88001",
+        fromUserId: "99077",
+        text: "before delete",
+      });
+      const agentSession = await createTestAgentSession(user.userId, composeId);
+      await createTelegramThreadSession({
+        telegramUserLinkId: userLink.id,
+        chatId: "77001",
+        rootMessageId: "dm",
+        agentSessionId: agentSession.id,
+      });
+      const deleteHandler = telegramDeleteWebhook();
+      server.use(deleteHandler.handler);
+
+      const response = await DELETE(botRequest("DELETE"), routeParams(botId));
+
+      expect(response.status).toBe(204);
+      await expect(telegramUserLinkExists(botId, "99077")).resolves.toBe(false);
+      await expect(countTestTelegramMessages(botId)).resolves.toBe(0);
+      await expect(
+        telegramThreadSessionExists({
+          telegramUserLinkId: userLink.id,
+          chatId: "77001",
+          rootMessageId: "dm",
+        }),
+      ).resolves.toBe(false);
     });
   });
 });
