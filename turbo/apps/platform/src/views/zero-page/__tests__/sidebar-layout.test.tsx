@@ -247,3 +247,68 @@ describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () 
     });
   });
 });
+
+describe("mobile bottom tab bar - renders four tabs (MOBILE-TAB-001)", () => {
+  it("renders Chats, Teammates, Schedules, and More tabs", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-bottom-tab-bar")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("mobile-tab-chats")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-tab-teammates")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-tab-schedules")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-tab-more")).toBeInTheDocument();
+  });
+});
+
+describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () => {
+  it("marks the Teammates tab as the current page on /agents", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/agents" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-tab-teammates")).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+    });
+    expect(screen.getByTestId("mobile-tab-chats")).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+});
+
+describe("mobile bottom tab bar - More opens sidebar (MOBILE-TAB-003)", () => {
+  it("expands the sidebar overlay when the More tab is clicked", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    const moreTab = await waitFor(() => {
+      return screen.getByTestId("mobile-tab-more");
+    });
+    click(moreTab);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Sidebar overlay")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("mobile bottom tab bar - Schedules link navigates (MOBILE-TAB-004)", () => {
+  it("navigates to /schedules when the Schedules tab is clicked", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    const schedulesTab = await waitFor(() => {
+      return screen.getByTestId("mobile-tab-schedules");
+    });
+    click(schedulesTab);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/schedules");
+    });
+  });
+});

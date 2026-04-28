@@ -61,6 +61,7 @@ import {
   InstallBanner,
   IosInstallModal,
 } from "../pwa-install/install-banner.tsx";
+import { MobileBottomTabBar } from "./mobile-bottom-tab-bar.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -289,6 +290,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         ) : (
           children
         )}
+        <MobileBottomTabBar />
       </div>
     </div>
   );
