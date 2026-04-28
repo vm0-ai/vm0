@@ -4,6 +4,8 @@ import * as Sentry from "@sentry/node";
 // oxlint-disable-next-line no-restricted-imports -- app-factory owns the Hono instance, confirmed by ethan@vm0.ai
 import { type Context, type MiddlewareHandler, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+// oxlint-disable-next-line no-restricted-imports -- app-factory needs the matched route resolver before next(); other signals files use the wrappers from signals/context/hono.
+import { routePath } from "hono/route";
 
 import { env } from "./lib/env";
 import { logger } from "./lib/log";
@@ -83,9 +85,16 @@ async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
 // into the parent SERVER span. Any code further down the call tree —
 // including PgInstrumentation's requestHook in instrument.ts — reads it
 // from `propagation.getActiveBaggage()`.
+//
+// `c.req.routePath` reflects the *current* middleware's pattern (here `"*"`)
+// until next() returns, but we need the matched route *before* next() so the
+// db queries that run inside the handler can pick it up. `routePath(c, -1)`
+// from `hono/route` resolves to the last-matched handler's path even when
+// called from a middleware position — exactly what @hono/otel uses to name
+// its SERVER span.
 const httpRouteBaggage: MiddlewareHandler = async (c, next) => {
-  const route = c.req.routePath;
-  if (!route) {
+  const route = routePath(c, -1);
+  if (!route || route === "*") {
     return next();
   }
   const current = propagation.getActiveBaggage() ?? propagation.createBaggage();

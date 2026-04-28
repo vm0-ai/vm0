@@ -212,7 +212,13 @@
       "upgradeCredits": "¿Qué pasa con mis créditos si actualizo mi plan?",
       "upgradeCreditsAnswer": "Tu nivel cambia inmediatamente, por lo que obtienes al instante la mayor concurrencia, los límites de agentes y las funciones del nuevo plan. Tus créditos existentes permanecen en tu cuenta, conservan su fecha de caducidad original y se consumen primero. La asignación mensual de créditos del nuevo plan se otorga en tu próximo ciclo de facturación, y Stripe prorratea automáticamente el cargo por lo que resta del ciclo actual."
     },
-    "perMonth": "/mes"
+    "perMonth": "/mes",
+    "pageTitle": "Pricing",
+    "pageDescription": "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
+    "ogTitle": "VM0 Pricing — Pay for What You Use",
+    "ogDescription": "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
+    "breadcrumbHome": "Home",
+    "breadcrumbPricing": "Pricing"
   },
   "footer": {
     "tagline": "Zero, tu compañero de IA de confianza.",
@@ -273,7 +279,10 @@
     "stayInLoopDesc": "// Obtén las últimas perspectivas sobre desarrollo nativo de agentes.",
     "subscribe": "Suscribirse",
     "joinDiscord": "Únete a Discord",
-    "shareArticle": "Compartir este artículo"
+    "shareArticle": "Compartir este artículo",
+    "errorTitle": "Blog temporarily unavailable",
+    "errorBody": "We're having trouble loading blog content. Please try again in a moment.",
+    "errorRetry": "Try again"
   },
   "banner": {
     "label": "Nuevo",
@@ -4776,7 +4785,13 @@
       "detail": "Plataforma principal en GitHub. Pruebas de penetración regulares por terceros. Cumplimiento SOC 2 Tipo II en proceso."
     },
     "questionsAboutSecurity": "¿Preguntas sobre seguridad?",
-    "contactUs": "Contáctanos"
+    "contactUs": "Contáctanos",
+    "pageTitle": "Security",
+    "pageDescription": "Learn how VM0 keeps your data safe with isolated execution, secret management, full audit trails, and an open-source security model.",
+    "ogTitle": "VM0 Security - Built for Trust",
+    "ogDescription": "Isolated execution, secret management, audit trails, and open-source transparency.",
+    "breadcrumbHome": "Home",
+    "breadcrumbSecurity": "Security"
   },
   "avatar": {
     "steps": {
@@ -4793,5 +4808,59 @@
       "hyped": "Animado"
     },
     "back": "← Atrás"
+  },
+  "models": {
+    "listingPageTitle": "Models — Run agents on Claude and more",
+    "listingPageDescription": "Every AI model available to VM0 agents — Claude Opus 4.7, Sonnet 4.6, Haiku 4.5, and more. Short intro and what each model is best for on VM0.",
+    "jsonLdListName": "AI models available on VM0",
+    "jsonLdListDescription": "Every AI model available to VM0 agents — Claude and more.",
+    "breadcrumbHome": "Home",
+    "breadcrumbModels": "Models",
+    "notFound": "Not Found",
+    "heroTitle": "AI models on VM0",
+    "heroDescription": "Every model available to your agents. What it's good at, and when to pick it.",
+    "filterAriaLabel": "Filter models",
+    "filterAll": "All",
+    "filterRecommended": "Recommended",
+    "filterMultimodal": "Multimodal",
+    "filterCostSaving": "Cost-saving",
+    "readMoreAbout": "Read more about {name}",
+    "backToAllModels": "All models",
+    "useModelButton": "Use {name} on VM0",
+    "whatIsHeading": "What is {name}?",
+    "whatsNotableHeading": "What's notable about {name}",
+    "whatsNotableSubtitle": "Headline architecture and capability features.",
+    "specsHeading": "Specs at a glance",
+    "benchmarksHeading": "{name} benchmarks",
+    "pricingHeading": "{name} pricing",
+    "pricingSubtitle": "Provider list price, per 1M tokens.",
+    "performanceHeading": "How {name} behaves in practice",
+    "performanceSubtitle": "Observed behaviour from production agent runs.",
+    "bestForHeading": "Best agent tasks for {name}",
+    "skipWhenHeading": "When to skip {name}",
+    "comparisonsHeading": "{name} vs other models",
+    "comparisonTitleTemplate": "{model} vs {other}",
+    "verdictHeading": "Bottom line: should you use {name}?",
+    "faqHeading": "Frequently asked questions",
+    "alternativesHeading": "Alternatives",
+    "usingOnVm0Heading": "Using {name} on VM0",
+    "moreModelsHeading": "More models on VM0",
+    "labelInput": "Input",
+    "labelOutput": "Output",
+    "labelCacheRead": "Cache read",
+    "labelCacheWrite": "Cache write",
+    "labelNotBilled": "Not billed",
+    "twoWaysToAccessHeading": "Two ways to access {name} on VM0",
+    "twoWaysToAccessBody": "VM0 supports {name} as a Built-in model billed in VM0 credits, and through bring-your-own with a {byoKey}. The Built-in path uses VM0 Managed routing and the credit multiplier explained below; the bring-your-own path bills you directly with the upstream vendor and skips the VM0 credit conversion entirely.",
+    "vm0RecommendationHeading": "VM0's recommendation",
+    "creditsMultiplierHeading": "Credits and the ×{multiplier} multiplier",
+    "creditsMultiplierBodyP1": "Every Built-in model on VM0 is priced as a multiple of Claude Sonnet 4.6, which sits at the ×1 credit baseline. {name} bills at ×{multiplier} credits. The multiplier is what shows up on your VM0 invoice; the vendor list price in the pricing table above is what the upstream provider charges before VM0 converts it into credits.",
+    "multiplierPositioningBaseline": "{name} sits at the ×1 baseline that every other Built-in model is priced against, so it's the unit you compare costs in when picking between models on VM0.",
+    "multiplierPositioningPremium": "{name} bills at ×{multiplier}, which means a step here costs {multiplier}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). It's a premium tier on VM0, so the cost-effective pattern is to default to a cheaper model and route only the steps that genuinely need the extra reasoning depth to {name}.",
+    "multiplierPositioningCheapest": "{name} bills at ×{multiplier}, which means a step here costs only {multiplier}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). That puts it at the cheapest tier of the Built-in catalogue and makes it the obvious choice when unit cost dominates the decision and the workload is largely single-shot.",
+    "multiplierPositioningBelowBaseline": "{name} bills at ×{multiplier}, which means a step here costs only {multiplier}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). That puts it well below the credit baseline and makes it the natural pick for high-volume background work where cost-per-step matters more than peak reasoning quality.",
+    "tierExplanationCore": "VM0 positions {name} as a core agent model, recommended alongside Claude Opus 4.7, Claude Opus 4.6, and Claude Sonnet 4.6 for the steps that drive the actual outcome of an agent run. These are the models we'd pick for the orchestrator role, for code-touching agents, and for any step where a wrong answer is expensive.",
+    "tierExplanationCostSaving": "VM0 positions {name} as a cost-saving option rather than a core agent model. Use it to optimise unit cost on non-core work, such as bulk classification, pre-filters, latency-critical short replies, or pinned legacy agents, while keeping Claude Opus 4.7, Claude Opus 4.6, or Claude Sonnet 4.6 on the steps that decide the run.",
+    "availableSince": "Available on VM0 since {date}."
   }
 }

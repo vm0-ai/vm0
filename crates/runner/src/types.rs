@@ -91,6 +91,8 @@ pub struct ExecutionContext {
     pub feature_flags: Option<HashMap<String, bool>>,
     #[serde(default)]
     pub billable_firewalls: Vec<String>,
+    #[serde(default)]
+    pub model_usage_provider: Option<String>,
 }
 
 /// A single firewall config with its name and API entries.
@@ -350,6 +352,7 @@ mod tests {
         assert!(ctx.firewalls.is_none());
         assert!(ctx.secret_values.is_none());
         assert!(ctx.billable_firewalls.is_empty());
+        assert!(ctx.model_usage_provider.is_none());
     }
 
     #[test]
@@ -389,7 +392,8 @@ mod tests {
             "settings": "{\"hooks\":{}}",
             "experimentalProfile": "browser",
             "featureFlags": {"computerUse": true, "voiceChat": false},
-            "billableFirewalls": ["model-provider:vm0"]
+            "billableFirewalls": ["model-provider:vm0"],
+            "modelUsageProvider": "claude-sonnet-4-6"
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.append_system_prompt.as_deref(), Some("be concise"));
@@ -410,6 +414,10 @@ mod tests {
         assert_eq!(
             ctx.billable_firewalls,
             vec!["model-provider:vm0".to_string()]
+        );
+        assert_eq!(
+            ctx.model_usage_provider.as_deref(),
+            Some("claude-sonnet-4-6")
         );
     }
 

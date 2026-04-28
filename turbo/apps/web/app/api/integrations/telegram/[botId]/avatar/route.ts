@@ -19,6 +19,22 @@ import {
 const log = logger("api:telegram:integration-bot-avatar");
 
 const MAX_AVATAR_SIZE_BYTES = 10 * 1024 * 1024;
+const FALLBACK_AVATAR_SVG = [
+  `<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Telegram bot avatar fallback">`,
+  `<circle cx="20" cy="20" r="20" fill="#2AABEE" fill-opacity="0.1"/>`,
+  `<svg x="10" y="10" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2AABEE" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">`,
+  `<path d="M6 6a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-8a2 2 0 0 1 -2 -2l0 -4"/>`,
+  `<path d="M12 2v2"/>`,
+  `<path d="M9 12v9"/>`,
+  `<path d="M15 12v9"/>`,
+  `<path d="M5 16l4 -2"/>`,
+  `<path d="M15 14l4 2"/>`,
+  `<path d="M9 18h6"/>`,
+  `<path d="M10 8v.01"/>`,
+  `<path d="M14 8v.01"/>`,
+  `</svg>`,
+  `</svg>`,
+].join("");
 
 function errorResponse(
   status: number,
@@ -26,6 +42,13 @@ function errorResponse(
   code: string,
 ): NextResponse {
   return NextResponse.json({ error: { message, code } }, { status });
+}
+
+function fallbackAvatarResponse(): Response {
+  const headers = new Headers();
+  headers.set("Content-Type", "image/svg+xml; charset=utf-8");
+  headers.set("Cache-Control", "private, max-age=300");
+  return new Response(FALLBACK_AVATAR_SVG, { status: 200, headers });
 }
 
 function parseContentLength(value: string | null): number | undefined {
@@ -142,7 +165,7 @@ export async function GET(
     );
     const photo = selectLargestProfilePhoto(profilePhotos.photos[0] ?? []);
     if (!photo) {
-      return errorResponse(404, "Telegram bot avatar not found", "NOT_FOUND");
+      return fallbackAvatarResponse();
     }
 
     if (photo.file_size && photo.file_size > MAX_AVATAR_SIZE_BYTES) {
@@ -155,11 +178,7 @@ export async function GET(
 
     const file = await getFile(client, photo.file_id);
     if (!file.file_path) {
-      return errorResponse(
-        404,
-        "Telegram avatar does not have a downloadable path",
-        "NOT_FOUND",
-      );
+      return fallbackAvatarResponse();
     }
 
     if (file.file_size && file.file_size > MAX_AVATAR_SIZE_BYTES) {

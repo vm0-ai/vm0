@@ -26,6 +26,7 @@
  * - require-accept: Enforce that zeroClient$ calls are wrapped in accept()
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
  * - no-raw-msw-http: Disallow raw http.* MSW handlers for internal /api/zero/* paths — use mockApi(contract.route, ...)
+ * - no-react-class-component: Disallow React class components — use function components with hooks
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -60,6 +61,7 @@ import noUserClearTab from "./rules/no-user-clear-tab.ts";
 import noDuplicateRouteParam from "./rules/no-duplicate-route-param.ts";
 import noRawMswHttp from "./rules/no-raw-msw-http.ts";
 import noMockApiRawAsync from "./rules/no-mockapi-raw-async.ts";
+import noReactClassComponent from "./rules/no-react-class-component.ts";
 
 const plugin = {
   meta: {
@@ -99,6 +101,7 @@ const plugin = {
     "no-duplicate-route-param": noDuplicateRouteParam,
     "no-raw-msw-http": noRawMswHttp,
     "no-mockapi-raw-async": noMockApiRawAsync,
+    "no-react-class-component": noReactClassComponent,
   },
 };
 

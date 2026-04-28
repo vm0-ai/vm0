@@ -86,7 +86,6 @@ export interface ModelEntry {
   contextWindowK: number;
   promptCaching: boolean;
   modalities: string[];
-  chinaAccessible: boolean;
   releasedToVm0: string;
 
   // List page
@@ -183,7 +182,6 @@ export const MODELS: ModelEntry[] = [
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
-    chinaAccessible: false,
     releasedToVm0: "April 17, 2026",
 
     cardIntro:
@@ -337,7 +335,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         vs: "Kimi K2.6",
-        body: "Moonshot's Kimi K2.6 leads several agentic benchmarks at the open-source frontier (vendor-reported SWE-bench Pro 58.6 versus Opus 4.6's 53.4) and is reachable from mainland China. Opus 4.7 retains the lead on tool-routing reliability for production English-language agents and on safety profile, which is why most enterprise teams still keep it as the high-stakes tier.",
+        body: "Moonshot's Kimi K2.6 leads several agentic benchmarks at the open-source frontier (vendor-reported SWE-bench Pro 58.6 versus Opus 4.6's 53.4). Opus 4.7 retains the lead on tool-routing reliability for production English-language agents and on safety profile, which is why most enterprise teams still keep it as the high-stakes tier.",
       },
       {
         vs: "DeepSeek V4 Pro",
@@ -410,7 +408,6 @@ export const MODELS: ModelEntry[] = [
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
-    chinaAccessible: false,
     releasedToVm0: "Available since launch",
 
     cardIntro:
@@ -575,7 +572,6 @@ export const MODELS: ModelEntry[] = [
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
-    chinaAccessible: false,
     releasedToVm0: "Available since launch",
 
     cardIntro:
@@ -741,38 +737,37 @@ export const MODELS: ModelEntry[] = [
 
     metaTitle: "GLM-5.1 on VM0: 1M Context, Pricing & Best Agent Tasks",
     metaDescription:
-      "GLM-5.1 review on VM0. Z.AI's flagship with up to 1M-token context, China-region API, ×0.4 credit cost. Specs, pricing, performance and recommended agent tasks.",
-    pageTitle: "GLM-5.1 on VM0. Long-context, China-friendly agents",
+      "GLM-5.1 review on VM0. Z.AI's flagship with up to 1M-token context, ×0.4 credit cost. Specs, pricing, performance and recommended agent tasks.",
+    pageTitle: "GLM-5.1 on VM0. Long-context agents",
     tagline:
-      "Z.AI's flagship. Up to a 1M-token context window and a China-region endpoint. Strong for whole-codebase or whole-knowledge-base agents at well below Sonnet pricing.",
+      "Z.AI's flagship. Up to a 1M-token context window. Strong for whole-codebase or whole-knowledge-base agents at well below Sonnet pricing.",
 
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Code"],
-    chinaAccessible: true,
     releasedToVm0: "April 2026",
 
     cardIntro:
-      "Z.AI's flagship. Up to a 1M-token context window and a China-region endpoint. Strong for whole-codebase or whole-knowledge-base agents at well below Sonnet pricing.",
+      "Z.AI's flagship. Up to a 1M-token context window. Strong for whole-codebase or whole-knowledge-base agents at well below Sonnet pricing.",
 
     summary:
-      "GLM-5.1 is the long-context specialist in the lineup, with up to 1M tokens of input and a China-region API. Reach for it when the prompt is genuinely huge: a whole repository at once, several hundred documents in a single research run, or a Chinese-language workload that can't reach Anthropic. Independent leaderboards consistently rank it in the top tier of open-weight models for Chinese-language and long-context work.\n\nVendor list price is $1.40 / $4.40 per 1M tokens, well under half of Sonnet 4.6 at the vendor level, and the API is Anthropic-compatible so Claude-style agents drop in without a rewrite. Reach for Sonnet or Opus when English reasoning depth matters more than context size, and for Haiku when latency dominates.",
+      "GLM-5.1 is the long-context specialist in the lineup, with up to 1M tokens of input. Reach for it when the prompt is genuinely huge: a whole repository at once, several hundred documents in a single research run. Independent leaderboards consistently rank it in the top tier of open-weight models for long-context work.\n\nVendor list price is $1.40 / $4.40 per 1M tokens, well under half of Sonnet 4.6 at the vendor level, and the API is Anthropic-compatible so Claude-style agents drop in without a rewrite. Reach for Sonnet or Opus when English reasoning depth matters more than context size, and for Haiku when latency dominates.",
 
     releaseDate: "Early 2026; full GA on VM0 April 2026",
     familyPosition: "Z.AI / Zhipu AI's flagship general-purpose model.",
     background: [
-      "GLM-5.1 is the flagship of Zhipu AI's GLM series, distributed via Z.AI. It's a Chinese-built reasoning model with strong general capability and an unusually large context window. Up to 1M tokens, several times larger than the Anthropic and Moonshot defaults at the same price tier.",
+      "GLM-5.1 is the flagship of Zhipu AI's GLM series, distributed via Z.AI. It's a reasoning model with strong general capability and an unusually large context window. Up to 1M tokens, several times larger than the Anthropic and Moonshot defaults at the same price tier.",
       "On VM0, GLM-5.1 is exposed two ways: through VM0 Managed (routed via OpenRouter with the upstream id `z-ai/glm-5.1`), and via a direct Z.AI API key (where it's the default model). Either path uses Z.AI's Anthropic-compatible interface, so existing VM0 agents drop in unchanged.",
       "GLM-5.1 became broadly available on VM0 in April 2026 when its feature flag was retired (PR #10497). It's the cost-efficient long-context option in the lineup, sitting at ×0.4 credits. Less than half of Sonnet 4.6.",
     ],
 
     architecture:
-      "GLM-5.1 exposes an up-to-1M-token context window (the largest in the Built-in lineup) through an Anthropic-compatible API surface, so Claude-style agents drop in unchanged. The upstream supports prompt caching and the model is reachable from a China-region endpoint at `api.z.ai`.",
+      "GLM-5.1 exposes an up-to-1M-token context window (the largest in the Built-in lineup) through an Anthropic-compatible API surface, so Claude-style agents drop in unchanged. The upstream supports prompt caching at `api.z.ai`.",
 
     specs: [
       { label: "Family", value: "GLM-5 series" },
       { label: "Modalities", value: "Text, code" },
-      { label: "Languages", value: "Chinese-strong, multilingual" },
+      { label: "Languages", value: "Multilingual" },
       { label: "Context window", value: "Up to 1M tokens" },
       { label: "Prompt caching", value: "Supported (Anthropic-compatible)" },
       { label: "Available on VM0", value: "April 2026" },
@@ -791,7 +786,7 @@ export const MODELS: ModelEntry[] = [
       },
     ],
     benchmarksNote:
-      "Independent reviews place GLM-5.1 in the top tier of open-weight models for Chinese-language and long-context tasks. Numbers shift weekly on third-party leaderboards. We deliberately don't pin exact percentages here.",
+      "Independent reviews place GLM-5.1 in the top tier of open-weight models for long-context tasks. Numbers shift weekly on third-party leaderboards. We deliberately don't pin exact percentages here.",
 
     pricing: {
       inputUsd: 1.4,
@@ -807,7 +802,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         title: "Reasoning",
-        body: "Solid general reasoning, particularly strong on Chinese-language tasks. Below Sonnet 4.6 on the hardest English-language multi-tool routing, but the gap is small relative to the cost difference.",
+        body: "Solid general reasoning. Below Sonnet 4.6 on the hardest English-language multi-tool routing, but the gap is small relative to the cost difference.",
       },
       {
         title: "Tool use",
@@ -818,7 +813,7 @@ export const MODELS: ModelEntry[] = [
     routingNotes:
       "On VM0 Managed, GLM-5.1 is routed through OpenRouter with the upstream id `z-ai/glm-5.1`. With a Z.AI API key it talks to `api.z.ai`'s Anthropic-compatible endpoint directly. Default model on the Z.AI provider.",
     vm0Notes:
-      "VM0 sets a 50-minute API timeout for the Z.AI provider so long thinking steps complete reliably without dropping, and pairs the model's 1M-token context with high-volume document agents that need the room. GLM-5.1 is reachable from mainland China without a proxy, which makes it the cleanest China-region pick alongside Kimi.",
+      "VM0 sets a 50-minute API timeout for the Z.AI provider so long thinking steps complete reliably without dropping, and pairs the model's 1M-token context with high-volume document agents that need the room.",
     vm0Tier: "cost-saving",
     byoKeyLabel: "Z.AI API key",
     vm0TimeoutMin: 50,
@@ -833,10 +828,6 @@ export const MODELS: ModelEntry[] = [
         body: 'Wikis, RFCs, contracts, last year\'s support tickets — load the whole pile at once and ask for cross-document patterns. The cost-per-run stays manageable because of the low vendor price, which is what makes this kind of "read everything, summarise once" workflow actually affordable in production rather than a one-off science project.',
       },
       {
-        title: "The Chinese-region agent your users can actually reach",
-        body: "If your customers and infrastructure live in mainland China, Anthropic's API isn't directly reachable and Claude-style agents need a substitute. GLM-5.1 hits that gap as the strongest general-purpose first choice with a domestic endpoint, native Chinese-language strength, and a Claude-compatible interface that lets you reuse your existing prompts.",
-      },
-      {
         title: "The thinking job that needs more than ten minutes",
         body: "Some agent steps genuinely take five to thirty minutes — deep research, multi-document analysis, long planning passes. VM0 sets a 50-minute API timeout for the Z.AI provider so those long thinking steps don't get cut off mid-thought, which makes GLM-5.1 the safe pick over models routed through providers with shorter default timeouts.",
       },
@@ -847,11 +838,11 @@ export const MODELS: ModelEntry[] = [
     comparisons: [
       {
         vs: "Kimi K2.6",
-        body: "Both are China-region long-context options at similar credit cost (×0.4 vs ×0.3). Kimi has stronger long-context recall in our internal evaluation; GLM-5.1 wins on raw context size (1M vs 256K). Pick Kimi for very long transcripts; pick GLM-5.1 when you need to stuff a whole codebase into one prompt.",
+        body: "Both are long-context options at similar credit cost (×0.4 vs ×0.3). Kimi has stronger long-context recall in our internal evaluation; GLM-5.1 wins on raw context size (1M vs 256K). Pick Kimi for very long transcripts; pick GLM-5.1 when you need to stuff a whole codebase into one prompt.",
       },
       {
         vs: "Claude Sonnet 4.6",
-        body: "Sonnet 4.6 (×1) leads on tool-routing accuracy and English-language reasoning. GLM-5.1 (×0.4) leads on context window and is the right pick when cost or China-region access dominates the decision.",
+        body: "Sonnet 4.6 (×1) leads on tool-routing accuracy and English-language reasoning. GLM-5.1 (×0.4) leads on context window and is the right pick when cost or context size dominates the decision.",
       },
       {
         vs: "DeepSeek V4 Pro",
@@ -869,7 +860,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         q: "Which provider should I use for GLM-5.1?",
-        a: "VM0 Managed is the simplest path. If you want vendor-direct billing or your traffic must stay inside China, connect a Z.AI API key.",
+        a: "VM0 Managed is the simplest path. If you want vendor-direct billing, connect a Z.AI API key.",
       },
       {
         q: "Is GLM-5.1 open weights?",
@@ -884,11 +875,11 @@ export const MODELS: ModelEntry[] = [
     alternatives: [
       {
         slug: "kimi-k2.6",
-        reason: "Stronger long-context recall, China-friendly",
+        reason: "Stronger long-context recall",
       },
       {
         slug: "deepseek-v4-pro",
-        reason: "Cheaper Chinese model with shorter context",
+        reason: "Cheaper alternative with shorter context",
       },
       {
         slug: "claude-sonnet-4-6",
@@ -916,7 +907,6 @@ export const MODELS: ModelEntry[] = [
     contextWindowK: 200,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
-    chinaAccessible: false,
     releasedToVm0: "Available since launch",
 
     cardIntro:
@@ -1026,7 +1016,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         vs: "MiniMax M2.7",
-        body: "MiniMax M2.7 (×0.1) is cheaper and stronger on Chinese-language tasks. Haiku 4.5 leads on English-language tool-routing reliability and is multimodal.",
+        body: "MiniMax M2.7 (×0.1) is cheaper and stronger on multilingual tasks. Haiku 4.5 leads on English-language tool-routing reliability and is multimodal.",
       },
     ],
 
@@ -1067,7 +1057,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         slug: "minimax-m2.7",
-        reason: "Cheap multilingual alternative for China-region work",
+        reason: "Cheap multilingual alternative",
       },
     ],
     defaultFor: [],
@@ -1083,22 +1073,21 @@ export const MODELS: ModelEntry[] = [
 
     metaTitle: "Kimi K2.6 on VM0: SWE-bench, Pricing & Long-Context Use",
     metaDescription:
-      "Kimi K2.6 review on VM0. Moonshot's open-weight 1T-parameter MoE. SWE-bench Pro 58.6, ×0.3 credit cost, China-accessible, 256K context. Specs and recommended tasks.",
-    pageTitle: "Kimi K2.6 on VM0. Long-context China-region agents",
+      "Kimi K2.6 review on VM0. Moonshot's open-weight 1T-parameter MoE. SWE-bench Pro 58.6, ×0.3 credit cost, 256K context. Specs and recommended tasks.",
+    pageTitle: "Kimi K2.6 on VM0. Long-context agents",
     tagline:
-      "Moonshot's latest open-weight model. Best-in-class agentic benchmarks at the open-source frontier, China-region API, and a Claude-compatible interface.",
+      "Moonshot's latest open-weight model. Best-in-class agentic benchmarks at the open-source frontier and a Claude-compatible interface.",
 
     contextWindowK: 256,
     promptCaching: true,
     modalities: ["Text", "Vision", "Code"],
-    chinaAccessible: true,
     releasedToVm0: "April 2026",
 
     cardIntro:
-      "Moonshot's latest. Best-in-class long-context recall in our internal evaluation, China-region API, and a Claude-compatible interface.",
+      "Moonshot's latest. Best-in-class long-context recall in our internal evaluation and a Claude-compatible interface.",
 
     summary:
-      "Kimi K2.6 is Moonshot's open-weight flagship and currently the strongest open-source agentic model on several public benchmarks. It sustains very long runs without losing the thread (Moonshot has documented unattended sessions of 12+ hours and 4,000+ tool calls), accepts image and video input natively, and is reachable from mainland China without a proxy. Vendor-reported SWE-bench Pro hits 58.6 (above Claude Opus 4.6 and GPT-5.4 on that benchmark), and the hallucination rate dropped from K2.5's ~65% to ~39%.\n\nVendor list price is $0.60 / $3 per 1M tokens, open weights ship under a Modified MIT license, and the API is Anthropic-compatible. Reach for Sonnet 4.6 when production tool-routing reliability matters more than benchmark scores, and for Haiku when latency dominates.",
+      "Kimi K2.6 is Moonshot's open-weight flagship and currently the strongest open-source agentic model on several public benchmarks. It sustains very long runs without losing the thread (Moonshot has documented unattended sessions of 12+ hours and 4,000+ tool calls) and accepts image and video input natively. Vendor-reported SWE-bench Pro hits 58.6 (above Claude Opus 4.6 and GPT-5.4 on that benchmark), and the hallucination rate dropped from K2.5's ~65% to ~39%.\n\nVendor list price is $0.60 / $3 per 1M tokens, open weights ship under a Modified MIT license, and the API is Anthropic-compatible. Reach for Sonnet 4.6 when production tool-routing reliability matters more than benchmark scores, and for Haiku when latency dominates.",
 
     releaseDate: "April 20, 2026",
     familyPosition:
@@ -1116,7 +1105,7 @@ export const MODELS: ModelEntry[] = [
       { label: "Family", value: "Kimi K2 series" },
       { label: "Parameters", value: "1T total / 32B active (MoE)" },
       { label: "Modalities", value: "Image, video, text" },
-      { label: "Languages", value: "Chinese-strong, multilingual" },
+      { label: "Languages", value: "Multilingual" },
       { label: "Context window", value: "256K tokens" },
       { label: "License", value: "Modified MIT (open weights)" },
       { label: "Available on VM0", value: "April 2026" },
@@ -1183,7 +1172,7 @@ export const MODELS: ModelEntry[] = [
     routingNotes:
       "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Default model on the Moonshot provider; also available on VM0 Managed and via OpenRouter.",
     vm0Notes:
-      "K2.6 has the strongest long-context recall in the Built-in lineup based on our internal evaluation, and at ×0.3 credits it's cheap enough to act as a viable Sonnet substitute for cost-sensitive Chinese-region work. It's reachable from mainland China without a proxy, which makes it the natural default for agents whose users live behind the firewall.",
+      "K2.6 has the strongest long-context recall in the Built-in lineup based on our internal evaluation, and at ×0.3 credits it's cheap enough to act as a viable Sonnet substitute for cost-sensitive work.",
     vm0Tier: "cost-saving",
     byoKeyLabel: "Moonshot API key",
 
@@ -1193,16 +1182,12 @@ export const MODELS: ModelEntry[] = [
         body: 'Dig through six months of Slack conversations to find why a customer churned, comb the support-ticket backlog for a recurring bug pattern, or stitch together insights across a hundred RFCs. K2.6\'s long-context recall holds up across transcripts where Anthropic Sonnet starts dropping earlier turns, which is exactly what "reading the whole pile" workflows need.',
       },
       {
-        title: "The China-region agent that can stay in-country",
-        body: "Your users live behind the Great Firewall, your infrastructure is in mainland China, and Anthropic's API isn't directly reachable. K2.6 is the strongest open-weight reasoner with a domestic endpoint and a Claude-compatible interface, so migrating an agent built for Sonnet is a settings change rather than a rewrite.",
-      },
-      {
         title: "The autonomous refactor that runs overnight",
         body: "Moonshot has documented a 13-hour autonomous refactor of an eight-year-old matching engine, with K2.6 sustaining 4,000+ tool calls without drifting off task. That's the kind of run where most models lose the goal somewhere around hour two; K2.6's long-horizon stability is what makes \"start it Friday evening, check Monday morning\" actually work.",
       },
       {
         title: "The multimodal agent that handles screenshots and clips",
-        body: "K2.6 accepts both image and video input through MoonViT, which is unusual outside the Claude family. Useful for screenshot-driven QA agents, document-vision pipelines, and any China-region deployment where you'd otherwise have to splice in a separate vision model just to read images.",
+        body: "K2.6 accepts both image and video input through MoonViT, which is unusual outside the Claude family. Useful for screenshot-driven QA agents, document-vision pipelines, and any deployment where you'd otherwise have to splice in a separate vision model just to read images.",
       },
     ],
     avoidFor:
@@ -1211,11 +1196,11 @@ export const MODELS: ModelEntry[] = [
     comparisons: [
       {
         vs: "GLM-5.1",
-        body: "Both are China-region long-context options. K2.6 wins on raw long-context recall in our internal evaluation; GLM-5.1 wins on context size (1M vs 256K). Default to K2.6 for long transcripts; reach for GLM-5.1 only when you need >256K tokens in a single prompt.",
+        body: "Both are long-context options. K2.6 wins on raw long-context recall in our internal evaluation; GLM-5.1 wins on context size (1M vs 256K). Default to K2.6 for long transcripts; reach for GLM-5.1 only when you need >256K tokens in a single prompt.",
       },
       {
         vs: "Claude Sonnet 4.6",
-        body: "Sonnet (×1) leads on multi-tool English-language routing reliability. K2.6 (×0.3) wins on cost, on Chinese-language work, on agentic benchmarks (SWE-bench Pro), and on China-region access. Pair them: Sonnet for global users, K2.6 for China.",
+        body: "Sonnet (×1) leads on multi-tool English-language routing reliability. K2.6 (×0.3) wins on cost and on agentic benchmarks (SWE-bench Pro). Pair them: Sonnet for complex tool-routing, K2.6 for cost-sensitive agent work.",
       },
       {
         vs: "Kimi K2.5",
@@ -1224,7 +1209,7 @@ export const MODELS: ModelEntry[] = [
     ],
 
     verdict:
-      "The open-weight default for serious agent work — long-context, Chinese-language, China-region. The remaining gaps versus Sonnet 4.6 are tool-routing reliability and Western enterprise support.",
+      "The open-weight default for serious agent work — long-context, cost-effective. The remaining gaps versus Sonnet 4.6 are tool-routing reliability and enterprise support.",
 
     faqs: [
       {
@@ -1257,7 +1242,7 @@ export const MODELS: ModelEntry[] = [
       { slug: "glm-5.1", reason: "Even longer context window (1M tokens)" },
       {
         slug: "deepseek-v4-pro",
-        reason: "Cheaper Chinese model for cost-sensitive work",
+        reason: "Cheaper alternative for cost-sensitive work",
       },
     ],
     defaultFor: ["Moonshot"],
@@ -1276,19 +1261,18 @@ export const MODELS: ModelEntry[] = [
       "DeepSeek V4 Pro review on VM0. Open-weight 1.6T MoE with SWE-bench Verified 80.6%, ×0.3 credit cost, 1M context. Pricing, specs and Claude comparison.",
     pageTitle: "DeepSeek V4 Pro on VM0. Cost-optimised reasoning",
     tagline:
-      "DeepSeek's flagship V4 reasoning model. Within 0.2 points of Claude Opus 4.6 on SWE-bench Verified at one-seventh the vendor cost. China-accessible, Claude-compatible API.",
+      "DeepSeek's flagship V4 reasoning model. Within 0.2 points of Claude Opus 4.6 on SWE-bench Verified at one-seventh the vendor cost. Claude-compatible API.",
 
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Code"],
-    chinaAccessible: true,
     releasedToVm0: "April 24, 2026",
 
     cardIntro:
-      "DeepSeek's flagship. Strong reasoning at one-third of Sonnet's credit cost, China-accessible, Claude-compatible API.",
+      "DeepSeek's flagship. Strong reasoning at one-third of Sonnet's credit cost, Claude-compatible API.",
 
     summary:
-      "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation — an open-weight 1.6T-parameter MoE under the MIT license. The headline is the price-to-quality ratio: vendor-reported SWE-bench Verified is 80.6%, within a fraction of a point of Claude Opus 4.6, at roughly one-seventh of Anthropic's vendor cost. That makes reasoning-heavy agents — bulk PR review, batch document analysis, scheduled summarisation — affordable at high volume.\n\nVendor list price is $1.74 / $3.48 per 1M tokens with cache reads at $0.028 / 1M and free cache writes (unique in the lineup). 1M-token context, Anthropic-compatible API, reachable from mainland China. Reach for Sonnet 4.6 when production tool-routing reliability is the deciding factor, and for V4 Flash when single-shot bulk work justifies a 12× cheaper model.",
+      "DeepSeek V4 Pro is the flagship of DeepSeek's V4 generation — an open-weight 1.6T-parameter MoE under the MIT license. The headline is the price-to-quality ratio: vendor-reported SWE-bench Verified is 80.6%, within a fraction of a point of Claude Opus 4.6, at roughly one-seventh of Anthropic's vendor cost. That makes reasoning-heavy agents — bulk PR review, batch document analysis, scheduled summarisation — affordable at high volume.\n\nVendor list price is $1.74 / $3.48 per 1M tokens with cache reads at $0.028 / 1M and free cache writes (unique in the lineup). 1M-token context, Anthropic-compatible API. Reach for Sonnet 4.6 when production tool-routing reliability is the deciding factor, and for V4 Flash when single-shot bulk work justifies a 12× cheaper model.",
 
     releaseDate: "April 24, 2026",
     familyPosition:
@@ -1306,7 +1290,7 @@ export const MODELS: ModelEntry[] = [
       { label: "Family", value: "DeepSeek V4 series" },
       { label: "Parameters", value: "1.6T total / 49B active (MoE)" },
       { label: "Modalities", value: "Text, code" },
-      { label: "Languages", value: "Chinese-strong, multilingual" },
+      { label: "Languages", value: "Multilingual" },
       { label: "Context window", value: "1M tokens" },
       { label: "Max output", value: "384K tokens" },
       { label: "License", value: "MIT (open weights)" },
@@ -1385,10 +1369,6 @@ export const MODELS: ModelEntry[] = [
         body: "Pulls yesterday's customer conversations, support tickets, or sales calls and writes a digest. The system prompt and tool schema don't change between runs, and DeepSeek doesn't bill cache writes — so the long fixed prefix is paid for once and cached reads cost a fraction of normal input. This is where V4 Pro's pricing model genuinely changes what's affordable.",
       },
       {
-        title: "The China-region reasoning workhorse",
-        body: "Users live in mainland China, the agent needs real reasoning (not just classification), and the budget per run is tight. V4 Pro is the natural answer — strong reasoning behaviour, domestic API endpoint, low vendor price. Pair it with V4 Flash as the pre-filter and you get a two-tier pipeline that handles a high-traffic agent end-to-end without the Western-model cost ceiling.",
-      },
-      {
         title: "The whole-repo code agent that costs less than Opus",
         body: '1M-token context with hybrid attention (Compressed Sparse Attention plus Heavily Compressed Attention) means a mid-sized codebase fits in one prompt and inference cost stays manageable as the window fills up. For cross-file refactors and architecture-level reviews, this is where you get the Opus-style "see everything at once" workflow without the Opus-style invoice.',
       },
@@ -1455,7 +1435,7 @@ export const MODELS: ModelEntry[] = [
 
     metaTitle: "Kimi K2.5 on VM0: Specs, Pricing & Migration to K2.6",
     metaDescription:
-      "Kimi K2.5 review on VM0. Moonshot's previous flagship at ×0.2 credit cost. SWE-bench Pro 50.7, 256K context, China-accessible. When to pin K2.5 instead of K2.6.",
+      "Kimi K2.5 review on VM0. Moonshot's previous flagship at ×0.2 credit cost. SWE-bench Pro 50.7, 256K context. When to pin K2.5 instead of K2.6.",
     pageTitle: "Kimi K2.5 on VM0. Moonshot's previous generation",
     tagline:
       "The previous Kimi generation. Cheaper than K2.6 but with weaker tool-use; pin it only if a specific agent was validated on this version.",
@@ -1463,14 +1443,13 @@ export const MODELS: ModelEntry[] = [
     contextWindowK: 256,
     promptCaching: true,
     modalities: ["Text", "Image", "Code"],
-    chinaAccessible: true,
     releasedToVm0: "Available since launch",
 
     cardIntro:
       "The previous Kimi generation. Cheaper than K2.6 but with weaker tool-use; pin it only if a specific agent was validated on this version.",
 
     summary:
-      "Kimi K2.5 is Moonshot's previous flagship, the open-weight model that K2.6 superseded in April 2026. It's still capable — strong on long-context summarisation, solid Chinese-language coverage, China-accessible — but K2.6 leads on every published benchmark at the same vendor price, and the hallucination rate gap is wide (K2.5 ~65% on Moonshot's evaluation versus K2.6's ~39%).\n\nVendor list price is $0.60 / $3 per 1M tokens, identical to K2.6. The honest pitch: if you built on K2.5 and it works, leave it; if you're starting fresh, start on K2.6.",
+      "Kimi K2.5 is Moonshot's previous flagship, the open-weight model that K2.6 superseded in April 2026. It's still capable — strong on long-context summarisation — but K2.6 leads on every published benchmark at the same vendor price, and the hallucination rate gap is wide (K2.5 ~65% on Moonshot's evaluation versus K2.6's ~39%).\n\nVendor list price is $0.60 / $3 per 1M tokens, identical to K2.6. The honest pitch: if you built on K2.5 and it works, leave it; if you're starting fresh, start on K2.6.",
 
     releaseDate: "Late 2025 (Kimi K2 series)",
     familyPosition:
@@ -1487,7 +1466,7 @@ export const MODELS: ModelEntry[] = [
     specs: [
       { label: "Family", value: "Kimi K2 series" },
       { label: "Modalities", value: "Image, text, code" },
-      { label: "Languages", value: "Chinese-strong, multilingual" },
+      { label: "Languages", value: "Multilingual" },
       { label: "Context window", value: "256K tokens" },
       { label: "License", value: "Modified MIT (open weights)" },
       { label: "Available on VM0", value: "Available since launch" },
@@ -1601,45 +1580,43 @@ export const MODELS: ModelEntry[] = [
 
     metaTitle: "MiniMax M2.7 on VM0: Pricing, Specs & Multilingual Use",
     metaDescription:
-      "MiniMax M2.7 review on VM0. Strong Chinese-language and multilingual reasoning at ×0.1 credit cost, 50-min API timeout, China-region endpoint. Pricing and tasks.",
+      "MiniMax M2.7 review on VM0. Strong multilingual reasoning at ×0.1 credit cost, 50-min API timeout. Pricing and tasks.",
     pageTitle: "MiniMax M2.7 on VM0. Multilingual at ×0.1",
     tagline:
-      "Strong Chinese-language and multilingual reasoning at one-tenth of Sonnet's credit cost. China-region API, generous timeout for long thinking steps.",
+      "Strong multilingual reasoning at one-tenth of Sonnet's credit cost. Generous timeout for long thinking steps.",
 
     contextWindowK: 200,
     promptCaching: true,
     modalities: ["Text", "Code"],
-    chinaAccessible: true,
     releasedToVm0: "Available since launch",
 
     cardIntro:
-      "Strong Chinese-language and multilingual reasoning at one-tenth of Sonnet's credit cost. China-region API, generous timeout for long thinking steps.",
+      "Strong multilingual reasoning at one-tenth of Sonnet's credit cost. Generous timeout for long thinking steps.",
 
     summary:
-      "MiniMax M2.7 is the cheap multilingual workhorse in the lineup. Reach for it when the agent's primary language isn't English and unit cost matters: Chinese reply drafting, mixed-language support triage, scheduled summarisation over Chinese-language corpora. It's not trying to outscore Sonnet on English benchmarks; it's keeping multilingual production traffic affordable.\n\nVendor list price is $0.30 / $1.20 per 1M tokens, API is Anthropic-compatible, endpoint is China-hosted and reachable without a proxy. VM0 sets a 50-minute API timeout for the MiniMax provider so long thinking steps complete reliably. Reach for Sonnet 4.6 on English tool-use and Haiku 4.5 on latency-critical replies.",
+      "MiniMax M2.7 is the cheap multilingual workhorse in the lineup. Reach for it when the agent's primary language isn't English and unit cost matters: multilingual reply drafting, mixed-language support triage, scheduled summarisation over non-English corpora. It's not trying to outscore Sonnet on English benchmarks; it's keeping multilingual production traffic affordable.\n\nVendor list price is $0.30 / $1.20 per 1M tokens, API is Anthropic-compatible. VM0 sets a 50-minute API timeout for the MiniMax provider so long thinking steps complete reliably. Reach for Sonnet 4.6 on English tool-use and Haiku 4.5 on latency-critical replies.",
 
     releaseDate: "Available since the M2 series launch",
     familyPosition: "Latest text reasoning model in MiniMax's M2 series.",
     background: [
-      "MiniMax M2.7 is from MiniMax. A Chinese AI lab with a multilingual and multimodal product line. The text reasoning side is what's exposed on VM0; MiniMax's image and voice products are separate offerings on the lab's platform.",
-      "On VM0, M2.7 is the default model on the MiniMax API-key provider. The Built-in lineup carries it at ×0.1. One of the lowest multipliers in the catalogue. Making it the default cheap-but-credible reasoner for Chinese-language workloads.",
+      "MiniMax M2.7 is from MiniMax, an AI lab with a multilingual and multimodal product line. The text reasoning side is what's exposed on VM0; MiniMax's image and voice products are separate offerings on the lab's platform.",
+      "On VM0, M2.7 is the default model on the MiniMax API-key provider. The Built-in lineup carries it at ×0.1. One of the lowest multipliers in the catalogue. Making it the default cheap-but-credible reasoner for multilingual workloads.",
       "VM0's MiniMax provider sets a 50-minute API timeout and disables non-essential traffic, so long thinking steps complete reliably without dropping connections.",
     ],
 
     architecture:
-      "M2.7 exposes an Anthropic-compatible API surface with a 200K-token context window, trained Chinese-first with multilingual coverage. It runs from a China-region endpoint at `api.minimax.io`.",
+      "M2.7 exposes an Anthropic-compatible API surface with a 200K-token context window and multilingual coverage. It runs at `api.minimax.io`.",
 
     specs: [
       { label: "Family", value: "MiniMax M2 series" },
       { label: "Modalities", value: "Text, code" },
-      { label: "Languages", value: "Chinese, multilingual" },
+      { label: "Languages", value: "Multilingual" },
       { label: "Context window", value: "200K tokens" },
       { label: "Prompt caching", value: "Supported (Anthropic-compatible)" },
       { label: "Available on VM0", value: "Available since launch" },
     ],
 
     benchmarks: [
-      { name: "Chinese-language tasks", score: "Strong", note: "VM0 internal" },
       {
         name: "English multi-tool routing",
         score: "Below Sonnet 4.6",
@@ -1659,7 +1636,7 @@ export const MODELS: ModelEntry[] = [
     performance: [
       {
         title: "Multilingual",
-        body: "Stronger on Chinese and multilingual flows than the Anthropic family. The natural pick when the agent's primary language isn't English.",
+        body: "Stronger on multilingual flows than the Anthropic family. The natural pick when the agent's primary language isn't English.",
       },
       {
         title: "Reasoning",
@@ -1674,19 +1651,19 @@ export const MODELS: ModelEntry[] = [
     routingNotes:
       "Routed through MiniMax's Anthropic-compatible endpoint at `api.minimax.io`. Default model on the MiniMax provider; also available on VM0 Managed.",
     vm0Notes:
-      "VM0 sets a 50-minute API timeout for the MiniMax provider and disables non-essential traffic, so long thinking steps survive without dropping. The ×0.1 multiplier is the lowest non-Flash multiplier in the lineup, which is why M2.7 pairs naturally with high-volume Chinese-language workloads.",
+      "VM0 sets a 50-minute API timeout for the MiniMax provider and disables non-essential traffic, so long thinking steps survive without dropping. The ×0.1 multiplier is the lowest non-Flash multiplier in the lineup, which is why M2.7 pairs naturally with high-volume multilingual workloads.",
     vm0Tier: "cost-saving",
     byoKeyLabel: "MiniMax API key",
     vm0TimeoutMin: 50,
 
     bestForExamples: [
       {
-        title: "The Chinese-language customer agent that sounds native",
-        body: "Drafting replies, triaging tickets, holding multilingual chat threads where the conversation switches between Chinese and English mid-message. M2.7's training emphasised Chinese and multilingual coverage, so the output reads more naturally for Chinese-speaking customers than the same prompt routed through an English-first model would.",
+        title: "The multilingual customer agent that sounds native",
+        body: "Drafting replies, triaging tickets, holding multilingual chat threads where the conversation switches between languages mid-message. M2.7's training emphasised multilingual coverage, so the output reads more naturally for non-English-speaking customers than the same prompt routed through an English-first model would.",
       },
       {
-        title: "The overnight summariser running over Chinese content",
-        body: "Last quarter's WeChat customer conversations, a year of bilingual support tickets, a stack of Chinese-language regulatory documents — bulk summarisation jobs where speed isn't critical but unit cost matters a lot. M2.7's vendor price keeps the cost of \"summarise everything\" workflows low enough that they can run on every batch instead of every other week.",
+        title: "The overnight summariser running over multilingual content",
+        body: "Last quarter's customer conversations, a year of bilingual support tickets, a stack of multilingual regulatory documents — bulk summarisation jobs where speed isn't critical but unit cost matters a lot. M2.7's vendor price keeps the cost of \"summarise everything\" workflows low enough that they can run on every batch instead of every other week.",
       },
       {
         title: "The thinking job that needs a long fuse",
@@ -1699,7 +1676,7 @@ export const MODELS: ModelEntry[] = [
     comparisons: [
       {
         vs: "Kimi K2.6",
-        body: "Kimi K2.6 (×0.3) has stronger reasoning and tool-use. M2.7 (×0.1) is one-third the cost and has a stronger multilingual profile. Default to Kimi for general work; reach for MiniMax for cheap Chinese-language background jobs.",
+        body: "Kimi K2.6 (×0.3) has stronger reasoning and tool-use. M2.7 (×0.1) is one-third the cost and has a stronger multilingual profile. Default to Kimi for general work; reach for MiniMax for cheap multilingual background jobs.",
       },
       {
         vs: "DeepSeek V4 Flash",
@@ -1725,7 +1702,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         q: "Why is the multiplier so low (×0.1)?",
-        a: "Vendor list price is genuinely low ($0.30/$1.20 per 1M) and VM0 prices the model accordingly. Use it as a cheap Chinese-language workhorse, not a reasoning replacement for Sonnet.",
+        a: "Vendor list price is genuinely low ($0.30/$1.20 per 1M) and VM0 prices the model accordingly. Use it as a cheap multilingual workhorse, not a reasoning replacement for Sonnet.",
       },
     ],
 
@@ -1758,7 +1735,6 @@ export const MODELS: ModelEntry[] = [
     contextWindowK: 1000,
     promptCaching: true,
     modalities: ["Text", "Code"],
-    chinaAccessible: true,
     releasedToVm0: "April 24, 2026",
 
     cardIntro:
@@ -1783,7 +1759,7 @@ export const MODELS: ModelEntry[] = [
       { label: "Family", value: "DeepSeek V4 series" },
       { label: "Parameters", value: "284B total / 13B active (MoE)" },
       { label: "Modalities", value: "Text, code" },
-      { label: "Languages", value: "Chinese-strong, multilingual" },
+      { label: "Languages", value: "Multilingual" },
       { label: "Context window", value: "1M tokens" },
       { label: "Max output", value: "384K tokens" },
       { label: "License", value: "MIT (open weights)" },
@@ -1877,7 +1853,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         vs: "MiniMax M2.7",
-        body: "M2.7 (×0.1) is stronger on Chinese-language reasoning and has a 50-minute timeout for long thinking. V4 Flash (×0.02) is faster and far cheaper for single-shot work.",
+        body: "M2.7 (×0.1) is stronger on multilingual reasoning and has a 50-minute timeout for long thinking. V4 Flash (×0.02) is faster and far cheaper for single-shot work.",
       },
     ],
 

@@ -7,8 +7,10 @@
 //! cd turbo && pnpm -F @vm0/api-contracts generate:rust
 //! ```
 //!
-//! Use [`Route::url`] to build an absolute endpoint URL from `VM0_API_URL`
-//! or another API base URL.
+//! Static routes are generated as [`Route`] constants. Routes with path
+//! parameters are generated as [`RouteTemplate`] constants plus typed `Params`
+//! and `route(...)` helpers that return [`ResolvedRoute`]. Use [`Route::url`]
+//! for static routes and [`ResolvedRoute::url`] after applying path params.
 //!
 //! Add new Rust-supported routes to
 //! `turbo/packages/api-contracts/src/rust-bindings/routes.ts`.
@@ -17,4 +19,4 @@ pub mod generated;
 
 mod route;
 
-pub use route::{Method, Route};
+pub use route::{Method, ResolvedRoute, Route, RouteTemplate};

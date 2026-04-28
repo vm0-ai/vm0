@@ -2638,6 +2638,7 @@ mod tests {
             experimental_profile: None,
             feature_flags: None,
             billable_firewalls: vec![],
+            model_usage_provider: None,
         }
     }
 

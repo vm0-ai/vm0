@@ -2,6 +2,60 @@
 // Do not edit by hand.
 // Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 
+pub mod runners {
+    pub mod heartbeat {
+        pub const HEARTBEAT: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/runners/heartbeat",
+        };
+    }
+
+    pub mod jobs {
+        pub mod by_id {
+            pub mod claim {
+                pub const CLAIM: crate::RouteTemplate = crate::RouteTemplate {
+                    method: crate::Method::Post,
+                    path: "/api/runners/jobs/:id/claim",
+                };
+
+                #[derive(Debug, Clone, Copy)]
+                pub struct Params<'a> {
+                    pub id: &'a str,
+                }
+
+                #[must_use]
+                pub fn path(params: Params<'_>) -> String {
+                    format!(
+                        "/api/runners/jobs/{}/claim",
+                        crate::route::encode_path_segment(params.id),
+                    )
+                }
+
+                #[must_use]
+                pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                    crate::ResolvedRoute::new(CLAIM.method, path(params))
+                }
+            }
+        }
+    }
+
+    pub mod poll {
+        pub const POLL: crate::Route = crate::Route {
+            method: crate::Method::Post,
+            path: "/api/runners/poll",
+        };
+    }
+
+    pub mod realtime {
+        pub mod token {
+            pub const CREATE: crate::Route = crate::Route {
+                method: crate::Method::Post,
+                path: "/api/runners/realtime/token",
+            };
+        }
+    }
+}
+
 pub mod webhooks {
     pub mod agent {
         pub mod checkpoints {

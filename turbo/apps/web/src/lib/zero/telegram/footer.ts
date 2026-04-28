@@ -9,16 +9,25 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
 import { escapeHtml } from "./format";
 
-function telegramUserMention(telegramUserId: string): string {
+function telegramUserMention(telegramUserId: string, label: string): string {
   const href = `tg://user?id=${encodeURIComponent(telegramUserId)}`;
-  return `<a href="${escapeHtml(href)}">Telegram user ${escapeHtml(
-    telegramUserId,
-  )}</a>`;
+  return `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
+}
+
+function telegramUserLabel(
+  telegramUsername: string | null | undefined,
+  telegramDisplayName: string | null | undefined,
+  telegramUserId: string,
+): string {
+  const username = telegramUsername?.trim().replace(/^@+/, "");
+  if (username) return `@${username}`;
+
+  const displayName = telegramDisplayName?.trim();
+  return displayName ? displayName : `Telegram user ${telegramUserId}`;
 }
 
 function displayLabel(row: {
@@ -68,44 +77,6 @@ async function resolveTelegramRespondedByLabel(
   return label ? `Responded by ${escapeHtml(label)}` : undefined;
 }
 
-async function countTelegramThreadMentioners(params: {
-  chatId: string;
-  rootMessageId: string | null | undefined;
-  currentUserLinkId: string;
-}): Promise<number> {
-  if (!params.rootMessageId) return 1;
-
-  const rows = await globalThis.services.db
-    .select({ userLinkId: telegramThreadSessions.telegramUserLinkId })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        eq(telegramThreadSessions.chatId, params.chatId),
-        eq(telegramThreadSessions.rootMessageId, params.rootMessageId),
-      ),
-    );
-
-  const userLinkIds = new Set(
-    rows.map((row) => {
-      return row.userLinkId;
-    }),
-  );
-  userLinkIds.add(params.currentUserLinkId);
-  return userLinkIds.size;
-}
-
-async function resolveTelegramUserMention(
-  userLinkId: string,
-): Promise<string | undefined> {
-  const [row] = await globalThis.services.db
-    .select({ telegramUserId: telegramUserLinks.telegramUserId })
-    .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.id, userLinkId))
-    .limit(1);
-
-  return row ? telegramUserMention(row.telegramUserId) : undefined;
-}
-
 async function resolveRunSelectedModel(
   runId: string,
 ): Promise<string | undefined> {
@@ -139,22 +110,13 @@ export async function resolveTelegramAgentReplyFooterText(params: {
   userLinkId: string;
   agentId: string;
 }): Promise<string | undefined> {
-  const [respondedBy, mentionerCount, modelLabel] = await Promise.all([
+  const [respondedBy, modelLabel] = await Promise.all([
     resolveTelegramRespondedByLabel(params.installationId, params.agentId),
-    countTelegramThreadMentioners({
-      chatId: params.chatId,
-      rootMessageId: params.rootMessageId,
-      currentUserLinkId: params.userLinkId,
-    }),
     resolveAgentReplyModelLabel(params.orgId, params.runId),
   ]);
 
   const parts: string[] = [];
   if (respondedBy) parts.push(respondedBy);
-  if (mentionerCount > 1) {
-    const replyTo = await resolveTelegramUserMention(params.userLinkId);
-    if (replyTo) parts.push(`Reply to ${replyTo}`);
-  }
   if (modelLabel) parts.push(modelLabel);
 
   return parts.length > 0 ? parts.join(" · ") : undefined;
@@ -201,12 +163,16 @@ async function resolveRunScheduleLabel(
   return row?.description ?? undefined;
 }
 
-async function resolveRunTelegramUserMention(params: {
+async function resolveRunUserLabel(params: {
   runId: string;
   botId: string;
 }): Promise<string | undefined> {
   const [row] = await globalThis.services.db
-    .select({ telegramUserId: telegramUserLinks.telegramUserId })
+    .select({
+      telegramUserId: telegramUserLinks.telegramUserId,
+      telegramUsername: telegramUserLinks.telegramUsername,
+      telegramDisplayName: telegramUserLinks.telegramDisplayName,
+    })
     .from(agentRuns)
     .innerJoin(
       telegramUserLinks,
@@ -218,7 +184,14 @@ async function resolveRunTelegramUserMention(params: {
     .where(eq(agentRuns.id, params.runId))
     .limit(1);
 
-  return row ? telegramUserMention(row.telegramUserId) : undefined;
+  if (!row) return undefined;
+
+  const label = telegramUserLabel(
+    row.telegramUsername,
+    row.telegramDisplayName,
+    row.telegramUserId,
+  );
+  return telegramUserMention(row.telegramUserId, label);
 }
 
 export async function resolveTelegramMessageSendFooterText(params: {
@@ -227,11 +200,11 @@ export async function resolveTelegramMessageSendFooterText(params: {
 }): Promise<string | undefined> {
   if (!params.authRunId) return undefined;
 
-  const [agentLabel, scheduleLabel, userMention, selectedModel] =
+  const [agentLabel, scheduleLabel, userLabel, selectedModel] =
     await Promise.all([
       resolveRunAgentLabel(params.authRunId),
       resolveRunScheduleLabel(params.authRunId),
-      resolveRunTelegramUserMention({
+      resolveRunUserLabel({
         runId: params.authRunId,
         botId: params.botId,
       }),
@@ -243,11 +216,9 @@ export async function resolveTelegramMessageSendFooterText(params: {
   if (scheduleLabel) {
     parts.push(`Triggered by schedule "${escapeHtml(scheduleLabel)}"`);
   }
-  if (userMention) {
+  if (userLabel) {
     parts.push(
-      scheduleLabel
-        ? `Created by ${userMention}`
-        : `Triggered by ${userMention}`,
+      scheduleLabel ? `Created by ${userLabel}` : `Triggered by ${userLabel}`,
     );
   }
   if (selectedModel) parts.push(escapeHtml(getModelDisplayName(selectedModel)));

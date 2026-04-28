@@ -430,6 +430,7 @@ async def handle_firewall_request(
     flow.metadata["firewall_billable"] = match_info.get("name", "") in (
         vm_info.get("billableFirewalls") or []
     )
+    flow.metadata["model_usage_provider"] = vm_info.get("modelUsageProvider")
 
     if not encrypted_secrets:
         log_proxy_entry(

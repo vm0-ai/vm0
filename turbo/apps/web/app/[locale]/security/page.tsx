@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import Script from "next/script";
 import { SecurityPage } from "./SecurityPage";
 import type { Locale } from "../../../i18n";
@@ -10,58 +11,35 @@ interface PageProps {
   params: Promise<{ locale: string }>;
 }
 
-function getBreadcrumbJsonLd(locale: string) {
-  return {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      {
-        "@type": "ListItem",
-        position: 1,
-        name: "Home",
-        item: `${BASE_URL}/${locale}`,
-      },
-      {
-        "@type": "ListItem",
-        position: 2,
-        name: "Security",
-        item: `${BASE_URL}/${locale}/security`,
-      },
-    ],
-  };
-}
-
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "securityPage" });
   const url = `${BASE_URL}/${locale}/security`;
 
   return {
-    title: "Security",
-    description:
-      "Learn how VM0 keeps your data safe with isolated execution, secret management, full audit trails, and an open-source security model.",
+    title: t("pageTitle"),
+    description: t("pageDescription"),
     alternates: buildLocaleAlternates("/security", locale as Locale),
     openGraph: {
-      title: "VM0 Security - Built for Trust",
-      description:
-        "Isolated execution, secret management, audit trails, and open-source transparency.",
-      type: "website",
+      title: t("ogTitle"),
+      description: t("ogDescription"),
       url,
+      type: "website",
       images: [
         {
           url: "/og-image.png",
           width: 1200,
           height: 630,
-          alt: "VM0 Security - Built for Trust",
+          alt: t("ogTitle"),
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title: "VM0 Security - Built for Trust",
-      description:
-        "Isolated execution, secret management, audit trails, and open-source transparency.",
+      title: t("ogTitle"),
+      description: t("ogDescription"),
       images: ["/og-image.png"],
       creator: "@vm0_ai",
       site: "@vm0_ai",
@@ -69,9 +47,28 @@ export async function generateMetadata({
   };
 }
 
-export default async function Page({ params }: PageProps) {
+export default async function SecurityPageServer({ params }: PageProps) {
   const { locale } = await params;
-  const breadcrumbJsonLd = getBreadcrumbJsonLd(locale);
+  const t = await getTranslations({ locale, namespace: "securityPage" });
+
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: t("breadcrumbHome"),
+        item: `${BASE_URL}/${locale}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: t("breadcrumbSecurity"),
+        item: `${BASE_URL}/${locale}/security`,
+      },
+    ],
+  };
 
   return (
     <>

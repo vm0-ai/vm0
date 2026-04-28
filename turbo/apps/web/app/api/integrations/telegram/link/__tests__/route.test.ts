@@ -23,13 +23,14 @@ const TEST_BOT_TOKEN = "test-bot-token";
 /**
  * Build valid Telegram Login Widget auth data signed with the test bot token.
  */
-function makeTelegramAuth(telegramUserId: number) {
+function makeTelegramAuth(telegramUserId: number, username?: string) {
   const authDate = Math.floor(Date.now() / 1000);
   const fields: Record<string, string | number> = {
     auth_date: authDate,
     id: telegramUserId,
     first_name: "Test",
   };
+  if (username) fields.username = username;
 
   const checkString = Object.entries(fields)
     .sort(([a], [b]) => {
@@ -361,7 +362,7 @@ describe("/api/integrations/telegram/link", () => {
       });
 
       const telegramUserId = 99001;
-      const telegramAuth = makeTelegramAuth(telegramUserId);
+      const telegramAuth = makeTelegramAuth(telegramUserId, "ada_tg");
 
       const response = await POST(
         linkRequest("POST", { telegramBotId: installationId, telegramAuth }),
@@ -377,6 +378,9 @@ describe("/api/integrations/telegram/link", () => {
       const getResponse = await GET(linkRequest("GET"));
       const getData = await getResponse.json();
       expect(getData.linked).toBe(true);
+      const userLinks = await findTestTelegramUserLinksByVm0UserId(user.userId);
+      expect(userLinks[0]?.telegramUsername).toBe("ada_tg");
+      expect(userLinks[0]?.telegramDisplayName).toBe("Test");
     });
 
     it("keeps an existing Telegram user link from being reassigned within the same bot", async () => {
@@ -551,12 +555,20 @@ describe("/api/integrations/telegram/link", () => {
         installationId,
         telegramUserId,
         TEST_BOT_TOKEN,
+        "connect_tg",
+        "Connect User",
       );
 
       const response = await POST(
         linkRequest("POST", {
           telegramBotId: installationId,
-          connectSignature: { telegramUserId, timestamp: ts, signature: sig },
+          connectSignature: {
+            telegramUserId,
+            telegramUsername: "connect_tg",
+            telegramDisplayName: "Connect User",
+            timestamp: ts,
+            signature: sig,
+          },
         }),
       );
       const data = await response.json();
@@ -570,6 +582,9 @@ describe("/api/integrations/telegram/link", () => {
       const getResponse = await GET(linkRequest("GET"));
       const getData = await getResponse.json();
       expect(getData.linked).toBe(true);
+      const userLinks = await findTestTelegramUserLinksByVm0UserId(user.userId);
+      expect(userLinks[0]?.telegramUsername).toBe("connect_tg");
+      expect(userLinks[0]?.telegramDisplayName).toBe("Connect User");
 
       await vi.waitFor(() => {
         expect(sentMessages).toHaveLength(1);

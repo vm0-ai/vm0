@@ -1,5 +1,47 @@
 # Changelog
 
+## [12.313.2](https://github.com/vm0-ai/vm0/compare/web-v12.313.1...web-v12.313.2) (2026-04-28)
+
+
+### Bug Fixes
+
+* use telegram usernames in attribution footers ([#11396](https://github.com/vm0-ai/vm0/issues/11396)) ([e651c79](https://github.com/vm0-ai/vm0/commit/e651c793f1f60af02e325467f7101c90c7d6eeb9))
+
+## [12.313.1](https://github.com/vm0-ai/vm0/compare/web-v12.313.0...web-v12.313.1) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.242.0
+
+## [12.313.0](https://github.com/vm0-ai/vm0/compare/web-v12.312.0...web-v12.313.0) (2026-04-28)
+
+
+### Features
+
+* add bb0 device flow ([#11383](https://github.com/vm0-ai/vm0/issues/11383)) ([00871f5](https://github.com/vm0-ai/vm0/commit/00871f521741d5769c0f20e7da9e93de9fbaf91b))
+
+## [12.312.0](https://github.com/vm0-ai/vm0/compare/web-v12.311.0...web-v12.312.0) (2026-04-28)
+
+
+### Features
+
+* **sidebar:** unified chat session indicator with draft + hover-swap delete ([#11226](https://github.com/vm0-ai/vm0/issues/11226)) ([58008a6](https://github.com/vm0-ai/vm0/commit/58008a6ca50f8883906a5b472081dddc3e16f0d6))
+
+
+### Bug Fixes
+
+* thread auth options through shadow probe to eliminate false mismatch ([#11378](https://github.com/vm0-ai/vm0/issues/11378)) ([4c433f2](https://github.com/vm0-ai/vm0/commit/4c433f268530641f23e2b9d62d352bdfc8469519))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.241.0
+
 ## [12.311.0](https://github.com/vm0-ai/vm0/compare/web-v12.310.0...web-v12.311.0) (2026-04-28)
 
 

@@ -44,6 +44,14 @@ type TelegramContextMessageInput = Omit<
   chat?: TelegramHandlerUpdate["message"]["chat"];
 };
 
+type TelegramUserNameSource =
+  | {
+      first_name?: string | null;
+      last_name?: string | null;
+    }
+  | null
+  | undefined;
+
 /**
  * Sentinel value for a pending user link that hasn't been claimed yet.
  * Set as telegramUserId at link time, replaced with the real
@@ -177,6 +185,7 @@ export async function storeTelegramMessage(
       messageId: String(message.message_id),
       fromUserId: String(message.from?.id ?? 0),
       fromUsername: message.from?.username ?? null,
+      fromDisplayName: formatTelegramUserDisplayName(message.from),
       text: message.text ?? message.caption ?? null,
       ...telegramFileDbValues(file),
       entities: entities ?? null,
@@ -209,13 +218,54 @@ function telegramFileDbValues(file: TelegramFileContext | undefined): {
 
 async function touchTelegramUserLink(
   userLink: typeof telegramUserLinks.$inferSelect,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect> {
+  const nextTelegramUsername =
+    telegramUsername === undefined
+      ? userLink.telegramUsername
+      : normalizeTelegramUsername(telegramUsername);
+  const nextTelegramDisplayName =
+    telegramDisplayName === undefined
+      ? userLink.telegramDisplayName
+      : normalizeTelegramDisplayName(telegramDisplayName);
   const [updated] = await globalThis.services.db
     .update(telegramUserLinks)
-    .set({ updatedAt: new Date() })
+    .set({
+      telegramUsername: nextTelegramUsername,
+      telegramDisplayName: nextTelegramDisplayName,
+      updatedAt: new Date(),
+    })
     .where(eq(telegramUserLinks.id, userLink.id))
     .returning();
   return updated ?? userLink;
+}
+
+function normalizeTelegramUsername(
+  telegramUsername: string | null | undefined,
+): string | null {
+  const value = telegramUsername?.trim().replace(/^@+/, "");
+  return value ? value : null;
+}
+
+function normalizeTelegramDisplayName(
+  telegramDisplayName: string | null | undefined,
+): string | null {
+  const value = telegramDisplayName?.trim().replace(/\s+/g, " ");
+  return value ? value.slice(0, 255) : null;
+}
+
+export function formatTelegramUserDisplayName(
+  user: TelegramUserNameSource,
+): string | null {
+  return normalizeTelegramDisplayName(
+    [user?.first_name, user?.last_name]
+      .map((part) => {
+        return part?.trim();
+      })
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 /**
@@ -229,6 +279,8 @@ async function touchTelegramUserLink(
 export async function linkTelegramUserToVm0User(params: {
   installationId: string;
   telegramUserId: string;
+  telegramUsername?: string | null;
+  telegramDisplayName?: string | null;
   vm0UserId: string;
 }): Promise<LinkTelegramUserResult> {
   const [existingTelegramLink] = await globalThis.services.db
@@ -244,7 +296,11 @@ export async function linkTelegramUserToVm0User(params: {
 
   if (existingTelegramLink) {
     if (existingTelegramLink.vm0UserId === params.vm0UserId) {
-      const userLink = await touchTelegramUserLink(existingTelegramLink);
+      const userLink = await touchTelegramUserLink(
+        existingTelegramLink,
+        params.telegramUsername,
+        params.telegramDisplayName,
+      );
       await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
@@ -272,7 +328,11 @@ export async function linkTelegramUserToVm0User(params: {
 
   if (existingVm0Link) {
     if (existingVm0Link.telegramUserId === params.telegramUserId) {
-      const userLink = await touchTelegramUserLink(existingVm0Link);
+      const userLink = await touchTelegramUserLink(
+        existingVm0Link,
+        params.telegramUsername,
+        params.telegramDisplayName,
+      );
       await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
@@ -288,6 +348,10 @@ export async function linkTelegramUserToVm0User(params: {
         .update(telegramUserLinks)
         .set({
           telegramUserId: params.telegramUserId,
+          telegramUsername: normalizeTelegramUsername(params.telegramUsername),
+          telegramDisplayName: normalizeTelegramDisplayName(
+            params.telegramDisplayName,
+          ),
           updatedAt: new Date(),
         })
         .where(eq(telegramUserLinks.id, existingVm0Link.id))
@@ -312,6 +376,10 @@ export async function linkTelegramUserToVm0User(params: {
     .insert(telegramUserLinks)
     .values({
       telegramUserId: params.telegramUserId,
+      telegramUsername: normalizeTelegramUsername(params.telegramUsername),
+      telegramDisplayName: normalizeTelegramDisplayName(
+        params.telegramDisplayName,
+      ),
       installationId: params.installationId,
       vm0UserId: params.vm0UserId,
     })
@@ -366,6 +434,8 @@ export async function resolveTelegramAuditLogsUrl(opts: {
 export async function resolveUserLink(
   installationId: string,
   telegramUserId: string,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect | null> {
   const [userLink] = await globalThis.services.db
     .select()
@@ -379,10 +449,30 @@ export async function resolveUserLink(
     .limit(1);
 
   if (userLink) {
-    return userLink;
+    if (telegramUsername === undefined && telegramDisplayName === undefined) {
+      return userLink;
+    }
+
+    const nextTelegramUsername =
+      telegramUsername === undefined
+        ? userLink.telegramUsername
+        : normalizeTelegramUsername(telegramUsername);
+    const nextTelegramDisplayName =
+      telegramDisplayName === undefined
+        ? userLink.telegramDisplayName
+        : normalizeTelegramDisplayName(telegramDisplayName);
+    return nextTelegramUsername === userLink.telegramUsername &&
+      nextTelegramDisplayName === userLink.telegramDisplayName
+      ? userLink
+      : touchTelegramUserLink(userLink, telegramUsername, telegramDisplayName);
   }
 
-  const completed = await completePendingLink(installationId, telegramUserId);
+  const completed = await completePendingLink(
+    installationId,
+    telegramUserId,
+    telegramUsername,
+    telegramDisplayName,
+  );
   if (completed) {
     log.info("Auto-completed pending link", {
       installationId,
@@ -401,6 +491,8 @@ export async function resolveUserLink(
 async function completePendingLink(
   installationId: string,
   realTelegramUserId: string,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect | null> {
   const [pending] = await globalThis.services.db
     .select()
@@ -420,6 +512,8 @@ async function completePendingLink(
   const result = await linkTelegramUserToVm0User({
     installationId,
     telegramUserId: realTelegramUserId,
+    telegramUsername,
+    telegramDisplayName,
     vm0UserId: pending.vm0UserId,
   });
 
@@ -620,11 +714,36 @@ export function buildConnectUrl(
   telegramBotId: string,
   telegramUserId: string,
   botToken: string,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): string {
   const appUrl = getAppUrl();
   const ts = Math.floor(Date.now() / 1000);
-  const sig = signConnectParams(telegramBotId, telegramUserId, ts, botToken);
-  return `${appUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
+  const normalizedTelegramUsername =
+    normalizeTelegramUsername(telegramUsername);
+  const normalizedTelegramDisplayName =
+    normalizeTelegramDisplayName(telegramDisplayName);
+  const sig = signConnectParams(
+    telegramBotId,
+    telegramUserId,
+    ts,
+    botToken,
+    normalizedTelegramUsername,
+    normalizedTelegramDisplayName,
+  );
+  const params = new URLSearchParams({
+    bot: telegramBotId,
+    tgUser: telegramUserId,
+    ts: String(ts),
+    sig,
+  });
+  if (normalizedTelegramUsername) {
+    params.set("tgUserName", normalizedTelegramUsername);
+  }
+  if (normalizedTelegramDisplayName) {
+    params.set("tgDisplayName", normalizedTelegramDisplayName);
+  }
+  return `${appUrl}/telegram/connect?${params.toString()}`;
 }
 
 export async function sendTypingAction(
@@ -728,14 +847,10 @@ export function enrichTelegramPrompt(
     return { prompt, userInfoExtras: {} };
   }
 
-  const displayName = [from.first_name, from.last_name]
-    .filter(Boolean)
-    .join(" ");
-
   return {
     prompt,
     userInfoExtras: {
-      telegramDisplayName: displayName || undefined,
+      telegramDisplayName: formatTelegramUserDisplayName(from) ?? undefined,
       telegramUsername: from.username ? `@${from.username}` : undefined,
       telegramUserId: String(from.id),
       telegramLanguage: from.language_code,

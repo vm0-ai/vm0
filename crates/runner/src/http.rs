@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use api_contracts::{Method, Route};
+use api_contracts::{Method, ResolvedRoute, Route};
 use reqwest::Client;
 use tracing::info;
 
@@ -47,21 +47,21 @@ impl HttpClient {
         })
     }
 
-    /// Build an authenticated request with bearer token and Vercel bypass.
-    ///
-    /// `path` is appended to the base URL (e.g. `/api/runners/poll`).
-    pub fn request(
-        &self,
-        method: reqwest::Method,
-        path: &str,
-        token: &str,
-    ) -> reqwest::RequestBuilder {
-        let url = base_url_with_path(&self.inner.api_url, path);
-        self.authenticated_request(method, url, token)
-    }
-
     /// Build an authenticated request from a generated API route.
     pub fn request_route(&self, route: Route, token: &str) -> reqwest::RequestBuilder {
+        self.authenticated_request(
+            reqwest_method(route.method),
+            route.url(&self.inner.api_url),
+            token,
+        )
+    }
+
+    /// Build an authenticated request from a generated route with params applied.
+    pub fn request_resolved_route(
+        &self,
+        route: ResolvedRoute,
+        token: &str,
+    ) -> reqwest::RequestBuilder {
         self.authenticated_request(
             reqwest_method(route.method),
             route.url(&self.inner.api_url),
@@ -83,14 +83,6 @@ impl HttpClient {
 
         req
     }
-}
-
-fn base_url_with_path(base_url: &str, path: &str) -> String {
-    assert!(
-        path.starts_with('/'),
-        "api request path must start with '/'"
-    );
-    format!("{}{}", base_url.trim_end_matches('/'), path)
 }
 
 fn reqwest_method(method: Method) -> reqwest::Method {
@@ -138,25 +130,25 @@ mod tests {
     }
 
     #[test]
-    fn request_trims_base_url_trailing_slash() {
+    fn request_resolved_route_builds_request_from_generated_route() {
         let http = HttpClient::new("https://api.vm0.dev/".to_string()).unwrap();
 
         let request = http
-            .request(reqwest::Method::POST, "/api/runners/poll", "runner-token")
+            .request_resolved_route(
+                routes::runners::jobs::by_id::claim::route(
+                    routes::runners::jobs::by_id::claim::Params {
+                        id: "550e8400-e29b-41d4-a716-446655440000",
+                    },
+                ),
+                "runner-token",
+            )
             .build()
             .unwrap();
 
+        assert_eq!(request.method(), reqwest::Method::POST);
         assert_eq!(
             request.url().as_str(),
-            "https://api.vm0.dev/api/runners/poll"
+            "https://api.vm0.dev/api/runners/jobs/550e8400-e29b-41d4-a716-446655440000/claim"
         );
-    }
-
-    #[test]
-    #[should_panic(expected = "api request path must start with '/'")]
-    fn request_rejects_path_without_leading_slash() {
-        let http = HttpClient::new("https://api.vm0.dev".to_string()).unwrap();
-
-        let _ = http.request(reqwest::Method::POST, "api/runners/poll", "runner-token");
     }
 }

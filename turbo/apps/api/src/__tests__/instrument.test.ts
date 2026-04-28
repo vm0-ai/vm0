@@ -16,7 +16,9 @@ async function importInstrument(
 }
 
 describe("instrument", () => {
-  it("registers OpenTelemetry with api metadata", async () => {
+  it("registers OpenTelemetry with api metadata and an OTLP Axiom exporter", async () => {
+    const { OTLPTraceExporter } =
+      await import("@opentelemetry/exporter-trace-otlp-http");
     await importInstrument((envModule) => {
       envModule.mockEnv("VERCEL_GIT_COMMIT_SHA", "abc123");
     });
@@ -27,26 +29,15 @@ describe("instrument", () => {
           "service.version": "abc123",
         },
         serviceName: "vm0-api",
-        traceExporter: "auto",
+        traceExporter: expect.any(OTLPTraceExporter),
       }),
     );
   });
 
-  it("uses an OTLP exporter (not 'auto') when AXIOM telemetry env is set", async () => {
-    const { OTLPTraceExporter } =
-      await import("@opentelemetry/exporter-trace-otlp-http");
-    await importInstrument((envModule) => {
-      envModule.mockEnv("VERCEL_GIT_COMMIT_SHA", "abc123");
-      envModule.mockEnv("AXIOM_TOKEN_TELEMETRY", "axiom-token");
-      envModule.mockEnv("AXIOM_DATASET_SUFFIX", "prod");
-    });
+  it("does not initialize OpenTelemetry without VERCEL_GIT_COMMIT_SHA", async () => {
+    await importInstrument();
 
-    const call = context.mocks.otel.registerOTel.mock.calls.at(-1);
-    if (!call) {
-      throw new Error("registerOTel was not called");
-    }
-    const exporter = (call[0] as { traceExporter: unknown }).traceExporter;
-    expect(exporter).toBeInstanceOf(OTLPTraceExporter);
+    expect(context.mocks.otel.registerOTel).not.toHaveBeenCalled();
   });
 
   it("does not initialize Sentry without a DSN", async () => {

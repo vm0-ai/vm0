@@ -33,9 +33,15 @@ export type RustMethodVariant =
 export interface NormalizedRouteBinding {
   readonly method: HttpMethod;
   readonly path: string;
+  readonly pathParams: readonly PathParamBinding[];
   readonly rustMethodVariant: RustMethodVariant;
   readonly rustModulePath: readonly string[];
   readonly rustConstName: string;
+}
+
+interface PathParamBinding {
+  readonly routeName: string;
+  readonly rustName: string;
 }
 
 interface ModuleNode {
@@ -45,6 +51,63 @@ interface ModuleNode {
 
 const rustModuleSegmentPattern = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
 const rustConstNamePattern = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
+const routePathParamPattern = /^[A-Za-z][A-Za-z0-9_]*$/;
+const rustKeywords = new Set([
+  "abstract",
+  "as",
+  "async",
+  "await",
+  "become",
+  "box",
+  "break",
+  "const",
+  "continue",
+  "crate",
+  "do",
+  "dyn",
+  "else",
+  "enum",
+  "extern",
+  "false",
+  "final",
+  "fn",
+  "for",
+  "gen",
+  "if",
+  "impl",
+  "in",
+  "let",
+  "loop",
+  "macro",
+  "macro_rules",
+  "match",
+  "mod",
+  "move",
+  "mut",
+  "override",
+  "priv",
+  "pub",
+  "ref",
+  "return",
+  "self",
+  "Self",
+  "static",
+  "struct",
+  "super",
+  "trait",
+  "true",
+  "try",
+  "type",
+  "typeof",
+  "union",
+  "unsized",
+  "unsafe",
+  "use",
+  "virtual",
+  "where",
+  "while",
+  "yield",
+]);
 
 export function normalizeRouteBindings(
   bindings: readonly RustRouteBinding[],
@@ -57,6 +120,7 @@ export function normalizeRouteBindings(
     const label = routeLabel(binding);
     const method = validateHttpMethod(binding.route.method, label);
     const path = validateRoutePath(binding.route.path, label);
+    const pathParams = extractPathParams(path, label);
     const rustModulePath = validateRustModulePath(
       binding.rustModulePath,
       label,
@@ -78,6 +142,7 @@ export function normalizeRouteBindings(
     normalized.push({
       method,
       path,
+      pathParams,
       rustMethodVariant: toRustMethodVariant(method),
       rustModulePath,
       rustConstName,
@@ -141,6 +206,53 @@ function validateRoutePath(value: unknown, label: string): string {
   return value;
 }
 
+function extractPathParams(
+  path: string,
+  label: string,
+): readonly PathParamBinding[] {
+  const seenRouteNames = new Set<string>();
+  const seenRustNames = new Set<string>();
+  const params: PathParamBinding[] = [];
+
+  for (const segment of path.split("/")) {
+    if (!segment.includes(":")) {
+      continue;
+    }
+
+    if (!segment.startsWith(":")) {
+      throw new Error(`${label} uses unsupported route param segment: ${path}`);
+    }
+
+    const routeName = segment.slice(1);
+    if (!routePathParamPattern.test(routeName)) {
+      throw new Error(`${label} has invalid route param name: ${routeName}`);
+    }
+
+    const rustName = toRustParamName(routeName);
+    if (seenRouteNames.has(routeName)) {
+      throw new Error(`${label} has duplicate route param: ${routeName}`);
+    }
+    if (seenRustNames.has(rustName)) {
+      throw new Error(`${label} has duplicate Rust route param: ${rustName}`);
+    }
+
+    seenRouteNames.add(routeName);
+    seenRustNames.add(rustName);
+    params.push({ routeName, rustName });
+  }
+
+  return params;
+}
+
+function toRustParamName(routeName: string): string {
+  const snake = routeName
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
+
+  return rustKeywords.has(snake) ? `${snake}_` : snake;
+}
+
 function validateRustModulePath(
   segments: readonly string[],
   label: string,
@@ -195,7 +307,7 @@ function compareRouteBindings(
   left: NormalizedRouteBinding,
   right: NormalizedRouteBinding,
 ): number {
-  return rustRouteName(left).localeCompare(rustRouteName(right));
+  return compareAscii(rustRouteName(left), rustRouteName(right));
 }
 
 function rustRouteName(binding: NormalizedRouteBinding): string {
@@ -235,20 +347,45 @@ function renderModuleNode(node: ModuleNode, indent: string): string[] {
   const routes = [...node.routes].sort(compareRouteBindings);
   const children = [...node.children.entries()].sort(
     ([leftName], [rightName]) => {
-      return leftName.localeCompare(rightName);
+      return compareAscii(leftName, rightName);
     },
   );
 
   for (const route of routes) {
+    const routeType = route.pathParams.length > 0 ? "RouteTemplate" : "Route";
     appendBlankLineIfNeeded(lines);
     lines.push(
-      `${indent}pub const ${route.rustConstName}: crate::Route = crate::Route {`,
+      `${indent}pub const ${route.rustConstName}: crate::${routeType} = crate::${routeType} {`,
     );
     lines.push(
       `${indent}    method: crate::Method::${route.rustMethodVariant},`,
     );
     lines.push(`${indent}    path: ${rustStringLiteral(route.path)},`);
     lines.push(`${indent}};`);
+
+    if (route.pathParams.length > 0) {
+      lines.push("");
+      lines.push(`${indent}#[derive(Debug, Clone, Copy)]`);
+      lines.push(`${indent}pub struct Params<'a> {`);
+      for (const param of route.pathParams) {
+        lines.push(`${indent}    pub ${param.rustName}: &'a str,`);
+      }
+      lines.push(`${indent}}`);
+      lines.push("");
+      lines.push(`${indent}#[must_use]`);
+      lines.push(`${indent}pub fn path(params: Params<'_>) -> String {`);
+      lines.push(...renderParameterizedPath(route, `${indent}    `));
+      lines.push(`${indent}}`);
+      lines.push("");
+      lines.push(`${indent}#[must_use]`);
+      lines.push(
+        `${indent}pub fn route(params: Params<'_>) -> crate::ResolvedRoute {`,
+      );
+      lines.push(
+        `${indent}    crate::ResolvedRoute::new(${route.rustConstName}.method, path(params))`,
+      );
+      lines.push(`${indent}}`);
+    }
   }
 
   for (const [moduleName, child] of children) {
@@ -259,6 +396,45 @@ function renderModuleNode(node: ModuleNode, indent: string): string[] {
   }
 
   return lines;
+}
+
+function renderParameterizedPath(
+  route: NormalizedRouteBinding,
+  indent: string,
+): string[] {
+  const formatPath = route.path
+    .split("/")
+    .map((segment) => {
+      return segment.startsWith(":") ? "{}" : escapeRustFormatString(segment);
+    })
+    .join("/");
+  const args = route.pathParams.map((param) => {
+    return `crate::route::encode_path_segment(params.${param.rustName})`;
+  });
+
+  const lines = [
+    `${indent}format!(`,
+    `${indent}    ${rustStringLiteral(formatPath)},`,
+  ];
+  for (const arg of args) {
+    lines.push(`${indent}    ${arg},`);
+  }
+  lines.push(`${indent})`);
+  return lines;
+}
+
+function escapeRustFormatString(value: string): string {
+  return value.replace(/\{/g, "{{").replace(/\}/g, "}}");
+}
+
+function compareAscii(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
 }
 
 function appendBlankLineIfNeeded(lines: string[]): void {

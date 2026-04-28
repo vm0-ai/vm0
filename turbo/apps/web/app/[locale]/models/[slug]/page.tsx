@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { ModelDetailClient } from "./ModelDetailClient";
 import { MODEL_SLUGS, MODELS, getModelBySlug } from "../data";
 import { locales, type Locale } from "../../../../i18n";
@@ -18,7 +19,8 @@ export async function generateMetadata({
   const model = getModelBySlug(slug);
 
   if (!model) {
-    return { title: "Not Found" };
+    const t = await getTranslations({ locale, namespace: "models" });
+    return { title: t("notFound") };
   }
 
   const url = `${BASE_URL}/${locale}/models/${slug}`;
@@ -66,6 +68,7 @@ export function generateStaticParams() {
 export default async function ModelDetailPage({ params }: PageProps) {
   const { slug, locale } = await params;
   const model = getModelBySlug(slug);
+  const t = await getTranslations({ locale, namespace: "models" });
 
   if (!model) {
     notFound();
@@ -94,13 +97,13 @@ export default async function ModelDetailPage({ params }: PageProps) {
       {
         "@type": "ListItem",
         position: 1,
-        name: "Home",
+        name: t("breadcrumbHome"),
         item: `${BASE_URL}/${locale}`,
       },
       {
         "@type": "ListItem",
         position: 2,
-        name: "Models",
+        name: t("breadcrumbModels"),
         item: `${BASE_URL}/${locale}/models`,
       },
       {

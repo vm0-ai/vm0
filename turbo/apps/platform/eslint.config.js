@@ -46,6 +46,7 @@ export default [
       "ccstate/no-empty-promise-catch": "error",
       "ccstate/no-void-statement": "error",
       "ccstate/no-abort-swallower": "error",
+      "ccstate/no-react-class-component": "error",
       "ccstate/require-accept": "error",
       "ccstate/require-client-signal": "error",
       "ccstate/command-async-signal": "error",

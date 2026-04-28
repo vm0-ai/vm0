@@ -1,6 +1,7 @@
 "use client";
 
 import { IconArrowRight } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Link } from "../../../../navigation";
 import { Footer } from "../../../components/Footer";
 import { Particles } from "../../../components/Particles";
@@ -110,24 +111,11 @@ function inlineCode(text: string): React.ReactNode {
   });
 }
 
-function multiplierPositioning(name: string, m: number): string {
-  if (m === 1) {
-    return `${name} sits at the ×1 baseline that every other Built-in model is priced against, so it's the unit you compare costs in when picking between models on VM0.`;
-  }
-  if (m > 1) {
-    return `${name} bills at ×${m}, which means a step here costs ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). It's a premium tier on VM0, so the cost-effective pattern is to default to a cheaper model and route only the steps that genuinely need the extra reasoning depth to ${name}.`;
-  }
-  if (m <= 0.05) {
-    return `${name} bills at ×${m}, which means a step here costs only ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). That puts it at the cheapest tier of the Built-in catalogue and makes it the obvious choice when unit cost dominates the decision and the workload is largely single-shot.`;
-  }
-  return `${name} bills at ×${m}, which means a step here costs only ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). That puts it well below the credit baseline and makes it the natural pick for high-volume background work where cost-per-step matters more than peak reasoning quality.`;
-}
-
-function tierExplanation(name: string, tier: ModelEntry["vm0Tier"]): string {
-  if (tier === "core") {
-    return `VM0 positions ${name} as a core agent model, recommended alongside Claude Opus 4.7, Claude Opus 4.6, and Claude Sonnet 4.6 for the steps that drive the actual outcome of an agent run. These are the models we'd pick for the orchestrator role, for code-touching agents, and for any step where a wrong answer is expensive.`;
-  }
-  return `VM0 positions ${name} as a cost-saving option rather than a core agent model. Use it to optimise unit cost on non-core work, such as bulk classification, pre-filters, latency-critical short replies, or pinned legacy agents, while keeping Claude Opus 4.7, Claude Opus 4.6, or Claude Sonnet 4.6 on the steps that decide the run.`;
+function getMultiplierKey(m: number): string {
+  if (m === 1) return "multiplierPositioningBaseline";
+  if (m > 1) return "multiplierPositioningPremium";
+  if (m <= 0.05) return "multiplierPositioningCheapest";
+  return "multiplierPositioningBelowBaseline";
 }
 
 interface Props {
@@ -136,12 +124,12 @@ interface Props {
 }
 
 export function ModelDetailClient({ model, related }: Props) {
+  const t = useTranslations("models");
   const platformUrl = getAppUrl();
 
   const heroMeta = [
     formatContextWindow(model.contextWindowK),
     model.modalities.join(" / "),
-    model.chinaAccessible ? "China-accessible" : "Global",
     model.promptCaching ? "Prompt cache" : null,
   ].filter(Boolean);
 
@@ -155,7 +143,7 @@ export function ModelDetailClient({ model, related }: Props) {
           style={{ maxWidth: MAX_WIDTH, padding: `0 ${PAGE_PADDING}px` }}
         >
           <Link href="/models" className="uc-detail-back">
-            &larr; All models
+            &larr; {t("backToAllModels")}
           </Link>
 
           {/* Hero */}
@@ -188,7 +176,7 @@ export function ModelDetailClient({ model, related }: Props) {
                 rel="noopener noreferrer"
                 className="btn-get-access group"
               >
-                <span>Use {model.name} on VM0</span>
+                <span>{t("useModelButton", { name: model.name })}</span>
                 <IconArrowRight
                   size={16}
                   className="transition-transform group-hover:translate-x-0.5"
@@ -214,7 +202,7 @@ export function ModelDetailClient({ model, related }: Props) {
           </Card>
 
           {/* Overview */}
-          <Section title={`What is ${model.name}?`}>
+          <Section title={t("whatIsHeading", { name: model.name })}>
             <p className="mb-6 text-[14px] text-[hsl(var(--muted-foreground))]">
               Released {model.releaseDate} · {model.familyPosition}
             </p>
@@ -235,8 +223,8 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* What's notable */}
           {model.architecture && (
             <Section
-              title={`What's notable about ${model.name}`}
-              subtitle="Headline architecture and capability features."
+              title={t("whatsNotableHeading", { name: model.name })}
+              subtitle={t("whatsNotableSubtitle")}
             >
               <p className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
                 {inlineCode(model.architecture)}
@@ -245,7 +233,7 @@ export function ModelDetailClient({ model, related }: Props) {
           )}
 
           {/* Specs */}
-          <Section title="Specs at a glance">
+          <Section title={t("specsHeading")}>
             <Card>
               {model.specs.map((row, i) => {
                 return (
@@ -263,7 +251,7 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* Benchmarks */}
           {model.benchmarks.length > 0 && (
             <Section
-              title={`${model.name} benchmarks`}
+              title={t("benchmarksHeading", { name: model.name })}
               subtitle={model.benchmarksNote}
             >
               <Card>
@@ -296,27 +284,27 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* Pricing */}
           <Section
-            title={`${model.name} pricing`}
-            subtitle="Provider list price, per 1M tokens."
+            title={t("pricingHeading", { name: model.name })}
+            subtitle={t("pricingSubtitle")}
           >
             <Card>
               <DataRow
-                label="Input"
+                label={t("labelInput")}
                 value={formatUsd(model.pricing.inputUsd)}
               />
               <DataRow
-                label="Output"
+                label={t("labelOutput")}
                 value={formatUsd(model.pricing.outputUsd)}
               />
               <DataRow
-                label="Cache read"
+                label={t("labelCacheRead")}
                 value={formatUsd(model.pricing.cacheReadUsd)}
               />
               <DataRow
-                label="Cache write"
+                label={t("labelCacheWrite")}
                 value={
                   model.pricing.cacheWriteUsd === null
-                    ? "Not billed"
+                    ? t("labelNotBilled")
                     : formatUsd(model.pricing.cacheWriteUsd)
                 }
                 last
@@ -326,8 +314,8 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* Performance */}
           <Section
-            title={`How ${model.name} behaves in practice`}
-            subtitle="Observed behaviour from production agent runs."
+            title={t("performanceHeading", { name: model.name })}
+            subtitle={t("performanceSubtitle")}
           >
             <div className="grid gap-4 sm:grid-cols-2">
               {model.performance.map((note) => {
@@ -346,7 +334,7 @@ export function ModelDetailClient({ model, related }: Props) {
           </Section>
 
           {/* Best agent tasks */}
-          <Section title={`Best agent tasks for ${model.name}`}>
+          <Section title={t("bestForHeading", { name: model.name })}>
             <div className="flex flex-col gap-4">
               {model.bestForExamples.map((ex) => {
                 return (
@@ -365,7 +353,7 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* Skip when */}
           {model.avoidFor && (
-            <Section title={`When to skip ${model.name}`}>
+            <Section title={t("skipWhenHeading", { name: model.name })}>
               <p className="text-[16px] leading-relaxed text-[hsl(var(--muted-foreground))]">
                 {inlineCode(model.avoidFor)}
               </p>
@@ -374,13 +362,16 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* Comparisons */}
           {model.comparisons.length > 0 && (
-            <Section title={`${model.name} vs other models`}>
+            <Section title={t("comparisonsHeading", { name: model.name })}>
               <div className="flex flex-col gap-4">
                 {model.comparisons.map((cmp) => {
                   return (
                     <Card key={cmp.vs} className="!p-6">
                       <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                        {model.name} vs {cmp.vs}
+                        {t("comparisonTitleTemplate", {
+                          model: model.name,
+                          other: cmp.vs,
+                        })}
                       </h3>
                       <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
                         {inlineCode(cmp.body)}
@@ -394,7 +385,7 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* Verdict */}
           {model.verdict && (
-            <Section title={`Bottom line: should you use ${model.name}?`}>
+            <Section title={t("verdictHeading", { name: model.name })}>
               <div className="rounded-2xl border-l-[3px] border-[#ed4e01] bg-white p-6 sm:p-8">
                 <p className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
                   {inlineCode(model.verdict)}
@@ -405,7 +396,7 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* FAQ */}
           {model.faqs.length > 0 && (
-            <Section title="Frequently asked questions">
+            <Section title={t("faqHeading")}>
               <div className="flex flex-col gap-7">
                 {model.faqs.map((faq) => {
                   return (
@@ -425,7 +416,7 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* Alternatives */}
           {model.alternatives.length > 0 && (
-            <Section title="Alternatives">
+            <Section title={t("alternativesHeading")}>
               <div className="grid gap-3 sm:grid-cols-2">
                 {model.alternatives.map((alt) => {
                   return (
@@ -447,58 +438,64 @@ export function ModelDetailClient({ model, related }: Props) {
             </Section>
           )}
 
-          {/* Using on VM0 — final dedicated section */}
-          <Section title={`Using ${model.name} on VM0`}>
+          {/* Using on VM0 */}
+          <Section title={t("usingOnVm0Heading", { name: model.name })}>
             <div className="flex flex-col gap-5">
               <div>
                 <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  Two ways to access {model.name} on VM0
+                  {t("twoWaysToAccessHeading", { name: model.name })}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  VM0 supports {model.name} as a Built-in model billed in VM0
-                  credits, and through bring-your-own with a {model.byoKeyLabel}
-                  . The Built-in path uses VM0 Managed routing and the credit
-                  multiplier explained below; the bring-your-own path bills you
-                  directly with the upstream vendor and skips the VM0 credit
-                  conversion entirely.
+                  {t("twoWaysToAccessBody", {
+                    name: model.name,
+                    byoKey: model.byoKeyLabel,
+                  })}
                 </p>
               </div>
 
               <div>
                 <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  VM0&rsquo;s recommendation
+                  {t("vm0RecommendationHeading")}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {tierExplanation(model.name, model.vm0Tier)}
+                  {t(
+                    model.vm0Tier === "core"
+                      ? "tierExplanationCore"
+                      : "tierExplanationCostSaving",
+                    { name: model.name },
+                  )}
                 </p>
               </div>
 
               <div>
                 <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  Credits and the ×{model.multiplier} multiplier
+                  {t("creditsMultiplierHeading", {
+                    multiplier: model.multiplier,
+                  })}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  Every Built-in model on VM0 is priced as a multiple of Claude
-                  Sonnet 4.6, which sits at the ×1 credit baseline. {model.name}{" "}
-                  bills at ×{model.multiplier} credits. The multiplier is what
-                  shows up on your VM0 invoice; the vendor list price in the
-                  pricing table above is what the upstream provider charges
-                  before VM0 converts it into credits.
+                  {t("creditsMultiplierBodyP1", {
+                    name: model.name,
+                    multiplier: model.multiplier,
+                  })}
                 </p>
                 <p className="mt-3 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {multiplierPositioning(model.name, model.multiplier)}
+                  {t(getMultiplierKey(model.multiplier), {
+                    name: model.name,
+                    multiplier: model.multiplier,
+                  })}
                 </p>
               </div>
 
               <p className="text-[14px] text-[hsl(var(--muted-foreground))]">
-                Available on VM0 since {model.releasedToVm0}.
+                {t("availableSince", { date: model.releasedToVm0 })}
               </p>
             </div>
           </Section>
 
           {/* Related */}
           <div className="uc-related">
-            <h2 className="uc-related-title">More models on VM0</h2>
+            <h2 className="uc-related-title">{t("moreModelsHeading")}</h2>
             <div className="uc-related-grid">
               {related.map((m) => {
                 return (

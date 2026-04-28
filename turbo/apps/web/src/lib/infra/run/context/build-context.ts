@@ -36,6 +36,7 @@ interface BuildInfraContextParams {
   debugNoMockClaude?: boolean;
   captureNetworkBodies?: boolean;
   billableFirewalls: string[];
+  modelUsageProvider?: string;
   continuedFromSessionId?: string;
   resumedFromCheckpointId?: string;
   resumeSession?: ResumeSession;
@@ -94,6 +95,7 @@ export function buildInfraExecutionContext(
     debugNoMockClaude: params.debugNoMockClaude,
     captureNetworkBodies: params.captureNetworkBodies,
     billableFirewalls: params.billableFirewalls,
+    modelUsageProvider: params.modelUsageProvider,
     apiStartTime: params.apiStartTime,
   };
 

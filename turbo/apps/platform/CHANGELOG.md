@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.304.2](https://github.com/vm0-ai/vm0/compare/app-v0.304.1...app-v0.304.2) (2026-04-28)
+
+
+### Bug Fixes
+
+* **platform:** cap usage card tooltip width and emphasize click hint ([#11391](https://github.com/vm0-ai/vm0/issues/11391)) ([5a5cd77](https://github.com/vm0-ai/vm0/commit/5a5cd7744622168c5eee498e52b5330d14b602a0))
+* use telegram usernames in attribution footers ([#11396](https://github.com/vm0-ai/vm0/issues/11396)) ([e651c79](https://github.com/vm0-ai/vm0/commit/e651c793f1f60af02e325467f7101c90c7d6eeb9))
+
+## [0.304.1](https://github.com/vm0-ai/vm0/compare/app-v0.304.0...app-v0.304.1) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.242.0
+
+## [0.304.0](https://github.com/vm0-ai/vm0/compare/app-v0.303.0...app-v0.304.0) (2026-04-28)
+
+
+### Features
+
+* add bb0 device flow ([#11383](https://github.com/vm0-ai/vm0/issues/11383)) ([00871f5](https://github.com/vm0-ai/vm0/commit/00871f521741d5769c0f20e7da9e93de9fbaf91b))
+
+## [0.303.0](https://github.com/vm0-ai/vm0/compare/app-v0.302.0...app-v0.303.0) (2026-04-28)
+
+
+### Features
+
+* **sidebar:** unified chat session indicator with draft + hover-swap delete ([#11226](https://github.com/vm0-ai/vm0/issues/11226)) ([58008a6](https://github.com/vm0-ai/vm0/commit/58008a6ca50f8883906a5b472081dddc3e16f0d6))
+
+
+### Bug Fixes
+
+* remove telegram route label ([#11379](https://github.com/vm0-ai/vm0/issues/11379)) ([28b6b2b](https://github.com/vm0-ai/vm0/commit/28b6b2bff02951648af9014a368a7873dfce8d10))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.241.0
+
 ## [0.302.0](https://github.com/vm0-ai/vm0/compare/app-v0.301.0...app-v0.302.0) (2026-04-28)
 
 

@@ -1,3 +1,9 @@
+import { runnerRealtimeTokenContract } from "../contracts/realtime";
+import {
+  runnersHeartbeatContract,
+  runnersJobClaimContract,
+  runnersPollContract,
+} from "../contracts/runners";
 import {
   webhookCheckpointsContract,
   webhookCheckpointsPrepareHistoryContract,
@@ -21,6 +27,26 @@ export interface RustRouteBinding {
 }
 
 export const rustRouteBindings = [
+  {
+    route: runnersPollContract.poll,
+    rustModulePath: ["runners", "poll"],
+    rustConstName: "POLL",
+  },
+  {
+    route: runnersJobClaimContract.claim,
+    rustModulePath: ["runners", "jobs", "by_id", "claim"],
+    rustConstName: "CLAIM",
+  },
+  {
+    route: runnersHeartbeatContract.heartbeat,
+    rustModulePath: ["runners", "heartbeat"],
+    rustConstName: "HEARTBEAT",
+  },
+  {
+    route: runnerRealtimeTokenContract.create,
+    rustModulePath: ["runners", "realtime", "token"],
+    rustConstName: "CREATE",
+  },
   {
     route: webhookEventsContract.send,
     rustModulePath: ["webhooks", "agent", "events"],

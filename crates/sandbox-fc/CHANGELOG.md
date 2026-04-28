@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.14](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.13...sandbox-fc-v0.26.14) (2026-04-28)
+
+
+### Bug Fixes
+
+* bind control socket before sandbox running ([#11394](https://github.com/vm0-ai/vm0/issues/11394)) ([aa1f515](https://github.com/vm0-ai/vm0/commit/aa1f5154a1bf22e1ef46037c9f02b2ffe2c6a1a0))
+
 ## [0.26.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.12...sandbox-fc-v0.26.13) (2026-04-28)
 
 

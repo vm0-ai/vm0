@@ -123,6 +123,10 @@ export interface ExecutionContext {
 
   billableFirewalls: string[];
 
+  // Billable model identity for model usage_event reporting. Only set for
+  // vm0-managed model provider runs; BYOK/custom providers leave it unset.
+  modelUsageProvider?: string;
+
   // API start time for E2E timing metrics — epoch millis captured at the route
   // handler's first line by the caller (see issue #9936).
   apiStartTime: number;

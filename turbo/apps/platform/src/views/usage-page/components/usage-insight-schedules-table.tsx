@@ -97,10 +97,16 @@ export function UsageInsightSchedulesTable({
                         {fullName}
                       </span>
                     </TooltipTrigger>
-                    <TooltipContent side="top" sideOffset={4}>
-                      <p className="text-xs">{fullName}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">
-                        Click to open schedule
+                    <TooltipContent
+                      side="top"
+                      sideOffset={4}
+                      className="max-w-xs"
+                    >
+                      <p className="text-xs whitespace-normal break-words">
+                        {fullName}
+                      </p>
+                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
+                        Click to open →
                       </p>
                     </TooltipContent>
                   </Tooltip>

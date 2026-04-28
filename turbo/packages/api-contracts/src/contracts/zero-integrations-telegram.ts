@@ -56,6 +56,8 @@ const telegramLinkStatusResponseSchema = z.discriminatedUnion("linked", [
 
 const telegramConnectSignatureSchema = z.object({
   telegramUserId: z.string().min(1),
+  telegramUsername: z.string().max(255).optional(),
+  telegramDisplayName: z.string().max(255).optional(),
   timestamp: z.number(),
   signature: z.string().min(1),
 });

@@ -722,8 +722,8 @@ class TestExtractUsageFromJson:
         result = extract_usage_from_json(body, None)
         assert result == {
             "model": "claude-sonnet-4-6",
-            "input_tokens": 100,
-            "output_tokens": 500,
+            "tokens.input": 100,
+            "tokens.output": 500,
         }
 
     def test_extracts_cache_tokens(self):
@@ -733,8 +733,8 @@ class TestExtractUsageFromJson:
             b'"cache_read_input_tokens":50,"cache_creation_input_tokens":0}}'
         )
         result = extract_usage_from_json(body, None)
-        assert result["cache_read_input_tokens"] == 50
-        assert result["cache_creation_input_tokens"] == 0
+        assert result["tokens.cache_read"] == 50
+        assert result["tokens.cache_creation"] == 0
 
     def test_gzip_compressed(self, headers):
         original = b'{"model":"test","usage":{"input_tokens":42}}'
@@ -742,7 +742,7 @@ class TestExtractUsageFromJson:
         headers = headers(("Content-Encoding", "gzip"))
         result = extract_usage_from_json(compressed, headers)
         assert result["model"] == "test"
-        assert result["input_tokens"] == 42
+        assert result["tokens.input"] == 42
 
     def test_invalid_json_returns_none(self):
         assert extract_usage_from_json(b"not json", None) is None
@@ -753,15 +753,28 @@ class TestExtractUsageFromJson:
     def test_non_dict_returns_none(self):
         assert extract_usage_from_json(b"[1,2,3]", None) is None
 
-    def test_extracts_web_search_requests(self):
+    def test_ignores_unmapped_web_search_requests(self):
         body = (
             b'{"model":"claude-sonnet-4-6","usage":'
             b'{"input_tokens":10,"output_tokens":5,'
             b'"server_tool_use":{"web_search_requests":2}}}'
         )
         result = extract_usage_from_json(body, None)
-        assert result["web_search_requests"] == 2
-        assert result["input_tokens"] == 10
+        assert "web_search_requests" not in result
+        assert result["tokens.input"] == 10
+
+    def test_ignores_invalid_usage_quantities(self):
+        body = (
+            b'{"model":"claude-sonnet-4-6","usage":'
+            b'{"input_tokens":-1,"output_tokens":5,'
+            b'"cache_read_input_tokens":"50",'
+            b'"cache_creation_input_tokens":true}}'
+        )
+        result = extract_usage_from_json(body, None)
+        assert result == {
+            "model": "claude-sonnet-4-6",
+            "tokens.output": 5,
+        }
 
     def test_handles_large_gzipped_body(self, headers):
         """Body that decompresses past the legacy 64 KB cap should still parse.
@@ -785,8 +798,8 @@ class TestExtractUsageFromJson:
         headers = headers(("Content-Encoding", "gzip"))
         result = extract_usage_from_json(compressed, headers)
         assert result is not None
-        assert result["input_tokens"] == 50
-        assert result["output_tokens"] == 100
+        assert result["tokens.input"] == 50
+        assert result["tokens.output"] == 100
 
 
 class TestStreamDecompressor:

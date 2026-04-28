@@ -234,6 +234,7 @@ type TextPreviewState = {
   text: string;
 };
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class TextPreview extends Component<TextPreviewProps, TextPreviewState> {
   state: TextPreviewState = {
     collapsed: false,

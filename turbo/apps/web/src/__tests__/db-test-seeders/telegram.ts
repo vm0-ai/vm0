@@ -194,6 +194,8 @@ export async function insertTestTelegramInstallation(params: {
 export async function insertTestTelegramUserLink(params: {
   installationId: string;
   telegramUserId: string;
+  telegramUsername?: string | null;
+  telegramDisplayName?: string | null;
   vm0UserId: string;
 }): Promise<{ id: string }> {
   const [row] = await globalThis.services.db
@@ -201,6 +203,8 @@ export async function insertTestTelegramUserLink(params: {
     .values({
       installationId: params.installationId,
       telegramUserId: params.telegramUserId,
+      telegramUsername: params.telegramUsername ?? null,
+      telegramDisplayName: params.telegramDisplayName ?? null,
       vm0UserId: params.vm0UserId,
     })
     .returning({ id: telegramUserLinks.id });
@@ -248,6 +252,7 @@ interface InsertMessageOptions {
   messageId: string;
   fromUserId: string;
   fromUsername?: string;
+  fromDisplayName?: string;
   text?: string;
   fileId?: string;
   fileType?: string;
@@ -277,6 +282,7 @@ export async function insertTelegramMessage(
     messageId: options.messageId,
     fromUserId: options.fromUserId,
     fromUsername: options.fromUsername ?? null,
+    fromDisplayName: options.fromDisplayName ?? null,
     text: options.text ?? null,
     fileId: options.fileId ?? null,
     fileType: options.fileType ?? null,
@@ -442,8 +448,17 @@ export function signTestConnectParams(
   installationId: string,
   telegramUserId: string,
   botToken: string,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): { sig: string; ts: number } {
   const ts = Math.floor(Date.now() / 1000);
-  const sig = signConnectParams(installationId, telegramUserId, ts, botToken);
+  const sig = signConnectParams(
+    installationId,
+    telegramUserId,
+    ts,
+    botToken,
+    telegramUsername,
+    telegramDisplayName,
+  );
   return { sig, ts };
 }

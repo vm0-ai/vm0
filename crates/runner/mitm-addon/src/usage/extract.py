@@ -9,6 +9,8 @@ from collections.abc import Callable
 
 import body_utils
 
+from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
+
 # SSE event boundaries we scan for.  When no boundary is found we keep
 # ``_MAX_SEPARATOR_LEN - 1`` trailing bytes so a boundary split across the
 # next chunk can still complete.  Deriving the max from the tuple means
@@ -16,22 +18,13 @@ import body_utils
 _SSE_SEPARATORS: tuple[bytes, ...] = (b"\r\n\r\n", b"\n\n")
 _MAX_SEPARATOR_LEN = max(len(s) for s in _SSE_SEPARATORS)
 
-# Only extract known billing fields to avoid capturing unrelated numerics.
-_BILLING_FIELDS = frozenset(
-    (
-        "input_tokens",
-        "output_tokens",
-        "cache_read_input_tokens",
-        "cache_creation_input_tokens",
-    )
-)
-
 
 def _extract_billing_usage(raw_usage, target: dict) -> None:
     """Extract known billing fields from an Anthropic usage object into *target*.
 
-    Handles both flat fields (input_tokens, etc.) and the nested
-    ``server_tool_use.web_search_requests`` field.
+    Anthropic usage fields are normalized to usage_event categories at the
+    extraction boundary so the reporting path can forward category names
+    directly.
 
     Only positive values overwrite existing entries — ``message_delta`` may
     send ``0`` for fields already set correctly by ``message_start``.
@@ -39,13 +32,13 @@ def _extract_billing_usage(raw_usage, target: dict) -> None:
     if not raw_usage or not isinstance(raw_usage, dict):
         return
     for k, v in raw_usage.items():
-        if k in _BILLING_FIELDS and isinstance(v, (int, float)) and (v > 0 or k not in target):
-            target[k] = v
-    stu = raw_usage.get("server_tool_use")
-    if isinstance(stu, dict):
-        wsr = stu.get("web_search_requests")
-        if isinstance(wsr, (int, float)) and (wsr > 0 or "web_search_requests" not in target):
-            target["web_search_requests"] = wsr
+        category = ANTHROPIC_USAGE_FIELD_CATEGORIES.get(k)
+        if category and _is_usage_quantity(v) and (v > 0 or category not in target):
+            target[category] = v
+
+
+def _is_usage_quantity(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:

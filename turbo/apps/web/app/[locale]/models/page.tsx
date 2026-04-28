@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { ModelsClient } from "./ModelsClient";
 import { MODELS } from "./data";
 import type { Locale } from "../../../i18n";
@@ -14,10 +15,10 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "models" });
   const url = `${BASE_URL}/${locale}/models`;
-  const title = "Models — Run agents on Claude, Kimi, GLM, MiniMax, DeepSeek";
-  const description =
-    "Every AI model available to VM0 agents — Claude Opus 4.7, Sonnet 4.6, Haiku 4.5, GLM-5.1, Kimi K2.6, MiniMax M2.7, DeepSeek V4. Short intro and what each model is best for on VM0.";
+  const title = t("listingPageTitle");
+  const description = t("listingPageDescription");
 
   return {
     title,
@@ -50,13 +51,13 @@ export async function generateMetadata({
 
 export default async function ModelsPage({ params }: PageProps) {
   const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "models" });
 
   const itemListJsonLd = {
     "@context": "https://schema.org",
     "@type": "ItemList",
-    name: "AI models available on VM0",
-    description:
-      "Every AI model available to VM0 agents — Claude, Kimi, GLM, MiniMax, DeepSeek.",
+    name: t("jsonLdListName"),
+    description: t("jsonLdListDescription"),
     itemListElement: MODELS.map((m, i) => {
       return {
         "@type": "ListItem",
@@ -74,13 +75,13 @@ export default async function ModelsPage({ params }: PageProps) {
       {
         "@type": "ListItem",
         position: 1,
-        name: "Home",
+        name: t("breadcrumbHome"),
         item: `${BASE_URL}/${locale}`,
       },
       {
         "@type": "ListItem",
         position: 2,
-        name: "Models",
+        name: t("breadcrumbModels"),
         item: `${BASE_URL}/${locale}/models`,
       },
     ],

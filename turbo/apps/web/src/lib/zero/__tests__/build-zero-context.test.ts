@@ -12,6 +12,7 @@ import {
   createTestUserConnector,
   completeTestRun,
   findTestRunnerJobEntry,
+  insertVm0ApiKeys,
   insertTestConnectorSecret,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
@@ -19,11 +20,15 @@ import {
   setTestSessionArtifacts,
   setTestSessionFramework,
 } from "../../../__tests__/db-test-seeders/agents";
+import { setOrgCredits } from "../../../__tests__/db-test-seeders/org";
 import { setTestCheckpointArtifactSnapshots } from "../../../__tests__/db-test-seeders/runs";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { createZeroRun } from "../zero-run-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
-import { upsertOrgModelProvider } from "../model-provider/model-provider-service";
+import {
+  upsertOrgModelProvider,
+  upsertOrgNoSecretModelProvider,
+} from "../model-provider/model-provider-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { upsertSecretByOrg } from "../secret/secret-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -113,6 +118,38 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       });
     });
 
+    it("should store modelUsageProvider for vm0-managed model usage", async () => {
+      const agentName = uniqueId("vm0-model-usage-agent");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      await upsertOrgNoSecretModelProvider(
+        user.orgId,
+        "vm0",
+        "claude-opus-4-6",
+      );
+      await insertVm0ApiKeys([
+        {
+          vendor: "anthropic",
+          model: "claude-opus-4-6",
+          apiKey: "sk-ant-test-vm0-model-usage",
+        },
+      ]);
+      await setOrgCredits(user.orgId, 10000);
+
+      const result = await createZeroRun(baseParams({ agentId: modelAgentId }));
+
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.modelUsageProvider).toBe("claude-opus-4-6");
+      expect(job!.executionContext.billableFirewalls).toContain(
+        "model-provider:anthropic-api-key",
+      );
+    });
+
     it("should error when no org default provider exists", async () => {
       const agentName = uniqueId("no-key-agent");
       await createTestCompose(agentName, {
@@ -146,6 +183,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       await context.mocks.flushAfter();
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job!.executionContext.billableFirewalls).toEqual([]);
+      expect(job!.executionContext.modelUsageProvider).toBeUndefined();
     });
 
     it("should include billable connector firewall names when attached", async () => {

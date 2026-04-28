@@ -93,6 +93,8 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     await insertTestTelegramUserLink({
       installationId: botId,
       telegramUserId: "777000",
+      telegramUsername: "ada_telegram",
+      telegramDisplayName: "Ada Lovelace",
       vm0UserId: user.userId,
     });
 
@@ -136,13 +138,63 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     });
     expect(String(telegramBody?.text)).toContain("Hello <b>world</b>");
     expect(String(telegramBody?.text)).toContain(
-      '<i>Sent via My Assistant · Triggered by <a href="tg://user?id=777000">Telegram user 777000</a> · Claude Opus 4.7</i>',
+      '<i>Sent via My Assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Opus 4.7</i>',
     );
     expect(await response.json()).toEqual({
       ok: true,
       messageId: 321,
       chatId: "-1001234567890",
     });
+  });
+
+  it("falls back to Telegram display name in the footer when username is absent", async () => {
+    const { token } = await zeroTokenWithRun();
+    const telegramBotId = uniqueId("tg-bot-message");
+    const botId = await createTestTelegramInstallation({
+      telegramBotId,
+      orgId: user.orgId,
+      ownerUserId: user.userId,
+    });
+    await insertTestTelegramUserLink({
+      installationId: botId,
+      telegramUserId: "777001",
+      telegramDisplayName: "Ada Lovelace",
+      vm0UserId: user.userId,
+    });
+
+    let telegramBody: Record<string, unknown> | undefined;
+    server.use(
+      http.post(
+        "https://api.telegram.org/bottest-bot-token/sendMessage",
+        async ({ request }) => {
+          telegramBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json({
+            ok: true,
+            result: {
+              message_id: 322,
+              chat: { id: -1001234567890 },
+              text: telegramBody.text,
+            },
+          });
+        },
+      ),
+    );
+
+    const response = await POST(
+      messageRequest(
+        {
+          botId,
+          chatId: "-1001234567890",
+          text: "Hello",
+        },
+        token,
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(String(telegramBody?.text)).toContain(
+      'Triggered by <a href="tg://user?id=777001">Ada Lovelace</a>',
+    );
   });
 
   it("returns 404 when the bot id is not owned by the org", async () => {

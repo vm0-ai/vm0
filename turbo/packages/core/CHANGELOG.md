@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.242.0](https://github.com/vm0-ai/vm0/compare/core-v8.241.0...core-v8.242.0) (2026-04-28)
+
+
+### Features
+
+* enable telegram integration for all users ([#11387](https://github.com/vm0-ai/vm0/issues/11387)) ([1d92124](https://github.com/vm0-ai/vm0/commit/1d92124d203c86464de407e62e308b602928b328))
+
+## [8.241.0](https://github.com/vm0-ai/vm0/compare/core-v8.240.0...core-v8.241.0) (2026-04-28)
+
+
+### Features
+
+* **sidebar:** unified chat session indicator with draft + hover-swap delete ([#11226](https://github.com/vm0-ai/vm0/issues/11226)) ([58008a6](https://github.com/vm0-ai/vm0/commit/58008a6ca50f8883906a5b472081dddc3e16f0d6))
+
 ## [8.240.0](https://github.com/vm0-ai/vm0/compare/core-v8.239.1...core-v8.240.0) (2026-04-28)
 
 

@@ -11,3 +11,5 @@ vi.stubEnv(
   "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 );
 vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
+vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "xaat-test-dummy");
+vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");
