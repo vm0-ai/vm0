@@ -13,6 +13,16 @@ import {
 } from "./shared";
 import { withErrorHandler } from "../../lib/command";
 
+/**
+ * Pick the first truthy value, falling back to `undefined`. Used to merge
+ * commander.js subcommand options with parent options when a flag can land
+ * on either depending on argv ordering. Extracted to keep the action
+ * handler's cyclomatic complexity below the lint threshold.
+ */
+function pickOpt<T>(a: T | undefined, b: T | undefined): T | undefined {
+  return a || b || undefined;
+}
+
 export const continueCommand = new Command()
   .name("continue")
   .description(
@@ -166,10 +176,14 @@ export const continueCommand = new Command()
           permissionPolicies: parsePermissionPolicies(
             options.permissionPolicies || allOpts.permissionPolicies,
           ),
-          debugNoMockClaude:
-            options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
-          debugNoMockCodex:
-            options.debugNoMockCodex || allOpts.debugNoMockCodex || undefined,
+          debugNoMockClaude: pickOpt(
+            options.debugNoMockClaude,
+            allOpts.debugNoMockClaude,
+          ),
+          debugNoMockCodex: pickOpt(
+            options.debugNoMockCodex,
+            allOpts.debugNoMockCodex,
+          ),
         });
 
         // 4. Check for immediate failure (e.g., missing secrets)
