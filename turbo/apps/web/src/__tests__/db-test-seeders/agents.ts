@@ -415,15 +415,13 @@ export async function setTestChatThreadLastReadMessageId(
 export async function setTestChatThreadDraft(
   threadId: string,
   draftContent: string | null,
-  draftAttachments:
-    | Array<{
-        id: string;
-        url: string;
-        filename: string;
-        contentType: string;
-        size: number;
-      }>
-    | null,
+  draftAttachments: Array<{
+    id: string;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }> | null,
 ): Promise<void> {
   initServices();
   await globalThis.services.db
