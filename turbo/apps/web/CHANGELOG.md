@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.314.0](https://github.com/vm0-ai/vm0/compare/web-v12.313.2...web-v12.314.0) (2026-04-28)
+
+
+### Features
+
+* add telegram bot onboarding flow ([#11399](https://github.com/vm0-ai/vm0/issues/11399)) ([aba29b3](https://github.com/vm0-ai/vm0/commit/aba29b390e94f23f1b45a18c4a32fa5a7cd647aa))
+
 ## [12.313.2](https://github.com/vm0-ai/vm0/compare/web-v12.313.1...web-v12.313.2) (2026-04-28)
 
 
