@@ -218,6 +218,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/auto-merge-releases.png"],
     connectors: [GITHUB, SLACK],
     integrations: [
       { connector: GITHUB, required: true },
@@ -274,6 +275,7 @@ export const USE_CASES: UseCase[] = [
     slug: "standup-summary",
     color: "#c89090",
     videoId: "0D7ScfH4fwk",
+    screenshots: ["/assets/use-cases/standup-summary.png"],
     avatar: {
       rotation: 2,
       skin: 3,
@@ -308,6 +310,7 @@ export const USE_CASES: UseCase[] = [
     slug: "kol-cold-outreach",
     color: "#c4a08a",
     videoId: "aignt_fZSVo",
+    screenshots: ["/assets/use-cases/kol-cold-outreach.png"],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -338,6 +341,7 @@ export const USE_CASES: UseCase[] = [
     slug: "file-bugs-from-slack",
     color: "#c08050",
     videoId: "E08Bc02tDIM",
+    screenshots: ["/assets/use-cases/file-bugs-from-slack.png"],
     avatar: {
       rotation: 4,
       skin: 4,
@@ -367,6 +371,7 @@ export const USE_CASES: UseCase[] = [
     slug: "slack-triage",
     color: "#7c9885",
     videoId: "XcqnMX1U0xY",
+    screenshots: ["/assets/use-cases/slack-triage.png"],
     avatar: {
       rotation: 3,
       skin: 2,
@@ -397,6 +402,7 @@ export const USE_CASES: UseCase[] = [
     slug: "employee-onboarding",
     color: "#6b8cae",
     videoId: "2YA7Iff4XHs",
+    screenshots: ["/assets/use-cases/employee-onboarding.png"],
     avatar: {
       rotation: 5,
       skin: 5,
@@ -438,6 +444,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering", "product"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/build-with-v0.png"],
     connectors: [SLACK, V0],
     integrations: [
       { connector: V0, required: true },
@@ -470,6 +477,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["everyone"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/document-decisions.png"],
     connectors: [SLACK, NOTION],
     integrations: [
       { connector: SLACK, required: true },
@@ -498,6 +506,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["product", "engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/product-health-briefing.png"],
     connectors: [SLACK, GOOGLE_CALENDAR, LINEAR, GITHUB],
     integrations: [
       { connector: SLACK, required: true },
@@ -528,6 +537,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/tech-debt-scan.png"],
     connectors: [GITHUB],
     integrations: [{ connector: GITHUB, required: true }],
     relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "pr-review"],
@@ -553,6 +563,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing", "product"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/competitor-audit.png"],
     connectors: [X_TWITTER, NOTION, SLACK],
     integrations: [
       { connector: X_TWITTER, required: true },
@@ -586,6 +597,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering", "product"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/daily-engineering-brief.png"],
     connectors: [SLACK, GITHUB, LINEAR, SENTRY, PLAUSIBLE],
     integrations: [
       { connector: GITHUB, required: true },
@@ -621,6 +633,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing", "product"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/competitor-pricing-monitor.png"],
     connectors: [NOTION, SLACK],
     integrations: [
       { connector: NOTION, required: true },
@@ -653,6 +666,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["sales"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/customer-360.png"],
     connectors: [GMAIL, GOOGLE_CALENDAR, SLACK, LINEAR, GITHUB],
     integrations: [
       { connector: GMAIL, required: true },
@@ -688,6 +702,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/trending-topic-radar.png"],
     connectors: [X_TWITTER, SLACK, NOTION],
     integrations: [
       { connector: X_TWITTER, required: true },
@@ -721,6 +736,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/content-performance-report.png"],
     connectors: [X_TWITTER, SLACK, NOTION, PLAUSIBLE],
     integrations: [
       { connector: X_TWITTER, required: true },
@@ -755,6 +771,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/error-triage-daily.png"],
     connectors: [SENTRY, AXIOM, GITHUB],
     integrations: [
       { connector: SENTRY, required: true },
@@ -788,6 +805,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/marketing-emails.png"],
     connectors: [SLACK, RESEND, NOTION, LINEAR],
     integrations: [
       { connector: RESEND, required: true },
@@ -822,6 +840,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/multilingual-cms-publishing.png"],
     connectors: [SLACK, STRAPI, NOTION],
     integrations: [
       { connector: STRAPI, required: true },
@@ -854,6 +873,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["support"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/kb-ingest.png"],
     connectors: [SLACK, GITHUB],
     integrations: [
       { connector: SLACK, required: true },
@@ -882,6 +902,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/pr-review.png"],
     connectors: [SLACK, GITHUB],
     integrations: [
       { connector: GITHUB, required: true },
@@ -910,6 +931,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/api-performance.png"],
     connectors: [SLACK, AXIOM, GITHUB],
     integrations: [
       { connector: AXIOM, required: true },
@@ -942,6 +964,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/marketing-analytics.png"],
     connectors: [SLACK, PLAUSIBLE, NOTION],
     integrations: [
       { connector: PLAUSIBLE, required: true },
@@ -974,6 +997,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/production-db-query.png"],
     connectors: [SLACK, VM0],
     integrations: [
       { connector: VM0, required: true },
@@ -1002,6 +1026,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["compliance", "engineering"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/security-compliance.png"],
     connectors: [SLACK, GITHUB, NOTION],
     integrations: [
       { connector: GITHUB, required: true },
@@ -1034,6 +1059,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["everyone"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/daily-email-triage.png"],
     connectors: [GMAIL, SLACK],
     integrations: [
       { connector: GMAIL, required: true },
@@ -1062,6 +1088,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/auto-test-coverage.png"],
     connectors: [GITHUB, LINEAR, SLACK],
     integrations: [
       { connector: GITHUB, required: true },
@@ -1091,6 +1118,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["product", "engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/daily-user-analysis.png"],
     connectors: [SLACK, VM0],
     integrations: [
       { connector: VM0, required: true },
@@ -1123,6 +1151,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["everyone"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/evening-brief.png"],
     connectors: [SLACK, GITHUB],
     integrations: [
       { connector: SLACK, required: true },
@@ -1155,6 +1184,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/cost-optimizer.png"],
     connectors: [SLACK, VM0],
     integrations: [
       { connector: VM0, required: true },
@@ -1187,6 +1217,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/merge-queue-monitor.png"],
     connectors: [GITHUB, SLACK],
     integrations: [
       { connector: GITHUB, required: true },
@@ -1215,6 +1246,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["product"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/investor-board-updates.png"],
     connectors: [LINEAR, GITHUB, PLAUSIBLE, GMAIL, NOTION],
     integrations: [
       { connector: LINEAR, required: true },
@@ -1250,6 +1282,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["sales"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/lead-followups.png"],
     connectors: [GMAIL, NOTION],
     integrations: [
       { connector: GMAIL, required: true },
@@ -1278,6 +1311,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["product", "engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/release-notes-generator.png"],
     connectors: [GITHUB, SLACK],
     integrations: [
       { connector: GITHUB, required: true },
@@ -1310,6 +1344,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["everyone"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/meeting-action-items.png"],
     connectors: [GOOGLE_CALENDAR, SLACK, NOTION],
     integrations: [
       { connector: GOOGLE_CALENDAR, required: true },
@@ -1339,6 +1374,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/promo-video-from-recordings.png"],
     connectors: [SLACK, GOOGLE_DRIVE, NOTION],
     integrations: [
       { connector: SLACK, required: true },
@@ -1372,6 +1408,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["everyone"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/cross-tool-context.png"],
     connectors: [SLACK, NOTION, LINEAR, GITHUB],
     integrations: [
       { connector: SLACK, required: true },
@@ -1406,6 +1443,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/voice-driven-agent.png"],
     connectors: [SLACK, ANTHROPIC_MANAGED_AGENTS, GITHUB],
     integrations: [
       { connector: SLACK, required: true },
@@ -1439,6 +1477,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["support", "engineering"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/developer-support-triage.png"],
     connectors: [SLACK, GITHUB, GMAIL],
     integrations: [
       { connector: GITHUB, required: true },
@@ -1468,6 +1507,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["everyone"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/morning-brief.png"],
     connectors: [GOOGLE_CALENDAR, LINEAR, SLACK, X_TWITTER, GITHUB],
     integrations: [
       { connector: GOOGLE_CALENDAR, required: true },
@@ -1503,6 +1543,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["sales", "everyone"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/gmail-poll-dm.png"],
     connectors: [GMAIL, SLACK],
     integrations: [
       { connector: GMAIL, required: true },
@@ -1531,6 +1572,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["engineering"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/release-readiness-check.png"],
     connectors: [GITHUB, SLACK],
     integrations: [
       { connector: GITHUB, required: true },
@@ -1559,6 +1601,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["support", "marketing"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/docs-auto-update.png"],
     connectors: [SLACK, GITHUB, NOTION],
     integrations: [
       { connector: SLACK, required: true },
@@ -1588,6 +1631,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["compliance"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/control-verification.png"],
     connectors: [SLACK, GITHUB, NOTION],
     integrations: [
       { connector: GITHUB, required: true },
@@ -1621,6 +1665,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/brief-to-draft-content.png"],
     connectors: [SLACK, STRAPI, NOTION],
     integrations: [
       { connector: SLACK, required: true },
@@ -1654,6 +1699,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "instant",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/cover-art-generation.png"],
     connectors: [SLACK, FIGMA, NOTION],
     integrations: [
       { connector: SLACK, required: true },
@@ -1687,6 +1733,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/content-experiment-engine.png"],
     connectors: [X_TWITTER, NOTION, SLACK],
     integrations: [
       { connector: X_TWITTER, required: true },
@@ -1720,6 +1767,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/agent-video-production.png"],
     connectors: [SLACK, ANTHROPIC_MANAGED_AGENTS, NOTION],
     integrations: [
       { connector: SLACK, required: true },
@@ -1753,6 +1801,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/seo-blog-writing.png"],
     connectors: [AHREFS, STRAPI, FAL_AI],
     integrations: [
       { connector: AHREFS, required: true },
@@ -1786,6 +1835,7 @@ export const USE_CASES: UseCase[] = [
     roles: ["sales"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
+    screenshots: ["/assets/use-cases/cold-outreach-pipeline.png"],
     connectors: [APOLLO, INSTANTLY, SLACK],
     integrations: [
       { connector: APOLLO, required: true },
