@@ -5311,6 +5311,87 @@ mod tests {
         shutdown(&env, run_handle).await;
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let park_entered = Arc::new(tokio::sync::Notify::new());
+        let park_release = Arc::new(tokio::sync::Notify::new());
+        let destroy_entered = Arc::new(tokio::sync::Notify::new());
+        let destroy_release = Arc::new(tokio::sync::Notify::new());
+        overrides.set_park_gate(Arc::clone(&park_entered), Arc::clone(&park_release));
+        overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
+
+        let park_entered_wait = park_entered.notified();
+        tokio::pin!(park_entered_wait);
+        park_entered_wait.as_mut().enable();
+        let destroy_entered_wait = destroy_entered.notified();
+        tokio::pin!(destroy_entered_wait);
+        destroy_entered_wait.as_mut().enable();
+
+        let counter = Arc::clone(&overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-race-rejected")),
+        );
+
+        tokio::time::timeout(Duration::from_secs(5), park_entered_wait)
+            .await
+            .expect("sandbox park should start");
+        assert_eq!(counter.park_call_count(), 1);
+        assert_eq!(env.parking_gate.state(), ParkingState::Open);
+
+        env.drain();
+        assert_eq!(env.parking_gate.state(), ParkingState::SoftDraining);
+
+        park_release.notify_one();
+        tokio::time::timeout(Duration::from_secs(5), destroy_entered_wait)
+            .await
+            .expect("rejected parked sandbox should be destroyed");
+        assert_eq!(
+            counter.destroy_call_count(),
+            1,
+            "rejected VM should be sent to destroy exactly once"
+        );
+        assert_eq!(
+            budget.allocated().2,
+            1,
+            "rejected VM must retain budget while destroy is in-flight"
+        );
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            0,
+            "closed gate must reject the candidate instead of parking it"
+        );
+        {
+            let completions = env.handle.completions.lock().unwrap();
+            assert!(
+                !completions.iter().any(|c| c.run_id == run_id),
+                "provider.complete must wait until rejected VM destroy finishes"
+            );
+        }
+
+        destroy_release.notify_one();
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete after destroy finishes");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        assert_eq!(idle_pool.lock().await.len(), 0);
+
+        shutdown(&env, run_handle).await;
+    }
+
     /// When the runner takes a sandbox out of the idle pool for reuse and
     /// `Sandbox::unpark()` returns an error, the idle entry is destroyed
     /// and the runner falls through to a fresh sandbox create.

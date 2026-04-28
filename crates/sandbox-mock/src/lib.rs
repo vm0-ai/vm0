@@ -7,8 +7,8 @@
 //!
 //! For advanced control, create [`MockSandboxOverrides`] and pass it via
 //! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
-//! results, custom `wait_exit` exit codes, and blocking gates for
-//! cancellation testing.
+//! results, custom `wait_exit` exit codes, and blocking gates for lifecycle
+//! and cancellation testing.
 //!
 //! ```toml
 //! [dev-dependencies]
@@ -61,6 +61,12 @@ enum LifecycleBehavior {
     Panic(String),
 }
 
+#[derive(Clone)]
+struct BlockingGate {
+    entered: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+}
+
 /// Shared behavior overrides propagated from runtime → factory → sandbox.
 ///
 /// Tests create this via [`MockSandboxRuntime::with_overrides`] so every
@@ -88,9 +94,14 @@ pub struct MockSandboxOverrides {
     /// FIFO queue of park results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     park_behaviors: Mutex<VecDeque<LifecycleBehavior>>,
+    /// When set, `park` notifies `entered` and then blocks until `release`.
+    park_gate: Mutex<Option<BlockingGate>>,
     /// FIFO queue of unpark results consumed by every sandbox built with
     /// these overrides. Empty queue → default Ok(()).
     unpark_behaviors: Mutex<VecDeque<LifecycleBehavior>>,
+    /// When set, factory `destroy` notifies `entered` and then blocks until
+    /// `release`.
+    destroy_gate: Mutex<Option<BlockingGate>>,
     /// Recorded spawn_watch output modes across all sandboxes built from
     /// this override set.
     spawn_watch_calls: Mutex<Vec<SpawnWatchCall>>,
@@ -98,6 +109,9 @@ pub struct MockSandboxOverrides {
     park_calls: Mutex<u32>,
     /// Total `unpark()` calls across all sandboxes built from this override set.
     unpark_calls: Mutex<u32>,
+    /// Total factory `destroy()` calls across all factories built from this
+    /// override set.
+    destroy_calls: Mutex<u32>,
 }
 
 impl MockSandboxOverrides {
@@ -110,10 +124,13 @@ impl MockSandboxOverrides {
             start_results: Mutex::new(VecDeque::new()),
             stop_behaviors: Mutex::new(VecDeque::new()),
             park_behaviors: Mutex::new(VecDeque::new()),
+            park_gate: Mutex::new(None),
             unpark_behaviors: Mutex::new(VecDeque::new()),
+            destroy_gate: Mutex::new(None),
             spawn_watch_calls: Mutex::new(Vec::new()),
             park_calls: Mutex::new(0),
             unpark_calls: Mutex::new(0),
+            destroy_calls: Mutex::new(0),
         }
     }
 
@@ -186,6 +203,16 @@ impl MockSandboxOverrides {
             .push_back(LifecycleBehavior::Panic(message.into()));
     }
 
+    /// Block every `park()` call after recording entry until `release` is
+    /// notified. Used by tests to open deterministic race windows.
+    pub fn set_park_gate(
+        &self,
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    ) {
+        *self.park_gate.lock_ignoring_poison() = Some(BlockingGate { entered, release });
+    }
+
     /// Queue an `unpark()` result applied to the next factory-created sandbox.
     /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
     pub fn push_unpark_result(&self, result: Result<()>) {
@@ -202,6 +229,16 @@ impl MockSandboxOverrides {
             .push_back(LifecycleBehavior::Panic(message.into()));
     }
 
+    /// Block every factory `destroy()` call after recording entry until
+    /// `release` is notified.
+    pub fn set_destroy_gate(
+        &self,
+        entered: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    ) {
+        *self.destroy_gate.lock_ignoring_poison() = Some(BlockingGate { entered, release });
+    }
+
     /// Total `park()` calls across all sandboxes built from this override set.
     pub fn park_call_count(&self) -> u32 {
         *self.park_calls.lock_ignoring_poison()
@@ -212,10 +249,24 @@ impl MockSandboxOverrides {
         *self.unpark_calls.lock_ignoring_poison()
     }
 
+    /// Total factory `destroy()` calls across all factories built from this
+    /// override set.
+    pub fn destroy_call_count(&self) -> u32 {
+        *self.destroy_calls.lock_ignoring_poison()
+    }
+
     /// Recorded spawn_watch calls across all sandboxes built from this
     /// override set, in call order.
     pub fn spawn_watch_calls(&self) -> Vec<SpawnWatchCall> {
         self.spawn_watch_calls.lock_ignoring_poison().clone()
+    }
+}
+
+async fn wait_blocking_gate(gate: &Mutex<Option<BlockingGate>>) {
+    let gate = gate.lock_ignoring_poison().clone();
+    if let Some(gate) = gate {
+        gate.entered.notify_waiters();
+        gate.release.notified().await;
     }
 }
 
@@ -343,6 +394,7 @@ impl Sandbox for MockSandbox {
             return Ok(());
         };
         *o.park_calls.lock_ignoring_poison() += 1;
+        wait_blocking_gate(&o.park_gate).await;
         match o.park_behaviors.lock_ignoring_poison().pop_front() {
             Some(LifecycleBehavior::Result(result)) => result,
             #[allow(clippy::panic)]
@@ -527,7 +579,12 @@ impl SandboxFactory for MockSandboxFactory {
         Ok(Box::new(sandbox))
     }
 
-    async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {}
+    async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {
+        if let Some(o) = &self.overrides {
+            *o.destroy_calls.lock_ignoring_poison() += 1;
+            wait_blocking_gate(&o.destroy_gate).await;
+        }
+    }
 
     async fn shutdown(&mut self) {}
 }
