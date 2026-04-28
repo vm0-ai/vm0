@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.12...sandbox-fc-v0.26.13) (2026-04-28)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize snapshot error adapter ([#11267](https://github.com/vm0-ai/vm0/issues/11267)) ([c62afd1](https://github.com/vm0-ai/vm0/commit/c62afd1ef028c3e56434469b29f4306dcd03497e))
+
 ## [0.26.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.11...sandbox-fc-v0.26.12) (2026-04-27)
 
 ## [0.26.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.10...sandbox-fc-v0.26.11) (2026-04-27)
