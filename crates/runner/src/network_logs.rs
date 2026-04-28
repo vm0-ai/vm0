@@ -87,6 +87,9 @@ pub async fn upload_network_logs(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use httpmock::prelude::*;
     use serde_json::json;
 
@@ -285,14 +288,29 @@ mod tests {
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let accept_attempts = attempts.clone();
+        let stop_accepting = Arc::new(tokio::sync::Notify::new());
+        let stop_signal = stop_accepting.clone();
         let accept_once = tokio::spawn(async move {
-            let _ = listener.accept().await;
+            loop {
+                tokio::select! {
+                    accepted = listener.accept() => {
+                        if accepted.is_ok() {
+                            accept_attempts.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                    () = stop_signal.notified() => break,
+                }
+            }
         });
 
         let http = HttpClient::new(api_url).unwrap();
         upload_network_logs(&http, RunId::nil(), SANDBOX_TOKEN, &path).await;
 
+        stop_accepting.notify_one();
         accept_once.await.unwrap();
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
         assert!(path.exists());
     }
 }
