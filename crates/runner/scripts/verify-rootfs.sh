@@ -125,6 +125,13 @@ else
   errors+=("gh CLI not found at /usr/bin/gh")
 fi
 
+# npm-global bins land in /usr/bin (NodeSource Node 24 sets npm prefix to /usr).
+if [[ -f "${MOUNT_DIR}/usr/bin/codex" ]]; then
+  echo "  codex CLI: found"
+else
+  errors+=("codex CLI not found at /usr/bin/codex")
+fi
+
 # Check language runtimes
 # Some binaries use update-alternatives symlinks or versioned names (e.g.
 # php8.3 instead of php, javac under /usr/lib/jvm/). Use glob patterns
