@@ -763,6 +763,19 @@ class TestExtractUsageFromJson:
         assert "web_search_requests" not in result
         assert result["tokens.input"] == 10
 
+    def test_ignores_invalid_usage_quantities(self):
+        body = (
+            b'{"model":"claude-sonnet-4-6","usage":'
+            b'{"input_tokens":-1,"output_tokens":5,'
+            b'"cache_read_input_tokens":"50",'
+            b'"cache_creation_input_tokens":true}}'
+        )
+        result = extract_usage_from_json(body, None)
+        assert result == {
+            "model": "claude-sonnet-4-6",
+            "tokens.output": 5,
+        }
+
     def test_handles_large_gzipped_body(self, headers):
         """Body that decompresses past the legacy 64 KB cap should still parse.
 
