@@ -42,7 +42,11 @@ impl Route {
         Self { method, path }
     }
 
-    /// Build an absolute URL for this route from a base API URL.
+    /// Build an absolute URL for a static route from a base API URL.
+    ///
+    /// This appends the generated path verbatim. For routes with path params,
+    /// use the generated `Params` and `route(...)` helpers, then call
+    /// [`ResolvedRoute::url`] on the resolved route.
     #[must_use]
     pub fn url(self, base_url: &str) -> String {
         url_from_base_and_path(base_url, self.path)
