@@ -14,16 +14,18 @@ import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 
 /**
- * Proxy-reported per-API-call token usage for credits billing.
- * Each API call observed by mitmproxy creates its own row, keyed by
- * (runId, messageId). Processed later by the deduction processor to
- * charge credits.
+ * Legacy LLM token usage rows for credits billing.
+ *
+ * New proxy-reported model-provider usage is written to usage_event. This
+ * table remains so processOrgCredits() can drain historical and pending rows
+ * during the migration window.
  *
  * Historical rows written by the events webhook prior to the billing
  * source migration have `result_uuid` / `cost_usd` populated and
- * `message_id` null. Post-migration proxy rows have `message_id`
- * populated and `result_uuid` / `cost_usd` null. Both shapes are
- * valid and aggregated identically by downstream consumers.
+ * `message_id` null. Later proxy rows written before the usage_event
+ * migration have `message_id` populated and `result_uuid` / `cost_usd`
+ * null. Both shapes are valid and aggregated identically by downstream
+ * consumers.
  */
 export const creditUsage = pgTable(
   "credit_usage",
