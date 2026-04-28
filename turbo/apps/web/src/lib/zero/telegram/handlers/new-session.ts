@@ -10,6 +10,7 @@ import {
   buildTelegramConnectReplyMarkup,
   formatTelegramCommandSuccess,
   formatTelegramConnectPrompt,
+  getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
@@ -54,12 +55,15 @@ export async function handleNewSessionCommand(
 
   const userLink = await resolveUserLink(installationId, fromUserId);
   if (!userLink) {
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
     const connectUrl = buildConnectUrl(
       installation.telegramBotId,
       fromUserId,
       botToken,
     );
-    await sendMessage(client, chatId, formatTelegramConnectPrompt(), {
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
       replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
     });
     return;

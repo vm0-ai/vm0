@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { TelegramBotStatus } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -53,6 +53,7 @@ function telegramStatus(
   return {
     id,
     username: `${id}_bot`,
+    avatarUrl: null,
     agent: { id: ZERO_AGENT_ID, name: "Zero" },
     isOwner: true,
     isConnected: false,
@@ -83,10 +84,18 @@ describe("telegram settings page", () => {
   });
 
   it("lists multiple Telegram bots", async () => {
+    const alphaAvatarPath = `/${[
+      "api",
+      "integrations",
+      "telegram",
+      "alpha",
+      "avatar",
+    ].join("/")}`;
     setMockTelegramIntegration({
       statuses: [
         telegramStatus("alpha", {
           username: "alpha_bot",
+          avatarUrl: alphaAvatarPath,
           isConnected: true,
         }),
         telegramStatus("beta", {
@@ -100,25 +109,74 @@ describe("telegram settings page", () => {
     await waitFor(() => {
       expect(screen.getByText("@alpha_bot")).toBeInTheDocument();
       expect(screen.getByText("@beta_bot")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("telegram-bot-avatar-fallback-beta"),
+      ).toBeInTheDocument();
       expect(screen.getByTestId("telegram-bot-count")).toHaveTextContent(
-        "2 bots",
+        "This organization has 2 Telegram bots",
       );
     });
+
+    const alphaAvatar = screen.getByTestId("telegram-bot-avatar-alpha");
+    expect(alphaAvatar).toHaveAttribute(
+      "src",
+      `http://localhost:3000${alphaAvatarPath}`,
+    );
+    fireEvent.error(alphaAvatar);
+    expect(
+      screen.getByTestId("telegram-bot-avatar-fallback-alpha"),
+    ).toBeInTheDocument();
   });
 
   it("shows the empty state and redirects to connect after adding a Telegram bot", async () => {
+    const writeText = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+
     setMockTelegramIntegration({ statuses: [] });
     setupTelegramPage();
 
     await waitFor(() => {
       expect(screen.getByText("No Telegram bots yet")).toBeInTheDocument();
+      expect(screen.getByTestId("telegram-bot-count")).toHaveTextContent(
+        "This organization has no Telegram bots",
+      );
     });
+
+    click(screen.getByText("Add bot"));
+    const dialog = await screen.findByRole("dialog");
+
+    const botFatherLink = within(dialog).getByText("@BotFather");
+    expect(botFatherLink).toHaveAttribute("href", "https://t.me/BotFather");
+    expect(within(dialog).getByText("/newbot")).toBeInTheDocument();
+    expect(within(dialog).getByText("/setprivacy")).toBeInTheDocument();
+    expect(within(dialog).getByText("/setdomain")).toBeInTheDocument();
+    expect(within(dialog).getByText(location.hostname)).toBeInTheDocument();
+
+    click(within(dialog).getByLabelText("Copy /newbot"));
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText("Copy /newbot")).toHaveTextContent(
+        "copied!",
+      );
+    });
+    click(within(dialog).getByLabelText("Copy /setprivacy"));
+    click(within(dialog).getByLabelText("Copy /setdomain"));
+    click(within(dialog).getByLabelText(`Copy ${location.hostname}`));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("/newbot");
+      expect(writeText).toHaveBeenCalledWith("/setprivacy");
+      expect(writeText).toHaveBeenCalledWith("/setdomain");
+      expect(writeText).toHaveBeenCalledWith(location.hostname);
+      expect(writeText).not.toHaveBeenCalledWith("@BotFather");
+    });
+
     await waitFor(() => {
       expect(screen.getByLabelText("Default agent")).toHaveTextContent("Zero");
     });
 
     await fill(screen.getByLabelText("Bot token"), "123:token");
-    click(screen.getByText("Add bot"));
+    click(within(dialog).getByText("Add bot"));
 
     await waitFor(() => {
       expect(

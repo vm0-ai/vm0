@@ -32,6 +32,7 @@ export async function verifyDeviceAction(
     .where(
       and(
         eq(deviceCodes.code, normalizedCode),
+        eq(deviceCodes.purpose, "cli"),
         eq(deviceCodes.status, "pending"),
       ),
     )

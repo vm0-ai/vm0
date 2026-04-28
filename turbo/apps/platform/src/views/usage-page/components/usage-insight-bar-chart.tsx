@@ -617,7 +617,7 @@ export function UsageInsightBarChart({
         </div>
       )}
 
-      {stackOrder.length > 1 && total > 0 && (
+      {stackOrder.length > 0 && total > 0 && (
         <BreakdownList
           stackOrder={stackOrder}
           keyTotals={keyTotals}

@@ -16,6 +16,7 @@ const telegramTokenStatusSchema = z.enum(["valid", "invalid", "unknown"]);
 const telegramBotSchema = z.object({
   id: z.string(),
   username: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
   agent: z.object({ id: z.string(), name: z.string() }).nullable(),
   isOwner: z.boolean(),
   isConnected: z.boolean(),

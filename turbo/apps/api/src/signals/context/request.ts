@@ -1,9 +1,10 @@
 import type { AppRoute } from "@ts-rest/core";
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Command, type Computed } from "ccstate";
 import type { z } from "zod";
 
-import { badRequest } from "../../lib/error";
-import { rawPathParams$, rawQuery$, route$ } from "./hono";
+import { badRequest, badRequestMessage } from "../../lib/error";
+import { rawPathParams$, rawQuery$, request$, route$ } from "./hono";
+import { safeJsonParse } from "../utils";
 
 interface ZodLikeIssue {
   readonly path: readonly PropertyKey[];
@@ -101,6 +102,11 @@ const validatedQuery$ = computed((get): unknown => {
 
 type RouteWithPathParams<T> = AppRoute & { readonly pathParams: z.ZodType<T> };
 type RouteWithQuery<T> = AppRoute & { readonly query: z.ZodType<T> };
+type RouteWithBody<T> = AppRoute & { readonly body: z.ZodType<T> };
+
+type BodyResult<T> =
+  | { readonly ok: true; readonly data: T }
+  | { readonly ok: false; readonly response: BadRequestResponse };
 
 export function pathParamsOf<T>(_route: RouteWithPathParams<T>): Computed<T> {
   return validatedPathParams$ as Computed<T>;
@@ -108,4 +114,33 @@ export function pathParamsOf<T>(_route: RouteWithPathParams<T>): Computed<T> {
 
 export function queryOf<T>(_route: RouteWithQuery<T>): Computed<T> {
   return validatedQuery$ as Computed<T>;
+}
+
+export function bodyResultOf<T>(
+  route: RouteWithBody<T>,
+): Command<Promise<BodyResult<T>>, [AbortSignal]> {
+  return command(
+    async ({ get }, signal: AbortSignal): Promise<BodyResult<T>> => {
+      const text = await get(request$).text();
+      signal.throwIfAborted();
+
+      const parsed = text.length === 0 ? {} : safeJsonParse(text);
+      if (parsed === undefined) {
+        return {
+          ok: false,
+          response: badRequestMessage("Invalid JSON in request body"),
+        };
+      }
+
+      const result = route.body.safeParse(parsed);
+      if (!result.success) {
+        return {
+          ok: false,
+          response: badRequest(result.error.issues[0] ?? FALLBACK_ISSUE),
+        };
+      }
+
+      return { ok: true, data: result.data };
+    },
+  );
 }

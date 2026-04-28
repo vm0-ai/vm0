@@ -464,12 +464,21 @@ export function getAgentDisplayLabel(agent: {
   return name || "zero";
 }
 
+export async function getWorkspaceAgentDisplayLabel(
+  composeId: string,
+): Promise<string> {
+  const agent = await getWorkspaceAgent(composeId);
+  return agent ? getAgentDisplayLabel(agent) : "Zero";
+}
+
 function normalizedBotUsername(botUsername: string | null | undefined): string {
   return botUsername?.replace(/^@/, "").trim() ?? "";
 }
 
-export function formatTelegramConnectPrompt(): string {
-  return "To use Zero in Telegram, please connect your account first.";
+export function formatTelegramConnectPrompt(
+  agentName: string = "Zero",
+): string {
+  return `To use ${escapeHtml(agentName)} in Telegram, please connect your account first.`;
 }
 
 export function buildTelegramConnectReplyMarkup(
@@ -482,13 +491,14 @@ export function buildTelegramConnectReplyMarkup(
 
 export function formatTelegramPrivateConnectPrompt(
   botUsername: string | null | undefined,
+  agentName: string = "Zero",
 ): string {
   const username = normalizedBotUsername(botUsername);
   if (!username) {
-    return "To use Zero in Telegram, please connect your account first.\n\nSend me /connect in a private message.";
+    return `${formatTelegramConnectPrompt(agentName)}\n\nSend me /connect in a private message.`;
   }
 
-  return "To use Zero in Telegram, please connect your account first.";
+  return formatTelegramConnectPrompt(agentName);
 }
 
 export function buildTelegramPrivateConnectReplyMarkup(
@@ -506,12 +516,13 @@ export function buildTelegramPrivateConnectReplyMarkup(
 
 export function formatTelegramAlreadyConnectedMessage(
   botUsername: string | null | undefined,
+  agentName: string = "Zero",
 ): string {
   const username = normalizedBotUsername(botUsername);
   const target = username
     ? `Mention @${username} in a group or send a DM`
     : "Send a DM";
-  return `You are already connected.\n${target} to start chatting with your agent.`;
+  return `You are already connected.\n${target} to start chatting with ${agentName}.`;
 }
 
 export function formatTelegramCommandSuccess(message: string): string {
@@ -524,22 +535,24 @@ export function formatTelegramCommandError(message: string): string {
 
 export function formatTelegramHelpMessage(
   botUsername: string | null | undefined,
+  agentName: string = "Zero",
 ): string {
   const username = normalizedBotUsername(botUsername);
+  const label = escapeHtml(agentName);
   const groupUsage = username
-    ? `• <code>@${escapeHtml(username)} &lt;message&gt;</code> - Send a message to your agent\n`
+    ? `• <code>@${escapeHtml(username)} &lt;message&gt;</code> - Send a message to ${label}\n`
     : "";
 
   return [
-    "<b>Zero Telegram Bot Help</b>",
+    `<b>${label} Telegram Bot Help</b>`,
     "",
     "<b>Commands</b>",
-    "• <code>/connect</code> - Connect to Zero",
+    `• <code>/connect</code> - Connect to ${label}`,
     "• <code>/new_session</code> - Start a new conversation",
-    "• <code>/disconnect</code> - Disconnect from Zero",
+    `• <code>/disconnect</code> - Disconnect from ${label}`,
     "",
     "<b>Usage</b>",
-    `${groupUsage}• Send a DM to chat with your agent`,
+    `${groupUsage}• Send a DM to chat with ${label}`,
   ].join("\n");
 }
 

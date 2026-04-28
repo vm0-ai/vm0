@@ -109,6 +109,11 @@ describe("/api/integrations/telegram/[botId]", () => {
         expect.objectContaining({
           id: botId,
           username: `bot_${botId}`,
+          avatarUrl: expect.stringContaining(
+            `http://localhost:3000/api/integrations/telegram/${encodeURIComponent(
+              botId,
+            )}/avatar?exp=`,
+          ),
           isOwner: true,
           isConnected: false,
           domainConfigured: false,

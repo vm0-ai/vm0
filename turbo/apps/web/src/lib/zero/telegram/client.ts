@@ -304,6 +304,19 @@ interface TelegramFile {
   file_path?: string;
 }
 
+export interface TelegramUserProfilePhoto {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
+interface TelegramUserProfilePhotos {
+  total_count: number;
+  photos: TelegramUserProfilePhoto[][];
+}
+
 /**
  * Get file info and download path from Telegram.
  * The returned file_path can be used to download via:
@@ -316,6 +329,24 @@ export async function getFile(
   return callTelegramApi<TelegramFile>(client.token, "getFile", {
     file_id: fileId,
   });
+}
+
+/**
+ * Get profile photos for a Telegram user or bot.
+ */
+export async function getUserProfilePhotos(
+  client: TelegramClient,
+  userId: string | number,
+  limit = 1,
+): Promise<TelegramUserProfilePhotos> {
+  return callTelegramApi<TelegramUserProfilePhotos>(
+    client.token,
+    "getUserProfilePhotos",
+    {
+      user_id: userId,
+      limit,
+    },
+  );
 }
 
 /**

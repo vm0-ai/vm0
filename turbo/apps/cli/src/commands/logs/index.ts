@@ -207,8 +207,12 @@ function formatNetworkOther(entry: NetworkLogEntry): string {
   const host = entry.host || "unknown";
   const port = entry.port || 0;
   const size = entry.request_size ? ` ${formatBytes(entry.request_size)}` : "";
+  const dnsResult =
+    entry.type === "dns" && entry.dns_result
+      ? ` ${chalk.gray("->")} ${chalk.dim(entry.dns_result)}`
+      : "";
 
-  return `[${entry.timestamp}] ${chalk.magenta(proto.padEnd(5))}${size} ${chalk.dim(`${host}:${port}`)}`;
+  return `[${entry.timestamp}] ${chalk.magenta(proto.padEnd(5))}${size} ${chalk.dim(`${host}:${port}`)}${dnsResult}`;
 }
 
 /**

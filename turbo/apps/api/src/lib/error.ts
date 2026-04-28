@@ -18,6 +18,10 @@ export function notFound(message: string) {
   return httpError(404, "NOT_FOUND", message);
 }
 
+export function badRequestMessage(message: string) {
+  return httpError(400, "BAD_REQUEST", message);
+}
+
 interface ZodLikeIssue {
   readonly path: readonly PropertyKey[];
   readonly message: string;

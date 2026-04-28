@@ -1,5 +1,39 @@
 # Changelog
 
+## [12.310.0](https://github.com/vm0-ai/vm0/compare/web-v12.309.0...web-v12.310.0) (2026-04-28)
+
+
+### Features
+
+* add bb0 device onboarding api ([#11340](https://github.com/vm0-ai/vm0/issues/11340)) ([0fc8ebe](https://github.com/vm0-ai/vm0/commit/0fc8ebedfa81ec7cb5b64707635654231604845d))
+* add telegram bot setup dialog ([#11346](https://github.com/vm0-ai/vm0/issues/11346)) ([66286c7](https://github.com/vm0-ai/vm0/commit/66286c793bf6b104a23ee7839214bb4b119d635f))
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
+## [12.309.0](https://github.com/vm0-ai/vm0/compare/web-v12.308.0...web-v12.309.0) (2026-04-28)
+
+
+### Features
+
+* **api:** per-route opentelemetry traces routed to axiom ([#11339](https://github.com/vm0-ai/vm0/issues/11339)) ([c4d83ad](https://github.com/vm0-ai/vm0/commit/c4d83adcf10248b765a1fdcb1711877c1b65f391))
+
+
+### Bug Fixes
+
+* refresh artifacts from realtime updates ([#11336](https://github.com/vm0-ai/vm0/issues/11336)) ([e513f7e](https://github.com/vm0-ai/vm0/commit/e513f7ee95c35329750dd7767b4b7ea35d1839fd))
+
+## [12.308.0](https://github.com/vm0-ai/vm0/compare/web-v12.307.0...web-v12.308.0) (2026-04-28)
+
+
+### Features
+
+* add diagnostic fields to auth shadow check mismatch warn log ([#11334](https://github.com/vm0-ai/vm0/issues/11334)) ([03956e8](https://github.com/vm0-ai/vm0/commit/03956e825d6c2fdb81be7a7dd8136c2e54cbf23a))
+* show schedule description on usage insights widget ([#11305](https://github.com/vm0-ai/vm0/issues/11305)) ([87e765c](https://github.com/vm0-ai/vm0/commit/87e765cb8a0fc02a719bcc6995d987eb7b92ebc8))
+
+
+### Bug Fixes
+
+* **seo:** return 410 Gone for retired /docs/* paths ([#11297](https://github.com/vm0-ai/vm0/issues/11297)) ([72eaab0](https://github.com/vm0-ai/vm0/commit/72eaab097eeb8ce30c3eb33720b4c47c62f7fd50))
+
 ## [12.307.0](https://github.com/vm0-ai/vm0/compare/web-v12.306.0...web-v12.307.0) (2026-04-28)
 
 

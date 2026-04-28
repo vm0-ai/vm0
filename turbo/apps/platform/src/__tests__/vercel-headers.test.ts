@@ -11,8 +11,15 @@ interface VercelHeaderEntry {
   headers: HeaderPair[];
 }
 
+interface VercelRewriteEntry {
+  source: string;
+  destination: string;
+}
+
 const entries =
   (vercelConfig as { headers?: VercelHeaderEntry[] }).headers ?? [];
+const rewrites =
+  (vercelConfig as { rewrites?: VercelRewriteEntry[] }).rewrites ?? [];
 
 function findHeaderEntry(source: string): VercelHeaderEntry | undefined {
   return entries.find((e) => {
@@ -63,5 +70,29 @@ describe("app vercel.json headers", () => {
     expect(assetIndex).toBeGreaterThanOrEqual(0);
     expect(catchAllIndex).toBeGreaterThanOrEqual(0);
     expect(assetIndex).toBeLessThan(catchAllIndex);
+  });
+});
+
+describe("app vercel.json rewrites", () => {
+  it("should exclude static asset and file-extension paths from SPA fallback", () => {
+    const spaFallback = rewrites.find((entry) => {
+      return entry.destination === "/index.html";
+    });
+
+    expect(spaFallback).toBeDefined();
+    expect(spaFallback!.source).toBe(String.raw`/((?!assets/|.*\..*).*)`);
+  });
+
+  it("should place ingest proxy before SPA fallback so analytics requests are not captured", () => {
+    const ingestIndex = rewrites.findIndex((entry) => {
+      return entry.source === "/ingest/(.*)";
+    });
+    const spaFallbackIndex = rewrites.findIndex((entry) => {
+      return entry.destination === "/index.html";
+    });
+
+    expect(ingestIndex).toBeGreaterThanOrEqual(0);
+    expect(spaFallbackIndex).toBeGreaterThanOrEqual(0);
+    expect(ingestIndex).toBeLessThan(spaFallbackIndex);
   });
 });

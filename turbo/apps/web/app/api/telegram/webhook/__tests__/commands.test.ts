@@ -138,7 +138,9 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("Zero Telegram Bot Help");
+      expect(sendMsg.calls[0]?.text).toContain(
+        `${TEST_AGENT_DISPLAY_NAME} Telegram Bot Help`,
+      );
     });
 
     it("should ignore command targeted at a different bot", async () => {
@@ -186,7 +188,9 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("Zero Telegram Bot Help");
+      expect(sendMsg.calls[0]?.text).toContain(
+        `${TEST_AGENT_DISPLAY_NAME} Telegram Bot Help`,
+      );
     });
 
     it("should handle case-insensitive @botUsername matching", async () => {
@@ -210,7 +214,9 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("Zero Telegram Bot Help");
+      expect(sendMsg.calls[0]?.text).toContain(
+        `${TEST_AGENT_DISPLAY_NAME} Telegram Bot Help`,
+      );
     });
   });
 
@@ -240,6 +246,7 @@ describe("Telegram bot commands", () => {
       const text = sendMsg.calls[0]?.text ?? "";
       // Should redirect to Telegram DM instead of exposing the signed connect URL
       expect(text).toContain("connect your account");
+      expect(text).toContain(TEST_AGENT_DISPLAY_NAME);
       expect(text).not.toContain("?start=connect");
       expect(text).not.toContain("<a href=");
       expect(sendMsg.calls[0]?.reply_markup).toEqual({
@@ -276,8 +283,7 @@ describe("Telegram bot commands", () => {
       expect(sendMsg.mocked).toHaveBeenCalled();
       const text = sendMsg.calls[0]?.text ?? "";
       expect(text).toContain("already connected");
-      expect(text).toContain("start chatting with your agent");
-      expect(text).not.toContain(TEST_AGENT_DISPLAY_NAME);
+      expect(text).toContain(`start chatting with ${TEST_AGENT_DISPLAY_NAME}`);
       expect(text).not.toContain(composeName);
     });
 
@@ -303,13 +309,40 @@ describe("Telegram bot commands", () => {
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       const text = sendMsg.calls[0]?.text ?? "";
-      expect(text).toContain("To use Zero in Telegram");
+      expect(text).toContain(`To use ${TEST_AGENT_DISPLAY_NAME} in Telegram`);
       expect(text).not.toContain("/telegram/connect?bot=");
       expect(text).not.toContain("<a href=");
       const buttonUrl =
         sendMsg.calls[0]?.reply_markup?.inline_keyboard[0]?.[0]?.url ?? "";
       expect(buttonUrl).toContain("/telegram/connect?bot=");
       expect(buttonUrl).toContain("tgUser=99999");
+    });
+
+    it("should escape agent display name in connect prompts", async () => {
+      await updateAgentDisplayName(composeId, "Helper <b>& Co");
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 99999, type: "private" },
+          from: { id: 99999, username: "unknown_user" },
+          text: "/connect",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ telegramBotId: installationId }),
+      });
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      expect(sendMsg.mocked).toHaveBeenCalled();
+      const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("Helper &lt;b&gt;&amp; Co");
+      expect(text).not.toContain("Helper <b>& Co");
     });
   });
 
@@ -335,7 +368,10 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("disconnected");
+      const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("disconnected");
+      expect(text).toContain(TEST_AGENT_DISPLAY_NAME);
+      expect(text).not.toContain(composeName);
 
       // Verify user link was deleted
       const exists = await telegramUserLinkExists(
@@ -393,12 +429,12 @@ describe("Telegram bot commands", () => {
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       const text = sendMsg.calls[0]?.text ?? "";
-      expect(text).toContain("Zero Telegram Bot Help");
+      expect(text).toContain(`${TEST_AGENT_DISPLAY_NAME} Telegram Bot Help`);
       expect(text).toContain("/new_session");
       expect(text).toContain("/connect");
       expect(text).toContain("/disconnect");
-      expect(text).toContain("Connect to Zero");
-      expect(text).toContain("Disconnect from Zero");
+      expect(text).toContain(`Connect to ${TEST_AGENT_DISPLAY_NAME}`);
+      expect(text).toContain(`Disconnect from ${TEST_AGENT_DISPLAY_NAME}`);
     });
 
     it("should match Slack-style help without admin-only copy", async () => {
@@ -494,7 +530,9 @@ describe("Telegram bot commands", () => {
       await context.mocks.flushAfter();
 
       expect(sendMsg.mocked).toHaveBeenCalled();
-      expect(sendMsg.calls[0]?.text).toContain("connect your account");
+      const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("connect your account");
+      expect(text).toContain(TEST_AGENT_DISPLAY_NAME);
       const buttonUrl =
         sendMsg.calls[0]?.reply_markup?.inline_keyboard[0]?.[0]?.url ?? "";
       expect(buttonUrl).toContain("/telegram/connect?bot=");

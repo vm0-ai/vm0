@@ -113,7 +113,7 @@ const zeroAuth$ = command(
       return null;
     }
 
-    if (!options.acceptAnySandboxCapability) {
+    if (!options.acceptAnySandboxCapability && options.requiredCapability) {
       const hasCapability = zeroAuth.capabilities.some((capability) => {
         return capability === options.requiredCapability;
       });
@@ -151,6 +151,14 @@ const sandboxTokenAuth$ = command(
     options: AuthOptions,
     signal: AbortSignal,
   ): Promise<AuthContext | null> => {
+    // Zero tokens carry their own capabilities — evaluate before the
+    // sandbox capability guard so they work on routes that don't
+    // declare acceptAnySandboxCapability.
+    const zeroResult = await set(zeroAuth$, token, options, signal);
+    if (zeroResult) {
+      return zeroResult;
+    }
+
     if (!options.requiredCapability && !options.acceptAnySandboxCapability) {
       return null;
     }
@@ -160,7 +168,7 @@ const sandboxTokenAuth$ = command(
       return sandboxAuth;
     }
 
-    return await set(zeroAuth$, token, options, signal);
+    return null;
   },
 );
 

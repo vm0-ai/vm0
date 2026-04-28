@@ -168,6 +168,10 @@ export const setAblyLoop$ = command(
         channel.unsubscribe(topic, callback);
       });
       await channel.subscribe(topic, callback);
+      if (signal.aborted) {
+        channel.unsubscribe(topic, callback);
+        signal.throwIfAborted();
+      }
       signal.throwIfAborted();
       L.debug("subscribed to topic: " + topic);
 

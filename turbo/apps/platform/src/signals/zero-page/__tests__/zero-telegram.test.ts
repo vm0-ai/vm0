@@ -40,6 +40,7 @@ function telegramStatus(
   return {
     id,
     username: `${id}_bot`,
+    avatarUrl: null,
     agent: { id: "compose_1", name: "Default agent" },
     isOwner: true,
     isConnected: false,

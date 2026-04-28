@@ -827,4 +827,67 @@ describe("GET /health/auth", () => {
       expect(response.body.error.code).toBe("FORBIDDEN");
     });
   });
+
+  describe("zero token on routes without sandbox capability options", () => {
+    const noOptionContract = c.router({
+      check: {
+        method: "GET" as const,
+        path: "/__test/no-option",
+        headers: z.object({ authorization: z.string().optional() }),
+        responses: {
+          200: z.unknown(),
+          401: z.object({
+            error: z.object({ message: z.string(), code: z.string() }),
+          }),
+          403: z.object({
+            error: z.object({ message: z.string(), code: z.string() }),
+          }),
+        },
+      },
+    });
+
+    const noOptionHandler$ = computed((get) => {
+      return { status: 200 as const, body: get(authContext$) };
+    });
+
+    // authRoute with no options — matches the default route auth pattern
+    // that most routes use. Zero tokens must still authenticate here.
+    const noOptionRoute$ = authRoute({}, noOptionHandler$);
+
+    it("resolves a zero token on a route with no auth options", async () => {
+      const fixture = await seedPatFixture({ role: "admin" });
+      fixtures.push(fixture);
+      const nowSeconds = currentSecond();
+      const token = signSandboxJwtForTests({
+        scope: "zero",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        runId: "run_zero",
+        capabilities: ["file:read"],
+        iat: nowSeconds,
+        exp: nowSeconds + 60,
+      });
+
+      const client = setupApp({
+        context,
+        routes: [
+          ...ROUTES,
+          { route: noOptionContract.check, handler: noOptionRoute$ },
+        ],
+      })(noOptionContract);
+      const response = await accept(
+        client.check({ headers: { authorization: `Bearer ${token}` } }),
+        [200],
+      );
+
+      expect(response.body).toStrictEqual({
+        tokenType: "zero",
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+        orgRole: "admin",
+        runId: "run_zero",
+        capabilities: ["file:read"],
+      });
+    });
+  });
 });

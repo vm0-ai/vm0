@@ -1,3 +1,4 @@
+import { Component } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
@@ -8,6 +9,7 @@ import {
   IconLoader2,
   IconPlus,
   IconRefresh,
+  IconRobot,
 } from "@tabler/icons-react";
 import type { TelegramBot } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -19,6 +21,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@vm0/ui/components/ui/dialog";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
@@ -36,6 +39,8 @@ import {
 } from "@vm0/ui/components/ui/popover";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { apiBase$ } from "../../signals/fetch.ts";
+import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import {
   defaultAgentId$,
   defaultAgentName$,
@@ -46,6 +51,7 @@ import {
   disconnectTelegramAccount$,
   registerTelegramBot$,
   reinstallTelegramBot$,
+  setTelegramAddDialogOpen$,
   setTelegramReinstallDialogBotId$,
   setTelegramReinstallingBotId$,
   setTelegramReinstallTokenForm$,
@@ -55,6 +61,7 @@ import {
   setTelegramUninstallDialogBotId$,
   setTelegramUninstallingBotId$,
   setTelegramUnlinkingBotId$,
+  telegramAddDialogOpen$,
   telegramBotAgentForm$,
   telegramBots$,
   telegramBotTokenForm$,
@@ -77,6 +84,10 @@ interface DefaultAgentLabel {
   id: string | null;
   displayName: string | null;
 }
+
+const TELEGRAM_COMMAND_CLASS =
+  "cursor-pointer rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-accent active:bg-accent/80";
+const BOT_FATHER_HANDLE = "@BotFather";
 
 function agentLabel(
   agent: TeamComposeItem | { id: string; name: string },
@@ -140,12 +151,62 @@ function botRouteLabel(
 function TelegramSettingsSkeleton() {
   return (
     <div
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-4"
       data-testid="telegram-settings-loading"
     >
-      <Skeleton className="h-32 w-full rounded-xl" />
-      <Skeleton className="h-24 w-full rounded-xl" />
-      <Skeleton className="h-24 w-full rounded-xl" />
+      <Skeleton className="h-4 w-64 max-w-full" />
+      <div className="zero-card overflow-hidden">
+        {[0, 1, 2].map((index) => {
+          return (
+            <div key={index}>
+              <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <Skeleton className="h-10 w-10 shrink-0 rounded-full" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Skeleton className="h-4 w-32" />
+                      <Skeleton className="h-6 w-24 rounded-lg" />
+                    </div>
+                    <Skeleton className="h-4 w-40 max-w-full" />
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:w-[360px] sm:grid-cols-[1fr_auto]">
+                  <Skeleton className="h-9 w-full rounded-md" />
+                  <div className="flex items-center justify-end gap-1.5">
+                    <Skeleton className="h-9 w-20 rounded-md" />
+                    <Skeleton className="h-8 w-8 rounded-md" />
+                  </div>
+                </div>
+              </div>
+              {index < 2 ? (
+                <div className="mx-5 border-b border-border/50" />
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AddTelegramBotButtonSkeleton() {
+  return <Skeleton className="h-10 w-[105px] shrink-0 rounded-md" />;
+}
+
+function telegramBotCountLabel(count: number): string {
+  if (count === 0) {
+    return "This organization has no Telegram bots";
+  }
+  return `This organization has ${String(count)} Telegram ${count === 1 ? "bot" : "bots"}`;
+}
+
+function TelegramBotCount({ count }: { count: number }) {
+  return (
+    <div
+      data-testid="telegram-bot-count"
+      className="text-sm text-muted-foreground"
+    >
+      {telegramBotCountLabel(count)}
     </div>
   );
 }
@@ -178,7 +239,243 @@ function TelegramStatusBadge({ bot }: { bot: TelegramBot }) {
   );
 }
 
-function AddTelegramBotForm({
+function TelegramBotIconFallback({ botId }: { botId: string }) {
+  return (
+    <div
+      className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#2AABEE]/10 text-[#2AABEE]"
+      data-testid={`telegram-bot-avatar-fallback-${botId}`}
+    >
+      <IconRobot className="h-5 w-5" stroke={1.75} />
+    </div>
+  );
+}
+
+class TelegramBotAvatar extends Component<
+  { bot: TelegramBot; avatarUrl: string | null },
+  { failed: boolean }
+> {
+  state: { failed: boolean } = {
+    failed: false,
+  };
+
+  componentDidUpdate(previousProps: {
+    bot: TelegramBot;
+    avatarUrl: string | null;
+  }) {
+    if (
+      previousProps.bot.id !== this.props.bot.id ||
+      previousProps.avatarUrl !== this.props.avatarUrl
+    ) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render() {
+    const { bot, avatarUrl } = this.props;
+    if (!avatarUrl || this.state.failed) {
+      return <TelegramBotIconFallback botId={bot.id} />;
+    }
+
+    return (
+      <img
+        src={avatarUrl}
+        alt=""
+        loading="lazy"
+        className="h-10 w-10 shrink-0 rounded-full object-cover"
+        data-testid={`telegram-bot-avatar-${bot.id}`}
+        onError={() => {
+          this.setState({ failed: true });
+        }}
+      />
+    );
+  }
+}
+
+function resolveTelegramBotAvatarUrl(
+  avatarUrl: string | null | undefined,
+  apiBase: string,
+): string | null {
+  if (!avatarUrl) {
+    return null;
+  }
+  if (/^[a-z][a-z\d+.-]*:/i.test(avatarUrl)) {
+    return avatarUrl;
+  }
+  const base = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
+  const path = avatarUrl.startsWith("/") ? avatarUrl : `/${avatarUrl}`;
+  return `${base}${path}`;
+}
+
+function getTelegramLoginDomain(): string {
+  if (typeof location === "undefined" || !location.hostname) {
+    return "your app domain";
+  }
+  return location.hostname;
+}
+
+class CopyableTelegramValue extends Component<
+  { value: string },
+  { copied: boolean }
+> {
+  state: { copied: boolean } = {
+    copied: false,
+  };
+
+  #resetTimer: number | null = null;
+
+  componentWillUnmount() {
+    if (this.#resetTimer !== null) {
+      window.clearTimeout(this.#resetTimer);
+    }
+  }
+
+  copyValue = () => {
+    const { value } = this.props;
+    detach(
+      writeToClipboard(value).then((copied) => {
+        if (!copied) {
+          return;
+        }
+        if (this.#resetTimer !== null) {
+          window.clearTimeout(this.#resetTimer);
+        }
+        this.setState({ copied: true });
+        this.#resetTimer = window.setTimeout(() => {
+          this.setState({ copied: false });
+          this.#resetTimer = null;
+        }, 1500);
+      }),
+      Reason.DomCallback,
+    );
+  };
+
+  render() {
+    const { value } = this.props;
+
+    return (
+      <button
+        type="button"
+        className={TELEGRAM_COMMAND_CLASS}
+        aria-label={`Copy ${value}`}
+        title="Click to copy"
+        onClick={this.copyValue}
+      >
+        {this.state.copied ? "copied!" : value}
+      </button>
+    );
+  }
+}
+
+function TelegramCommand({ command }: { command: string }) {
+  return <CopyableTelegramValue value={command} />;
+}
+
+function AddTelegramBotInstructions({ domain }: { domain: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-4">
+      <ol className="list-decimal space-y-3 pl-4 text-sm leading-relaxed text-muted-foreground">
+        <li>
+          Open{" "}
+          <a
+            href="https://t.me/BotFather"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            {BOT_FATHER_HANDLE}
+          </a>
+          , send <TelegramCommand command="/newbot" />, choose a name and
+          username, then copy the bot token.
+        </li>
+        <li>
+          If the bot should respond to normal group chat messages, send{" "}
+          <TelegramCommand command="/setprivacy" />, choose the bot, and disable
+          privacy mode. With privacy enabled, Telegram only sends commands,
+          replies, and mentions from groups.
+        </li>
+        <li>
+          For Telegram web login, send <TelegramCommand command="/setdomain" />,
+          choose the bot, and set the domain to{" "}
+          <CopyableTelegramValue value={domain} />.
+        </li>
+      </ol>
+    </div>
+  );
+}
+
+function AddTelegramBotFields({
+  agents,
+  defaultAgent,
+  agentId,
+  botToken,
+  selectedAgentLabel,
+  disabled,
+  adding,
+  onBotTokenChange,
+  onAgentChange,
+}: {
+  agents: TeamComposeItem[];
+  defaultAgent: DefaultAgentLabel;
+  agentId: string | undefined;
+  botToken: string;
+  selectedAgentLabel: string;
+  disabled: boolean;
+  adding: boolean;
+  onBotTokenChange: (value: string) => void;
+  onAgentChange: (value: string) => void;
+}) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-[1fr_16rem]">
+      <div className="min-w-0">
+        <label
+          htmlFor="telegram-bot-token"
+          className="mb-2 block text-sm font-medium text-foreground"
+        >
+          Bot token
+        </label>
+        <Input
+          id="telegram-bot-token"
+          type="password"
+          value={botToken}
+          disabled={disabled || adding}
+          autoComplete="off"
+          placeholder="123456:ABC-DEF"
+          onChange={(event) => {
+            onBotTokenChange(event.target.value);
+          }}
+        />
+      </div>
+      <div className="min-w-0">
+        <label
+          htmlFor="telegram-new-bot-agent"
+          className="mb-2 block text-sm font-medium text-foreground"
+        >
+          Default agent
+        </label>
+        <Select
+          value={agentId ?? ""}
+          disabled={disabled || adding || agents.length === 0}
+          onValueChange={onAgentChange}
+        >
+          <SelectTrigger id="telegram-new-bot-agent">
+            <SelectValue placeholder={selectedAgentLabel} />
+          </SelectTrigger>
+          <SelectContent>
+            {agents.map((agent) => {
+              return (
+                <SelectItem key={agent.id} value={agent.id}>
+                  {agentLabel(agent, defaultAgent)}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+function AddTelegramBotDialog({
   agents,
   defaultAgent,
   disabled,
@@ -188,7 +485,9 @@ function AddTelegramBotForm({
   disabled: boolean;
 }) {
   const botToken = useGet(telegramBotTokenForm$);
+  const open = useGet(telegramAddDialogOpen$);
   const selectedAgentId = useGet(telegramBotAgentForm$);
+  const domain = getTelegramLoginDomain();
   const preferredAgentId = selectedAgentId ?? defaultAgent.id ?? agents[0]?.id;
   const selectedAgent =
     agents.find((agent) => {
@@ -200,6 +499,7 @@ function AddTelegramBotForm({
     : (defaultAgent.displayName ?? "Select agent");
   const setBotToken = useSet(setTelegramBotTokenForm$);
   const setAgentId = useSet(setTelegramBotAgentForm$);
+  const setOpen = useSet(setTelegramAddDialogOpen$);
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
   const [registerLoadable, registerBot] = useLoadableSet(registerTelegramBot$);
@@ -207,95 +507,96 @@ function AddTelegramBotForm({
   const canSubmit = botToken.trim().length > 0 && !disabled && !adding;
 
   return (
-    <form
-      className="zero-card p-4 sm:p-5"
-      aria-label="Add Telegram bot"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!canSubmit) {
-          return;
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!adding) {
+          setOpen(nextOpen);
         }
-
-        detach(
-          registerBot(
-            {
-              botToken: botToken.trim(),
-              ...(agentId ? { defaultAgentId: agentId } : {}),
-            },
-            pageSignal,
-          ).then((bot) => {
-            setBotToken("");
-            setAgentId(null);
-            navigate(ROUTES.telegramConnect, {
-              searchParams: new URLSearchParams({ bot: bot.id }),
-            });
-          }),
-          Reason.DomCallback,
-        );
       }}
     >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <div className="min-w-0 flex-1">
-          <label
-            htmlFor="telegram-bot-token"
-            className="mb-2 block text-sm font-medium text-foreground"
+      <div className="flex shrink-0 justify-end">
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            disabled={disabled}
+            className="h-10 shrink-0 gap-2"
           >
-            Bot token
-          </label>
-          <Input
-            id="telegram-bot-token"
-            type="password"
-            value={botToken}
-            disabled={disabled || adding}
-            autoComplete="off"
-            placeholder="123456:ABC-DEF"
-            onChange={(event) => {
-              setBotToken(event.target.value);
-            }}
-          />
-        </div>
-        <div className="min-w-0 sm:w-64">
-          <label
-            htmlFor="telegram-new-bot-agent"
-            className="mb-2 block text-sm font-medium text-foreground"
-          >
-            Default agent
-          </label>
-          <Select
-            value={agentId ?? ""}
-            disabled={disabled || adding || agents.length === 0}
-            onValueChange={(value) => {
-              setAgentId(value);
-            }}
-          >
-            <SelectTrigger id="telegram-new-bot-agent">
-              <SelectValue placeholder={selectedAgentLabel} />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.map((agent) => {
-                return (
-                  <SelectItem key={agent.id} value={agent.id}>
-                    {agentLabel(agent, defaultAgent)}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
-        <Button
-          type="submit"
-          disabled={!canSubmit}
-          className="h-10 shrink-0 gap-2"
-        >
-          {adding ? (
-            <IconLoader2 size={16} className="animate-spin" />
-          ) : (
             <IconPlus size={16} />
-          )}
-          {adding ? "Adding..." : "Add bot"}
-        </Button>
+            Add bot
+          </Button>
+        </DialogTrigger>
       </div>
-    </form>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>Add Telegram bot</DialogTitle>
+          <DialogDescription>
+            Create the bot in BotFather, then register its token here.
+          </DialogDescription>
+        </DialogHeader>
+        <AddTelegramBotInstructions domain={domain} />
+        <form
+          className="flex flex-col gap-4"
+          aria-label="Register Telegram bot"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!canSubmit) {
+              return;
+            }
+
+            detach(
+              registerBot(
+                {
+                  botToken: botToken.trim(),
+                  ...(agentId ? { defaultAgentId: agentId } : {}),
+                },
+                pageSignal,
+              ).then((bot) => {
+                setBotToken("");
+                setAgentId(null);
+                setOpen(false);
+                navigate(ROUTES.telegramConnect, {
+                  searchParams: new URLSearchParams({ bot: bot.id }),
+                });
+              }),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <AddTelegramBotFields
+            agents={agents}
+            defaultAgent={defaultAgent}
+            agentId={agentId}
+            botToken={botToken}
+            selectedAgentLabel={selectedAgentLabel}
+            disabled={disabled}
+            adding={adding}
+            onBotTokenChange={setBotToken}
+            onAgentChange={setAgentId}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={adding}
+              onClick={() => {
+                setOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit} className="gap-2">
+              {adding ? (
+                <IconLoader2 size={16} className="animate-spin" />
+              ) : (
+                <IconPlus size={16} />
+              )}
+              {adding ? "Adding..." : "Add bot"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -499,6 +800,7 @@ function TelegramBotRow({
   const unlinkingBotId = useGet(telegramUnlinkingBotId$);
   const uninstallingBotId = useGet(telegramUninstallingBotId$);
   const reinstallingBotId = useGet(telegramReinstallingBotId$);
+  const apiBase = useGet(apiBase$);
   const saving = savingBotId === bot.id;
   const unlinking = unlinkingBotId === bot.id;
   const uninstalling = uninstallingBotId === bot.id;
@@ -507,13 +809,12 @@ function TelegramBotRow({
     disabled || saving || unlinking || uninstalling || reinstalling;
   const options = buildBotAgentOptions(bot, agents, defaultAgent);
   const routeLabel = botRouteLabel(bot, agents, defaultAgent);
+  const avatarUrl = resolveTelegramBotAvatarUrl(bot.avatarUrl, apiBase);
 
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#2AABEE]/10">
-          <img src={telegramIconImg} alt="" className="h-7 w-7" />
-        </div>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <TelegramBotAvatar bot={bot} avatarUrl={avatarUrl} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-0 truncate text-sm font-medium text-foreground">
@@ -814,10 +1115,7 @@ export function ZeroTelegramSettingsPage() {
     bots.find((bot) => {
       return bot.id === reinstallDialogBotId;
     }) ?? null;
-  const loading =
-    botsLoadable.state === "loading" &&
-    bots.length === 0 &&
-    agents.length === 0;
+  const loading = botsLoadable.state === "loading" && bots.length === 0;
   const hasError =
     botsLoadable.state === "hasError" || agentsLoadable.state === "hasError";
   const agentsLoading = agentsLoadable.state === "loading";
@@ -826,28 +1124,29 @@ export function ZeroTelegramSettingsPage() {
     <div className="flex flex-1 flex-col min-h-0">
       <header className="shrink-0 bg-transparent px-4 pt-10 pb-3 sm:px-6">
         <div className="mx-auto max-w-[900px]">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <div className="mb-3 flex items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#2AABEE]/10">
-                  <img src={telegramIconImg} alt="" className="h-7 w-7" />
-                </span>
-                <div className="min-w-0">
-                  <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
-                    Telegram
-                  </h1>
-                  <p className="mt-0.5 text-sm text-muted-foreground">
-                    Manage bot routing for this workspace
-                  </p>
-                </div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#2AABEE]/10">
+                <img src={telegramIconImg} alt="" className="h-7 w-7" />
+              </span>
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
+                  Telegram
+                </h1>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Manage bot routing for this workspace
+                </p>
               </div>
             </div>
-            <span
-              data-testid="telegram-bot-count"
-              className="inline-flex w-fit items-center rounded-lg border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground"
-            >
-              {bots.length} {bots.length === 1 ? "bot" : "bots"}
-            </span>
+            {!hasError && loading ? (
+              <AddTelegramBotButtonSkeleton />
+            ) : !hasError ? (
+              <AddTelegramBotDialog
+                agents={agents}
+                defaultAgent={defaultAgent}
+                disabled={agentsLoading}
+              />
+            ) : null}
           </div>
         </div>
       </header>
@@ -862,11 +1161,7 @@ export function ZeroTelegramSettingsPage() {
             <TelegramSettingsSkeleton />
           ) : (
             <>
-              <AddTelegramBotForm
-                agents={agents}
-                defaultAgent={defaultAgent}
-                disabled={agentsLoading}
-              />
+              <TelegramBotCount count={bots.length} />
               <TelegramBotList
                 bots={bots}
                 agents={agents}

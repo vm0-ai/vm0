@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.301.0](https://github.com/vm0-ai/vm0/compare/app-v0.300.1...app-v0.301.0) (2026-04-28)
+
+
+### Features
+
+* add telegram bot setup dialog ([#11346](https://github.com/vm0-ai/vm0/issues/11346)) ([66286c7](https://github.com/vm0-ai/vm0/commit/66286c793bf6b104a23ee7839214bb4b119d635f))
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
+
+### Bug Fixes
+
+* improve chat image preview controls ([#11350](https://github.com/vm0-ai/vm0/issues/11350)) ([848e2a1](https://github.com/vm0-ai/vm0/commit/848e2a1dbc740075c9252971a167206f5bfe6723))
+
+## [0.300.1](https://github.com/vm0-ai/vm0/compare/app-v0.300.0...app-v0.300.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* refresh artifacts from realtime updates ([#11336](https://github.com/vm0-ai/vm0/issues/11336)) ([e513f7e](https://github.com/vm0-ai/vm0/commit/e513f7ee95c35329750dd7767b4b7ea35d1839fd))
+* show single usage breakdown category ([#11337](https://github.com/vm0-ai/vm0/issues/11337)) ([215cde7](https://github.com/vm0-ai/vm0/commit/215cde741538f9f226eef763278a791b63787e0e))
+
+## [0.300.0](https://github.com/vm0-ai/vm0/compare/app-v0.299.1...app-v0.300.0) (2026-04-28)
+
+
+### Features
+
+* show schedule description on usage insights widget ([#11305](https://github.com/vm0-ai/vm0/issues/11305)) ([87e765c](https://github.com/vm0-ai/vm0/commit/87e765cb8a0fc02a719bcc6995d987eb7b92ebc8))
+
 ## [0.299.1](https://github.com/vm0-ai/vm0/compare/app-v0.299.0...app-v0.299.1) (2026-04-28)
 
 

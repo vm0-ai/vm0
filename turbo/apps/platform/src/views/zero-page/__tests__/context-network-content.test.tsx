@@ -548,6 +548,51 @@ describe("networkContent", () => {
     });
   });
 
+  it("should render DNS result fields in expanded details", async () => {
+    const entry = makeNetworkEntry({
+      timestamp: "2026-03-10T14:56:05Z",
+      type: "dns",
+      action: undefined,
+      method: undefined,
+      url: undefined,
+      status: undefined,
+      latency_ms: undefined,
+      request_size: undefined,
+      response_size: undefined,
+      firewall_name: undefined,
+      host: "api.github.com",
+      port: 53,
+      dns_event: "reply",
+      dns_result: "140.82.121.4",
+      dns_serial: "42",
+    });
+
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [entry],
+        hasMore: false,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(screen.getByText("api.github.com:53")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("api.github.com:53").closest("tr")!);
+
+    await waitFor(() => {
+      expect(screen.getByText("DNS Event")).toBeInTheDocument();
+    });
+    expect(screen.getByText("reply")).toBeInTheDocument();
+    expect(screen.getByText("DNS Result")).toBeInTheDocument();
+    expect(screen.getByText("140.82.121.4")).toBeInTheDocument();
+    expect(screen.getByText("DNS Serial")).toBeInTheDocument();
+    expect(screen.getByText("42")).toBeInTheDocument();
+  });
+
   it("should toggle row expansion on click (ACT-N-006)", async () => {
     const entry = makeNetworkEntry({
       timestamp: "2026-03-10T14:56:05Z",

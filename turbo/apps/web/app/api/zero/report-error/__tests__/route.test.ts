@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import AdmZip from "adm-zip";
+import type { AxiomNetworkEvent } from "@vm0/api-contracts/contracts/runs";
 import { randomUUID } from "crypto";
 import { HttpResponse } from "msw";
 import { POST } from "../route";
@@ -309,6 +310,114 @@ describe("POST /api/zero/report-error", () => {
     const parsed = JSON.parse(networkLog!);
     expect(parsed.method).toBe("GET");
     expect(parsed.firewall_action).toBe("allow");
+  });
+
+  it("should preserve complete network log fields in activity log ZIP entries", async () => {
+    const { runId } = await setupFailedRun(userId);
+    const networkEntry = {
+      _time: "2026-04-28T07:00:00.123Z",
+      runId,
+      userId,
+      type: "http",
+      action: "ALLOW",
+      host: "api.github.com",
+      port: 443,
+      method: "POST",
+      url: "https://api.github.com/repos/vm0-ai/vm0",
+      status: 201,
+      latency_ms: 123,
+      request_size: 456,
+      response_size: 789,
+      dns_event: "reply",
+      dns_query_type: "A",
+      dns_result: "140.82.121.4",
+      dns_serial: "42",
+      firewall_base: "https://api.github.com",
+      firewall_name: "github",
+      firewall_permission: "repos:write",
+      firewall_rule_match: "POST /repos/{owner}/{repo}",
+      firewall_params: { owner: "vm0-ai", repo: "vm0" },
+      firewall_billable: true,
+      firewall_error: "permission denied",
+      auth_resolved_secrets: ["GITHUB_TOKEN"],
+      auth_refreshed_connectors: ["github"],
+      auth_refreshed_secrets: ["GITHUB_TOKEN"],
+      auth_cache_hit: false,
+      auth_url_rewrite: true,
+      error: "upstream failure",
+      request_headers: { "content-type": "application/json" },
+      request_body: '{"hello":"world"}',
+      request_body_encoding: "utf-8",
+      request_body_truncated: false,
+      response_headers: { "x-request-id": "req-1" },
+      response_body: '{"ok":true}',
+      response_body_encoding: "utf-8",
+      response_body_truncated: false,
+    } satisfies AxiomNetworkEvent;
+
+    context.mocks.axiom.queryAxiom.mockImplementation(async (apl: string) => {
+      if (
+        apl.includes(`runId == "${runId}"`) &&
+        apl.includes("sandbox-telemetry-network")
+      ) {
+        return [networkEntry];
+      }
+      return [];
+    });
+
+    await postReportError({ runId, title: "Bug" });
+
+    const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+      .calls[0]![2] as Buffer;
+    const zip = new AdmZip(zipBuffer);
+    const activityLogEntry = zip.getEntries().find((entry) => {
+      return entry.entryName.startsWith("activity-log-");
+    });
+    expect(activityLogEntry).toBeDefined();
+
+    const activityLog = JSON.parse(
+      activityLogEntry!.getData().toString("utf-8"),
+    );
+    expect(activityLog.networkLogs).toStrictEqual([
+      {
+        timestamp: "2026-04-28T07:00:00.123Z",
+        type: "http",
+        action: "ALLOW",
+        host: "api.github.com",
+        port: 443,
+        method: "POST",
+        url: "https://api.github.com/repos/vm0-ai/vm0",
+        status: 201,
+        latency_ms: 123,
+        request_size: 456,
+        response_size: 789,
+        dns_event: "reply",
+        dns_query_type: "A",
+        dns_result: "140.82.121.4",
+        dns_serial: "42",
+        firewall_base: "https://api.github.com",
+        firewall_name: "github",
+        firewall_permission: "repos:write",
+        firewall_rule_match: "POST /repos/{owner}/{repo}",
+        firewall_params: { owner: "vm0-ai", repo: "vm0" },
+        firewall_billable: true,
+        firewall_error: "permission denied",
+        auth_resolved_secrets: ["GITHUB_TOKEN"],
+        auth_refreshed_connectors: ["github"],
+        auth_refreshed_secrets: ["GITHUB_TOKEN"],
+        auth_cache_hit: false,
+        auth_url_rewrite: true,
+        error: "upstream failure",
+        request_headers: { "content-type": "application/json" },
+        request_body: '{"hello":"world"}',
+        request_body_encoding: "utf-8",
+        request_body_truncated: false,
+        response_headers: { "x-request-id": "req-1" },
+        response_body: '{"ok":true}',
+        response_body_encoding: "utf-8",
+        response_body_truncated: false,
+      },
+    ]);
   });
 
   it("should exclude system-log.txt and network-log.jsonl when data is empty", async () => {

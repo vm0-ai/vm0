@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.136.0](https://github.com/vm0-ai/vm0/compare/cli-v9.135.0...cli-v9.136.0) (2026-04-28)
+
+
+### Features
+
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
 ## [9.135.0](https://github.com/vm0-ai/vm0/compare/cli-v9.134.1...cli-v9.135.0) (2026-04-28)
 
 

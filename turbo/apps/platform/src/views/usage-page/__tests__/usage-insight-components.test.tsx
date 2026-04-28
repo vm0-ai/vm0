@@ -8,7 +8,7 @@
  * Mock (external): HTTP via MSW zeroUsageInsightContract
  * Real (internal): All signals, components, rendering
  */
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -242,6 +242,45 @@ describe("usage insight bar chart - chart rendering", () => {
     });
     // The breakdown list has progress bars - verify SVG is rendered
     expect(document.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("renders breakdown list when a single category is present", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-28T12:00:00.000Z").getTime(),
+    );
+
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(
+          200,
+          makeFixture({
+            buckets: [
+              {
+                ts: "2026-04-28T11:00:00.000Z",
+                series: { webhook: 420 },
+                tokens: { webhook: 840 },
+              },
+            ],
+            schedules: [],
+            scheduleOtherCount: 0,
+            scheduleOtherCredits: 0,
+            chats: [],
+            chatOtherCount: 0,
+            chatOtherCredits: 0,
+            grandTotalCredits: 420,
+            grandTotalTokens: 840,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/_/usage" });
+
+    await waitFor(() => {
+      expect(
+        within(getTotalsRegion()).getByText("Webhook"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("hides chart body when total is zero", async () => {

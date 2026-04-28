@@ -417,6 +417,8 @@ async function collectNetworkLog(
   const apl = `['${dataset}']
 | where runId in (${runIdList})
 | order by _time asc`;
+  // [NETWORK_LOG_FIELDS] — diagnostic bundle keeps raw Axiom network events
+  // unprojected so newly added fields are included automatically.
   return queryAxiom<Record<string, unknown>>(apl).catch((err) => {
     log.warn("Failed to collect network log from Axiom", {
       error: String(err),

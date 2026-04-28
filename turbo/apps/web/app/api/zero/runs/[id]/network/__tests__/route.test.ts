@@ -71,14 +71,32 @@ describe("GET /api/zero/runs/:id/network", () => {
       host: "redis.example.com",
       port: 6379,
     });
+    const dnsEvent = makeAxiomEvent({
+      runId,
+      userId,
+      type: "dns",
+      action: undefined,
+      method: undefined,
+      url: undefined,
+      status: undefined,
+      host: "api.github.com",
+      port: 53,
+      dns_event: "reply",
+      dns_result: "140.82.121.4",
+      dns_serial: "42",
+    });
 
-    context.mocks.axiom.queryAxiom.mockResolvedValue([httpEvent, tcpEvent]);
+    context.mocks.axiom.queryAxiom.mockResolvedValue([
+      httpEvent,
+      tcpEvent,
+      dnsEvent,
+    ]);
 
     const response = await GET(createTestRequest(networkUrl(runId)));
     expect(response.status).toBe(200);
 
     const data = await response.json();
-    expect(data.networkLogs).toHaveLength(2);
+    expect(data.networkLogs).toHaveLength(3);
     expect(data.hasMore).toBe(false);
 
     expect(data.networkLogs[0].type).toBe("http");
@@ -89,6 +107,12 @@ describe("GET /api/zero/runs/:id/network", () => {
     expect(data.networkLogs[1].type).toBe("tcp");
     expect(data.networkLogs[1].host).toBe("redis.example.com");
     expect(data.networkLogs[1].port).toBe(6379);
+
+    expect(data.networkLogs[2].type).toBe("dns");
+    expect(data.networkLogs[2].host).toBe("api.github.com");
+    expect(data.networkLogs[2].dns_event).toBe("reply");
+    expect(data.networkLogs[2].dns_result).toBe("140.82.121.4");
+    expect(data.networkLogs[2].dns_serial).toBe("42");
   });
 
   it("should return empty array when no logs", async () => {

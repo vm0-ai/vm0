@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.97.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.6...runner-rs-v0.97.0) (2026-04-28)
+
+
+### Features
+
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
 ## [0.96.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.5...runner-rs-v0.96.6) (2026-04-28)
 
 

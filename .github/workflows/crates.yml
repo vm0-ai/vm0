@@ -63,7 +63,9 @@ jobs:
       any-changed: ${{ steps.detect.outputs.any-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       mitm-addon-turbo-changed: ${{ steps.detect.outputs.mitm-addon-turbo-changed }}
+      api-contracts-rust-bindings-changed: ${{ steps.detect.outputs.api-contracts-rust-bindings-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
+      api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       guest-init-changed: ${{ steps.detect.outputs.guest-init-changed }}
       guest-download-changed: ${{ steps.detect.outputs.guest-download-changed }}
@@ -110,6 +112,7 @@ jobs:
             fi
           }
           check_crate ably-subscriber
+          check_crate api-contracts
           check_crate runner
           check_crate guest-init
           check_crate guest-download
@@ -123,6 +126,17 @@ jobs:
             echo "any-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # The api-contracts Rust bindings are generated from selected
+          # TypeScript contract files, but the checked artifact lives under
+          # crates/api-contracts. Keep this output separate from any-changed so
+          # a TS-only contract edit runs the drift check without forcing every
+          # Rust crate job to run.
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^crates/api-contracts/|^turbo/packages/api-contracts/(package\.json|tsconfig\.json|src/contracts/|src/rust-bindings/)|^turbo/pnpm-lock\.yaml$"; then
+            echo "api-contracts-rust-bindings-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api-contracts-rust-bindings-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # mitm-addon tests include cross-language consistency checks that
@@ -245,6 +259,23 @@ jobs:
         run: |
           cd crates
           cargo run -p ably-subscriber --example smoke_test
+
+  api-contracts-rust-bindings:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    needs: [detect]
+    if: |
+      needs.detect.outputs.ci-changed == 'true' ||
+      needs.detect.outputs.api-contracts-rust-bindings-changed == 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      - name: Check API Contracts Rust Bindings
+        working-directory: turbo
+        run: |
+          pnpm -F @vm0/api-contracts generate:rust
+          git diff --exit-code -- ../crates/api-contracts/src/generated
 
   mitm-addon-test:
     runs-on: ubuntu-latest
