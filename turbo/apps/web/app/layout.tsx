@@ -157,12 +157,17 @@ export default async function RootLayout({
             crossOrigin="anonymous"
           />
           <link rel="dns-prefetch" href="https://plausible.io" />
+          {/*
+            Theme init must run synchronously in <head> before paint to avoid
+            FOUC. React 19 warns on inline <script> JSX nodes, so we serve
+            the script from a static file and use next/script with
+            beforeInteractive — Next injects it into the document head as a
+            blocking script that runs before hydration.
+          */}
           <Script
-            id="theme-init"
+            src="/theme-init.js"
             strategy="beforeInteractive"
-            dangerouslySetInnerHTML={{
-              __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t)}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.setAttribute('data-theme','light')}}catch(e){}})()`,
-            }}
+            id="theme-init"
           />
           {env().NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL && (
             <>

@@ -1,10 +1,11 @@
 "use client";
 
+import { IconArrowRight } from "@tabler/icons-react";
 import { Link } from "../../../../navigation";
 import { Footer } from "../../../components/Footer";
 import { Particles } from "../../../components/Particles";
 import { getAppUrl } from "../../../../src/lib/zero/url";
-import { MODELS, type ModelEntry } from "../data";
+import { MODELS, type ModelEntry, vendorIconPath } from "../data";
 
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
@@ -33,14 +34,14 @@ function Section({
     <section className="uc-section">
       <h2
         className="uc-section-title"
-        style={{ marginBottom: subtitle ? 8 : 16 }}
+        style={{ marginBottom: subtitle ? 8 : 20 }}
       >
         {title}
       </h2>
       {subtitle && (
         <p
           className="text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]"
-          style={{ marginBottom: 20 }}
+          style={{ marginBottom: 24 }}
         >
           {subtitle}
         </p>
@@ -50,32 +51,21 @@ function Section({
   );
 }
 
-function Badge({
-  label,
-  value,
-  tone = "default",
+function Card({
+  children,
+  className = "",
 }: {
-  label?: string;
-  value: string;
-  tone?: "default" | "accent";
+  children: React.ReactNode;
+  className?: string;
 }) {
-  const toneClass =
-    tone === "accent"
-      ? "border-[#ed4e01]/20 bg-[#ed4e01]/8 text-[#ed4e01]"
-      : "border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-50))] text-[hsl(var(--foreground))]";
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium ${toneClass}`}
-    >
-      {label && (
-        <span className="text-[hsl(var(--muted-foreground))]">{label}</span>
-      )}
-      <span>{value}</span>
-    </span>
+    <div className={`rounded-2xl bg-white p-6 sm:p-8 ${className}`}>
+      {children}
+    </div>
   );
 }
 
-function FactRow({
+function DataRow({
   label,
   value,
   last,
@@ -86,36 +76,12 @@ function FactRow({
 }) {
   return (
     <div
-      className={`flex flex-wrap items-baseline justify-between gap-3 py-3${last ? "" : " border-b border-[hsl(var(--gray-200))]"}`}
+      className={`flex flex-wrap items-baseline justify-between gap-4 py-3.5${last ? "" : " border-b border-[hsl(var(--gray-100))]"}`}
     >
-      <span className="text-[13px] font-medium uppercase tracking-[1.2px] text-[hsl(var(--muted-foreground))]">
+      <span className="text-[14px] text-[hsl(var(--muted-foreground))]">
         {label}
       </span>
       <span className="text-[15px] text-[hsl(var(--foreground))]">{value}</span>
-    </div>
-  );
-}
-
-function PriceRow({
-  label,
-  value,
-  last,
-}: {
-  label: string;
-  value: string;
-  last?: boolean;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between px-5 py-3 text-[15px]${last ? "" : " border-b border-[hsl(var(--gray-200))]"}`}
-    >
-      <span className="text-[hsl(var(--muted-foreground))]">{label}</span>
-      <span className="font-medium text-[hsl(var(--foreground))]">
-        {value}{" "}
-        <span className="text-[13px] font-normal text-[hsl(var(--muted-foreground))]">
-          / 1M tokens
-        </span>
-      </span>
     </div>
   );
 }
@@ -127,6 +93,43 @@ function altName(slug: string): string {
   return m ? m.name : slug;
 }
 
+function inlineCode(text: string): React.ReactNode {
+  const parts = text.split(/`([^`]+)`/g);
+  return parts.map((part, i) => {
+    if (i % 2 === 1) {
+      return (
+        <code
+          key={i}
+          className="rounded bg-[hsl(var(--gray-100))] px-1.5 py-0.5 font-mono text-[0.88em] text-[hsl(var(--foreground))]"
+        >
+          {part}
+        </code>
+      );
+    }
+    return part;
+  });
+}
+
+function multiplierPositioning(name: string, m: number): string {
+  if (m === 1) {
+    return `${name} sits at the ×1 baseline that every other Built-in model is priced against, so it's the unit you compare costs in when picking between models on VM0.`;
+  }
+  if (m > 1) {
+    return `${name} bills at ×${m}, which means a step here costs ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). It's a premium tier on VM0, so the cost-effective pattern is to default to a cheaper model and route only the steps that genuinely need the extra reasoning depth to ${name}.`;
+  }
+  if (m <= 0.05) {
+    return `${name} bills at ×${m}, which means a step here costs only ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). That puts it at the cheapest tier of the Built-in catalogue and makes it the obvious choice when unit cost dominates the decision and the workload is largely single-shot.`;
+  }
+  return `${name} bills at ×${m}, which means a step here costs only ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). That puts it well below the credit baseline and makes it the natural pick for high-volume background work where cost-per-step matters more than peak reasoning quality.`;
+}
+
+function tierExplanation(name: string, tier: ModelEntry["vm0Tier"]): string {
+  if (tier === "core") {
+    return `VM0 positions ${name} as a core agent model, recommended alongside Claude Opus 4.7, Claude Opus 4.6, and Claude Sonnet 4.6 for the steps that drive the actual outcome of an agent run. These are the models we'd pick for the orchestrator role, for code-touching agents, and for any step where a wrong answer is expensive.`;
+  }
+  return `VM0 positions ${name} as a cost-saving option rather than a core agent model. Use it to optimise unit cost on non-core work, such as bulk classification, pre-filters, latency-critical short replies, or pinned legacy agents, while keeping Claude Opus 4.7, Claude Opus 4.6, or Claude Sonnet 4.6 on the steps that decide the run.`;
+}
+
 interface Props {
   model: ModelEntry;
   related: ModelEntry[];
@@ -135,11 +138,18 @@ interface Props {
 export function ModelDetailClient({ model, related }: Props) {
   const platformUrl = getAppUrl();
 
+  const heroMeta = [
+    formatContextWindow(model.contextWindowK),
+    model.modalities.join(" / "),
+    model.chinaAccessible ? "China-accessible" : "Global",
+    model.promptCaching ? "Prompt cache" : null,
+  ].filter(Boolean);
+
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
       <Particles />
 
-      <main className="px-6 pb-20 pt-[calc(var(--total-header-height)+48px)] md:pb-28 md:pt-[calc(var(--total-header-height)+72px)]">
+      <main className="pb-20 pt-[calc(var(--total-header-height)+48px)] md:pb-28 md:pt-[calc(var(--total-header-height)+72px)]">
         <article
           className="mx-auto"
           style={{ maxWidth: MAX_WIDTH, padding: `0 ${PAGE_PADDING}px` }}
@@ -149,143 +159,97 @@ export function ModelDetailClient({ model, related }: Props) {
           </Link>
 
           {/* Hero */}
-          <header style={{ marginBottom: 32 }}>
-            <span className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#ed4e01]">
-              {model.vendor} · Built-in model
-            </span>
-            <h1 className="mt-2 text-[32px] font-semibold leading-[1.15] tracking-tight sm:text-[40px]">
+          <header style={{ marginBottom: 56 }}>
+            {vendorIconPath(model.vendor) && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={vendorIconPath(model.vendor) ?? ""}
+                alt=""
+                width={48}
+                height={48}
+                className="mb-5 shrink-0 rounded-lg"
+              />
+            )}
+            <h1 className="text-[32px] font-semibold leading-[1.15] tracking-tight sm:text-[40px]">
               {model.pageTitle}
             </h1>
             <p className="mt-5 text-[17px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
               {model.tagline}
             </p>
 
-            {/* Quick badges */}
-            <div className="mt-6 flex flex-wrap gap-2">
-              <Badge value={`×${model.multiplier} credits`} tone="accent" />
-              <Badge
-                label="Context"
-                value={formatContextWindow(model.contextWindowK)}
-              />
-              <Badge label="Modalities" value={model.modalities.join(" · ")} />
-              <Badge
-                label="Region"
-                value={model.chinaAccessible ? "China-accessible" : "Global"}
-              />
-              {model.promptCaching && (
-                <Badge label="Cache" value="Supported" />
-              )}
-            </div>
+            <p className="mt-6 text-[14px] text-[hsl(var(--muted-foreground))]">
+              {heroMeta.join("  ·  ")}
+            </p>
 
-            <div className="mt-7 flex flex-wrap items-center gap-3">
+            <div className="mt-8 flex flex-wrap items-center gap-3">
               <a
                 href={platformUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-[#ed4e01] px-5 py-2.5 text-[14px] font-semibold text-white shadow-sm transition-colors hover:bg-[#d64601]"
+                className="btn-get-access group"
               >
-                Use {model.name} on VM0
+                <span>Use {model.name} on VM0</span>
+                <IconArrowRight
+                  size={16}
+                  className="transition-transform group-hover:translate-x-0.5"
+                />
               </a>
-              <Link
-                href="/models"
-                className="inline-flex items-center gap-2 rounded-xl border border-[hsl(var(--gray-300))] px-5 py-2.5 text-[14px] font-medium text-[hsl(var(--foreground))] transition-colors hover:bg-[hsl(var(--gray-50))]"
-              >
-                Compare all models
-              </Link>
             </div>
           </header>
 
           {/* TL;DR */}
-          <div
-            className="overflow-hidden rounded-[20px] bg-white p-7 sm:p-8"
-            style={{ marginBottom: 48 }}
-          >
-            <span className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#ed4e01]">
-              TL;DR
-            </span>
-            <ul className="mt-3 flex flex-col gap-2.5">
-              {model.summaryPoints.map((point) => {
+          <Card className="mb-12">
+            <div className="flex flex-col gap-4">
+              {model.summary.split("\n\n").map((para, i) => {
                 return (
-                  <li
-                    key={point}
-                    className="flex items-start gap-3 text-[16px] font-light leading-relaxed text-[hsl(var(--foreground))]"
+                  <p
+                    key={i}
+                    className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]"
                   >
-                    <span
-                      className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#ed4e01]"
-                      aria-hidden="true"
-                    />
-                    <span>{point}</span>
-                  </li>
+                    {inlineCode(para)}
+                  </p>
                 );
               })}
-            </ul>
-          </div>
+            </div>
+          </Card>
 
           {/* Overview */}
-          <Section title={`Overview: what is ${model.name}?`}>
-            <div className="mb-5 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[14px] border border-[hsl(var(--gray-200))] bg-white p-4">
-                <div className="text-[12px] font-medium uppercase tracking-[1.2px] text-[hsl(var(--muted-foreground))]">
-                  Release
-                </div>
-                <div className="mt-1 text-[15px] text-[hsl(var(--foreground))]">
-                  {model.releaseDate}
-                </div>
-              </div>
-              <div className="rounded-[14px] border border-[hsl(var(--gray-200))] bg-white p-4">
-                <div className="text-[12px] font-medium uppercase tracking-[1.2px] text-[hsl(var(--muted-foreground))]">
-                  Family position
-                </div>
-                <div className="mt-1 text-[15px] text-[hsl(var(--foreground))]">
-                  {model.familyPosition}
-                </div>
-              </div>
-            </div>
+          <Section title={`What is ${model.name}?`}>
+            <p className="mb-6 text-[14px] text-[hsl(var(--muted-foreground))]">
+              Released {model.releaseDate} · {model.familyPosition}
+            </p>
             <div className="flex flex-col gap-4">
               {model.background.map((para, i) => {
                 return (
                   <p
                     key={i}
-                    className="text-[16px] font-light leading-relaxed text-[hsl(var(--foreground))]"
+                    className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]"
                   >
-                    {para}
+                    {inlineCode(para)}
                   </p>
                 );
               })}
             </div>
           </Section>
 
-          {/* What's new / Architecture */}
-          {model.architecture.length > 0 && (
+          {/* What's notable */}
+          {model.architecture && (
             <Section
               title={`What's notable about ${model.name}`}
               subtitle="Headline architecture and capability features."
             >
-              <ul className="flex flex-col gap-2">
-                {model.architecture.map((item) => {
-                  return (
-                    <li
-                      key={item}
-                      className="flex items-start gap-3 text-[16px] font-light leading-relaxed text-[hsl(var(--foreground))]"
-                    >
-                      <span
-                        className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#ed4e01]"
-                        aria-hidden="true"
-                      />
-                      <span>{item}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <p className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                {inlineCode(model.architecture)}
+              </p>
             </Section>
           )}
 
           {/* Specs */}
           <Section title="Specs at a glance">
-            <div className="overflow-hidden rounded-[20px] bg-white p-6 sm:px-7">
+            <Card>
               {model.specs.map((row, i) => {
                 return (
-                  <FactRow
+                  <DataRow
                     key={row.label}
                     label={row.label}
                     value={row.value}
@@ -293,7 +257,7 @@ export function ModelDetailClient({ model, related }: Props) {
                   />
                 );
               })}
-            </div>
+            </Card>
           </Section>
 
           {/* Benchmarks */}
@@ -302,50 +266,53 @@ export function ModelDetailClient({ model, related }: Props) {
               title={`${model.name} benchmarks`}
               subtitle={model.benchmarksNote}
             >
-              <div className="overflow-hidden rounded-[16px] border border-[hsl(var(--gray-200))] bg-white">
+              <Card>
                 {model.benchmarks.map((b, i) => {
                   const last = i === model.benchmarks.length - 1;
                   return (
                     <div
                       key={b.name}
-                      className={`flex items-center justify-between gap-4 px-5 py-3 text-[15px]${last ? "" : " border-b border-[hsl(var(--gray-200))]"}`}
+                      className={`flex items-center justify-between gap-4 py-3.5${last ? "" : " border-b border-[hsl(var(--gray-100))]"}`}
                     >
                       <div className="flex flex-col">
-                        <span className="text-[hsl(var(--foreground))]">
+                        <span className="text-[15px] text-[hsl(var(--foreground))]">
                           {b.name}
                         </span>
                         {b.note && (
-                          <span className="mt-0.5 text-[12px] text-[hsl(var(--muted-foreground))]">
+                          <span className="mt-0.5 text-[13px] text-[hsl(var(--muted-foreground))]">
                             {b.note}
                           </span>
                         )}
                       </div>
-                      <span className="font-medium text-[hsl(var(--foreground))]">
+                      <span className="text-[15px] font-medium text-[hsl(var(--foreground))]">
                         {b.score}
                       </span>
                     </div>
                   );
                 })}
-              </div>
+              </Card>
             </Section>
           )}
 
           {/* Pricing */}
           <Section
             title={`${model.name} pricing`}
-            subtitle={`Provider list price, per 1M tokens. VM0 Managed converts these into credits via the model's ×${model.multiplier} multiplier.`}
+            subtitle="Provider list price, per 1M tokens."
           >
-            <div className="overflow-hidden rounded-[16px] border border-[hsl(var(--gray-200))] bg-white">
-              <PriceRow label="Input" value={formatUsd(model.pricing.inputUsd)} />
-              <PriceRow
+            <Card>
+              <DataRow
+                label="Input"
+                value={formatUsd(model.pricing.inputUsd)}
+              />
+              <DataRow
                 label="Output"
                 value={formatUsd(model.pricing.outputUsd)}
               />
-              <PriceRow
+              <DataRow
                 label="Cache read"
                 value={formatUsd(model.pricing.cacheReadUsd)}
               />
-              <PriceRow
+              <DataRow
                 label="Cache write"
                 value={
                   model.pricing.cacheWriteUsd === null
@@ -354,107 +321,54 @@ export function ModelDetailClient({ model, related }: Props) {
                 }
                 last
               />
-            </div>
-            <p className="mt-4 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-              <span className="font-medium text-[hsl(var(--foreground))]">
-                VM0 cost example.
-              </span>{" "}
-              {model.vm0CostExample}
-            </p>
+            </Card>
           </Section>
 
           {/* Performance */}
           <Section
-            title={`Performance: how ${model.name} behaves`}
-            subtitle="Notes from VM0's internal evaluation and from observed production behaviour."
+            title={`How ${model.name} behaves in practice`}
+            subtitle="Observed behaviour from production agent runs."
           >
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               {model.performance.map((note) => {
                 return (
-                  <div
-                    key={note.title}
-                    className="rounded-[16px] bg-white p-5"
-                  >
-                    <h3 className="text-[15px] font-medium text-[hsl(var(--foreground))]">
+                  <Card key={note.title} className="!p-6">
+                    <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
                       {note.title}
                     </h3>
                     <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                      {note.body}
+                      {inlineCode(note.body)}
                     </p>
-                  </div>
+                  </Card>
                 );
               })}
             </div>
           </Section>
 
-          {/* How VM0 runs it */}
-          <Section title={`How VM0 runs ${model.name}`}>
-            <p
-              className="text-[16px] font-light leading-relaxed text-[hsl(var(--foreground))]"
-              style={{ marginBottom: 16 }}
-            >
-              {model.routingNotes}
-            </p>
-            {model.vm0Notes.length > 0 && (
-              <ul className="flex flex-col gap-2">
-                {model.vm0Notes.map((note) => {
-                  return (
-                    <li
-                      key={note}
-                      className="flex items-start gap-3 text-[16px] font-light leading-relaxed text-[hsl(var(--foreground))]"
-                    >
-                      <span
-                        className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#ed4e01]"
-                        aria-hidden="true"
-                      />
-                      <span>{note}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Section>
-
           {/* Best agent tasks */}
-          <Section title={`Best agent tasks for ${model.name} on VM0`}>
-            <div className="flex flex-col gap-3">
+          <Section title={`Best agent tasks for ${model.name}`}>
+            <div className="flex flex-col gap-4">
               {model.bestForExamples.map((ex) => {
                 return (
-                  <div
-                    key={ex.title}
-                    className="rounded-[16px] bg-white p-5 sm:p-6"
-                  >
-                    <h3 className="text-[16px] font-medium text-[hsl(var(--foreground))]">
+                  <Card key={ex.title} className="!p-6">
+                    <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
                       {ex.title}
                     </h3>
                     <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                      {ex.body}
+                      {inlineCode(ex.body)}
                     </p>
-                  </div>
+                  </Card>
                 );
               })}
             </div>
           </Section>
 
           {/* Skip when */}
-          {model.avoidFor.length > 0 && (
+          {model.avoidFor && (
             <Section title={`When to skip ${model.name}`}>
-              <ul className="flex flex-col gap-2">
-                {model.avoidFor.map((tip) => {
-                  return (
-                    <li
-                      key={tip}
-                      className="flex items-start gap-3 text-[16px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]"
-                    >
-                      <span
-                        className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--gray-300))]"
-                        aria-hidden="true"
-                      />
-                      <span>{tip}</span>
-                    </li>
-                  );
-                })}
-              </ul>
+              <p className="text-[16px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+                {inlineCode(model.avoidFor)}
+              </p>
             </Section>
           )}
 
@@ -464,29 +378,26 @@ export function ModelDetailClient({ model, related }: Props) {
               <div className="flex flex-col gap-4">
                 {model.comparisons.map((cmp) => {
                   return (
-                    <div
-                      key={cmp.vs}
-                      className="rounded-[16px] border border-[hsl(var(--gray-200))] bg-white p-5 sm:p-6"
-                    >
-                      <h3 className="text-[15px] font-medium text-[hsl(var(--foreground))]">
+                    <Card key={cmp.vs} className="!p-6">
+                      <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
                         {model.name} vs {cmp.vs}
                       </h3>
                       <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                        {cmp.body}
+                        {inlineCode(cmp.body)}
                       </p>
-                    </div>
+                    </Card>
                   );
                 })}
               </div>
             </Section>
           )}
 
-          {/* Verdict / bottom line */}
+          {/* Verdict */}
           {model.verdict && (
             <Section title={`Bottom line: should you use ${model.name}?`}>
-              <div className="rounded-[16px] border-l-4 border-[#ed4e01] bg-white p-6 sm:p-7">
-                <p className="text-[16px] font-light leading-relaxed text-[hsl(var(--foreground))]">
-                  {model.verdict}
+              <div className="rounded-2xl border-l-[3px] border-[#ed4e01] bg-white p-6 sm:p-8">
+                <p className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                  {inlineCode(model.verdict)}
                 </p>
               </div>
             </Section>
@@ -495,15 +406,15 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* FAQ */}
           {model.faqs.length > 0 && (
             <Section title="Frequently asked questions">
-              <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-7">
                 {model.faqs.map((faq) => {
                   return (
                     <div key={faq.q}>
-                      <h3 className="text-[16px] font-medium text-[hsl(var(--foreground))]">
+                      <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
                         {faq.q}
                       </h3>
                       <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                        {faq.a}
+                        {inlineCode(faq.a)}
                       </p>
                     </div>
                   );
@@ -521,7 +432,7 @@ export function ModelDetailClient({ model, related }: Props) {
                     <Link
                       key={alt.slug}
                       href={`/models/${alt.slug}`}
-                      className="block rounded-[14px] border border-[hsl(var(--gray-200))] bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-[hsl(var(--gray-300))]"
+                      className="block rounded-2xl bg-white p-5 transition-all hover:-translate-y-0.5"
                     >
                       <div className="text-[15px] font-medium text-[hsl(var(--foreground))]">
                         {altName(alt.slug)}
@@ -536,6 +447,55 @@ export function ModelDetailClient({ model, related }: Props) {
             </Section>
           )}
 
+          {/* Using on VM0 — final dedicated section */}
+          <Section title={`Using ${model.name} on VM0`}>
+            <div className="flex flex-col gap-5">
+              <div>
+                <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                  Two ways to access {model.name} on VM0
+                </h3>
+                <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                  VM0 supports {model.name} as a Built-in model billed in VM0
+                  credits, and through bring-your-own with a {model.byoKeyLabel}
+                  . The Built-in path uses VM0 Managed routing and the credit
+                  multiplier explained below; the bring-your-own path bills you
+                  directly with the upstream vendor and skips the VM0 credit
+                  conversion entirely.
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                  VM0&rsquo;s recommendation
+                </h3>
+                <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                  {tierExplanation(model.name, model.vm0Tier)}
+                </p>
+              </div>
+
+              <div>
+                <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                  Credits and the ×{model.multiplier} multiplier
+                </h3>
+                <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                  Every Built-in model on VM0 is priced as a multiple of Claude
+                  Sonnet 4.6, which sits at the ×1 credit baseline. {model.name}{" "}
+                  bills at ×{model.multiplier} credits. The multiplier is what
+                  shows up on your VM0 invoice; the vendor list price in the
+                  pricing table above is what the upstream provider charges
+                  before VM0 converts it into credits.
+                </p>
+                <p className="mt-3 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
+                  {multiplierPositioning(model.name, model.multiplier)}
+                </p>
+              </div>
+
+              <p className="text-[14px] text-[hsl(var(--muted-foreground))]">
+                Available on VM0 since {model.releasedToVm0}.
+              </p>
+            </div>
+          </Section>
+
           {/* Related */}
           <div className="uc-related">
             <h2 className="uc-related-title">More models on VM0</h2>
@@ -547,12 +507,7 @@ export function ModelDetailClient({ model, related }: Props) {
                     href={`/models/${m.slug}`}
                     className="uc-related-card"
                   >
-                    <div className="uc-related-card-title">
-                      {m.name}{" "}
-                      <span className="text-[hsl(var(--muted-foreground))]">
-                        ×{m.multiplier}
-                      </span>
-                    </div>
+                    <div className="uc-related-card-title">{m.name}</div>
                     <div className="uc-related-card-desc">{m.cardIntro}</div>
                   </Link>
                 );

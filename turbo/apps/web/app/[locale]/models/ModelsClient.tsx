@@ -1,25 +1,72 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { Link } from "../../../navigation";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
-import { MODELS, type ModelEntry } from "./data";
+import { MODELS, type ModelEntry, vendorIconPath } from "./data";
 
-const MAX_WIDTH = 880;
+const MAX_WIDTH = 1200;
 const PAGE_PADDING = 24;
 
-function formatMultiplier(multiplier: number): string {
-  return `×${multiplier}`;
-}
+type FilterKey = "all" | "recommended" | "multimodal" | "cost-saving";
+
+const FILTERS: {
+  key: FilterKey;
+  label: string;
+  match: (m: ModelEntry) => boolean;
+}[] = [
+  {
+    key: "all",
+    label: "All",
+    match: () => {
+      return true;
+    },
+  },
+  {
+    key: "recommended",
+    label: "Recommended",
+    match: (m) => {
+      return m.vm0Tier === "core";
+    },
+  },
+  {
+    key: "multimodal",
+    label: "Multimodal",
+    match: (m) => {
+      return m.modalities.some((mod) => {
+        return ["Vision", "Image", "Video"].includes(mod);
+      });
+    },
+  },
+  {
+    key: "cost-saving",
+    label: "Cost-saving",
+    match: (m) => {
+      return m.vm0Tier === "cost-saving";
+    },
+  },
+];
 
 function ModelCard({ model }: { model: ModelEntry }) {
+  const iconPath = vendorIconPath(model.vendor);
   return (
     <article
       id={model.slug}
-      className="overflow-hidden rounded-[20px] bg-white p-7 sm:p-8"
+      className="overflow-hidden rounded-[20px] bg-white p-6 sm:p-7"
     >
-      <header className="flex flex-wrap items-center gap-3">
-        <h2 className="text-[22px] font-medium leading-tight tracking-[-0.3px] text-[hsl(var(--foreground))] sm:text-[24px]">
+      <header className="flex items-center gap-3">
+        {iconPath && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={iconPath}
+            alt=""
+            width={28}
+            height={28}
+            className="shrink-0 rounded-md"
+          />
+        )}
+        <h2 className="text-[22px] font-medium leading-tight tracking-[-0.3px] text-[hsl(var(--foreground))]">
           <Link
             href={`/models/${model.slug}`}
             className="text-[hsl(var(--foreground))] hover:text-[#ed4e01]"
@@ -27,67 +74,13 @@ function ModelCard({ model }: { model: ModelEntry }) {
             {model.name}
           </Link>
         </h2>
-        <span className="inline-flex items-center rounded-md bg-[hsl(var(--gray-100))] px-2 py-0.5 text-[12px] font-medium text-[hsl(var(--muted-foreground))]">
-          {formatMultiplier(model.multiplier)}
-        </span>
-        <span className="text-[13px] font-medium uppercase tracking-[1.2px] text-[hsl(var(--muted-foreground))]">
-          {model.vendor}
-        </span>
       </header>
 
-      <p className="mt-4 text-[16px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
+      <p className="mt-4 line-clamp-3 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
         {model.cardIntro}
       </p>
 
-      <div className="mt-6 grid gap-6 sm:grid-cols-2">
-        <div>
-          <h3 className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#ed4e01]">
-            Best for on VM0
-          </h3>
-          <ul className="mt-3 flex flex-col gap-2">
-            {model.cardBestFor.map((tip) => {
-              return (
-                <li
-                  key={tip}
-                  className="flex items-start gap-2 text-[15px] font-light leading-relaxed text-[hsl(var(--foreground))]"
-                >
-                  <span
-                    className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[#ed4e01]"
-                    aria-hidden="true"
-                  />
-                  <span>{tip}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-
-        {model.cardAvoidFor.length > 0 && (
-          <div>
-            <h3 className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[hsl(var(--muted-foreground))]">
-              Skip when
-            </h3>
-            <ul className="mt-3 flex flex-col gap-2">
-              {model.cardAvoidFor.map((tip) => {
-                return (
-                  <li
-                    key={tip}
-                    className="flex items-start gap-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]"
-                  >
-                    <span
-                      className="mt-2 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--gray-300))]"
-                      aria-hidden="true"
-                    />
-                    <span>{tip}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-6">
+      <div className="mt-5">
         <Link
           href={`/models/${model.slug}`}
           className="inline-flex items-center gap-1 text-[14px] font-medium text-[#ed4e01] transition-all hover:gap-2"
@@ -101,28 +94,38 @@ function ModelCard({ model }: { model: ModelEntry }) {
 }
 
 export function ModelsClient() {
+  const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
+
+  const visibleModels = useMemo(() => {
+    const filter = FILTERS.find((f) => {
+      return f.key === activeFilter;
+    });
+    if (!filter) return MODELS;
+    return MODELS.filter(filter.match);
+  }, [activeFilter]);
+
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
       <Particles />
 
       {/* Hero */}
       <section className="hero-section" style={{ paddingBottom: 32 }}>
-        <div className="container">
+        <div
+          style={{
+            maxWidth: MAX_WIDTH,
+            margin: "0 auto",
+            padding: `0 ${PAGE_PADDING}px`,
+          }}
+        >
           <h1 className="hero-title">AI models on VM0</h1>
           <p className="hero-description">
-            Every model available to your agents — what it&rsquo;s good at, and
+            Every model available to your agents. What it&rsquo;s good at, and
             when to pick it.
-          </p>
-          <p
-            className="text-[14px] text-[hsl(var(--muted-foreground))]"
-            style={{ marginTop: 8 }}
-          >
-            Credit cost is shown relative to Claude Sonnet 4.6 (×1).
           </p>
         </div>
       </section>
 
-      {/* Quick index */}
+      {/* Filter pills */}
       <section style={{ paddingBottom: 32 }}>
         <div
           style={{
@@ -131,18 +134,29 @@ export function ModelsClient() {
             padding: `0 ${PAGE_PADDING}px`,
           }}
         >
-          <nav className="flex flex-wrap gap-2" aria-label="Models">
-            {MODELS.map((m) => {
+          <div
+            className="flex flex-wrap gap-2"
+            role="tablist"
+            aria-label="Filter models"
+          >
+            {FILTERS.map((filter) => {
+              const isActive = activeFilter === filter.key;
               return (
-                <a key={m.slug} href={`#${m.slug}`} className="uc-pill">
-                  {m.name}
-                  <span className="ml-2 text-[hsl(var(--muted-foreground))]">
-                    {formatMultiplier(m.multiplier)}
-                  </span>
-                </a>
+                <button
+                  key={filter.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={`uc-pill${isActive ? " uc-pill--active" : ""}`}
+                  onClick={() => {
+                    setActiveFilter(filter.key);
+                  }}
+                >
+                  {filter.label}
+                </button>
               );
             })}
-          </nav>
+          </div>
         </div>
       </section>
 
@@ -154,9 +168,9 @@ export function ModelsClient() {
             margin: "0 auto",
             padding: `0 ${PAGE_PADDING}px`,
           }}
-          className="flex flex-col gap-5"
+          className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 lg:grid-cols-3"
         >
-          {MODELS.map((model) => {
+          {visibleModels.map((model) => {
             return <ModelCard key={model.slug} model={model} />;
           })}
         </div>

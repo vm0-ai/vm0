@@ -142,6 +142,7 @@ export default [
   {
     ignores: [
       "custom-eslint/**",
+      "public/**",
       "scripts/migrations/001-backfill-clerk-orgs/**",
       "scripts/migrations/002-backfill-clerk-metadata/**",
       "scripts/migrations/003-sync-clerk-slugs/**",
