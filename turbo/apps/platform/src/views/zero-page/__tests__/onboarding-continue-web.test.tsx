@@ -17,8 +17,6 @@ import {
 } from "@vm0/api-contracts/contracts/onboarding";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-
 const context = testContext();
 const mockApi = createMockApi(context);
 

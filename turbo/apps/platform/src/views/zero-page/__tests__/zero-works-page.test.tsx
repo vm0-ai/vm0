@@ -93,9 +93,9 @@ describe("works page - slack integration status display", () => {
 });
 
 describe("works page - telegram integration card", () => {
-  it("renders Telegram below Slack when the Telegram feature is enabled", async () => {
+  it("renders Telegram below Slack", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    renderWorksPageWithTelegram(true);
+    renderWorksPage();
 
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
@@ -106,19 +106,9 @@ describe("works page - telegram integration card", () => {
     });
   });
 
-  it("hides Telegram when the Telegram feature is disabled", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    renderWorksPageWithTelegram(false);
-
-    await waitFor(() => {
-      expect(screen.getByText("Slack")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Telegram")).not.toBeInTheDocument();
-  });
-
   it("opens Telegram settings from the Telegram card", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    renderWorksPageWithTelegram(true);
+    renderWorksPage();
 
     await waitFor(() => {
       expect(

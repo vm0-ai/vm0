@@ -1,8 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { TelegramBotStatus } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { pathname$ } from "../../route.ts";
 import {
   registerTelegramBot$,
   telegramBots$,
