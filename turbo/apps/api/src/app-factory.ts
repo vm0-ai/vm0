@@ -1,6 +1,8 @@
+import { httpInstrumentationMiddleware } from "@hono/otel";
+import { context as otelContext, propagation } from "@opentelemetry/api";
 import * as Sentry from "@sentry/node";
 // oxlint-disable-next-line no-restricted-imports -- app-factory owns the Hono instance, confirmed by ethan@vm0.ai
-import { type Context, Hono } from "hono";
+import { type Context, type MiddlewareHandler, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 
 import { env } from "./lib/env";
@@ -76,6 +78,26 @@ async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
   });
 }
 
+// Stamp the matched route template into OTel baggage so child spans (db
+// queries, outbound fetches) can carry `http.route` without reaching back
+// into the parent SERVER span. Any code further down the call tree —
+// including PgInstrumentation's requestHook in instrument.ts — reads it
+// from `propagation.getActiveBaggage()`.
+const httpRouteBaggage: MiddlewareHandler = async (c, next) => {
+  const route = c.req.routePath;
+  if (!route) {
+    return next();
+  }
+  const current = propagation.getActiveBaggage() ?? propagation.createBaggage();
+  const baggage = current.setEntry("http.route", { value: route });
+  await otelContext.with(
+    propagation.setBaggage(otelContext.active(), baggage),
+    () => {
+      return next();
+    },
+  );
+};
+
 function shouldCaptureError(error: Error): boolean {
   return !(error instanceof HTTPException) || error.status >= 500;
 }
@@ -109,6 +131,13 @@ interface CreateAppOptions {
 export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
   const app = new Hono();
   app.onError(handleError);
+
+  // OpenTelemetry: each request gets a SERVER span named after its matched
+  // route template (e.g. `GET /api/v1/chat-threads/:threadId`). The baggage
+  // middleware then propagates that template down so child spans inherit
+  // `http.route` for direct slicing without trace_id joins.
+  app.use("*", httpInstrumentationMiddleware({ serviceName: "vm0-api" }));
+  app.use("*", httpRouteBaggage);
 
   for (const { route, handler } of routes) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));

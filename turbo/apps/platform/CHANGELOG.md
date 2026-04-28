@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.300.1](https://github.com/vm0-ai/vm0/compare/app-v0.300.0...app-v0.300.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* refresh artifacts from realtime updates ([#11336](https://github.com/vm0-ai/vm0/issues/11336)) ([e513f7e](https://github.com/vm0-ai/vm0/commit/e513f7ee95c35329750dd7767b4b7ea35d1839fd))
+* show single usage breakdown category ([#11337](https://github.com/vm0-ai/vm0/issues/11337)) ([215cde7](https://github.com/vm0-ai/vm0/commit/215cde741538f9f226eef763278a791b63787e0e))
+
 ## [0.300.0](https://github.com/vm0-ai/vm0/compare/app-v0.299.1...app-v0.300.0) (2026-04-28)
 
 

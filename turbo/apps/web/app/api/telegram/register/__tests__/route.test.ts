@@ -8,16 +8,23 @@ import {
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import {
   createTestCompose,
+  createTestRequest,
   getTestTelegramBotToken,
   updateOrgDefaultAgent,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
+import { PATCH as updateComposeMetadata } from "../../../agent/composes/[id]/metadata/route";
 
 const context = testContext();
 
 const TEST_BOT_TOKEN = "123456:ABC-test-token";
 const NEW_BOT_TOKEN = "123456:ABC-new-token";
+const TEST_AGENT_DISPLAY_NAME = "Telegram Register Helper";
+
+interface TelegramSetMyCommandsBody {
+  commands: Array<{ command: string; description: string }>;
+}
 
 function telegramGetMe(
   botId: string,
@@ -58,9 +65,15 @@ function telegramSetWebhook(succeed = true, token = TEST_BOT_TOKEN) {
 }
 
 function telegramSetMyCommands(token = TEST_BOT_TOKEN) {
-  return http.post(`https://api.telegram.org/bot${token}/setMyCommands`, () => {
-    return HttpResponse.json({ ok: true, result: true });
-  });
+  const calls: TelegramSetMyCommandsBody[] = [];
+  const handler = http.post(
+    `https://api.telegram.org/bot${token}/setMyCommands`,
+    async ({ request }) => {
+      calls.push((await request.json()) as TelegramSetMyCommandsBody);
+      return HttpResponse.json({ ok: true, result: true });
+    },
+  );
+  return { ...handler, calls };
 }
 
 function telegramOauthHead() {
@@ -77,6 +90,20 @@ function registerRequest(body: Record<string, unknown>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+async function updateAgentDisplayName(composeId: string): Promise<void> {
+  const response = await updateComposeMetadata(
+    createTestRequest(
+      `http://localhost:3000/api/agent/composes/${composeId}/metadata`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ displayName: TEST_AGENT_DISPLAY_NAME }),
+      },
+    ),
+  );
+  expect(response.status).toBe(200);
 }
 
 /** Generate a unique numeric bot ID for test isolation */
@@ -129,6 +156,7 @@ describe("POST /api/telegram/register", () => {
 
     const botId = testBotId();
     const { composeId, name } = await createTestCompose(uniqueId("agent"));
+    await updateAgentDisplayName(composeId);
 
     const getMeHandler = telegramGetMe(botId, `bot_${botId}`);
     const setWebhookHandler = telegramSetWebhook(true);
@@ -160,6 +188,18 @@ describe("POST /api/telegram/register", () => {
     expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setWebhookHandler.mocked).toHaveBeenCalledTimes(1);
     expect(setCommandsHandler.mocked).toHaveBeenCalledTimes(1);
+    expect(setCommandsHandler.calls[0]?.commands).toEqual(
+      expect.arrayContaining([
+        {
+          command: "connect",
+          description: `Connect to ${TEST_AGENT_DISPLAY_NAME}`,
+        },
+        {
+          command: "disconnect",
+          description: `Disconnect from ${TEST_AGENT_DISPLAY_NAME}`,
+        },
+      ]),
+    );
   });
 
   it("uses the active org default agent when defaultAgentId is omitted", async () => {
