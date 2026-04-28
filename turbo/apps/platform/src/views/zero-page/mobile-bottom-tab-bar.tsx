@@ -27,7 +27,14 @@ interface MobileTab {
 const MOBILE_TABS: readonly MobileTab[] = [
   {
     id: "chats",
-    activeKeys: ["home", "agentChat", "agentTalk", "agentIdeas", "chat", "chatList"],
+    activeKeys: [
+      "home",
+      "agentChat",
+      "agentTalk",
+      "agentIdeas",
+      "chat",
+      "chatList",
+    ],
     pathname: "/",
     label: "Chats",
     icon: IconMessageCircle as TabIcon,
@@ -53,13 +60,7 @@ const TAB_CLASSES =
 const ICON_SIZE = 22;
 const ICON_STROKE = 1.6;
 
-function MobileTabLink({
-  tab,
-  active,
-}: {
-  tab: MobileTab;
-  active: boolean;
-}) {
+function MobileTabLink({ tab, active }: { tab: MobileTab; active: boolean }) {
   const Icon = tab.icon;
   return (
     <Link

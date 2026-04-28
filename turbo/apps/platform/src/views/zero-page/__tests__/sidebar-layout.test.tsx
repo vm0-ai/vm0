@@ -282,7 +282,9 @@ describe("mobile bottom tab bar - hidden when feature switch off (MOBILE-TAB-005
     await waitFor(() => {
       expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
     });
-    expect(screen.queryByTestId("mobile-bottom-tab-bar")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("mobile-bottom-tab-bar"),
+    ).not.toBeInTheDocument();
   });
 });
 
