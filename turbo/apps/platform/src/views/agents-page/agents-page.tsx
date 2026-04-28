@@ -128,7 +128,8 @@ export function AgentsPage() {
                 </TooltipTrigger>
                 <TooltipContent>
                   <p className="text-xs">
-                    Agent limit reached (7). Delete an agent to create a new one.
+                    Agent limit reached (7). Delete an agent to create a new
+                    one.
                   </p>
                 </TooltipContent>
               </Tooltip>
