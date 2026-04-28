@@ -115,6 +115,7 @@ export interface CreateRunParams {
   modelProviderId?: string;
   selectedModelOverride?: string;
   debugNoMockClaude?: boolean;
+  debugNoMockCodex?: boolean;
   captureNetworkBodies?: boolean;
   // Caller-resolved org context for variable/storage resolution.
   orgId: string;

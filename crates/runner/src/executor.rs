@@ -1308,6 +1308,15 @@ fn build_env_json(
         env.insert("USE_MOCK_CLAUDE".into(), val);
     }
 
+    // Pass USE_MOCK_CODEX from host environment for testing
+    // (skip if debugNoMockCodex is set in execution context).
+    // Mirrors the USE_MOCK_CLAUDE path above.
+    if let Ok(val) = std::env::var("USE_MOCK_CODEX")
+        && !context.debug_no_mock_codex.unwrap_or(false)
+    {
+        env.insert("USE_MOCK_CODEX".into(), val);
+    }
+
     // Artifacts config (multi-mount).
     //
     // Emit a single `VM0_ARTIFACTS` env var containing a JSON array of
@@ -1465,6 +1474,7 @@ mod tests {
             secret_connector_map: None,
             cli_agent_type: String::new(),
             debug_no_mock_claude: None,
+            debug_no_mock_codex: None,
             api_start_time: None,
             user_timezone: None,
             capture_network_bodies: None,
@@ -1816,6 +1826,39 @@ mod tests {
         match saved {
             Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
             None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_with_mock_codex() {
+        let saved = std::env::var("USE_MOCK_CODEX").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CODEX.
+        unsafe { std::env::set_var("USE_MOCK_CODEX", "1") };
+
+        let ctx = minimal_context();
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert_eq!(env.get("USE_MOCK_CODEX").unwrap(), "1");
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CODEX", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CODEX") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_mock_codex_suppressed_by_debug_flag() {
+        let saved = std::env::var("USE_MOCK_CODEX").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CODEX.
+        unsafe { std::env::set_var("USE_MOCK_CODEX", "1") };
+
+        let mut ctx = minimal_context();
+        ctx.debug_no_mock_codex = Some(true);
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert!(!env.contains_key("USE_MOCK_CODEX"));
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CODEX", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CODEX") },
         }
     }
 

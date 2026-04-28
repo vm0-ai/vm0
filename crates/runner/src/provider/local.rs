@@ -268,6 +268,7 @@ impl JobProvider for LocalProvider {
             secret_connector_map: None,
             cli_agent_type: req.cli_agent_type,
             debug_no_mock_claude: None,
+            debug_no_mock_codex: None,
             api_start_time: None,
             user_timezone: req.user_timezone,
             capture_network_bodies: None,

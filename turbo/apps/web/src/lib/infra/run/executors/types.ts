@@ -65,6 +65,9 @@ export interface PreparedContext {
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: boolean;
 
+  // Debug flag to force real Codex in mock environments (internal use only)
+  debugNoMockCodex: boolean;
+
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies: boolean;
 

@@ -128,6 +128,8 @@ interface BuildZeroContextParams {
   continuedFromSessionId?: string;
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
+  // Debug flag to force real Codex in mock environments (internal use only)
+  debugNoMockCodex?: boolean;
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies?: boolean;
   // Model provider for automatic secret injection
@@ -770,6 +772,7 @@ export async function buildZeroExecutionContext(
       continuedFromSessionId: params.continuedFromSessionId,
       // Debug flag
       debugNoMockClaude: params.debugNoMockClaude,
+      debugNoMockCodex: params.debugNoMockCodex,
       captureNetworkBodies: params.captureNetworkBodies,
       billableFirewalls,
       modelUsageProvider,

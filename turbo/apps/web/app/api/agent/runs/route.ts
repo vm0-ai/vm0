@@ -409,6 +409,7 @@ const router = tsr.router(runsMainContract, {
           resumedFromCheckpointId: body.checkpointId,
           continuedFromSessionId: body.sessionId,
           debugNoMockClaude: body.debugNoMockClaude,
+          debugNoMockCodex: body.debugNoMockCodex,
           captureNetworkBodies: body.captureNetworkBodies,
           billableFirewalls: resolved.billableFirewalls,
           modelUsageProvider: resolved.modelUsageProvider,

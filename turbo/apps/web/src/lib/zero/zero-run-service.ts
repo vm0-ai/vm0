@@ -159,6 +159,8 @@ export interface CreateZeroRunParams {
   userInfoExtras?: UserInfoOptions;
   /** Force real Claude in mock environments (internal debugging / e2e only). */
   debugNoMockClaude?: boolean;
+  /** Force real Codex in mock environments (internal debugging / e2e only). */
+  debugNoMockCodex?: boolean;
   /**
    * Pre-fetched zero_agents row passed in by callers that have already read it
    * (e.g. the web chat route's 404 check). When present, Round 1 skips its own
@@ -635,6 +637,7 @@ async function createZeroRunRecord(
     orgTier,
     additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
     debugNoMockClaude: params.debugNoMockClaude,
+    debugNoMockCodex: params.debugNoMockCodex,
     triggerSource: params.triggerSource,
   };
 

@@ -2627,6 +2627,7 @@ mod tests {
             secret_connector_map: None,
             cli_agent_type: String::new(),
             debug_no_mock_claude: None,
+            debug_no_mock_codex: None,
             api_start_time: None,
             user_timezone: None,
             capture_network_bodies: None,

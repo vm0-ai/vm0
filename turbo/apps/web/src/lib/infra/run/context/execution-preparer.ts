@@ -256,6 +256,7 @@ function buildPreparedContext(
 
     // Debug flag
     debugNoMockClaude: context.debugNoMockClaude || false,
+    debugNoMockCodex: context.debugNoMockCodex || false,
     captureNetworkBodies: context.captureNetworkBodies || false,
 
     billableFirewalls: context.billableFirewalls,

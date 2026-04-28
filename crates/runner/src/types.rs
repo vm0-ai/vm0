@@ -67,6 +67,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
     #[serde(default)]
+    pub debug_no_mock_codex: Option<bool>,
+    #[serde(default)]
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
@@ -381,6 +383,7 @@ mod tests {
             "encryptedSecrets": "enc-blob",
             "secretConnectorMap": {"github": "oauth"},
             "debugNoMockClaude": true,
+            "debugNoMockCodex": true,
             "apiStartTime": 1700000000000.0,
             "userTimezone": "America/New_York",
             "firewalls": [{
@@ -403,6 +406,7 @@ mod tests {
         assert_eq!(ctx.secret_values.as_ref().unwrap().len(), 2);
         assert_eq!(ctx.encrypted_secrets.as_deref(), Some("enc-blob"));
         assert!(ctx.debug_no_mock_claude.unwrap());
+        assert!(ctx.debug_no_mock_codex.unwrap());
         assert_eq!(ctx.firewalls.as_ref().unwrap()[0].name, "github");
         assert_eq!(ctx.disallowed_tools.as_ref().unwrap(), &["CronCreate"]);
         assert_eq!(ctx.tools.as_ref().unwrap(), &["Bash", "Read"]);
