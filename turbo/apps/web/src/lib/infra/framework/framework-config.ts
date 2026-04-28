@@ -69,3 +69,45 @@ export function resolveFrameworkApiKeyEnvVar(
 ): string {
   return FRAMEWORK_DEFAULTS[framework].apiKeyEnvVar;
 }
+
+/**
+ * Compose content shape used for framework extraction.
+ *
+ * Modern composes nest agents under `agents.<name>.framework`; the legacy
+ * `agent.framework` shape is retained for older rows. Both forms appear in
+ * `agentComposeVersions.content` (jsonb), so callers should accept either.
+ */
+interface ComposeContentLike {
+  agent?: { framework?: string };
+  agents?: Record<string, { framework?: string } | undefined>;
+}
+
+/**
+ * Extract the framework string from a compose document.
+ *
+ * Tries the legacy `agent.framework` first, then falls back to the first
+ * entry of `agents` (current resolved-content shape — composes carry exactly
+ * one agent post-resolve). Returns `null` when no framework can be found,
+ * leaving the caller to decide on a default.
+ */
+export function extractFrameworkFromCompose(
+  content: ComposeContentLike | null | undefined,
+): string | null {
+  if (!content) {
+    return null;
+  }
+
+  if (content.agent?.framework) {
+    return content.agent.framework;
+  }
+
+  const agents = content.agents;
+  if (agents) {
+    const firstKey = Object.keys(agents)[0];
+    if (firstKey) {
+      return agents[firstKey]?.framework ?? null;
+    }
+  }
+
+  return null;
+}
