@@ -359,6 +359,81 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(resultMsg!.runId).toBe(runId);
     });
 
+    it("should persist the latest non-empty result-only output", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventType: "result",
+          sequenceNumber: 1,
+          eventData: { result: "Preparing final response..." },
+        },
+        {
+          eventType: "result",
+          sequenceNumber: 2,
+          eventData: { result: "Unknown command: /aaa" },
+        },
+      ]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      const resultMsg = chatMessages.find((m) => {
+        return m.role === "assistant" && m.sequenceNumber !== null;
+      });
+      expect(resultMsg).toBeDefined();
+      expect(resultMsg!.content).toBe("Unknown command: /aaa");
+      expect(resultMsg!.sequenceNumber).toBe(2);
+    });
+
+    it("should read result fallback sequence from eventData when needed", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventType: "result",
+          eventData: {
+            sequenceNumber: 4,
+            result: "Unknown command: /aaa",
+          },
+        },
+      ]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      const resultMsg = chatMessages.find((m) => {
+        return m.role === "assistant" && m.sequenceNumber !== null;
+      });
+      expect(resultMsg).toBeDefined();
+      expect(resultMsg!.content).toBe("Unknown command: /aaa");
+      expect(resultMsg!.sequenceNumber).toBe(4);
+    });
+
     it("should not duplicate result output when assistant event exists", async () => {
       const { threadId, runId, secret } = await setupRunAndThread();
 
