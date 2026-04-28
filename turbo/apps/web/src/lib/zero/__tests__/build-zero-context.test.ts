@@ -12,6 +12,7 @@ import {
   createTestUserConnector,
   completeTestRun,
   findTestRunnerJobEntry,
+  insertVm0ApiKeys,
   insertTestConnectorSecret,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
@@ -129,6 +130,13 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
         "vm0",
         "claude-opus-4-6",
       );
+      await insertVm0ApiKeys([
+        {
+          vendor: "anthropic",
+          model: "claude-opus-4-6",
+          apiKey: "sk-ant-test-vm0-model-usage",
+        },
+      ]);
       await setOrgCredits(user.orgId, 10000);
 
       const result = await createZeroRun(baseParams({ agentId: modelAgentId }));
