@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { agentDefinitionSchema } from "@vm0/api-contracts/contracts/composes";
 import {
   SUPPORTED_FRAMEWORKS,
   isSupportedFramework,
@@ -14,14 +15,29 @@ describe("frameworks", () => {
       expect(SUPPORTED_FRAMEWORKS).toContain("claude-code");
     });
 
-    it("has exactly 1 framework", () => {
-      expect(SUPPORTED_FRAMEWORKS).toHaveLength(1);
+    it("includes codex", () => {
+      expect(SUPPORTED_FRAMEWORKS).toContain("codex");
+    });
+
+    it("has exactly 2 frameworks", () => {
+      expect(SUPPORTED_FRAMEWORKS).toHaveLength(2);
+    });
+
+    it("matches the composes contract framework enum", () => {
+      const schemaFrameworks = agentDefinitionSchema.shape.framework.options;
+      expect([...SUPPORTED_FRAMEWORKS].sort()).toEqual(
+        [...schemaFrameworks].sort(),
+      );
     });
   });
 
   describe("isSupportedFramework", () => {
     it("returns true for claude-code", () => {
       expect(isSupportedFramework("claude-code")).toBe(true);
+    });
+
+    it("returns true for codex", () => {
+      expect(isSupportedFramework("codex")).toBe(true);
     });
 
     it("returns false for undefined", () => {
@@ -65,7 +81,7 @@ describe("frameworks", () => {
     it("lists supported frameworks in error message", () => {
       expect(() => {
         return assertSupportedFramework("unknown");
-      }).toThrow("Supported frameworks: claude-code");
+      }).toThrow("Supported frameworks: claude-code, codex");
     });
   });
 
@@ -90,6 +106,10 @@ describe("frameworks", () => {
       expect(getFrameworkDisplayName("claude-code")).toBe("Claude Code");
     });
 
+    it('returns "Codex" for codex', () => {
+      expect(getFrameworkDisplayName("codex")).toBe("Codex");
+    });
+
     it("throws for unknown framework", () => {
       expect(() => {
         return getFrameworkDisplayName("unknown");
@@ -100,6 +120,10 @@ describe("frameworks", () => {
   describe("getInstructionsFilename", () => {
     it('returns "CLAUDE.md" for claude-code', () => {
       expect(getInstructionsFilename("claude-code")).toBe("CLAUDE.md");
+    });
+
+    it('returns "AGENTS.md" for codex', () => {
+      expect(getInstructionsFilename("codex")).toBe("AGENTS.md");
     });
 
     it('returns "CLAUDE.md" for undefined (defaults to claude-code)', () => {

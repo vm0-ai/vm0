@@ -2,6 +2,8 @@
  * Agent compose types matching agent.yaml format
  */
 
+import type { SupportedFramework } from "@vm0/core/frameworks";
+
 /**
  * Volume configuration for static dependencies
  * Each volume requires explicit name and version
@@ -35,7 +37,7 @@ export interface ArtifactConfig {
  */
 interface AgentDefinition {
   description?: string;
-  framework: string;
+  framework: SupportedFramework;
   volumes?: string[]; // Format: "volume-key:/mount/path"
   environment?: Record<string, string>; // Environment variables using ${{ vars.X }}, ${{ secrets.X }} syntax
   /**

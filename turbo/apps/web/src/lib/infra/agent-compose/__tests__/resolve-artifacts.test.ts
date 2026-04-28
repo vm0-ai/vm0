@@ -85,7 +85,9 @@ describe("resolveComposeArtifacts", () => {
     const compose: AgentComposeYaml = {
       version: "1",
       agents: {
-        "my-agent": { framework: "not-a-real-framework" },
+        "my-agent": {
+          framework: "not-a-real-framework",
+        } as unknown as AgentComposeYaml["agents"][string],
       },
       artifacts: [{ name: "a", mount_path: MOUNT_PATH_TEMPLATE }],
     };

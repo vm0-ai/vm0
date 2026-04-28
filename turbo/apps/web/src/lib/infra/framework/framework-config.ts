@@ -21,6 +21,9 @@ const FRAMEWORK_DEFAULTS: Record<SupportedFramework, FrameworkDefaults> = {
   "claude-code": {
     workingDir: "/home/user/workspace",
   },
+  codex: {
+    workingDir: "/home/user/workspace",
+  },
 };
 
 /**

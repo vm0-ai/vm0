@@ -166,7 +166,7 @@ const artifactsArraySchema = z.array(artifactConfigSchema).refine((items) => {
  */
 const agentDefinitionSchema = z.object({
   description: z.string().optional(),
-  framework: z.string().min(1, "Framework is required"),
+  framework: z.enum(["claude-code", "codex"]),
   volumes: z.array(z.string()).optional(),
   environment: z.record(z.string(), z.string()).optional(),
   /**
