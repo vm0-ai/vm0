@@ -28,6 +28,8 @@ export async function generateMetadata({
 
   const url = `${BASE_URL}/${locale}/use-cases/${slug}`;
 
+  const ogImage = useCase?.screenshot ?? "/og-image.png";
+
   return {
     title: `${title} — VM0 Use Case`,
     description,
@@ -39,7 +41,7 @@ export async function generateMetadata({
       type: "article",
       images: [
         {
-          url: "/og-image.png",
+          url: ogImage,
           width: 1200,
           height: 630,
           alt: title,
@@ -50,7 +52,7 @@ export async function generateMetadata({
       card: "summary_large_image",
       title: `${title} — VM0 Use Case`,
       description,
-      images: ["/og-image.png"],
+      images: [ogImage],
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },

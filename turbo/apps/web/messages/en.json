@@ -302,6 +302,7 @@
     "relatedUseCases": "Related use cases",
     "backToAll": "All use cases",
     "zeroConnects": "Zero connects:",
+    "whatZeroDelivers": "What Zero delivers",
     "tryIt": "try it",
     "ctaTitle": "Zero works where your team works",
     "ctaSubtitle": "Add Zero to Slack and start delegating in plain language. No setup wizards. No workflow builders. Just ask.",
@@ -397,17 +398,17 @@
       },
       "sentry-triage": {
         "title": "Turn Sentry noise into a prioritized action list",
-        "description": "Ask Zero to pull your top unresolved Sentry errors, ranked by frequency. Zero reads the stack traces, explains the root cause in plain language, and tells you which file to fix first.",
+        "description": "One message in Slack. Zero pulls your unresolved Sentry errors, ranks them by frequency, explains each root cause in plain language, and tells you which file to fix first.",
         "timeSaved": "~25 min saved",
         "headings": {
-          "scenario": "Why Sentry triage wastes engineering time",
-          "prompt": "How to ask Zero to triage Sentry errors",
-          "steps": "How Zero analyzes and ranks your Sentry errors",
-          "nextActions": "Turn Sentry triage into GitHub issues and daily automation",
-          "integrations": "Required integrations: Sentry and GitHub",
-          "tips": "Best practices for automated Sentry triage"
+          "scenario": "The problem",
+          "prompt": "Step 1: Ask Zero",
+          "steps": "Step 2: What Zero does",
+          "nextActions": "Step 3: Take action",
+          "integrations": "What you'll need",
+          "tips": "Tips for better results"
         },
-        "scenario": "Monday morning. You open Slack and there are a dozen Sentry alerts in #dev. Most of them are noise, flaky tests, known issues, transient errors that resolve themselves. But somewhere in there might be something real: a broken integration, a billing bug, a crash that's hitting actual users. You don't want to open Sentry's dashboard and click through issues one by one. You just want to know: which ones matter, how bad are they, and what's causing them.",
+        "scenario": "Dozens of Sentry alerts pile up overnight. Most are noise. But somewhere in there is a billing bug or a broken integration hitting real users. Clicking through Sentry's dashboard one issue at a time takes 30 minutes and still leaves you guessing which error to fix first. Zero does it in one message.",
         "promptVariants": [
           {
             "label": "Detailed",
@@ -434,47 +435,47 @@
         ],
         "steps": [
           {
-            "title": "Zero connects to Sentry",
-            "description": "Zero pulls unresolved issues from your Sentry project for the specified time window and ranks them by occurrence count."
+            "title": "Pulls errors from Sentry",
+            "description": "Zero connects to your Sentry project via OAuth, pulls all unresolved issues for the time window you specified, and ranks them by occurrence count."
           },
           {
-            "title": "Summary table",
-            "description": "Zero replies in the same Slack thread with a quick summary table, issue name, occurrence count, and priority level, that you can scan in 5 seconds."
+            "title": "Returns a ranked summary table",
+            "description": "You get a table in the same Slack thread: error name, occurrence count, root cause, and affected area. Scannable in 5 seconds."
           },
           {
-            "title": "Detailed analysis",
-            "description": "For each top issue, Zero provides annotated stack traces and plain-language root cause explanations. For example, it doesn't just say \"Unknown Stripe price ID\", it explains that a new price was likely created in Stripe but the corresponding mapping was not updated."
+            "title": "Explains root causes in plain language",
+            "description": "For each top error, Zero reads the stack trace and tells you what's actually wrong. Not just \"Unknown Stripe price ID\" but \"a new price was created in Stripe and the mapping wasn't updated.\""
           }
         ],
         "nextActions": [
           {
-            "title": "Turn findings into action",
-            "description": "Create GitHub issues from the report",
+            "title": "File GitHub issues from the report",
+            "description": "Turn findings into assigned, labeled issues without leaving Slack",
             "examplePrompt": "@Zero create GitHub issues for #1 and #2. Assign #1 to Lancy (Slack scope fix) and #2 to James (Stripe mapping). Label both as bug, priority high."
           },
           {
-            "title": "Go deeper",
-            "description": "Ask Zero to investigate a specific error",
+            "title": "Investigate a specific error deeper",
+            "description": "Ask Zero to trace an error to its root cause in your codebase",
             "examplePrompt": "@Zero for issue #1, what exact Slack OAuth scope is missing? Check our app manifest and tell me what to add."
           },
           {
-            "title": "Make it a routine",
-            "description": "Schedule this as a daily check",
+            "title": "Schedule it as a daily routine",
+            "description": "Run this triage every morning so you never start the day behind",
             "examplePrompt": "@Zero every weekday at 9am, run this same Sentry check and post results to #dev. Only include errors with 5+ occurrences."
           }
         ],
         "integrations": [
           {
-            "description": "OAuth connection to your Sentry org. Zero needs read access to issues and events."
+            "description": "OAuth connection to your Sentry org. Zero needs read access to issues and events to pull error data."
           },
           {
-            "description": "Only needed if you want Zero to create issues from the report. Read/write access to issues."
+            "description": "Optional. Only needed if you want Zero to create GitHub issues directly from the triage report."
           }
         ],
         "tips": [
-          "Be specific about the time window. \"last 24 hours\" for daily triage, \"errors since the last deploy\" for post-deploy checks.",
-          "Add a severity filter to reduce noise, only show errors with 10+ occurrences or skip errors tagged as known-issue.",
-          "Chain it into your standup, combine with the standup use case for a morning brief that includes both your task summary and the Sentry report."
+          "Be specific about the time window: \"last 24 hours\" for daily triage, \"since the last deploy\" for post-deploy checks.",
+          "Filter out noise: add \"only show errors with 10+ occurrences\" or \"skip errors tagged as known-issue\" to your prompt.",
+          "Chain it with your standup: combine with the morning brief use case to get both your task summary and Sentry report in one digest."
         ]
       },
       "standup-summary": {

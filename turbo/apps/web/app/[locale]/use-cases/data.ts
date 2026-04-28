@@ -47,6 +47,7 @@ export interface UseCase {
   capability: Capability;
   model: string;
   videoId?: string;
+  screenshot?: string;
   connectors: ConnectorRef[];
   integrations: IntegrationData[];
   relatedSlugs: string[];
@@ -239,6 +240,7 @@ export const USE_CASES: UseCase[] = [
     slug: "sentry-triage",
     color: "#d4a96a",
     videoId: "iTYhvVp5z5k",
+    screenshot: "/assets/use-cases/sentry-triage.png",
     avatar: {
       rotation: 1,
       skin: 1,

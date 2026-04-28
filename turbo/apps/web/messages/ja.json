@@ -302,6 +302,7 @@
     "relatedUseCases": "関連ユースケース",
     "backToAll": "すべてのユースケース",
     "zeroConnects": "Zeroの接続先:",
+    "whatZeroDelivers": "Zeroが出力する結果",
     "tryIt": "試してみる",
     "ctaTitle": "Zeroはチームが働く場所で動作します",
     "ctaSubtitle": "ZeroをSlackに追加して、自然な言葉で作業を委任しましょう。セットアップウィザードもワークフロービルダーも不要。ただ頼むだけです。",

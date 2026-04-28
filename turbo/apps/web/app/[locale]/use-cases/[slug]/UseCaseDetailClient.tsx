@@ -160,6 +160,25 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             </div>
           </header>
 
+          {/* Screenshot preview */}
+          {useCase.screenshot && (
+            <div className="uc-screenshot-preview" style={{ marginBottom: 48 }}>
+              <div className="uc-screenshot-label">
+                {t("whatZeroDelivers")}
+              </div>
+              <div className="uc-screenshot-frame">
+                <Image
+                  src={useCase.screenshot}
+                  alt={`${title} — sample output from Zero`}
+                  width={800}
+                  height={450}
+                  className="uc-screenshot-img"
+                  priority
+                />
+              </div>
+            </div>
+          )}
+
           {/* Video preview */}
           {useCase.videoId && (
             <div className="uc-video-embed" style={{ marginBottom: 48 }}>

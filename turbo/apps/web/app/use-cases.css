@@ -323,6 +323,37 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Screenshot preview (hero output proof)
+   --------------------------------------------------------------------------- */
+
+.uc-screenshot-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.uc-screenshot-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ed4e01;
+}
+
+.uc-screenshot-frame {
+  border-radius: 12px;
+  border: 0.7px solid hsl(var(--gray-200));
+  overflow: hidden;
+  background: hsl(var(--gray-50));
+}
+
+.uc-screenshot-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ---------------------------------------------------------------------------
    Detail sections
    --------------------------------------------------------------------------- */
 
