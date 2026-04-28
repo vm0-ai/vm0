@@ -36,7 +36,9 @@ const probe$ = command(
   async (
     { get, set },
     signal: AbortSignal,
-  ): Promise<{ readonly status: 200; readonly body: AuthContext } | AuthErrorResponse> => {
+  ): Promise<
+    { readonly status: 200; readonly body: AuthContext } | AuthErrorResponse
+  > => {
     const query = get(rawQuery$);
 
     const options: {
@@ -67,7 +69,11 @@ const probe$ = command(
     const result = await set(requiredAuthContext$, options, signal);
     if ("status" in result) {
       // PAT-only routes: rewrite 401 message to match requireApiKeyAuth phrasing
-      if (options.accept?.length === 1 && options.accept[0] === "pat" && result.status === 401) {
+      if (
+        options.accept?.length === 1 &&
+        options.accept[0] === "pat" &&
+        result.status === 401
+      ) {
         return {
           status: 401 as const,
           body: {
@@ -92,7 +98,8 @@ const probe$ = command(
         status: 403 as const,
         body: {
           error: {
-            message: "This endpoint does not accept the provided credential type",
+            message:
+              "This endpoint does not accept the provided credential type",
             code: "FORBIDDEN",
           },
         },

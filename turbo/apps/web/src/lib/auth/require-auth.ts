@@ -89,7 +89,12 @@ export async function requireAuth(
                 },
               },
             };
-        scheduleShadowCheck(capabilityErr, authHeader, cookieHeader, shadowOpts);
+        scheduleShadowCheck(
+          capabilityErr,
+          authHeader,
+          cookieHeader,
+          shadowOpts,
+        );
         return capabilityErr;
       }
     }
