@@ -92,6 +92,13 @@ describe("buildTelegramResponse", () => {
     expect(result).toMatch(/^content\n\n/);
   });
 
+  it("should omit the audit footer without a logs URL", () => {
+    const result = buildTelegramResponse("content");
+
+    expect(result).toBe("content");
+    expect(result).not.toContain("Audit");
+  });
+
   it("should not render agent name HTML", () => {
     const result = buildTelegramResponse("hi", "https://example.com/logs");
 

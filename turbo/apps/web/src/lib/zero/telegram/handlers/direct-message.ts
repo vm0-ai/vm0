@@ -16,8 +16,7 @@ import {
   resolveSessionCompose,
   resolveUserLink,
   buildConnectUrl,
-  buildAgentLogsUrl,
-  buildLogsUrl,
+  resolveTelegramAuditLogsUrl,
   formatTelegramConnectPrompt,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
@@ -195,7 +194,11 @@ export async function handleTelegramDirectMessage(
     }
     const errorDetail =
       response ?? "An unexpected error occurred. Please try again later.";
-    const linkUrl = runId ? buildLogsUrl(runId) : buildAgentLogsUrl();
+    const linkUrl = await resolveTelegramAuditLogsUrl({
+      orgId: installation.orgId,
+      userId: userLink.vm0UserId,
+      runId,
+    });
     await sendMessage(
       client,
       chatId,

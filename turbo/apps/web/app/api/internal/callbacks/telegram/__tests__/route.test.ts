@@ -18,6 +18,8 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { seedUserFeatureSwitches } from "../../../../../../src/__tests__/db-test-seeders/feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -105,7 +107,7 @@ async function setupTelegramCallback() {
   mockClerk({ userId });
 
   // Create org + compose (with version) through API
-  await createTestOrg(uniqueId("org"));
+  const org = await createTestOrg(uniqueId("org"));
   const { composeId, name: composeName } = await createTestCompose(
     uniqueId("telegram-agent"),
   );
@@ -142,6 +144,7 @@ async function setupTelegramCallback() {
     installationId,
     composeId,
     composeName,
+    orgId: org.id,
     userId,
     userLinkId,
     runId,
@@ -223,7 +226,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   });
 
   describe("Successful Callback", () => {
-    it("should return 200 and send message on completed run", async () => {
+    it("should omit audit link when AuditLink switch is off", async () => {
       const { runId, payload, secret } = await setupTelegramCallback();
 
       const chatActionHandler = telegramSendChatAction();
@@ -251,7 +254,39 @@ describe("POST /api/internal/callbacks/telegram", () => {
       expect(sendMessageHandler.mocked).toHaveBeenCalledTimes(1);
       const text = sendMessageHandler.calls[0]?.text ?? "";
       expect(text).not.toContain("🤖");
+      expect(text).not.toContain("📋 Audit");
+    });
+
+    it("should include audit link when AuditLink switch is on", async () => {
+      const { orgId, userId, runId, payload, secret } =
+        await setupTelegramCallback();
+      await seedUserFeatureSwitches(orgId, userId, {
+        [FeatureSwitchKey.AuditLink]: true,
+      });
+
+      const chatActionHandler = telegramSendChatAction();
+      const deleteMessageHandler = telegramDeleteMessage();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(
+        chatActionHandler.handler,
+        deleteMessageHandler.handler,
+        sendMessageHandler.handler,
+      );
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      const text = sendMessageHandler.calls[0]?.text ?? "";
       expect(text).toContain("📋 Audit");
+      expect(text).toContain(`/activities/${runId}`);
     });
 
     it("should return 200 and send error message on failed run", async () => {

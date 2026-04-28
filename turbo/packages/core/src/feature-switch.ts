@@ -184,7 +184,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.AuditLink]: {
     maintainer: "ethan@vm0.ai",
-    description: "Show audit log links in Slack messages",
+    description: "Show audit log links in integration replies",
     enabled: false,
   },
   [FeatureSwitchKey.AudioInput]: {

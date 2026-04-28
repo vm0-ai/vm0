@@ -4,10 +4,13 @@ import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { getAppUrl } from "../../url";
 import { resolveAgentId } from "../../zero-compose-service";
 import { validateAgentSession } from "../../zero-run-validation";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
+import { loadFeatureSwitchOverrides } from "../../user/feature-switches-service";
 import {
   sendMessage,
   editMessageText,
@@ -288,15 +291,33 @@ export async function linkTelegramUserToVm0User(params: {
 /**
  * Build the logs URL for a run, linking to the agent detail logs page.
  */
-export function buildLogsUrl(runId: string): string {
+function buildLogsUrl(runId: string): string {
   return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
 }
 
 /**
  * Build the agent logs page URL (no specific run).
  */
-export function buildAgentLogsUrl(): string {
+function buildAgentLogsUrl(): string {
   return `${getAppUrl()}/activities`;
+}
+
+export async function resolveTelegramAuditLogsUrl(opts: {
+  orgId: string;
+  userId: string;
+  runId?: string | null;
+}): Promise<string | undefined> {
+  const overrides = await loadFeatureSwitchOverrides(opts.orgId, opts.userId);
+  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    userId: opts.userId,
+    orgId: opts.orgId,
+    overrides,
+  });
+  if (!enabled) {
+    return undefined;
+  }
+
+  return opts.runId ? buildLogsUrl(opts.runId) : buildAgentLogsUrl();
 }
 
 /**

@@ -23,7 +23,7 @@ import { extractRunOutput } from "../../../../../src/lib/infra/run/extract-run-o
 import {
   saveTelegramThreadSession,
   storeTelegramMessage,
-  buildLogsUrl,
+  resolveTelegramAuditLogsUrl,
   getAgentDisplayLabel,
   formatTelegramThinkingMessage,
 } from "../../../../../src/lib/zero/telegram/handlers/shared";
@@ -157,8 +157,24 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   }
   const runOutput = await extractRunOutput(runId, error);
 
+  const [run] = await globalThis.services.db
+    .select({
+      userId: agentRuns.userId,
+      orgId: agentRuns.orgId,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+
   // Build response text
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = run
+    ? await resolveTelegramAuditLogsUrl({
+        orgId: run.orgId,
+        userId: run.userId,
+        runId,
+      })
+    : undefined;
   let htmlOutput: string;
   let responseText: string | undefined;
   if (status === "completed") {
@@ -193,13 +209,6 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
       text: responseText,
     });
   }
-
-  // Get run to find userId for session lookup
-  const [run] = await globalThis.services.db
-    .select({ userId: agentRuns.userId, createdAt: agentRuns.createdAt })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .limit(1);
 
   // Save thread session mapping
   if (run && botReplyMessageId !== undefined) {

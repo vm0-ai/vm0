@@ -19,6 +19,8 @@ import {
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
+import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -82,7 +84,7 @@ async function givenGitHubCallbackSetup(overrides?: {
 }) {
   const userId = uniqueId("gh-cb-user");
   mockClerk({ userId });
-  await createTestOrg(uniqueId("gh-cb-org"));
+  const org = await createTestOrg(uniqueId("gh-cb-org"));
   const { composeId } = await createTestCompose(uniqueId("gh-callback-agent"));
 
   const { runId } = await seedTestRun(userId, composeId, {
@@ -110,6 +112,7 @@ async function givenGitHubCallbackSetup(overrides?: {
 
   return {
     userId,
+    orgId: org.id,
     composeId,
     runId,
     installation,
@@ -235,7 +238,7 @@ describe("POST /api/internal/callbacks/github/issues", () => {
   });
 
   describe("Successful Callback", () => {
-    it("should post comment to GitHub issue on completed run", async () => {
+    it("should omit audit link when AuditLink switch is off", async () => {
       const { runId, payload, secret, capturedComments } =
         await givenGitHubCallbackSetup();
 
@@ -255,7 +258,29 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       expect(capturedComments[0]!.owner).toBe("test-org");
       expect(capturedComments[0]!.repo).toBe("test-repo");
       expect(capturedComments[0]!.issueNumber).toBe("42");
-      // Verify the comment body includes the logs footer
+      expect(capturedComments[0]!.body).not.toContain("Audit");
+      expect(capturedComments[0]!.body).not.toContain(`/activities/${runId}`);
+    });
+
+    it("should include audit link when AuditLink switch is on", async () => {
+      const { orgId, userId, runId, payload, secret, capturedComments } =
+        await givenGitHubCallbackSetup();
+      await seedUserFeatureSwitches(orgId, userId, {
+        [FeatureSwitchKey.AuditLink]: true,
+      });
+
+      const request = createSignedCallbackRequest(
+        TEST_URL,
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.success).toBe(true);
+
+      expect(capturedComments).toHaveLength(1);
       expect(capturedComments[0]!.body).toContain("Audit");
       expect(capturedComments[0]!.body).toContain(`/activities/${runId}`);
     });

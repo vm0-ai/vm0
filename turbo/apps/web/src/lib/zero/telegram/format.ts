@@ -98,9 +98,13 @@ export function markdownToTelegramHtml(markdown: string): string {
  */
 export function buildTelegramResponse(
   markdown: string,
-  logsUrl: string,
+  logsUrl?: string,
 ): string {
   const content = markdownToTelegramHtml(markdown);
+  if (!logsUrl) {
+    return content;
+  }
+
   const footer = `<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`;
 
   return `${content}\n\n${footer}`;
@@ -118,10 +122,14 @@ export function buildTelegramResponse(
  */
 export function buildTelegramErrorResponse(
   errorDetail: string,
-  logsUrl: string,
+  logsUrl?: string,
 ): string {
   const header = `❌ <b>Agent Execution Error</b>`;
   const content = escapeHtml(errorDetail);
+  if (!logsUrl) {
+    return `${header}\n\n${content}`;
+  }
+
   const footer = `<a href="${escapeHtml(logsUrl)}">📋 View logs</a>`;
   return `${header}\n\n${content}\n\n${footer}`;
 }
