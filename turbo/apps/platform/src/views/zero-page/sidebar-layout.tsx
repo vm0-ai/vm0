@@ -206,8 +206,7 @@ function MobileTopBar() {
   // the same sidebar overlay as the hamburger, so the top-bar hamburger is
   // redundant. Hide it.
   const features = useLastResolved(featureSwitch$);
-  const hideHamburger =
-    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const hideHamburger = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
 
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
