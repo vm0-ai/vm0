@@ -8,12 +8,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { createDeferredPromise } from "../../../signals/utils.ts";
+import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -319,6 +322,93 @@ describe("zero chat list page - delete confirmation", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Delete chat?")).not.toBeInTheDocument();
+    });
+  });
+});
+
+// Default agent ID is fixed by the onboarding mock; pinnedAgentIds$ always
+// prepends it to the user-pinned list.
+const DEFAULT_AGENT = "c0000000-0000-4000-a000-000000000001";
+const PINNED_EXTRA = "c0000000-0000-4000-a000-000000000011";
+
+function mockPinnedAgents() {
+  setMockTeam([
+    {
+      id: DEFAULT_AGENT,
+      displayName: "Zero",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: PINNED_EXTRA,
+      displayName: "David",
+      description: null,
+      sound: null,
+      avatarUrl: null,
+      headVersionId: "version_1",
+      updatedAt: "2024-01-01T00:00:00Z",
+    },
+  ]);
+  setMockUserPreferences({ pinnedAgentIds: [PINNED_EXTRA] });
+}
+
+describe("mobile chat agent switcher - hidden when redesign off (CHAT-LIST-MOBILE-001)", () => {
+  it("does not render the pinned-teammates strip with the default switch state", async () => {
+    mockChatThreads(createMockThreads());
+    mockPinnedAgents();
+    detachedSetupPage({ context, path: "/chats" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /Chats with/ }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("mobile-chat-agent-switcher"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("mobile chat agent switcher - shown when redesign on (CHAT-LIST-MOBILE-002)", () => {
+  it("renders one button per pinned agent", async () => {
+    mockChatThreads(createMockThreads());
+    mockPinnedAgents();
+    detachedSetupPage({
+      context,
+      path: "/chats",
+      featureSwitches: { [FeatureSwitchKey.MobileNativeV1]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("mobile-chat-agent-switcher"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByTestId(`mobile-chat-agent-${DEFAULT_AGENT}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`mobile-chat-agent-${PINNED_EXTRA}`)).toBeInTheDocument();
+  });
+});
+
+describe("mobile chat agent switcher - tap switches agent (CHAT-LIST-MOBILE-003)", () => {
+  it("clicking a pinned avatar calls setChatAgentId$ for that agent", async () => {
+    mockChatThreads(createMockThreads());
+    mockPinnedAgents();
+    detachedSetupPage({
+      context,
+      path: "/chats",
+      featureSwitches: { [FeatureSwitchKey.MobileNativeV1]: true },
+    });
+
+    const davidButton = await waitFor(() => {
+      return screen.getByTestId(`mobile-chat-agent-${PINNED_EXTRA}`);
+    });
+    click(davidButton);
+
+    await waitFor(() => {
+      expect(davidButton).toHaveAttribute("aria-pressed", "true");
     });
   });
 });

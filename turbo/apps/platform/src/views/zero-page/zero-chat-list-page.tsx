@@ -42,6 +42,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
+import { MobileChatAgentSwitcher } from "./mobile-chat-agent-switcher.tsx";
 
 export function ZeroChatListPage() {
   const recentSessionsLoadable = useLastLoadable(chatThreads$);
@@ -94,6 +95,8 @@ export function ZeroChatListPage() {
         <div className="flex items-center gap-3 mb-3">
           <h1 className="text-lg font-semibold">{titleLabel}</h1>
         </div>
+
+        <MobileChatAgentSwitcher />
 
         {/* Search */}
         <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 h-10">
