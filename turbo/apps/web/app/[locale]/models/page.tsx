@@ -15,9 +15,9 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
   const url = `${BASE_URL}/${locale}/models`;
-  const title = "Models — Run agents on Claude, Kimi, GLM, MiniMax, DeepSeek";
+  const title = "Models — Run agents on Claude and more";
   const description =
-    "Every AI model available to VM0 agents — Claude Opus 4.7, Sonnet 4.6, Haiku 4.5, GLM-5.1, Kimi K2.6, MiniMax M2.7, DeepSeek V4. Short intro and what each model is best for on VM0.";
+    "Every AI model available to VM0 agents — Claude Opus 4.7, Sonnet 4.6, Haiku 4.5, and more. Short intro and what each model is best for on VM0.";
 
   return {
     title,
@@ -56,7 +56,7 @@ export default async function ModelsPage({ params }: PageProps) {
     "@type": "ItemList",
     name: "AI models available on VM0",
     description:
-      "Every AI model available to VM0 agents — Claude, Kimi, GLM, MiniMax, DeepSeek.",
+      "Every AI model available to VM0 agents — Claude and more.",
     itemListElement: MODELS.map((m, i) => {
       return {
         "@type": "ListItem",

@@ -141,7 +141,6 @@ export function ModelDetailClient({ model, related }: Props) {
   const heroMeta = [
     formatContextWindow(model.contextWindowK),
     model.modalities.join(" / "),
-    model.chinaAccessible ? "China-accessible" : "Global",
     model.promptCaching ? "Prompt cache" : null,
   ].filter(Boolean);
 
