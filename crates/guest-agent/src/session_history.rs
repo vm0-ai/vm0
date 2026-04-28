@@ -17,7 +17,11 @@
 //! The codex sessions layout is `${CODEX_HOME}/sessions/YYYY/MM/DD/<file>.jsonl[.zst]`.
 //! Filenames are not stably keyed to thread_id in the real codex CLI
 //! (the `rollout-` prefix mangles dashes), so we match by dash-stripped
-//! UUID substring with a most-recent-mtime fallback.
+//! UUID substring. If no filename matches, we fail fast — silently picking
+//! "the most recent file in the tree" would risk uploading an unrelated
+//! session as the resume context, which is a multi-tenant correctness
+//! hazard. The descriptive `Codex session file not found` error from
+//! `read_session_history` surfaces the failure instead.
 
 use crate::error::AgentError;
 use std::path::{Path, PathBuf};
@@ -62,9 +66,11 @@ fn decode_marker(content: &str) -> Option<(PathBuf, &str)> {
     Some((PathBuf::from(dir), thread_id))
 }
 
-/// Resolve a codex session file under `sessions_dir`. Prefers a filename
-/// that contains the dash-stripped `thread_id`; falls back to the most
-/// recently modified `*.jsonl[.zst]` if no id match exists.
+/// Resolve a codex session file under `sessions_dir` by matching the
+/// dash-stripped `thread_id` substring against filenames. Returns `None`
+/// if no file matches — callers should propagate this as
+/// "session file not found" rather than guessing at an alternative,
+/// because picking the wrong session would corrupt resume state.
 fn find_codex_session_file(sessions_dir: &Path, thread_id: &str) -> Option<PathBuf> {
     let mut all_jsonl = Vec::new();
     walk_recursive(sessions_dir, &mut all_jsonl, |p| {
@@ -73,18 +79,16 @@ fn find_codex_session_file(sessions_dir: &Path, thread_id: &str) -> Option<PathB
     });
 
     let id_norm = thread_id.replace('-', "");
-    for path in &all_jsonl {
+    for path in all_jsonl {
         if let Some(name) = path.file_name() {
             let name_norm = name.to_string_lossy().replace('-', "");
             if name_norm.contains(&id_norm) {
-                return Some(path.clone());
+                return Some(path);
             }
         }
     }
 
-    all_jsonl
-        .into_iter()
-        .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+    None
 }
 
 /// DFS walk of `dir`, pushing matching paths into `sink`. Silently skips
@@ -131,165 +135,15 @@ fn read_history_bytes(path: &Path) -> Result<Vec<u8>, AgentError> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs::{File, create_dir_all, write};
-    use std::io::Write as _;
-    use tempfile::TempDir;
-
-    /// Build a `YYYY/MM/DD/` style nested path under `root` and write a file.
-    fn write_session_file(root: &Path, sub: &[&str], filename: &str, content: &[u8]) -> PathBuf {
-        let mut dir = root.to_path_buf();
-        for s in sub {
-            dir.push(s);
-        }
-        create_dir_all(&dir).unwrap();
-        let path = dir.join(filename);
-        let mut f = File::create(&path).unwrap();
-        f.write_all(content).unwrap();
-        path
-    }
-
-    #[test]
-    fn find_codex_session_by_id_in_filename() {
-        let tmp = TempDir::new().unwrap();
-        let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
-        let p = write_session_file(
-            tmp.path(),
-            &["2026", "04", "28"],
-            &format!("{thread_id}.jsonl.zst"),
-            b"x",
-        );
-        let found = find_codex_session_file(tmp.path(), thread_id).unwrap();
-        assert_eq!(found, p);
-    }
-
-    #[test]
-    fn find_codex_session_by_id_with_dashes_stripped() {
-        let tmp = TempDir::new().unwrap();
-        let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
-        let id_no_dashes = thread_id.replace('-', "");
-        // Real codex CLI prefixes filenames with `rollout-`; the prefix
-        // strips the UUID's dashes when concatenated.
-        let p = write_session_file(
-            tmp.path(),
-            &["2026", "04", "28"],
-            &format!("rollout-2026-04-28T11-22-37-{id_no_dashes}.jsonl.zst"),
-            b"x",
-        );
-        let found = find_codex_session_file(tmp.path(), thread_id).unwrap();
-        assert_eq!(found, p);
-    }
-
-    #[test]
-    fn find_codex_session_falls_back_to_most_recent() {
-        let tmp = TempDir::new().unwrap();
-        write_session_file(
-            tmp.path(),
-            &["2026", "04", "27"],
-            "rollout-old.jsonl.zst",
-            b"a",
-        );
-        // Sleep so the second file gets a strictly later mtime. fs mtime
-        // resolution on Linux ext4/tmpfs is typically nanosecond, but
-        // CI filesystems vary — 50ms is a safe floor.
-        std::thread::sleep(std::time::Duration::from_millis(50));
-        let newer = write_session_file(
-            tmp.path(),
-            &["2026", "04", "28"],
-            "rollout-new.jsonl.zst",
-            b"b",
-        );
-        let unknown_id = "ffffffff-ffff-7fff-bfff-ffffffffffff";
-        let found = find_codex_session_file(tmp.path(), unknown_id).unwrap();
-        assert_eq!(found, newer);
-    }
-
-    #[test]
-    fn find_codex_session_empty_dir() {
-        let tmp = TempDir::new().unwrap();
-        let id = "0193abcd-ef01-7234-89ab-cdef01234567";
-        assert!(find_codex_session_file(tmp.path(), id).is_none());
-    }
-
-    #[test]
-    fn find_jsonl_files_recursive() {
-        let tmp = TempDir::new().unwrap();
-        write_session_file(tmp.path(), &["2026", "04", "27"], "a.jsonl.zst", b"a");
-        write_session_file(tmp.path(), &["2026", "04", "28"], "b.jsonl", b"b");
-        // Should be ignored (wrong extension).
-        write_session_file(tmp.path(), &["2026", "04", "28"], "c.txt", b"c");
-        let mut found = Vec::new();
-        walk_recursive(tmp.path(), &mut found, |p| {
-            let s = p.to_string_lossy();
-            s.ends_with(".jsonl") || s.ends_with(".jsonl.zst")
-        });
-        assert_eq!(found.len(), 2);
-        let names: Vec<String> = found
-            .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        assert!(names.contains(&"a.jsonl.zst".to_string()));
-        assert!(names.contains(&"b.jsonl".to_string()));
-    }
-
-    #[test]
-    fn decompress_jsonl_zst_round_trip() {
-        let tmp = TempDir::new().unwrap();
-        let original = b"{\"type\":\"thread.started\",\"thread_id\":\"abc\"}\n".to_vec();
-        let compressed = zstd::encode_all(original.as_slice(), 0).unwrap();
-        let path = tmp.path().join("session.jsonl.zst");
-        write(&path, &compressed).unwrap();
-        let bytes = read_history_bytes(&path).unwrap();
-        assert_eq!(bytes, original);
-    }
-
-    #[test]
-    fn decode_marker_round_trip() {
-        let (dir, id) =
-            decode_marker("CODEX_SEARCH:/home/user/.codex/sessions:0193abcd-ef01-7234-89ab")
-                .unwrap();
-        assert_eq!(dir, PathBuf::from("/home/user/.codex/sessions"));
-        assert_eq!(id, "0193abcd-ef01-7234-89ab");
-    }
-
-    #[test]
-    fn decode_marker_returns_none_for_literal_path() {
-        assert!(decode_marker("/home/user/.claude/projects/-foo/abc.jsonl").is_none());
-    }
-
-    #[test]
-    fn read_session_history_claude_literal_path() {
-        let tmp = TempDir::new().unwrap();
-        let history = tmp.path().join("session.jsonl");
-        write(&history, b"line1\nline2\n").unwrap();
-        let path_file = tmp.path().join("path.txt");
-        write(&path_file, history.to_string_lossy().as_bytes()).unwrap();
-        let bytes = read_session_history(path_file.to_str().unwrap()).unwrap();
-        assert_eq!(bytes, b"line1\nline2\n");
-    }
-
-    #[test]
-    fn read_session_history_codex_marker() {
-        let tmp = TempDir::new().unwrap();
-        let sessions_dir = tmp.path().join("sessions");
-        let thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
-        let history = b"{\"type\":\"thread.started\"}\n";
-        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
-        write_session_file(
-            &sessions_dir,
-            &["2026", "04", "28"],
-            &format!("{thread_id}.jsonl.zst"),
-            &compressed,
-        );
-        let path_file = tmp.path().join("path.txt");
-        let marker = format!(
-            "CODEX_SEARCH:{}:{thread_id}",
-            sessions_dir.to_string_lossy()
-        );
-        write(&path_file, marker.as_bytes()).unwrap();
-        let bytes = read_session_history(path_file.to_str().unwrap()).unwrap();
-        assert_eq!(bytes, history);
-    }
-}
+// Note: integration coverage for the public `read_session_history` entry
+// (both Claude literal-path and codex marker → recursive scan + zstd
+// decode) lives in `crates/guest-agent/tests/codex_session_resume.rs`,
+// driven via the `send_event` → checkpoint flow. The internal helpers
+// (`find_codex_session_file`, `walk_recursive`, `read_history_bytes`,
+// `decode_marker`) are exercised transitively by those integration
+// tests, in line with the project's "integration tests only" policy
+// (`docs/testing.md`, `CLAUDE.md`).
+//
+// `decode_marker` is the one piece of non-trivial parsing logic; if it
+// regresses, the integration tests will catch it because the codex flow
+// can't resolve a session without a valid marker.
