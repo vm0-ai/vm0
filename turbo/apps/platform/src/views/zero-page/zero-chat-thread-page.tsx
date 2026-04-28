@@ -1212,10 +1212,12 @@ function parseInlineAttachments(content: string): {
 type BodyRenderBlock =
   | {
       type: "markdown";
+      id: string;
       content: string;
     }
   | {
       type: "preview";
+      id: string;
       preview: {
         filename: string;
         url: string;
@@ -1247,12 +1249,12 @@ function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
 }
 
 function isPlatformFileUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url, "https://vm0.local");
-    return /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
-  } catch {
+  const baseUrl = "https://vm0.local";
+  if (!URL.canParse(url, baseUrl)) {
     return false;
   }
+  const parsed = new URL(url, baseUrl);
+  return /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
 }
 
 function stripMarkdownLineDecorations(value: string): string {
@@ -1297,20 +1299,33 @@ function trimPreviewUrl(value: string): string {
     previous = url;
     url = url
       .replace(/[*_~`]+$/g, "")
-      .replace(/[)\]\}>.,，。；;:：!！?？]+$/g, "");
+      .replace(/[)\]}>.,，。；;:：!！?？]+$/g, "");
   }
   return url;
 }
 
-function extractPreviewUrlFromLine(line: string): string | null {
+type ExtractedPreviewUrl = {
+  url: string;
+  source: "markdown-link" | "bare-url" | "platform-file-line";
+};
+
+function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
   const candidate = stripMarkdownLineDecorations(line);
   const markdownLinkMatch = candidate.match(
     /^\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/f\/[^)\s]+)\)$/,
   );
   const bareUrlMatch = candidate.match(/^(https?:\/\/\S+|\/f\/\S+)$/);
-  const strictUrl = markdownLinkMatch?.[2] ?? bareUrlMatch?.[1];
-  if (strictUrl) {
-    return trimPreviewUrl(strictUrl);
+  if (markdownLinkMatch?.[2]) {
+    return {
+      url: trimPreviewUrl(markdownLinkMatch[2]),
+      source: "markdown-link",
+    };
+  }
+  if (bareUrlMatch?.[1]) {
+    return {
+      url: trimPreviewUrl(bareUrlMatch[1]),
+      source: "bare-url",
+    };
   }
 
   const urls = Array.from(
@@ -1323,7 +1338,10 @@ function extractPreviewUrlFromLine(line: string): string | null {
   });
 
   if (urls.length === 1 && isPlatformFileUrl(urls[0]!)) {
-    return urls[0]!;
+    return {
+      url: urls[0]!,
+      source: "platform-file-line",
+    };
   }
 
   return null;
@@ -1362,15 +1380,24 @@ function parseBodyRenderBlocks(content: string): {
   const lines = content.split("\n");
   const keptLines: string[] = [];
   const markdownBuffer: string[] = [];
+  let blockSequence = 0;
   let openFence: {
     marker: "`" | "~";
     length: number;
   } | null = null;
+  const nextBlockId = (type: BodyRenderBlock["type"]) => {
+    blockSequence += 1;
+    return `${type}-${blockSequence}`;
+  };
 
   const flushMarkdownBuffer = () => {
     const joined = markdownBuffer.join("\n").trim();
     if (joined) {
-      blocks.push({ type: "markdown", content: joined });
+      blocks.push({
+        type: "markdown",
+        id: nextBlockId("markdown"),
+        content: joined,
+      });
     }
     markdownBuffer.length = 0;
   };
@@ -1401,20 +1428,31 @@ function parseBodyRenderBlocks(content: string): {
       continue;
     }
 
-    const url = extractPreviewUrlFromLine(line);
-    if (!url) {
+    const extracted = extractPreviewUrlFromLine(line);
+    if (!extracted) {
       markdownBuffer.push(line);
       keptLines.push(line);
       continue;
     }
 
+    const { url } = extracted;
     const filename = filenameFromUrl(url);
     const kind = classifyChatAttachment({ filename, url });
+
+    if (
+      extracted.source === "markdown-link" &&
+      (kind === "image" || kind === "video")
+    ) {
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
 
     if (isBodyPreviewKind(kind)) {
       flushMarkdownBuffer();
       blocks.push({
         type: "preview",
+        id: nextBlockId("preview"),
         preview: { filename, url, kind },
       });
       continue;
@@ -1445,11 +1483,11 @@ function BodyContentBlocks({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      {blocks.map((block, index) => {
+      {blocks.map((block) => {
         if (block.type === "markdown") {
           return (
             <Markdown
-              key={`markdown-${index}-${block.content}`}
+              key={block.id}
               source={
                 hardBreaks
                   ? block.content.replace(/\n/g, "  \n")
@@ -1464,7 +1502,7 @@ function BodyContentBlocks({
         if (block.preview.kind === "image") {
           return (
             <button
-              key={`preview-${index}-${block.preview.url}`}
+              key={block.id}
               type="button"
               onClick={() => {
                 openLightbox(block.preview.url);
@@ -1490,7 +1528,7 @@ function BodyContentBlocks({
         if (block.preview.kind === "video") {
           return (
             <video
-              key={`preview-${index}-${block.preview.url}`}
+              key={block.id}
               src={block.preview.url}
               controls
               className="max-h-48 max-w-full rounded-lg border border-foreground/10"
@@ -1500,7 +1538,7 @@ function BodyContentBlocks({
 
         return (
           <AttachmentPreview
-            key={`preview-${index}-${block.preview.url}`}
+            key={block.id}
             attachment={{
               filename: block.preview.filename,
               url: block.preview.url,
