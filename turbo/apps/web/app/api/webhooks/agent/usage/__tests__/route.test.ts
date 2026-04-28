@@ -299,19 +299,67 @@ describe("POST /api/webhooks/agent/usage", () => {
       await expectNoLegacyCreditUsage();
     });
 
-    it("rejects positive token usage without a stable message_id", async () => {
-      const response = await POST(
-        makeRequest({
-          runId: testRunId,
-          usage: { model: "claude-sonnet-4-6", input_tokens: 100 },
-        }),
+    it("does not deduplicate the same message_id across different runs", async () => {
+      const { runId: secondRunId } = await seedTestRun(
+        user.userId,
+        testComposeId,
       );
-      expect(response.status).toBe(400);
+      const secondToken = await createTestSandboxToken(
+        user.userId,
+        secondRunId,
+      );
+      const makeBody = (runId: string, inputTokens: number) => {
+        return {
+          runId,
+          usage: {
+            model: "claude-sonnet-4-6",
+            message_id: "msg_shared_across_runs",
+            input_tokens: inputTokens,
+          },
+        };
+      };
 
-      const rows = await findTestUsageEventsByRunId(testRunId);
-      expect(rows).toHaveLength(0);
+      expect((await POST(makeRequest(makeBody(testRunId, 100)))).status).toBe(
+        200,
+      );
+      expect(
+        (await POST(makeRequest(makeBody(secondRunId, 200), secondToken)))
+          .status,
+      ).toBe(200);
+
+      const firstRows = await findTestUsageEventsByRunId(testRunId);
+      expect(firstRows).toHaveLength(1);
+      expect(firstRows[0]!.quantity).toBe(100);
+
+      const secondRows = await findTestUsageEventsByRunId(secondRunId);
+      expect(secondRows).toHaveLength(1);
+      expect(secondRows[0]!.quantity).toBe(200);
       await expectNoLegacyCreditUsage();
+      await expectNoLegacyCreditUsage(secondRunId);
     });
+
+    it.each([
+      { name: "omitted", usage: { model: "claude-sonnet-4-6" } },
+      {
+        name: "empty",
+        usage: { model: "claude-sonnet-4-6", message_id: "" },
+      },
+    ])(
+      "rejects positive token usage with $name message_id",
+      async ({ usage }) => {
+        const response = await POST(
+          makeRequest({
+            runId: testRunId,
+            usage: { ...usage, input_tokens: 100 },
+          }),
+        );
+        expect(response.status).toBe(400);
+
+        const rows = await findTestUsageEventsByRunId(testRunId);
+        expect(rows).toHaveLength(0);
+        await expectNoLegacyCreditUsage();
+      },
+    );
 
     it("accepts usage with no positive token quantities without writing rows", async () => {
       const response = await POST(
