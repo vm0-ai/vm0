@@ -279,8 +279,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the Telegram integration settings UI. The backend Telegram routes do not consult this frontend rollout flag.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.Trinity]: {
     maintainer: "ethan@vm0.ai",
