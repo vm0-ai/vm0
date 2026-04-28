@@ -8,6 +8,7 @@ import {
   linkTelegramUserToVm0User,
   resolveUserLink,
   buildConnectUrl,
+  buildTelegramConnectReplyMarkup,
   formatTelegramAlreadyConnectedMessage,
   formatTelegramCommandError,
   formatTelegramCommandSuccess,
@@ -97,7 +98,9 @@ export async function handleStartCommand(
       fromUserId,
       botToken,
     );
-    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(), {
+      replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+    });
     return;
   }
 

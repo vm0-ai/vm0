@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
-import { createTelegramClient, sendMessage, deleteMessage } from "../client";
+import { createTelegramClient, sendMessage } from "../client";
 import {
-  sendThinkingMessage,
+  sendTypingAction,
   sendQueuedNotification,
   enrichTelegramPrompt,
   formatReplyQuote,
@@ -16,6 +16,7 @@ import {
   resolveSessionCompose,
   resolveUserLink,
   resolveTelegramAuditLogsUrl,
+  buildTelegramPrivateConnectReplyMarkup,
   formatTelegramPrivateConnectPrompt,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
@@ -77,7 +78,12 @@ export async function handleTelegramMention(
       client,
       chatId,
       formatTelegramPrivateConnectPrompt(installation.botUsername),
-      { replyToMessageId: message.message_id },
+      {
+        replyToMessageId: message.message_id,
+        replyMarkup: buildTelegramPrivateConnectReplyMarkup(
+          installation.botUsername,
+        ),
+      },
     );
     return;
   }
@@ -96,10 +102,8 @@ export async function handleTelegramMention(
   }
   const agentName = getAgentDisplayLabel(defaultAgent);
 
-  // 4. Send thinking placeholder message (reply to user's message in groups)
-  const thinkingMessage = await sendThinkingMessage(client, chatId, agentName, {
-    replyToMessageId: message.message_id,
-  });
+  // 4. Send typing indicator
+  await sendTypingAction(client, chatId);
 
   // 5. Store incoming message
   await storeTelegramMessage(installationId, chatId, message);
@@ -172,14 +176,11 @@ export async function handleTelegramMention(
       agentId: composeId,
       existingSessionId: existingSessionId ?? null,
       isDM: false,
-      thinkingMessageId: thinkingMessage
-        ? String(thinkingMessage.message_id)
-        : null,
     },
   });
 
   if (status === "queued") {
-    await sendQueuedNotification(client, chatId, thinkingMessage, {
+    await sendQueuedNotification(client, chatId, {
       replyToMessageId: message.message_id,
     });
   } else if (status === "failed") {
@@ -190,9 +191,6 @@ export async function handleTelegramMention(
       runId,
       response,
     });
-    if (thinkingMessage) {
-      await deleteMessage(client, chatId, thinkingMessage.message_id);
-    }
     const errorDetail =
       response ?? "An unexpected error occurred. Please try again later.";
     const linkUrl = await resolveTelegramAuditLogsUrl({

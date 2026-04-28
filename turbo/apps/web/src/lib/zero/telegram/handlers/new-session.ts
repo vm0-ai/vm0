@@ -7,6 +7,7 @@ import { createTelegramClient, sendMessage } from "../client";
 import {
   resolveUserLink,
   buildConnectUrl,
+  buildTelegramConnectReplyMarkup,
   formatTelegramCommandSuccess,
   formatTelegramConnectPrompt,
 } from "./shared";
@@ -58,7 +59,9 @@ export async function handleNewSessionCommand(
       fromUserId,
       botToken,
     );
-    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(), {
+      replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+    });
     return;
   }
 

@@ -4,6 +4,7 @@ import {
   markdownToTelegramHtml,
   splitMessage,
   buildTelegramResponse,
+  buildTelegramErrorResponse,
 } from "../format";
 
 describe("escapeHtml", () => {
@@ -38,6 +39,15 @@ describe("markdownToTelegramHtml", () => {
   it("should convert links", () => {
     expect(markdownToTelegramHtml("[click](https://example.com)")).toBe(
       '<a href="https://example.com">click</a>',
+    );
+  });
+
+  it("should convert connector authorization links", () => {
+    const input =
+      "[连接 Notion](https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c)";
+
+    expect(markdownToTelegramHtml(input)).toBe(
+      '<a href="https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c">连接 Notion</a>',
     );
   });
 
@@ -112,6 +122,37 @@ describe("buildTelegramResponse", () => {
     );
 
     expect(result).toContain("<b>bold</b> and <code>code</code>");
+  });
+
+  it("should render connector authorization links", () => {
+    const result = buildTelegramResponse(
+      [
+        "Notion 还没有连接，需要先授权。",
+        "",
+        "请点击这个链接完成连接：",
+        "[连接 Notion](https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c)",
+      ].join("\n"),
+      "https://example.com/logs",
+    );
+
+    expect(result).toContain(
+      '<a href="https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c">连接 Notion</a>',
+    );
+    expect(result).not.toContain("[连接 Notion](");
+  });
+});
+
+describe("buildTelegramErrorResponse", () => {
+  it("should convert markdown links in error details", () => {
+    const result = buildTelegramErrorResponse(
+      "请先 [连接 Notion](https://example.com/connect?agentId=123)",
+      "https://example.com/logs",
+    );
+
+    expect(result).toContain(
+      '<a href="https://example.com/connect?agentId=123">连接 Notion</a>',
+    );
+    expect(result).not.toContain("[连接 Notion](");
   });
 });
 

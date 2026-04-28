@@ -1,5 +1,6 @@
 import { logger } from "../../shared/logger";
 import { env } from "../../../env";
+import { normalizeTelegramHtmlText } from "./format";
 
 const log = logger("telegram:client");
 
@@ -56,7 +57,7 @@ export function isTelegramApiError(error: unknown): error is TelegramApiError {
   );
 }
 
-export interface TelegramSentMessage {
+interface TelegramSentMessage {
   message_id: number;
   chat: { id: number };
   text?: string;
@@ -64,6 +65,20 @@ export interface TelegramSentMessage {
 
 export interface TelegramClient {
   token: string;
+}
+
+export interface TelegramInlineKeyboardButton {
+  text: string;
+  url: string;
+}
+
+export interface TelegramInlineKeyboardMarkup {
+  inline_keyboard: TelegramInlineKeyboardButton[][];
+}
+
+export interface TelegramSendMessageOptions {
+  replyToMessageId?: number;
+  replyMarkup?: TelegramInlineKeyboardMarkup;
 }
 
 function isE2eTelegramMockEnabled(): boolean {
@@ -159,15 +174,16 @@ export async function sendMessage(
   client: TelegramClient,
   chatId: string | number,
   text: string,
-  options?: { replyToMessageId?: number },
+  options?: TelegramSendMessageOptions,
 ): Promise<TelegramSentMessage> {
   return callTelegramApi<TelegramSentMessage>(client.token, "sendMessage", {
     chat_id: chatId,
-    text,
+    text: normalizeTelegramHtmlText(text),
     parse_mode: "HTML",
     ...(options?.replyToMessageId && {
       reply_parameters: { message_id: options.replyToMessageId },
     }),
+    ...(options?.replyMarkup && { reply_markup: options.replyMarkup }),
   });
 }
 
@@ -226,7 +242,7 @@ export async function editMessageText(
   return callTelegramApi<TelegramSentMessage>(client.token, "editMessageText", {
     chat_id: chatId,
     message_id: messageId,
-    text,
+    text: normalizeTelegramHtmlText(text),
     parse_mode: "HTML",
   });
 }

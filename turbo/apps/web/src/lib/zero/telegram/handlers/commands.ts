@@ -7,6 +7,8 @@ import { createTelegramClient, sendMessage } from "../client";
 import {
   resolveUserLink,
   buildConnectUrl,
+  buildTelegramConnectReplyMarkup,
+  buildTelegramPrivateConnectReplyMarkup,
   formatTelegramAlreadyConnectedMessage,
   formatTelegramCommandError,
   formatTelegramCommandSuccess,
@@ -76,7 +78,12 @@ export async function handleConnectCommand(
       client,
       chatId,
       formatTelegramPrivateConnectPrompt(installation.botUsername),
-      replyOptions,
+      {
+        ...replyOptions,
+        replyMarkup: buildTelegramPrivateConnectReplyMarkup(
+          installation.botUsername,
+        ),
+      },
     );
     return;
   }
@@ -86,7 +93,9 @@ export async function handleConnectCommand(
     fromUserId,
     botToken,
   );
-  await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
+  await sendMessage(client, chatId, formatTelegramConnectPrompt(), {
+    replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+  });
 }
 
 /**

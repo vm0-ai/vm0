@@ -2,9 +2,9 @@ import { eq } from "drizzle-orm";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
-import { createTelegramClient, sendMessage, deleteMessage } from "../client";
+import { createTelegramClient, sendMessage } from "../client";
 import {
-  sendThinkingMessage,
+  sendTypingAction,
   sendQueuedNotification,
   enrichTelegramPrompt,
   formatReplyQuote,
@@ -17,6 +17,7 @@ import {
   resolveUserLink,
   buildConnectUrl,
   resolveTelegramAuditLogsUrl,
+  buildTelegramConnectReplyMarkup,
   formatTelegramConnectPrompt,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
@@ -71,7 +72,9 @@ export async function handleTelegramDirectMessage(
       fromUserId,
       botToken,
     );
-    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(), {
+      replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+    });
     return;
   }
 
@@ -88,8 +91,8 @@ export async function handleTelegramDirectMessage(
   }
   const agentName = getAgentDisplayLabel(defaultAgent);
 
-  // 4. Send thinking placeholder message
-  const thinkingMessage = await sendThinkingMessage(client, chatId, agentName);
+  // 4. Send typing indicator
+  await sendTypingAction(client, chatId);
 
   // 5. Store incoming message
   await storeTelegramMessage(installationId, chatId, message);
@@ -173,14 +176,11 @@ export async function handleTelegramDirectMessage(
       agentId: composeId,
       existingSessionId: existingSessionId ?? null,
       isDM: true,
-      thinkingMessageId: thinkingMessage
-        ? String(thinkingMessage.message_id)
-        : null,
     },
   });
 
   if (status === "queued") {
-    await sendQueuedNotification(client, chatId, thinkingMessage);
+    await sendQueuedNotification(client, chatId);
   } else if (status === "failed") {
     log.error("Failed to dispatch agent run (DM)", {
       chatId,
@@ -189,9 +189,6 @@ export async function handleTelegramDirectMessage(
       runId,
       response,
     });
-    if (thinkingMessage) {
-      await deleteMessage(client, chatId, thinkingMessage.message_id);
-    }
     const errorDetail =
       response ?? "An unexpected error occurred. Please try again later.";
     const linkUrl = await resolveTelegramAuditLogsUrl({

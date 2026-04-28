@@ -220,6 +220,79 @@ describe("sendMessage", () => {
       reply_parameters: { message_id: 50 },
     });
   });
+
+  it("should include reply_markup when provided", async () => {
+    let capturedBody: unknown;
+    const handler = http.post(
+      `https://api.telegram.org/bot${TEST_TOKEN}/sendMessage`,
+      async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          ok: true,
+          result: { message_id: 101, chat: { id: 42 } },
+        });
+      },
+    );
+    server.use(handler.handler);
+
+    const client = createTelegramClient(TEST_TOKEN);
+    await sendMessage(client, 42, "connect", {
+      replyMarkup: {
+        inline_keyboard: [[{ text: "Connect", url: "https://example.com" }]],
+      },
+    });
+
+    expect(capturedBody).toEqual({
+      chat_id: 42,
+      text: "connect",
+      parse_mode: "HTML",
+      reply_markup: {
+        inline_keyboard: [[{ text: "Connect", url: "https://example.com" }]],
+      },
+    });
+  });
+
+  it("should convert raw markdown links before sending HTML", async () => {
+    let capturedBody: unknown;
+    const handler = http.post(
+      `https://api.telegram.org/bot${TEST_TOKEN}/sendMessage`,
+      async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          ok: true,
+          result: { message_id: 102, chat: { id: 42 } },
+        });
+      },
+    );
+    server.use(handler.handler);
+
+    const client = createTelegramClient(TEST_TOKEN);
+    await sendMessage(
+      client,
+      42,
+      [
+        "Notion 还没有连接，需要先授权。",
+        "",
+        "请点击这个链接完成连接：",
+        "[连接 Notion](https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c)",
+        "",
+        '<a href="https://example.com/logs">📋 Audit</a>',
+      ].join("\n"),
+    );
+
+    expect(capturedBody).toEqual({
+      chat_id: 42,
+      text: [
+        "Notion 还没有连接，需要先授权。",
+        "",
+        "请点击这个链接完成连接：",
+        '<a href="https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c">连接 Notion</a>',
+        "",
+        '<a href="https://example.com/logs">📋 Audit</a>',
+      ].join("\n"),
+      parse_mode: "HTML",
+    });
+  });
 });
 
 describe("sendChatAction", () => {
@@ -271,6 +344,36 @@ describe("editMessageText", () => {
       chat_id: 42,
       message_id: 99,
       text: "edited",
+      parse_mode: "HTML",
+    });
+  });
+
+  it("should convert raw markdown links before editing HTML", async () => {
+    let capturedBody: unknown;
+    const handler = http.post(
+      `https://api.telegram.org/bot${TEST_TOKEN}/editMessageText`,
+      async ({ request }) => {
+        capturedBody = await request.json();
+        return HttpResponse.json({
+          ok: true,
+          result: { message_id: 99, chat: { id: 42 }, text: "edited" },
+        });
+      },
+    );
+    server.use(handler.handler);
+
+    const client = createTelegramClient(TEST_TOKEN);
+    await editMessageText(
+      client,
+      42,
+      99,
+      "请先 [连接 Notion](https://example.com/connect?agentId=123)",
+    );
+
+    expect(capturedBody).toEqual({
+      chat_id: 42,
+      message_id: 99,
+      text: '请先 <a href="https://example.com/connect?agentId=123">连接 Notion</a>',
       parse_mode: "HTML",
     });
   });

@@ -11,7 +11,6 @@ import {
   createTelegramClient,
   sendMessage,
   sendChatAction,
-  editMessageText,
   deleteMessage,
 } from "../../../../../src/lib/zero/telegram/client";
 import {
@@ -25,7 +24,6 @@ import {
   storeTelegramMessage,
   resolveTelegramAuditLogsUrl,
   getAgentDisplayLabel,
-  formatTelegramThinkingMessage,
 } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { env } from "../../../../../src/env";
 import type { TelegramCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
@@ -131,12 +129,13 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
 
   const agent = await resolveAgentInfo(agentId);
 
-  // Delete thinking placeholder message
+  // Delete legacy thinking placeholder messages from runs created before
+  // Telegram switched to typing-only feedback.
   if (thinkingMessageId) {
     try {
       await deleteMessage(client, chatId, Number(thinkingMessageId));
     } catch (err) {
-      log.debug("Failed to delete thinking message", {
+      log.debug("Failed to delete legacy thinking placeholder", {
         thinkingMessageId,
         error: err,
       });
@@ -279,16 +278,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (status === "progress") {
     try {
       await sendChatAction(client, payload.chatId, "typing");
-      if (payload.thinkingMessageId) {
-        const agent = await resolveAgentInfo(payload.agentId);
-        const thinkingText = formatTelegramThinkingMessage(agent.label);
-        await editMessageText(
-          client,
-          payload.chatId,
-          Number(payload.thinkingMessageId),
-          thinkingText,
-        );
-      }
     } catch (err) {
       log.debug("Failed to refresh typing indicator", { runId, error: err });
     }

@@ -33,27 +33,7 @@ interface TelegramCallbackPayload {
   agentId: string;
   existingSessionId: string | null;
   isDM: boolean;
-  thinkingMessageId: string | null;
-}
-
-function telegramSendMessage() {
-  const calls: Array<{ chat_id: string; text: string }> = [];
-  const handler = http.post(
-    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendMessage`,
-    async ({ request }) => {
-      const body = (await request.json()) as { chat_id: string; text: string };
-      calls.push(body);
-      return HttpResponse.json({
-        ok: true,
-        result: {
-          message_id: 999,
-          chat: { id: 123 },
-          text: body.text,
-        },
-      });
-    },
-  );
-  return { ...handler, calls };
+  thinkingMessageId?: string | null;
 }
 
 function telegramSendChatAction() {
@@ -65,24 +45,27 @@ function telegramSendChatAction() {
   );
 }
 
-function telegramEditMessageText() {
-  const calls: Array<{
-    chat_id: string;
-    message_id: number;
-    text: string;
-  }> = [];
+interface TelegramSendMessageBody {
+  chat_id: string;
+  text: string;
+  parse_mode?: string;
+  reply_parameters?: { message_id: number };
+}
+
+function telegramSendMessage() {
+  const calls: TelegramSendMessageBody[] = [];
   const handler = http.post(
-    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/editMessageText`,
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendMessage`,
     async ({ request }) => {
-      const body = (await request.json()) as {
-        chat_id: string;
-        message_id: number;
-        text: string;
-      };
+      const body = (await request.json()) as TelegramSendMessageBody;
       calls.push(body);
       return HttpResponse.json({
         ok: true,
-        result: { message_id: 100, chat: { id: 123 }, text: body.text },
+        result: {
+          message_id: 999,
+          chat: { id: 123 },
+          text: body.text,
+        },
       });
     },
   );
@@ -131,7 +114,6 @@ async function setupTelegramCallback() {
     agentId: composeId,
     existingSessionId: null,
     isDM: false,
-    thinkingMessageId: "100",
   };
 
   const { secret } = await createTestCallback({
@@ -250,7 +232,8 @@ describe("POST /api/internal/callbacks/telegram", () => {
       expect(data.success).toBe(true);
 
       // Telegram API was called
-      expect(deleteMessageHandler.mocked).toHaveBeenCalledTimes(1);
+      expect(chatActionHandler.mocked).toHaveBeenCalledTimes(1);
+      expect(deleteMessageHandler.mocked).not.toHaveBeenCalled();
       expect(sendMessageHandler.mocked).toHaveBeenCalledTimes(1);
       const text = sendMessageHandler.calls[0]?.text ?? "";
       expect(text).not.toContain("🤖");
@@ -289,6 +272,120 @@ describe("POST /api/internal/callbacks/telegram", () => {
       expect(text).toContain(`/activities/${runId}`);
     });
 
+    it("renders markdown for group mention replies", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "**Done** with `code`" } },
+      ]);
+
+      const chatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const sent = sendMessageHandler.calls[0]!;
+      expect(sent.text).toContain("<b>Done</b> with <code>code</code>");
+      expect(sent.parse_mode).toBe("HTML");
+      expect(sent.reply_parameters).toEqual({
+        message_id: Number(payload.messageId),
+      });
+    });
+
+    it("renders connector authorization links in agent replies", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventData: {
+            result: [
+              "Notion 还没有连接，需要先授权。",
+              "",
+              "请点击这个链接完成连接：",
+              "[连接 Notion](https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c)",
+            ].join("\n"),
+          },
+        },
+      ]);
+
+      const chatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const sent = sendMessageHandler.calls[0]!;
+      expect(sent.parse_mode).toBe("HTML");
+      expect(sent.text).toContain(
+        '<a href="https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c">连接 Notion</a>',
+      );
+      expect(sent.text).not.toContain("[连接 Notion](");
+    });
+
+    it("renders markdown for DM replies without reply quoting", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "**Done** with `code`" } },
+      ]);
+
+      const chatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        { runId, status: "completed", payload: { ...payload, isDM: true } },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const sent = sendMessageHandler.calls[0]!;
+      expect(sent.text).toContain("<b>Done</b> with <code>code</code>");
+      expect(sent.reply_parameters).toBeUndefined();
+    });
+
+    it("should delete legacy thinking placeholder when present", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const chatActionHandler = telegramSendChatAction();
+      const deleteMessageHandler = telegramDeleteMessage();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(
+        chatActionHandler.handler,
+        deleteMessageHandler.handler,
+        sendMessageHandler.handler,
+      );
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        {
+          runId,
+          status: "completed",
+          payload: { ...payload, thinkingMessageId: "100" },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(deleteMessageHandler.mocked).toHaveBeenCalledTimes(1);
+    });
+
     it("should return 200 and send error message on failed run", async () => {
       const { runId, payload, secret } = await setupTelegramCallback();
 
@@ -319,21 +416,43 @@ describe("POST /api/internal/callbacks/telegram", () => {
 
       expect(sendMessageHandler.mocked).toHaveBeenCalledTimes(1);
     });
+
+    it("renders markdown links in failed run messages", async () => {
+      const { runId, payload, secret } = await setupTelegramCallback();
+
+      const chatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        {
+          runId,
+          status: "failed",
+          error: "请先 [连接 Notion](https://example.com/connect?agentId=123)",
+          payload,
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const sent = sendMessageHandler.calls[0]!;
+      expect(sent.parse_mode).toBe("HTML");
+      expect(sent.text).toContain(
+        '<a href="https://example.com/connect?agentId=123">连接 Notion</a>',
+      );
+      expect(sent.text).not.toContain("[连接 Notion](");
+    });
   });
 
   describe("Progress Callback", () => {
     it("should refresh typing indicator and return early without sending a message", async () => {
-      const { runId, payload, secret, composeName } =
-        await setupTelegramCallback();
+      const { runId, payload, secret } = await setupTelegramCallback();
 
       const chatActionHandler = telegramSendChatAction();
-      const editHandler = telegramEditMessageText();
       const sendMessageHandler = telegramSendMessage();
-      server.use(
-        chatActionHandler.handler,
-        editHandler.handler,
-        sendMessageHandler.handler,
-      );
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
 
       const request = createSignedCallbackRequest(
         "http://localhost/api/internal/callbacks/telegram",
@@ -348,29 +467,23 @@ describe("POST /api/internal/callbacks/telegram", () => {
 
       // Should refresh typing indicator
       expect(chatActionHandler.mocked).toHaveBeenCalledTimes(1);
-      // Should edit thinking message back to thinking state
-      expect(editHandler.mocked).toHaveBeenCalledTimes(1);
-      expect(editHandler.calls[0]?.text).toBe(
-        `<i>${composeName} is thinking...</i>`,
-      );
-      expect(editHandler.calls[0]?.text).not.toContain("🤖");
       // Should NOT send a new message
       expect(sendMessageHandler.mocked).not.toHaveBeenCalled();
     });
 
-    it("should skip editing when no thinkingMessageId is set", async () => {
+    it("should ignore legacy thinking placeholders on progress", async () => {
       const { runId, payload, secret } = await setupTelegramCallback();
 
       const chatActionHandler = telegramSendChatAction();
-      const editHandler = telegramEditMessageText();
-      server.use(chatActionHandler.handler, editHandler.handler);
+      const sendMessageHandler = telegramSendMessage();
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
 
       const request = createSignedCallbackRequest(
         "http://localhost/api/internal/callbacks/telegram",
         {
           runId,
           status: "progress",
-          payload: { ...payload, thinkingMessageId: null },
+          payload: { ...payload, thinkingMessageId: "100" },
         },
         secret,
       );
@@ -378,7 +491,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
 
       expect(response.status).toBe(200);
       expect(chatActionHandler.mocked).toHaveBeenCalledTimes(1);
-      expect(editHandler.mocked).not.toHaveBeenCalled();
+      expect(sendMessageHandler.mocked).not.toHaveBeenCalled();
     });
   });
 
@@ -500,7 +613,6 @@ describe("POST /api/internal/callbacks/telegram", () => {
         agentId: "compose-123",
         existingSessionId: null,
         isDM: false,
-        thinkingMessageId: null,
       };
 
       const request = createSignedCallbackRequest(

@@ -93,6 +93,41 @@ export function markdownToTelegramHtml(markdown: string): string {
   return result;
 }
 
+function convertMarkdownLinksInHtmlText(text: string): string {
+  return text
+    .replace(
+      /!\[([^\]\n]*)\]\((https?:\/\/[^)\s]+)\)/g,
+      (_match, alt: string, url: string) => {
+        const label = alt ? `🖼 ${alt}` : "🖼 image";
+        return `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
+      },
+    )
+    .replace(
+      /(?<!!)\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g,
+      (_match, label: string, url: string) => {
+        return `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
+      },
+    );
+}
+
+const TELEGRAM_HTML_MARKUP_PATTERN =
+  /<\/?(?:a|b|strong|i|em|u|ins|s|strike|del|span|tg-spoiler|code|pre|blockquote)\b|&(?:lt|gt|amp|quot|#x27);/i;
+
+/**
+ * Normalize text for Telegram's HTML parse mode.
+ *
+ * Most call sites already pass Telegram HTML. This catches raw Markdown
+ * messages that reach the client layer directly, without double-escaping
+ * existing Telegram HTML.
+ */
+export function normalizeTelegramHtmlText(text: string): string {
+  if (TELEGRAM_HTML_MARKUP_PATTERN.test(text)) {
+    return convertMarkdownLinksInHtmlText(text);
+  }
+
+  return markdownToTelegramHtml(text);
+}
+
 /**
  * Build a structured Telegram response with converted content and audit footer.
  */
@@ -125,7 +160,7 @@ export function buildTelegramErrorResponse(
   logsUrl?: string,
 ): string {
   const header = `❌ <b>Agent Execution Error</b>`;
-  const content = escapeHtml(errorDetail);
+  const content = markdownToTelegramHtml(errorDetail);
   if (!logsUrl) {
     return `${header}\n\n${content}`;
   }

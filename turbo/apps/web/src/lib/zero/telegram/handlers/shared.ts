@@ -13,9 +13,10 @@ import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import { loadFeatureSwitchOverrides } from "../../user/feature-switches-service";
 import {
   sendMessage,
-  editMessageText,
+  sendChatAction,
   type TelegramClient,
-  type TelegramSentMessage,
+  type TelegramInlineKeyboardMarkup,
+  type TelegramSendMessageOptions,
 } from "../client";
 import { escapeHtml } from "../format";
 import { signConnectParams } from "../connect-token";
@@ -467,8 +468,16 @@ function normalizedBotUsername(botUsername: string | null | undefined): string {
   return botUsername?.replace(/^@/, "").trim() ?? "";
 }
 
-export function formatTelegramConnectPrompt(connectUrl: string): string {
-  return `To use Zero in Telegram, please connect your account first.\n\n<a href="${escapeHtml(connectUrl)}">Connect</a>`;
+export function formatTelegramConnectPrompt(): string {
+  return "To use Zero in Telegram, please connect your account first.";
+}
+
+export function buildTelegramConnectReplyMarkup(
+  connectUrl: string,
+): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [[{ text: "Connect", url: connectUrl }]],
+  };
 }
 
 export function formatTelegramPrivateConnectPrompt(
@@ -479,7 +488,20 @@ export function formatTelegramPrivateConnectPrompt(
     return "To use Zero in Telegram, please connect your account first.\n\nSend me /connect in a private message.";
   }
 
-  return `To use Zero in Telegram, please connect your account first.\n\n<a href="https://t.me/${escapeHtml(username)}?start=connect">Connect</a>`;
+  return "To use Zero in Telegram, please connect your account first.";
+}
+
+export function buildTelegramPrivateConnectReplyMarkup(
+  botUsername: string | null | undefined,
+): TelegramInlineKeyboardMarkup | undefined {
+  const username = normalizedBotUsername(botUsername);
+  if (!username) {
+    return undefined;
+  }
+
+  return buildTelegramConnectReplyMarkup(
+    `https://t.me/${encodeURIComponent(username)}?start=connect`,
+  );
 }
 
 export function formatTelegramAlreadyConnectedMessage(
@@ -498,10 +520,6 @@ export function formatTelegramCommandSuccess(message: string): string {
 
 export function formatTelegramCommandError(message: string): string {
   return `❌ <b>Error</b>\n${escapeHtml(message)}`;
-}
-
-export function formatTelegramThinkingMessage(agentName: string): string {
-  return `<i>${escapeHtml(agentName)} is thinking...</i>`;
 }
 
 export function formatTelegramHelpMessage(
@@ -559,22 +577,14 @@ export function buildConnectUrl(
   return `${appUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
 }
 
-/**
- * Send a thinking placeholder message that persists until the agent responds.
- * Returns the sent message so its ID can be passed to the callback for deletion.
- */
-export async function sendThinkingMessage(
+export async function sendTypingAction(
   client: TelegramClient,
   chatId: string | number,
-  agentName: string,
-  options?: { replyToMessageId?: number },
-): Promise<TelegramSentMessage | undefined> {
-  const text = formatTelegramThinkingMessage(agentName);
+): Promise<void> {
   try {
-    return await sendMessage(client, chatId, text, options);
+    await sendChatAction(client, chatId, "typing");
   } catch (err) {
-    log.warn("Failed to send thinking message", { chatId, error: err });
-    return undefined;
+    log.debug("Failed to send typing action", { chatId, error: err });
   }
 }
 
@@ -582,25 +592,14 @@ const QUEUED_MESSAGE =
   "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.";
 
 /**
- * Update the thinking message to show queued status, or send a new message if
- * no thinking message exists.
+ * Send a queued status message when the run could not start immediately.
  */
 export async function sendQueuedNotification(
   client: TelegramClient,
   chatId: string | number,
-  thinkingMessage: TelegramSentMessage | undefined,
-  options?: { replyToMessageId?: number },
+  options?: TelegramSendMessageOptions,
 ): Promise<void> {
-  if (thinkingMessage) {
-    await editMessageText(
-      client,
-      chatId,
-      thinkingMessage.message_id,
-      QUEUED_MESSAGE,
-    );
-  } else {
-    await sendMessage(client, chatId, QUEUED_MESSAGE, options);
-  }
+  await sendMessage(client, chatId, QUEUED_MESSAGE, options);
 }
 
 /**

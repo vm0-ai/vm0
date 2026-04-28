@@ -27,6 +27,14 @@ const WEBHOOK_SECRET = "webhook-secret";
 const TELEGRAM_USER_ID = 12345;
 const TEST_AGENT_DISPLAY_NAME = "Telegram Helper";
 
+interface TelegramSendMessageBody {
+  chat_id: string;
+  text: string;
+  reply_markup?: {
+    inline_keyboard: Array<Array<{ text: string; url: string }>>;
+  };
+}
+
 function createWebhookRequest(body: Record<string, unknown>): Request {
   return new Request("http://localhost/api/telegram/webhook/test", {
     method: "POST",
@@ -39,14 +47,11 @@ function createWebhookRequest(body: Record<string, unknown>): Request {
 }
 
 function telegramSendMessage() {
-  const calls: Array<{ chat_id: string; text: string }> = [];
+  const calls: TelegramSendMessageBody[] = [];
   const handler = http.post(
     `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendMessage`,
     async ({ request }) => {
-      const body = (await request.json()) as {
-        chat_id: string;
-        text: string;
-      };
+      const body = (await request.json()) as TelegramSendMessageBody;
       calls.push(body);
       return HttpResponse.json({
         ok: true,
@@ -57,31 +62,13 @@ function telegramSendMessage() {
   return { ...handler, calls };
 }
 
-function telegramEditMessageText() {
-  const calls: Array<{
-    chat_id: string;
-    message_id: number;
-    text: string;
-  }> = [];
-  const handler = http.post(
-    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/editMessageText`,
-    async ({ request }) => {
-      const body = (await request.json()) as {
-        chat_id: string;
-        message_id: number;
-        text: string;
-      };
-      calls.push(body);
-      return HttpResponse.json({
-        ok: true,
-        result: {
-          message_id: body.message_id,
-          chat: { id: TELEGRAM_USER_ID },
-        },
-      });
+function telegramSendChatAction() {
+  return http.post(
+    `https://api.telegram.org/bot${TEST_BOT_TOKEN}/sendChatAction`,
+    () => {
+      return HttpResponse.json({ ok: true, result: true });
     },
   );
-  return { ...handler, calls };
 }
 
 async function updateAgentDisplayName(
@@ -253,7 +240,13 @@ describe("Telegram bot commands", () => {
       const text = sendMsg.calls[0]?.text ?? "";
       // Should redirect to Telegram DM instead of exposing the signed connect URL
       expect(text).toContain("connect your account");
-      expect(text).toContain("?start=connect");
+      expect(text).not.toContain("?start=connect");
+      expect(text).not.toContain("<a href=");
+      expect(sendMsg.calls[0]?.reply_markup).toEqual({
+        inline_keyboard: [
+          [{ text: "Connect", url: "https://t.me/test_bot?start=connect" }],
+        ],
+      });
       // Should NOT contain the actual connect URL with telegramUserId
       expect(text).not.toContain("/telegram/connect?bot=");
     });
@@ -288,7 +281,7 @@ describe("Telegram bot commands", () => {
       expect(text).not.toContain(composeName);
     });
 
-    it("should send platform link with bot param when user is not connected", async () => {
+    it("should send platform link button when user is not connected", async () => {
       const sendMsg = telegramSendMessage();
       server.use(sendMsg.handler);
 
@@ -311,8 +304,12 @@ describe("Telegram bot commands", () => {
       expect(sendMsg.mocked).toHaveBeenCalled();
       const text = sendMsg.calls[0]?.text ?? "";
       expect(text).toContain("To use Zero in Telegram");
-      expect(text).toContain("/telegram/connect?bot=");
-      expect(text).toContain(">Connect</a>");
+      expect(text).not.toContain("/telegram/connect?bot=");
+      expect(text).not.toContain("<a href=");
+      const buttonUrl =
+        sendMsg.calls[0]?.reply_markup?.inline_keyboard[0]?.[0]?.url ?? "";
+      expect(buttonUrl).toContain("/telegram/connect?bot=");
+      expect(buttonUrl).toContain("tgUser=99999");
     });
   });
 
@@ -498,6 +495,9 @@ describe("Telegram bot commands", () => {
 
       expect(sendMsg.mocked).toHaveBeenCalled();
       expect(sendMsg.calls[0]?.text).toContain("connect your account");
+      const buttonUrl =
+        sendMsg.calls[0]?.reply_markup?.inline_keyboard[0]?.[0]?.url ?? "";
+      expect(buttonUrl).toContain("/telegram/connect?bot=");
     });
 
     it("should be ignored in group chats", async () => {
@@ -541,8 +541,8 @@ describe("Telegram bot commands", () => {
 
     it("should send queued message for DM when run is queued", async () => {
       const sendMsg = telegramSendMessage();
-      const editMsg = telegramEditMessageText();
-      server.use(sendMsg.handler, editMsg.handler);
+      const sendChatAction = telegramSendChatAction();
+      server.use(sendMsg.handler, sendChatAction.handler);
 
       const request = createWebhookRequest({
         update_id: 1,
@@ -560,24 +560,18 @@ describe("Telegram bot commands", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
-      expect(sendMsg.calls[0]?.text).toContain(
-        `${TEST_AGENT_DISPLAY_NAME} is thinking`,
-      );
+      expect(sendChatAction.mocked).toHaveBeenCalledTimes(1);
+      expect(sendMsg.calls[0]?.text).toContain("Run queued");
+      expect(sendMsg.calls[0]?.text).not.toContain("thinking");
       expect(sendMsg.calls[0]?.text).not.toContain(composeId);
       expect(sendMsg.calls[0]?.text).not.toContain(composeName);
-
-      // Queued notification edits the thinking message (not a new sendMessage)
-      const queuedMsg = editMsg.calls.find((c) => {
-        return c.text.includes("Run queued");
-      });
-      expect(queuedMsg).toBeDefined();
-      expect(queuedMsg?.text).toContain("concurrency limit reached");
+      expect(sendMsg.calls[0]?.text).toContain("concurrency limit reached");
     });
 
     it("should send queued message for group mention when run is queued", async () => {
       const sendMsg = telegramSendMessage();
-      const editMsg = telegramEditMessageText();
-      server.use(sendMsg.handler, editMsg.handler);
+      const sendChatAction = telegramSendChatAction();
+      server.use(sendMsg.handler, sendChatAction.handler);
 
       const request = createWebhookRequest({
         update_id: 1,
@@ -596,29 +590,20 @@ describe("Telegram bot commands", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
-      expect(sendMsg.calls[0]?.text).toContain(
-        `${TEST_AGENT_DISPLAY_NAME} is thinking`,
-      );
+      expect(sendChatAction.mocked).toHaveBeenCalledTimes(1);
+      expect(sendMsg.calls[0]?.text).toContain("Run queued");
+      expect(sendMsg.calls[0]?.text).not.toContain("thinking");
       expect(sendMsg.calls[0]?.text).not.toContain(composeId);
       expect(sendMsg.calls[0]?.text).not.toContain(composeName);
-
-      // Queued notification edits the thinking message (not a new sendMessage)
-      const queuedMsg = editMsg.calls.find((c) => {
-        return c.text.includes("Run queued");
-      });
-      expect(queuedMsg).toBeDefined();
-      expect(queuedMsg?.text).toContain("concurrency limit reached");
+      expect(sendMsg.calls[0]?.text).toContain("concurrency limit reached");
     });
   });
 
-  describe("thinking message agent label", () => {
-    beforeEach(async () => {
-      await updateAgentDisplayName(composeId, "");
-    });
-
-    it("should fall back to the agent name when displayName is blank", async () => {
+  describe("typing indicator", () => {
+    it("should send typing without posting a thinking message", async () => {
       const sendMsg = telegramSendMessage();
-      server.use(sendMsg.handler);
+      const sendChatAction = telegramSendChatAction();
+      server.use(sendMsg.handler, sendChatAction.handler);
 
       const request = createWebhookRequest({
         update_id: 1,
@@ -636,7 +621,8 @@ describe("Telegram bot commands", () => {
       expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
-      expect(sendMsg.calls[0]?.text).toContain(`${composeName} is thinking`);
+      expect(sendChatAction.mocked).toHaveBeenCalledTimes(1);
+      expect(sendMsg.mocked).not.toHaveBeenCalled();
     });
   });
 });
