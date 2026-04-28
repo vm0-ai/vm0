@@ -155,6 +155,70 @@ function TryItLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+function ScreenshotCarousel({
+  screenshots,
+  alt,
+}: {
+  screenshots: string[];
+  alt: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const hasMultiple = screenshots.length > 1;
+
+  return (
+    <div className="uc-carousel">
+      <div className="uc-screenshot-frame">
+        <Image
+          src={screenshots[activeIndex]}
+          alt={`${alt} (${activeIndex + 1}/${screenshots.length})`}
+          width={800}
+          height={450}
+          className="uc-screenshot-img"
+          priority={activeIndex === 0}
+        />
+      </div>
+
+      {hasMultiple && (
+        <>
+          <button
+            className="uc-carousel-btn uc-carousel-btn--left"
+            onClick={() =>
+              setActiveIndex((prev) =>
+                prev === 0 ? screenshots.length - 1 : prev - 1,
+              )
+            }
+            aria-label="Previous screenshot"
+          >
+            &#8249;
+          </button>
+          <button
+            className="uc-carousel-btn uc-carousel-btn--right"
+            onClick={() =>
+              setActiveIndex((prev) =>
+                prev === screenshots.length - 1 ? 0 : prev + 1,
+              )
+            }
+            aria-label="Next screenshot"
+          >
+            &#8250;
+          </button>
+
+          <div className="uc-carousel-dots">
+            {screenshots.map((_, i) => (
+              <button
+                key={i}
+                className={`uc-carousel-dot${i === activeIndex ? " uc-carousel-dot--active" : ""}`}
+                onClick={() => setActiveIndex(i)}
+                aria-label={`Go to screenshot ${i + 1}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function PromptVariants({
   variants,
   connectors,
@@ -249,10 +313,10 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
           </header>
 
           {/* Section 1: What Zero delivers */}
-          {useCase.screenshots?.length && (
+          {(useCase.screenshots?.length ?? 0) > 0 && (
             <Section title={t("whatZeroDelivers")}>
               <ScreenshotCarousel
-                screenshots={useCase.screenshots}
+                screenshots={useCase.screenshots!}
                 alt={`${title} — sample output from Zero`}
               />
             </Section>

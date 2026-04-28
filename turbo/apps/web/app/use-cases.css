@@ -370,16 +370,20 @@
   border-radius: 50%;
   border: none;
   background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.2s;
+  opacity: 0.5;
+  transition: opacity 0.2s, background 0.2s;
   z-index: 2;
-  padding: 0;
 }
 
 .uc-carousel-btn:hover {
+  opacity: 1;
   background: rgba(0, 0, 0, 0.65);
 }
 
@@ -409,7 +413,12 @@
   transition: background 0.2s;
 }
 
-.uc-carousel-dot--active {
+.uc-carousel-dot:hover {
+  background: hsl(var(--gray-500));
+}
+
+.uc-carousel-dot--active,
+.uc-carousel-dot--active:hover {
   background: #ed4e01;
 }
 
