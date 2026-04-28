@@ -13,6 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -25,6 +26,10 @@ import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 
 const context = testContext();
+
+function mobileNativeOn(): Partial<Record<FeatureSwitchKey, boolean>> {
+  return { [FeatureSwitchKey.MobileNativeV1]: true };
+}
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
@@ -249,9 +254,13 @@ describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () 
 });
 
 describe("mobile bottom tab bar - renders four tabs (MOBILE-TAB-001)", () => {
-  it("renders Chats, Teammates, Schedules, and More tabs", async () => {
+  it("renders Chats, Teammates, Schedules, and More tabs when MobileNativeV1 is on", async () => {
     mockBaseAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: mobileNativeOn(),
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("mobile-bottom-tab-bar")).toBeInTheDocument();
@@ -264,10 +273,27 @@ describe("mobile bottom tab bar - renders four tabs (MOBILE-TAB-001)", () => {
   });
 });
 
+describe("mobile bottom tab bar - hidden when feature switch off (MOBILE-TAB-005)", () => {
+  it("does not render when MobileNativeV1 is disabled", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    // Wait for layout to settle by asserting the existing top bar is present.
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("mobile-bottom-tab-bar")).not.toBeInTheDocument();
+  });
+});
+
 describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () => {
   it("marks the Teammates tab as the current page on /agents", async () => {
     mockBaseAPIs();
-    detachedSetupPage({ context, path: "/agents" });
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+    });
 
     await waitFor(() => {
       expect(screen.getByTestId("mobile-tab-teammates")).toHaveAttribute(
@@ -284,7 +310,11 @@ describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () =
 describe("mobile bottom tab bar - More opens sidebar (MOBILE-TAB-003)", () => {
   it("expands the sidebar overlay when the More tab is clicked", async () => {
     mockBaseAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: mobileNativeOn(),
+    });
 
     const moreTab = await waitFor(() => {
       return screen.getByTestId("mobile-tab-more");
@@ -300,7 +330,11 @@ describe("mobile bottom tab bar - More opens sidebar (MOBILE-TAB-003)", () => {
 describe("mobile bottom tab bar - Schedules link navigates (MOBILE-TAB-004)", () => {
   it("navigates to /schedules when the Schedules tab is clicked", async () => {
     mockBaseAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: mobileNativeOn(),
+    });
 
     const schedulesTab = await waitFor(() => {
       return screen.getByTestId("mobile-tab-schedules");

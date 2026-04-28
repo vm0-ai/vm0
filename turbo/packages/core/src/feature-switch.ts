@@ -301,6 +301,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
+  [FeatureSwitchKey.MobileNativeV1]: {
+    maintainer: "ming@vm0.ai",
+    description:
+      "Enable the mobile-native redesign — bottom tab bar, chats-as-home, and follow-up surface restructuring. Gates all mobile redesign work so PRs can land independently and the cumulative effect can be previewed by toggling this switch on.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {

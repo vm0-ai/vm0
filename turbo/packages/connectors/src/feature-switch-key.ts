@@ -52,4 +52,5 @@ export enum FeatureSwitchKey {
   TelegramIntegration = "telegramIntegration",
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
+  MobileNativeV1 = "mobileNativeV1",
 }

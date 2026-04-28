@@ -1,14 +1,16 @@
 import type { ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import {
   IconMessageCircle,
   IconUsers,
   IconCalendar,
   IconMenu2,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { cn } from "@vm0/ui";
 import { Link } from "../router/link.tsx";
 import { activeRoute$ } from "../../signals/active-route.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 
@@ -97,7 +99,13 @@ function MoreTab({ active }: { active: boolean }) {
 }
 
 export function MobileBottomTabBar() {
+  const features = useLastResolved(featureSwitch$);
+  const enabled = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
   const activeId = useGet(activeRoute$);
+
+  if (!enabled) {
+    return null;
+  }
 
   const matchedTabId = MOBILE_TABS.find((tab) => {
     return activeId !== null && tab.activeKeys.includes(activeId);
