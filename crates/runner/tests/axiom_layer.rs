@@ -177,6 +177,27 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
             then.status(200).body("{}");
         })
         .await;
+    let debug_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .body_includes(r#""message":"local debug""#);
+            then.status(200).body("{}");
+        })
+        .await;
+    let trace_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .body_includes(r#""message":"local trace""#);
+            then.status(200).body("{}");
+        })
+        .await;
+    let internal_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .body_includes(r#""message":"local internal""#);
+            then.status(200).body("{}");
+        })
+        .await;
 
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
         .expect("init must succeed");
@@ -188,34 +209,47 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::info!("local info");
+        tracing::debug!("local debug");
+        tracing::trace!("local trace");
         tracing::warn!("local warn");
+        tracing::warn!(target: axiom_layer::INTERNAL_TARGET, "local internal");
     }
     guard.shutdown().await;
 
     let events = recording.events();
+    for (level, message) in [
+        (tracing::Level::INFO, "local info"),
+        (tracing::Level::DEBUG, "local debug"),
+        (tracing::Level::TRACE, "local trace"),
+        (tracing::Level::WARN, "local warn"),
+    ] {
+        assert!(
+            events.iter().any(|event| {
+                event.level == level
+                    && event
+                        .message
+                        .as_deref()
+                        .is_some_and(|seen| seen.contains(message))
+            }),
+            "sibling local layer did not record {level} event {message:?}: {events:?}",
+        );
+    }
     assert!(
         events.iter().any(|event| {
-            event.level == tracing::Level::INFO
+            event.target == axiom_layer::INTERNAL_TARGET
                 && event
                     .message
                     .as_deref()
-                    .is_some_and(|message| message.contains("local info"))
+                    .is_some_and(|seen| seen.contains("local internal"))
         }),
-        "sibling local layer did not record INFO event: {events:?}",
-    );
-    assert!(
-        events.iter().any(|event| {
-            event.level == tracing::Level::WARN
-                && event
-                    .message
-                    .as_deref()
-                    .is_some_and(|message| message.contains("local warn"))
-        }),
-        "sibling local layer did not record WARN event: {events:?}",
+        "sibling local layer did not record internal-target event: {events:?}",
     );
 
     warn_mock.assert_calls_async(1).await;
     info_mock.assert_calls_async(0).await;
+    debug_mock.assert_calls_async(0).await;
+    trace_mock.assert_calls_async(0).await;
+    internal_mock.assert_calls_async(0).await;
 }
 
 #[tokio::test]
