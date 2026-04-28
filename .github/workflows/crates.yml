@@ -641,7 +641,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -904,7 +904,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Submit a long-running job in background
           echo "--- Submitting long-running job ---"
@@ -1020,7 +1020,7 @@ jobs:
           # Start transient runner service.
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Submit a long-running job in background so we can drain mid-flight.
           # Duration must exceed the drain+verify+resume+verify window below
@@ -1218,7 +1218,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -1472,7 +1472,7 @@ jobs:
           # 1. Install runner A
           echo "--- Installing runner A ---"
           sudo "$BIN_DIR/runner" service install --name "$SVC_A" \
-            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # 2. Submit job 1 (background, long-running) → only A running
           echo "--- Submit job 1 (only A, long-running) ---"
@@ -1482,7 +1482,7 @@ jobs:
           # 3. Install runner B while job 1 still in-flight on A
           echo "--- Installing runner B ---"
           sudo "$BIN_DIR/runner" service install --name "$SVC_B" \
-            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"
@@ -1582,7 +1582,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Turn 1: submit job with session ID and sandboxReuse flag — creates a marker file in guest
           echo "--- Turn 1: create marker file ---"
