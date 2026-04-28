@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.313.2](https://github.com/vm0-ai/vm0/compare/web-v12.313.1...web-v12.313.2) (2026-04-28)
+
+
+### Bug Fixes
+
+* use telegram usernames in attribution footers ([#11396](https://github.com/vm0-ai/vm0/issues/11396)) ([e651c79](https://github.com/vm0-ai/vm0/commit/e651c793f1f60af02e325467f7101c90c7d6eeb9))
+
 ## [12.313.1](https://github.com/vm0-ai/vm0/compare/web-v12.313.0...web-v12.313.1) (2026-04-28)
 
 

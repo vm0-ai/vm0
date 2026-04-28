@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.304.2](https://github.com/vm0-ai/vm0/compare/app-v0.304.1...app-v0.304.2) (2026-04-28)
+
+
+### Bug Fixes
+
+* **platform:** cap usage card tooltip width and emphasize click hint ([#11391](https://github.com/vm0-ai/vm0/issues/11391)) ([5a5cd77](https://github.com/vm0-ai/vm0/commit/5a5cd7744622168c5eee498e52b5330d14b602a0))
+* use telegram usernames in attribution footers ([#11396](https://github.com/vm0-ai/vm0/issues/11396)) ([e651c79](https://github.com/vm0-ai/vm0/commit/e651c793f1f60af02e325467f7101c90c7d6eeb9))
+
 ## [0.304.1](https://github.com/vm0-ai/vm0/compare/app-v0.304.0...app-v0.304.1) (2026-04-28)
 
 
