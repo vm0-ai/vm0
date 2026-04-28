@@ -16,6 +16,9 @@ interface ShadowOptions {
   readonly authHeader: string | undefined;
   readonly cookieHeader?: string;
   readonly route?: string;
+  readonly requiredCapability?: string;
+  readonly acceptAnySandboxCapability?: boolean;
+  readonly accept?: string;
 }
 
 const COMPARED_FIELDS = [
@@ -52,13 +55,27 @@ async function probeApi(
   apiUrl: string,
   authHeader: string,
   cookieHeader?: string,
+  params?: {
+    requiredCapability?: string;
+    acceptAnySandboxCapability?: boolean;
+    accept?: string;
+  },
 ): Promise<ApiResponse> {
-  const target = new URL("/health/auth", apiUrl).toString();
+  const target = new URL("/health/auth", apiUrl);
+  if (params?.requiredCapability) {
+    target.searchParams.set("requiredCapability", params.requiredCapability);
+  }
+  if (params?.acceptAnySandboxCapability) {
+    target.searchParams.set("acceptAnySandboxCapability", "true");
+  }
+  if (params?.accept) {
+    target.searchParams.set("accept", params.accept);
+  }
   const headers: Record<string, string> = { authorization: authHeader };
   if (cookieHeader) {
     headers.cookie = cookieHeader;
   }
-  const response = await fetch(target, {
+  const response = await fetch(target.toString(), {
     method: "GET",
     headers,
     signal: AbortSignal.timeout(2000),
@@ -238,6 +255,11 @@ export async function shadowCompareAuth(
     apiUrl,
     options.authHeader,
     options.cookieHeader,
+    {
+      requiredCapability: options.requiredCapability,
+      acceptAnySandboxCapability: options.acceptAnySandboxCapability,
+      accept: options.accept,
+    },
   );
   const event = compare(webResult, apiResponse, options.route);
 
