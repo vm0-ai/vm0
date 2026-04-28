@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.96.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.5...runner-rs-v0.96.6) (2026-04-28)
+
+
+### Bug Fixes
+
+* align telegram typing and markdown responses ([#11312](https://github.com/vm0-ai/vm0/issues/11312)) ([eb4b88e](https://github.com/vm0-ai/vm0/commit/eb4b88eca4db66fedd20eead881a1691408688f4))
+
 ## [0.96.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.4...runner-rs-v0.96.5) (2026-04-28)
 
 

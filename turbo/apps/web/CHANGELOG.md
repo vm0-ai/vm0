@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.307.0](https://github.com/vm0-ai/vm0/compare/web-v12.306.0...web-v12.307.0) (2026-04-28)
+
+
+### Features
+
+* add telegram file upload command ([#11298](https://github.com/vm0-ai/vm0/issues/11298)) ([2a6ff07](https://github.com/vm0-ai/vm0/commit/2a6ff077f99ec0890bb0214594d4c942ebe8f9ab))
+* **web:** /models hub + per-model SEO detail pages ([#11219](https://github.com/vm0-ai/vm0/issues/11219)) ([902f0c9](https://github.com/vm0-ai/vm0/commit/902f0c992b8aed4f2396969b9855ad43c7f46182))
+
+
+### Bug Fixes
+
+* align telegram typing and markdown responses ([#11312](https://github.com/vm0-ai/vm0/issues/11312)) ([eb4b88e](https://github.com/vm0-ai/vm0/commit/eb4b88eca4db66fedd20eead881a1691408688f4))
+
+
+### Performance Improvements
+
+* add aggregate insights time indexes ([#11313](https://github.com/vm0-ai/vm0/issues/11313)) ([dee6b1d](https://github.com/vm0-ai/vm0/commit/dee6b1dfbd32c4b020c098817179f3753a8fda61))
+* **web:** pin dev next.js to 16.1.7 to bypass turbopack cpu regression ([#11314](https://github.com/vm0-ai/vm0/issues/11314)) ([f2717a7](https://github.com/vm0-ai/vm0/commit/f2717a703d269950a824371796faf340e9546c5e))
+
 ## [12.306.0](https://github.com/vm0-ai/vm0/compare/web-v12.305.0...web-v12.306.0) (2026-04-28)
 
 

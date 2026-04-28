@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.135.0](https://github.com/vm0-ai/vm0/compare/cli-v9.134.1...cli-v9.135.0) (2026-04-28)
+
+
+### Features
+
+* add telegram file upload command ([#11298](https://github.com/vm0-ai/vm0/issues/11298)) ([2a6ff07](https://github.com/vm0-ai/vm0/commit/2a6ff077f99ec0890bb0214594d4c942ebe8f9ab))
+
 ## [9.134.1](https://github.com/vm0-ai/vm0/compare/cli-v9.134.0...cli-v9.134.1) (2026-04-28)
 
 

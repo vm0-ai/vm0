@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.299.1](https://github.com/vm0-ai/vm0/compare/app-v0.299.0...app-v0.299.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* load complete activity events before polling ([#11316](https://github.com/vm0-ai/vm0/issues/11316)) ([f1ab00f](https://github.com/vm0-ai/vm0/commit/f1ab00facd27f393f69e62c55de21bfca930f1b0))
+
 ## [0.299.0](https://github.com/vm0-ai/vm0/compare/app-v0.298.2...app-v0.299.0) (2026-04-28)
 
 
