@@ -156,7 +156,7 @@ pub(crate) struct AxiomLayer {
     dropped: AtomicU64,
 }
 
-pub(crate) fn should_ingest(metadata: &Metadata<'_>) -> bool {
+fn should_ingest(metadata: &Metadata<'_>) -> bool {
     // Fixed WARN+ threshold. Errors and warnings only; INFO/DEBUG stay out
     // of Axiom to keep ingest volume predictable. INTERNAL_TARGET is for
     // this layer's own diagnostics, which should remain local-only.
