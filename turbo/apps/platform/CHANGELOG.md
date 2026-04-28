@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.302.0](https://github.com/vm0-ai/vm0/compare/app-v0.301.0...app-v0.302.0) (2026-04-28)
+
+
+### Features
+
+* add empty state illustration for artifacts drawer ([#11367](https://github.com/vm0-ai/vm0/issues/11367)) ([36493f7](https://github.com/vm0-ai/vm0/commit/36493f7fdd4f1da922b9e0a03080a9936f009db9))
+* add tooltip with full name on usage page schedule/chat rows ([#11362](https://github.com/vm0-ai/vm0/issues/11362)) ([fe8dd9f](https://github.com/vm0-ai/vm0/commit/fe8dd9f7341c694f628ee9fe16d48e223e1e6df5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.240.0
+
 ## [0.301.0](https://github.com/vm0-ai/vm0/compare/app-v0.300.1...app-v0.301.0) (2026-04-28)
 
 

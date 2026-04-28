@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.97.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.0...runner-rs-v0.97.1) (2026-04-28)
+
+
+### Refactoring
+
+* **runner:** model spawn job lifecycle ownership ([#11354](https://github.com/vm0-ai/vm0/issues/11354)) ([3d6c156](https://github.com/vm0-ai/vm0/commit/3d6c156304b24e7967137e8411f38baaafa52ef7))
+
 ## [0.97.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.6...runner-rs-v0.97.0) (2026-04-28)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.240.0](https://github.com/vm0-ai/vm0/compare/core-v8.239.1...core-v8.240.0) (2026-04-28)
+
+
+### Features
+
+* add voice transcription api ([#11365](https://github.com/vm0-ai/vm0/issues/11365)) ([4b15bf5](https://github.com/vm0-ai/vm0/commit/4b15bf5e4b75b97180a0c7e0044a7aa1b0f8975d))
+* enable chat artifacts drawer for everyone ([#11373](https://github.com/vm0-ai/vm0/issues/11373)) ([0ad31ea](https://github.com/vm0-ai/vm0/commit/0ad31ea4e317f1f2071d1c4805d3d5f18eb5e54f))
+
 ## [8.239.1](https://github.com/vm0-ai/vm0/compare/core-v8.239.0...core-v8.239.1) (2026-04-28)
 
 

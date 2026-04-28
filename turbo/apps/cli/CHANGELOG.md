@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.137.0](https://github.com/vm0-ai/vm0/compare/cli-v9.136.0...cli-v9.137.0) (2026-04-28)
+
+
+### Features
+
+* add telegram message send ([#11359](https://github.com/vm0-ai/vm0/issues/11359)) ([6d397e6](https://github.com/vm0-ai/vm0/commit/6d397e6b555e447c376f1f3c71963d079ea7357f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.240.0
+
 ## [9.136.0](https://github.com/vm0-ai/vm0/compare/cli-v9.135.0...cli-v9.136.0) (2026-04-28)
 
 

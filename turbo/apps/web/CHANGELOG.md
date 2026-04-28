@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.311.0](https://github.com/vm0-ai/vm0/compare/web-v12.310.0...web-v12.311.0) (2026-04-28)
+
+
+### Features
+
+* add telegram message send ([#11359](https://github.com/vm0-ai/vm0/issues/11359)) ([6d397e6](https://github.com/vm0-ai/vm0/commit/6d397e6b555e447c376f1f3c71963d079ea7357f))
+* add telegram rich message context ([#11364](https://github.com/vm0-ai/vm0/issues/11364)) ([b5e1557](https://github.com/vm0-ai/vm0/commit/b5e1557931a58c9dd45c932bc2fc09932686e1a2))
+* enable chat artifacts drawer for everyone ([#11373](https://github.com/vm0-ai/vm0/issues/11373)) ([0ad31ea](https://github.com/vm0-ai/vm0/commit/0ad31ea4e317f1f2071d1c4805d3d5f18eb5e54f))
+* write llm usage webhook rows to usage_event ([#11330](https://github.com/vm0-ai/vm0/issues/11330)) ([b62b3fa](https://github.com/vm0-ai/vm0/commit/b62b3faa3bc45d6ae933accbbccd989c8b6cf96a))
+
+
+### Bug Fixes
+
+* show result-only chat callback output ([#11363](https://github.com/vm0-ai/vm0/issues/11363)) ([3ffb53a](https://github.com/vm0-ai/vm0/commit/3ffb53a631678225fc4ff7264748cd99e098e9e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.240.0
+
 ## [12.310.0](https://github.com/vm0-ai/vm0/compare/web-v12.309.0...web-v12.310.0) (2026-04-28)
 
 
