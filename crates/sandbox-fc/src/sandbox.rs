@@ -294,7 +294,7 @@ pub struct FirecrackerSandbox {
     balloon_controller: Option<tokio::task::JoinHandle<()>>,
     /// Sender for leaked resource cleanup. When Drop fires without prior
     /// `factory.destroy()`, pool resources are sent here for async cleanup.
-    leak_tx: Option<tokio::sync::mpsc::Sender<crate::factory::LeakedResources>>,
+    leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
     /// Set to `true` by `factory.destroy()` to suppress Drop-based leak recovery.
     pub(crate) destroyed: bool,
     /// Tracks whether the sandbox is currently in the idle/parked state.
@@ -314,7 +314,7 @@ impl FirecrackerSandbox {
         sock_paths: SockPaths,
         network: PooledNetns,
         cow_device: NbdCowDevice,
-        leak_tx: Option<tokio::sync::mpsc::Sender<crate::factory::LeakedResources>>,
+        leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
     ) -> Self {
         let id = config.id.to_string();
         Self {
@@ -722,10 +722,10 @@ impl Drop for FirecrackerSandbox {
                 sock_dir: self.sock_paths.dir().to_owned(),
                 workspace: self.sandbox_paths.workspace().to_owned(),
             };
-            if tx.try_send(resources).is_err() {
+            if tx.send(resources).is_err() {
                 tracing::warn!(
                     id = %self.id,
-                    "leak cleanup channel full or closed — resources will require runner gc"
+                    "leak cleanup channel closed — resources will require runner gc"
                 );
             }
         }
