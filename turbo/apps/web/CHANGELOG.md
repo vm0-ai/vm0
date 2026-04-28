@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.309.0](https://github.com/vm0-ai/vm0/compare/web-v12.308.0...web-v12.309.0) (2026-04-28)
+
+
+### Features
+
+* **api:** per-route opentelemetry traces routed to axiom ([#11339](https://github.com/vm0-ai/vm0/issues/11339)) ([c4d83ad](https://github.com/vm0-ai/vm0/commit/c4d83adcf10248b765a1fdcb1711877c1b65f391))
+
+
+### Bug Fixes
+
+* refresh artifacts from realtime updates ([#11336](https://github.com/vm0-ai/vm0/issues/11336)) ([e513f7e](https://github.com/vm0-ai/vm0/commit/e513f7ee95c35329750dd7767b4b7ea35d1839fd))
+
 ## [12.308.0](https://github.com/vm0-ai/vm0/compare/web-v12.307.0...web-v12.308.0) (2026-04-28)
 
 
