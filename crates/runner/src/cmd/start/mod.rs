@@ -495,7 +495,7 @@ impl OrphanedActiveRuns {
         }
     }
 
-    async fn remove_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) {
+    async fn remove_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
         let mut runs = self.inner.lock().await;
         let removed =
             matches!(runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
@@ -503,6 +503,7 @@ impl OrphanedActiveRuns {
             runs.remove(&run_id);
             self.len.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
         }
+        removed
     }
 
     async fn reset_absent_scans_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) {
@@ -1910,12 +1911,12 @@ async fn cleanup_panicked_job(
     match cleanup_state.disposition() {
         RunCleanupDisposition::StatusRemoved => {}
         RunCleanupDisposition::DestroyCompleted => {
-            status.remove_run(run_id).await;
+            status.remove_run_if_matching(run_id, sandbox_id).await;
         }
         RunCleanupDisposition::IdlePoolOwned => {
             let snapshot = idle_pool.lock().await.status_snapshot();
             set_idle_status_snapshot(&status, snapshot).await;
-            status.remove_run(run_id).await;
+            status.remove_run_if_matching(run_id, sandbox_id).await;
         }
         RunCleanupDisposition::ActiveOrUnknown => {
             warn!(
@@ -1952,6 +1953,29 @@ async fn reap_orphaned_active_runs(
         return;
     }
 
+    reap_orphaned_active_run_records(
+        orphaned_active_runs,
+        idle_pool,
+        status,
+        records,
+        mode,
+        process_discovery_override,
+    )
+    .await;
+}
+
+async fn reap_orphaned_active_run_records(
+    orphaned_active_runs: &OrphanedActiveRuns,
+    idle_pool: &SharedIdlePool,
+    status: &StatusTracker,
+    records: Vec<OrphanedActiveRun>,
+    mode: OrphanReapMode,
+    process_discovery_override: Option<&OrphanReapProcessDiscovery>,
+) {
+    if records.is_empty() {
+        return;
+    }
+
     let pool = idle_pool.lock().await;
     let idle_snapshot = pool.status_snapshot();
     let idle_owned_records: Vec<OrphanedActiveRun> = records
@@ -1963,17 +1987,19 @@ async fn reap_orphaned_active_runs(
     let mut non_idle_records = Vec::new();
     let mut refreshed_idle_status = false;
     for record in records {
-        if idle_owned_records
-            .iter()
-            .any(|idle_record| idle_record.run_id == record.run_id)
-        {
+        if idle_owned_records.contains(&record) {
+            if !orphaned_active_runs
+                .remove_if_matching(record.run_id, record.sandbox_id)
+                .await
+            {
+                continue;
+            }
             if !refreshed_idle_status {
                 set_idle_status_snapshot(status, idle_snapshot.clone()).await;
                 refreshed_idle_status = true;
             }
-            status.remove_run(record.run_id).await;
-            orphaned_active_runs
-                .remove_if_matching(record.run_id, record.sandbox_id)
+            status
+                .remove_run_if_matching(record.run_id, record.sandbox_id)
                 .await;
             info!(
                 run_id = %record.run_id,
@@ -2092,9 +2118,14 @@ async fn reap_orphaned_active_runs_with_firecrackers(
             continue;
         }
 
-        status.remove_run(record.run_id).await;
-        orphaned_active_runs
+        if !orphaned_active_runs
             .remove_if_matching(record.run_id, record.sandbox_id)
+            .await
+        {
+            continue;
+        }
+        status
+            .remove_run_if_matching(record.run_id, record.sandbox_id)
             .await;
         info!(
             run_id = %record.run_id,
@@ -2569,7 +2600,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
-        status.remove_run(run_id).await;
+        status.remove_run_if_matching(run_id, sandbox_id).await;
         tokens.lock().await.insert(run_id, CancellationToken::new());
         cleanup_state.mark_status_removed();
 
@@ -2742,6 +2773,62 @@ mod tests {
             &[],
             false,
             OrphanReapMode::ShutdownFinal.absent_scans_before_remove(),
+        )
+        .await;
+
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(active_runs, vec![run_id.to_string()]);
+        let remaining = orphans.snapshot().await;
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].run_id, run_id);
+        assert_eq!(remaining[0].sandbox_id, current_sandbox_id);
+    }
+
+    #[tokio::test]
+    async fn orphan_reaper_stale_idle_owned_snapshot_does_not_remove_reinserted_active_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let orphans = OrphanedActiveRuns::new();
+        let run_id = RunId::new_v4();
+        let stale_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
+            sandbox: Box::new(MockSandbox::new("stale-idle-owned-reaper")),
+            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+            session_id: "sess-stale-idle-owned-reaper".into(),
+            sandbox_id: stale_sandbox_id,
+            profile_name: "vm0/default".into(),
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        });
+        assert!(matches!(
+            idle_pool.lock().await.park(candidate),
+            ParkResult::Parked
+        ));
+        status.add_run(run_id, stale_sandbox_id).await;
+        orphans.insert(run_id, stale_sandbox_id).await;
+        let stale_records = orphans.snapshot().await;
+
+        status.add_run(run_id, current_sandbox_id).await;
+        orphans.insert(run_id, current_sandbox_id).await;
+
+        reap_orphaned_active_run_records(
+            &orphans,
+            &idle_pool,
+            &status,
+            stale_records,
+            OrphanReapMode::Immediate,
+            None,
         )
         .await;
 

@@ -173,7 +173,7 @@ impl CompletionReady {
                 Some(reuse_result),
             )
             .await;
-        status.remove_run(run_id).await;
+        status.remove_run_if_matching(run_id, sandbox_id).await;
         cleanup_state.mark_status_removed();
         budget.release();
     }
