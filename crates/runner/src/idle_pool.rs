@@ -276,7 +276,8 @@ pub struct IdlePoolSnapshot {
 /// Result of an explicit sandbox destroy attempt.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DestroyOutcome {
-    /// `SandboxFactory::destroy` returned normally and no stop panic was observed.
+    /// `SandboxFactory::destroy` returned normally and no panic was observed.
+    /// A non-panic `stop()` error is logged, then destroy still proves teardown.
     Completed,
     /// Cleanup fell back to panic/drop behavior, so process teardown is not proven.
     Uncertain,

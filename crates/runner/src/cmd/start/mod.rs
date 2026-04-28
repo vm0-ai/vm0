@@ -60,6 +60,7 @@ use signals::{EarlySignals, SignalController};
 /// tick is deferred by one period via `interval_at` — see the comment
 /// at the interval construction in `run()`.
 const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
+const ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE: u8 = 2;
 
 #[derive(Args)]
 pub struct StartArgs {
@@ -448,20 +449,24 @@ struct OrphanedActiveRun {
     sandbox_id: SandboxId,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct OrphanedActiveRunState {
+    sandbox_id: SandboxId,
+    absent_scans: u8,
+}
+
 /// Claimed runs whose outer task is gone but whose VM ownership is uncertain.
 #[derive(Clone)]
 struct OrphanedActiveRuns {
-    inner: Arc<tokio::sync::Mutex<BTreeMap<RunId, SandboxId>>>,
+    inner: Arc<tokio::sync::Mutex<BTreeMap<RunId, OrphanedActiveRunState>>>,
     len: Arc<std::sync::atomic::AtomicUsize>,
-    notify: Arc<tokio::sync::Notify>,
 }
 
 impl OrphanedActiveRuns {
-    fn new(notify: Arc<tokio::sync::Notify>) -> Self {
+    fn new() -> Self {
         Self {
             inner: Arc::new(tokio::sync::Mutex::new(BTreeMap::new())),
             len: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-            notify,
         }
     }
 
@@ -470,21 +475,49 @@ impl OrphanedActiveRuns {
     }
 
     async fn insert(&self, run_id: RunId, sandbox_id: SandboxId) {
+        let state = OrphanedActiveRunState {
+            sandbox_id,
+            absent_scans: 0,
+        };
         let mut runs = self.inner.lock().await;
-        if runs.insert(run_id, sandbox_id).is_none() {
-            self.len.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+        match runs.entry(run_id) {
+            std::collections::btree_map::Entry::Vacant(entry) => {
+                entry.insert(state);
+                self.len.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+            }
+            std::collections::btree_map::Entry::Occupied(mut entry) => {
+                entry.insert(state);
+            }
         }
-        drop(runs);
-        self.notify.notify_one();
     }
 
     async fn remove_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) {
         let mut runs = self.inner.lock().await;
-        let removed = matches!(runs.get(&run_id), Some(current) if *current == sandbox_id);
+        let removed =
+            matches!(runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
         if removed {
             runs.remove(&run_id);
             self.len.fetch_sub(1, std::sync::atomic::Ordering::AcqRel);
         }
+    }
+
+    async fn reset_absent_scans_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) {
+        let mut runs = self.inner.lock().await;
+        if let Some(current) = runs.get_mut(&run_id)
+            && current.sandbox_id == sandbox_id
+        {
+            current.absent_scans = 0;
+        }
+    }
+
+    async fn mark_absent_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> Option<u8> {
+        let mut runs = self.inner.lock().await;
+        let current = runs.get_mut(&run_id)?;
+        if current.sandbox_id != sandbox_id {
+            return None;
+        }
+        current.absent_scans = current.absent_scans.saturating_add(1);
+        Some(current.absent_scans)
     }
 
     async fn snapshot(&self) -> Vec<OrphanedActiveRun> {
@@ -492,7 +525,10 @@ impl OrphanedActiveRuns {
             .lock()
             .await
             .iter()
-            .map(|(&run_id, &sandbox_id)| OrphanedActiveRun { run_id, sandbox_id })
+            .map(|(&run_id, state)| OrphanedActiveRun {
+                run_id,
+                sandbox_id: state.sandbox_id,
+            })
             .collect()
     }
 
@@ -634,8 +670,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // immediate heartbeat after parking a VM, so the server learns about the
     // new heldSession without waiting for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
-    let orphan_reap_notify = Arc::new(tokio::sync::Notify::new());
-    let orphaned_active_runs = OrphanedActiveRuns::new(Arc::clone(&orphan_reap_notify));
+    let orphaned_active_runs = OrphanedActiveRuns::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
         Duration::from_secs(10),
@@ -782,15 +817,22 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             result = jobs.join_next(), if !jobs.is_empty() => {
                 handle_job_result(result, &cancel_tokens).await;
                 if !orphaned_active_runs.is_empty() {
-                    reap_orphaned_active_runs(&orphaned_active_runs, &idle_pool, &status).await;
+                    reap_orphaned_active_runs(
+                        &orphaned_active_runs,
+                        &idle_pool,
+                        &status,
+                        OrphanReapMode::Immediate,
+                    ).await;
                 }
             }
             // Reconcile active runs left visible after an outer job-task panic.
-            _ = orphan_reap_notify.notified(), if !orphaned_active_runs.is_empty() => {
-                reap_orphaned_active_runs(&orphaned_active_runs, &idle_pool, &status).await;
-            }
             _ = orphan_reap_tick.tick(), if !orphaned_active_runs.is_empty() => {
-                reap_orphaned_active_runs(&orphaned_active_runs, &idle_pool, &status).await;
+                reap_orphaned_active_runs(
+                    &orphaned_active_runs,
+                    &idle_pool,
+                    &status,
+                    OrphanReapMode::ConfirmAbsent,
+                ).await;
             }
             // Reap completed destroy tasks
             Some(result) = destroy_tasks.join_next(), if !destroy_tasks.is_empty() => {
@@ -885,7 +927,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 result = jobs.join_next() => {
                     handle_job_result(result, &cancel_tokens).await;
                     if !orphaned_active_runs.is_empty() {
-                        reap_orphaned_active_runs(&orphaned_active_runs, &idle_pool, &status).await;
+                        reap_orphaned_active_runs(
+                            &orphaned_active_runs,
+                            &idle_pool,
+                            &status,
+                            OrphanReapMode::Immediate,
+                        ).await;
                     }
                 }
                 Some(result) = destroy_tasks.join_next() => {
@@ -1857,10 +1904,20 @@ async fn cleanup_panicked_job(
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OrphanReapMode {
+    /// Fast path after a job task is reaped. Only reconciles ownership that is
+    /// already proven by in-memory runner state.
+    Immediate,
+    /// Periodic path allowed to advance `/proc` absence confirmation.
+    ConfirmAbsent,
+}
+
 async fn reap_orphaned_active_runs(
     orphaned_active_runs: &OrphanedActiveRuns,
     idle_pool: &SharedIdlePool,
     status: &StatusTracker,
+    mode: OrphanReapMode,
 ) {
     let records = orphaned_active_runs.snapshot().await;
     if records.is_empty() {
@@ -1904,6 +1961,10 @@ async fn reap_orphaned_active_runs(
         return;
     }
 
+    if mode == OrphanReapMode::Immediate {
+        return;
+    }
+
     let discovered = process::discover_all().await;
     reap_orphaned_active_runs_with_firecrackers(
         orphaned_active_runs,
@@ -1920,13 +1981,47 @@ async fn reap_orphaned_active_runs_with_firecrackers(
     records: Vec<OrphanedActiveRun>,
     firecrackers: &[process::FirecrackerProcessInfo],
 ) {
+    let discovery_incomplete =
+        process::firecracker_discovery_has_unresolved_sandbox_id(firecrackers);
     for record in records {
         let sandbox_id = record.sandbox_id.to_string();
         if process::firecracker_process_exists_for_sandbox_id(firecrackers, &sandbox_id) {
+            orphaned_active_runs
+                .reset_absent_scans_if_matching(record.run_id, record.sandbox_id)
+                .await;
             warn!(
                 run_id = %record.run_id,
                 sandbox_id = %record.sandbox_id,
                 "orphaned active run still has a live non-idle Firecracker process; keeping active status visible"
+            );
+            continue;
+        }
+
+        if discovery_incomplete {
+            orphaned_active_runs
+                .reset_absent_scans_if_matching(record.run_id, record.sandbox_id)
+                .await;
+            warn!(
+                run_id = %record.run_id,
+                sandbox_id = %record.sandbox_id,
+                "Firecracker discovery was incomplete; keeping orphaned active run visible"
+            );
+            continue;
+        }
+
+        let Some(absent_scans) = orphaned_active_runs
+            .mark_absent_if_matching(record.run_id, record.sandbox_id)
+            .await
+        else {
+            continue;
+        };
+        if absent_scans < ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE {
+            warn!(
+                run_id = %record.run_id,
+                sandbox_id = %record.sandbox_id,
+                absent_scans,
+                required_absent_scans = ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE,
+                "orphaned active run Firecracker absent; waiting for confirmation before removing active status"
             );
             continue;
         }
@@ -1938,6 +2033,7 @@ async fn reap_orphaned_active_runs_with_firecrackers(
         info!(
             run_id = %record.run_id,
             sandbox_id = %record.sandbox_id,
+            absent_scans,
             "orphaned active run removed after Firecracker process was absent"
         );
     }
@@ -2402,7 +2498,7 @@ mod tests {
             })));
         let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
             Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let orphans = OrphanedActiveRuns::new(Arc::new(tokio::sync::Notify::new()));
+        let orphans = OrphanedActiveRuns::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
@@ -2438,7 +2534,7 @@ mod tests {
             })));
         let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
             Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let orphans = OrphanedActiveRuns::new(Arc::new(tokio::sync::Notify::new()));
+        let orphans = OrphanedActiveRuns::new();
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -2476,7 +2572,7 @@ mod tests {
             })));
         let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
             Arc::new(tokio::sync::Mutex::new(HashMap::new()));
-        let orphans = OrphanedActiveRuns::new(Arc::new(tokio::sync::Notify::new()));
+        let orphans = OrphanedActiveRuns::new();
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -2528,7 +2624,7 @@ mod tests {
                 default_timeout: Duration::from_secs(300),
                 max_idle: 10,
             })));
-        let orphans = OrphanedActiveRuns::new(Arc::new(tokio::sync::Notify::new()));
+        let orphans = OrphanedActiveRuns::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
@@ -2550,7 +2646,7 @@ mod tests {
         status.add_run(run_id, sandbox_id).await;
         orphans.insert(run_id, sandbox_id).await;
 
-        reap_orphaned_active_runs(&orphans, &idle_pool, &status).await;
+        reap_orphaned_active_runs(&orphans, &idle_pool, &status, OrphanReapMode::Immediate).await;
 
         let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
         assert_eq!(idle_sessions, vec!["sess-idle-owned-reaper"]);
@@ -2559,11 +2655,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn orphan_reaper_removes_active_run_when_firecracker_absent() {
+    async fn orphan_reaper_immediate_mode_does_not_count_absent_scan() {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
-        let orphans = OrphanedActiveRuns::new(Arc::new(tokio::sync::Notify::new()));
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let orphans = OrphanedActiveRuns::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, sandbox_id).await;
+        orphans.insert(run_id, sandbox_id).await;
+
+        reap_orphaned_active_runs(&orphans, &idle_pool, &status, OrphanReapMode::Immediate).await;
+        reap_orphaned_active_runs(&orphans, &idle_pool, &status, OrphanReapMode::ConfirmAbsent)
+            .await;
+
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(active_runs, vec![run_id.to_string()]);
+        assert_eq!(orphans.len().await, 1);
+    }
+
+    #[tokio::test]
+    async fn orphan_reaper_removes_active_run_after_two_absent_scans() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let orphans = OrphanedActiveRuns::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
@@ -2572,7 +2694,20 @@ mod tests {
         reap_orphaned_active_runs_with_firecrackers(
             &orphans,
             &status,
-            vec![OrphanedActiveRun { run_id, sandbox_id }],
+            orphans.snapshot().await,
+            &[],
+        )
+        .await;
+
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(active_runs, vec![run_id.to_string()]);
+        assert_eq!(orphans.len().await, 1);
+
+        reap_orphaned_active_runs_with_firecrackers(
+            &orphans,
+            &status,
+            orphans.snapshot().await,
             &[],
         )
         .await;
@@ -2584,11 +2719,65 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn orphan_reaper_defers_when_firecracker_discovery_is_incomplete() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let orphans = OrphanedActiveRuns::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, sandbox_id).await;
+        orphans.insert(run_id, sandbox_id).await;
+
+        reap_orphaned_active_runs_with_firecrackers(
+            &orphans,
+            &status,
+            orphans.snapshot().await,
+            &[],
+        )
+        .await;
+        let unresolved_firecracker = process::FirecrackerProcessInfo {
+            pid: 1234,
+            ppid: Some(1),
+            sandbox_id: "pid-1234".to_string(),
+            base_dir: None,
+        };
+        reap_orphaned_active_runs_with_firecrackers(
+            &orphans,
+            &status,
+            orphans.snapshot().await,
+            &[unresolved_firecracker],
+        )
+        .await;
+
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(active_runs, vec![run_id.to_string()]);
+        assert_eq!(orphans.len().await, 1);
+
+        reap_orphaned_active_runs_with_firecrackers(
+            &orphans,
+            &status,
+            orphans.snapshot().await,
+            &[],
+        )
+        .await;
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(
+            active_runs,
+            vec![run_id.to_string()],
+            "incomplete discovery should reset absent confirmation"
+        );
+        assert_eq!(orphans.len().await, 1);
+    }
+
+    #[tokio::test]
     async fn orphan_reaper_preserves_active_run_when_firecracker_live() {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
-        let orphans = OrphanedActiveRuns::new(Arc::new(tokio::sync::Notify::new()));
+        let orphans = OrphanedActiveRuns::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
@@ -2603,7 +2792,7 @@ mod tests {
         reap_orphaned_active_runs_with_firecrackers(
             &orphans,
             &status,
-            vec![OrphanedActiveRun { run_id, sandbox_id }],
+            orphans.snapshot().await,
             &[firecracker],
         )
         .await;
