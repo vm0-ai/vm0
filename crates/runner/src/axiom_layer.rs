@@ -65,7 +65,7 @@ const SERVICE_NAME: &str = "runner";
 /// (non-success ingest responses, HTTP errors) remain visible to local
 /// logging, while the Axiom per-layer filter keeps any observed diagnostics
 /// from looping back into this layer and re-flooding the dispatcher.
-pub(crate) const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
+const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 /// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
 /// without calling `shutdown` leaves the tokio runtime to abort the task.

@@ -19,6 +19,7 @@ use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 #[derive(Clone, Debug)]
 struct RecordedEvent {
@@ -212,7 +213,7 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
         tracing::debug!("local debug");
         tracing::trace!("local trace");
         tracing::warn!("local warn");
-        tracing::warn!(target: axiom_layer::INTERNAL_TARGET, "local internal");
+        tracing::warn!(target: INTERNAL_TARGET, "local internal");
     }
     guard.shutdown().await;
 
@@ -236,7 +237,7 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
     }
     assert!(
         events.iter().any(|event| {
-            event.target == axiom_layer::INTERNAL_TARGET
+            event.target == INTERNAL_TARGET
                 && event
                     .message
                     .as_deref()
@@ -439,7 +440,7 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
     let events = recording.events();
     assert!(
         events.iter().any(|event| {
-            event.target == axiom_layer::INTERNAL_TARGET
+            event.target == INTERNAL_TARGET
                 && event
                     .message
                     .as_deref()
