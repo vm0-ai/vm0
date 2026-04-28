@@ -83,10 +83,36 @@ impl Drop for DnsProxy {
 ///
 /// Checks both TCP and UDP because dnsmasq binds both protocols.
 fn find_available_port() -> std::io::Result<u16> {
-    let tcp = std::net::TcpListener::bind("0.0.0.0:0")?;
-    let port = tcp.local_addr()?.port();
-    let _udp = std::net::UdpSocket::bind(("0.0.0.0", port))?;
-    Ok(port)
+    const MAX_PORT_PROBE_ATTEMPTS: usize = 64;
+
+    find_available_port_from(
+        (0..MAX_PORT_PROBE_ATTEMPTS).map(|_| std::net::TcpListener::bind("0.0.0.0:0")),
+    )
+}
+
+fn find_available_port_from<I>(tcp_candidates: I) -> std::io::Result<u16>
+where
+    I: IntoIterator<Item = std::io::Result<std::net::TcpListener>>,
+{
+    let mut last_addr_in_use = None;
+    for tcp in tcp_candidates {
+        let tcp = tcp?;
+        let port = tcp.local_addr()?.port();
+        match std::net::UdpSocket::bind(("0.0.0.0", port)) {
+            Ok(_udp) => return Ok(port),
+            Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
+                last_addr_in_use = Some(err);
+            }
+            Err(err) => return Err(err),
+        }
+    }
+
+    Err(last_addr_in_use.unwrap_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::AddrInUse,
+            "could not find a port available for both TCP and UDP",
+        )
+    }))
 }
 
 /// Start dnsmasq and spawn a background task to parse its query log.
@@ -455,5 +481,18 @@ mod tests {
     fn find_available_port_returns_nonzero() {
         let port = find_available_port().unwrap();
         assert!(port > 0);
+    }
+
+    #[test]
+    fn find_available_port_retries_when_udp_candidate_is_in_use() {
+        let busy_udp = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
+        let busy_port = busy_udp.local_addr().unwrap().port();
+        let busy_tcp = std::net::TcpListener::bind(("0.0.0.0", busy_port)).unwrap();
+        let free_tcp = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
+        let free_port = free_tcp.local_addr().unwrap().port();
+
+        let port = find_available_port_from([Ok(busy_tcp), Ok(free_tcp)]).unwrap();
+
+        assert_eq!(port, free_port);
     }
 }
