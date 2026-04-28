@@ -9,6 +9,7 @@ import {
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -44,6 +45,92 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
 }
 
 describe("activity paged events", () => {
+  it("should wait for all initial event pages before rendering steps", async () => {
+    const secondPageStarted = createDeferredPromise<void>(context.signal);
+    const releaseSecondPage = createDeferredPromise<void>(context.signal);
+    let secondPageStartedResolved = false;
+
+    const page1Event = {
+      sequenceNumber: 0,
+      eventType: "assistant",
+      eventData: {
+        message: { content: [{ type: "text", text: "Page one content" }] },
+      },
+      createdAt: "2026-03-10T14:56:02Z",
+    };
+
+    const page2Event = {
+      sequenceNumber: 1,
+      eventType: "assistant",
+      eventData: {
+        message: { content: [{ type: "text", text: "Page two content" }] },
+      },
+      createdAt: "2026-03-10T14:56:10Z",
+    };
+
+    setMockComposesList([]);
+    server.use(
+      mockApi(logsByIdContract.getById, ({ respond }) => {
+        return respond(200, makeLogDetail({ status: "completed" }));
+      }),
+      mockApi(
+        zeroRunAgentEventsContract.getAgentEvents,
+        async ({ query, respond }) => {
+          const since = query.since;
+
+          if (since === undefined) {
+            return respond(200, {
+              events: [page1Event],
+              hasMore: true,
+              framework: "claude-code",
+            } satisfies AgentEventsResponse);
+          }
+
+          if (since === 0) {
+            if (!secondPageStartedResolved) {
+              secondPageStartedResolved = true;
+              secondPageStarted.resolve();
+            }
+            await releaseSecondPage.promise;
+            return respond(200, {
+              events: [page2Event],
+              hasMore: false,
+              framework: "claude-code",
+            } satisfies AgentEventsResponse);
+          }
+
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        },
+      ),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    await secondPageStarted.promise;
+
+    expect(screen.queryByText("Page one content")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Test Agent" }),
+    ).not.toBeInTheDocument();
+
+    releaseSecondPage.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Page one content")).toBeInTheDocument();
+    expect(screen.getByText("Page two content")).toBeInTheDocument();
+  });
+
   it("should load multi-page events when hasMore is true then false", async () => {
     let eventFetchCount = 0;
 

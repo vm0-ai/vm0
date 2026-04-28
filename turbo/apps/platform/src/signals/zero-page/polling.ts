@@ -145,40 +145,21 @@ async function findLastEventSequence(
 }
 
 function createRunPagedEvents(runId: string) {
-  const firstPage = createEventPageComputed(runId);
-  const pagedEventsList$ = state([firstPage]);
+  const initialPagedEventsList$ = computed(async (get) => {
+    const pages = [createEventPageComputed(runId)];
 
-  const finished$ = computed(async (get) => {
-    const pagedEventsList = get(pagedEventsList$);
-    const lastPage = await get(pagedEventsList[pagedEventsList.length - 1]);
-    return !lastPage.hasMore;
-  });
-
-  const reloadAndCheckFinished$ = command(
-    async ({ set, get }, signal: AbortSignal) => {
-      const finished = await get(finished$);
-      signal.throwIfAborted();
-
-      if (finished) {
-        return true;
+    while (true) {
+      const lastPage = await get(pages[pages.length - 1]);
+      if (!lastPage.hasMore) {
+        return pages;
       }
 
-      const pagedEventsList = get(pagedEventsList$);
-      const since = await findLastEventSequence(pagedEventsList, get);
-      signal.throwIfAborted();
+      const since = await findLastEventSequence(pages, get);
+      pages.push(createEventPageComputed(runId, since));
+    }
+  });
 
-      const nextPage$ = createEventPageComputed(runId, since);
-      set(pagedEventsList$, (x) => {
-        return [...x, nextPage$];
-      });
-      return false;
-    },
-  );
-
-  return {
-    checkFinished$: reloadAndCheckFinished$,
-    pagedEventsList$,
-  };
+  return { pagedEventsList$: initialPagedEventsList$ };
 }
 
 export function createRunLoop(runId: string) {
@@ -190,10 +171,8 @@ export function createRunLoop(runId: string) {
 
   const { queuePosition$, reload$: reloadQueuePosition$ } =
     createQueuePosition(runId);
-  const {
-    pagedEventsList$: initialRunPagedEvents$,
-    checkFinished$: initialCheckFinished$,
-  } = createRunPagedEvents(runId);
+  const { pagedEventsList$: initialRunPagedEvents$ } =
+    createRunPagedEvents(runId);
 
   const internalLoopedPagedEvents$ = state<Computed<Promise<PagedRunEvents>>[]>(
     [],
@@ -206,9 +185,8 @@ export function createRunLoop(runId: string) {
   });
 
   const checkFinished$ = command(async ({ set, get }, signal: AbortSignal) => {
-    if (!(await set(initialCheckFinished$, signal))) {
-      return false;
-    }
+    const initialPagedEvents = await get(initialRunPagedEvents$);
+    signal.throwIfAborted();
 
     set(reloadRunStatus$);
     let status = (await get(runDetail$)).status;
@@ -223,9 +201,6 @@ export function createRunLoop(runId: string) {
     if (status === "pending") {
       return false;
     }
-
-    const initialPagedEvents = await get(initialRunPagedEvents$);
-    signal.throwIfAborted();
 
     const loopedPagedEvents = get(internalLoopedPagedEvents$);
     // Walk back across both lists (looped first, then initial) so an empty
