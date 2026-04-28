@@ -107,6 +107,34 @@ describe("uploadInstructionsServerSide", () => {
     expect(context.mocks.s3.putS3Object).toHaveBeenCalledTimes(2);
   });
 
+  it("uploads codex instructions as AGENTS.md when framework=codex", async () => {
+    const result = await uploadInstructionsServerSide({
+      orgId,
+      agentName: "codex-agent",
+      content: "# Codex instructions",
+      framework: "codex",
+    });
+
+    expect(result.storageName).toBe("agent-instructions@codex-agent");
+
+    const archiveCall = context.mocks.s3.putS3Object.mock.calls.find((c) => {
+      return typeof c[1] === "string" && c[1].endsWith("/archive.tar.gz");
+    });
+    expect(archiveCall).toBeDefined();
+    const tarBuffer = gunzipSync(archiveCall![2] as Buffer);
+    const fileContent = extractFileFromTar(tarBuffer, "AGENTS.md");
+    expect(fileContent).not.toBeNull();
+    expect(fileContent!.toString("utf-8")).toBe("# Codex instructions");
+
+    const manifestCall = context.mocks.s3.putS3Object.mock.calls.find((c) => {
+      return typeof c[1] === "string" && c[1].endsWith("/manifest.json");
+    });
+    expect(manifestCall).toBeDefined();
+    const manifestBody = JSON.parse(manifestCall![2] as string);
+    expect(manifestBody.files).toHaveLength(1);
+    expect(manifestBody.files[0].path).toBe("AGENTS.md");
+  });
+
   it("should return different versionId for different content", async () => {
     const resultA = await uploadInstructionsServerSide({
       orgId,

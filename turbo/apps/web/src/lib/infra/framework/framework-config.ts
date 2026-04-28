@@ -1,8 +1,10 @@
 /**
  * Server-side framework configuration
  *
- * Provides working directory resolution based on framework.
- * Uses SUPPORTED_FRAMEWORKS from @vm0/core as the source of truth.
+ * Provides per-framework defaults: working directory, instructions mount
+ * path, and the API-key environment variable name expected in the compose
+ * environment block. Uses SUPPORTED_FRAMEWORKS from @vm0/core as the
+ * source of truth.
  */
 
 import type { SupportedFramework } from "@vm0/core/frameworks";
@@ -12,6 +14,8 @@ import type { SupportedFramework } from "@vm0/core/frameworks";
  */
 interface FrameworkDefaults {
   workingDir: string;
+  instructionsMountPath: string;
+  apiKeyEnvVar: string;
 }
 
 /**
@@ -20,9 +24,13 @@ interface FrameworkDefaults {
 const FRAMEWORK_DEFAULTS: Record<SupportedFramework, FrameworkDefaults> = {
   "claude-code": {
     workingDir: "/home/user/workspace",
+    instructionsMountPath: "/home/user/.claude",
+    apiKeyEnvVar: "ANTHROPIC_API_KEY",
   },
   codex: {
     workingDir: "/home/user/workspace",
+    instructionsMountPath: "/home/user/.codex",
+    apiKeyEnvVar: "OPENAI_API_KEY",
   },
 };
 
@@ -36,4 +44,28 @@ export function resolveFrameworkWorkingDir(
   framework: SupportedFramework,
 ): string {
   return FRAMEWORK_DEFAULTS[framework].workingDir;
+}
+
+/**
+ * Resolve the instructions mount path for a framework
+ *
+ * @param framework - The supported framework
+ * @returns The mount path where instructions volume is attached
+ */
+export function resolveFrameworkInstructionsMountPath(
+  framework: SupportedFramework,
+): string {
+  return FRAMEWORK_DEFAULTS[framework].instructionsMountPath;
+}
+
+/**
+ * Resolve the API-key environment variable name for a framework
+ *
+ * @param framework - The supported framework
+ * @returns The env var name the compose environment block must declare
+ */
+export function resolveFrameworkApiKeyEnvVar(
+  framework: SupportedFramework,
+): string {
+  return FRAMEWORK_DEFAULTS[framework].apiKeyEnvVar;
 }

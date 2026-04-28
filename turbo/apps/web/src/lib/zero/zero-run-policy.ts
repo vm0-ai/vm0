@@ -7,6 +7,7 @@ import {
   noModelProvider,
 } from "@vm0/api-services/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
+import { validateFrameworkApiKey } from "../infra/run/utils";
 import { logger } from "../shared/logger";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
@@ -111,7 +112,7 @@ export function authorizeCompose(
 }
 
 /**
- * Validate image access for new runs.
+ * Validate compose requirements for new runs.
  *
  * Skipped when resuming from checkpoint or continuing a session.
  */
@@ -121,6 +122,7 @@ export async function validateComposeRequirements(
   if (!composeContent?.agents) {
     return;
   }
+  validateFrameworkApiKey(composeContent);
 }
 
 /**
