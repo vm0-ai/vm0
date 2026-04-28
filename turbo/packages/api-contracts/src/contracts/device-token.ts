@@ -14,24 +14,54 @@ export const bleSessionNonceSchema = z
   .max(128)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
+export const pollTokenSchema = z
+  .string()
+  .min(32)
+  .max(256)
+  .regex(/^[A-Za-z0-9._-]+$/);
+
 export const createDeviceTokenRequestSchema = z.object({
   device_type: z.literal("bb0"),
-  ble_session_nonce: bleSessionNonceSchema,
+  ble_session_nonce: bleSessionNonceSchema.optional(),
 });
 
 export const createDeviceTokenResponseSchema = z.object({
   device_code: bb0DeviceCodeSchema,
   expires_in: z.number().int().positive(),
+  interval: z.number().int().positive(),
+  poll_token: pollTokenSchema,
 });
 
-export const bindBb0DeviceRequestSchema = z.object({
+export const pollDeviceTokenRequestSchema = z.object({
   device_code: bb0DeviceCodeSchema,
-  ble_session_nonce: bleSessionNonceSchema,
+  poll_token: pollTokenSchema,
 });
 
-export const bindBb0DeviceResponseSchema = z.object({
+export const pollDeviceTokenPendingResponseSchema = z.object({
+  status: z.literal("pending"),
+  interval: z.number().int().positive(),
+});
+
+export const pollDeviceTokenApprovedResponseSchema = z.object({
+  status: z.literal("approved"),
   api_token: z.string(),
   thread_id: z.string().uuid(),
+});
+
+export const pollDeviceTokenExpiredResponseSchema = z.object({
+  status: z.literal("expired"),
+});
+
+export const pollDeviceTokenInvalidResponseSchema = z.object({
+  status: z.literal("invalid"),
+});
+
+export const confirmBb0DeviceRequestSchema = z.object({
+  device_code: bb0DeviceCodeSchema,
+});
+
+export const confirmBb0DeviceResponseSchema = z.object({
+  status: z.literal("approved"),
 });
 
 export type CreateDeviceTokenRequest = z.infer<
@@ -40,8 +70,27 @@ export type CreateDeviceTokenRequest = z.infer<
 export type CreateDeviceTokenResponse = z.infer<
   typeof createDeviceTokenResponseSchema
 >;
-export type BindBb0DeviceRequest = z.infer<typeof bindBb0DeviceRequestSchema>;
-export type BindBb0DeviceResponse = z.infer<typeof bindBb0DeviceResponseSchema>;
+export type PollDeviceTokenRequest = z.infer<
+  typeof pollDeviceTokenRequestSchema
+>;
+export type PollDeviceTokenPendingResponse = z.infer<
+  typeof pollDeviceTokenPendingResponseSchema
+>;
+export type PollDeviceTokenApprovedResponse = z.infer<
+  typeof pollDeviceTokenApprovedResponseSchema
+>;
+export type PollDeviceTokenExpiredResponse = z.infer<
+  typeof pollDeviceTokenExpiredResponseSchema
+>;
+export type PollDeviceTokenInvalidResponse = z.infer<
+  typeof pollDeviceTokenInvalidResponseSchema
+>;
+export type ConfirmBb0DeviceRequest = z.infer<
+  typeof confirmBb0DeviceRequestSchema
+>;
+export type ConfirmBb0DeviceResponse = z.infer<
+  typeof confirmBb0DeviceResponseSchema
+>;
 
 export const deviceTokenContract = c.router({
   create: {
@@ -54,24 +103,37 @@ export const deviceTokenContract = c.router({
     },
     summary: "Create a short-lived device code for embedded device onboarding",
   },
+  poll: {
+    method: "POST",
+    path: "/api/device-token/poll",
+    body: pollDeviceTokenRequestSchema,
+    responses: {
+      200: pollDeviceTokenApprovedResponseSchema,
+      202: pollDeviceTokenPendingResponseSchema,
+      400: apiErrorSchema,
+      404: pollDeviceTokenInvalidResponseSchema,
+      410: pollDeviceTokenExpiredResponseSchema,
+    },
+    summary: "Poll a bb0 device code for approval and final credentials",
+  },
 });
 
-export const bb0DeviceBindContract = c.router({
-  bind: {
+export const bb0DeviceConfirmContract = c.router({
+  confirm: {
     method: "POST",
-    path: "/api/zero/devices/bb0/bind",
+    path: "/api/zero/devices/bb0/confirm",
     headers: authHeadersSchema,
-    body: bindBb0DeviceRequestSchema,
+    body: confirmBb0DeviceRequestSchema,
     responses: {
-      200: bindBb0DeviceResponseSchema,
+      200: confirmBb0DeviceResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Bind a bb0 device code to the authenticated user",
+    summary: "Confirm a bb0 device code for the authenticated user",
   },
 });
 
 export type DeviceTokenContract = typeof deviceTokenContract;
-export type Bb0DeviceBindContract = typeof bb0DeviceBindContract;
+export type Bb0DeviceConfirmContract = typeof bb0DeviceConfirmContract;

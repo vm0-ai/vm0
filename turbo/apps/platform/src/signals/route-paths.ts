@@ -23,6 +23,7 @@ export const ROUTES = {
   settingsTelegram: "/settings/telegram",
   telegramConnect: "/telegram/connect",
   settingsApiKeys: "/settings/api-keys",
+  deviceBb0: "/device/bb0",
   onboarding: "/onboarding",
   signInToken: "/sign-in-token",
   lab: "/_/lab",

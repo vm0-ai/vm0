@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import {
-  bb0DeviceBindContract,
+  bb0DeviceConfirmContract,
   deviceTokenContract,
 } from "@vm0/api-contracts/contracts/device-token";
 
@@ -9,13 +9,15 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import {
-  bindBb0Device$,
+  confirmBb0Device$,
   createBb0DeviceCode$,
+  pollBb0Device$,
 } from "../services/device-token.service";
 import type { RouteEntry } from "../route";
 
 const createBody$ = bodyResultOf(deviceTokenContract.create);
-const bindBody$ = bodyResultOf(bb0DeviceBindContract.bind);
+const pollBody$ = bodyResultOf(deviceTokenContract.poll);
+const confirmBody$ = bodyResultOf(bb0DeviceConfirmContract.confirm);
 
 const createDeviceToken$ = command(async ({ set }, signal: AbortSignal) => {
   const body = await set(createBody$, signal);
@@ -35,9 +37,51 @@ const createDeviceToken$ = command(async ({ set }, signal: AbortSignal) => {
   };
 });
 
-const bindBb0DeviceInner$ = command(
+const pollDeviceToken$ = command(async ({ set }, signal: AbortSignal) => {
+  const body = await set(pollBody$, signal);
+  if (!body.ok) {
+    return body.response;
+  }
+
+  const result = await set(
+    pollBb0Device$,
+    {
+      deviceCode: body.data.device_code,
+      pollToken: body.data.poll_token,
+    },
+    signal,
+  );
+
+  if (result.status === "pending") {
+    return {
+      status: 202 as const,
+      body: result,
+    };
+  }
+
+  if (result.status === "approved") {
+    return {
+      status: 200 as const,
+      body: result,
+    };
+  }
+
+  if (result.status === "expired") {
+    return {
+      status: 410 as const,
+      body: result,
+    };
+  }
+
+  return {
+    status: 404 as const,
+    body: result,
+  };
+});
+
+const confirmBb0DeviceInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const body = await set(bindBody$, signal);
+    const body = await set(confirmBody$, signal);
     if (!body.ok) {
       return body.response;
     }
@@ -48,12 +92,11 @@ const bindBb0DeviceInner$ = command(
     }
 
     const result = await set(
-      bindBb0Device$,
+      confirmBb0Device$,
       {
         userId: auth.userId,
         orgId: auth.orgId,
         deviceCode: body.data.device_code,
-        bleSessionNonce: body.data.ble_session_nonce,
       },
       signal,
     );
@@ -72,12 +115,13 @@ const bindBb0DeviceInner$ = command(
   },
 );
 
-const bindBb0DeviceRoute$ = authRoute(
+const confirmBb0DeviceRoute$ = authRoute(
   { accept: ["session"] },
-  bindBb0DeviceInner$,
+  confirmBb0DeviceInner$,
 );
 
 export const deviceTokenRoutes: readonly RouteEntry[] = [
   { route: deviceTokenContract.create, handler: createDeviceToken$ },
-  { route: bb0DeviceBindContract.bind, handler: bindBb0DeviceRoute$ },
+  { route: deviceTokenContract.poll, handler: pollDeviceToken$ },
+  { route: bb0DeviceConfirmContract.confirm, handler: confirmBb0DeviceRoute$ },
 ];
