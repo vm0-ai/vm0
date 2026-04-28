@@ -6,7 +6,7 @@ import {
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf, queryOf } from "../context/hono";
+import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import {
   chatThreadMessagesV1,

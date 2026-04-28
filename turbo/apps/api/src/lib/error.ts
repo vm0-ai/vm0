@@ -19,7 +19,7 @@ export function notFound(message: string) {
 }
 
 interface ZodLikeIssue {
-  readonly path: ReadonlyArray<PropertyKey>;
+  readonly path: readonly PropertyKey[];
   readonly message: string;
 }
 

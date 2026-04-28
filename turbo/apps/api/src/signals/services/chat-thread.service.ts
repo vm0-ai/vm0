@@ -2,9 +2,9 @@ import { computed, type Computed } from "ccstate";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import {
-  type ChatMessageV1,
-  type ChatThreadV1,
+import type {
+  ChatMessageV1,
+  ChatThreadV1,
 } from "@vm0/api-contracts/contracts/chat-threads-v1";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";

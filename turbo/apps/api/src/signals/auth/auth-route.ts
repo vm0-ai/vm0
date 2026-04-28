@@ -39,7 +39,9 @@ function isPatOnly(accept: readonly AuthTokenType[] | undefined): boolean {
 function rewriteUnauthorizedForPat(
   result: AuthErrorResponse,
 ): AuthErrorResponse {
-  if (result.status !== 401) return result;
+  if (result.status !== 401) {
+    return result;
+  }
   return {
     status: 401,
     body: {

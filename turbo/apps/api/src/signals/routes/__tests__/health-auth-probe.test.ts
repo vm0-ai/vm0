@@ -121,15 +121,6 @@ const capabilityProbe$ = authRoute(
 describe("GET /health/auth", () => {
   const fixtures: PatFixture[] = [];
 
-  afterEach(async () => {
-    while (fixtures.length > 0) {
-      const fixture = fixtures.pop();
-      if (fixture) {
-        await deletePatFixture(fixture);
-      }
-    }
-  });
-
   beforeEach(() => {
     // Default: Clerk session not authenticated, no org memberships
     context.mocks.clerk.authenticateRequest.mockReset();
@@ -137,6 +128,15 @@ describe("GET /health/auth", () => {
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
+  });
+
+  afterEach(async () => {
+    while (fixtures.length > 0) {
+      const fixture = fixtures.pop();
+      if (fixture) {
+        await deletePatFixture(fixture);
+      }
+    }
   });
 
   describe("Clerk session", () => {
@@ -158,7 +158,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         tokenType: "session",
         userId: "user_admin",
         orgId: "org_admin",
@@ -184,7 +184,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         tokenType: "session",
         userId: "user_member",
         orgId: "org_member",
@@ -206,7 +206,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         tokenType: "session",
         userId: "user_solo",
       });
@@ -240,7 +240,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         userId: fixture.userId,
         orgId: fixture.orgId,
         orgRole: "admin",
@@ -260,7 +260,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         userId: fixture.userId,
         orgId: fixture.orgId,
         orgRole: "member",
@@ -322,7 +322,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         tokenType: "pat",
         userId: fixture.userId,
       });
@@ -347,7 +347,7 @@ describe("GET /health/auth", () => {
         }),
         [200],
       );
-      expect(first.body).toEqual({
+      expect(first.body).toStrictEqual({
         tokenType: "pat",
         userId: fixture.userId,
         orgId: fixture.orgId,
@@ -364,11 +364,10 @@ describe("GET /health/auth", () => {
         }),
         [200],
       );
-      expect(second.body).toEqual(first.body);
+      expect(second.body).toStrictEqual(first.body);
       expect(
-        context.mocks.clerk.users.getOrganizationMembershipList.mock.calls
-          .length,
-      ).toBe(callsBefore);
+        context.mocks.clerk.users.getOrganizationMembershipList.mock.calls,
+      ).toHaveLength(callsBefore);
     });
 
     it("refreshes the cached role when Clerk reports a different role", async () => {
@@ -390,7 +389,7 @@ describe("GET /health/auth", () => {
         }),
         [200],
       );
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         tokenType: "pat",
         userId: fixture.userId,
         orgId: fixture.orgId,
@@ -430,7 +429,7 @@ describe("GET /health/auth", () => {
         }),
         [200],
       );
-      expect(first.body).toEqual({
+      expect(first.body).toStrictEqual({
         tokenType: "pat",
         userId: fixture.userId,
       });
@@ -466,7 +465,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         tokenType: "sandbox",
         userId: "user_sandbox",
         orgId: "org_sandbox",
@@ -496,7 +495,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         userId: fixture.userId,
         orgId: fixture.orgId,
         orgRole: "member",
@@ -526,7 +525,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         userId: fixture.userId,
         orgId: fixture.orgId,
         orgRole: "admin",
@@ -559,7 +558,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         userId,
         orgId,
         runId: "run_zero",
@@ -570,7 +569,12 @@ describe("GET /health/auth", () => {
   });
 
   describe("Clerk session fallback for Bearer requests", () => {
-    it("falls through to Clerk session when PAT tokenId is not in DB but cookie is present", async () => {
+    // A `Bearer <pat>` whose tokenId is missing from the DB (revoked, expired,
+    // or simply forged) must NOT fall through to Clerk session auth even when
+    // a valid cookie rides along — web's `requireApiKeyAuth` rejects that
+    // shape with 401, and the API mirror has to agree or shadow comparison
+    // produces an `outcome` mismatch.
+    it("rejects a PAT whose tokenId is not in DB even when a valid Clerk cookie is present", async () => {
       const tokenId = randomUUID();
       const userId = `user_${randomUUID()}`;
       const nowSeconds = currentSecond();
@@ -601,15 +605,36 @@ describe("GET /health/auth", () => {
             cookie: "__session=valid-session",
           },
         }),
-        [200],
+        [401],
       );
 
-      expect(response.body).toEqual({
-        tokenType: "session",
-        userId: "user_cookie_fallback",
-        orgId: "org_cookie_fallback",
-        orgRole: "admin",
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
+    });
+
+    it("rejects a sandbox-prefixed token with a bad signature even when a valid Clerk cookie is present", async () => {
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: true,
+        toAuth: () => {
+          return {
+            userId: "user_cookie_fallback",
+            orgId: "org_cookie_fallback",
+            orgRole: "org:admin",
+          };
+        },
       });
+
+      const client = setupApp({ context })(healthAuthProbeContract);
+      const response = await accept(
+        client.check({
+          headers: {
+            authorization: "Bearer vm0_sandbox_not-a-real-token",
+            cookie: "__session=valid-session",
+          },
+        }),
+        [401],
+      );
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
     });
 
     it("falls through to Clerk session for unknown Bearer shapes when cookie is present", async () => {
@@ -635,7 +660,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         tokenType: "session",
         userId: "user_unknown_shape",
         orgId: "org_unknown_shape",
@@ -763,7 +788,7 @@ describe("GET /health/auth", () => {
         [200],
       );
 
-      expect(response.body).toEqual({
+      expect(response.body).toStrictEqual({
         tokenType: "zero",
         userId: fixture.userId,
         orgId: fixture.orgId,

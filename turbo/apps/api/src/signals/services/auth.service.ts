@@ -6,11 +6,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { membershipsByUserId } from "../external/clerk";
 import { db$, writeDb$ } from "../external/db";
 import { now, nowDate } from "../external/time";
-import {
-  type ApiOrgRole,
-  type CliAuth,
-  type CliTokenRecord,
-} from "../../types/auth";
+import type { ApiOrgRole, CliAuth, CliTokenRecord } from "../../types/auth";
 
 const MEMBER_ROLE_CACHE_TTL_MS = 60_000;
 
@@ -87,6 +83,7 @@ export const getMemberRoleAndUpdateCache$ = command(
         ),
       )
       .limit(1);
+    signal.throwIfAborted();
 
     const currentTime = now();
     if (
@@ -98,6 +95,7 @@ export const getMemberRoleAndUpdateCache$ = command(
     }
 
     const memberships = await get(membershipsByUserId(userId));
+    signal.throwIfAborted();
     const membership = memberships.data.find((candidate) => {
       return candidate.organization.id === orgId;
     });

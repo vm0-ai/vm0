@@ -14,14 +14,14 @@ describe("api health routes", () => {
     const client = createClient(healthContract);
     const response = await accept(client.check(), [200]);
 
-    expect(response.body).toEqual({ status: "ok" });
+    expect(response.body).toStrictEqual({ status: "ok" });
   });
 
   it("requires auth for the authenticated health check", async () => {
     const client = createClient(healthAuthContract);
     const response = await accept(client.check(), [401]);
 
-    expect(response.body).toEqual({
+    expect(response.body).toStrictEqual({
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     });
   });

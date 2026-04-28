@@ -4,6 +4,7 @@ import { noGetterSetterParams } from "./rules/no-getter-setter-params.ts";
 import { noLoggerInfo } from "./rules/no-logger-info.ts";
 import { noPackageVariable } from "./rules/no-package-variable.ts";
 import { noTestViMocks } from "./rules/no-test-vi-mocks.ts";
+import { signalCheckAwait } from "./rules/signal-check-await.ts";
 
 export const apiLintPlugin = {
   meta: {
@@ -17,5 +18,6 @@ export const apiLintPlugin = {
     "no-logger-info": noLoggerInfo,
     "no-package-variable": noPackageVariable,
     "no-test-vi-mocks": noTestViMocks,
+    "signal-check-await": signalCheckAwait,
   },
 };

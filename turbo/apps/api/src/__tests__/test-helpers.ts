@@ -53,7 +53,7 @@ export async function accept<
   return result as Extract<TResponse, { status: TStatus }>;
 }
 
-async function parseResponseBody(response: Response): Promise<unknown> {
+function parseResponseBody(response: Response): Promise<unknown> | undefined {
   if (response.status === 204 || response.status === 205) {
     return undefined;
   }

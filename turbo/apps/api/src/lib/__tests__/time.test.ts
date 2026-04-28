@@ -21,7 +21,7 @@ describe("time", () => {
     const timestamp = 1_700_000_000_000;
     mockNow(timestamp);
 
-    expect(nowDate()).toEqual(new Date(timestamp));
+    expect(nowDate()).toStrictEqual(new Date(timestamp));
   });
 
   it("clears mocked time", () => {

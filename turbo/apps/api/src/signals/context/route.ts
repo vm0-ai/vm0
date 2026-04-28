@@ -3,7 +3,8 @@ import { createStore, type Command, type Computed } from "ccstate";
 import type { Handler } from "hono";
 import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
 
-import { initHono$, requestValidation$ } from "./hono";
+import { initHono$ } from "./hono";
+import { requestValidation$ } from "./request";
 import { setRootSignal$ } from "./root";
 
 export type SignalRouteHandler<T> = Computed<T> | Command<T, [AbortSignal]>;

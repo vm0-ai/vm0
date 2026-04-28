@@ -54,7 +54,7 @@ describe("createApp", () => {
 
     const response = await accept(client.boom(), [500]);
 
-    expect(response.body).toEqual({ error: "Internal server error" });
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
     expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
   });
 

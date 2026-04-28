@@ -51,6 +51,7 @@ const cliAuth$ = command(
     signal: AbortSignal,
   ): Promise<AuthContext | null> => {
     const resolved = await get(cliTokenRecord(cliAuth));
+    signal.throwIfAborted();
     if (!resolved) {
       return null;
     }
@@ -188,7 +189,14 @@ const resolvedAuthContext$ = command(
           return result;
         }
       }
-    } else if (isSandboxToken(token)) {
+      // Recognized PAT prefix that failed verification or DB lookup must not
+      // fall through to Clerk session auth — match web's `requireApiKeyAuth`
+      // semantics so a bogus/expired PAT alongside a valid Clerk cookie is
+      // still rejected.
+      return null;
+    }
+
+    if (isSandboxToken(token)) {
       const cliAuth = verifyCliToken(token);
       if (!cliAuth) {
         const result = await set(sandboxTokenAuth$, token, options, signal);
@@ -201,9 +209,12 @@ const resolvedAuthContext$ = command(
           return result;
         }
       }
+      return null;
     }
 
-    // Bearer token verification failed — fall through to Clerk session auth
+    // Unrecognized Bearer shape (e.g. a Clerk session JWT forwarded by the
+    // platform api-client) — defer to Clerk session auth, which validates
+    // both the Authorization header and the cookie.
     return await get(clerkSessionAuth$);
   },
 );

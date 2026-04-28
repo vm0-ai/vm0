@@ -159,11 +159,15 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
   afterEach(async () => {
     while (threads.length > 0) {
       const t = threads.pop();
-      if (t) await deleteThreadFixture(t);
+      if (t) {
+        await deleteThreadFixture(t);
+      }
     }
     while (pats.length > 0) {
       const p = pats.pop();
-      if (p) await deletePatFixture(p);
+      if (p) {
+        await deletePatFixture(p);
+      }
     }
   });
 
@@ -182,7 +186,7 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
       [200],
     );
 
-    expect(response.body).toEqual({
+    expect(response.body).toStrictEqual({
       id: thread.threadId,
       title: "hello",
       createdAt: expect.any(String),
@@ -252,7 +256,7 @@ describe("GET /api/v1/chat-threads/:threadId", () => {
       [401],
     );
 
-    expect(response.body.error).toEqual({
+    expect(response.body.error).toStrictEqual({
       message: "API key required",
       code: "UNAUTHORIZED",
     });
@@ -299,11 +303,15 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
   afterEach(async () => {
     while (threads.length > 0) {
       const t = threads.pop();
-      if (t) await deleteThreadFixture(t);
+      if (t) {
+        await deleteThreadFixture(t);
+      }
     }
     while (pats.length > 0) {
       const p = pats.pop();
-      if (p) await deletePatFixture(p);
+      if (p) {
+        await deletePatFixture(p);
+      }
     }
   });
 
@@ -339,7 +347,7 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
       response.body.messages.map((m) => {
         return m.id;
       }),
-    ).toEqual([m1, m2]);
+    ).toStrictEqual([m1, m2]);
     expect(response.body.messages[0]?.content).toBe("first");
     expect(response.body.messages[1]?.role).toBe("assistant");
   });
@@ -381,7 +389,7 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
       response.body.messages.map((m) => {
         return m.id;
       }),
-    ).toEqual([m2, m3]);
+    ).toStrictEqual([m2, m3]);
   });
 
   it("paginates backward with beforeId", async () => {
@@ -421,7 +429,7 @@ describe("GET /api/v1/chat-threads/:threadId/messages", () => {
       response.body.messages.map((m) => {
         return m.id;
       }),
-    ).toEqual([m1, m2]);
+    ).toStrictEqual([m1, m2]);
   });
 
   it("returns 404 when the thread is owned by a different user", async () => {
