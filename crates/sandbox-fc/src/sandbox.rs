@@ -971,11 +971,29 @@ impl Sandbox for FirecrackerSandbox {
 
         *self.guest.lock().await = Some(Arc::new(vsock_guest));
 
+        let control_sock_path = self.sock_paths.control_sock();
+        let control_server =
+            match control::bind_server(control_sock_path.clone(), Arc::clone(&self.guest)) {
+                Ok(server) => server,
+                Err(e) => {
+                    self.guest.lock().await.take();
+                    self.kill_process().await;
+                    return Err(SandboxError::Start {
+                        message: format!(
+                            "control socket bind {}: {e}",
+                            control_sock_path.display()
+                        ),
+                    });
+                }
+            };
+
         // Use CAS to avoid overwriting Stopped if the process crashed between
         // spawn and vsock connect (the process monitor may have already
         // recorded process exit).
         if !self.transition(SandboxState::Created, SandboxState::Running) {
             self.guest.lock().await.take();
+            drop(control_server);
+            let _ = tokio::fs::remove_file(&control_sock_path).await;
             self.kill_process().await;
             return Err(SandboxError::Start {
                 message: "process exited during startup".into(),
@@ -983,10 +1001,7 @@ impl Sandbox for FirecrackerSandbox {
         }
 
         // Start control socket server for `runner exec`.
-        self.control_server = Some(control::spawn_server(
-            self.sock_paths.control_sock(),
-            Arc::clone(&self.guest),
-        ));
+        self.control_server = Some(control_server.spawn());
 
         // Spawn balloon controller to reclaim unused guest memory.
         self.balloon_controller = Some(balloon::spawn(
