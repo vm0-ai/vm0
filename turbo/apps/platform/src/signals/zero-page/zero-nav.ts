@@ -72,6 +72,16 @@ export const setMobileWorkspaceDrawerOpen$ = command(
   },
 );
 
+const internalMobileMoreSheetOpen$ = state(false);
+
+export const mobileMoreSheetOpen$ = computed((get) => {
+  return get(internalMobileMoreSheetOpen$);
+});
+
+export const setMobileMoreSheetOpen$ = command(({ set }, open: boolean) => {
+  set(internalMobileMoreSheetOpen$, open);
+});
+
 export type SidebarNavId =
   | "chat"
   | "agents"

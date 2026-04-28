@@ -62,6 +62,7 @@ import {
   IosInstallModal,
 } from "../pwa-install/install-banner.tsx";
 import { MobileBottomTabBar } from "./mobile-bottom-tab-bar.tsx";
+import { MobileMoreSheet } from "./mobile-more-sheet.tsx";
 import { MobileWorkspaceDrawer } from "./mobile-workspace-drawer.tsx";
 
 function AgentAvatarInTopBar() {
@@ -315,6 +316,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         )}
         <MobileBottomTabBar />
       </div>
+      <MobileMoreSheet />
     </div>
   );
 }

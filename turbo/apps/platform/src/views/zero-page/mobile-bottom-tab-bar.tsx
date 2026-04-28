@@ -13,7 +13,7 @@ import { Link } from "../router/link.tsx";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
+import { setMobileMoreSheetOpen$ } from "../../signals/zero-page/zero-nav.ts";
 
 type TabIcon = (props: { size?: number; stroke?: number }) => ReactNode;
 
@@ -87,12 +87,12 @@ function MobileTabLink({ tab, active }: { tab: MobileTab; active: boolean }) {
 }
 
 function MoreTab({ active }: { active: boolean }) {
-  const setExpanded = useSet(setSidebarExpanded$);
+  const setOpen = useSet(setMobileMoreSheetOpen$);
   return (
     <button
       type="button"
       onClick={() => {
-        setExpanded(true);
+        setOpen(true);
       }}
       aria-label="Open more menu"
       className={cn(

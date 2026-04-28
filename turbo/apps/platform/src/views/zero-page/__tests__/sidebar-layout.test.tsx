@@ -481,8 +481,32 @@ describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () =
   });
 });
 
-describe("mobile bottom tab bar - More opens sidebar (MOBILE-TAB-003)", () => {
-  it("expands the sidebar overlay when the More tab is clicked", async () => {
+describe("mobile bottom tab bar - More opens the More sheet (MOBILE-TAB-003)", () => {
+  it("opens the mobile more sheet when the More tab is clicked", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: mobileNativeOn(),
+    });
+
+    const moreTab = await waitFor(() => {
+      return screen.getByTestId("mobile-tab-more");
+    });
+    expect(screen.queryByTestId("mobile-more-sheet")).not.toBeInTheDocument();
+
+    click(moreTab);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-more-sheet")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("mobile-more-insights")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-more-works")).toBeInTheDocument();
+  });
+});
+
+describe("mobile more sheet - Insights navigates to /insights (MOBILE-MORE-001)", () => {
+  it("closes the sheet and routes to /insights when Insights is tapped", async () => {
     mockBaseAPIs();
     detachedSetupPage({
       context,
@@ -495,8 +519,42 @@ describe("mobile bottom tab bar - More opens sidebar (MOBILE-TAB-003)", () => {
     });
     click(moreTab);
 
+    const insights = await waitFor(() => {
+      return screen.getByTestId("mobile-more-insights");
+    });
+    click(insights);
+
     await waitFor(() => {
-      expect(screen.getByLabelText("Sidebar overlay")).toBeInTheDocument();
+      expect(pathname()).toBe("/insights");
+    });
+  });
+});
+
+describe("mobile workspace drawer - account link navigates to /settings (MOBILE-DRAWER-003)", () => {
+  it("closes the drawer and routes to /settings when the user card is tapped", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+      org: {
+        activeOrg: { id: "org_test", name: "vm0-ai" },
+        memberships: [{ id: "org_test" }],
+      },
+    });
+
+    const trigger = await waitFor(() => {
+      return screen.getByTestId("mobile-org-switcher");
+    });
+    click(trigger);
+
+    const accountLink = await waitFor(() => {
+      return screen.getByTestId("drawer-account-link");
+    });
+    click(accountLink);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/settings");
     });
   });
 });

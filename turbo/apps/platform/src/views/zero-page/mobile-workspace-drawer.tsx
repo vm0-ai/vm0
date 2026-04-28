@@ -19,6 +19,7 @@ import {
 } from "@tabler/icons-react";
 import { clerk$, currentOrgInfo$, user$ } from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   mobileWorkspaceDrawerOpen$,
   setMobileWorkspaceDrawerOpen$,
@@ -41,16 +42,28 @@ import {
   PendingInvitationsBadge,
 } from "./zero-org-switcher.tsx";
 
-function UserIdentityCard() {
+function UserIdentityCard({ onClose }: { onClose: () => void }) {
   const userLoadable = useLastLoadable(user$);
+  const navigate = useSet(detachedNavigateTo$);
   const user = userLoadable.state === "hasData" ? userLoadable.data : null;
   const name = user?.fullName ?? "You";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const imageUrl = user?.imageUrl;
   const initial = name.charAt(0).toUpperCase();
 
+  const handleOpenAccount = () => {
+    onClose();
+    navigate("/settings");
+  };
+
   return (
-    <div className="flex items-center gap-3 px-1 py-1">
+    <button
+      type="button"
+      onClick={handleOpenAccount}
+      data-testid="drawer-account-link"
+      aria-label="Open account settings"
+      className="flex w-full items-center gap-3 px-1 py-1 rounded-lg hover:bg-accent transition-colors text-left"
+    >
       {imageUrl ? (
         <img
           src={imageUrl}
@@ -75,7 +88,7 @@ function UserIdentityCard() {
           </p>
         )}
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -326,7 +339,7 @@ export function MobileWorkspaceDrawer() {
         <SheetDescription className="sr-only">
           Switch workspaces, manage your account, and create a new workspace.
         </SheetDescription>
-        <UserIdentityCard />
+        <UserIdentityCard onClose={close} />
         <div className="flex flex-col gap-2">
           <SectionLabel>Workspaces</SectionLabel>
           <CurrentWorkspaceRow onClose={close} />
