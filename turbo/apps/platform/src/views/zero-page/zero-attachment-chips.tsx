@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import {
   IconDownload,
   IconFile,
+  IconFileMusic,
   IconPhoto,
   IconVideo,
   IconLoader2,
@@ -737,8 +738,9 @@ function AttachmentChip({
   const openImageLightbox = useSet(openImageLightbox$);
   const isImage = attachment.contentType.startsWith("image/");
   const isVideo = attachment.contentType.startsWith("video/");
+  const isAudio = attachment.contentType.startsWith("audio/");
   const iconSrc =
-    isImage || isVideo ? null : getFileTypeIcon(attachment.filename);
+    isImage || isVideo || isAudio ? null : getFileTypeIcon(attachment.filename);
   return (
     <>
       <div
@@ -776,6 +778,12 @@ function AttachmentChip({
           </button>
         ) : isVideo ? (
           <IconVideo size={28} stroke={1.5} className="text-muted-foreground" />
+        ) : isAudio ? (
+          <IconFileMusic
+            size={28}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
         ) : iconSrc ? (
           <img
             alt=""

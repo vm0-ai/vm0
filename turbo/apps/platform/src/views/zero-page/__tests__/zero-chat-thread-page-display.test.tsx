@@ -77,6 +77,37 @@ describe("zero chat thread page display - attachment image preview", () => {
   });
 });
 
+describe("zero chat thread page display - attachment audio preview", () => {
+  it("renders audio attachment preview with controls", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Please listen",
+          createdAt: "2026-03-10T00:00:00Z",
+          attachFiles: [
+            {
+              id: "audio-file-1",
+              filename: "clip.mp3",
+              contentType: "audio/mpeg",
+              size: 4096,
+              url: "https://example.com/clip.mp3",
+            },
+          ],
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const audio = await waitFor(() => {
+      return screen.getByLabelText("Audio preview for clip.mp3");
+    });
+    expect(audio).toHaveAttribute("src", "https://example.com/clip.mp3");
+    expect(audio).toHaveAttribute("controls");
+  });
+});
+
 // CHAT-D-037: Attachment document previews render in ChatMessageRow
 describe("zero chat thread page display - attachment document preview", () => {
   it("keeps markdown attachments as chips and opens preview on click", async () => {

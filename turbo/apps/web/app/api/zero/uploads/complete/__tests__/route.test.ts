@@ -131,6 +131,31 @@ describe("POST /api/zero/uploads/complete", () => {
     expect(rows[0]).toMatchObject({ contentType: "text/csv" });
   });
 
+  it("infers audio content type from uploaded filename", async () => {
+    const { token, runId } = await zeroTokenWithRun();
+    const fileId = randomUUID();
+    const s3Key = `uploads/${user.userId}/${fileId}/clip.mp3`;
+    context.mocks.s3.listS3Objects.mockResolvedValueOnce([
+      { key: s3Key, size: 2048 },
+    ]);
+
+    const response = await POST(completeRequest({ id: fileId }, token));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: fileId,
+      filename: "clip.mp3",
+      contentType: "audio/mpeg",
+      size: 2048,
+    });
+    const rows = await findTestRunUploadedFiles("web", fileId);
+    expect(rows[0]).toMatchObject({
+      runId,
+      contentType: "audio/mpeg",
+      filename: "clip.mp3",
+    });
+  });
+
   it("is idempotent for repeated completion calls for the same run file", async () => {
     const { token, runId } = await zeroTokenWithRun();
     const fileId = randomUUID();

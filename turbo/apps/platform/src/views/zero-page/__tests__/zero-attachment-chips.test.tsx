@@ -558,6 +558,51 @@ describe("chat-d-064: video attachment chip shows neither image thumbnail nor fi
   });
 });
 
+describe("chat-d-064: audio attachment chip shows audio file icon", () => {
+  it("renders composer chip without image preview or file-type icon for an mp3 upload", async () => {
+    const user = userEvent.setup();
+    const audioUrl = "https://example.com/clip.mp3";
+
+    server.use(
+      ...mockUploadSuccess({
+        id: "upload-audio-1",
+        filename: "clip.mp3",
+        contentType: "audio/mpeg",
+        size: 2048,
+        url: audioUrl,
+      }),
+    );
+    mockChatAPI();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(
+      fileInput!,
+      new File(["a"], "clip.mp3", { type: "audio/mpeg" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove clip.mp3")).toBeInTheDocument();
+    });
+
+    const chipDiv = document.querySelector<HTMLElement>('[title="clip.mp3"]');
+    expect(chipDiv).toBeInTheDocument();
+    expect(
+      document.querySelector(`img[src="${audioUrl}"]`),
+    ).not.toBeInTheDocument();
+    expect(
+      chipDiv?.querySelector('img[aria-hidden="true"]'),
+    ).not.toBeInTheDocument();
+    expect(chipDiv?.querySelector("svg")).toBeInTheDocument();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // CHAT-I-065: sendNewThreadMessage$ forwards uploaded attachments as
 // structured `attachFiles` in the first-message POST (fixes #10243 for the

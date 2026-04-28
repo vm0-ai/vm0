@@ -155,6 +155,22 @@ describe("POST /api/zero/uploads/prepare", () => {
       });
     });
 
+    it("accepts audio uploads for chat preview flows", async () => {
+      const response = await POST(
+        createPrepareRequest({
+          filename: "clip.mp3",
+          contentType: "audio/mpeg",
+          size: 4096,
+        }),
+      );
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      expect(body).toMatchObject({
+        filename: "clip.mp3",
+        contentType: "audio/mpeg",
+      });
+    });
+
     it("sanitizes filenames when building the S3 key", async () => {
       const response = await POST(
         createPrepareRequest({

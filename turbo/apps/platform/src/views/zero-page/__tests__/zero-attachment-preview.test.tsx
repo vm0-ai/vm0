@@ -2,7 +2,7 @@
  * Tests for zero-attachment-preview.tsx
  *
  * Tests the AttachmentPreview component and its helpers for rendering
- * chat attachment previews (text, json, markdown, csv, pdf, html).
+ * chat attachment previews (text, json, markdown, csv, pdf, html, audio).
  */
 
 import { describe, expect, it } from "vitest";
@@ -56,6 +56,23 @@ describe("classifyChatAttachment", () => {
       url: "https://example.com/video.webm",
     });
     expect(result).toBe("video");
+  });
+
+  it("should classify audio content type as audio", () => {
+    const result = classifyChatAttachment({
+      filename: "clip.mp3",
+      url: "https://example.com/clip.mp3",
+      contentType: "audio/mpeg",
+    });
+    expect(result).toBe("audio");
+  });
+
+  it("should classify audio extension as audio", () => {
+    const result = classifyChatAttachment({
+      filename: "clip.m4a",
+      url: "https://example.com/clip.m4a",
+    });
+    expect(result).toBe("audio");
   });
 
   it("should classify markdown files", () => {
@@ -277,6 +294,21 @@ describe("attachment preview component", () => {
     });
 
     expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
+  });
+
+  it("should render audio preview for audio files", () => {
+    renderPreview({
+      filename: "clip.mp3",
+      url: "https://example.com/clip.mp3",
+      contentType: "audio/mpeg",
+    });
+
+    const preview = screen.getByTestId("attachment-preview-audio");
+    expect(preview).toBeInTheDocument();
+    expect(screen.getByLabelText("Audio preview for clip.mp3")).toHaveAttribute(
+      "src",
+      "https://example.com/clip.mp3",
+    );
   });
 });
 

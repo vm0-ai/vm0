@@ -21,6 +21,7 @@ import {
   IconDownload,
   IconEye,
   IconFile,
+  IconFileMusic,
   IconFiles,
   IconVideo,
 } from "@tabler/icons-react";
@@ -334,7 +335,7 @@ type ChatArtifactItem = {
   file: ChatThreadArtifactFile;
 };
 
-type ArtifactPreviewKind = "image" | "video" | "document" | "file";
+type ArtifactPreviewKind = "image" | "video" | "audio" | "document" | "file";
 
 function artifactItemKey(item: ChatArtifactItem): string {
   return `${item.runId}:${item.file.id}:${item.file.url}`;
@@ -356,6 +357,9 @@ function getArtifactPreviewKind(
   }
   if (contentType.startsWith("video/") || isVideoFilename(filename)) {
     return "video";
+  }
+  if (contentType.startsWith("audio/") || isAudioFilename(filename)) {
+    return "audio";
   }
   if (
     contentType === "application/pdf" ||
@@ -433,6 +437,9 @@ function ArtifactFileIcon({
   if (previewKind === "video") {
     return <IconVideo size={18} stroke={1.5} />;
   }
+  if (previewKind === "audio") {
+    return <IconFileMusic size={18} stroke={1.5} />;
+  }
   return <IconFile size={18} stroke={1.5} />;
 }
 
@@ -499,6 +506,23 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
         preload="metadata"
         className="h-full w-full bg-black object-contain"
       />
+    );
+  }
+
+  if (previewKind === "audio") {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-muted/40 p-6">
+        <span className="flex h-14 w-14 items-center justify-center rounded-xl border border-border/70 bg-background text-muted-foreground shadow-sm">
+          <IconFileMusic size={30} stroke={1.5} />
+        </span>
+        <audio
+          src={file.url}
+          controls
+          preload="metadata"
+          className="w-full max-w-[320px]"
+          aria-label={`Audio preview for ${file.filename}`}
+        />
+      </div>
     );
   }
 
@@ -1228,6 +1252,7 @@ type BodyRenderBlock =
 type BodyPreviewKind =
   | "image"
   | "video"
+  | "audio"
   | "markdown"
   | "text"
   | "json"
@@ -1239,6 +1264,7 @@ function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
   return (
     kind === "image" ||
     kind === "video" ||
+    kind === "audio" ||
     kind === "markdown" ||
     kind === "text" ||
     kind === "json" ||
@@ -1368,6 +1394,9 @@ function contentTypeForBodyPreviewKind(kind: BodyPreviewKind): string {
   }
   if (kind === "image") {
     return "image/*";
+  }
+  if (kind === "audio") {
+    return "audio/*";
   }
   return "video/*";
 }
@@ -1560,6 +1589,10 @@ function isVideoFilename(filename: string): boolean {
   return /\.(mp4|webm|mov)$/i.test(filename);
 }
 
+function isAudioFilename(filename: string): boolean {
+  return /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|mpga)$/i.test(filename);
+}
+
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
@@ -1707,6 +1740,7 @@ function resolveAttachments(
       contentType,
       isImage: kind === "image" || isImageFilename(f.filename),
       isVideo: kind === "video" || isVideoFilename(f.filename),
+      isAudio: kind === "audio" || isAudioFilename(f.filename),
       kind,
     };
   });
@@ -1722,30 +1756,32 @@ function attachmentIdFromUrl(url: string): string | null {
 }
 
 function inferAttachmentContentType(filename: string, kind: string): string {
+  const contentTypesByExtension: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    mp3: "audio/mpeg",
+    mpga: "audio/mpeg",
+    wav: "audio/wav",
+    m4a: "audio/mp4",
+    aac: "audio/aac",
+    ogg: "audio/ogg",
+    oga: "audio/ogg",
+    opus: "audio/opus",
+    flac: "audio/flac",
+  };
   const lower = filename.toLowerCase();
-  if (lower.endsWith(".png")) {
-    return "image/png";
-  }
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
-    return "image/jpeg";
-  }
-  if (lower.endsWith(".gif")) {
-    return "image/gif";
-  }
-  if (lower.endsWith(".webp")) {
-    return "image/webp";
-  }
-  if (lower.endsWith(".svg")) {
-    return "image/svg+xml";
-  }
-  if (lower.endsWith(".mp4")) {
-    return "video/mp4";
-  }
-  if (lower.endsWith(".webm")) {
-    return "video/webm";
-  }
-  if (lower.endsWith(".mov")) {
-    return "video/quicktime";
+  const extension = lower.includes(".") ? lower.split(".").pop() : undefined;
+  const contentType =
+    extension === undefined ? undefined : contentTypesByExtension[extension];
+  if (contentType !== undefined) {
+    return contentType;
   }
   switch (kind) {
     case "markdown": {
@@ -1848,6 +1884,18 @@ function UserMessageAttachments({
               src={a.url}
               controls
               className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+            />
+          );
+        }
+        if (a.isAudio) {
+          return (
+            <audio
+              key={a.url}
+              src={a.url}
+              controls
+              preload="metadata"
+              className="w-full max-w-md"
+              aria-label={`Audio preview for ${a.filename}`}
             />
           );
         }

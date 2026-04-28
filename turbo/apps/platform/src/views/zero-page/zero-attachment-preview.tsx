@@ -4,6 +4,7 @@ import {
   IconChevronUp,
   IconDownload,
   IconEye,
+  IconFileMusic,
   IconLoader2,
 } from "@tabler/icons-react";
 import { useSet } from "ccstate-react";
@@ -19,6 +20,7 @@ import docHtmlIcon from "./assets/doc-html.svg";
 type ChatAttachmentKind =
   | "image"
   | "video"
+  | "audio"
   | "markdown"
   | "text"
   | "json"
@@ -55,6 +57,9 @@ export function classifyChatAttachment(
   if (type.startsWith("video/")) {
     return "video";
   }
+  if (type.startsWith("audio/")) {
+    return "audio";
+  }
 
   if (type === "text/markdown" || ext === "md") {
     return "markdown";
@@ -82,6 +87,13 @@ export function classifyChatAttachment(
   }
   if (["mp4", "webm", "mov", "ogv"].includes(ext)) {
     return "video";
+  }
+  if (
+    ["mp3", "wav", "m4a", "aac", "ogg", "oga", "opus", "flac", "mpga"].includes(
+      ext,
+    )
+  ) {
+    return "audio";
   }
 
   return "file";
@@ -403,6 +415,42 @@ function DocumentThumbnailPreview({
   );
 }
 
+function AudioPreview({ filename, url }: { filename: string; url: string }) {
+  return (
+    <div
+      className="w-full max-w-md rounded-xl border border-foreground/10 bg-background/60 p-3"
+      data-testid="attachment-preview-audio"
+    >
+      <div className="mb-3 flex items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground">
+          <IconFileMusic size={22} stroke={1.6} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-foreground">
+            {filename}
+          </div>
+        </div>
+        <a
+          href={toDownloadUrl(url)}
+          download={filename}
+          title={filename}
+          aria-label={`Download ${filename}`}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-background/90 text-muted-foreground hover:text-foreground"
+        >
+          <IconDownload size={12} />
+        </a>
+      </div>
+      <audio
+        src={url}
+        controls
+        preload="metadata"
+        className="block w-full"
+        aria-label={`Audio preview for ${filename}`}
+      />
+    </div>
+  );
+}
+
 export function AttachmentPreview({
   attachment,
   signal,
@@ -467,6 +515,11 @@ export function AttachmentPreview({
           url={attachment.url}
           kind="html"
         />
+      );
+    }
+    case "audio": {
+      return (
+        <AudioPreview filename={attachment.filename} url={attachment.url} />
       );
     }
     default: {
