@@ -32,6 +32,23 @@ describe("instrument", () => {
     );
   });
 
+  it("uses an OTLP exporter (not 'auto') when AXIOM telemetry env is set", async () => {
+    const { OTLPTraceExporter } =
+      await import("@opentelemetry/exporter-trace-otlp-http");
+    await importInstrument((envModule) => {
+      envModule.mockEnv("VERCEL_GIT_COMMIT_SHA", "abc123");
+      envModule.mockEnv("AXIOM_TOKEN_TELEMETRY", "axiom-token");
+      envModule.mockEnv("AXIOM_DATASET_SUFFIX", "prod");
+    });
+
+    const call = context.mocks.otel.registerOTel.mock.calls.at(-1);
+    if (!call) {
+      throw new Error("registerOTel was not called");
+    }
+    const exporter = (call[0] as { traceExporter: unknown }).traceExporter;
+    expect(exporter).toBeInstanceOf(OTLPTraceExporter);
+  });
+
   it("does not initialize Sentry without a DSN", async () => {
     await importInstrument((envModule) => {
       envModule.mockEnv("SENTRY_DSN", undefined);
