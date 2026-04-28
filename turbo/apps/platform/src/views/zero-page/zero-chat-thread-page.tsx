@@ -208,13 +208,6 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
-  const features = useLastResolved(featureSwitch$);
-  const enabled = features?.[FeatureSwitchKey.ChatArtifactsDrawer] ?? false;
-
-  if (!enabled) {
-    return null;
-  }
-
   return <ArtifactsButtonInner thread={thread} />;
 }
 

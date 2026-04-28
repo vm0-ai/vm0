@@ -31,7 +31,6 @@ import {
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
 import {
-  isTelegramIntegrationEnabled$,
   telegramBots$,
 } from "../../signals/zero-page/zero-telegram.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -314,18 +313,6 @@ function TelegramCard() {
   );
 }
 
-function TelegramCardGate() {
-  const enabledLoadable = useLoadable(isTelegramIntegrationEnabled$);
-  const enabled =
-    enabledLoadable.state === "hasData" ? enabledLoadable.data : false;
-
-  if (!enabled) {
-    return null;
-  }
-
-  return <TelegramCard />;
-}
-
 export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
@@ -349,7 +336,7 @@ export function ZeroWorksPage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
-          <TelegramCardGate />
+          <TelegramCard />
         </div>
       </main>
     </div>

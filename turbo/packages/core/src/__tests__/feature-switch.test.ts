@@ -65,7 +65,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    expect(states[FeatureSwitchKey.TelegramIntegration]).toBe(true);
+    expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -87,7 +87,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(false);
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(false);
-    expect(states[FeatureSwitchKey.TelegramIntegration]).toBe(true);
+    expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {

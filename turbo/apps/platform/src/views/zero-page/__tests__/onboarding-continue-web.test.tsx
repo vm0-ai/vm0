@@ -291,26 +291,12 @@ describe("onboarding add to Slack → works page", () => {
 // ---------------------------------------------------------------------------
 
 describe("onboarding set up Telegram → settings page", () => {
-  it("should show Telegram only when the Telegram feature is enabled", async () => {
-    mockAdminOnboarding();
-
-    detachedSetupPage({
-      context,
-      path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.TelegramIntegration]: false },
-    });
-    await walkAdminToWhereStep();
-
-    expect(screen.queryByText(/Add .+ to Telegram/)).not.toBeInTheDocument();
-  });
-
   it("should navigate to /settings/telegram after saving the agent", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({
       context,
       path: "/onboarding",
-      featureSwitches: { [FeatureSwitchKey.TelegramIntegration]: true },
     });
     await walkAdminToWhereStep();
 

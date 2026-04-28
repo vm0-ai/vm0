@@ -34,12 +34,11 @@ export enum FeatureSwitchKey {
   ComputerUse = "computerUse",
   Lab = "lab",
   AuditLink = "auditLink",
-  AudioInput = "audioInput",
   AudioOutput = "audioOutput",
   AutoSkill = "autoSkill",
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
-  ChatArtifactsDrawer = "chatArtifactsDrawer",
+
   ChatManualHistory = "chatManualHistory",
   ChatMessageStartButton = "chatMessageStartButton",
   FreshdeskConnector = "freshdeskConnector",
@@ -48,7 +47,7 @@ export enum FeatureSwitchKey {
   ApiKeys = "apiKeys",
   ConnectorCategories = "connectorCategories",
   PlatformConnectors = "platformConnectors",
-  TelegramIntegration = "telegramIntegration",
+
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
 }

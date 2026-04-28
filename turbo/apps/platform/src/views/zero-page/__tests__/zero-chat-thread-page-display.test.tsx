@@ -821,7 +821,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatArtifactsDrawer]: true },
     });
 
     const button = await waitFor(() => {
@@ -907,7 +906,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatArtifactsDrawer]: true },
     });
 
     const button = await waitFor(() => {
@@ -934,22 +932,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(artifactsRequests).toBeGreaterThanOrEqual(2);
   });
 
-  it("hides the artifacts button when the feature switch is off", async () => {
-    mockChatLifecycle();
-
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatArtifactsDrawer]: false },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Send a message to start the conversation"),
-      ).toBeInTheDocument();
-    });
-    expect(screen.queryByLabelText("Open artifacts")).not.toBeInTheDocument();
-  });
 });
 
 // CHAT-D-043: Message status indicators render in ChatMessageRow

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { TelegramBotStatus } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -75,7 +74,6 @@ function setupTelegramPage() {
   detachedSetupPage({
     context,
     path: "/settings/telegram",
-    featureSwitches: { [FeatureSwitchKey.TelegramIntegration]: true },
   });
 }
 

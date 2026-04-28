@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroIntegrationsTelegramContract,
   type TelegramBot,
@@ -8,7 +7,6 @@ import {
   type TelegramSetupStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { zeroClient$ } from "../api-client.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { writeToClipboard } from "./clipboard.ts";
@@ -291,11 +289,6 @@ export const resetTelegramSettingsUi$ = command(({ set }) => {
   set(internalTelegramReinstallDialogBotId$, null);
   set(internalTelegramReinstallTokenForm$, "");
   set(internalTelegramReinstallingBotId$, null);
-});
-
-export const isTelegramIntegrationEnabled$ = computed(async (get) => {
-  const features = await get(featureSwitch$);
-  return features[FeatureSwitchKey.TelegramIntegration] ?? false;
 });
 
 export const telegramBots$ = computed(async (get): Promise<TelegramBot[]> => {

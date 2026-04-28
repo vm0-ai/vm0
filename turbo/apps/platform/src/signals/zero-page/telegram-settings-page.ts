@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import {
-  isTelegramIntegrationEnabled$,
   reloadTelegramBots$,
   resetTelegramSettingsUi$,
   startTelegramSettingsRealtime$,
@@ -19,14 +18,6 @@ const L = logger("TelegramSettingsPage");
 
 export const setupTelegramSettingsPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const enabled = await get(isTelegramIntegrationEnabled$);
-    signal.throwIfAborted();
-
-    if (!enabled) {
-      set(detachedNavigateTo$, ROUTES.works, { replace: true });
-      return;
-    }
-
     set(resetTelegramSettingsUi$);
     set(reloadTelegramBots$);
     set(updatePage$, createElement(ZeroTelegramSettingsPage), "sidebar");

@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
-import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 import { getOrgTierSafe } from "../../../../../src/lib/zero/org/org-metadata-service";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { recordBehavior } from "../../../../../src/lib/zero/behavior/user-behavior-count-service";
@@ -97,24 +94,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   const orgId = authCtx.orgId;
 
-  // 2. Feature switch check
-  const overrides = await loadFeatureSwitchOverrides(
-    authCtx.orgId,
-    authCtx.userId,
-  );
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AudioInput, {
-    orgId: authCtx.orgId,
-    userId: authCtx.userId,
-    overrides,
-  });
-  if (!enabled) {
-    return NextResponse.json(
-      { error: { message: "Audio input is not enabled", code: "FORBIDDEN" } },
-      { status: 403 },
-    );
-  }
-
-  // 3. Quota check (free tier has a per-user limit; pro/team are unlimited)
+  // 2. Quota check (free tier has a per-user limit; pro/team are unlimited)
   const orgTier = await getOrgTierSafe(orgId);
   const quota = await checkAudioInputQuota(orgId, authCtx.userId, orgTier);
   if (!quota.allowed) {

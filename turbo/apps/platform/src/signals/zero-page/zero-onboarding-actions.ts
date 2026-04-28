@@ -15,7 +15,7 @@ import { currentChatAgentDisplayName$ } from "../agent-chat.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
-import { isTelegramIntegrationEnabled$ } from "./zero-telegram.ts";
+
 import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgentById$, reloadAgents$ } from "../agent.ts";
 import { reloadPinnedAgents$ } from "./zero-pinned-agents.ts";
@@ -224,7 +224,7 @@ export const onboardingDisplayName$ = computed(async (get) => {
   return await get(currentChatAgentDisplayName$);
 });
 
-export const onboardingShowTelegram$ = isTelegramIntegrationEnabled$;
+export const onboardingShowTelegram$ = computed(async () => true);
 
 export const completeOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {

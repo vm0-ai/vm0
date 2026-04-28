@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { GET } from "../route";
 import { POST } from "../../../route";
 import {
@@ -13,7 +12,6 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { seedTestRun } from "../../../../../../../src/__tests__/db-test-seeders/runs";
-import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
 import { recordRunUploadedFile } from "../../../../../../../src/lib/zero/uploads/run-uploaded-files";
 
 const context = testContext();
@@ -45,25 +43,7 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 403 when the feature switch is disabled by override", async () => {
-    await seedUserFeatureSwitches(testOrgId, testUserId, {
-      [FeatureSwitchKey.ChatArtifactsDrawer]: false,
-    });
-
-    const response = await GET(
-      createTestRequest(
-        "http://localhost:3000/api/zero/chat-threads/thread-id/artifacts",
-      ),
-    );
-
-    expect(response.status).toBe(403);
-  });
-
   it("returns run uploaded files grouped by run", async () => {
-    await seedUserFeatureSwitches(testOrgId, testUserId, {
-      [FeatureSwitchKey.ChatArtifactsDrawer]: true,
-    });
-
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",
@@ -110,10 +90,6 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
   });
 
   it("uses chat message run ownership when zero run chat thread is missing", async () => {
-    await seedUserFeatureSwitches(testOrgId, testUserId, {
-      [FeatureSwitchKey.ChatArtifactsDrawer]: true,
-    });
-
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
         method: "POST",

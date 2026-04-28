@@ -14,7 +14,6 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
@@ -52,14 +51,6 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
 
 function renderWorksPage() {
   detachedSetupPage({ context, path: "/works" });
-}
-
-function renderWorksPageWithTelegram(enabled: boolean) {
-  detachedSetupPage({
-    context,
-    path: "/works",
-    featureSwitches: { [FeatureSwitchKey.TelegramIntegration]: enabled },
-  });
 }
 
 describe("works page - slack integration status display", () => {
