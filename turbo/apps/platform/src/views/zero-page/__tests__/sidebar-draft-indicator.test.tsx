@@ -237,7 +237,7 @@ describe("sidebar draft indicator", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the delete button alongside the indicator so hover swaps cleanly", async () => {
+  it("does not render the delete button when the row shows a Draft pencil", async () => {
     mockAPIs([
       {
         id: "thread-shares-slot",
@@ -256,10 +256,10 @@ describe("sidebar draft indicator", () => {
     await waitFor(() => {
       expect(within(getSidebar()).getByLabelText("Draft")).toBeInTheDocument();
     });
-    // Delete button is always rendered (CSS controls hover visibility) so the
-    // hover-swap is purely a visual transition with no DOM churn.
+    // Drafted rows keep the pencil visible on hover; the delete button is
+    // suppressed entirely so the user has to clear the draft first.
     expect(
-      within(getSidebar()).getByLabelText("Delete chat"),
-    ).toBeInTheDocument();
+      within(getSidebar()).queryByLabelText("Delete chat"),
+    ).not.toBeInTheDocument();
   });
 });

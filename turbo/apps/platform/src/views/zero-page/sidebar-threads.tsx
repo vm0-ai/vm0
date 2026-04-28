@@ -11,6 +11,7 @@ import {
   IconChevronRight,
   IconTrash,
   IconPencil,
+  IconLoader2,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -64,15 +65,17 @@ type IndicatorState = "running" | "unread" | "draft";
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
     return (
-      <span
+      <IconLoader2
         aria-label="Running"
-        className="h-3 w-3 rounded-full border-[1.5px] border-sky-600/25 border-t-sky-600 border-r-sky-600 animate-spin"
+        size={16}
+        stroke={2}
+        className="animate-spin text-sky-600"
       />
     );
   }
   if (state === "unread") {
     return (
-      <span aria-label="Unread" className="h-2 w-2 rounded-full bg-primary" />
+      <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
     );
   }
   return (
@@ -80,7 +83,7 @@ function SessionStateIndicator({ state }: { state: IndicatorState }) {
       aria-label="Draft"
       className="flex items-center justify-center text-sidebar-foreground/50"
     >
-      <IconPencil size={12} stroke={2} />
+      <IconPencil size={16} stroke={2} />
     </span>
   );
 }
@@ -145,31 +148,37 @@ function ChatThreadItem({
       </Link>
       <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
         {indicatorState !== null && (
-          <span className="flex items-center justify-center group-hover:invisible">
+          <span
+            className={`flex items-center justify-center ${
+              indicatorState === "draft" ? "" : "group-hover:invisible"
+            }`}
+          >
             <SessionStateIndicator state={indicatorState} />
           </span>
         )}
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleDeleteClick}
-                className={`pointer-events-auto absolute inset-1 flex cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
-                  isSelected
-                    ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                    : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-                }`}
-                aria-label="Delete chat"
-              >
-                <IconTrash size={12} stroke={2} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">Delete chat</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        {indicatorState !== "draft" && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleDeleteClick}
+                  className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                    isSelected
+                      ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                      : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+                  }`}
+                  aria-label="Delete chat"
+                >
+                  <IconTrash size={16} stroke={2} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Delete chat</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </div>
   );
