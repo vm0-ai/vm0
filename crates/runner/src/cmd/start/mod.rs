@@ -1104,7 +1104,7 @@ struct FinalizeContext {
     park_notify: Arc<tokio::sync::Notify>,
     parking_gate: ParkingGate,
     exit_code: i32,
-    cancelled: bool,
+    cancel: CancellationToken,
 }
 
 async fn finalize_sandbox_for_completion(
@@ -1131,9 +1131,10 @@ async fn finalize_sandbox_for_completion(
         park_notify,
         parking_gate,
         exit_code,
-        cancelled,
+        cancel,
     } = ctx;
 
+    let cancelled = cancel.is_cancelled();
     let parkable_session = if exit_code == 0 && !cancelled && parking_gate.is_open() {
         // Prefer context session_id (from resume_session), fall back to
         // guest-reported session ID (first run — CLI generated it).
@@ -1165,6 +1166,25 @@ async fn finalize_sandbox_for_completion(
                     profile_name: &profile_name,
                     session_id: Some(&session_id),
                     reason: "park_failed",
+                },
+            )
+            .await;
+            BudgetOwnership::active(active_lease)
+        } else if cancel.is_cancelled() {
+            info!(
+                run_id = %run_id,
+                session_id,
+                "job cancelled while parking, destroying VM"
+            );
+            stop_and_destroy_sandbox(
+                sandbox,
+                &**factory,
+                ActiveCleanupContext {
+                    run_id,
+                    sandbox_id,
+                    profile_name: &profile_name,
+                    session_id: Some(&session_id),
+                    reason: "cancelled",
                 },
             )
             .await;
@@ -1384,10 +1404,9 @@ fn spawn_job(
 
         let completion_payload =
             CompletionPayload::new(run_id, exit_code, err, sandbox_id, reuse_result);
-        // Cancellation can arrive after terminal logging but before the final
-        // park/destroy decision. Re-read here so late cancels still prevent
-        // parking, matching the pre-refactor behavior.
-        let cancelled = job_cancel.is_cancelled();
+        // Cancellation can arrive after terminal logging or while
+        // `sandbox.park()` is in flight. Pass the live token so finalization
+        // can re-check immediately before idle-pool ownership transfer.
         let completion_ready = finalize_sandbox_for_completion(
             sandbox,
             ActiveBudgetLease::new(active_lease),
@@ -1406,7 +1425,7 @@ fn spawn_job(
                 park_notify,
                 parking_gate,
                 exit_code,
-                cancelled,
+                cancel: job_cancel,
             },
         )
         .await;
@@ -5624,6 +5643,92 @@ mod tests {
         assert_eq!(c.unwrap().exit_code, 0);
 
         wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        assert_eq!(idle_pool.lock().await.len(), 0);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let park_entered = Arc::new(tokio::sync::Notify::new());
+        let park_release = Arc::new(tokio::sync::Notify::new());
+        let destroy_entered = Arc::new(tokio::sync::Notify::new());
+        let destroy_release = Arc::new(tokio::sync::Notify::new());
+        overrides.set_park_gate(Arc::clone(&park_entered), Arc::clone(&park_release));
+        overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
+
+        let park_entered_wait = park_entered.notified();
+        tokio::pin!(park_entered_wait);
+        park_entered_wait.as_mut().enable();
+        let destroy_entered_wait = destroy_entered.notified();
+        tokio::pin!(destroy_entered_wait);
+        destroy_entered_wait.as_mut().enable();
+
+        let counter = Arc::clone(&overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let cancel_tokens = Arc::clone(&config.cancel_tokens);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-cancel-while-parking")),
+        );
+        let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        tokio::time::timeout(Duration::from_secs(5), park_entered_wait)
+            .await
+            .expect("sandbox park should start");
+        assert_eq!(counter.park_call_count(), 1);
+
+        token.cancel();
+        park_release.notify_one();
+
+        tokio::time::timeout(Duration::from_secs(5), destroy_entered_wait)
+            .await
+            .expect("cancelled parked sandbox should be destroyed");
+        assert_eq!(
+            counter.destroy_call_count(),
+            1,
+            "cancelled VM should be sent to destroy exactly once"
+        );
+        assert_eq!(
+            budget.allocated().2,
+            1,
+            "cancelled VM must retain budget while destroy is in-flight"
+        );
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            0,
+            "cancelled VM must not enter the idle pool after park returns"
+        );
+        {
+            let completions = env.handle.completions.lock().unwrap();
+            assert!(
+                !completions.iter().any(|c| c.run_id == run_id),
+                "provider.complete must wait until cancelled VM destroy finishes"
+            );
+        }
+
+        destroy_release.notify_one();
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        let c = c.expect("job should complete after destroy finishes");
+        assert_eq!(c.exit_code, 0);
+        assert!(
+            c.error.is_none(),
+            "late cleanup cancellation should not rewrite job result"
+        );
+
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(2)).await;
         assert_eq!(idle_pool.lock().await.len(), 0);
 
         shutdown(&env, run_handle).await;
