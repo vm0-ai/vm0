@@ -477,6 +477,7 @@ mod tests {
         }
 
         handle.abort();
+        let _ = handle.await;
     }
 
     #[tokio::test]
