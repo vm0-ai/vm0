@@ -11,22 +11,20 @@ const OTEL_SERVICE_NAME = "vm0-api";
 
 const HTTP_ROUTE_BAGGAGE_KEY = "http.route";
 
-function buildAxiomTraceExporter(): OTLPTraceExporter | "auto" {
-  const token = env("AXIOM_TOKEN_TELEMETRY");
-  const suffix = env("AXIOM_DATASET_SUFFIX");
-  if (!token || !suffix) {
-    return "auto";
-  }
+function buildAxiomTraceExporter(): OTLPTraceExporter {
   return new OTLPTraceExporter({
     url: "https://api.axiom.co/v1/traces",
     headers: {
-      authorization: `Bearer ${token}`,
-      "x-axiom-dataset": `vm0-traces-${suffix}`,
+      authorization: `Bearer ${env("AXIOM_TOKEN_TELEMETRY")}`,
+      "x-axiom-dataset": `vm0-traces-${env("AXIOM_DATASET_SUFFIX")}`,
     },
   });
 }
 
 function setupOpenTelemetry() {
+  // OTel only runs in deployed environments — VERCEL_GIT_COMMIT_SHA is
+  // injected by Vercel and absent during `pnpm dev` / vitest. Without it
+  // we don't have a useful service.version anyway.
   const serviceVersion = env("VERCEL_GIT_COMMIT_SHA");
   if (!serviceVersion) {
     return;
