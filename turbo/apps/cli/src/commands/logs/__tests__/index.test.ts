@@ -609,6 +609,428 @@ describe("logs command", () => {
     });
   });
 
+  describe("codex framework events", () => {
+    it("should render thread.started, agent_message, and turn.completed", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "0199a213-81c0-7800-8aa1-bbab2a035a53",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "item_1",
+                      type: "agent_message",
+                      text: "Codex says hello",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "turn.completed",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "turn.completed",
+                    usage: {
+                      input_tokens: 24763,
+                      cached_input_tokens: 24448,
+                      output_tokens: 122,
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Started");
+      expect(logCalls).toContain("0199a213-81c0-7800-8aa1-bbab2a035a53");
+      expect(logCalls).toContain("Codex says hello");
+      expect(logCalls).toContain("Codex Completed");
+    });
+
+    it("should render command_execution as Bash tool with output", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "cmd_1",
+                      type: "command_execution",
+                      command: "bash -lc ls",
+                      status: "in_progress",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "cmd_1",
+                      type: "command_execution",
+                      command: "bash -lc ls",
+                      exit_code: 0,
+                      output: "README.md\nsrc",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Bash");
+      expect(logCalls).toContain("bash -lc ls");
+      expect(logCalls).toContain("README.md");
+    });
+
+    it("should mark command_execution with non-zero exit_code as error", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "cmd_1",
+                      type: "command_execution",
+                      command: "ls /nonexistent",
+                      status: "in_progress",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "cmd_1",
+                      type: "command_execution",
+                      command: "ls /nonexistent",
+                      exit_code: 1,
+                      output: "ls: cannot access '/nonexistent'",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("ls /nonexistent");
+      expect(logCalls).toContain("✗");
+      expect(logCalls).toContain("ls: cannot access '/nonexistent'");
+    });
+
+    it("should render file_edit, file_write, and file_read tools", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "edit_1",
+                      type: "file_edit",
+                      path: "/workspace/src/main.ts",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "edit_1",
+                      type: "file_edit",
+                      path: "/workspace/src/main.ts",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 3,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:02Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "write_1",
+                      type: "file_write",
+                      path: "/workspace/README.md",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 4,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:03Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "write_1",
+                      type: "file_write",
+                      path: "/workspace/README.md",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 5,
+                  eventType: "item.started",
+                  createdAt: "2024-01-15T10:30:04Z",
+                  eventData: {
+                    type: "item.started",
+                    item: {
+                      id: "read_1",
+                      type: "file_read",
+                      path: "/workspace/package.json",
+                    },
+                  },
+                },
+                {
+                  sequenceNumber: 6,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:05Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "read_1",
+                      type: "file_read",
+                      path: "/workspace/package.json",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Edit");
+      expect(logCalls).toContain("/workspace/src/main.ts");
+      expect(logCalls).toContain("Write");
+      expect(logCalls).toContain("/workspace/README.md");
+      expect(logCalls).toContain("Read");
+      expect(logCalls).toContain("/workspace/package.json");
+    });
+
+    it("should render reasoning items with [thinking] prefix", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "reason_1",
+                      type: "reasoning",
+                      text: "Considering the trade-offs",
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("[thinking] Considering the trade-offs");
+    });
+
+    it("should render file_change as a [files] text event", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "item.completed",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "item.completed",
+                    item: {
+                      id: "change_1",
+                      type: "file_change",
+                      changes: [
+                        { kind: "add", path: "/workspace/new.ts" },
+                        { kind: "modify", path: "/workspace/existing.ts" },
+                        { kind: "delete", path: "/workspace/old.ts" },
+                      ],
+                    },
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("[files]");
+      expect(logCalls).toContain("Created: /workspace/new.ts");
+      expect(logCalls).toContain("Modified: /workspace/existing.ts");
+      expect(logCalls).toContain("Deleted: /workspace/old.ts");
+    });
+
+    it("should render turn.failed as Codex Failed", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "turn.failed",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "turn.failed",
+                    error: "Rate limit exceeded",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+    });
+
+    it("should render top-level error event as a failure result", async () => {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/agent/runs/:id/telemetry/agent",
+          () => {
+            return HttpResponse.json({
+              events: [
+                {
+                  sequenceNumber: 1,
+                  eventType: "thread.started",
+                  createdAt: "2024-01-15T10:30:00Z",
+                  eventData: {
+                    type: "thread.started",
+                    thread_id: "thread-x",
+                  },
+                },
+                {
+                  sequenceNumber: 2,
+                  eventType: "error",
+                  createdAt: "2024-01-15T10:30:01Z",
+                  eventData: {
+                    type: "error",
+                    message: "API connection failed",
+                  },
+                },
+              ],
+              framework: "codex",
+              hasMore: false,
+            });
+          },
+        ),
+      );
+
+      await logsCommand.parseAsync(["node", "cli", "run-123", "--head", "100"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Codex Failed");
+    });
+  });
+
   describe("system log", () => {
     it("should display system log with --system flag", async () => {
       server.use(
