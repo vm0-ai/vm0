@@ -424,6 +424,7 @@ jobs:
           GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
           GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
+          GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 

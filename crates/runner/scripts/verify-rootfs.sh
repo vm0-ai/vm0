@@ -107,6 +107,7 @@ dests=(
   "/usr/local/bin/guest-download"
   "/sbin/guest-init"
   "/usr/local/bin/guest-mock-claude"
+  "/usr/local/bin/guest-mock-codex"
   "/sbin/guest-reseed"
 )
 for dest in "${dests[@]}"; do

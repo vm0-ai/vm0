@@ -52,6 +52,7 @@ guest-agent = { workspace = true }
 guest-download = { workspace = true }
 guest-init = { workspace = true }
 guest-mock-claude = { workspace = true }
+guest-mock-codex = { workspace = true }
 guest-reseed = { workspace = true }
 httpmock = { workspace = true }
 sandbox-mock = { workspace = true }

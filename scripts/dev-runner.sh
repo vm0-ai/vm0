@@ -67,6 +67,7 @@ cmd_deploy() {
   GUEST_DOWNLOAD_PATH="target/$TARGET/release/guest-download" \
   GUEST_INIT_PATH="target/$TARGET/release/guest-init" \
   GUEST_MOCK_CLAUDE_PATH="target/$TARGET/release/guest-mock-claude" \
+  GUEST_MOCK_CODEX_PATH="target/$TARGET/release/guest-mock-codex" \
   GUEST_RESEED_PATH="target/$TARGET/release/guest-reseed" \
   cargo build --release --target "$TARGET" -p runner
 

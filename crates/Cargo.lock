@@ -2571,6 +2571,7 @@ dependencies = [
  "guest-download",
  "guest-init",
  "guest-mock-claude",
+ "guest-mock-codex",
  "guest-reseed",
  "hex",
  "httpmock",

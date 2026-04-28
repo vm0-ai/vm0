@@ -76,6 +76,7 @@ GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
 GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
 GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
 GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
+GUEST_MOCK_CODEX_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-codex \
 GUEST_RESEED_PATH=target/aarch64-unknown-linux-musl/release/guest-reseed \
 cargo build --target aarch64-unknown-linux-musl -p runner --release
 ```
