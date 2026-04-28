@@ -134,20 +134,6 @@ function buildBotAgentOptions(
   ];
 }
 
-function botRouteLabel(
-  bot: TelegramBot,
-  agents: TeamComposeItem[],
-  defaultAgent: DefaultAgentLabel,
-) {
-  if (!bot.agent) {
-    return "No default agent";
-  }
-  const agent = agents.find((item) => {
-    return item.id === bot.agent?.id;
-  });
-  return `Routes to ${agent ? agentLabel(agent, defaultAgent) : agentLabel(bot.agent, defaultAgent)}`;
-}
-
 function TelegramSettingsSkeleton() {
   return (
     <div
@@ -808,7 +794,6 @@ function TelegramBotRow({
   const actionDisabled =
     disabled || saving || unlinking || uninstalling || reinstalling;
   const options = buildBotAgentOptions(bot, agents, defaultAgent);
-  const routeLabel = botRouteLabel(bot, agents, defaultAgent);
   const avatarUrl = resolveTelegramBotAvatarUrl(bot.avatarUrl, apiBase);
 
   return (
@@ -821,9 +806,6 @@ function TelegramBotRow({
               {bot.username ? `@${bot.username}` : "Telegram bot"}
             </div>
             <TelegramStatusBadge bot={bot} />
-          </div>
-          <div className="mt-1 truncate text-sm text-muted-foreground">
-            {routeLabel}
           </div>
           {bot.tokenStatus === "invalid" ? (
             <div className="mt-1 text-sm text-muted-foreground">

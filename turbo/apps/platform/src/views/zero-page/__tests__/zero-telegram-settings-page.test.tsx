@@ -218,7 +218,7 @@ describe("telegram settings page", () => {
       expect(getMockTelegramIntegration().statuses.alpha).toMatchObject({
         agent: { id: SUPPORT_AGENT_ID },
       });
-      expect(screen.getByText("Routes to Support")).toBeInTheDocument();
+      expect(screen.queryByText("Routes to Support")).not.toBeInTheDocument();
     });
   });
 
@@ -252,7 +252,7 @@ describe("telegram settings page", () => {
       expect(getMockTelegramIntegration().statuses.alpha).toMatchObject({
         agent: { id: SUPPORT_AGENT_ID },
       });
-      expect(screen.getByText("Routes to Support")).toBeInTheDocument();
+      expect(screen.queryByText("Routes to Support")).not.toBeInTheDocument();
     });
   });
 
