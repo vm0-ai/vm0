@@ -500,6 +500,7 @@ type ChatImagePreviewButtonProps = {
   url: string;
 };
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class ChatImagePreviewButton extends Component<
   ChatImagePreviewButtonProps,
   { imageStatus: ImageLoadStatus }
@@ -736,6 +737,7 @@ function ArtifactThumbnail({
   );
 }
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class ArtifactThumbnailImage extends Component<
   { url: string },
   { imageStatus: ImageLoadStatus }

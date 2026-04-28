@@ -186,6 +186,7 @@ type TextLoadState = {
   text: string;
 };
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class TextPreviewLoader extends Component<
   {
     url: string;
@@ -411,6 +412,7 @@ function ImageLightboxControls({
   );
 }
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class ImageLightboxKeyboardShortcuts extends Component<{
   resetZoom: () => void;
   zoomIn: () => void;
@@ -455,6 +457,7 @@ class ImageLightboxKeyboardShortcuts extends Component<{
   }
 }
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class ImageLightboxContent extends Component<
   {
     closeLightbox: () => void;
@@ -939,6 +942,7 @@ export function PreviewableFileAttachmentChip({
 // AttachmentChip — chip shown in the composer before the message is sent
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class ComposerImagePreviewButton extends Component<
   {
     filename: string;

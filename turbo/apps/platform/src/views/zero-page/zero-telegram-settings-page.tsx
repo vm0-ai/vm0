@@ -237,6 +237,7 @@ function TelegramBotIconFallback({ botId }: { botId: string }) {
   );
 }
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class TelegramBotAvatar extends Component<
   { bot: TelegramBot; avatarUrl: string | null },
   { failed: boolean }
@@ -300,6 +301,7 @@ function getTelegramLoginDomain(): string {
   return location.hostname;
 }
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class CopyableTelegramValue extends Component<
   { value: string },
   { copied: boolean }

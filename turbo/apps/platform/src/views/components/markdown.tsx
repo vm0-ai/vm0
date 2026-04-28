@@ -214,6 +214,7 @@ function PlainLink({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
 
 type ImageLoadStatus = "loading" | "loaded" | "error";
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class MediaImage extends Component<
   {
     src: string;

@@ -107,6 +107,7 @@ function InvalidState({ title, message }: { title: string; message: string }) {
   );
 }
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class TelegramAutoOpen extends Component<{ href: string }> {
   override componentDidMount() {
     window.location.assign(this.props.href);
@@ -216,6 +217,7 @@ function getTelegramLoginDomain(): string {
   return location.hostname;
 }
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class TelegramDomainStatusPoller extends Component<{ onPoll: () => void }> {
   private intervalId: number | null = null;
 
