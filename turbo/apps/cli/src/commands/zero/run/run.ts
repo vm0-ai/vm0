@@ -15,6 +15,7 @@ export const mainRunCommand = new Command()
   )
   .option("--verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
+  .addOption(new Option("--debug-no-mock-codex").hideHelp())
   .addHelpText(
     "after",
     `
@@ -36,6 +37,7 @@ Notes:
           modelProvider?: string;
           verbose?: boolean;
           debugNoMockClaude?: boolean;
+          debugNoMockCodex?: boolean;
         },
       ) => {
         // 1. Validate agent-id is a UUID
@@ -53,6 +55,7 @@ Notes:
           prompt,
           modelProvider: options.modelProvider,
           debugNoMockClaude: options.debugNoMockClaude,
+          debugNoMockCodex: options.debugNoMockCodex,
         });
 
         // 3. Check for immediate failure
