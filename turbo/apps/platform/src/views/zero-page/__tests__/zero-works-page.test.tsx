@@ -109,6 +109,9 @@ describe("works page - telegram integration card", () => {
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
+      expect(screen.getByTestId("telegram-beta-badge")).toHaveTextContent(
+        "Beta",
+      );
     });
   });
 

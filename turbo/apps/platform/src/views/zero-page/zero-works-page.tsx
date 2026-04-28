@@ -37,6 +37,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { BetaBadge } from "./components/settings/beta-badge.tsx";
 import slackIconImg from "./components/settings/icons/slack.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
@@ -294,7 +295,12 @@ function TelegramCard() {
           <img src={telegramIconImg} alt="" className="h-7 w-7" />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="text-sm font-medium text-foreground">Telegram</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-sm font-medium text-foreground">
+              Telegram
+            </div>
+            <BetaBadge />
+          </div>
           <div className="truncate text-sm text-muted-foreground">
             {summary}
           </div>
