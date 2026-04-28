@@ -578,8 +578,8 @@ importers:
         specifier: '>=7.5.7'
         version: 7.5.13
       uuid:
-        specifier: ^10.0.0
-        version: 10.0.0
+        specifier: ^14.0.0
+        version: 14.0.0
       web-push:
         specifier: ^3.6.7
         version: 3.6.7
@@ -8988,6 +8988,10 @@ packages:
 
   uuid@10.0.0:
     resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    hasBin: true
+
+  uuid@14.0.0:
+    resolution: {integrity: sha512-Qo+uWgilfSmAhXCMav1uYFynlQO7fMFiMVZsQqZRMIXp0O7rR7qjkj+cPvBHLgBqi960QCoo/PH2/6ZtVqKvrg==}
     hasBin: true
 
   uuid@9.0.1:
@@ -18360,6 +18364,8 @@ snapshots:
   util-deprecate@1.0.2: {}
 
   uuid@10.0.0: {}
+
+  uuid@14.0.0: {}
 
   uuid@9.0.1: {}
 
