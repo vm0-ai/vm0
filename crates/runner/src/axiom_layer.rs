@@ -61,10 +61,10 @@ const _: () = assert!(
 const DEBUG_FIELD_MAX_BYTES: usize = 4 * 1024;
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
-/// Target used for this layer's own diagnostics (channel-full warnings,
-/// non-success ingest responses, HTTP errors). Filtered out by the Axiom
-/// per-layer filter so diagnostics can still reach local logging without
-/// looping back into this layer and re-flooding the dispatcher.
+/// Target used for this layer's own diagnostics. Dispatcher diagnostics
+/// (non-success ingest responses, HTTP errors) remain visible to local
+/// logging, while the Axiom per-layer filter keeps any observed diagnostics
+/// from looping back into this layer and re-flooding the dispatcher.
 pub(crate) const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 /// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
@@ -186,9 +186,10 @@ where
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
         let value = serialize_event(event);
         if self.tx.try_send(Msg::Event(value)).is_err() {
-            // Bounded-channel full or dispatcher gone. Surface periodically
-            // under `INTERNAL_TARGET`; the Axiom per-layer filter keeps this
-            // diagnostic out of remote ingest if it is observed by tracing.
+            // Bounded-channel full or dispatcher gone. Emit a periodic
+            // best-effort diagnostic under `INTERNAL_TARGET`; if tracing
+            // observes it, the Axiom per-layer filter keeps it out of remote
+            // ingest.
             let prev = self.dropped.fetch_add(1, Ordering::Relaxed);
             if prev.is_multiple_of(1000) {
                 tracing::warn!(
