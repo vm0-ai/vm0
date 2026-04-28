@@ -278,9 +278,7 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                 {nextActions.map((action, i) => {
                   return (
                     <div key={i} className="uc-next-action">
-                      <div className="uc-next-action-title">
-                        {action.title}
-                      </div>
+                      <div className="uc-next-action-title">{action.title}</div>
                       <div className="uc-next-action-desc">
                         {action.description}
                       </div>
