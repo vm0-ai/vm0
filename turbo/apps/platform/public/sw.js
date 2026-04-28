@@ -25,6 +25,15 @@ function isApiRequest(url) {
   );
 }
 
+function isHtmlResponse(response) {
+  const contentType = response.headers.get("content-type") ?? "";
+  return contentType.toLowerCase().includes("text/html");
+}
+
+function isCacheableAssetResponse(response) {
+  return response.ok && !response.redirected && !isHtmlResponse(response);
+}
+
 function timeout(ms) {
   return new Promise((_resolve, reject) =>
     self.setTimeout(() => reject(new Error("timeout")), ms),
@@ -76,14 +85,20 @@ self.addEventListener("fetch", (event) => {
     // Cache-First: Vite content-hashed filenames are immutable.
     event.respondWith(
       (async () => {
-        const cached = await caches.match(event.request);
-        if (cached) {
+        const cache = await caches.open(STATIC_CACHE);
+        const cached = await cache.match(event.request);
+        if (cached && isCacheableAssetResponse(cached)) {
           return cached;
         }
-        const r = await fetch(event.request);
-        const clone = r.clone();
-        const cache = await caches.open(STATIC_CACHE);
-        await cache.put(event.request, clone);
+
+        if (cached) {
+          await cache.delete(event.request);
+        }
+
+        const r = await fetch(event.request, { cache: "reload" });
+        if (isCacheableAssetResponse(r)) {
+          await cache.put(event.request, r.clone());
+        }
         return r;
       })(),
     );
