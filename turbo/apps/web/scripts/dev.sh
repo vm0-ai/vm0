@@ -36,6 +36,43 @@ kill_stale() {
 kill_stale "/tmp/cloudflared-${PORT}.pid" "cloudflared tunnel .*localhost:${PORT}"
 kill_stale "/tmp/stripe-listen.pid" "stripe listen .*--forward-to localhost:${PORT}/api/webhooks/stripe"
 
+# Swap apps/web/node_modules/next to the next-fast-dev alias (next@16.1.7) so
+# `next dev --turbo` avoids the ~4× cpu/cold-build regression introduced in
+# next 16.2.0+. The dependency name is "next-fast-dev" but it resolves to
+# next@16.1.7 via npm: alias. Production `next build` is unaffected — it still
+# uses the real `next` entry (16.2.3+, which carries the CVE-2026-23869 fix).
+#
+# We can't rely on a trap for cleanup because the script ends with `exec next
+# dev …` and the bash process is replaced before any exit handler can fire.
+# Instead, the original target is recorded in a side file and restored on the
+# *next* launch — same idempotent-stale-cleanup pattern that cloudflared and
+# stripe use above.
+SCRIPT_DIR_FOR_LINK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NEXT_LINK="$(cd "$SCRIPT_DIR_FOR_LINK/.." && pwd)/node_modules/next"
+NEXT_FAST_LINK="$(cd "$SCRIPT_DIR_FOR_LINK/.." && pwd)/node_modules/next-fast-dev"
+NEXT_LINK_ORIG_FILE="/tmp/web-next-link-orig.path"
+
+# Pre-launch: if a previous run left the link pointing at the alias, restore
+# it before swapping again so we capture a clean original.
+if [[ -L "$NEXT_LINK" && -L "$NEXT_FAST_LINK" ]] \
+   && [[ "$(readlink "$NEXT_LINK")" == "$(readlink "$NEXT_FAST_LINK")" ]] \
+   && [[ -f "$NEXT_LINK_ORIG_FILE" ]]; then
+  ln -sfn "$(cat "$NEXT_LINK_ORIG_FILE")" "$NEXT_LINK"
+  rm -f "$NEXT_LINK_ORIG_FILE"
+fi
+
+# Now perform the swap. Record the original so the *next* invocation can
+# undo it.
+if [[ -L "$NEXT_FAST_LINK" && -L "$NEXT_LINK" ]]; then
+  NEXT_LINK_ORIG="$(readlink "$NEXT_LINK")"
+  NEXT_FAST_TARGET="$(readlink "$NEXT_FAST_LINK")"
+  if [[ "$NEXT_LINK_ORIG" != "$NEXT_FAST_TARGET" ]]; then
+    echo "$NEXT_LINK_ORIG" > "$NEXT_LINK_ORIG_FILE"
+    ln -sfn "$NEXT_FAST_TARGET" "$NEXT_LINK"
+    echo -e "\033[0;36m[next-fast-dev]\033[0m using next@16.1.7 for dev (avoids 16.2.x turbopack cpu regression)"
+  fi
+fi
+
 # Cleanup background processes on exit
 cleanup() {
   kill_stale "/tmp/cloudflared-${PORT}.pid" ""
