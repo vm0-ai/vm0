@@ -60,6 +60,18 @@ export const setSidebarExpanded$ = command(({ set }, expanded: boolean) => {
   set(internalSidebarExpanded$, expanded);
 });
 
+const internalMobileWorkspaceDrawerOpen$ = state(false);
+
+export const mobileWorkspaceDrawerOpen$ = computed((get) => {
+  return get(internalMobileWorkspaceDrawerOpen$);
+});
+
+export const setMobileWorkspaceDrawerOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalMobileWorkspaceDrawerOpen$, open);
+  },
+);
+
 export type SidebarNavId =
   | "chat"
   | "agents"

@@ -205,7 +205,7 @@ function OtherMembershipsList() {
   );
 }
 
-export function OrgDropdownContent() {
+function OrgDropdownContent() {
   const openManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
   const clerkLoadable = useLastLoadable(clerk$);

@@ -306,8 +306,8 @@ describe("mobile top bar - hamburger hidden when redesign on (MOBILE-TOP-001)", 
   });
 });
 
-describe("mobile top bar - org switcher pill shown when redesign on (MOBILE-TOP-002)", () => {
-  it("renders the org switcher pill in place of the hamburger", async () => {
+describe("mobile top bar - workspace drawer trigger shown when redesign on (MOBILE-TOP-002)", () => {
+  it("renders the workspace drawer trigger in place of the hamburger", async () => {
     mockBaseAPIs();
     detachedSetupPage({
       context,
@@ -328,8 +328,8 @@ describe("mobile top bar - org switcher pill shown when redesign on (MOBILE-TOP-
   });
 });
 
-describe("mobile top bar - org switcher hidden when redesign off (MOBILE-TOP-003)", () => {
-  it("does not render the org switcher pill with the default switch state", async () => {
+describe("mobile top bar - workspace drawer trigger hidden when redesign off (MOBILE-TOP-003)", () => {
+  it("does not render the drawer trigger with the default switch state", async () => {
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/agents" });
 
@@ -337,6 +337,62 @@ describe("mobile top bar - org switcher hidden when redesign off (MOBILE-TOP-003
       expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("mobile-org-switcher")).not.toBeInTheDocument();
+  });
+});
+
+describe("mobile workspace drawer - opens on trigger click (MOBILE-DRAWER-001)", () => {
+  it("opens the side drawer when the workspace trigger is tapped", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+      org: {
+        activeOrg: { id: "org_test", name: "vm0-ai" },
+        memberships: [{ id: "org_test" }],
+      },
+    });
+
+    const trigger = await waitFor(() => {
+      return screen.getByTestId("mobile-org-switcher");
+    });
+    expect(
+      screen.queryByTestId("mobile-workspace-drawer"),
+    ).not.toBeInTheDocument();
+
+    click(trigger);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("mobile-workspace-drawer"),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("mobile workspace drawer - shows workspace name (MOBILE-DRAWER-002)", () => {
+  it("renders the current workspace name inside the drawer", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+      org: {
+        activeOrg: { id: "org_test", name: "vm0-ai" },
+        memberships: [{ id: "org_test" }],
+      },
+    });
+
+    const trigger = await waitFor(() => {
+      return screen.getByTestId("mobile-org-switcher");
+    });
+    click(trigger);
+
+    const drawer = await waitFor(() => {
+      return screen.getByTestId("mobile-workspace-drawer");
+    });
+    expect(drawer).toHaveTextContent("vm0-ai");
+    expect(drawer).toHaveTextContent("Workspaces");
   });
 });
 

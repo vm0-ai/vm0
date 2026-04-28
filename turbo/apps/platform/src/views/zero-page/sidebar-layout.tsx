@@ -62,7 +62,7 @@ import {
   IosInstallModal,
 } from "../pwa-install/install-banner.tsx";
 import { MobileBottomTabBar } from "./mobile-bottom-tab-bar.tsx";
-import { MobileOrgSwitcherPill } from "./mobile-org-switcher-pill.tsx";
+import { MobileWorkspaceDrawer } from "./mobile-workspace-drawer.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -212,7 +212,7 @@ function MobileTopBar() {
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       {mobileNativeOn ? (
-        <MobileOrgSwitcherPill />
+        <MobileWorkspaceDrawer />
       ) : (
         <button
           type="button"
