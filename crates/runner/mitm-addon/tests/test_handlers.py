@@ -1674,6 +1674,17 @@ class TestSseUsageExtractor:
         assert "tokens.cache_creation" not in usage
         assert usage["tokens.output"] == 1
 
+    def test_negative_usage_values_ignored(self):
+        """Negative usage quantities should not be captured."""
+        parse, usage = create_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"m",'
+            b'"usage":{"input_tokens":-1,"output_tokens":1}}}\n\n'
+        )
+        assert "tokens.input" not in usage
+        assert usage["tokens.output"] == 1
+
     def test_unknown_usage_fields_excluded(self):
         """Only known billing fields should be extracted, not arbitrary numerics."""
         parse, usage = create_sse_usage_extractor()

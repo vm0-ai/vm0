@@ -14,15 +14,17 @@ import { agentRuns } from "./agent-run";
 /**
  * Per-event usage record for billable resources.
  *
- * One row per billable event (connector API call, image generation, future
- * external-API call, etc.).  Resource is identified by a three-level
- * classification — `kind` / `provider` / `category` — so queries can filter
- * at any level without string-parsing.
+ * One row per billable event (connector API call, model token usage, image
+ * generation, future external-API call, etc.). Resource is identified by a
+ * three-level classification — `kind` / `provider` / `category` — so queries
+ * can filter at any level without string-parsing.
  *
  *   kind      provider                     category
  *   --------  ---------------------------  ------------------
  *   connector x                            tweet.read
  *   connector github                       issue.write
+ *   model     claude-sonnet-4-6            tokens.input
+ *   model     claude-sonnet-4-6            tokens.output
  *   image     gemini-2.5-flash-image       output_tokens
  *   image     gemini-2.5-flash-image       input_tokens
  *

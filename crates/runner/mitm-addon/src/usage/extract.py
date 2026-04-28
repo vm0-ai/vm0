@@ -38,7 +38,7 @@ def _extract_billing_usage(raw_usage, target: dict) -> None:
 
 
 def _is_usage_quantity(value: object) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool)
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
 def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
