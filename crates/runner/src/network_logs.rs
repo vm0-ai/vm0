@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use reqwest::Method;
+use api_contracts::generated::routes;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -67,7 +67,7 @@ pub async fn upload_network_logs(
     };
 
     let result = http
-        .request(Method::POST, "/api/webhooks/agent/telemetry", sandbox_token)
+        .request_route(routes::webhooks::agent::telemetry::SEND, sandbox_token)
         .json(&payload)
         .send()
         .await;

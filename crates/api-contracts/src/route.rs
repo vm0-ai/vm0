@@ -39,4 +39,10 @@ impl Route {
     pub const fn new(method: Method, path: &'static str) -> Self {
         Self { method, path }
     }
+
+    /// Build an absolute URL for this route from a base API URL.
+    #[must_use]
+    pub fn url(self, base_url: &str) -> String {
+        format!("{}{}", base_url.trim_end_matches('/'), self.path)
+    }
 }

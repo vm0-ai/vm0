@@ -3,59 +3,63 @@
 // Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 
 pub mod webhooks {
-    pub mod agent_checkpoint_prepare_history {
-        pub const PREPARE: crate::Route = crate::Route {
-            method: crate::Method::Post,
-            path: "/api/webhooks/agent/checkpoints/prepare-history",
-        };
-    }
+    pub mod agent {
+        pub mod checkpoints {
+            pub const CREATE: crate::Route = crate::Route {
+                method: crate::Method::Post,
+                path: "/api/webhooks/agent/checkpoints",
+            };
 
-    pub mod agent_checkpoints {
-        pub const CREATE: crate::Route = crate::Route {
-            method: crate::Method::Post,
-            path: "/api/webhooks/agent/checkpoints",
-        };
-    }
+            pub mod prepare_history {
+                pub const PREPARE: crate::Route = crate::Route {
+                    method: crate::Method::Post,
+                    path: "/api/webhooks/agent/checkpoints/prepare-history",
+                };
+            }
+        }
 
-    pub mod agent_complete {
-        pub const COMPLETE: crate::Route = crate::Route {
-            method: crate::Method::Post,
-            path: "/api/webhooks/agent/complete",
-        };
-    }
+        pub mod complete {
+            pub const COMPLETE: crate::Route = crate::Route {
+                method: crate::Method::Post,
+                path: "/api/webhooks/agent/complete",
+            };
+        }
 
-    pub mod agent_events {
-        pub const SEND: crate::Route = crate::Route {
-            method: crate::Method::Post,
-            path: "/api/webhooks/agent/events",
-        };
-    }
+        pub mod events {
+            pub const SEND: crate::Route = crate::Route {
+                method: crate::Method::Post,
+                path: "/api/webhooks/agent/events",
+            };
+        }
 
-    pub mod agent_heartbeat {
-        pub const SEND: crate::Route = crate::Route {
-            method: crate::Method::Post,
-            path: "/api/webhooks/agent/heartbeat",
-        };
-    }
+        pub mod heartbeat {
+            pub const SEND: crate::Route = crate::Route {
+                method: crate::Method::Post,
+                path: "/api/webhooks/agent/heartbeat",
+            };
+        }
 
-    pub mod agent_storage_commit {
-        pub const COMMIT: crate::Route = crate::Route {
-            method: crate::Method::Post,
-            path: "/api/webhooks/agent/storages/commit",
-        };
-    }
+        pub mod storages {
+            pub mod commit {
+                pub const COMMIT: crate::Route = crate::Route {
+                    method: crate::Method::Post,
+                    path: "/api/webhooks/agent/storages/commit",
+                };
+            }
 
-    pub mod agent_storage_prepare {
-        pub const PREPARE: crate::Route = crate::Route {
-            method: crate::Method::Post,
-            path: "/api/webhooks/agent/storages/prepare",
-        };
-    }
+            pub mod prepare {
+                pub const PREPARE: crate::Route = crate::Route {
+                    method: crate::Method::Post,
+                    path: "/api/webhooks/agent/storages/prepare",
+                };
+            }
+        }
 
-    pub mod agent_telemetry {
-        pub const SEND: crate::Route = crate::Route {
-            method: crate::Method::Post,
-            path: "/api/webhooks/agent/telemetry",
-        };
+        pub mod telemetry {
+            pub const SEND: crate::Route = crate::Route {
+                method: crate::Method::Post,
+                path: "/api/webhooks/agent/telemetry",
+            };
+        }
     }
 }

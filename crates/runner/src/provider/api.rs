@@ -7,6 +7,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+use api_contracts::generated::routes;
 use reqwest::StatusCode;
 
 use super::JobProvider;
@@ -618,11 +619,7 @@ impl ApiClient {
 
         let resp = self
             .http
-            .request(
-                reqwest::Method::POST,
-                "/api/webhooks/agent/complete",
-                sandbox_token,
-            )
+            .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
             .json(&body)
             .send()
             .await

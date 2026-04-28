@@ -5,49 +5,49 @@ const expectedBindings = [
   {
     method: "POST",
     path: "/api/webhooks/agent/events",
-    rustModulePath: ["webhooks", "agent_events"],
+    rustModulePath: ["webhooks", "agent", "events"],
     rustConstName: "SEND",
   },
   {
     method: "POST",
     path: "/api/webhooks/agent/checkpoints",
-    rustModulePath: ["webhooks", "agent_checkpoints"],
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
     rustConstName: "CREATE",
   },
   {
     method: "POST",
     path: "/api/webhooks/agent/checkpoints/prepare-history",
-    rustModulePath: ["webhooks", "agent_checkpoint_prepare_history"],
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
     rustConstName: "PREPARE",
   },
   {
     method: "POST",
     path: "/api/webhooks/agent/complete",
-    rustModulePath: ["webhooks", "agent_complete"],
+    rustModulePath: ["webhooks", "agent", "complete"],
     rustConstName: "COMPLETE",
   },
   {
     method: "POST",
     path: "/api/webhooks/agent/heartbeat",
-    rustModulePath: ["webhooks", "agent_heartbeat"],
+    rustModulePath: ["webhooks", "agent", "heartbeat"],
     rustConstName: "SEND",
   },
   {
     method: "POST",
     path: "/api/webhooks/agent/telemetry",
-    rustModulePath: ["webhooks", "agent_telemetry"],
+    rustModulePath: ["webhooks", "agent", "telemetry"],
     rustConstName: "SEND",
   },
   {
     method: "POST",
     path: "/api/webhooks/agent/storages/prepare",
-    rustModulePath: ["webhooks", "agent_storage_prepare"],
+    rustModulePath: ["webhooks", "agent", "storages", "prepare"],
     rustConstName: "PREPARE",
   },
   {
     method: "POST",
     path: "/api/webhooks/agent/storages/commit",
-    rustModulePath: ["webhooks", "agent_storage_commit"],
+    rustModulePath: ["webhooks", "agent", "storages", "commit"],
     rustConstName: "COMMIT",
   },
 ] as const;
@@ -57,7 +57,7 @@ function validBinding(
 ): RustRouteBinding {
   return {
     route: { method: "POST", path: "/api/webhooks/agent/events" },
-    rustModulePath: ["webhooks", "agent_events"],
+    rustModulePath: ["webhooks", "agent", "events"],
     rustConstName: "SEND",
     ...overrides,
   };
@@ -163,7 +163,7 @@ describe("Rust route bindings", () => {
     const malformedBindings = [
       validBinding(),
       validBinding({
-        rustModulePath: ["webhooks", "agent_heartbeat"],
+        rustModulePath: ["webhooks", "agent", "heartbeat"],
       }),
     ];
 

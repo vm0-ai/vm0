@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use api_contracts::{Method, Route};
 use reqwest::Client;
 use tracing::info;
 
@@ -55,7 +56,25 @@ impl HttpClient {
         path: &str,
         token: &str,
     ) -> reqwest::RequestBuilder {
-        let url = format!("{}{path}", self.inner.api_url);
+        let url = base_url_with_path(&self.inner.api_url, path);
+        self.authenticated_request(method, url, token)
+    }
+
+    /// Build an authenticated request from a generated API route.
+    pub fn request_route(&self, route: Route, token: &str) -> reqwest::RequestBuilder {
+        self.authenticated_request(
+            reqwest_method(route.method),
+            route.url(&self.inner.api_url),
+            token,
+        )
+    }
+
+    fn authenticated_request(
+        &self,
+        method: reqwest::Method,
+        url: String,
+        token: &str,
+    ) -> reqwest::RequestBuilder {
         let mut req = self.inner.client.request(method, url).bearer_auth(token);
 
         if let Some(bypass) = &self.inner.vercel_bypass {
@@ -63,5 +82,81 @@ impl HttpClient {
         }
 
         req
+    }
+}
+
+fn base_url_with_path(base_url: &str, path: &str) -> String {
+    assert!(
+        path.starts_with('/'),
+        "api request path must start with '/'"
+    );
+    format!("{}{}", base_url.trim_end_matches('/'), path)
+}
+
+fn reqwest_method(method: Method) -> reqwest::Method {
+    match method {
+        Method::Get => reqwest::Method::GET,
+        Method::Post => reqwest::Method::POST,
+        Method::Put => reqwest::Method::PUT,
+        Method::Patch => reqwest::Method::PATCH,
+        Method::Delete => reqwest::Method::DELETE,
+        Method::Head => reqwest::Method::HEAD,
+        Method::Options => reqwest::Method::OPTIONS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use api_contracts::generated::routes;
+    use reqwest::header::AUTHORIZATION;
+
+    use super::*;
+
+    #[test]
+    fn request_route_builds_request_from_generated_route() {
+        let http = HttpClient::new("https://api.vm0.dev/".to_string()).unwrap();
+
+        let request = http
+            .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
+            .build()
+            .unwrap();
+
+        assert_eq!(request.method(), reqwest::Method::POST);
+        assert_eq!(
+            request.url().as_str(),
+            "https://api.vm0.dev/api/webhooks/agent/telemetry"
+        );
+        assert_eq!(
+            request
+                .headers()
+                .get(AUTHORIZATION)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "Bearer sandbox-token"
+        );
+    }
+
+    #[test]
+    fn request_trims_base_url_trailing_slash() {
+        let http = HttpClient::new("https://api.vm0.dev/".to_string()).unwrap();
+
+        let request = http
+            .request(reqwest::Method::POST, "/api/runners/poll", "runner-token")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            request.url().as_str(),
+            "https://api.vm0.dev/api/runners/poll"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "api request path must start with '/'")]
+    fn request_rejects_path_without_leading_slash() {
+        let http = HttpClient::new("https://api.vm0.dev".to_string()).unwrap();
+
+        let _ = http.request(reqwest::Method::POST, "api/runners/poll", "runner-token");
     }
 }

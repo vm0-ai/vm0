@@ -23,42 +23,42 @@ export interface RustRouteBinding {
 export const rustRouteBindings = [
   {
     route: webhookEventsContract.send,
-    rustModulePath: ["webhooks", "agent_events"],
+    rustModulePath: ["webhooks", "agent", "events"],
     rustConstName: "SEND",
   },
   {
     route: webhookCheckpointsContract.create,
-    rustModulePath: ["webhooks", "agent_checkpoints"],
+    rustModulePath: ["webhooks", "agent", "checkpoints"],
     rustConstName: "CREATE",
   },
   {
     route: webhookCheckpointsPrepareHistoryContract.prepare,
-    rustModulePath: ["webhooks", "agent_checkpoint_prepare_history"],
+    rustModulePath: ["webhooks", "agent", "checkpoints", "prepare_history"],
     rustConstName: "PREPARE",
   },
   {
     route: webhookCompleteContract.complete,
-    rustModulePath: ["webhooks", "agent_complete"],
+    rustModulePath: ["webhooks", "agent", "complete"],
     rustConstName: "COMPLETE",
   },
   {
     route: webhookHeartbeatContract.send,
-    rustModulePath: ["webhooks", "agent_heartbeat"],
+    rustModulePath: ["webhooks", "agent", "heartbeat"],
     rustConstName: "SEND",
   },
   {
     route: webhookTelemetryContract.send,
-    rustModulePath: ["webhooks", "agent_telemetry"],
+    rustModulePath: ["webhooks", "agent", "telemetry"],
     rustConstName: "SEND",
   },
   {
     route: webhookStoragesPrepareContract.prepare,
-    rustModulePath: ["webhooks", "agent_storage_prepare"],
+    rustModulePath: ["webhooks", "agent", "storages", "prepare"],
     rustConstName: "PREPARE",
   },
   {
     route: webhookStoragesCommitContract.commit,
-    rustModulePath: ["webhooks", "agent_storage_commit"],
+    rustModulePath: ["webhooks", "agent", "storages", "commit"],
     rustConstName: "COMMIT",
   },
 ] as const satisfies readonly RustRouteBinding[];
