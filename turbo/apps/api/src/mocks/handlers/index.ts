@@ -4,4 +4,4 @@ import type { HttpHandler } from "msw";
 // upstreams they care about per-test via `server.use(...)`. The MSW server is
 // configured with `onUnhandledRequest: "error"` so any unmocked outbound
 // fetch fails loudly.
-export const handlers: HttpHandler[] = [];
+export const handlers: readonly HttpHandler[] = [];

@@ -13,21 +13,21 @@ const L = logger("App");
 
 // Hop-by-hop headers must not be forwarded across a proxy hop. fetch() will
 // recompute Content-Length and ignore Host, but we strip them defensively.
-const HOP_BY_HOP_HEADERS: readonly string[] = [
-  "connection",
-  "content-length",
-  "host",
-  "keep-alive",
-  "proxy-authenticate",
-  "proxy-authorization",
-  "te",
-  "trailer",
-  "transfer-encoding",
-  "upgrade",
-];
+const HOP_BY_HOP_HEADERS: Readonly<Record<string, true>> = {
+  connection: true,
+  "content-length": true,
+  host: true,
+  "keep-alive": true,
+  "proxy-authenticate": true,
+  "proxy-authorization": true,
+  te: true,
+  trailer: true,
+  "transfer-encoding": true,
+  upgrade: true,
+};
 
 function isHopByHop(name: string): boolean {
-  return HOP_BY_HOP_HEADERS.includes(name.toLowerCase());
+  return Object.hasOwn(HOP_BY_HOP_HEADERS, name.toLowerCase());
 }
 
 function buildProxyRequest(context: Context, webUrl: string): Request {
