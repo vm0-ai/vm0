@@ -18,6 +18,7 @@ import {
   resolveTelegramAuditLogsUrl,
   buildTelegramPrivateConnectReplyMarkup,
   formatTelegramPrivateConnectPrompt,
+  formatTelegramUserDisplayName,
   getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
@@ -70,12 +71,14 @@ export async function handleTelegramMention(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
   // 2. Check user link (auto-completes pending link if needed)
   const userLink = await resolveUserLink(
     installationId,
     fromUserId,
     message.from?.username ?? null,
+    telegramDisplayName,
   );
 
   if (!userLink) {

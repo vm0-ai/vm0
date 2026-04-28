@@ -8,6 +8,7 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import {
   ensureOrgAndArtifact,
+  formatTelegramUserDisplayName,
   formatTelegramCommandSuccess,
   linkTelegramUserToVm0User,
   type LinkTelegramUserResult,
@@ -85,6 +86,7 @@ async function linkUserOrConflict(params: {
   installationId: string;
   telegramUserId: string;
   telegramUsername?: string | null;
+  telegramDisplayName?: string | null;
   vm0UserId: string;
   orgId: string;
 }): Promise<NextResponse | undefined> {
@@ -156,6 +158,7 @@ export async function DELETE(request: Request) {
 const connectSignatureSchema = z.object({
   telegramUserId: z.string().min(1),
   telegramUsername: z.string().max(255).optional(),
+  telegramDisplayName: z.string().max(255).optional(),
   timestamp: z.number(),
   signature: z.string().min(1),
 });
@@ -343,6 +346,7 @@ export async function POST(request: Request) {
       installationId: installation.telegramBotId,
       telegramUserId,
       telegramUsername: body.telegramAuth.username,
+      telegramDisplayName: formatTelegramUserDisplayName(body.telegramAuth),
       vm0UserId: userId,
       orgId: org.orgId,
     });
@@ -369,6 +373,7 @@ export async function POST(request: Request) {
         body.connectSignature.signature,
         botToken,
         body.connectSignature.telegramUsername,
+        body.connectSignature.telegramDisplayName,
       )
     ) {
       return NextResponse.json(
@@ -389,6 +394,7 @@ export async function POST(request: Request) {
       installationId: installation.telegramBotId,
       telegramUserId,
       telegramUsername: body.connectSignature.telegramUsername,
+      telegramDisplayName: body.connectSignature.telegramDisplayName,
       vm0UserId: userId,
       orgId: org.orgId,
     });

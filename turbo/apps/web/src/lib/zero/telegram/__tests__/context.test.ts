@@ -86,6 +86,25 @@ describe("fetchTelegramContext", () => {
     expect(result.executionContext).toContain("New message");
   });
 
+  it("should include Telegram display names when usernames are unavailable", async () => {
+    const chatId = uniqueId("chat");
+
+    await insertTelegramMessage({
+      installationId,
+      chatId,
+      messageId: "1",
+      fromUserId: "111",
+      fromDisplayName: "Alice Example",
+      text: "No public username here",
+    });
+
+    const result = await fetchTelegramContext(installationId, chatId);
+
+    expect(result.executionContext).toContain(
+      "SENDER: {id: 111, name: Alice Example}",
+    );
+  });
+
   it("should return empty execution context when no new messages after lastProcessedMessageId", async () => {
     const chatId = uniqueId("chat");
 

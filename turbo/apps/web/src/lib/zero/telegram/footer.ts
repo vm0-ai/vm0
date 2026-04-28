@@ -18,12 +18,16 @@ function telegramUserMention(telegramUserId: string, label: string): string {
   return `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>`;
 }
 
-function telegramUsernameLabel(
+function telegramUserLabel(
   telegramUsername: string | null | undefined,
+  telegramDisplayName: string | null | undefined,
   telegramUserId: string,
 ): string {
   const username = telegramUsername?.trim().replace(/^@+/, "");
-  return username ? `@${username}` : `Telegram user ${telegramUserId}`;
+  if (username) return `@${username}`;
+
+  const displayName = telegramDisplayName?.trim();
+  return displayName ? displayName : `Telegram user ${telegramUserId}`;
 }
 
 function displayLabel(row: {
@@ -167,6 +171,7 @@ async function resolveRunUserLabel(params: {
     .select({
       telegramUserId: telegramUserLinks.telegramUserId,
       telegramUsername: telegramUserLinks.telegramUsername,
+      telegramDisplayName: telegramUserLinks.telegramDisplayName,
     })
     .from(agentRuns)
     .innerJoin(
@@ -181,7 +186,11 @@ async function resolveRunUserLabel(params: {
 
   if (!row) return undefined;
 
-  const label = telegramUsernameLabel(row.telegramUsername, row.telegramUserId);
+  const label = telegramUserLabel(
+    row.telegramUsername,
+    row.telegramDisplayName,
+    row.telegramUserId,
+  );
   return telegramUserMention(row.telegramUserId, label);
 }
 

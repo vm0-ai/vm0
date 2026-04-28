@@ -15,6 +15,7 @@ import {
   formatTelegramConnectPrompt,
   formatTelegramHelpMessage,
   formatTelegramPrivateConnectPrompt,
+  formatTelegramUserDisplayName,
   getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { logger } from "../../../shared/logger";
@@ -52,11 +53,13 @@ export async function handleConnectCommand(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
   const userLink = await resolveUserLink(
     installationId,
     fromUserId,
     message.from?.username ?? null,
+    telegramDisplayName,
   );
 
   const replyOptions =
@@ -107,6 +110,7 @@ export async function handleConnectCommand(
     fromUserId,
     botToken,
     message.from?.username ?? null,
+    telegramDisplayName,
   );
   const agentName = await getWorkspaceAgentDisplayLabel(
     installation.defaultComposeId,
@@ -145,11 +149,13 @@ export async function handleDisconnectCommand(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
   const userLink = await resolveUserLink(
     installationId,
     fromUserId,
     message.from?.username ?? null,
+    telegramDisplayName,
   );
 
   const replyOptions =

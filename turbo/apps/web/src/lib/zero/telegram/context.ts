@@ -26,6 +26,7 @@ const CONTEXT_PREAMBLE = [
 
 interface TelegramContextMessage {
   fromUsername: string | null;
+  fromDisplayName: string | null;
   fromUserId: string;
   text: string | null;
   fileId: string | null;
@@ -61,6 +62,7 @@ export async function fetchTelegramContext(
   const messages = await globalThis.services.db
     .select({
       fromUsername: telegramMessages.fromUsername,
+      fromDisplayName: telegramMessages.fromDisplayName,
       fromUserId: telegramMessages.fromUserId,
       text: telegramMessages.text,
       fileId: telegramMessages.fileId,
@@ -134,6 +136,9 @@ function formatMessageWithMetadata(
   const senderParts = msg.isBot ? ["id: BOT"] : [`id: ${msg.fromUserId}`];
   if (!msg.isBot && msg.fromUsername) {
     senderParts.push(`username: @${msg.fromUsername}`);
+  }
+  if (!msg.isBot && msg.fromDisplayName) {
+    senderParts.push(`name: ${msg.fromDisplayName}`);
   }
   const entitySummary = formatTelegramEntitiesForContext(
     msg.text ?? "",

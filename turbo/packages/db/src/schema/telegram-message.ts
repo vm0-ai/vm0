@@ -50,6 +50,7 @@ export const telegramMessages = pgTable(
     messageId: varchar("message_id", { length: 255 }).notNull(),
     fromUserId: varchar("from_user_id", { length: 255 }).notNull(),
     fromUsername: varchar("from_username", { length: 255 }),
+    fromDisplayName: varchar("from_display_name", { length: 255 }),
     text: text("text"),
     /** Telegram file_id for downloadable attachments — used for context downloads */
     fileId: varchar("file_id", { length: 255 }),

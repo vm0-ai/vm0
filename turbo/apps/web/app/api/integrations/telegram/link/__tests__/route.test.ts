@@ -380,6 +380,7 @@ describe("/api/integrations/telegram/link", () => {
       expect(getData.linked).toBe(true);
       const userLinks = await findTestTelegramUserLinksByVm0UserId(user.userId);
       expect(userLinks[0]?.telegramUsername).toBe("ada_tg");
+      expect(userLinks[0]?.telegramDisplayName).toBe("Test");
     });
 
     it("keeps an existing Telegram user link from being reassigned within the same bot", async () => {
@@ -555,6 +556,7 @@ describe("/api/integrations/telegram/link", () => {
         telegramUserId,
         TEST_BOT_TOKEN,
         "connect_tg",
+        "Connect User",
       );
 
       const response = await POST(
@@ -563,6 +565,7 @@ describe("/api/integrations/telegram/link", () => {
           connectSignature: {
             telegramUserId,
             telegramUsername: "connect_tg",
+            telegramDisplayName: "Connect User",
             timestamp: ts,
             signature: sig,
           },
@@ -581,6 +584,7 @@ describe("/api/integrations/telegram/link", () => {
       expect(getData.linked).toBe(true);
       const userLinks = await findTestTelegramUserLinksByVm0UserId(user.userId);
       expect(userLinks[0]?.telegramUsername).toBe("connect_tg");
+      expect(userLinks[0]?.telegramDisplayName).toBe("Connect User");
 
       await vi.waitFor(() => {
         expect(sentMessages).toHaveLength(1);

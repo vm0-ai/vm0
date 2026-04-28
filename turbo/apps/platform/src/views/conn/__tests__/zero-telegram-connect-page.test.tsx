@@ -13,7 +13,7 @@ const mockApi = createMockApi(context);
 const VALID_PATH =
   "/telegram/connect?bot=bot-123&tgUser=99002&ts=1777200000&sig=" +
   "a".repeat(64) +
-  "&tgUserName=ada_tg";
+  "&tgUserName=ada_tg&tgDisplayName=Ada%20Lovelace";
 
 function buttonWithText(text: string): HTMLButtonElement {
   const button = screen.getAllByRole("button").find((element) => {
@@ -138,6 +138,7 @@ describe("zero telegram connect page", () => {
       connectSignature: {
         telegramUserId: "99002",
         telegramUsername: "ada_tg",
+        telegramDisplayName: "Ada Lovelace",
         timestamp: 1_777_200_000,
         signature: "a".repeat(64),
       },

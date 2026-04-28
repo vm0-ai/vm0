@@ -13,6 +13,7 @@ import {
   formatTelegramCommandError,
   formatTelegramCommandSuccess,
   formatTelegramConnectPrompt,
+  formatTelegramUserDisplayName,
   getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { logger } from "../../../shared/logger";
@@ -75,6 +76,7 @@ export async function handleStartCommand(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
   // Parse /start payload
   const text = message.text ?? "";
@@ -87,6 +89,7 @@ export async function handleStartCommand(
       installationId,
       fromUserId,
       message.from?.username ?? null,
+      telegramDisplayName,
     );
     if (userLink) {
       const agentName = await getWorkspaceAgentDisplayLabel(
@@ -109,6 +112,7 @@ export async function handleStartCommand(
       fromUserId,
       botToken,
       message.from?.username ?? null,
+      telegramDisplayName,
     );
     const agentName = await getWorkspaceAgentDisplayLabel(
       installation.defaultComposeId,
@@ -146,6 +150,7 @@ export async function handleStartCommand(
   const linkResult = await linkTelegramUserToVm0User({
     telegramUserId: fromUserId,
     telegramUsername: message.from?.username ?? null,
+    telegramDisplayName,
     installationId,
     vm0UserId: payload.vm0UserId,
   });

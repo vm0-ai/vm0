@@ -3,6 +3,7 @@ export interface TelegramConnectParams {
   connectSignature: {
     telegramUserId: string;
     telegramUsername?: string;
+    telegramDisplayName?: string;
     timestamp: number;
     signature: string;
   } | null;
@@ -40,6 +41,9 @@ function encodeReturnPath(params: TelegramConnectParams): string {
     if (params.connectSignature.telegramUsername) {
       search.set("tgUserName", params.connectSignature.telegramUsername);
     }
+    if (params.connectSignature.telegramDisplayName) {
+      search.set("tgDisplayName", params.connectSignature.telegramDisplayName);
+    }
   }
   return `/telegram/connect?${search.toString()}`;
 }
@@ -51,6 +55,33 @@ function normalizeTelegramUsernameParam(
   return username || undefined;
 }
 
+function normalizeTelegramDisplayNameParam(
+  value: string | undefined,
+): string | undefined {
+  const displayName = value?.trim().replace(/\s+/g, " ");
+  return displayName || undefined;
+}
+
+function buildConnectSignature(params: {
+  telegramUserId: string;
+  telegramUsername?: string;
+  telegramDisplayName?: string;
+  timestamp: number;
+  signature: string;
+}): TelegramConnectParams["connectSignature"] {
+  return {
+    telegramUserId: params.telegramUserId,
+    ...(params.telegramUsername
+      ? { telegramUsername: params.telegramUsername }
+      : {}),
+    ...(params.telegramDisplayName
+      ? { telegramDisplayName: params.telegramDisplayName }
+      : {}),
+    timestamp: params.timestamp,
+    signature: params.signature,
+  };
+}
+
 export function parseTelegramConnectParams(
   searchParams: SearchParams,
 ): ParsedTelegramConnectParams {
@@ -58,6 +89,9 @@ export function parseTelegramConnectParams(
   const tgUser = firstParam(searchParams, "tgUser")?.trim();
   const telegramUsername = normalizeTelegramUsernameParam(
     firstParam(searchParams, "tgUserName"),
+  );
+  const telegramDisplayName = normalizeTelegramDisplayNameParam(
+    firstParam(searchParams, "tgDisplayName"),
   );
   const tsRaw = firstParam(searchParams, "ts")?.trim();
   const sig = firstParam(searchParams, "sig")?.trim();
@@ -151,12 +185,13 @@ export function parseTelegramConnectParams(
 
   const params = {
     telegramBotId: bot,
-    connectSignature: {
+    connectSignature: buildConnectSignature({
       telegramUserId: tgUser,
-      ...(telegramUsername ? { telegramUsername } : {}),
+      telegramUsername,
+      telegramDisplayName,
       timestamp,
       signature: sig,
-    },
+    }),
   };
 
   return {

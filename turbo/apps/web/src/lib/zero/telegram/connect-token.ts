@@ -10,12 +10,19 @@ export function signConnectParams(
   timestamp: number,
   botToken: string,
   telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): string {
   const normalizedTelegramUsername =
     normalizeConnectTelegramUsername(telegramUsername);
-  const data = normalizedTelegramUsername
-    ? `${installationId}:${telegramUserId}:${timestamp}:${normalizedTelegramUsername}`
-    : `${installationId}:${telegramUserId}:${timestamp}`;
+  const normalizedTelegramDisplayName =
+    normalizeConnectTelegramDisplayName(telegramDisplayName);
+  let data = `${installationId}:${telegramUserId}:${timestamp}`;
+  if (normalizedTelegramUsername || normalizedTelegramDisplayName) {
+    data += `:${normalizedTelegramUsername ?? ""}`;
+  }
+  if (normalizedTelegramDisplayName) {
+    data += `:${normalizedTelegramDisplayName}`;
+  }
   return createHmac("sha256", botToken).update(data).digest("hex");
 }
 
@@ -28,6 +35,13 @@ function normalizeConnectTelegramUsername(
   return value ? value : null;
 }
 
+function normalizeConnectTelegramDisplayName(
+  telegramDisplayName: string | null | undefined,
+): string | null {
+  const value = telegramDisplayName?.trim().replace(/\s+/g, " ");
+  return value ? value.slice(0, 255) : null;
+}
+
 /**
  * Verify a connect signature and check expiry.
  */
@@ -38,6 +52,7 @@ export function verifyConnectSignature(
   signature: string,
   botToken: string,
   telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): boolean {
   const now = Math.floor(Date.now() / 1000);
   if (now - timestamp > MAX_CONNECT_AGE_SECONDS) return false;
@@ -48,6 +63,7 @@ export function verifyConnectSignature(
     timestamp,
     botToken,
     telegramUsername,
+    telegramDisplayName,
   );
   const expectedBuf = Buffer.from(expected, "hex");
   const signatureBuf = Buffer.from(signature, "hex");
