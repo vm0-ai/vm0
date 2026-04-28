@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { v5 as uuidV5 } from "uuid";
 import {
   MODEL_USAGE_KIND,
   TOKEN_CATEGORY_CACHE_CREATION,
@@ -79,8 +79,8 @@ function deriveModelUsageEventIdempotencyKey(params: {
   category: string;
 }): string {
   return uuidV5(
-    MODEL_USAGE_EVENT_IDEMPOTENCY_NAMESPACE,
     encodeUuidName([params.runId, params.messageId, params.category]),
+    MODEL_USAGE_EVENT_IDEMPOTENCY_NAMESPACE,
   );
 }
 
@@ -90,24 +90,4 @@ function encodeUuidName(parts: readonly string[]): string {
       return `${Buffer.byteLength(part)}:${part}`;
     })
     .join("\0");
-}
-
-function uuidV5(namespace: string, name: string): string {
-  const namespaceBytes = Buffer.from(namespace.replaceAll("-", ""), "hex");
-  const hash = createHash("sha1");
-  hash.update(namespaceBytes);
-  hash.update(name);
-
-  const bytes = Uint8Array.from(hash.digest().subarray(0, 16));
-  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-
-  const hex = Buffer.from(bytes).toString("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-");
 }
