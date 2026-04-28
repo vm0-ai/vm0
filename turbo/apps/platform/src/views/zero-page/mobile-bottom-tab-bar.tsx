@@ -4,6 +4,7 @@ import {
   IconMessageCircle,
   IconUsers,
   IconCalendar,
+  IconPlug,
   IconMenu2,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -17,9 +18,9 @@ import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 type TabIcon = (props: { size?: number; stroke?: number }) => ReactNode;
 
 interface MobileTab {
-  readonly id: "chats" | "teammates" | "schedules";
+  readonly id: "chats" | "teammates" | "schedules" | "connectors";
   readonly activeKeys: readonly RouteKey[];
-  readonly pathname: "/" | "/agents" | "/schedules";
+  readonly pathname: "/" | "/agents" | "/schedules" | "/connectors";
   readonly label: string;
   readonly icon: TabIcon;
 }
@@ -52,6 +53,13 @@ const MOBILE_TABS: readonly MobileTab[] = [
     pathname: "/schedules",
     label: "Schedules",
     icon: IconCalendar as TabIcon,
+  },
+  {
+    id: "connectors",
+    activeKeys: ["connectors", "directedConnect", "directedAuthorize"],
+    pathname: "/connectors",
+    label: "Connectors",
+    icon: IconPlug as TabIcon,
   },
 ] as const;
 

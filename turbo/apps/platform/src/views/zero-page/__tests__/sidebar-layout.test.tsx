@@ -253,8 +253,8 @@ describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () 
   });
 });
 
-describe("mobile bottom tab bar - renders four tabs (MOBILE-TAB-001)", () => {
-  it("renders Chats, Teammates, Schedules, and More tabs when MobileNativeV1 is on", async () => {
+describe("mobile bottom tab bar - renders five tabs (MOBILE-TAB-001)", () => {
+  it("renders Chats, Teammates, Schedules, Connectors, and More tabs when MobileNativeV1 is on", async () => {
     mockBaseAPIs();
     detachedSetupPage({
       context,
@@ -269,7 +269,28 @@ describe("mobile bottom tab bar - renders four tabs (MOBILE-TAB-001)", () => {
     expect(screen.getByTestId("mobile-tab-chats")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-teammates")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-schedules")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-tab-connectors")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-more")).toBeInTheDocument();
+  });
+});
+
+describe("mobile bottom tab bar - Connectors tab navigates to /connectors (MOBILE-TAB-006)", () => {
+  it("clicking the Connectors tab navigates to /connectors", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: mobileNativeOn(),
+    });
+
+    const connectorsTab = await waitFor(() => {
+      return screen.getByTestId("mobile-tab-connectors");
+    });
+    click(connectorsTab);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/connectors");
+    });
   });
 });
 
