@@ -26,6 +26,7 @@ use crate::idle_pool::{
 };
 use crate::kmsg_log;
 use crate::lock;
+use crate::network_log_manager::NetworkLogManager;
 use crate::network_logs;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
@@ -220,14 +221,14 @@ pub async fn run_start(
 
     let registry_handle = mitm.registry_handle();
 
-    // Start background kmsg monitor for non-TCP traffic logging.
-    let ip_log_map = kmsg_log::new_ip_log_map();
-    let kmsg_handle = kmsg_log::spawn(ip_log_map.clone())
+    // Start background DNS/kmsg monitors for Rust-side network logging.
+    let network_log_manager = NetworkLogManager::new();
+    let kmsg_handle = kmsg_log::spawn(network_log_manager.clone())
         .map_err(|e| RunnerError::Internal(format!("kmsg monitor: {e}")))?;
 
     // Start DNS proxy (dnsmasq) for domain-level DNS interception and logging.
-    // Shares ip_log_map with kmsg — both use source IP (peer veth) as key.
-    let dns_handle = dns::start(ip_log_map.clone())
+    // Shares NetworkLogManager with kmsg — both use source IP (peer veth) as key.
+    let dns_handle = dns::start(network_log_manager.clone())
         .await
         .map_err(|e| RunnerError::Internal(format!("dns proxy: {e}")))?;
 
@@ -335,7 +336,7 @@ pub async fn run_start(
         registry: registry_handle,
         http,
         log_paths,
-        ip_log_map,
+        network_log_manager,
         home: home.clone(),
     });
 
@@ -1132,9 +1133,9 @@ fn spawn_job(
 
     // Captured for the post-complete deferred work below: the panic-arm
     // empty `JobTelemetry` construction, the final `telemetry.flush()`, and
-    // the mitm `upload_network_logs()` POST. `context` gets moved into the
-    // inner executor task and `exec_config` with it, so we snapshot the
-    // token and bump the Arc before spawning.
+    // the network-log upload. `context` gets moved into the inner executor
+    // task and `exec_config` with it, so we snapshot the token and bump the
+    // Arc before spawning.
     let sandbox_token = context.sandbox_token.clone();
     let exec_config_for_deferred = Arc::clone(&exec_config);
 
@@ -1381,18 +1382,26 @@ fn spawn_job(
         // user-visible run-complete signal isn't blocked on these uploads.
         // They're still awaited (not spawned) so the surrounding `jobs`
         // JoinSet drains them on graceful shutdown — no data loss on SIGTERM.
-        // Flush and upload run concurrently — they share no state and both
-        // target the telemetry endpoint, so parallelism shortens the drain
-        // window (~383 ms + ~1.6 s → ~1.6 s).
+        // Telemetry flush runs concurrently with network-log drain + upload.
+        // Network-log upload must wait for accepted Rust-side DNS/kmsg writes
+        // before reading the per-run JSONL snapshot.
         let network_log_path = exec_config_for_deferred.log_paths.network_log(run_id);
-        tokio::join!(
-            telemetry.flush(),
+        let network_log_upload = async {
+            exec_config_for_deferred
+                .network_log_manager
+                .flush_path(&network_log_path)
+                .await;
             network_logs::upload_network_logs(
                 &exec_config_for_deferred.http,
                 run_id,
                 &sandbox_token,
                 &network_log_path,
-            ),
+            )
+            .await;
+        };
+        tokio::join!(
+            telemetry.flush(),
+            network_log_upload,
         );
 
         Some(run_id)
@@ -2265,7 +2274,7 @@ mod tests {
                 registry,
                 http: crate::http::HttpClient::new(api_url.to_string()).unwrap(),
                 log_paths: crate::paths::LogPaths::new(log_dir),
-                ip_log_map: kmsg_log::new_ip_log_map(),
+                network_log_manager: NetworkLogManager::new(),
                 home,
             }),
             firecracker: config::FirecrackerConfig {
@@ -2435,9 +2444,11 @@ mod tests {
         const MOCK_DELAY: Duration = Duration::from_millis(400);
 
         let server = MockServer::start_async().await;
-        let telemetry_mock = server
+        let network_log_mock = server
             .mock_async(|when, then| {
-                when.method(POST).path("/api/webhooks/agent/telemetry");
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .body_includes("networkLogs");
                 then.delay(MOCK_DELAY)
                     .status(200)
                     .header("content-type", "application/json")
@@ -2445,8 +2456,15 @@ mod tests {
             })
             .await;
 
-        let (config, env) =
+        let (mut config, env) =
             mock_run_config_with_api_url(test_profiles(), 8, 32768, 4, &server.base_url());
+        let write_started = Arc::new(tokio::sync::Notify::new());
+        let release_write = Arc::new(tokio::sync::Notify::new());
+        let network_log_manager =
+            NetworkLogManager::new_with_write_gate(write_started.clone(), release_write.clone());
+        Arc::get_mut(&mut config.exec_config)
+            .expect("test config should not share exec_config before run starts")
+            .network_log_manager = network_log_manager.clone();
 
         // Seed a network log file so `upload_network_logs` has a payload to POST
         // (otherwise it early-returns on NotFound and the assertion below would
@@ -2456,9 +2474,29 @@ mod tests {
         std::fs::create_dir_all(network_log_path.parent().unwrap()).unwrap();
         std::fs::write(
             &network_log_path,
-            r#"{"timestamp":"2026-01-01T00:00:00","action":"ALLOW","host":"example.com","method":"GET","url":"https://example.com/","status":200}"#,
+            concat!(
+                r#"{"timestamp":"2026-01-01T00:00:00","action":"ALLOW","host":"example.com","method":"GET","url":"https://example.com/","status":200}"#,
+                "\n",
+            ),
         )
         .unwrap();
+        network_log_manager
+            .register_source_ip("10.200.0.200", network_log_path.clone())
+            .await;
+        assert!(
+            network_log_manager
+                .append_for_ip(
+                    "10.200.0.200",
+                    serde_json::json!({
+                        "timestamp": "2026-01-01T00:00:01Z",
+                        "type": "dns",
+                        "host": "pending.example",
+                        "port": 53,
+                    }),
+                )
+                .await
+        );
+        write_started.notified().await;
 
         let run_handle = tokio::spawn(run(config));
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
@@ -2468,6 +2506,7 @@ mod tests {
             .wait_completion(run_id, Duration::from_secs(5))
             .await;
         assert!(completion.is_some(), "job should complete");
+        release_write.notify_one();
 
         // Drain shutdown — must block on each `spawn_job` closure's deferred
         // `tokio::join!(flush, upload)` via the outer `jobs` JoinSet.
@@ -2475,14 +2514,7 @@ mod tests {
         shutdown(&env, run_handle).await;
         let shutdown_elapsed = shutdown_start.elapsed();
 
-        // At least one POST: the mitm network-log upload (and likely a second
-        // for sandbox-op telemetry like `vm_create`). The endpoint must have
-        // been hit — a fire-and-forget refactor that dropped the await on
-        // runtime shutdown would fail this.
-        assert!(
-            telemetry_mock.calls_async().await >= 1,
-            "telemetry endpoint should receive deferred post-complete upload"
-        );
+        network_log_mock.assert_calls_async(1).await;
 
         // Stronger invariant: drain must actually WAIT for the deferred work.
         // With a 400 ms mock delay, a well-behaved drain takes ≥ the delay;

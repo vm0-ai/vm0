@@ -14,6 +14,7 @@ mod ids;
 mod image_hash;
 mod kmsg_log;
 mod lock;
+mod network_log_manager;
 mod network_logs;
 mod paths;
 mod prefetch;

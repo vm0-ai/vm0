@@ -21,7 +21,7 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::idle_pool::ReusableIdleSandbox;
-use crate::kmsg_log;
+use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
@@ -36,7 +36,7 @@ pub struct ExecutorConfig {
     pub registry: ProxyRegistryHandle,
     pub http: HttpClient,
     pub log_paths: LogPaths,
-    pub ip_log_map: kmsg_log::IpLogMap,
+    pub network_log_manager: NetworkLogManager,
     pub home: HomePaths,
 }
 
@@ -357,7 +357,7 @@ async fn execute_reused_sandbox(
     }
 }
 
-/// Register a VM in the proxy registry and IP log map.
+/// Register a VM in the proxy registry and network log manager.
 async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
     let network_log_path = config.log_paths.network_log(context.run_id);
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
@@ -379,18 +379,20 @@ async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, sou
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
     }
     config
-        .ip_log_map
-        .lock()
+        .network_log_manager
+        .register_source_ip(source_ip, network_log_path)
         .await
-        .insert(source_ip.to_string(), network_log_path);
 }
 
-/// Unregister a VM from the proxy registry and IP log map.
+/// Unregister a VM from the proxy registry and network log manager.
 async fn unregister_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
     if let Err(e) = config.registry.unregister_vm(source_ip).await {
         warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
     }
-    config.ip_log_map.lock().await.remove(source_ip);
+    config
+        .network_log_manager
+        .unregister_source_ip(source_ip)
+        .await;
 }
 
 /// Post-job cleanup: copy logs, unregister proxy.
@@ -2518,7 +2520,7 @@ mod tests {
             registry: proxy::ProxyRegistryHandle::new(registry_path, lock_path),
             http: crate::http::HttpClient::new("http://localhost:9999".into()).unwrap(),
             log_paths: LogPaths::new(log_dir),
-            ip_log_map: kmsg_log::new_ip_log_map(),
+            network_log_manager: NetworkLogManager::new(),
             home: HomePaths::with_root(dir.to_path_buf()),
         }
     }

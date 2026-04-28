@@ -13,17 +13,16 @@
 //! subnet and redirects to dnsmasq before the packet reaches FORWARD/POSTROUTING.
 //!
 //! Log format: dnsmasq `--log-queries` outputs to stderr, parsed by a background
-//! async task that writes per-VM network JSONL entries (same pattern as kmsg_log).
+//! async task that submits per-VM network JSON rows through `NetworkLogManager`.
 
-use std::path::Path;
 use std::process::Stdio;
 
 use chrono::{DateTime, Utc};
 use tokio::io::AsyncBufReadExt;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
-use crate::kmsg_log::IpLogMap;
+use crate::network_log_manager::NetworkLogManager;
 
 /// Handle to the dnsmasq process and its log monitor.
 pub struct DnsProxy {
@@ -93,7 +92,7 @@ fn find_available_port() -> std::io::Result<u16> {
 ///
 /// dnsmasq listens on a dynamically allocated port and forwards to upstream DNS.
 /// Retries up to 3 times with a fresh port if the initial bind fails (TOCTOU race).
-pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
+pub async fn start(network_log_manager: NetworkLogManager) -> std::io::Result<DnsProxy> {
     const MAX_ATTEMPTS: u32 = 3;
     let mut last_err = None;
     for attempt in 1..=MAX_ATTEMPTS {
@@ -105,7 +104,7 @@ pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
                 continue;
             }
         };
-        match try_start(port, &ip_log_map).await {
+        match try_start(port, network_log_manager.clone()).await {
             Ok(proxy) => return Ok(proxy),
             Err(e) => {
                 if attempt < MAX_ATTEMPTS {
@@ -121,7 +120,7 @@ pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
 }
 
 /// Try to start dnsmasq on the given port. Returns the proxy handle on success.
-async fn try_start(port: u16, ip_log_map: &IpLogMap) -> std::io::Result<DnsProxy> {
+async fn try_start(port: u16, network_log_manager: NetworkLogManager) -> std::io::Result<DnsProxy> {
     let port_str = port.to_string();
 
     let mut child = tokio::process::Command::new("dnsmasq")
@@ -167,9 +166,8 @@ async fn try_start(port: u16, ip_log_map: &IpLogMap) -> std::io::Result<DnsProxy
 
     let cancel = CancellationToken::new();
     let token = cancel.clone();
-    let ip_log_map = ip_log_map.clone();
     let task = tokio::spawn(async move {
-        if let Err(e) = tail_stderr(stderr, &ip_log_map, token).await {
+        if let Err(e) = tail_stderr(stderr, network_log_manager, token).await {
             warn!(error = %e, "dns log monitor exited");
         }
     });
@@ -195,7 +193,7 @@ async fn try_start(port: u16, ip_log_map: &IpLogMap) -> std::io::Result<DnsProxy
 /// We only parse `query[...]` lines — they contain the domain and source IP.
 async fn tail_stderr(
     stderr: tokio::process::ChildStderr,
-    ip_log_map: &IpLogMap,
+    network_log_manager: NetworkLogManager,
     cancel: CancellationToken,
 ) -> std::io::Result<()> {
     let mut lines = tokio::io::BufReader::new(stderr).lines();
@@ -218,19 +216,10 @@ async fn tail_stderr(
                 };
 
                 if let Some(entry) = parse_query_line(&line) {
-                    let log_path = {
-                        let map = ip_log_map.lock().await;
-                        map.get(&entry.source_ip).cloned()
-                    };
-                    if let Some(path) = log_path {
-                        // Move the blocking file I/O off the tokio worker thread.
-                        // Capture the timestamp *before* the spawn so it reflects
-                        // query time, not write time (which may lag under load).
-                        let timestamp = Utc::now();
-                        tokio::task::spawn_blocking(move || {
-                            write_jsonl(&path, &entry, timestamp);
-                        });
-                    }
+                    // Capture the timestamp before handing the row to the manager so
+                    // it reflects query time, not delayed write time.
+                    let timestamp = Utc::now();
+                    append_query_entry(&network_log_manager, &entry, timestamp).await;
                 }
             }
         }
@@ -274,36 +263,24 @@ fn parse_query_line(line: &str) -> Option<DnsQueryEntry> {
     Some(DnsQueryEntry { source_ip, domain })
 }
 
-/// Append a JSON line to the network log file.
-///
-/// `timestamp` is captured by the caller (on the tokio worker) so the recorded
-/// time reflects when the DNS query was observed, not when this function —
-/// which runs on a tokio blocking thread — finally executes.
-fn write_jsonl(path: &Path, entry: &DnsQueryEntry, timestamp: DateTime<Utc>) {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+async fn append_query_entry(
+    network_log_manager: &NetworkLogManager,
+    entry: &DnsQueryEntry,
+    timestamp: DateTime<Utc>,
+) -> bool {
+    network_log_manager
+        .append_for_ip(&entry.source_ip, network_log_row(entry, timestamp))
+        .await
+}
 
-    // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
-    let json = serde_json::json!({
+fn network_log_row(entry: &DnsQueryEntry, timestamp: DateTime<Utc>) -> serde_json::Value {
+    // [NETWORK_LOG_FIELDS] — shared schema consumed by api-contracts.
+    serde_json::json!({
         "timestamp": timestamp.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "type": "dns",
         "host": entry.domain,
         "port": 53,
-    });
-
-    let mut line = serde_json::to_string(&json).unwrap_or_default();
-    line.push('\n');
-
-    let result = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(0o644)
-        .open(path)
-        .and_then(|mut f| f.write_all(line.as_bytes()));
-
-    if let Err(e) = result {
-        debug!(path = %path.display(), error = %e, "failed to write dns network log");
-    }
+    })
 }
 
 #[cfg(test)]
@@ -391,13 +368,9 @@ mod tests {
     }
 
     #[test]
-    fn write_jsonl_serializes_provided_timestamp() {
-        // Locks the contract that `write_jsonl` must use the `timestamp`
-        // parameter rather than calling `Utc::now()` internally — the whole
-        // point of the parameter is to record observation time, not the
-        // delayed write time after spawn_blocking.
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("dns.jsonl");
+    fn network_log_row_serializes_provided_timestamp() {
+        // Locks the contract that row construction must use the provided
+        // timestamp rather than calling `Utc::now()` internally.
         let entry = DnsQueryEntry {
             source_ip: "10.200.0.2".to_string(),
             domain: "example.com".to_string(),
@@ -405,21 +378,22 @@ mod tests {
         let ts = DateTime::parse_from_rfc3339("2024-01-15T10:30:45.123Z")
             .unwrap()
             .with_timezone(&Utc);
-        write_jsonl(&path, &entry, ts);
-        let content = std::fs::read_to_string(&path).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        let parsed = network_log_row(&entry, ts);
         assert_eq!(parsed["timestamp"], "2024-01-15T10:30:45.123Z");
     }
 
-    #[test]
-    fn write_jsonl_creates_file() {
+    #[tokio::test]
+    async fn append_query_entry_registered_source_writes_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("dns.jsonl");
+        let manager = NetworkLogManager::new();
+        manager.register_source_ip("10.200.0.2", path.clone()).await;
         let entry = DnsQueryEntry {
             source_ip: "10.200.0.2".to_string(),
             domain: "api.github.com".to_string(),
         };
-        write_jsonl(&path, &entry, Utc::now());
+        assert!(append_query_entry(&manager, &entry, Utc::now()).await);
+        manager.flush_path(&path).await;
         let content = std::fs::read_to_string(&path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
         assert_eq!(parsed["type"], "dns");
@@ -428,27 +402,64 @@ mod tests {
         assert!(parsed["timestamp"].is_string());
     }
 
-    #[test]
-    fn write_jsonl_appends_multiple_entries() {
+    #[tokio::test]
+    async fn append_query_entry_appends_multiple_entries() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("dns.jsonl");
+        let manager = NetworkLogManager::new();
+        manager.register_source_ip("10.0.0.1", path.clone()).await;
         for domain in ["a.com", "b.com", "c.com"] {
-            write_jsonl(
-                &path,
-                &DnsQueryEntry {
-                    source_ip: "10.0.0.1".to_string(),
-                    domain: domain.to_string(),
-                },
-                Utc::now(),
+            assert!(
+                append_query_entry(
+                    &manager,
+                    &DnsQueryEntry {
+                        source_ip: "10.0.0.1".to_string(),
+                        domain: domain.to_string(),
+                    },
+                    Utc::now(),
+                )
+                .await
             );
         }
+        manager.flush_path(&path).await;
         let content = std::fs::read_to_string(&path).unwrap();
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 3);
-        for (i, domain) in ["a.com", "b.com", "c.com"].iter().enumerate() {
-            let parsed: serde_json::Value = serde_json::from_str(lines[i]).unwrap();
-            assert_eq!(parsed["host"], *domain);
-        }
+        let hosts: std::collections::HashSet<String> = lines
+            .iter()
+            .map(|line| {
+                let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
+                parsed["host"].as_str().unwrap().to_string()
+            })
+            .collect();
+        assert_eq!(
+            hosts,
+            ["a.com", "b.com", "c.com"]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        );
+    }
+
+    #[tokio::test]
+    async fn append_query_entry_without_mapping_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ignored.jsonl");
+        let manager = NetworkLogManager::new();
+
+        assert!(
+            !append_query_entry(
+                &manager,
+                &DnsQueryEntry {
+                    source_ip: "10.0.0.1".to_string(),
+                    domain: "ignored.test".to_string(),
+                },
+                Utc::now(),
+            )
+            .await
+        );
+        manager.flush_path(&path).await;
+        assert!(!path.exists());
     }
 
     #[test]

@@ -7,12 +7,13 @@ use tracing::{info, warn};
 use crate::http::HttpClient;
 use crate::ids::RunId;
 
-/// Network log entry from mitmproxy JSONL.
+/// Network log entry from the per-run JSONL file.
 ///
-/// [NETWORK_LOG_FIELDS] — fields are defined in mitm_addon.py (source of truth).
+/// [NETWORK_LOG_FIELDS] — shared schema boundary is api-contracts; producers
+/// include mitmproxy plus Rust-side DNS/kmsg logging.
 /// Uses a transparent `serde_json::Value` wrapper so all fields pass through
 /// to Axiom without needing a struct field for each one. This avoids silently
-/// dropping new fields added to the Python addon.
+/// dropping fields added by any producer.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(transparent)]
 struct NetworkLog(serde_json::Value);
@@ -24,7 +25,7 @@ struct NetworkLogPayload {
     network_logs: Vec<NetworkLog>,
 }
 
-/// Upload network logs from the mitmproxy JSONL file.
+/// Upload network logs from the per-run JSONL file.
 /// Reads the file at `path`, POSTs to telemetry endpoint,
 /// and deletes the file on success. Best-effort — failures only warn.
 pub async fn upload_network_logs(
