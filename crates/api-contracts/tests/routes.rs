@@ -96,3 +96,11 @@ fn generated_routes_build_resolved_routes_with_params() {
         "https://api.vm0.dev/api/runners/jobs/550e8400-e29b-41d4-a716-446655440000/claim"
     );
 }
+
+#[test]
+#[should_panic(expected = "api route path must start with '/'")]
+fn generated_route_urls_reject_paths_without_leading_slash() {
+    let route = api_contracts::Route::new(Method::Post, "api/runners/poll");
+
+    let _ = route.url("https://api.vm0.dev");
+}

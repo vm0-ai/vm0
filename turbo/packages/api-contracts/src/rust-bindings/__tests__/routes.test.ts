@@ -135,6 +135,19 @@ describe("Rust route bindings", () => {
     expect(rendered).toContain("crate::route::encode_path_segment(params.id)");
   });
 
+  it("renders Rust-safe field names for keyword path params", () => {
+    const rendered = renderRustRoutes([
+      validBinding({
+        route: { method: "POST", path: "/api/items/:type" },
+        rustModulePath: ["items", "by_type"],
+        rustConstName: "FETCH",
+      }),
+    ]);
+
+    expect(rendered).toContain("pub type_: &'a str,");
+    expect(rendered).toContain("params.type_");
+  });
+
   it("fails clearly when a registry entry is malformed", () => {
     const malformedBindings = [
       validBinding({
@@ -157,6 +170,42 @@ describe("Rust route bindings", () => {
     expect(() => {
       normalizeRouteBindings(malformedBindings);
     }).toThrow("route path must start with '/'");
+  });
+
+  it("fails clearly when route path param syntax is unsupported", () => {
+    const malformedBindings = [
+      validBinding({
+        route: { method: "POST", path: "/api/runners/jobs/prefix-:id" },
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("unsupported route param segment");
+  });
+
+  it("fails clearly when route path params are duplicated", () => {
+    const malformedBindings = [
+      validBinding({
+        route: { method: "POST", path: "/api/runners/jobs/:id/:id" },
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("duplicate route param");
+  });
+
+  it("fails clearly when path params collide as Rust field names", () => {
+    const malformedBindings = [
+      validBinding({
+        route: { method: "POST", path: "/api/:fooBar/:foo_bar" },
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("duplicate Rust route param");
   });
 
   it("fails clearly when a Rust module segment is invalid", () => {

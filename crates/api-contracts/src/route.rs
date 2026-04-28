@@ -98,6 +98,7 @@ pub(crate) fn encode_path_segment(value: &str) -> String {
 }
 
 fn url_from_base_and_path(base_url: &str, path: &str) -> String {
+    assert!(path.starts_with('/'), "api route path must start with '/'");
     format!("{}{}", base_url.trim_end_matches('/'), path)
 }
 
