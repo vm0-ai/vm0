@@ -11,6 +11,25 @@ const OTEL_SERVICE_NAME = "vm0-api";
 
 const HTTP_ROUTE_BAGGAGE_KEY = "http.route";
 
+// PgInstrumentation defaults the span name to "pg.query:SELECT <db>" — too
+// generic to slice on. Pull the operation + first referenced table out of
+// the parameterized SQL so RED metrics can group by a readable label.
+// `db.statement` still carries the full parameterized SQL for cases where
+// the exact template matters.
+function deriveSqlSpanName(sql: string): string | null {
+  const trimmed = sql.trim();
+  const opMatch = /^(SELECT|INSERT|UPDATE|DELETE|WITH|MERGE)/i.exec(trimmed);
+  if (!opMatch?.[1]) {
+    return null;
+  }
+  const op = opMatch[1].toUpperCase();
+  const tableMatch =
+    /\b(?:FROM|INTO|UPDATE|JOIN)\s+(?:ONLY\s+)?"?([a-zA-Z_][a-zA-Z0-9_]*)"?/i.exec(
+      trimmed,
+    );
+  return tableMatch ? `${op} ${tableMatch[1]}` : op;
+}
+
 function buildAxiomTraceExporter(): OTLPTraceExporter {
   return new OTLPTraceExporter({
     url: "https://api.axiom.co/v1/traces",
@@ -31,16 +50,21 @@ function setupOpenTelemetry() {
   }
 
   // Copy the matched route template from baggage onto every db span the
-  // hono request triggers. Lets dashboards slice "SQL P99 by URL template"
-  // without joining on trace_id.
+  // hono request triggers, and rename the span to <op> <table> so RED
+  // dashboards group on something readable. The full parameterized SQL
+  // is still on `db.statement` for fine-grained slicing.
   const pgInstrumentation = new PgInstrumentation({
     ignoreConnectSpans: true,
-    requestHook: (span) => {
+    requestHook: (span, info) => {
       const route = propagation
         .getActiveBaggage()
         ?.getEntry(HTTP_ROUTE_BAGGAGE_KEY)?.value;
       if (route) {
         span.setAttribute("http.route", route);
+      }
+      const derived = deriveSqlSpanName(info.query.text);
+      if (derived) {
+        span.updateName(derived);
       }
     },
   });
