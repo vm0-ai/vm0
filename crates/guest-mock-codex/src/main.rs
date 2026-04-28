@@ -13,6 +13,14 @@
 //!                          [-C <dir>] [-m <model>] [--append-system-prompt <s>]
 //!                          [--last] [-- <prompt>]
 //!   guest-mock-codex exec resume <thread_id> [-- <prompt>]
+//!
+//! Fixture mode: when `MOCK_CODEX_FIXTURE=<name>` is set in the env, the
+//! synthetic 3-event sequence is replaced with a baked JSONL fixture by
+//! that name (see `FIXTURES`). The thread id is taken from the fixture's
+//! `thread.started` event; the fixture's bytes are written verbatim to
+//! stdout and to the zstd session file. Used by
+//! `e2e/tests/03-runner/t-codex-event-mapping.bats` to exercise the
+//! codex-event-parser branches that the synthetic sequence cannot reach.
 
 use chrono::{NaiveDate, Utc};
 use clap::{Parser, Subcommand};
@@ -87,8 +95,42 @@ enum ExecSub {
     },
 }
 
+/// Embedded JSONL fixtures selectable via `MOCK_CODEX_FIXTURE=<name>`.
+///
+/// Each fixture's first event must be `thread.started{thread_id}`; the
+/// thread id is used to compute the on-disk session path so the
+/// guest-agent's checkpoint scan finds the same payload that was emitted
+/// to stdout. Adding a new fixture: drop a `*.jsonl` file under
+/// `fixtures/`, append a `(name, include_str!(...))` row here, and refer
+/// to it from the bats test by `MOCK_CODEX_FIXTURE=<name>`.
+const FIXTURES: &[(&str, &str)] = &[
+    (
+        "event-mapping-rich",
+        include_str!("../fixtures/event-mapping-rich.jsonl"),
+    ),
+    ("turn-failed", include_str!("../fixtures/turn-failed.jsonl")),
+    ("error-event", include_str!("../fixtures/error-event.jsonl")),
+];
+
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
+
+    // Fixture mode short-circuits the synthetic event sequence. Used by
+    // `t-codex-event-mapping.bats` to exercise codex-event-parser
+    // branches (command_execution, file_edit, file_read, file_change,
+    // reasoning, turn.failed, error) that the 3-event synthetic
+    // sequence cannot reach.
+    if let Ok(fixture_name) = std::env::var("MOCK_CODEX_FIXTURE")
+        && !fixture_name.is_empty()
+    {
+        if let Some(content) = lookup_fixture(&fixture_name) {
+            return run_fixture(content);
+        }
+        eprintln!(
+            "warning: MOCK_CODEX_FIXTURE={fixture_name:?} not found, falling through to synthetic events"
+        );
+    }
+
     match cli.command {
         Cmd::Exec(ExecArgs {
             sub: Some(ExecSub::Resume { thread_id, prompt }),
@@ -99,6 +141,50 @@ fn main() -> io::Result<()> {
             run(&id, &join_prompt(&prompt), false)
         }
     }
+}
+
+/// Look up a fixture by name. Returns the fixture's raw JSONL content.
+fn lookup_fixture(name: &str) -> Option<&'static str> {
+    FIXTURES.iter().find(|(n, _)| *n == name).map(|(_, c)| *c)
+}
+
+/// Run a fixture: parse JSONL, extract thread id from `thread.started`,
+/// emit events to stdout, and persist the zstd session file under
+/// `$CODEX_HOME` so checkpoint reads see the same content the CLI saw.
+fn run_fixture(content: &str) -> io::Result<()> {
+    let events = parse_fixture_events(content)?;
+    let thread_id = extract_thread_id(&events).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "fixture missing thread.started/thread_id",
+        )
+    })?;
+
+    let mut stdout = io::stdout().lock();
+    emit_events(&mut stdout, &events)?;
+
+    let path = build_session_path(&codex_home(), Utc::now().date_naive(), &thread_id);
+    write_session_file(&path, &events)
+}
+
+/// Parse JSONL fixture content into a vector of `Value`. Empty lines
+/// (incl. trailing newline) are skipped.
+fn parse_fixture_events(content: &str) -> io::Result<Vec<Value>> {
+    content
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| serde_json::from_str(l).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)))
+        .collect()
+}
+
+/// Extract the thread id from the first `thread.started` event in a
+/// parsed fixture, if present.
+fn extract_thread_id(events: &[Value]) -> Option<String> {
+    events
+        .iter()
+        .find(|e| e.get("type").and_then(|t| t.as_str()) == Some("thread.started"))
+        .and_then(|e| e.get("thread_id").and_then(|t| t.as_str()))
+        .map(String::from)
 }
 
 /// Join trailing positional args into a single prompt string. A leading `--`

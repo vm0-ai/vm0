@@ -20,10 +20,20 @@ struct RunOutput {
 }
 
 fn run(codex_home: &Path, args: &[&str]) -> std::io::Result<RunOutput> {
-    let output = Command::new(BIN)
-        .env("CODEX_HOME", codex_home)
-        .args(args)
-        .output()?;
+    run_with_env(codex_home, args, &[])
+}
+
+fn run_with_env(
+    codex_home: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+) -> std::io::Result<RunOutput> {
+    let mut cmd = Command::new(BIN);
+    cmd.env("CODEX_HOME", codex_home).args(args);
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let output = cmd.output()?;
 
     let stdout = String::from_utf8(output.stdout)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
@@ -187,6 +197,118 @@ fn prompt_without_double_dash_separator_works() {
     assert_eq!(out.status, 0);
     assert_eq!(out.events.len(), 3);
     assert_eq!(out.events[1]["item"]["text"], "hello world");
+}
+
+#[test]
+fn fixture_event_mapping_rich_emits_full_event_set() {
+    let dir = TempDir::new().unwrap();
+    let out = run_with_env(
+        dir.path(),
+        &["exec", "--json", "--", "ignored"],
+        &[("MOCK_CODEX_FIXTURE", "event-mapping-rich")],
+    )
+    .unwrap();
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events.len(), 11);
+    assert_eq!(
+        out.events[0]["thread_id"],
+        "00000000-0000-0000-0000-000000000001"
+    );
+
+    let item_types: Vec<&str> = out
+        .events
+        .iter()
+        .filter_map(|e| e["item"]["type"].as_str())
+        .collect();
+    for expected in [
+        "command_execution",
+        "file_edit",
+        "file_read",
+        "file_change",
+        "reasoning",
+        "agent_message",
+    ] {
+        assert!(
+            item_types.contains(&expected),
+            "fixture missing item type {expected}: got {item_types:?}"
+        );
+    }
+    assert_eq!(out.events.last().unwrap()["type"], "turn.completed");
+
+    let session_path = find_session_file(dir.path()).unwrap();
+    let persisted = read_session_file(&session_path).unwrap();
+    assert_eq!(persisted, out.events);
+}
+
+#[test]
+fn fixture_turn_failed_ends_with_turn_failed() {
+    let dir = TempDir::new().unwrap();
+    let out = run_with_env(
+        dir.path(),
+        &["exec", "--json", "--", "ignored"],
+        &[("MOCK_CODEX_FIXTURE", "turn-failed")],
+    )
+    .unwrap();
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events.len(), 3);
+    assert_eq!(
+        out.events[0]["thread_id"],
+        "00000000-0000-0000-0000-000000000002"
+    );
+    assert_eq!(out.events.last().unwrap()["type"], "turn.failed");
+}
+
+#[test]
+fn fixture_error_event_emits_error_type() {
+    let dir = TempDir::new().unwrap();
+    let out = run_with_env(
+        dir.path(),
+        &["exec", "--json", "--", "ignored"],
+        &[("MOCK_CODEX_FIXTURE", "error-event")],
+    )
+    .unwrap();
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events.len(), 2);
+    assert_eq!(
+        out.events[0]["thread_id"],
+        "00000000-0000-0000-0000-000000000003"
+    );
+    assert_eq!(out.events[1]["type"], "error");
+}
+
+#[test]
+fn fixture_unknown_name_falls_through_to_synthetic() {
+    let dir = TempDir::new().unwrap();
+    let out = run_with_env(
+        dir.path(),
+        &["exec", "--json", "--", "hello"],
+        &[("MOCK_CODEX_FIXTURE", "no-such-fixture")],
+    )
+    .unwrap();
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events.len(), 3);
+    assert_eq!(out.events[0]["type"], "thread.started");
+    assert_eq!(out.events[1]["item"]["text"], "hello");
+    assert_eq!(out.events[2]["type"], "turn.completed");
+}
+
+#[test]
+fn fixture_empty_env_var_uses_synthetic() {
+    let dir = TempDir::new().unwrap();
+    let out = run_with_env(
+        dir.path(),
+        &["exec", "--json", "--", "hello"],
+        &[("MOCK_CODEX_FIXTURE", "")],
+    )
+    .unwrap();
+
+    assert_eq!(out.status, 0);
+    assert_eq!(out.events.len(), 3);
+    assert_eq!(out.events[1]["item"]["text"], "hello");
 }
 
 #[test]
