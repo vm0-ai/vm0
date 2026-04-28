@@ -244,7 +244,16 @@ export async function shadowCompareAuth(
   if (!event.consistent) {
     log.warn("auth shadow check mismatch", {
       route: options.route,
+      tokenType: event.tokenType,
+      webOutcome: event.webOutcome,
+      webStatus: event.webStatus,
+      webErrorCode: event.webErrorCode,
+      apiOutcome: event.apiOutcome,
+      apiStatus: event.apiStatus,
+      apiErrorCode: event.apiErrorCode,
+      apiErrorMessage: event.apiErrorMessage,
       differences: event.differences,
+      differenceDetails: event.differenceDetails,
     });
   }
 }
