@@ -23,7 +23,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -71,7 +70,6 @@ function getSidebar(): HTMLElement {
 
 beforeEach(() => {
   setMockUserPreferences({ pinnedAgentIds: [] });
-  setMockFeatureSwitches({ chatThreadReadIndicator: true });
 });
 
 describe("sidebar draft indicator", () => {
@@ -178,33 +176,6 @@ describe("sidebar draft indicator", () => {
     await waitFor(() => {
       expect(
         within(getSidebar()).getByText("Selected with draft"),
-      ).toBeInTheDocument();
-    });
-    expect(
-      within(getSidebar()).queryByLabelText("Draft"),
-    ).not.toBeInTheDocument();
-  });
-
-  it("does not render Draft when ChatThreadReadIndicator flag is off", async () => {
-    setMockFeatureSwitches({ chatThreadReadIndicator: false });
-    mockAPIs([
-      {
-        id: "thread-gated-draft",
-        title: "Draft but gated",
-        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-        isRead: true,
-        isArchived: false,
-        running: false,
-        hasDraft: true,
-      },
-    ]);
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(
-        within(getSidebar()).getByText("Draft but gated"),
       ).toBeInTheDocument();
     });
     expect(

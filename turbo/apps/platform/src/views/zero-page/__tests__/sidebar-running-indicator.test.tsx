@@ -24,7 +24,6 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { threadListChanged } from "../../../mocks/mock-helpers.ts";
 
 const context = testContext();
@@ -72,7 +71,6 @@ function getSidebar(): HTMLElement {
 
 beforeEach(() => {
   setMockUserPreferences({ pinnedAgentIds: [] });
-  setMockFeatureSwitches({ chatThreadReadIndicator: true });
 });
 
 describe("sidebar running indicator", () => {
@@ -190,34 +188,6 @@ describe("sidebar running indicator", () => {
       ).toBeInTheDocument();
       expect(
         within(getSidebar()).queryByLabelText("Unread"),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("does not render the Running dot when ChatThreadReadIndicator flag is off", async () => {
-    setMockFeatureSwitches({ chatThreadReadIndicator: false });
-    mockAPIs({
-      current: [
-        {
-          id: "thread-gated",
-          title: "Running but gated",
-          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-          isRead: true,
-          isArchived: false,
-          running: true,
-        },
-      ],
-    });
-    detachedSetupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(
-        within(getSidebar()).getByText("Running but gated"),
-      ).toBeInTheDocument();
-      expect(
-        within(getSidebar()).queryByLabelText("Running"),
       ).not.toBeInTheDocument();
     });
   });

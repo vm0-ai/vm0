@@ -223,12 +223,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatThreadReadIndicator]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the unread watermark dot and bold title for chat threads with unread messages in the sidebar",
-    enabled: false,
-  },
   [FeatureSwitchKey.ChatManualHistory]: {
     maintainer: "linghan@vm0.ai",
     description:

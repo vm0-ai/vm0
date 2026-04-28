@@ -14,7 +14,6 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -57,7 +56,6 @@ import {
   sessionListCollapsed$,
   setSessionListCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
@@ -92,18 +90,15 @@ function ChatThreadItem({
   session,
   isSelected,
   onSelect,
-  showReadIndicator,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
   onSelect?: () => void;
-  showReadIndicator: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
-  const isRunning = showReadIndicator && session.running;
-  const isUnread = showReadIndicator && !session.isRead && !isSelected;
-  const hasDraft =
-    showReadIndicator && (session.hasDraft ?? false) && !isSelected;
+  const isRunning = session.running;
+  const isUnread = !session.isRead && !isSelected;
+  const hasDraft = (session.hasDraft ?? false) && !isSelected;
 
   // Priority: running > unread > draft. Only one indicator occupies the
   // right slot at a time; on hover the slot swaps to the delete button.
@@ -197,9 +192,6 @@ function ChatThreads() {
   const chatThreads = useLastResolved(chatThreads$) ?? [];
   const optimisticChatThreads =
     useLastResolved(pendingOptimisticChatThreads$) ?? [];
-  const features = useLastResolved(featureSwitch$);
-  const showReadIndicator =
-    features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
   const searchTerm = useGet(sidebarSearchTerm$);
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredChatThreads = trimmedTerm
@@ -247,7 +239,6 @@ function ChatThreads() {
             session={session}
             isSelected={selectedThreadId === session.id}
             onSelect={onRecentSelect}
-            showReadIndicator={showReadIndicator}
           />
         );
       })}
@@ -258,7 +249,6 @@ function ChatThreads() {
             session={session}
             isSelected={selectedThreadId === session.id}
             onSelect={onRecentSelect}
-            showReadIndicator={showReadIndicator}
           />
         );
       })}
