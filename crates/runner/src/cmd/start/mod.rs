@@ -1258,7 +1258,7 @@ fn spawn_job(
                     match active_lease.take() {
                         Some(lease) => {
                             let mut pool = idle_pool.lock().await;
-                            let candidate = ParkCandidate::new(ParkCandidateParts {
+                            let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
                                 sandbox,
                                 factory: factory_for_cleanup,
                                 session_id: session_id.to_string(),
@@ -1739,7 +1739,7 @@ mod tests {
 
     fn make_park_candidate(session_id: &str) -> ParkCandidate {
         let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
-        ParkCandidate::new(ParkCandidateParts {
+        ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: session_id.into(),
@@ -2013,7 +2013,7 @@ mod tests {
     async fn idle_destroy_panic_releases_budget_lease() {
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
-        let candidate = ParkCandidate::new(ParkCandidateParts {
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox: Box::new(MockSandbox::new("panic-destroy")),
             factory: Arc::new(Box::new(PanickingDestroyFactory) as Box<dyn SandboxFactory>),
             session_id: "sess-panic".into(),
@@ -2054,7 +2054,7 @@ mod tests {
         let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         let destroy_count = Arc::new(AtomicUsize::new(0));
-        let candidate = ParkCandidate::new(ParkCandidateParts {
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox,
             factory: Arc::new(Box::new(RecordingDestroyFactory {
                 destroy_count: Arc::clone(&destroy_count),
@@ -3635,7 +3635,7 @@ mod tests {
         profile_name: &str,
         budget_lease: BudgetLease,
     ) -> ParkCandidate {
-        ParkCandidate::new(ParkCandidateParts {
+        ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox: Box::new(MockSandbox::new("idle-test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: session_id.into(),
@@ -3705,7 +3705,7 @@ mod tests {
             ResourceBudget::try_reserve_lease(budget, vcpu, memory_mb).expect("reserve budget");
 
         let mut guard = pool.lock().await;
-        let result = guard.park(ParkCandidate::new(ParkCandidateParts {
+        let result = guard.park(ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox,
             factory: factory_arc,
             session_id: session_id.to_string(),

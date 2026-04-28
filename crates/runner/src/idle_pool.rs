@@ -167,7 +167,7 @@ pub struct ParkCandidate {
     storage_fingerprints: StorageFingerprints,
 }
 
-pub struct ParkCandidateParts {
+pub(crate) struct ParkCandidateParts {
     pub sandbox: Box<dyn Sandbox>,
     pub factory: Arc<Box<dyn SandboxFactory>>,
     pub session_id: String,
@@ -179,7 +179,8 @@ pub struct ParkCandidateParts {
 }
 
 impl ParkCandidate {
-    pub fn new(parts: ParkCandidateParts) -> Self {
+    /// Build a candidate only after `Sandbox::park()` has returned success.
+    pub(crate) fn from_parked_parts(parts: ParkCandidateParts) -> Self {
         Self {
             sandbox: parts.sandbox,
             factory: parts.factory,
@@ -712,7 +713,7 @@ mod tests {
     }
 
     fn make_candidate_for_with_lease(session_id: &str, budget_lease: BudgetLease) -> ParkCandidate {
-        ParkCandidate::new(ParkCandidateParts {
+        ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox: Box::new(MockSandbox::new("test")),
             factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
             session_id: session_id.into(),

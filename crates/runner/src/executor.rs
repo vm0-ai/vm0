@@ -181,10 +181,9 @@ fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: 
     }
 }
 
-/// Dispatch inputs for the fresh-create path — the counterpart to
-/// [`IdleEntry`] on the reuse path. Holds the UUID for the new VM and the
-/// categorized reason no idle VM was reused. Both originate in
-/// `cmd/start.rs`; the id becomes the sandbox's identity, the reuse result
+/// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM
+/// and the categorized reason no idle VM was reused. Both originate in
+/// `cmd/start.rs`; the id becomes the sandbox's identity, and the reuse result
 /// is forwarded to the guest for /complete metadata.
 #[derive(Clone, Copy)]
 pub struct NewSandboxDispatch {
@@ -2551,7 +2550,7 @@ mod tests {
             default_timeout: std::time::Duration::from_secs(300),
             max_idle: 0,
         });
-        let candidate = ParkCandidate::new(ParkCandidateParts {
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox,
             factory: std::sync::Arc::new(
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
@@ -2950,7 +2949,7 @@ mod tests {
             max_idle: 0,
         });
 
-        let entry = ParkCandidate::new(ParkCandidateParts {
+        let entry = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox,
             factory: std::sync::Arc::new(
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
@@ -2999,7 +2998,7 @@ mod tests {
         });
 
         // Park with profile "vm0/default"
-        let entry = ParkCandidate::new(ParkCandidateParts {
+        let entry = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox: Box::new(sandbox_mock::MockSandbox::new("test")),
             factory: std::sync::Arc::new(
                 Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>
