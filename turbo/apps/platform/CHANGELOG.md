@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.300.0](https://github.com/vm0-ai/vm0/compare/app-v0.299.1...app-v0.300.0) (2026-04-28)
+
+
+### Features
+
+* show schedule description on usage insights widget ([#11305](https://github.com/vm0-ai/vm0/issues/11305)) ([87e765c](https://github.com/vm0-ai/vm0/commit/87e765cb8a0fc02a719bcc6995d987eb7b92ebc8))
+
 ## [0.299.1](https://github.com/vm0-ai/vm0/compare/app-v0.299.0...app-v0.299.1) (2026-04-28)
 
 
