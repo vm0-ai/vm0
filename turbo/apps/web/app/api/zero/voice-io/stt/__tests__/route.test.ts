@@ -105,7 +105,6 @@ describe("POST /api/zero/voice-io/stt", () => {
     expect(body.error.code).toBe("UNAUTHORIZED");
   });
 
-
   it("should return 400 when no file is provided", async () => {
     const userId = uniqueId("stt-nofile");
     await setupOrg(userId);
