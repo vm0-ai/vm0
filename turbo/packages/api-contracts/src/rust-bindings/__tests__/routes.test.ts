@@ -148,6 +148,34 @@ describe("Rust route bindings", () => {
     expect(rendered).toContain("params.type_");
   });
 
+  it("renders typed params for routes with multiple path params", () => {
+    const rendered = renderRustRoutes([
+      validBinding({
+        route: { method: "POST", path: "/api/orgs/:orgId/items/:itemId" },
+        rustModulePath: ["orgs", "items"],
+        rustConstName: "FETCH",
+      }),
+    ]);
+
+    expect(rendered).toContain('"/api/orgs/{}/items/{}",');
+    expect(rendered).toContain("pub org_id: &'a str,");
+    expect(rendered).toContain("pub item_id: &'a str,");
+    expect(rendered).toContain("encode_path_segment(params.org_id)");
+    expect(rendered).toContain("encode_path_segment(params.item_id)");
+  });
+
+  it("escapes Rust format braces in static route segments with path params", () => {
+    const rendered = renderRustRoutes([
+      validBinding({
+        route: { method: "POST", path: "/api/{version}/items/:id" },
+        rustModulePath: ["items", "by_id"],
+        rustConstName: "FETCH",
+      }),
+    ]);
+
+    expect(rendered).toContain('"/api/{{version}}/items/{}",');
+  });
+
   it("fails clearly when a registry entry is malformed", () => {
     const malformedBindings = [
       validBinding({
@@ -182,6 +210,18 @@ describe("Rust route bindings", () => {
     expect(() => {
       normalizeRouteBindings(malformedBindings);
     }).toThrow("unsupported route param segment");
+  });
+
+  it("fails clearly when a route path param name is invalid", () => {
+    const malformedBindings = [
+      validBinding({
+        route: { method: "POST", path: "/api/runners/jobs/:1id" },
+      }),
+    ];
+
+    expect(() => {
+      normalizeRouteBindings(malformedBindings);
+    }).toThrow("invalid route param name");
   });
 
   it("fails clearly when route path params are duplicated", () => {

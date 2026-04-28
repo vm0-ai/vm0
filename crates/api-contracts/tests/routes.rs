@@ -81,6 +81,12 @@ fn generated_routes_build_paths_with_params() {
         }),
         "/api/runners/jobs/nested%2Fvalue/claim"
     );
+    assert_eq!(
+        routes::runners::jobs::by_id::claim::path(routes::runners::jobs::by_id::claim::Params {
+            id: "query?fragment#percent%中文",
+        }),
+        "/api/runners/jobs/query%3Ffragment%23percent%25%E4%B8%AD%E6%96%87/claim"
+    );
 }
 
 #[test]

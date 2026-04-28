@@ -386,7 +386,7 @@ function renderParameterizedPath(
   const formatPath = route.path
     .split("/")
     .map((segment) => {
-      return segment.startsWith(":") ? "{}" : segment;
+      return segment.startsWith(":") ? "{}" : escapeRustFormatString(segment);
     })
     .join("/");
   const args = route.pathParams.map((param) => {
@@ -402,6 +402,10 @@ function renderParameterizedPath(
   }
   lines.push(`${indent})`);
   return lines;
+}
+
+function escapeRustFormatString(value: string): string {
+  return value.replace(/\{/g, "{{").replace(/\}/g, "}}");
 }
 
 function appendBlankLineIfNeeded(lines: string[]): void {
