@@ -301,7 +301,7 @@ describe("onboarding set up Telegram → settings page", () => {
     });
     await walkAdminToWhereStep();
 
-    expect(screen.queryByText("Set up Telegram")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Add .+ to Telegram/)).not.toBeInTheDocument();
   });
 
   it("should navigate to /settings/telegram after saving the agent", async () => {
@@ -315,12 +315,12 @@ describe("onboarding set up Telegram → settings page", () => {
     await walkAdminToWhereStep();
 
     await waitFor(() => {
-      expect(screen.getByText("Set up Telegram")).toBeInTheDocument();
+      expect(screen.getByText(/Add .+ to Telegram/)).toBeInTheDocument();
     });
 
     switchToAdminComplete();
 
-    click(screen.getByText("Set up Telegram"));
+    click(screen.getByText(/Add .+ to Telegram/));
 
     await waitFor(() => {
       expect(pathname()).toBe("/settings/telegram");

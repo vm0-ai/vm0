@@ -442,10 +442,11 @@ function WhereToWorkContent() {
             </span>
             <div className="min-w-0 flex-1">
               <span className="block text-sm font-semibold text-foreground">
-                Set up Telegram
+                Add {name || "Zero"} to Telegram
               </span>
               <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-                Connect Telegram bots and route chats to {name || "Zero"}.
+                Work with {name || "Zero"} in Telegram where your team already
+                collaborates.
               </p>
             </div>
           </button>
