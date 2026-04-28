@@ -331,7 +331,7 @@ export async function pollEvents(
     for (const event of response.events) {
       const eventData = event.eventData as Record<string, unknown>;
 
-      const parsed = parseEvent(eventData);
+      const parsed = parseEvent(eventData, response.framework);
       if (parsed) {
         renderer.render(parsed);
       }
