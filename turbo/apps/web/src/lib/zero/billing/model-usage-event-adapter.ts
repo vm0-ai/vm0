@@ -30,6 +30,9 @@ const MODEL_USAGE_EVENT_IDEMPOTENCY_PREFIX = "vm0:model-usage-event:v1";
 export function getPositiveModelUsageTokenQuantities(
   usage: LegacyModelUsage,
 ): ModelUsageTokenQuantity[] {
+  // web_search_requests is intentionally not mapped yet: there is no
+  // model usage_event category/pricing row for it, so current behavior is
+  // no charge.
   return [
     { category: TOKEN_CATEGORY_INPUT, quantity: usage.input_tokens ?? 0 },
     { category: TOKEN_CATEGORY_OUTPUT, quantity: usage.output_tokens ?? 0 },
