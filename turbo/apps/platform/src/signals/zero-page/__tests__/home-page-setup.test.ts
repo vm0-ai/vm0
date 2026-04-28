@@ -1,11 +1,12 @@
 /**
  * Tests for setupHomePage$ — the route setup at "/" that decides whether
- * to land users on the default agent's chat (desktop) or the chats list
- * (mobile).
+ * to land users on the default agent's chat (desktop / switch-off) or the
+ * chats list (mobile + MobileNativeV1 enabled).
  */
 
 import { describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../location.ts";
@@ -43,11 +44,19 @@ function mockBaseAPIs() {
   ]);
 }
 
+function mobileNativeOn(): Partial<Record<FeatureSwitchKey, boolean>> {
+  return { [FeatureSwitchKey.MobileNativeV1]: true };
+}
+
 describe("home page setup - desktop redirects to default agent chat (HOME-D-001)", () => {
   it("redirects / to /agents/:id/chat on desktop", async () => {
     mockMobileViewport(false);
     mockBaseAPIs();
-    detachedSetupPage({ context, path: "/" });
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: mobileNativeOn(),
+    });
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
@@ -56,13 +65,29 @@ describe("home page setup - desktop redirects to default agent chat (HOME-D-001)
 });
 
 describe("home page setup - mobile redirects to chats list (HOME-D-002)", () => {
-  it("redirects / to /chats on mobile viewport", async () => {
+  it("redirects / to /chats on mobile when MobileNativeV1 is on", async () => {
+    mockMobileViewport(true);
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/",
+      featureSwitches: mobileNativeOn(),
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/chats");
+    });
+  });
+});
+
+describe("home page setup - mobile keeps default chat when switch off (HOME-D-003)", () => {
+  it("falls back to /agents/:id/chat on mobile when MobileNativeV1 is off", async () => {
     mockMobileViewport(true);
     mockBaseAPIs();
     detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chats");
+      expect(pathname()).toBe(`/agents/${DEFAULT_AGENT_ID}/chat`);
     });
   });
 });

@@ -1,8 +1,10 @@
 import { command } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
 import { homeAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 
 // Matches Tailwind's md breakpoint (768px). Below this width we treat the
 // viewport as mobile and land users on the chats list instead of the
@@ -24,9 +26,15 @@ export const setupHomePage$ = command(
 
     await set(checkSettingsParam$, signal);
 
-    // On mobile, the home entry point is the chats list — skip the
-    // default-agent redirect so users land on /chats instead.
-    if (isMobileViewport()) {
+    const features = await get(featureSwitch$);
+    signal.throwIfAborted();
+    const mobileNativeEnabled =
+      features[FeatureSwitchKey.MobileNativeV1] ?? false;
+
+    // On mobile (and only when the redesign is enabled), the home entry
+    // point is the chats list — skip the default-agent redirect so users
+    // land on /chats instead.
+    if (mobileNativeEnabled && isMobileViewport()) {
       set(detachedNavigateTo$, "/chats", { replace: true });
       return;
     }
