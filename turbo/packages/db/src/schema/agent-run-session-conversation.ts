@@ -93,6 +93,11 @@ export const agentRuns = pgTable(
         table.createdAt.desc(),
       ),
       index("idx_agent_runs_session").on(table.sessionId),
+      // Supports aggregate-insights recent completed-run discovery and
+      // per-window run counts by completed time.
+      index("idx_agent_runs_completed_org_user")
+        .on(table.completedAt.desc(), table.orgId, table.userId)
+        .where(sql`${table.completedAt} IS NOT NULL`),
     ];
   },
 );

@@ -8,6 +8,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { agentRuns } from "./agent-run";
 
 /**
@@ -81,6 +82,13 @@ export const usageEvent = pgTable(
         table.status,
         table.processedAt,
       ),
+      // Supports aggregate-insights recent processed-ledger discovery and
+      // per-window credit aggregation.
+      index("idx_usage_event_processed_org_user")
+        .on(table.processedAt.desc(), table.orgId, table.userId)
+        .where(
+          sql`${table.status} = 'processed' AND ${table.processedAt} IS NOT NULL`,
+        ),
     ];
   },
 );
