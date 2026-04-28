@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.313.0](https://github.com/vm0-ai/vm0/compare/web-v12.312.0...web-v12.313.0) (2026-04-28)
+
+
+### Features
+
+* add bb0 device flow ([#11383](https://github.com/vm0-ai/vm0/issues/11383)) ([00871f5](https://github.com/vm0-ai/vm0/commit/00871f521741d5769c0f20e7da9e93de9fbaf91b))
+
 ## [12.312.0](https://github.com/vm0-ai/vm0/compare/web-v12.311.0...web-v12.312.0) (2026-04-28)
 
 

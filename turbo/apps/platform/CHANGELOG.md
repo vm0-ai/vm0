@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.304.0](https://github.com/vm0-ai/vm0/compare/app-v0.303.0...app-v0.304.0) (2026-04-28)
+
+
+### Features
+
+* add bb0 device flow ([#11383](https://github.com/vm0-ai/vm0/issues/11383)) ([00871f5](https://github.com/vm0-ai/vm0/commit/00871f521741d5769c0f20e7da9e93de9fbaf91b))
+
 ## [0.303.0](https://github.com/vm0-ai/vm0/compare/app-v0.302.0...app-v0.303.0) (2026-04-28)
 
 
