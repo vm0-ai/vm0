@@ -469,7 +469,8 @@ jobs:
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.web_release_created == 'true'
+      needs.release-please.outputs.web_release_created == 'true' &&
+      needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -595,7 +596,8 @@ jobs:
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.api_release_created == 'true'
+      needs.release-please.outputs.api_release_created == 'true' &&
+      needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -825,7 +827,8 @@ jobs:
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.app_release_created == 'true'
+      needs.release-please.outputs.app_release_created == 'true' &&
+      needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -1580,7 +1583,8 @@ jobs:
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.runner_rs_release_created == 'true'
+      needs.release-please.outputs.runner_rs_release_created == 'true' &&
+      needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
