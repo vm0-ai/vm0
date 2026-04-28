@@ -232,6 +232,101 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
+  it("renders bold bare html urls as preview cards and preserves surrounding text", async () => {
+    const htmlUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/diabetes.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>diabetes preview</body></html>");
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `已上传，直接访问即可：\n\n**${htmlUrl}**\n\n页面包含了血糖换算器、诊断标准表、饮食建议。`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByText("已上传，直接访问即可：")).toBeInTheDocument();
+      expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open html preview for diabetes.html"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("页面包含了血糖换算器、诊断标准表、饮食建议。"),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByLabelText("Open html preview for diabetes.html"),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("diabetes.html preview")).toBeInTheDocument();
+    });
+  });
+
+  it("renders platform file urls inside markdown list and quote symbols as preview cards", async () => {
+    const htmlUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/symbol-report.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>symbol preview</body></html>");
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `文件已生成：\n\n> 👉 **<${htmlUrl}>**\n\n- **[查看报告](${htmlUrl})**`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("attachment-preview-html")).toHaveLength(2);
+      expect(
+        screen.getAllByLabelText("Open html preview for symbol-report.html"),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("renders bare platform image file urls as image previews", async () => {
+    const imageUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
+    server.use(
+      http.get(imageUrl, () => {
+        return new HttpResponse("png", {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `生成完成：\n\n${imageUrl}`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByAltText("chart.png")).toBeInTheDocument();
+    });
+  });
+
   it("renders json body links inline and supports collapse", async () => {
     const jsonUrl = "https://example.com/data.json";
     server.use(

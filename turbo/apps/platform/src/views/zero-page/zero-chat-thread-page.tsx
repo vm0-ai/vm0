@@ -1219,9 +1219,140 @@ type BodyRenderBlock =
       preview: {
         filename: string;
         url: string;
-        kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
+        kind: BodyPreviewKind;
       };
     };
+
+type BodyPreviewKind =
+  | "image"
+  | "video"
+  | "markdown"
+  | "text"
+  | "json"
+  | "csv"
+  | "pdf"
+  | "html";
+
+function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
+  return (
+    kind === "image" ||
+    kind === "video" ||
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv" ||
+    kind === "pdf" ||
+    kind === "html"
+  );
+}
+
+function isPlatformFileUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url, "https://vm0.local");
+    return /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function stripMarkdownLineDecorations(value: string): string {
+  let candidate = value
+    .trim()
+    .replace(/^(?:>\s*)+/, "")
+    .replace(/^(?:[-*+]\s+|\d+[.)]\s+)/, "")
+    .trim();
+  const wrappers: [string, string][] = [
+    ["**", "**"],
+    ["__", "__"],
+    ["*", "*"],
+    ["_", "_"],
+    ["~~", "~~"],
+    ["`", "`"],
+    ["<", ">"],
+    ["(", ")"],
+    ["（", "）"],
+  ];
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [prefix, suffix] of wrappers) {
+      if (candidate.startsWith(prefix) && candidate.endsWith(suffix)) {
+        candidate = candidate
+          .slice(prefix.length, candidate.length - suffix.length)
+          .trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return candidate;
+}
+
+function trimPreviewUrl(value: string): string {
+  let url = value.trim();
+  let previous = "";
+  while (url !== previous) {
+    previous = url;
+    url = url
+      .replace(/[*_~`]+$/g, "")
+      .replace(/[)\]\}>.,，。；;:：!！?？]+$/g, "");
+  }
+  return url;
+}
+
+function extractPreviewUrlFromLine(line: string): string | null {
+  const candidate = stripMarkdownLineDecorations(line);
+  const markdownLinkMatch = candidate.match(
+    /^\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/f\/[^)\s]+)\)$/,
+  );
+  const bareUrlMatch = candidate.match(/^(https?:\/\/\S+|\/f\/\S+)$/);
+  const strictUrl = markdownLinkMatch?.[2] ?? bareUrlMatch?.[1];
+  if (strictUrl) {
+    return trimPreviewUrl(strictUrl);
+  }
+
+  const urls = Array.from(
+    candidate.matchAll(/(?:https?:\/\/|\/f\/)[^\s<>"']+/g),
+    (match) => {
+      return trimPreviewUrl(match[0]);
+    },
+  ).filter((url, index, list) => {
+    return url.length > 0 && list.indexOf(url) === index;
+  });
+
+  if (urls.length === 1 && isPlatformFileUrl(urls[0]!)) {
+    return urls[0]!;
+  }
+
+  return null;
+}
+
+function contentTypeForBodyPreviewKind(kind: BodyPreviewKind): string {
+  if (kind === "markdown") {
+    return "text/markdown";
+  }
+  if (kind === "text") {
+    return "text/plain";
+  }
+  if (kind === "json") {
+    return "application/json";
+  }
+  if (kind === "csv") {
+    return "text/csv";
+  }
+  if (kind === "pdf") {
+    return "application/pdf";
+  }
+  if (kind === "html") {
+    return "text/html";
+  }
+  if (kind === "image") {
+    return "image/*";
+  }
+  return "video/*";
+}
 
 function parseBodyRenderBlocks(content: string): {
   cleanContent: string;
@@ -1270,43 +1401,17 @@ function parseBodyRenderBlocks(content: string): {
       continue;
     }
 
-    const wrappers: [string, string][] = [
-      ["**", "**"],
-      ["__", "__"],
-      ["*", "*"],
-      ["_", "_"],
-      ["~~", "~~"],
-    ];
-    let candidate = trimmedLine;
-
-    for (const [prefix, suffix] of wrappers) {
-      if (candidate.startsWith(prefix) && candidate.endsWith(suffix)) {
-        candidate = candidate
-          .slice(prefix.length, candidate.length - suffix.length)
-          .trim();
-        break;
-      }
-    }
-
-    const match = candidate.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
-    if (!match) {
+    const url = extractPreviewUrlFromLine(line);
+    if (!url) {
       markdownBuffer.push(line);
       keptLines.push(line);
       continue;
     }
 
-    const url = match[2];
     const filename = filenameFromUrl(url);
     const kind = classifyChatAttachment({ filename, url });
 
-    if (
-      kind === "markdown" ||
-      kind === "text" ||
-      kind === "json" ||
-      kind === "csv" ||
-      kind === "pdf" ||
-      kind === "html"
-    ) {
+    if (isBodyPreviewKind(kind)) {
       flushMarkdownBuffer();
       blocks.push({
         type: "preview",
@@ -1340,11 +1445,11 @@ function BodyContentBlocks({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      {blocks.map((block) => {
+      {blocks.map((block, index) => {
         if (block.type === "markdown") {
           return (
             <Markdown
-              key={`markdown-${block.content}`}
+              key={`markdown-${index}-${block.content}`}
               source={
                 hardBreaks
                   ? block.content.replace(/\n/g, "  \n")
@@ -1356,24 +1461,50 @@ function BodyContentBlocks({
           );
         }
 
+        if (block.preview.kind === "image") {
+          return (
+            <button
+              key={`preview-${index}-${block.preview.url}`}
+              type="button"
+              onClick={() => {
+                openLightbox(block.preview.url);
+              }}
+              className="group relative w-fit max-w-full overflow-hidden rounded-lg border border-foreground/10"
+              aria-label={`Preview ${block.preview.filename}`}
+            >
+              <img
+                src={block.preview.url}
+                alt={block.preview.filename}
+                className="max-h-48 max-w-full object-contain"
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                <IconPhoto
+                  size={18}
+                  className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
+                />
+              </span>
+            </button>
+          );
+        }
+
+        if (block.preview.kind === "video") {
+          return (
+            <video
+              key={`preview-${index}-${block.preview.url}`}
+              src={block.preview.url}
+              controls
+              className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+            />
+          );
+        }
+
         return (
           <AttachmentPreview
-            key={`preview-${block.preview.url}`}
+            key={`preview-${index}-${block.preview.url}`}
             attachment={{
               filename: block.preview.filename,
               url: block.preview.url,
-              contentType:
-                block.preview.kind === "markdown"
-                  ? "text/markdown"
-                  : block.preview.kind === "text"
-                    ? "text/plain"
-                    : block.preview.kind === "json"
-                      ? "application/json"
-                      : block.preview.kind === "csv"
-                        ? "text/csv"
-                        : block.preview.kind === "pdf"
-                          ? "application/pdf"
-                          : "text/html",
+              contentType: contentTypeForBodyPreviewKind(block.preview.kind),
             }}
             signal={signal}
           />
