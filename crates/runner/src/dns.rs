@@ -546,6 +546,13 @@ mod tests {
     }
 
     #[test]
+    fn parse_extra_result_with_trailing_carriage_return() {
+        let line = "dnsmasq[1234]: 42 10.200.0.2/54321 reply example.com is 1.2.3.4\r";
+        let entry = parse_dns_line(line).unwrap();
+        assert_result_event(&entry, "reply", "1.2.3.4");
+    }
+
+    #[test]
     fn ignore_plain_log_queries_without_extra_metadata() {
         let line = "dnsmasq[1234]: query[A] example.com from 10.200.0.2";
         assert!(parse_dns_line(line).is_none());
@@ -608,6 +615,28 @@ mod tests {
             .with_timezone(&Utc);
         let parsed = network_log_row(&entry, ts);
         assert_eq!(parsed["timestamp"], "2024-01-15T10:30:45.123Z");
+    }
+
+    #[test]
+    fn network_log_row_serializes_query_fields() {
+        let entry = DnsLogEntry {
+            source_ip: "10.200.0.2".to_string(),
+            domain: "example.com".to_string(),
+            serial: "42".to_string(),
+            event: DnsEvent::Query {
+                query_type: "AAAA".to_string(),
+            },
+        };
+
+        let parsed = network_log_row(&entry, Utc::now());
+
+        assert_eq!(parsed["type"], "dns");
+        assert_eq!(parsed["host"], "example.com");
+        assert_eq!(parsed["port"], 53);
+        assert_eq!(parsed["dns_event"], "query");
+        assert_eq!(parsed["dns_query_type"], "AAAA");
+        assert_eq!(parsed["dns_serial"], "42");
+        assert_eq!(parsed.get("dns_result"), None);
     }
 
     #[tokio::test]
@@ -711,7 +740,7 @@ mod tests {
 
         manager.flush_path(&path).await;
         let content = std::fs::read_to_string(&path).unwrap();
-        let results: Vec<String> = content
+        let mut results: Vec<String> = content
             .lines()
             .map(|line| {
                 let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
@@ -721,6 +750,7 @@ mod tests {
                 parsed["dns_result"].as_str().unwrap().to_string()
             })
             .collect();
+        results.sort();
         assert_eq!(results, ["140.82.121.3", "140.82.121.4"]);
     }
 
