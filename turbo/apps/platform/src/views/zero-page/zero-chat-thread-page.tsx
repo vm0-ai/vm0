@@ -41,6 +41,7 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import emptyChatImg from "./assets/empty-chat.webp";
+import emptyArtifactImg from "./assets/empty-artifact.webp";
 import docCsvIcon from "./assets/doc-csv.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docHtmlIcon from "./assets/doc-html.svg";
@@ -877,8 +878,17 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
 
   if (totalFiles === 0) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-        No uploaded files in this chat yet.
+      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 p-8 text-center">
+        <img
+          src={emptyArtifactImg}
+          alt=""
+          role="presentation"
+          loading="lazy"
+          className="h-24 w-24 object-contain opacity-80"
+        />
+        <p className="text-sm text-muted-foreground">
+          No uploaded files in this chat yet.
+        </p>
       </div>
     );
   }
