@@ -21,7 +21,7 @@ let _services: Services | undefined;
 
 /**
  * Initialize global services lazily on first call.
- * Safe to call multiple times — subsequent calls are no-ops.
+ * Subsequent calls are no-ops — safe for repeated invocation.
  *
  * @example
  * // In API Route
