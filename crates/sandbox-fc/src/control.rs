@@ -488,7 +488,10 @@ mod tests {
 
         let result = bind_server(sock_path, guest);
 
-        assert!(result.is_err());
+        let Err(err) = result else {
+            panic!("binding an occupied control socket should fail");
+        };
+        assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
     }
 
     #[test]
