@@ -72,7 +72,13 @@ jobs:
   # downtime: builds stage first, then migrate, then promote traffic.)
   migrate-production:
     needs: [release-please, builds-complete]
-    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    # always() prevents GitHub Actions from propagating "skipped" when upstream
+    # build jobs (build-runner-production, etc.) are skipped. The explicit
+    # builds-complete.result check gates on actual build success.
+    if: >-
+      always() &&
+      needs.release-please.outputs.releases_created == 'true' &&
+      needs.builds-complete.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -463,7 +469,8 @@ jobs:
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.web_release_created == 'true'
+      needs.release-please.outputs.web_release_created == 'true' &&
+      needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -589,7 +596,8 @@ jobs:
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.api_release_created == 'true'
+      needs.release-please.outputs.api_release_created == 'true' &&
+      needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -819,7 +827,8 @@ jobs:
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.app_release_created == 'true'
+      needs.release-please.outputs.app_release_created == 'true' &&
+      needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260419
@@ -1574,7 +1583,8 @@ jobs:
       ]
     if: >-
       !failure() && !cancelled() &&
-      needs.release-please.outputs.runner_rs_release_created == 'true'
+      needs.release-please.outputs.runner_rs_release_created == 'true' &&
+      needs.migrate-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419

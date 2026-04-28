@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.305.0](https://github.com/vm0-ai/vm0/compare/app-v0.304.2...app-v0.305.0) (2026-04-28)
+
+
+### Features
+
+* add telegram bot onboarding flow ([#11399](https://github.com/vm0-ai/vm0/issues/11399)) ([aba29b3](https://github.com/vm0-ai/vm0/commit/aba29b390e94f23f1b45a18c4a32fa5a7cd647aa))
+
 ## [0.304.2](https://github.com/vm0-ai/vm0/compare/app-v0.304.1...app-v0.304.2) (2026-04-28)
 
 
