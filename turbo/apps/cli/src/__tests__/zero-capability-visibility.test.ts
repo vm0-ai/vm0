@@ -194,6 +194,68 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
+  it("should show telegram when telegram:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["telegram:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("telegram");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show telegram when telegram:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["telegram:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("telegram");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide telegram when only file:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("telegram");
+  });
+
+  it("should hide telegram when only file:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("telegram");
+  });
+
+  it("should hide telegram when file read and telegram write capabilities are missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("telegram");
+  });
+
   it("should show run when agent-run:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",

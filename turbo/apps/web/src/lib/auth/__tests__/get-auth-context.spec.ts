@@ -390,6 +390,8 @@ describe("getAuthContext with zero token and acceptAnySandboxCapability", () => 
         "schedule:read",
         "schedule:write",
         "slack:write",
+        "telegram:read",
+        "telegram:write",
       ]),
     );
     expect(result?.capabilities).not.toContain("agent-run:write");

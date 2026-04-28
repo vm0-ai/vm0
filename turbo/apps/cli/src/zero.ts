@@ -30,9 +30,14 @@ import {
 /**
  * Map of command names to the capability required to see them.
  * Commands not in this map are hidden when ZERO_TOKEN is active.
+ * Use an array when a top-level command has subcommands with different
+ * capability gates and any one of them should make the command visible.
  * Use `null` for commands that should always be visible in sandbox.
  */
-const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
+const COMMAND_CAPABILITY_MAP: Record<
+  string,
+  string | readonly string[] | null
+> = {
   agent: "agent:read",
   skill: "agent:read",
   connector: "connector:read",
@@ -43,7 +48,7 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   search: "chat-message:read",
   chat: "chat-message:write",
   slack: "slack:write",
-  telegram: "file:read",
+  telegram: ["telegram:read", "telegram:write"],
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
@@ -79,7 +84,13 @@ function shouldHideCommand(
   if (!payload) return false;
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;
-  return requiredCap !== null && !payload.capabilities.includes(requiredCap);
+  if (requiredCap === null) return false;
+  if (typeof requiredCap !== "string") {
+    return !requiredCap.some((capability) => {
+      return payload.capabilities.includes(capability);
+    });
+  }
+  return !payload.capabilities.includes(requiredCap);
 }
 
 /**
@@ -119,6 +130,7 @@ program
 Examples:
   Check a connector?     zero doctor check-connector --env-name <ENV_NAME>
   Send a Slack message?  zero slack message send --help
+  Upload Telegram?       zero telegram upload-file --help
   Download Telegram?     zero telegram download-file --help
   Set up a schedule?     zero schedule setup --help
   Update yourself?       zero agent --help

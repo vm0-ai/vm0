@@ -1,13 +1,57 @@
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { ApiRequestError, getBaseUrl } from "../core/client-factory";
+import { initClient } from "@ts-rest/core";
+import {
+  integrationsTelegramUploadCompleteContract,
+  integrationsTelegramUploadInitContract,
+  type TelegramUploadCompleteBody,
+  type TelegramUploadCompleteResponse,
+  type TelegramUploadInitBody,
+  type TelegramUploadInitResponse,
+} from "@vm0/api-contracts/contracts/integrations";
+import {
+  ApiRequestError,
+  getBaseUrl,
+  getClientConfig,
+  handleError,
+} from "../core/client-factory";
 import { getActiveToken } from "../config";
 
 interface DownloadTelegramFileResult {
   path: string;
   mimetype: string;
   size: number;
+}
+
+export async function initTelegramFileUpload(
+  body: TelegramUploadInitBody,
+): Promise<TelegramUploadInitResponse> {
+  const config = await getClientConfig();
+  const client = initClient(integrationsTelegramUploadInitContract, config);
+
+  const result = await client.init({ body, headers: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to initialize Telegram file upload");
+}
+
+export async function completeTelegramFileUpload(
+  body: TelegramUploadCompleteBody,
+): Promise<TelegramUploadCompleteResponse> {
+  const config = await getClientConfig();
+  const client = initClient(integrationsTelegramUploadCompleteContract, config);
+
+  const result = await client.complete({ body, headers: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to complete Telegram file upload");
 }
 
 /**

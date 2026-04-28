@@ -36,6 +36,8 @@ export const ZERO_CAPABILITIES = [
   "schedule:write",
   "schedule:delete",
   "slack:write",
+  "telegram:read",
+  "telegram:write",
   "chat-message:write",
   "chat-message:read",
   "connector:read",
@@ -72,6 +74,14 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     },
     "schedule:delete": { group: "Schedules", label: "Delete schedules" },
     "slack:write": { group: "Integrations", label: "Send Slack messages" },
+    "telegram:read": {
+      group: "Integrations",
+      label: "Download Telegram files",
+    },
+    "telegram:write": {
+      group: "Integrations",
+      label: "Send Telegram messages and files",
+    },
     "chat-message:write": {
       group: "Integrations",
       label: "Send chat messages",

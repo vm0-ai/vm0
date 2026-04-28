@@ -11,7 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { agentRuns } from "./agent-run";
 
-export const RUN_UPLOADED_FILE_SOURCES = ["web", "slack"] as const;
+export const RUN_UPLOADED_FILE_SOURCES = ["web", "slack", "telegram"] as const;
 export type RunUploadedFileSource = (typeof RUN_UPLOADED_FILE_SOURCES)[number];
 
 export const runUploadedFiles = pgTable(

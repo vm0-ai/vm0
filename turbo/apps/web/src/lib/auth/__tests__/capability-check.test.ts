@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { isSandboxAuth, missingCapabilityError } from "../capability-check";
+import {
+  hasRequiredCapability,
+  isSandboxAuth,
+  missingCapabilityError,
+} from "../capability-check";
 
 describe("capability-check", () => {
   describe("isSandboxAuth", () => {
@@ -20,6 +24,30 @@ describe("capability-check", () => {
         "Missing required capability: agent:read",
       );
       expect(error.error.code).toBe("FORBIDDEN");
+    });
+  });
+
+  describe("hasRequiredCapability", () => {
+    it("should match exact capabilities", () => {
+      expect(hasRequiredCapability(["telegram:read"], "telegram:read")).toBe(
+        true,
+      );
+    });
+
+    it("should let telegram:write satisfy telegram:read", () => {
+      expect(hasRequiredCapability(["telegram:write"], "telegram:read")).toBe(
+        true,
+      );
+    });
+
+    it("should not let telegram:read satisfy telegram:write", () => {
+      expect(hasRequiredCapability(["telegram:read"], "telegram:write")).toBe(
+        false,
+      );
+    });
+
+    it("should reject missing capabilities", () => {
+      expect(hasRequiredCapability(["file:read"], "telegram:read")).toBe(false);
     });
   });
 });

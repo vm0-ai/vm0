@@ -61,6 +61,19 @@ export interface TelegramSentMessage {
   text?: string;
 }
 
+interface TelegramDocument {
+  file_id: string;
+  file_unique_id: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
+interface TelegramSentDocumentMessage extends TelegramSentMessage {
+  document?: TelegramDocument;
+  caption?: string;
+}
+
 export interface TelegramClient {
   token: string;
 }
@@ -137,6 +150,29 @@ export async function sendMessage(
       reply_parameters: { message_id: options.replyToMessageId },
     }),
   });
+}
+
+/**
+ * Send a general file by Telegram file id or HTTP URL.
+ */
+export async function sendDocument(
+  client: TelegramClient,
+  chatId: string | number,
+  document: string,
+  options?: { caption?: string; messageThreadId?: number },
+): Promise<TelegramSentDocumentMessage> {
+  return callTelegramApi<TelegramSentDocumentMessage>(
+    client.token,
+    "sendDocument",
+    {
+      chat_id: chatId,
+      document,
+      ...(options?.caption ? { caption: options.caption } : {}),
+      ...(options?.messageThreadId
+        ? { message_thread_id: options.messageThreadId }
+        : {}),
+    },
+  );
 }
 
 /**
