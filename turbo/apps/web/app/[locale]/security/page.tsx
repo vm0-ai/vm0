@@ -47,9 +47,7 @@ export async function generateMetadata({
   };
 }
 
-export default async function SecurityPageServer({
-  params,
-}: PageProps) {
+export default async function SecurityPageServer({ params }: PageProps) {
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "securityPage" });
 

@@ -368,7 +368,10 @@ export function ModelDetailClient({ model, related }: Props) {
                   return (
                     <Card key={cmp.vs} className="!p-6">
                       <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                        {t("comparisonTitleTemplate", { model: model.name, other: cmp.vs })}
+                        {t("comparisonTitleTemplate", {
+                          model: model.name,
+                          other: cmp.vs,
+                        })}
                       </h3>
                       <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
                         {inlineCode(cmp.body)}
@@ -443,7 +446,10 @@ export function ModelDetailClient({ model, related }: Props) {
                   {t("twoWaysToAccessHeading", { name: model.name })}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {t("twoWaysToAccessBody", { name: model.name, byoKey: model.byoKeyLabel })}
+                  {t("twoWaysToAccessBody", {
+                    name: model.name,
+                    byoKey: model.byoKeyLabel,
+                  })}
                 </p>
               </div>
 
@@ -452,19 +458,32 @@ export function ModelDetailClient({ model, related }: Props) {
                   {t("vm0RecommendationHeading")}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {t(model.vm0Tier === "core" ? "tierExplanationCore" : "tierExplanationCostSaving", { name: model.name })}
+                  {t(
+                    model.vm0Tier === "core"
+                      ? "tierExplanationCore"
+                      : "tierExplanationCostSaving",
+                    { name: model.name },
+                  )}
                 </p>
               </div>
 
               <div>
                 <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  {t("creditsMultiplierHeading", { multiplier: model.multiplier })}
+                  {t("creditsMultiplierHeading", {
+                    multiplier: model.multiplier,
+                  })}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {t("creditsMultiplierBodyP1", { name: model.name, multiplier: model.multiplier })}
+                  {t("creditsMultiplierBodyP1", {
+                    name: model.name,
+                    multiplier: model.multiplier,
+                  })}
                 </p>
                 <p className="mt-3 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {t(getMultiplierKey(model.multiplier), { name: model.name, multiplier: model.multiplier })}
+                  {t(getMultiplierKey(model.multiplier), {
+                    name: model.name,
+                    multiplier: model.multiplier,
+                  })}
                 </p>
               </div>
 
