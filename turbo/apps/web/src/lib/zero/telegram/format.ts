@@ -134,15 +134,23 @@ export function normalizeTelegramHtmlText(text: string): string {
 export function buildTelegramResponse(
   markdown: string,
   logsUrl?: string,
+  footerText?: string,
 ): string {
   const content = markdownToTelegramHtml(markdown);
-  if (!logsUrl) {
+  const footers: string[] = [];
+
+  if (logsUrl) {
+    footers.push(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`);
+  }
+  if (footerText) {
+    footers.push(footerText);
+  }
+
+  if (footers.length === 0) {
     return content;
   }
 
-  const footer = `<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`;
-
-  return `${content}\n\n${footer}`;
+  return `${content}\n\n${footers.join("\n")}`;
 }
 
 /**
@@ -153,20 +161,29 @@ export function buildTelegramResponse(
  *
  *   <error detail>
  *
- *   📋 View logs
+ *   📋 Audit
  */
 export function buildTelegramErrorResponse(
   errorDetail: string,
   logsUrl?: string,
+  footerText?: string,
 ): string {
   const header = `❌ <b>Agent Execution Error</b>`;
   const content = markdownToTelegramHtml(errorDetail);
-  if (!logsUrl) {
+  const footers: string[] = [];
+
+  if (logsUrl) {
+    footers.push(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`);
+  }
+  if (footerText) {
+    footers.push(footerText);
+  }
+
+  if (footers.length === 0) {
     return `${header}\n\n${content}`;
   }
 
-  const footer = `<a href="${escapeHtml(logsUrl)}">📋 View logs</a>`;
-  return `${header}\n\n${content}\n\n${footer}`;
+  return `${header}\n\n${content}\n\n${footers.join("\n")}`;
 }
 
 /**

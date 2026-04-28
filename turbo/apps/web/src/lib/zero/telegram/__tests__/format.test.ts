@@ -109,6 +109,16 @@ describe("buildTelegramResponse", () => {
     expect(result).not.toContain("Audit");
   });
 
+  it("should include attribution footer without requiring an audit URL", () => {
+    const result = buildTelegramResponse(
+      "content",
+      undefined,
+      "Sent via My Assistant",
+    );
+
+    expect(result).toBe("content\n\nSent via My Assistant");
+  });
+
   it("should not render agent name HTML", () => {
     const result = buildTelegramResponse("hi", "https://example.com/logs");
 
@@ -143,6 +153,16 @@ describe("buildTelegramResponse", () => {
 });
 
 describe("buildTelegramErrorResponse", () => {
+  it("should use the Slack-aligned audit label for error footers", () => {
+    const result = buildTelegramErrorResponse(
+      "failed",
+      "https://example.com/logs",
+    );
+
+    expect(result).toContain('<a href="https://example.com/logs">📋 Audit</a>');
+    expect(result).not.toContain("View logs");
+  });
+
   it("should convert markdown links in error details", () => {
     const result = buildTelegramErrorResponse(
       "请先 [连接 Notion](https://example.com/connect?agentId=123)",

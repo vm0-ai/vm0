@@ -3,8 +3,11 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { initClient } from "@ts-rest/core";
 import {
+  integrationsTelegramMessageContract,
   integrationsTelegramUploadCompleteContract,
   integrationsTelegramUploadInitContract,
+  type SendTelegramMessageBody,
+  type SendTelegramMessageResponse,
   type TelegramUploadCompleteBody,
   type TelegramUploadCompleteResponse,
   type TelegramUploadInitBody,
@@ -22,6 +25,21 @@ interface DownloadTelegramFileResult {
   path: string;
   mimetype: string;
   size: number;
+}
+
+export async function sendTelegramMessage(
+  body: SendTelegramMessageBody,
+): Promise<SendTelegramMessageResponse> {
+  const config = await getClientConfig();
+  const client = initClient(integrationsTelegramMessageContract, config);
+
+  const result = await client.sendMessage({ body, headers: {} });
+
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to send Telegram message");
 }
 
 export async function initTelegramFileUpload(

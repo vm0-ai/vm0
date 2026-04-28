@@ -59,6 +59,56 @@ export type IntegrationsSlackMessageContract =
   typeof integrationsSlackMessageContract;
 
 /**
+ * Integration Telegram message contract
+ * POST /api/zero/integrations/telegram/message
+ *
+ * Sends a Telegram message via an org-owned bot token.
+ * Requires `telegram:write` capability (via ZERO_TOKEN).
+ */
+const sendTelegramMessageBodySchema = z.object({
+  botId: z.string().min(1, "Bot ID is required"),
+  chatId: z.string().min(1, "Chat ID is required"),
+  text: z.string().min(1, "Message text is required"),
+  replyToMessageId: z.number().int().positive().optional(),
+  messageThreadId: z.number().int().positive().optional(),
+});
+
+export type SendTelegramMessageBody = z.infer<
+  typeof sendTelegramMessageBodySchema
+>;
+
+const sendTelegramMessageResponseSchema = z.object({
+  ok: z.literal(true),
+  messageId: z.number().int(),
+  chatId: z.string(),
+});
+
+export type SendTelegramMessageResponse = z.infer<
+  typeof sendTelegramMessageResponseSchema
+>;
+
+export const integrationsTelegramMessageContract = c.router({
+  sendMessage: {
+    method: "POST",
+    path: "/api/zero/integrations/telegram/message",
+    headers: authHeadersSchema,
+    body: sendTelegramMessageBodySchema,
+    responses: {
+      200: sendTelegramMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Send a Telegram message via org bot token",
+  },
+});
+
+export type IntegrationsTelegramMessageContract =
+  typeof integrationsTelegramMessageContract;
+
+/**
  * Integration Slack file upload — init contract
  * POST /api/zero/integrations/slack/upload-file/init
  *

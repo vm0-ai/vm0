@@ -91,6 +91,7 @@ export interface TelegramInlineKeyboardMarkup {
 
 export interface TelegramSendMessageOptions {
   replyToMessageId?: number;
+  messageThreadId?: number;
   replyMarkup?: TelegramInlineKeyboardMarkup;
 }
 
@@ -195,6 +196,9 @@ export async function sendMessage(
     parse_mode: "HTML",
     ...(options?.replyToMessageId && {
       reply_parameters: { message_id: options.replyToMessageId },
+    }),
+    ...(options?.messageThreadId && {
+      message_thread_id: options.messageThreadId,
     }),
     ...(options?.replyMarkup && { reply_markup: options.replyMarkup }),
   });

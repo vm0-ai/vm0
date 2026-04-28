@@ -13,12 +13,18 @@ import {
   createTestCompose,
   createSignedCallbackRequest,
   createTelegramCallbackInstallation,
+  insertTestTelegramUserLink,
+  createTelegramThreadSession,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
-import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import {
+  seedTestRun,
+  setTestRunSelectedModel,
+} from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { seedUserFeatureSwitches } from "../../../../../../src/__tests__/db-test-seeders/feature-switches";
+import { createTestZeroAgent } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
@@ -29,6 +35,7 @@ interface TelegramCallbackPayload {
   installationId: string;
   chatId: string;
   messageId: string;
+  rootMessageId?: string | null;
   userLinkId: string;
   agentId: string;
   existingSessionId: string | null;
@@ -270,6 +277,82 @@ describe("POST /api/internal/callbacks/telegram", () => {
       const text = sendMessageHandler.calls[0]?.text ?? "";
       expect(text).toContain("📋 Audit");
       expect(text).toContain(`/activities/${runId}`);
+    });
+
+    it("renders Slack-aligned attribution footer for agent replies", async () => {
+      const user = await context.setupUser();
+      const { composeId: defaultComposeId } = await createTestCompose(
+        uniqueId("default-agent"),
+      );
+      const responderName = uniqueId("responder");
+      const { composeId: responderComposeId } =
+        await createTestCompose(responderName);
+      await createTestZeroAgent(user.orgId, responderName, {
+        displayName: "Responder",
+      });
+
+      const { installationId, userLinkId } =
+        await createTelegramCallbackInstallation(
+          defaultComposeId,
+          user.userId,
+          TEST_BOT_TOKEN,
+          { telegramUserId: "777000" },
+        );
+      const otherUserId = uniqueId("other-user");
+      const otherLink = await insertTestTelegramUserLink({
+        installationId,
+        telegramUserId: "888000",
+        vm0UserId: otherUserId,
+      });
+      const otherSession = await createTestAgentSession(
+        otherUserId,
+        responderComposeId,
+      );
+      const chatId = uniqueId("chat");
+      const rootMessageId = "100";
+      await createTelegramThreadSession({
+        telegramUserLinkId: otherLink.id,
+        chatId,
+        rootMessageId,
+        agentSessionId: otherSession.id,
+      });
+
+      const { runId } = await seedTestRun(user.userId, responderComposeId, {
+        prompt: "Test prompt",
+      });
+      await setTestRunSelectedModel(runId, "claude-opus-4-7");
+      const payload: TelegramCallbackPayload = {
+        installationId,
+        chatId,
+        messageId: "42",
+        rootMessageId,
+        userLinkId,
+        agentId: responderComposeId,
+        existingSessionId: null,
+        isDM: false,
+      };
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/internal/callbacks/telegram",
+        payload: { ...payload },
+      });
+
+      const chatActionHandler = telegramSendChatAction();
+      const sendMessageHandler = telegramSendMessage();
+      server.use(chatActionHandler.handler, sendMessageHandler.handler);
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/telegram",
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const text = sendMessageHandler.calls[0]?.text ?? "";
+      expect(text).toContain(
+        'Responded by Responder · Reply to <a href="tg://user?id=777000">Telegram user 777000</a> · Claude Opus 4.7',
+      );
     });
 
     it("renders markdown for group mention replies", async () => {

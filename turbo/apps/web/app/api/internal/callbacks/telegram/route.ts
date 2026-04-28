@@ -18,6 +18,7 @@ import {
   buildTelegramResponse,
   buildTelegramErrorResponse,
 } from "../../../../../src/lib/zero/telegram/format";
+import { resolveTelegramAgentReplyFooterText } from "../../../../../src/lib/zero/telegram/footer";
 import { extractRunOutput } from "../../../../../src/lib/infra/run/extract-run-output";
 import {
   saveTelegramThreadSession,
@@ -174,15 +175,26 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
         runId,
       })
     : undefined;
+  const footerText = run
+    ? await resolveTelegramAgentReplyFooterText({
+        orgId: run.orgId,
+        runId,
+        installationId,
+        chatId,
+        rootMessageId: isDM ? "dm" : payloadRootMessageId,
+        userLinkId,
+        agentId,
+      })
+    : undefined;
   let htmlOutput: string;
   let responseText: string | undefined;
   if (status === "completed") {
     responseText = buildOutputText(runOutput) ?? "Task completed successfully.";
-    htmlOutput = buildTelegramResponse(responseText, logsUrl);
+    htmlOutput = buildTelegramResponse(responseText, logsUrl, footerText);
   } else {
     const errorDetail =
       error ?? "The agent encountered an error during execution.";
-    htmlOutput = buildTelegramErrorResponse(errorDetail, logsUrl);
+    htmlOutput = buildTelegramErrorResponse(errorDetail, logsUrl, footerText);
   }
   const chunks = splitMessage(htmlOutput);
 
