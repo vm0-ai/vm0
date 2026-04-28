@@ -317,6 +317,33 @@ describe("Telegram bot commands", () => {
       expect(buttonUrl).toContain("/telegram/connect?bot=");
       expect(buttonUrl).toContain("tgUser=99999");
     });
+
+    it("should escape agent display name in connect prompts", async () => {
+      await updateAgentDisplayName(composeId, "Helper <b>& Co");
+      const sendMsg = telegramSendMessage();
+      server.use(sendMsg.handler);
+
+      const request = createWebhookRequest({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          chat: { id: 99999, type: "private" },
+          from: { id: 99999, username: "unknown_user" },
+          text: "/connect",
+        },
+      });
+
+      const response = await POST(request, {
+        params: Promise.resolve({ telegramBotId: installationId }),
+      });
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      expect(sendMsg.mocked).toHaveBeenCalled();
+      const text = sendMsg.calls[0]?.text ?? "";
+      expect(text).toContain("Helper &lt;b&gt;&amp; Co");
+      expect(text).not.toContain("Helper <b>& Co");
+    });
   });
 
   describe("/disconnect command", () => {

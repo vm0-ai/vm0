@@ -478,7 +478,7 @@ function normalizedBotUsername(botUsername: string | null | undefined): string {
 export function formatTelegramConnectPrompt(
   agentName: string = "Zero",
 ): string {
-  return `To use ${agentName} in Telegram, please connect your account first.`;
+  return `To use ${escapeHtml(agentName)} in Telegram, please connect your account first.`;
 }
 
 export function buildTelegramConnectReplyMarkup(
