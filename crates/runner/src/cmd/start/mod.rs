@@ -2553,6 +2553,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn panic_cleanup_status_removed_only_clears_cancel_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let orphans = OrphanedActiveRuns::new();
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, sandbox_id).await;
+        status.remove_run(run_id).await;
+        tokens.lock().await.insert(run_id, CancellationToken::new());
+        cleanup_state.mark_status_removed();
+
+        cleanup_panicked_job(
+            run_id,
+            sandbox_id,
+            Arc::clone(&tokens),
+            Arc::clone(&status),
+            idle_pool,
+            cleanup_state,
+            orphans.clone(),
+        )
+        .await;
+
+        assert!(!tokens.lock().await.contains_key(&run_id));
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert!(active_runs.is_empty());
+        assert_eq!(orphans.len().await, 0);
+    }
+
+    #[tokio::test]
     async fn panic_cleanup_active_unknown_keeps_active_and_registers_orphan() {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
@@ -2678,6 +2717,41 @@ mod tests {
         assert_eq!(idle_sessions, vec!["sess-idle-owned-cleanup"]);
         assert!(active_runs.is_empty());
         assert_eq!(orphans.len().await, 0);
+    }
+
+    #[tokio::test]
+    async fn orphan_reaper_stale_snapshot_does_not_remove_reinserted_active_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let orphans = OrphanedActiveRuns::new();
+        let run_id = RunId::new_v4();
+        let stale_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, stale_sandbox_id).await;
+        orphans.insert(run_id, stale_sandbox_id).await;
+        let stale_records = orphans.snapshot().await;
+
+        status.add_run(run_id, current_sandbox_id).await;
+        orphans.insert(run_id, current_sandbox_id).await;
+
+        reap_orphaned_active_runs_with_firecrackers(
+            &orphans,
+            &status,
+            stale_records,
+            &[],
+            false,
+            OrphanReapMode::ShutdownFinal.absent_scans_before_remove(),
+        )
+        .await;
+
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(active_runs, vec![run_id.to_string()]);
+        let remaining = orphans.snapshot().await;
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].run_id, run_id);
+        assert_eq!(remaining[0].sandbox_id, current_sandbox_id);
     }
 
     #[tokio::test]

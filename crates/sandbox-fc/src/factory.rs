@@ -1658,11 +1658,14 @@ mod tests {
     fn leaked_resources_unbounded_send_accepts_burst() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
 
-        tx.send(test_leaked_resource("first", 0)).unwrap();
-        tx.send(test_leaked_resource("second", 1)).unwrap();
+        for index in 0..64 {
+            tx.send(test_leaked_resource(&format!("leaked-{index}"), index))
+                .unwrap();
+        }
 
-        assert_eq!(rx.try_recv().unwrap().sandbox_id, "first");
-        assert_eq!(rx.try_recv().unwrap().sandbox_id, "second");
+        for index in 0..64 {
+            assert_eq!(rx.try_recv().unwrap().sandbox_id, format!("leaked-{index}"));
+        }
     }
 
     #[tokio::test]
@@ -1671,8 +1674,10 @@ mod tests {
         let live_sender_clone = tx.clone();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
-        tx.send(test_leaked_resource("first", 0)).unwrap();
-        tx.send(test_leaked_resource("second", 1)).unwrap();
+        for index in 0..64 {
+            tx.send(test_leaked_resource(&format!("leaked-{index}"), index))
+                .unwrap();
+        }
 
         let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let cleaned_clone = Arc::clone(&cleaned);
@@ -1693,10 +1698,8 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(
-            *cleaned.lock().await,
-            vec!["first".to_string(), "second".to_string()]
-        );
+        let expected: Vec<String> = (0..64).map(|index| format!("leaked-{index}")).collect();
+        assert_eq!(*cleaned.lock().await, expected);
         assert!(matches!(
             live_sender_clone.send(test_leaked_resource("late", 2)),
             Err(tokio::sync::mpsc::error::SendError(_))
