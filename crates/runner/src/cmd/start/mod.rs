@@ -1373,8 +1373,8 @@ fn spawn_job(
         // its own info marker; everything else with `err` set is a failure
         // (panics, executor internal errors, non-zero exits with
         // stderr/guest error file); otherwise the job finished normally.
-        let cancelled = job_cancel.is_cancelled();
-        match (cancelled, err.as_deref()) {
+        let cancelled_for_log = job_cancel.is_cancelled();
+        match (cancelled_for_log, err.as_deref()) {
             (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
             (false, Some(e)) => {
                 error!(run_id = %run_id, exit_code, reused, error = %e, "job execution failed");
@@ -1384,6 +1384,10 @@ fn spawn_job(
 
         let completion_payload =
             CompletionPayload::new(run_id, exit_code, err, sandbox_id, reuse_result);
+        // Cancellation can arrive after terminal logging but before the final
+        // park/destroy decision. Re-read here so late cancels still prevent
+        // parking, matching the pre-refactor behavior.
+        let cancelled = job_cancel.is_cancelled();
         let completion_ready = finalize_sandbox_for_completion(
             sandbox,
             ActiveBudgetLease::new(active_lease),
