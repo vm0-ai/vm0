@@ -96,36 +96,38 @@ export function UsageInsightChatsTable({
                     </TooltipTrigger>
                     <TooltipContent side="top" sideOffset={4}>
                       <p className="text-xs">{fullTitle}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Click to open chat</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Click to open chat
+                      </p>
                     </TooltipContent>
                   </Tooltip>
-                <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${pct}%`, backgroundColor: accent }}
-                  />
-                </div>
-                <span className="text-xs tabular-nums opacity-70 text-right">
-                  {formatValue(value)}
-                </span>
-              </Link>
+                  <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${pct}%`, backgroundColor: accent }}
+                    />
+                  </div>
+                  <span className="text-xs tabular-nums opacity-70 text-right">
+                    {formatValue(value)}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          {chatOtherCount > 0 && (
+            <li
+              className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
+                hoveredId === null ? "opacity-100" : "opacity-30"
+              }`}
+            >
+              <span className="text-sm text-muted-foreground truncate col-span-2">
+                +{chatOtherCount} more {chatOtherCount === 1 ? "chat" : "chats"}
+              </span>
+              <span className="text-xs tabular-nums text-muted-foreground text-right">
+                {formatValue(chatOtherCredits)}
+              </span>
             </li>
-          );
-        })}
-        {chatOtherCount > 0 && (
-          <li
-            className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
-              hoveredId === null ? "opacity-100" : "opacity-30"
-            }`}
-          >
-            <span className="text-sm text-muted-foreground truncate col-span-2">
-              +{chatOtherCount} more {chatOtherCount === 1 ? "chat" : "chats"}
-            </span>
-            <span className="text-xs tabular-nums text-muted-foreground text-right">
-              {formatValue(chatOtherCredits)}
-            </span>
-          </li>
-        )}
+          )}
         </ul>
       </TooltipProvider>
     </section>

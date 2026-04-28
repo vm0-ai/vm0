@@ -74,7 +74,8 @@ export function UsageInsightSchedulesTable({
             const value = row.credits;
             const pct = (value / maxValue) * 100;
             const isActive = hoveredId === null || hoveredId === row.scheduleId;
-            const fullName = row.scheduleDescription?.trim() || row.scheduleName;
+            const fullName =
+              row.scheduleDescription?.trim() || row.scheduleName;
             return (
               <li key={row.scheduleId}>
                 <Link
@@ -98,37 +99,39 @@ export function UsageInsightSchedulesTable({
                     </TooltipTrigger>
                     <TooltipContent side="top" sideOffset={4}>
                       <p className="text-xs">{fullName}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Click to open schedule</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        Click to open schedule
+                      </p>
                     </TooltipContent>
                   </Tooltip>
-                <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
-                  <div
-                    className="h-full rounded-full"
-                    style={{ width: `${pct}%`, backgroundColor: accent }}
-                  />
-                </div>
-                <span className="text-xs tabular-nums opacity-70 text-right">
-                  {formatValue(value)}
-                </span>
-              </Link>
+                  <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${pct}%`, backgroundColor: accent }}
+                    />
+                  </div>
+                  <span className="text-xs tabular-nums opacity-70 text-right">
+                    {formatValue(value)}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          {scheduleOtherCount > 0 && (
+            <li
+              className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
+                hoveredId === null ? "opacity-100" : "opacity-30"
+              }`}
+            >
+              <span className="text-sm text-muted-foreground truncate col-span-2">
+                +{scheduleOtherCount} more{" "}
+                {scheduleOtherCount === 1 ? "schedule" : "schedules"}
+              </span>
+              <span className="text-xs tabular-nums text-muted-foreground text-right">
+                {formatValue(scheduleOtherCredits)}
+              </span>
             </li>
-          );
-        })}
-        {scheduleOtherCount > 0 && (
-          <li
-            className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
-              hoveredId === null ? "opacity-100" : "opacity-30"
-            }`}
-          >
-            <span className="text-sm text-muted-foreground truncate col-span-2">
-              +{scheduleOtherCount} more{" "}
-              {scheduleOtherCount === 1 ? "schedule" : "schedules"}
-            </span>
-            <span className="text-xs tabular-nums text-muted-foreground text-right">
-              {formatValue(scheduleOtherCredits)}
-            </span>
-          </li>
-        )}
+          )}
         </ul>
       </TooltipProvider>
     </section>
