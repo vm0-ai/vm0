@@ -119,4 +119,3 @@ describe("zero telegram signals", () => {
     expect(getMockTelegramIntegration().statuses.bot_alpha).toBeUndefined();
   });
 });
-

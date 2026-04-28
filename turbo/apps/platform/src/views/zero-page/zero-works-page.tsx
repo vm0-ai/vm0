@@ -30,9 +30,7 @@ import {
   showUninstallDialog$,
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
-import {
-  telegramBots$,
-} from "../../signals/zero-page/zero-telegram.ts";
+import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";

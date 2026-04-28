@@ -931,7 +931,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     });
     expect(artifactsRequests).toBeGreaterThanOrEqual(2);
   });
-
 });
 
 // CHAT-D-043: Message status indicators render in ChatMessageRow

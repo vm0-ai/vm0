@@ -224,7 +224,7 @@ export const onboardingDisplayName$ = computed(async (get) => {
   return await get(currentChatAgentDisplayName$);
 });
 
-export const onboardingShowTelegram$ = computed(async () => true);
+export const onboardingShowTelegram$ = computed(() => true);
 
 export const completeOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
