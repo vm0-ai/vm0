@@ -137,6 +137,9 @@ runs:
         fi
 
         add_env VM0_API_URL "$api_url"
+        if [[ "$INPUT_APP" == "api" ]]; then
+          add_env VM0_WEB_URL "$web_url"
+        fi
         add_env BLOG_BASE_URL "$web_url"
         add_env STRAPI_URL "$strapi_url"
         add_var CLERK_PUBLISHABLE_KEY CLERK_PUBLISHABLE_KEY

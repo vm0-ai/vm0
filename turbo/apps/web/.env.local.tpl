@@ -159,6 +159,10 @@ NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
 # Required: App UI URL (for settings page links in error messages)
 APP_URL=https://app.vm7.ai:8443
 
+# Optional: Web app URL — apps/api proxies any unmatched route here while
+# legacy endpoints are migrated. Leave unset to fall through to a plain 404.
+VM0_WEB_URL=https://www.vm7.ai:8443
+
 # Optional: Blog Configuration
 BLOG_BASE_URL=
 BLOG_DATA_SOURCE=strapi
