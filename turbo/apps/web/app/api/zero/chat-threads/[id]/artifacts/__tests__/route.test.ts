@@ -45,7 +45,11 @@ describe("GET /api/zero/chat-threads/:threadId/artifacts", () => {
     expect(response.status).toBe(401);
   });
 
-  it("returns 403 when the feature switch is disabled", async () => {
+  it("returns 403 when the feature switch is disabled by override", async () => {
+    await seedUserFeatureSwitches(testOrgId, testUserId, {
+      [FeatureSwitchKey.ChatArtifactsDrawer]: false,
+    });
+
     const response = await GET(
       createTestRequest(
         "http://localhost:3000/api/zero/chat-threads/thread-id/artifacts",
