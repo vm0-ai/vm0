@@ -98,7 +98,7 @@ async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
 // -----------------------------------------------------------------------
 
 /// A control socket server whose listener has already been bound.
-pub struct BoundControlServer {
+pub(crate) struct BoundControlServer {
     sock_path: PathBuf,
     listener: UnixListener,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
@@ -106,13 +106,13 @@ pub struct BoundControlServer {
 
 impl BoundControlServer {
     /// Spawn the accept loop for this pre-bound control socket.
-    pub fn spawn(self) -> JoinHandle<()> {
+    pub(crate) fn spawn(self) -> JoinHandle<()> {
         spawn_bound_server(self.listener, self.sock_path, self.guest)
     }
 }
 
 /// Bind the control socket before spawning the accept loop.
-pub fn bind_server(
+pub(crate) fn bind_server(
     sock_path: PathBuf,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
 ) -> io::Result<BoundControlServer> {
