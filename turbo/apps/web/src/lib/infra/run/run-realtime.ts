@@ -9,7 +9,7 @@ function runChangedTopic(runId: string): string {
   return `run:changed:${runId}`;
 }
 
-export async function publishRunChangedForUser(
+async function publishRunChangedForUser(
   userId: string,
   runId: string,
   payload: unknown = null,

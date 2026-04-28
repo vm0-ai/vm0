@@ -28,6 +28,7 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { randomUUID } from "crypto";
 import * as axiomModule from "../../../../../../src/lib/shared/axiom";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 /**
  * Forward an MSW-intercepted fetch to the matching Next.js route handler so
@@ -85,6 +86,7 @@ describe("POST /api/webhooks/agent/events", () => {
     ingestToAxiomSpy = vi
       .spyOn(axiomModule, "ingestToAxiom")
       .mockReturnValue(true);
+    mockAblyPublish.mockClear();
 
     // Reset auth mock for webhook tests (which use token auth)
     mockClerk({ userId: null });
@@ -410,6 +412,10 @@ describe("POST /api/webhooks/agent/events", () => {
           }),
         ]),
       );
+      expect(mockAblyPublish).toHaveBeenCalledWith(`run:changed:${testRunId}`, {
+        firstSequence: 0,
+        lastSequence: 1,
+      });
     });
   });
 
