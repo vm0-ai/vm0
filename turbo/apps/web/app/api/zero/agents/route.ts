@@ -79,11 +79,12 @@ const router = tsr.router(zeroAgentsMainContract, {
     // FOR UPDATE serializes concurrent creates for the same org so the
     // count check and insert are atomic.
     const txResult = await globalThis.services.db.transaction(async (tx) => {
-      const [{ value: agentCount }] = await tx
+      const [row] = await tx
         .select({ value: count() })
         .from(zeroAgents)
         .where(eq(zeroAgents.orgId, org.orgId))
         .for("update");
+      const agentCount = row?.value ?? 0;
 
       if (agentCount >= 7) {
         return { blocked: true as const };
