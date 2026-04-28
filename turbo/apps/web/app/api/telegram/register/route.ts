@@ -19,6 +19,7 @@ import { buildTelegramWebhookUrl } from "../../../../src/lib/zero/telegram/webho
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { buildTelegramBotStatus } from "../../integrations/telegram/telegram-status";
 import { getWorkspaceAgentDisplayLabel } from "../../../../src/lib/zero/telegram/handlers/shared";
+import { publishTelegramOrgChangedSafely } from "../../../../src/lib/zero/telegram/realtime";
 
 const registerBodySchema = z.object({
   botToken: z.string().min(1),
@@ -230,6 +231,8 @@ async function handleExistingInstallation(params: {
     .where(eq(telegramInstallations.telegramBotId, existing.telegramBotId))
     .returning();
 
+  await publishTelegramOrgChangedSafely(orgId);
+
   return NextResponse.json(
     await buildTelegramBotStatus(updated ?? existing, userId, "valid"),
   );
@@ -371,6 +374,8 @@ export async function POST(request: Request) {
 
     return configureError;
   }
+
+  await publishTelegramOrgChangedSafely(org.orgId);
 
   return NextResponse.json(
     await buildTelegramBotStatus(installation, userId, "valid"),

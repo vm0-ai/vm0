@@ -18,6 +18,7 @@ import { logger } from "../../../../../../src/lib/shared/logger";
 import { decryptSecretsMap } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../../../../../../src/lib/infra/run/runner-group";
 import { recordSandboxOperation } from "../../../../../../src/lib/infra/metrics";
+import { publishRunChangedForUserSafely } from "../../../../../../src/lib/infra/run/run-realtime";
 
 const log = logger("api:runners:jobs:claim");
 
@@ -122,6 +123,10 @@ const router = tsr.router(runnersJobClaimContract, {
     if (!run) {
       return createErrorResponse("NOT_FOUND", "Run not found");
     }
+
+    await publishRunChangedForUserSafely(run.userId, runId, {
+      status: "running",
+    });
 
     log.debug(`Job ${runId} claimed`);
 

@@ -13,6 +13,7 @@ import {
   getMockTelegramIntegration,
   setMockTelegramIntegration,
 } from "../../../mocks/handlers/api-integrations-telegram.ts";
+import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { resetMockOrg, setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { pathname$, searchParams$ } from "../../../signals/route.ts";
@@ -126,6 +127,35 @@ describe("telegram settings page", () => {
     expect(
       screen.getByTestId("telegram-bot-avatar-fallback-alpha"),
     ).toBeInTheDocument();
+  });
+
+  it("refreshes connection status when Telegram changes over Ably", async () => {
+    setMockTelegramIntegration({
+      statuses: [telegramStatus("alpha", { username: "alpha_bot" })],
+    });
+    setupTelegramPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("@alpha_bot")).toBeInTheDocument();
+      expect(screen.getByText("Not connected")).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(hasSubscription("telegram:changed")).toBeTruthy();
+    });
+
+    setMockTelegramIntegration({
+      statuses: [
+        telegramStatus("alpha", {
+          username: "alpha_bot",
+          isConnected: true,
+        }),
+      ],
+    });
+    triggerAblyEvent("telegram:changed");
+
+    await waitFor(() => {
+      expect(screen.getByText("Connected")).toBeInTheDocument();
+    });
   });
 
   it("shows the empty state and redirects to connect after adding a Telegram bot", async () => {

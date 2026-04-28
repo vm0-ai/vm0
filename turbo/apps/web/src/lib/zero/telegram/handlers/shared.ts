@@ -30,6 +30,7 @@ import {
   extractTelegramMessageEntities,
   formatCurrentTelegramEntitiesForPrompt,
 } from "../entities";
+import { publishTelegramUserChangedSafely } from "../realtime";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 import type { UserInfoOptions } from "../../integration-prompt";
@@ -243,9 +244,11 @@ export async function linkTelegramUserToVm0User(params: {
 
   if (existingTelegramLink) {
     if (existingTelegramLink.vm0UserId === params.vm0UserId) {
+      const userLink = await touchTelegramUserLink(existingTelegramLink);
+      await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
-        userLink: await touchTelegramUserLink(existingTelegramLink),
+        userLink,
       };
     }
 
@@ -269,9 +272,11 @@ export async function linkTelegramUserToVm0User(params: {
 
   if (existingVm0Link) {
     if (existingVm0Link.telegramUserId === params.telegramUserId) {
+      const userLink = await touchTelegramUserLink(existingVm0Link);
+      await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
-        userLink: await touchTelegramUserLink(existingVm0Link),
+        userLink,
       };
     }
 
@@ -288,9 +293,11 @@ export async function linkTelegramUserToVm0User(params: {
         .where(eq(telegramUserLinks.id, existingVm0Link.id))
         .returning();
 
+      const userLink = updated ?? existingVm0Link;
+      await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
-        userLink: updated ?? existingVm0Link,
+        userLink,
       };
     }
 
@@ -312,6 +319,7 @@ export async function linkTelegramUserToVm0User(params: {
     .returning();
 
   if (inserted) {
+    await publishTelegramUserChangedSafely(params.vm0UserId);
     return { ok: true, userLink: inserted };
   }
 

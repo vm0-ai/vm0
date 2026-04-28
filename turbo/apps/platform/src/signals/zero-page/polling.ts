@@ -100,6 +100,7 @@ function createQueuePosition(runId: string) {
 
   return {
     queuePosition$: computed(async (get) => {
+      get(internalReload$);
       const createClient = get(zeroClient$);
       const client = createClient(zeroQueuePositionContract);
       const result = await accept(

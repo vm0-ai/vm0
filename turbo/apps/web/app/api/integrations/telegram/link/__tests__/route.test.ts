@@ -16,6 +16,7 @@ import {
   signTestConnectParams,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { signConnectParams } from "../../../../../../src/lib/zero/telegram/connect-token";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 const TEST_BOT_TOKEN = "test-bot-token";
 
@@ -86,6 +87,7 @@ function linkRequest(
 describe("/api/integrations/telegram/link", () => {
   beforeEach(() => {
     context.setupMocks();
+    mockAblyPublish.mockClear();
     server.use(telegramOauthHead("0"));
   });
 
@@ -251,6 +253,7 @@ describe("/api/integrations/telegram/link", () => {
 
       const response = await DELETE(linkRequest("DELETE"));
       expect(response.status).toBe(204);
+      expect(mockAblyPublish).toHaveBeenCalledWith("telegram:changed", null);
 
       // Verify link is gone
       const getResponse = await GET(linkRequest("GET"));
@@ -368,6 +371,7 @@ describe("/api/integrations/telegram/link", () => {
       expect(response.status).toBe(200);
       expect(data.botUsername).toBe(`bot_${telegramBotId}`);
       expect(data.telegramUserId).toBe(String(telegramUserId));
+      expect(mockAblyPublish).toHaveBeenCalledWith("telegram:changed", null);
 
       // Verify link was created
       const getResponse = await GET(linkRequest("GET"));
@@ -560,6 +564,7 @@ describe("/api/integrations/telegram/link", () => {
       expect(response.status).toBe(200);
       expect(data.botUsername).toBe(`bot_${telegramBotId}`);
       expect(data.telegramUserId).toBe(telegramUserId);
+      expect(mockAblyPublish).toHaveBeenCalledWith("telegram:changed", null);
 
       // Verify link was created
       const getResponse = await GET(linkRequest("GET"));

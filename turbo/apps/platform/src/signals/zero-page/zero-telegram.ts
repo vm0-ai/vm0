@@ -9,6 +9,7 @@ import {
 import { zeroClient$ } from "../api-client.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { accept } from "../../lib/accept.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 const internalReload$ = state(0);
 const internalTelegramAddDialogOpen$ = state(false);
@@ -152,11 +153,22 @@ export const telegramBots$ = computed(async (get): Promise<TelegramBot[]> => {
   return result.body.bots;
 });
 
-const reloadTelegramBots$ = command(({ set }) => {
+export const reloadTelegramBots$ = command(({ set }) => {
   set(internalReload$, (prev) => {
     return prev + 1;
   });
 });
+
+export const startTelegramSettingsRealtime$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const onTelegramChanged$ = command(({ set }) => {
+      set(reloadTelegramBots$);
+      return false;
+    });
+
+    await set(setAblyLoop$, "telegram:changed", onTelegramChanged$, signal);
+  },
+);
 
 export const registerTelegramBot$ = command(
   async (

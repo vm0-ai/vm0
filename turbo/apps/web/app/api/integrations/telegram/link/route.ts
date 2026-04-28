@@ -25,6 +25,7 @@ import {
 import { verifyConnectSignature } from "../../../../../src/lib/zero/telegram/connect-token";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { checkTelegramDomain } from "../../../../../src/lib/zero/telegram/check-domain";
+import { publishTelegramUserChangedSafely } from "../../../../../src/lib/zero/telegram/realtime";
 
 const log = logger("api:telegram:link");
 
@@ -145,6 +146,8 @@ export async function DELETE(request: Request) {
       { status: 404 },
     );
   }
+
+  await publishTelegramUserChangedSafely(userId);
 
   return new NextResponse(null, { status: 204 });
 }
