@@ -202,18 +202,27 @@ function MobileTopBar() {
 
   const activeId = useGet(activeRoute$);
 
+  // When the mobile redesign is on, the bottom tab bar's "More" tab opens
+  // the same sidebar overlay as the hamburger, so the top-bar hamburger is
+  // redundant. Hide it.
+  const features = useLastResolved(featureSwitch$);
+  const hideHamburger =
+    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
-      <button
-        type="button"
-        onClick={() => {
-          setExpanded(true);
-        }}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-        aria-label="Open menu"
-      >
-        <IconMenu2 size={18} stroke={1.8} />
-      </button>
+      {!hideHamburger && (
+        <button
+          type="button"
+          onClick={() => {
+            setExpanded(true);
+          }}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+          aria-label="Open menu"
+        >
+          <IconMenu2 size={18} stroke={1.8} />
+        </button>
+      )}
       {breadcrumb && (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}

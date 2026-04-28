@@ -288,6 +288,24 @@ describe("mobile bottom tab bar - hidden when feature switch off (MOBILE-TAB-005
   });
 });
 
+describe("mobile top bar - hamburger hidden when redesign on (MOBILE-TOP-001)", () => {
+  it("does not render the Open menu hamburger when MobileNativeV1 is enabled", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+    });
+
+    // Bottom tab bar appears once the redesign is on — wait for that as a
+    // settled-render signal rather than racing the hamburger query.
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-bottom-tab-bar")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Open menu")).not.toBeInTheDocument();
+  });
+});
+
 describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () => {
   it("marks the Teammates tab as the current page on /agents", async () => {
     mockBaseAPIs();
