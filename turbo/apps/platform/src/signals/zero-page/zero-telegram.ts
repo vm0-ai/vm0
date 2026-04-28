@@ -5,6 +5,7 @@ import {
   zeroIntegrationsTelegramContract,
   type TelegramBot,
   type TelegramBotStatus,
+  type TelegramSetupStatus,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { zeroClient$ } from "../api-client.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -189,6 +190,26 @@ export const registerTelegramBot$ = command(
     set(reloadTelegramBots$);
     toast.success("Telegram bot added");
     return (result as { body: TelegramBotStatus }).body;
+  },
+);
+
+export const checkTelegramBotSetupStatus$ = command(
+  async (
+    { get },
+    input: { botToken: string; origin?: string },
+    signal: AbortSignal,
+  ): Promise<TelegramSetupStatus> => {
+    const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
+    const result = await accept(
+      client.setupStatus({
+        headers: {},
+        body: input,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return (result as { body: TelegramSetupStatus }).body;
   },
 );
 

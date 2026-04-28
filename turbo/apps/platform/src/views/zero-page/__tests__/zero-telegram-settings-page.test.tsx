@@ -161,12 +161,18 @@ describe("telegram settings page", () => {
     });
   });
 
-  it("shows the empty state and redirects to connect after adding a Telegram bot", async () => {
-    const writeText = vi
-      .spyOn(navigator.clipboard, "writeText")
-      .mockResolvedValue(undefined);
+  it("walks through Telegram bot setup and redirects to connect after adding a bot", async () => {
+    vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
 
-    setMockTelegramIntegration({ statuses: [] });
+    setMockTelegramIntegration({
+      statuses: [],
+      setupStatus: {
+        id: "bot_registered",
+        username: "registered_bot",
+        domainConfigured: false,
+        privacyDisabled: false,
+      },
+    });
     setupTelegramPage();
 
     await waitFor(() => {
@@ -182,8 +188,6 @@ describe("telegram settings page", () => {
     const botFatherLink = within(dialog).getByText("@BotFather");
     expect(botFatherLink).toHaveAttribute("href", "https://t.me/BotFather");
     expect(within(dialog).getByText("/newbot")).toBeInTheDocument();
-    expect(within(dialog).getByText("/setprivacy")).toBeInTheDocument();
-    expect(within(dialog).getByText("/setdomain")).toBeInTheDocument();
     expect(within(dialog).getByText(location.hostname)).toBeInTheDocument();
 
     click(within(dialog).getByLabelText("Copy /newbot"));
@@ -192,23 +196,69 @@ describe("telegram settings page", () => {
         "copied!",
       );
     });
-    click(within(dialog).getByLabelText("Copy /setprivacy"));
-    click(within(dialog).getByLabelText("Copy /setdomain"));
-    click(within(dialog).getByLabelText(`Copy ${location.hostname}`));
+    await fill(screen.getByLabelText("Bot token"), "123:token");
+    click(within(dialog).getByText("Verify token"));
+    await waitFor(() => {
+      expect(within(dialog).getByText("Token verified")).toBeInTheDocument();
+      expect(within(dialog).getByText("@registered_bot")).toBeInTheDocument();
+    });
+    click(within(dialog).getByText("Next"));
 
     await waitFor(() => {
-      expect(writeText).toHaveBeenCalledWith("/newbot");
-      expect(writeText).toHaveBeenCalledWith("/setprivacy");
-      expect(writeText).toHaveBeenCalledWith("/setdomain");
-      expect(writeText).toHaveBeenCalledWith(location.hostname);
-      expect(writeText).not.toHaveBeenCalledWith("@BotFather");
+      expect(within(dialog).getByText("/setdomain")).toBeInTheDocument();
     });
+    click(within(dialog).getByLabelText("Copy /setdomain"));
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Copy /setdomain"),
+      ).toHaveTextContent("copied!");
+    });
+    click(within(dialog).getByLabelText(`Copy ${location.hostname}`));
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText(`Copy ${location.hostname}`),
+      ).toHaveTextContent("copied!");
+    });
+    setMockTelegramIntegration({
+      setupStatus: {
+        id: "bot_registered",
+        username: "registered_bot",
+        domainConfigured: true,
+        privacyDisabled: false,
+      },
+    });
+    click(within(dialog).getByText("Check domain"));
+    await waitFor(() => {
+      expect(within(dialog).getByText("Domain detected")).toBeInTheDocument();
+    });
+    click(within(dialog).getByText("Next"));
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("/setprivacy")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          "Normal group messages will not trigger your agent.",
+        ),
+      ).toBeInTheDocument();
+    });
+    click(within(dialog).getByLabelText("Copy /setprivacy"));
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Copy /setprivacy"),
+      ).toHaveTextContent("copied!");
+    });
+    click(within(dialog).getByText("Skip for now"));
+    await waitFor(() => {
+      expect(
+        within(dialog).getByText("Privacy mode will stay on for now"),
+      ).toBeInTheDocument();
+    });
+    click(within(dialog).getByText("Next"));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Default agent")).toHaveTextContent("Zero");
     });
 
-    await fill(screen.getByLabelText("Bot token"), "123:token");
     click(within(dialog).getByText("Add bot"));
 
     await waitFor(() => {
@@ -219,6 +269,61 @@ describe("telegram settings page", () => {
       expect(context.store.get(searchParams$).get("bot")).toBe(
         "bot_registered",
       );
+    });
+  });
+
+  it("allows privacy confirmation before creating a Telegram bot", async () => {
+    setMockTelegramIntegration({
+      statuses: [],
+      setupStatus: {
+        id: "bot_registered",
+        username: "registered_bot",
+        domainConfigured: true,
+        privacyDisabled: false,
+      },
+    });
+    setupTelegramPage();
+
+    click(await screen.findByText("Add bot"));
+    const dialog = await screen.findByRole("dialog");
+    await fill(screen.getByLabelText("Bot token"), "123:token");
+    click(within(dialog).getByText("Verify token"));
+    await waitFor(() => {
+      expect(within(dialog).getByText("Token verified")).toBeInTheDocument();
+    });
+    click(within(dialog).getByText("Next"));
+    await waitFor(() => {
+      expect(within(dialog).getByText("Domain detected")).toBeInTheDocument();
+    });
+    click(within(dialog).getByText("Next"));
+
+    setMockTelegramIntegration({
+      setupStatus: {
+        id: "bot_registered",
+        username: "registered_bot",
+        domainConfigured: true,
+        privacyDisabled: true,
+      },
+    });
+    click(within(dialog).getByText("Check privacy"));
+
+    await waitFor(() => {
+      expect(
+        within(dialog).getByText("Privacy mode is off"),
+      ).toBeInTheDocument();
+    });
+    click(within(dialog).getByText("Next"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Default agent")).toHaveTextContent("Zero");
+    });
+    click(within(dialog).getByText("Add bot"));
+
+    await waitFor(() => {
+      expect(
+        getMockTelegramIntegration().statuses.bot_registered,
+      ).toBeDefined();
+      expect(context.store.get(pathname$)).toBe("/telegram/connect");
     });
   });
 

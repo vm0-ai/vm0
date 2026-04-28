@@ -978,4 +978,5 @@ export {
   type TelegramBotStatus,
   type TelegramListResponse,
   type TelegramLinkStatusResponse,
+  type TelegramSetupStatus,
 } from "./zero-integrations-telegram";

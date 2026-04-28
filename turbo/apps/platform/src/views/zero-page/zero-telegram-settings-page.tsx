@@ -1,17 +1,24 @@
-import { Component } from "react";
+import { Component, type FormEvent } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconAlertTriangle,
+  IconArrowLeft,
+  IconArrowRight,
   IconCircleCheck,
   IconDotsVertical,
+  IconExternalLink,
   IconKey,
   IconLoader2,
   IconPlus,
   IconRefresh,
   IconRobot,
 } from "@tabler/icons-react";
-import type { TelegramBot } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
+import type {
+  TelegramBot,
+  TelegramBotStatus,
+  TelegramSetupStatus,
+} from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
@@ -48,6 +55,7 @@ import {
 } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
+  checkTelegramBotSetupStatus$,
   disconnectTelegramAccount$,
   registerTelegramBot$,
   reinstallTelegramBot$,
@@ -80,6 +88,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { BetaBadge } from "./components/settings/beta-badge.tsx";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
+import { delay } from "signal-timers";
 
 interface DefaultAgentLabel {
   id: string | null;
@@ -300,6 +309,13 @@ function getTelegramLoginDomain(): string {
   return location.hostname;
 }
 
+function getTelegramLoginOrigin(): string | undefined {
+  if (typeof location === "undefined" || !location.origin) {
+    return undefined;
+  }
+  return location.origin;
+}
+
 class CopyableTelegramValue extends Component<
   { value: string },
   { copied: boolean }
@@ -357,108 +373,1060 @@ function TelegramCommand({ command }: { command: string }) {
   return <CopyableTelegramValue value={command} />;
 }
 
-function AddTelegramBotInstructions({ domain }: { domain: string }) {
+type AddTelegramStep = "token" | "domain" | "privacy" | "create";
+type SetupPollTarget = "token" | "domain" | "privacy";
+
+const ADD_TELEGRAM_STEP_ORDER = [
+  "token",
+  "domain",
+  "privacy",
+  "create",
+] as const satisfies readonly AddTelegramStep[];
+
+const ADD_TELEGRAM_STEPS = [
+  { key: "token", label: "Token" },
+  { key: "domain", label: "Domain" },
+  { key: "privacy", label: "Privacy" },
+  { key: "create", label: "Create" },
+] as const satisfies readonly { key: AddTelegramStep; label: string }[];
+
+const SETUP_POLL_ATTEMPTS = 20;
+const SETUP_POLL_INTERVAL_MS = 2000;
+
+function telegramStepIndex(step: AddTelegramStep): number {
+  return ADD_TELEGRAM_STEPS.findIndex((item) => {
+    return item.key === step;
+  });
+}
+
+function AddTelegramBotProgress({
+  step,
+  completedSteps,
+}: {
+  step: AddTelegramStep;
+  completedSteps: ReadonlySet<AddTelegramStep>;
+}) {
+  const currentIndex = telegramStepIndex(step);
   return (
-    <div className="rounded-lg border border-border bg-muted/30 p-4">
-      <ol className="list-decimal space-y-3 pl-4 text-sm leading-relaxed text-muted-foreground">
-        <li>
-          Open{" "}
-          <a
-            href="https://t.me/BotFather"
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-foreground underline-offset-4 hover:underline"
-          >
-            {BOT_FATHER_HANDLE}
-          </a>
-          , send <TelegramCommand command="/newbot" />, choose a name and
-          username, then copy the bot token.
-        </li>
-        <li>
-          If the bot should respond to normal group chat messages, send{" "}
-          <TelegramCommand command="/setprivacy" />, choose the bot, and disable
-          privacy mode. With privacy enabled, Telegram only sends commands,
-          replies, and mentions from groups.
-        </li>
-        <li>
-          For Telegram web login, send <TelegramCommand command="/setdomain" />,
-          choose the bot, and set the domain to{" "}
-          <CopyableTelegramValue value={domain} />.
-        </li>
-      </ol>
+    <div className="space-y-3">
+      <div className="flex items-center gap-1.5">
+        {ADD_TELEGRAM_STEPS.map((item, index) => {
+          const active = index === currentIndex;
+          const complete = completedSteps.has(item.key);
+          return (
+            <div
+              key={item.key}
+              className={
+                complete || active
+                  ? "h-1 flex-1 rounded-full bg-foreground"
+                  : "h-1 flex-1 rounded-full bg-muted"
+              }
+            />
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-4 gap-2 text-xs">
+        {ADD_TELEGRAM_STEPS.map((item, index) => {
+          const active = index === currentIndex;
+          const complete = completedSteps.has(item.key);
+          return (
+            <div
+              key={item.key}
+              className={
+                active || complete
+                  ? "truncate font-medium text-foreground"
+                  : "truncate text-muted-foreground"
+              }
+            >
+              {item.label}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function AddTelegramBotFields({
-  agents,
-  defaultAgent,
-  agentId,
-  botToken,
-  selectedAgentLabel,
-  disabled,
-  adding,
-  onBotTokenChange,
-  onAgentChange,
+function TelegramSetupStatusLine({
+  setupStatus,
 }: {
-  agents: TeamComposeItem[];
-  defaultAgent: DefaultAgentLabel;
-  agentId: string | undefined;
+  setupStatus: TelegramSetupStatus | null;
+}) {
+  if (!setupStatus) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+        <IconCircleCheck className="h-4 w-4 text-green-600" />
+        Token verified
+      </span>
+      <span>
+        {setupStatus.username ? `@${setupStatus.username}` : setupStatus.id}
+      </span>
+    </div>
+  );
+}
+
+function AddTelegramBotTokenField({
+  botToken,
+  disabled,
+  onBotTokenChange,
+}: {
   botToken: string;
-  selectedAgentLabel: string;
   disabled: boolean;
-  adding: boolean;
   onBotTokenChange: (value: string) => void;
-  onAgentChange: (value: string) => void;
 }) {
   return (
-    <div className="grid gap-4 sm:grid-cols-[1fr_16rem]">
-      <div className="min-w-0">
-        <label
-          htmlFor="telegram-bot-token"
-          className="mb-2 block text-sm font-medium text-foreground"
-        >
-          Bot token
-        </label>
+    <div>
+      <label
+        htmlFor="telegram-bot-token"
+        className="mb-2 block text-sm font-medium text-foreground"
+      >
+        Bot token
+      </label>
+      <div className="relative">
+        <IconKey
+          size={16}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+        />
         <Input
           id="telegram-bot-token"
           type="password"
           value={botToken}
-          disabled={disabled || adding}
+          disabled={disabled}
           autoComplete="off"
           placeholder="123456:ABC-DEF"
+          className="pl-9"
           onChange={(event) => {
             onBotTokenChange(event.target.value);
           }}
         />
       </div>
-      <div className="min-w-0">
-        <label
-          htmlFor="telegram-new-bot-agent"
-          className="mb-2 block text-sm font-medium text-foreground"
+    </div>
+  );
+}
+
+function AddTelegramBotAgentField({
+  agents,
+  defaultAgent,
+  agentId,
+  selectedAgentLabel,
+  disabled,
+  onAgentChange,
+}: {
+  agents: TeamComposeItem[];
+  defaultAgent: DefaultAgentLabel;
+  agentId: string | undefined;
+  selectedAgentLabel: string;
+  disabled: boolean;
+  onAgentChange: (value: string) => void;
+}) {
+  return (
+    <div className="min-w-0">
+      <label
+        htmlFor="telegram-new-bot-agent"
+        className="mb-2 block text-sm font-medium text-foreground"
+      >
+        Default agent
+      </label>
+      <Select
+        value={agentId ?? ""}
+        disabled={disabled || agents.length === 0}
+        onValueChange={onAgentChange}
+      >
+        <SelectTrigger id="telegram-new-bot-agent">
+          <SelectValue placeholder={selectedAgentLabel} />
+        </SelectTrigger>
+        <SelectContent>
+          {agents.map((agent) => {
+            return (
+              <SelectItem key={agent.id} value={agent.id}>
+                {agentLabel(agent, defaultAgent)}
+              </SelectItem>
+            );
+          })}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function SetupError({ message }: { message: string | null }) {
+  if (!message) {
+    return null;
+  }
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+      {message}
+    </div>
+  );
+}
+
+function AddTelegramTokenStep({
+  domain,
+  botToken,
+  disabled,
+  checking,
+  setupStatus,
+  setupError,
+  onBotTokenChange,
+  onVerify,
+}: {
+  domain: string;
+  botToken: string;
+  disabled: boolean;
+  checking: boolean;
+  setupStatus: TelegramSetupStatus | null;
+  setupError: string | null;
+  onBotTokenChange: (value: string) => void;
+  onVerify: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        <div className="mb-2 font-medium text-foreground">
+          Create a bot token in BotFather
+        </div>
+        <div className="leading-relaxed">
+          Open{" "}
+          <a
+            href="https://t.me/BotFather"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            {BOT_FATHER_HANDLE}
+            <IconExternalLink className="h-3.5 w-3.5" />
+          </a>
+          , send <TelegramCommand command="/newbot" />, choose a name and
+          username, then paste the token below. Later steps will set this
+          workspace&apos;s login domain to{" "}
+          <CopyableTelegramValue value={domain} />.
+        </div>
+      </div>
+      <AddTelegramBotTokenField
+        botToken={botToken}
+        disabled={disabled || checking}
+        onBotTokenChange={onBotTokenChange}
+      />
+      <TelegramSetupStatusLine setupStatus={setupStatus} />
+      <SetupError message={setupError} />
+      <Button
+        type="button"
+        variant="outline"
+        disabled={disabled || checking || botToken.trim().length === 0}
+        className="gap-2"
+        onClick={onVerify}
+      >
+        {checking ? (
+          <IconLoader2 size={16} className="animate-spin" />
+        ) : (
+          <IconKey size={16} />
+        )}
+        {checking ? "Verifying..." : "Verify token"}
+      </Button>
+    </div>
+  );
+}
+
+function AddTelegramDomainStep({
+  domain,
+  confirmed,
+  checking,
+  setupError,
+  onCheck,
+}: {
+  domain: string;
+  confirmed: boolean;
+  checking: boolean;
+  setupError: string | null;
+  onCheck: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        <div className="mb-2 font-medium text-foreground">
+          Set the Telegram login domain
+        </div>
+        <div className="leading-relaxed">
+          In {BOT_FATHER_HANDLE}, send <TelegramCommand command="/setdomain" />,
+          choose this bot, and set the domain to{" "}
+          <CopyableTelegramValue value={domain} />.
+        </div>
+      </div>
+      {confirmed ? (
+        <div className="flex items-center gap-2 rounded-lg border border-green-600/20 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
+          <IconCircleCheck className="h-4 w-4" />
+          Domain detected
+        </div>
+      ) : null}
+      <SetupError message={setupError} />
+      <Button
+        type="button"
+        variant="outline"
+        disabled={checking || confirmed}
+        className="gap-2"
+        onClick={onCheck}
+      >
+        {checking ? (
+          <IconLoader2 size={16} className="animate-spin" />
+        ) : (
+          <IconRefresh size={16} />
+        )}
+        {checking ? "Checking domain..." : "Check domain"}
+      </Button>
+    </div>
+  );
+}
+
+function AddTelegramPrivacyStep({
+  confirmed,
+  skipped,
+  checking,
+  setupError,
+  onCheck,
+  onSkip,
+}: {
+  confirmed: boolean;
+  skipped: boolean;
+  checking: boolean;
+  setupError: string | null;
+  onCheck: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        <div className="mb-2 font-medium text-foreground">
+          Optional: turn off privacy mode
+        </div>
+        <div className="leading-relaxed">
+          In {BOT_FATHER_HANDLE}, send <TelegramCommand command="/setprivacy" />
+          , choose this bot, then disable privacy mode.
+        </div>
+      </div>
+      <div className="rounded-lg border border-border px-4 py-3 text-sm">
+        <div className="mb-2 font-medium text-foreground">
+          If you keep privacy mode on
+        </div>
+        <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+          <li>Direct messages still work.</li>
+          <li>
+            Group chats only send commands, mentions, and replies to the bot.
+          </li>
+          <li>Normal group messages will not trigger your agent.</li>
+        </ul>
+      </div>
+      {confirmed ? (
+        <div className="flex items-center gap-2 rounded-lg border border-green-600/20 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
+          <IconCircleCheck className="h-4 w-4" />
+          Privacy mode is off
+        </div>
+      ) : skipped ? (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+          <IconAlertTriangle className="h-4 w-4" />
+          Privacy mode will stay on for now
+        </div>
+      ) : null}
+      <SetupError message={setupError} />
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={checking || confirmed}
+          className="gap-2"
+          onClick={onCheck}
         >
-          Default agent
-        </label>
-        <Select
-          value={agentId ?? ""}
-          disabled={disabled || adding || agents.length === 0}
-          onValueChange={onAgentChange}
+          {checking ? (
+            <IconLoader2 size={16} className="animate-spin" />
+          ) : (
+            <IconRefresh size={16} />
+          )}
+          {checking ? "Checking privacy..." : "Check privacy"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          disabled={checking || confirmed}
+          onClick={onSkip}
         >
-          <SelectTrigger id="telegram-new-bot-agent">
-            <SelectValue placeholder={selectedAgentLabel} />
-          </SelectTrigger>
-          <SelectContent>
-            {agents.map((agent) => {
-              return (
-                <SelectItem key={agent.id} value={agent.id}>
-                  {agentLabel(agent, defaultAgent)}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+          Skip for now
+        </Button>
       </div>
     </div>
+  );
+}
+
+function AddTelegramCreateStep({
+  agents,
+  defaultAgent,
+  agentId,
+  selectedAgentLabel,
+  setupStatus,
+  privacySkipped,
+  disabled,
+  onAgentChange,
+}: {
+  agents: TeamComposeItem[];
+  defaultAgent: DefaultAgentLabel;
+  agentId: string | undefined;
+  selectedAgentLabel: string;
+  setupStatus: TelegramSetupStatus | null;
+  privacySkipped: boolean;
+  disabled: boolean;
+  onAgentChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        <div className="mb-2 font-medium text-foreground">
+          Ready to create the integration
+        </div>
+        <div>
+          {setupStatus?.username
+            ? `VM0 will register @${setupStatus.username} and configure its webhook.`
+            : "VM0 will register this bot and configure its webhook."}
+        </div>
+      </div>
+      {privacySkipped ? (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">
+          Privacy mode was skipped. You can still create the bot, but normal
+          group messages will not reach VM0 until privacy mode is disabled.
+        </div>
+      ) : null}
+      <AddTelegramBotAgentField
+        agents={agents}
+        defaultAgent={defaultAgent}
+        agentId={agentId}
+        selectedAgentLabel={selectedAgentLabel}
+        disabled={disabled}
+        onAgentChange={onAgentChange}
+      />
+    </div>
+  );
+}
+
+type CheckTelegramBotSetupStatus = (
+  input: { botToken: string; origin?: string },
+  signal: AbortSignal,
+) => Promise<TelegramSetupStatus>;
+
+interface AddTelegramBotSetupFlow {
+  step: AddTelegramStep;
+  setupStatus: TelegramSetupStatus | null;
+  domainConfirmed: boolean;
+  privacyConfirmed: boolean;
+  privacySkipped: boolean;
+  setupError: string | null;
+  checkingTarget: SetupPollTarget | null;
+  completedSteps: Set<AddTelegramStep>;
+  canGoNext: boolean;
+  reset: () => void;
+  handleBotTokenChange: (value: string) => void;
+  verifyToken: () => void;
+  checkDomain: () => void;
+  checkPrivacy: () => void;
+  skipPrivacy: () => void;
+  goNext: () => void;
+  goBack: () => void;
+}
+
+function getSelectedAddTelegramAgent({
+  agents,
+  defaultAgent,
+  selectedAgentId,
+}: {
+  agents: TeamComposeItem[];
+  defaultAgent: DefaultAgentLabel;
+  selectedAgentId: string | null | undefined;
+}) {
+  const preferredAgentId = selectedAgentId ?? defaultAgent.id ?? agents[0]?.id;
+  const selectedAgent =
+    agents.find((agent) => {
+      return agent.id === preferredAgentId;
+    }) ?? agents[0];
+
+  return {
+    agentId: selectedAgent?.id,
+    selectedAgentLabel: selectedAgent
+      ? agentLabel(selectedAgent, defaultAgent)
+      : (defaultAgent.displayName ?? "Select agent"),
+  };
+}
+
+function getCompletedAddTelegramSteps({
+  setupStatus,
+  domainConfirmed,
+  privacyReady,
+}: {
+  setupStatus: TelegramSetupStatus | null;
+  domainConfirmed: boolean;
+  privacyReady: boolean;
+}) {
+  const completedSteps = new Set<AddTelegramStep>();
+  if (setupStatus) {
+    completedSteps.add("token");
+  }
+  if (domainConfirmed) {
+    completedSteps.add("domain");
+  }
+  if (privacyReady) {
+    completedSteps.add("privacy");
+  }
+  return completedSteps;
+}
+
+function canAdvanceAddTelegramStep({
+  step,
+  setupStatus,
+  domainConfirmed,
+  privacyReady,
+}: {
+  step: AddTelegramStep;
+  setupStatus: TelegramSetupStatus | null;
+  domainConfirmed: boolean;
+  privacyReady: boolean;
+}) {
+  switch (step) {
+    case "token": {
+      return !!setupStatus;
+    }
+    case "domain": {
+      return domainConfirmed;
+    }
+    case "privacy": {
+      return privacyReady;
+    }
+    case "create": {
+      return false;
+    }
+  }
+}
+
+function canSubmitAddTelegramBot({
+  botToken,
+  setupStatus,
+  domainConfirmed,
+  privacyReady,
+  disabled,
+  adding,
+}: {
+  botToken: string;
+  setupStatus: TelegramSetupStatus | null;
+  domainConfirmed: boolean;
+  privacyReady: boolean;
+  disabled: boolean;
+  adding: boolean;
+}) {
+  return (
+    botToken.trim().length > 0 &&
+    !!setupStatus &&
+    domainConfirmed &&
+    privacyReady &&
+    !disabled &&
+    !adding
+  );
+}
+
+function getNextAddTelegramStep(step: AddTelegramStep): AddTelegramStep {
+  const index = telegramStepIndex(step);
+  if (index < 0) {
+    return step;
+  }
+  return ADD_TELEGRAM_STEP_ORDER[index + 1] ?? step;
+}
+
+function getPreviousAddTelegramStep(step: AddTelegramStep): AddTelegramStep {
+  const index = telegramStepIndex(step);
+  if (index < 1) {
+    return step;
+  }
+  return ADD_TELEGRAM_STEP_ORDER[index - 1] ?? step;
+}
+
+function shouldStopSetupPolling(
+  target: SetupPollTarget,
+  status: TelegramSetupStatus,
+) {
+  switch (target) {
+    case "token": {
+      return true;
+    }
+    case "domain": {
+      return status.domainConfigured;
+    }
+    case "privacy": {
+      return status.privacyDisabled;
+    }
+  }
+}
+
+function getSetupPollingTimeoutMessage(target: SetupPollTarget) {
+  if (target === "domain") {
+    return "Domain is not visible to Telegram yet. Check BotFather and try again.";
+  }
+  return "Privacy mode still appears to be on. You can keep checking or skip this step.";
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+interface AddTelegramBotSetupState {
+  step: AddTelegramStep;
+  setupStatus: TelegramSetupStatus | null;
+  domainConfirmed: boolean;
+  privacyConfirmed: boolean;
+  privacySkipped: boolean;
+  setupError: string | null;
+  checkingTarget: SetupPollTarget | null;
+}
+
+function initialAddTelegramBotSetupState(): AddTelegramBotSetupState {
+  return {
+    step: "token",
+    setupStatus: null,
+    domainConfirmed: false,
+    privacyConfirmed: false,
+    privacySkipped: false,
+    setupError: null,
+    checkingTarget: null,
+  };
+}
+
+interface AddTelegramBotDialogInnerProps {
+  agents: TeamComposeItem[];
+  defaultAgent: DefaultAgentLabel;
+  disabled: boolean;
+  botToken: string;
+  open: boolean;
+  agentId: string | undefined;
+  selectedAgentLabel: string;
+  setBotToken: (value: string) => void;
+  setAgentId: (value: string | null) => void;
+  setOpen: (open: boolean) => void;
+  navigate: (
+    pathname: typeof ROUTES.telegramConnect,
+    options: { searchParams: URLSearchParams },
+  ) => void;
+  registerBot: (
+    input: { botToken: string; defaultAgentId?: string },
+    signal: AbortSignal,
+  ) => Promise<TelegramBotStatus>;
+  checkSetupStatus: CheckTelegramBotSetupStatus;
+  pageSignal: AbortSignal;
+  adding: boolean;
+}
+
+class AddTelegramBotDialogInner extends Component<
+  AddTelegramBotDialogInnerProps,
+  AddTelegramBotSetupState
+> {
+  state = initialAddTelegramBotSetupState();
+
+  #flowVersion = 0;
+
+  #privacyReady() {
+    return this.state.privacyConfirmed || this.state.privacySkipped;
+  }
+
+  #reset = () => {
+    this.#flowVersion += 1;
+    this.setState(initialAddTelegramBotSetupState());
+  };
+
+  #applySetupStatus = (status: TelegramSetupStatus) => {
+    this.setState((previous) => {
+      return {
+        setupStatus: status,
+        domainConfirmed: previous.domainConfirmed || status.domainConfigured,
+        privacyConfirmed: previous.privacyConfirmed || status.privacyDisabled,
+        privacySkipped: status.privacyDisabled
+          ? false
+          : previous.privacySkipped,
+      };
+    });
+  };
+
+  #pollSetupStatus = (target: SetupPollTarget): Promise<void> => {
+    const token = this.props.botToken.trim();
+    if (!token) {
+      return Promise.resolve();
+    }
+
+    const currentFlowVersion = this.#flowVersion;
+    this.setState({ checkingTarget: target, setupError: null });
+
+    return this.#runSetupStatusPolling(target, token, currentFlowVersion)
+      .catch((error: unknown) => {
+        this.#handleSetupStatusPollingError(error, currentFlowVersion);
+      })
+      .finally(() => {
+        if (this.#flowVersion === currentFlowVersion) {
+          this.setState({ checkingTarget: null });
+        }
+      });
+  };
+
+  #runSetupStatusPolling = async (
+    target: SetupPollTarget,
+    token: string,
+    currentFlowVersion: number,
+  ) => {
+    const attempts = target === "token" ? 1 : SETUP_POLL_ATTEMPTS;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const status = await this.props.checkSetupStatus(
+        { botToken: token, origin: getTelegramLoginOrigin() },
+        this.props.pageSignal,
+      );
+      if (this.#flowVersion !== currentFlowVersion) {
+        return;
+      }
+      this.#applySetupStatus(status);
+
+      if (shouldStopSetupPolling(target, status)) {
+        return;
+      }
+
+      if (attempt < attempts - 1) {
+        await delay(SETUP_POLL_INTERVAL_MS, { signal: this.props.pageSignal });
+      }
+    }
+
+    this.setState({ setupError: getSetupPollingTimeoutMessage(target) });
+  };
+
+  #handleSetupStatusPollingError = (
+    error: unknown,
+    currentFlowVersion: number,
+  ) => {
+    if (isAbortError(error) || this.#flowVersion !== currentFlowVersion) {
+      return;
+    }
+    this.setState({
+      setupError:
+        error instanceof Error
+          ? error.message
+          : "Unable to check Telegram setup status.",
+    });
+  };
+
+  #handleBotTokenChange = (value: string) => {
+    this.props.setBotToken(value);
+    this.#reset();
+  };
+
+  #skipPrivacy = () => {
+    this.setState({ privacySkipped: true, setupError: null });
+  };
+
+  #goNext = () => {
+    this.setState((previous) => {
+      return { step: getNextAddTelegramStep(previous.step), setupError: null };
+    });
+  };
+
+  #goBack = () => {
+    this.setState((previous) => {
+      return {
+        step: getPreviousAddTelegramStep(previous.step),
+        setupError: null,
+      };
+    });
+  };
+
+  #getFlow(): AddTelegramBotSetupFlow {
+    return {
+      ...this.state,
+      completedSteps: getCompletedAddTelegramSteps({
+        setupStatus: this.state.setupStatus,
+        domainConfirmed: this.state.domainConfirmed,
+        privacyReady: this.#privacyReady(),
+      }),
+      canGoNext: canAdvanceAddTelegramStep({
+        step: this.state.step,
+        setupStatus: this.state.setupStatus,
+        domainConfirmed: this.state.domainConfirmed,
+        privacyReady: this.#privacyReady(),
+      }),
+      reset: this.#reset,
+      handleBotTokenChange: this.#handleBotTokenChange,
+      verifyToken: () => {
+        detach(this.#pollSetupStatus("token"), Reason.DomCallback);
+      },
+      checkDomain: () => {
+        detach(this.#pollSetupStatus("domain"), Reason.DomCallback);
+      },
+      checkPrivacy: () => {
+        detach(this.#pollSetupStatus("privacy"), Reason.DomCallback);
+      },
+      skipPrivacy: this.#skipPrivacy,
+      goNext: this.#goNext,
+      goBack: this.#goBack,
+    };
+  }
+
+  #canSubmit() {
+    return canSubmitAddTelegramBot({
+      botToken: this.props.botToken,
+      setupStatus: this.state.setupStatus,
+      domainConfirmed: this.state.domainConfirmed,
+      privacyReady: this.#privacyReady(),
+      disabled: this.props.disabled,
+      adding: this.props.adding,
+    });
+  }
+
+  #handleOpenChange = (nextOpen: boolean) => {
+    if (this.props.adding) {
+      return;
+    }
+
+    this.props.setOpen(nextOpen);
+    if (!nextOpen) {
+      this.#reset();
+    }
+  };
+
+  #handleCancel = () => {
+    this.props.setOpen(false);
+    this.#reset();
+  };
+
+  #handleRegisteredBot = (bot: TelegramBotStatus) => {
+    this.props.setBotToken("");
+    this.props.setAgentId(null);
+    this.#reset();
+    this.props.setOpen(false);
+    this.props.navigate(ROUTES.telegramConnect, {
+      searchParams: new URLSearchParams({ bot: bot.id }),
+    });
+  };
+
+  #handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!this.#canSubmit()) {
+      return;
+    }
+
+    detach(
+      this.props
+        .registerBot(
+          {
+            botToken: this.props.botToken.trim(),
+            ...(this.props.agentId
+              ? { defaultAgentId: this.props.agentId }
+              : {}),
+          },
+          this.props.pageSignal,
+        )
+        .then(this.#handleRegisteredBot),
+      Reason.DomCallback,
+    );
+  };
+
+  render() {
+    const flow = this.#getFlow();
+
+    return (
+      <Dialog open={this.props.open} onOpenChange={this.#handleOpenChange}>
+        <div className="flex shrink-0 justify-end">
+          <DialogTrigger asChild>
+            <Button
+              type="button"
+              disabled={this.props.disabled}
+              className="h-10 shrink-0 gap-2"
+            >
+              <IconPlus size={16} />
+              Add bot
+            </Button>
+          </DialogTrigger>
+        </div>
+        <DialogContent className="sm:max-w-[640px]">
+          <DialogHeader>
+            <DialogTitle>Add Telegram bot</DialogTitle>
+            <DialogDescription>
+              Complete each BotFather step, then create the workspace bot.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="flex flex-col gap-4"
+            aria-label="Register Telegram bot"
+            onSubmit={this.#handleSubmit}
+          >
+            <AddTelegramBotProgress
+              step={flow.step}
+              completedSteps={flow.completedSteps}
+            />
+            <AddTelegramBotStepContent
+              flow={flow}
+              domain={getTelegramLoginDomain()}
+              botToken={this.props.botToken}
+              disabled={this.props.disabled}
+              adding={this.props.adding}
+              agents={this.props.agents}
+              defaultAgent={this.props.defaultAgent}
+              agentId={this.props.agentId}
+              selectedAgentLabel={this.props.selectedAgentLabel}
+              onAgentChange={this.props.setAgentId}
+            />
+            <AddTelegramBotDialogFooter
+              step={flow.step}
+              adding={this.props.adding}
+              canGoNext={flow.canGoNext}
+              checkingTarget={flow.checkingTarget}
+              canSubmit={this.#canSubmit()}
+              onCancel={this.#handleCancel}
+              onBack={flow.goBack}
+              onNext={flow.goNext}
+            />
+          </form>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+}
+
+function AddTelegramBotStepContent({
+  flow,
+  domain,
+  botToken,
+  disabled,
+  adding,
+  agents,
+  defaultAgent,
+  agentId,
+  selectedAgentLabel,
+  onAgentChange,
+}: {
+  flow: AddTelegramBotSetupFlow;
+  domain: string;
+  botToken: string;
+  disabled: boolean;
+  adding: boolean;
+  agents: TeamComposeItem[];
+  defaultAgent: DefaultAgentLabel;
+  agentId: string | undefined;
+  selectedAgentLabel: string;
+  onAgentChange: (value: string) => void;
+}) {
+  switch (flow.step) {
+    case "token": {
+      return (
+        <AddTelegramTokenStep
+          domain={domain}
+          botToken={botToken}
+          disabled={disabled || adding}
+          checking={flow.checkingTarget === "token"}
+          setupStatus={flow.setupStatus}
+          setupError={flow.setupError}
+          onBotTokenChange={flow.handleBotTokenChange}
+          onVerify={flow.verifyToken}
+        />
+      );
+    }
+    case "domain": {
+      return (
+        <AddTelegramDomainStep
+          domain={domain}
+          confirmed={flow.domainConfirmed}
+          checking={flow.checkingTarget === "domain"}
+          setupError={flow.setupError}
+          onCheck={flow.checkDomain}
+        />
+      );
+    }
+    case "privacy": {
+      return (
+        <AddTelegramPrivacyStep
+          confirmed={flow.privacyConfirmed}
+          skipped={flow.privacySkipped}
+          checking={flow.checkingTarget === "privacy"}
+          setupError={flow.setupError}
+          onCheck={flow.checkPrivacy}
+          onSkip={flow.skipPrivacy}
+        />
+      );
+    }
+    case "create": {
+      return (
+        <AddTelegramCreateStep
+          agents={agents}
+          defaultAgent={defaultAgent}
+          agentId={agentId}
+          selectedAgentLabel={selectedAgentLabel}
+          setupStatus={flow.setupStatus}
+          privacySkipped={flow.privacySkipped}
+          disabled={disabled || adding}
+          onAgentChange={onAgentChange}
+        />
+      );
+    }
+  }
+}
+
+function AddTelegramBotDialogFooter({
+  step,
+  adding,
+  canGoNext,
+  checkingTarget,
+  canSubmit,
+  onCancel,
+  onBack,
+  onNext,
+}: {
+  step: AddTelegramStep;
+  adding: boolean;
+  canGoNext: boolean;
+  checkingTarget: SetupPollTarget | null;
+  canSubmit: boolean;
+  onCancel: () => void;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  const isTokenStep = step === "token";
+  const isCreateStep = step === "create";
+
+  return (
+    <DialogFooter>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={adding}
+        onClick={isTokenStep ? onCancel : onBack}
+      >
+        {isTokenStep ? (
+          "Cancel"
+        ) : (
+          <span className="inline-flex items-center gap-2">
+            <IconArrowLeft size={16} />
+            Back
+          </span>
+        )}
+      </Button>
+      {isCreateStep ? (
+        <Button type="submit" disabled={!canSubmit} className="gap-2">
+          {adding ? (
+            <IconLoader2 size={16} className="animate-spin" />
+          ) : (
+            <IconPlus size={16} />
+          )}
+          {adding ? "Adding..." : "Add bot"}
+        </Button>
+      ) : (
+        <Button
+          type="button"
+          disabled={!canGoNext || !!checkingTarget || adding}
+          className="gap-2"
+          onClick={onNext}
+        >
+          Next
+          <IconArrowRight size={16} />
+        </Button>
+      )}
+    </DialogFooter>
   );
 }
 
@@ -474,116 +1442,38 @@ function AddTelegramBotDialog({
   const botToken = useGet(telegramBotTokenForm$);
   const open = useGet(telegramAddDialogOpen$);
   const selectedAgentId = useGet(telegramBotAgentForm$);
-  const domain = getTelegramLoginDomain();
-  const preferredAgentId = selectedAgentId ?? defaultAgent.id ?? agents[0]?.id;
-  const selectedAgent =
-    agents.find((agent) => {
-      return agent.id === preferredAgentId;
-    }) ?? agents[0];
-  const agentId = selectedAgent?.id;
-  const selectedAgentLabel = selectedAgent
-    ? agentLabel(selectedAgent, defaultAgent)
-    : (defaultAgent.displayName ?? "Select agent");
+  const { agentId, selectedAgentLabel } = getSelectedAddTelegramAgent({
+    agents,
+    defaultAgent,
+    selectedAgentId,
+  });
   const setBotToken = useSet(setTelegramBotTokenForm$);
   const setAgentId = useSet(setTelegramBotAgentForm$);
   const setOpen = useSet(setTelegramAddDialogOpen$);
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
+  const checkSetupStatus = useSet(checkTelegramBotSetupStatus$);
   const [registerLoadable, registerBot] = useLoadableSet(registerTelegramBot$);
   const adding = registerLoadable.state === "loading";
-  const canSubmit = botToken.trim().length > 0 && !disabled && !adding;
 
   return (
-    <Dialog
+    <AddTelegramBotDialogInner
+      agents={agents}
+      defaultAgent={defaultAgent}
+      disabled={disabled}
+      botToken={botToken}
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (!adding) {
-          setOpen(nextOpen);
-        }
-      }}
-    >
-      <div className="flex shrink-0 justify-end">
-        <DialogTrigger asChild>
-          <Button
-            type="button"
-            disabled={disabled}
-            className="h-10 shrink-0 gap-2"
-          >
-            <IconPlus size={16} />
-            Add bot
-          </Button>
-        </DialogTrigger>
-      </div>
-      <DialogContent className="sm:max-w-[560px]">
-        <DialogHeader>
-          <DialogTitle>Add Telegram bot</DialogTitle>
-          <DialogDescription>
-            Create the bot in BotFather, then register its token here.
-          </DialogDescription>
-        </DialogHeader>
-        <AddTelegramBotInstructions domain={domain} />
-        <form
-          className="flex flex-col gap-4"
-          aria-label="Register Telegram bot"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!canSubmit) {
-              return;
-            }
-
-            detach(
-              registerBot(
-                {
-                  botToken: botToken.trim(),
-                  ...(agentId ? { defaultAgentId: agentId } : {}),
-                },
-                pageSignal,
-              ).then((bot) => {
-                setBotToken("");
-                setAgentId(null);
-                setOpen(false);
-                navigate(ROUTES.telegramConnect, {
-                  searchParams: new URLSearchParams({ bot: bot.id }),
-                });
-              }),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          <AddTelegramBotFields
-            agents={agents}
-            defaultAgent={defaultAgent}
-            agentId={agentId}
-            botToken={botToken}
-            selectedAgentLabel={selectedAgentLabel}
-            disabled={disabled}
-            adding={adding}
-            onBotTokenChange={setBotToken}
-            onAgentChange={setAgentId}
-          />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={adding}
-              onClick={() => {
-                setOpen(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!canSubmit} className="gap-2">
-              {adding ? (
-                <IconLoader2 size={16} className="animate-spin" />
-              ) : (
-                <IconPlus size={16} />
-              )}
-              {adding ? "Adding..." : "Add bot"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      agentId={agentId}
+      selectedAgentLabel={selectedAgentLabel}
+      setBotToken={setBotToken}
+      setAgentId={setAgentId}
+      setOpen={setOpen}
+      navigate={navigate}
+      registerBot={registerBot}
+      checkSetupStatus={checkSetupStatus}
+      pageSignal={pageSignal}
+      adding={adding}
+    />
   );
 }
 
