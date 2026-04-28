@@ -11,11 +11,37 @@ import { zeroClient$ } from "../api-client.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import { writeToClipboard } from "./clipboard.ts";
+
+export type TelegramAddSetupStep = "token" | "domain" | "privacy" | "create";
+export type TelegramSetupCheckTarget = "token" | "domain" | "privacy";
+
+export interface TelegramAddSetupState {
+  step: TelegramAddSetupStep;
+  setupStatus: TelegramSetupStatus | null;
+  domainConfirmed: boolean;
+  privacyConfirmed: boolean;
+  setupError: string | null;
+}
+
+const TELEGRAM_ADD_SETUP_STEP_ORDER = [
+  "token",
+  "domain",
+  "privacy",
+  "create",
+] as const satisfies readonly TelegramAddSetupStep[];
 
 const internalReload$ = state(0);
 const internalTelegramAddDialogOpen$ = state(false);
+const internalTelegramAddDialogSession$ = state(0);
 const internalTelegramBotTokenForm$ = state("");
 const internalTelegramBotAgentForm$ = state<string | null>(null);
+const internalTelegramAddSetupState$ = state<TelegramAddSetupState>(
+  initialTelegramAddSetupState(),
+);
+const internalTelegramCopiedValue$ = state<string | null>(null);
+const internalTelegramCopyTimeoutId$ = state<number | null>(null);
+const internalTelegramFailedAvatarKeys$ = state<Record<string, boolean>>({});
 const internalTelegramSavingBotId$ = state<string | null>(null);
 const internalTelegramUnlinkingBotId$ = state<string | null>(null);
 const internalTelegramUninstallingBotId$ = state<string | null>(null);
@@ -23,6 +49,60 @@ const internalTelegramUninstallDialogBotId$ = state<string | null>(null);
 const internalTelegramReinstallDialogBotId$ = state<string | null>(null);
 const internalTelegramReinstallTokenForm$ = state("");
 const internalTelegramReinstallingBotId$ = state<string | null>(null);
+
+function initialTelegramAddSetupState(): TelegramAddSetupState {
+  return {
+    step: "token",
+    setupStatus: null,
+    domainConfirmed: false,
+    privacyConfirmed: false,
+    setupError: null,
+  };
+}
+
+function getNextTelegramAddSetupStep(
+  step: TelegramAddSetupStep,
+): TelegramAddSetupStep {
+  const index = TELEGRAM_ADD_SETUP_STEP_ORDER.indexOf(step);
+  if (index === -1) {
+    return step;
+  }
+  return TELEGRAM_ADD_SETUP_STEP_ORDER[index + 1] ?? step;
+}
+
+function getPreviousTelegramAddSetupStep(
+  step: TelegramAddSetupStep,
+): TelegramAddSetupStep {
+  const index = TELEGRAM_ADD_SETUP_STEP_ORDER.indexOf(step);
+  if (index < 1) {
+    return step;
+  }
+  return TELEGRAM_ADD_SETUP_STEP_ORDER[index - 1] ?? step;
+}
+
+function isTelegramSetupCheckSatisfied(
+  target: TelegramSetupCheckTarget,
+  status: TelegramSetupStatus,
+) {
+  switch (target) {
+    case "token": {
+      return true;
+    }
+    case "domain": {
+      return status.domainConfigured;
+    }
+    case "privacy": {
+      return status.privacyDisabled;
+    }
+  }
+}
+
+function getTelegramSetupCheckFailureMessage(target: TelegramSetupCheckTarget) {
+  if (target === "domain") {
+    return "Domain is not visible to Telegram yet. Check BotFather and try again.";
+  }
+  return "Privacy mode still appears to be on. Turn it off in BotFather, then try again.";
+}
 
 export const telegramBotTokenForm$ = computed((get) => {
   return get(internalTelegramBotTokenForm$);
@@ -32,8 +112,24 @@ export const telegramAddDialogOpen$ = computed((get) => {
   return get(internalTelegramAddDialogOpen$);
 });
 
+export const telegramAddDialogSession$ = computed((get) => {
+  return get(internalTelegramAddDialogSession$);
+});
+
 export const telegramBotAgentForm$ = computed((get) => {
   return get(internalTelegramBotAgentForm$);
+});
+
+export const telegramAddSetupState$ = computed((get) => {
+  return get(internalTelegramAddSetupState$);
+});
+
+export const telegramCopiedValue$ = computed((get) => {
+  return get(internalTelegramCopiedValue$);
+});
+
+export const telegramFailedAvatarKeys$ = computed((get) => {
+  return get(internalTelegramFailedAvatarKeys$);
 });
 
 export const telegramSavingBotId$ = computed((get) => {
@@ -66,14 +162,19 @@ export const telegramReinstallingBotId$ = computed((get) => {
 
 export const setTelegramBotTokenForm$ = command(({ set }, value: string) => {
   set(internalTelegramBotTokenForm$, value);
+  set(internalTelegramAddSetupState$, initialTelegramAddSetupState());
 });
 
 export const setTelegramAddDialogOpen$ = command(({ set }, open: boolean) => {
   set(internalTelegramAddDialogOpen$, open);
-  if (!open) {
-    set(internalTelegramBotTokenForm$, "");
-    set(internalTelegramBotAgentForm$, null);
+  if (open) {
+    set(internalTelegramAddDialogSession$, (previous) => {
+      return previous + 1;
+    });
   }
+  set(internalTelegramBotTokenForm$, "");
+  set(internalTelegramBotAgentForm$, null);
+  set(internalTelegramAddSetupState$, initialTelegramAddSetupState());
 });
 
 export const setTelegramBotAgentForm$ = command(
@@ -81,6 +182,56 @@ export const setTelegramBotAgentForm$ = command(
     set(internalTelegramBotAgentForm$, value);
   },
 );
+
+export const markTelegramAvatarFailed$ = command(
+  ({ set }, avatarKey: string) => {
+    set(internalTelegramFailedAvatarKeys$, (previous) => {
+      return { ...previous, [avatarKey]: true };
+    });
+  },
+);
+
+export const copyTelegramValue$ = command(
+  async ({ get, set }, value: string, signal: AbortSignal) => {
+    const copied = await writeToClipboard(value);
+    signal.throwIfAborted();
+    if (!copied) {
+      return;
+    }
+
+    const existingTimeoutId = get(internalTelegramCopyTimeoutId$);
+    if (existingTimeoutId !== null) {
+      window.clearTimeout(existingTimeoutId);
+    }
+
+    set(internalTelegramCopiedValue$, value);
+    const timeoutId = window.setTimeout(() => {
+      set(internalTelegramCopiedValue$, null);
+      set(internalTelegramCopyTimeoutId$, null);
+    }, 1500);
+    set(internalTelegramCopyTimeoutId$, timeoutId);
+  },
+);
+
+export const advanceTelegramAddSetupStep$ = command(({ set }) => {
+  set(internalTelegramAddSetupState$, (previous) => {
+    return {
+      ...previous,
+      step: getNextTelegramAddSetupStep(previous.step),
+      setupError: null,
+    };
+  });
+});
+
+export const goBackTelegramAddSetupStep$ = command(({ set }) => {
+  set(internalTelegramAddSetupState$, (previous) => {
+    return {
+      ...previous,
+      step: getPreviousTelegramAddSetupStep(previous.step),
+      setupError: null,
+    };
+  });
+});
 
 export const setTelegramSavingBotId$ = command(
   ({ set }, value: string | null) => {
@@ -129,8 +280,10 @@ export const setTelegramReinstallingBotId$ = command(
 
 export const resetTelegramSettingsUi$ = command(({ set }) => {
   set(internalTelegramAddDialogOpen$, false);
+  set(internalTelegramAddDialogSession$, 0);
   set(internalTelegramBotTokenForm$, "");
   set(internalTelegramBotAgentForm$, null);
+  set(internalTelegramAddSetupState$, initialTelegramAddSetupState());
   set(internalTelegramSavingBotId$, null);
   set(internalTelegramUnlinkingBotId$, null);
   set(internalTelegramUninstallingBotId$, null);
@@ -193,7 +346,7 @@ export const registerTelegramBot$ = command(
   },
 );
 
-export const checkTelegramBotSetupStatus$ = command(
+const checkTelegramBotSetupStatus$ = command(
   async (
     { get },
     input: { botToken: string; origin?: string },
@@ -207,9 +360,52 @@ export const checkTelegramBotSetupStatus$ = command(
         fetchOptions: { signal },
       }),
       [200],
+      { toast: false },
     );
     signal.throwIfAborted();
     return (result as { body: TelegramSetupStatus }).body;
+  },
+);
+
+export const checkTelegramAddSetupStatus$ = command(
+  async (
+    { get, set },
+    target: TelegramSetupCheckTarget,
+    origin: string | undefined,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const botToken = get(internalTelegramBotTokenForm$).trim();
+    if (!botToken) {
+      return false;
+    }
+
+    set(internalTelegramAddSetupState$, (previous) => {
+      return { ...previous, setupError: null };
+    });
+
+    const status = await set(
+      checkTelegramBotSetupStatus$,
+      { botToken, origin },
+      signal,
+    );
+    signal.throwIfAborted();
+    if (get(internalTelegramBotTokenForm$).trim() !== botToken) {
+      return false;
+    }
+
+    const satisfied = isTelegramSetupCheckSatisfied(target, status);
+    set(internalTelegramAddSetupState$, (previous) => {
+      return {
+        ...previous,
+        setupStatus: status,
+        domainConfirmed: previous.domainConfirmed || status.domainConfigured,
+        privacyConfirmed: previous.privacyConfirmed || status.privacyDisabled,
+        setupError: satisfied
+          ? null
+          : getTelegramSetupCheckFailureMessage(target),
+      };
+    });
+    return satisfied;
   },
 );
 

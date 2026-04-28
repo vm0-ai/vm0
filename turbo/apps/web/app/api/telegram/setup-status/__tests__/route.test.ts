@@ -5,6 +5,7 @@ import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
+import { createTestTelegramInstallation } from "../../../../../src/__tests__/api-test-helpers";
 
 const context = testContext();
 
@@ -113,5 +114,28 @@ describe("POST /api/telegram/setup-status", () => {
       privacyDisabled: true,
     });
     expect(getMeHandler.mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 409 when the bot is already installed", async () => {
+    const user = await context.setupUser();
+    const botId = "123456";
+    await createTestTelegramInstallation({
+      telegramBotId: botId,
+      orgId: user.orgId,
+    });
+    const getMeHandler = telegramGetMe({
+      botId,
+      username: "setup_bot",
+    });
+    server.use(getMeHandler.handler);
+
+    const response = await POST(
+      setupStatusRequest({ botToken: TEST_BOT_TOKEN }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toContain("already installed");
   });
 });

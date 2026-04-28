@@ -228,6 +228,7 @@ export const zeroIntegrationsTelegramContract = c.router({
       200: telegramSetupStatusSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Check Telegram bot setup state before registration",
   },
