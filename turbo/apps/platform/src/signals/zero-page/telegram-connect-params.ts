@@ -2,6 +2,7 @@ export interface TelegramConnectParams {
   telegramBotId: string;
   connectSignature: {
     telegramUserId: string;
+    telegramUsername?: string;
     timestamp: number;
     signature: string;
   } | null;
@@ -36,8 +37,18 @@ function encodeReturnPath(params: TelegramConnectParams): string {
     search.set("tgUser", params.connectSignature.telegramUserId);
     search.set("ts", String(params.connectSignature.timestamp));
     search.set("sig", params.connectSignature.signature);
+    if (params.connectSignature.telegramUsername) {
+      search.set("tgUserName", params.connectSignature.telegramUsername);
+    }
   }
   return `/telegram/connect?${search.toString()}`;
+}
+
+function normalizeTelegramUsernameParam(
+  value: string | undefined,
+): string | undefined {
+  const username = value?.trim().replace(/^@+/, "");
+  return username || undefined;
 }
 
 export function parseTelegramConnectParams(
@@ -45,6 +56,9 @@ export function parseTelegramConnectParams(
 ): ParsedTelegramConnectParams {
   const bot = firstParam(searchParams, "bot")?.trim();
   const tgUser = firstParam(searchParams, "tgUser")?.trim();
+  const telegramUsername = normalizeTelegramUsernameParam(
+    firstParam(searchParams, "tgUserName"),
+  );
   const tsRaw = firstParam(searchParams, "ts")?.trim();
   const sig = firstParam(searchParams, "sig")?.trim();
 
@@ -124,10 +138,22 @@ export function parseTelegramConnectParams(
     };
   }
 
+  if (telegramUsername && telegramUsername.length > 255) {
+    return {
+      ok: false,
+      returnPath: "/telegram/connect",
+      error: {
+        title: "Connect link is invalid",
+        message: "The Telegram username on this link is not valid.",
+      },
+    };
+  }
+
   const params = {
     telegramBotId: bot,
     connectSignature: {
       telegramUserId: tgUser,
+      ...(telegramUsername ? { telegramUsername } : {}),
       timestamp,
       signature: sig,
     },
