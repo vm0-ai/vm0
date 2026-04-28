@@ -97,21 +97,6 @@ async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
 // Server
 // -----------------------------------------------------------------------
 
-/// Spawn the control socket server for a running sandbox.
-///
-/// The server accepts connections on `sock_path`, reads an [`ExecRequest`],
-/// executes it via the shared `VsockHost`, and writes back an [`ExecResponse`].
-///
-/// Returns a `JoinHandle` that the caller should abort on shutdown. Binding
-/// happens before this function returns, so bind failures are reported to the
-/// caller instead of being hidden in the background task.
-pub fn spawn_server(
-    sock_path: PathBuf,
-    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-) -> io::Result<JoinHandle<()>> {
-    Ok(bind_server(sock_path, guest)?.spawn())
-}
-
 /// A control socket server whose listener has already been bound.
 pub struct BoundControlServer {
     sock_path: PathBuf,
