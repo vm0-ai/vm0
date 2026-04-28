@@ -17,6 +17,7 @@ import {
 } from "@vm0/api-contracts/contracts/onboarding";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -281,6 +282,48 @@ describe("onboarding add to Slack → works page", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe("/works");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Continue in Telegram
+// ---------------------------------------------------------------------------
+
+describe("onboarding set up Telegram → settings page", () => {
+  it("should show Telegram only when the Telegram feature is enabled", async () => {
+    mockAdminOnboarding();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      featureSwitches: { [FeatureSwitchKey.TelegramIntegration]: false },
+    });
+    await walkAdminToWhereStep();
+
+    expect(screen.queryByText("Set up Telegram")).not.toBeInTheDocument();
+  });
+
+  it("should navigate to /settings/telegram after saving the agent", async () => {
+    mockAdminOnboarding();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      featureSwitches: { [FeatureSwitchKey.TelegramIntegration]: true },
+    });
+    await walkAdminToWhereStep();
+
+    await waitFor(() => {
+      expect(screen.getByText("Set up Telegram")).toBeInTheDocument();
+    });
+
+    switchToAdminComplete();
+
+    click(screen.getByText("Set up Telegram"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/settings/telegram");
     });
   });
 });
