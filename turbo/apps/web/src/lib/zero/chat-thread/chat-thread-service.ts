@@ -236,8 +236,26 @@ export async function getChatThread(
 }
 
 /**
+ * Mirrors the SQL `hasDraft` projection in `listChatThreads`: a thread "has a
+ * draft" when its draft text is non-empty OR it has at least one attachment.
+ */
+function hasDraftValue(
+  draftContent: string | null,
+  draftAttachments: PersistedAttachment[] | null,
+): boolean {
+  return (
+    (draftContent !== null && draftContent !== "") ||
+    (draftAttachments !== null && draftAttachments.length > 0)
+  );
+}
+
+/**
  * Update a chat thread's draft content and attachments.
  * Ownership check in WHERE clause ensures users can only update their own threads.
+ *
+ * Publishes `threadListChanged` only when the boolean `hasDraft` flag flips,
+ * so that continued typing inside an already-drafting thread does not spam
+ * sidebar reloads.
  */
 export async function updateChatThreadDraft(
   threadId: string,
@@ -245,14 +263,27 @@ export async function updateChatThreadDraft(
   draftContent: string | null,
   draftAttachments: PersistedAttachment[] | null,
 ): Promise<void> {
-  const updated = await globalThis.services.db
+  const [before] = await globalThis.services.db
+    .select({
+      draftContent: chatThreads.draftContent,
+      draftAttachments: chatThreads.draftAttachments,
+    })
+    .from(chatThreads)
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
+
+  if (!before) {
+    throw notFound("Chat thread not found");
+  }
+
+  await globalThis.services.db
     .update(chatThreads)
     .set({ draftContent, draftAttachments })
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
-    .returning({ id: chatThreads.id });
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
 
-  if (updated.length === 0) {
-    throw notFound("Chat thread not found");
+  const hadDraft = hasDraftValue(before.draftContent, before.draftAttachments);
+  const hasDraft = hasDraftValue(draftContent, draftAttachments);
+  if (hadDraft !== hasDraft) {
+    await publishThreadListChanged(userId);
   }
 }
 
