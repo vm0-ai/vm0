@@ -1185,9 +1185,16 @@ async fn restore_codex_session(
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
+    // Layout matches the real codex CLI (and `guest-mock-codex`):
+    // `/home/user/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
     let today = chrono::Utc::now().date_naive();
-    let session_path = build_codex_session_path(today, &session.session_id);
-    let session_dir = codex_session_parent_dir(&session_path);
+    let session_dir = format!(
+        "/home/user/.codex/sessions/{}/{}/{}",
+        today.format("%Y"),
+        today.format("%m"),
+        today.format("%d"),
+    );
+    let session_path = format!("{session_dir}/{}.jsonl.zst", session.session_id);
 
     let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
     sandbox
@@ -1211,29 +1218,6 @@ async fn restore_codex_session(
         "restored codex session history",
     );
     Ok(())
-}
-
-/// Build the codex session file path for a given UTC date and thread id.
-///
-/// Layout matches the real codex CLI (and `guest-mock-codex`):
-/// `/home/user/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
-fn build_codex_session_path(today: chrono::NaiveDate, thread_id: &str) -> String {
-    format!(
-        "/home/user/.codex/sessions/{}/{}/{}/{}.jsonl.zst",
-        today.format("%Y"),
-        today.format("%m"),
-        today.format("%d"),
-        thread_id,
-    )
-}
-
-/// Strip the trailing filename component from a codex session path. Internal
-/// helper kept tiny so the dispatch in `restore_codex_session` reads linearly.
-fn codex_session_parent_dir(session_path: &str) -> String {
-    match session_path.rfind('/') {
-        Some(idx) => session_path[..idx].to_string(),
-        None => String::new(),
-    }
 }
 
 /// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
@@ -2413,35 +2397,6 @@ mod tests {
         };
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
         assert!(err.to_string().contains("invalid session_id"));
-    }
-
-    #[test]
-    fn build_codex_session_path_zero_pads_and_includes_thread_id() {
-        let date = chrono::NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        let path = build_codex_session_path(date, "abc-123");
-        assert_eq!(
-            path,
-            "/home/user/.codex/sessions/2026/01/05/abc-123.jsonl.zst"
-        );
-    }
-
-    #[test]
-    fn build_codex_session_path_handles_year_end_boundary() {
-        let date = chrono::NaiveDate::from_ymd_opt(2026, 12, 31).unwrap();
-        let path = build_codex_session_path(date, "uuid-deadbeef");
-        assert_eq!(
-            path,
-            "/home/user/.codex/sessions/2026/12/31/uuid-deadbeef.jsonl.zst"
-        );
-    }
-
-    #[test]
-    fn codex_session_parent_dir_strips_trailing_filename() {
-        let path = "/home/user/.codex/sessions/2026/01/05/abc.jsonl.zst";
-        assert_eq!(
-            codex_session_parent_dir(path),
-            "/home/user/.codex/sessions/2026/01/05"
-        );
     }
 
     #[test]
