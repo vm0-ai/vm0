@@ -1906,9 +1906,11 @@ mod tests {
 
     #[test]
     fn heartbeat_running_count_no_idle() {
-        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        budget.try_reserve(2, 4096);
-        budget.try_reserve(2, 4096);
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
+        let _leases = [
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        ];
         let pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
@@ -1930,11 +1932,13 @@ mod tests {
 
     #[test]
     fn heartbeat_running_count_excludes_idle() {
-        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
         // 3 budget reservations: 2 running + 1 will be parked
-        budget.try_reserve(2, 4096);
-        budget.try_reserve(2, 4096);
-        budget.try_reserve(2, 4096);
+        let _leases = [
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        ];
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
@@ -1962,9 +1966,11 @@ mod tests {
 
     #[test]
     fn heartbeat_running_count_all_idle() {
-        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        budget.try_reserve(2, 4096);
-        budget.try_reserve(2, 4096);
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
+        let _leases = [
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
+        ];
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
