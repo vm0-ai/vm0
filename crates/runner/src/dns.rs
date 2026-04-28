@@ -785,13 +785,36 @@ mod tests {
         assert!(port > 0);
     }
 
+    fn bind_tcp_udp_pair() -> std::io::Result<(std::net::TcpListener, std::net::UdpSocket)> {
+        const MAX_PORT_PROBE_ATTEMPTS: usize = 64;
+
+        let mut last_addr_in_use = None;
+        for _ in 0..MAX_PORT_PROBE_ATTEMPTS {
+            let tcp = std::net::TcpListener::bind("0.0.0.0:0")?;
+            let port = tcp.local_addr()?.port();
+            match std::net::UdpSocket::bind(("0.0.0.0", port)) {
+                Ok(udp) => return Ok((tcp, udp)),
+                Err(err) if err.kind() == std::io::ErrorKind::AddrInUse => {
+                    last_addr_in_use = Some(err);
+                }
+                Err(err) => return Err(err),
+            }
+        }
+
+        Err(last_addr_in_use.unwrap_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::AddrInUse,
+                "could not find a port available for both TCP and UDP",
+            )
+        }))
+    }
+
     #[test]
     fn find_available_port_retries_when_udp_candidate_is_in_use() {
-        let busy_udp = std::net::UdpSocket::bind("0.0.0.0:0").unwrap();
-        let busy_port = busy_udp.local_addr().unwrap().port();
-        let busy_tcp = std::net::TcpListener::bind(("0.0.0.0", busy_port)).unwrap();
-        let free_tcp = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
+        let (busy_tcp, _busy_udp) = bind_tcp_udp_pair().unwrap();
+        let (free_tcp, free_udp_probe) = bind_tcp_udp_pair().unwrap();
         let free_port = free_tcp.local_addr().unwrap().port();
+        drop(free_udp_probe);
 
         let port = find_available_port_from([Ok(busy_tcp), Ok(free_tcp)]).unwrap();
 
