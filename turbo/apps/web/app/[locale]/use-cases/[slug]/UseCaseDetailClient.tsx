@@ -198,6 +198,59 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             <p className="uc-section-body">{t(`content.${slug}.scenario`)}</p>
           </Section>
 
+          {/* Connect your tools */}
+          <Section title={t("connectYourTools")}>
+            <div className="uc-connect-grid">
+              {useCase.integrations.map((integration, i) => {
+                return (
+                  <div key={i} className="uc-connect-card">
+                    <div className="uc-connect-card-header">
+                      {integration.connector.icon && (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
+                          <Image
+                            src={integration.connector.icon}
+                            alt={integration.connector.label}
+                            width={32}
+                            height={32}
+                            className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}${integration.connector.looseViewBox ? " scale-[2.2]" : ""}`}
+                          />
+                        </div>
+                      )}
+                      <div className="uc-connect-card-info">
+                        <div className="uc-connect-card-name">
+                          {integration.connector.label}
+                        </div>
+                        <span
+                          className={`uc-integration-required ${
+                            integration.required
+                              ? "uc-integration-required--yes"
+                              : "uc-integration-required--no"
+                          }`}
+                        >
+                          {integration.required
+                            ? t("required")
+                            : t("optional")}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="uc-connect-card-desc">
+                      {t(`content.${slug}.integrations.${i}.description`)}
+                    </div>
+                    <a
+                      href={`${platformUrl}/connectors/${integration.connector.id}/connect`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="uc-connect-btn"
+                    >
+                      {t("connectLabel")}
+                      <IconArrowUpRight size={14} />
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+          </Section>
+
           {/* Prompt */}
           <Section title={t(`content.${slug}.headings.prompt`)}>
             <PromptVariants
