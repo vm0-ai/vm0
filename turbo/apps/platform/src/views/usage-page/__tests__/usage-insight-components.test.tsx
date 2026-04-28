@@ -110,12 +110,14 @@ describe("usage insight view - loading, error, and data states", () => {
               {
                 scheduleId: "s1",
                 scheduleName: "Morning Digest",
+                scheduleDescription: null,
                 credits: 150,
                 tokens: 300,
               },
               {
                 scheduleId: "s2",
                 scheduleName: "Evening Report",
+                scheduleDescription: null,
                 credits: 80,
                 tokens: 160,
               },
@@ -581,18 +583,21 @@ describe("usage insight schedules table - rendering and interactions", () => {
               {
                 scheduleId: "s1",
                 scheduleName: "Daily Sync",
+                scheduleDescription: null,
                 credits: 100,
                 tokens: 200,
               },
               {
                 scheduleId: "s2",
                 scheduleName: "Weekly Review",
+                scheduleDescription: null,
                 credits: 200,
                 tokens: 400,
               },
               {
                 scheduleId: "s3",
                 scheduleName: "Monthly Report",
+                scheduleDescription: null,
                 credits: 150,
                 tokens: 300,
               },
@@ -629,12 +634,14 @@ describe("usage insight schedules table - rendering and interactions", () => {
               {
                 scheduleId: "s1",
                 scheduleName: "Daily Standup",
+                scheduleDescription: null,
                 credits: 50,
                 tokens: 100,
               },
               {
                 scheduleId: "s2",
                 scheduleName: "Weekly Planning",
+                scheduleDescription: null,
                 credits: 200,
                 tokens: 400,
               },
@@ -672,6 +679,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
               {
                 scheduleId: "s1",
                 scheduleName: "Visible Schedule",
+                scheduleDescription: null,
                 credits: 30,
                 tokens: 60,
               },
@@ -695,6 +703,51 @@ describe("usage insight schedules table - rendering and interactions", () => {
     });
 
     expect(screen.getByText("+4 more schedules")).toBeInTheDocument();
+  });
+
+  it("prefers scheduleDescription over scheduleName when both are present", async () => {
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(
+          200,
+          makeFixture({
+            buckets: [],
+            schedules: [
+              {
+                scheduleId: "s1",
+                scheduleName: "default",
+                scheduleDescription: "Daily morning brief",
+                credits: 100,
+                tokens: 200,
+              },
+              {
+                scheduleId: "s2",
+                scheduleName: "default",
+                scheduleDescription: null,
+                credits: 80,
+                tokens: 160,
+              },
+            ],
+            scheduleOtherCount: 0,
+            scheduleOtherCredits: 0,
+            chats: [],
+            chatOtherCount: 0,
+            chatOtherCredits: 0,
+            grandTotalCredits: 180,
+            grandTotalTokens: 360,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/_/usage" });
+
+    // s1: description present → render description
+    await waitFor(() => {
+      expect(screen.getByText("Daily morning brief")).toBeInTheDocument();
+    });
+    // s2: no description → fall back to name
+    expect(screen.getByText("default")).toBeInTheDocument();
   });
 
   it("uses singular form for scheduleOtherCount of 1", async () => {

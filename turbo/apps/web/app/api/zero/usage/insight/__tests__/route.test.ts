@@ -533,6 +533,71 @@ describe("GET /api/zero/usage/insight", () => {
     });
   });
 
+  it("returns scheduleDescription alongside scheduleName for scheduled runs", async () => {
+    const { userId, orgId } = await context.user;
+    // Two separate agents, both with a "default" schedule — the unique
+    // constraint is (agent_id, name, org_id, user_id), so duplicate names
+    // can only collide across agents. This mirrors the real-world dashboard
+    // case where multiple "default" schedules need to be told apart.
+    const { composeId: agentA } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose-a"),
+      orgId,
+    });
+    const { composeId: agentB } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose-b"),
+      orgId,
+    });
+
+    const describedScheduleId = await seedTestSchedule({
+      agentId: agentA,
+      userId,
+      orgId,
+      name: "default",
+      description: "Daily morning brief",
+    });
+    const undescribedScheduleId = await seedTestSchedule({
+      agentId: agentB,
+      userId,
+      orgId,
+      name: "default",
+    });
+
+    for (const [agentId, scheduleId] of [
+      [agentA, describedScheduleId],
+      [agentB, undescribedScheduleId],
+    ] as const) {
+      const { runId } = await seedTestRun(userId, agentId, {
+        triggerSource: "schedule",
+        scheduleId,
+        status: "completed",
+      });
+      await insertTestCreditUsageForRun({
+        runId,
+        orgId,
+        userId,
+        creditsCharged: 50,
+        status: "processed",
+      });
+    }
+
+    const response = await GET(
+      makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+
+    const described = data.schedules.find((s) => {
+      return s.scheduleId === describedScheduleId;
+    });
+    const undescribed = data.schedules.find((s) => {
+      return s.scheduleId === undescribedScheduleId;
+    });
+    expect(described?.scheduleDescription).toBe("Daily morning brief");
+    expect(undescribed?.scheduleDescription).toBeNull();
+  });
+
   it("scope isolation — other user's activity in same org is invisible", async () => {
     const { userId, orgId } = await context.user;
     const otherUserId = uniqueId("other-user");

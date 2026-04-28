@@ -236,6 +236,7 @@ export async function queryUsageInsightTopSchedules(
   const rows = await db.execute<{
     schedule_id: string | null;
     schedule_name: string | null;
+    schedule_description: string | null;
     credits: string;
     tokens: string;
     rn: string;
@@ -246,6 +247,7 @@ export async function queryUsageInsightTopSchedules(
         SELECT
           zr.schedule_id,
           COALESCE(zas.name, 'Unnamed schedule') AS schedule_name,
+          zas.description AS schedule_description,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens,
           ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
@@ -253,13 +255,14 @@ export async function queryUsageInsightTopSchedules(
         INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
         LEFT JOIN zero_agent_schedules zas ON zas.id = zr.schedule_id
         WHERE zr.schedule_id IS NOT NULL
-        GROUP BY zr.schedule_id, zas.name
+        GROUP BY zr.schedule_id, zas.name, zas.description
       )
       SELECT * FROM agg WHERE rn <= 100
       UNION ALL
       SELECT
         NULL AS schedule_id,
         'others' AS schedule_name,
+        NULL AS schedule_description,
         COALESCE(SUM(credits), 0)::bigint AS credits,
         COALESCE(SUM(tokens), 0)::bigint AS tokens,
         101 AS rn
@@ -279,6 +282,7 @@ export async function queryUsageInsightTopSchedules(
       schedules.push({
         scheduleId: row.schedule_id,
         scheduleName: row.schedule_name ?? "Unnamed schedule",
+        scheduleDescription: row.schedule_description,
         credits: Number(row.credits),
         tokens: Number(row.tokens),
       });

@@ -13,6 +13,7 @@ const usageInsightBucketSchema = z.object({
 const usageInsightScheduleRowSchema = z.object({
   scheduleId: z.string(),
   scheduleName: z.string(),
+  scheduleDescription: z.string().nullable(),
   credits: z.number(),
   tokens: z.number(),
 });

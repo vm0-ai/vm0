@@ -83,7 +83,7 @@ export function UsageInsightSchedulesTable({
                 }}
               >
                 <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
-                  {row.scheduleName}
+                  {row.scheduleDescription?.trim() || row.scheduleName}
                 </span>
                 <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
                   <div
