@@ -258,6 +258,9 @@ export async function insertTestUsageEvent(
     creditsCharged?: number;
     runId?: string | null;
     idempotencyKey?: string;
+    /** activityTime for reporting tests: maps to usage_event.created_at. */
+    createdAt?: Date;
+    /** billingTime for reporting tests: maps to usage_event.processed_at. */
     processedAt?: Date | null;
   },
 ): Promise<string> {
@@ -282,6 +285,7 @@ export async function insertTestUsageEvent(
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
       idempotencyKey: options.idempotencyKey ?? randomUUID(),
+      ...(options.createdAt ? { createdAt: options.createdAt } : {}),
       processedAt,
     })
     .returning({ id: usageEvent.id });

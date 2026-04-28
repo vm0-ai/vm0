@@ -691,6 +691,42 @@ describe("GET /api/zero/usage/insight", () => {
     expect(totals["others"]).toEqual({ credits: 7, tokens: 0 });
   });
 
+  it("buckets usage_event rows by activity time, not billing time", async () => {
+    context.mocks.date.setSystemTime(new Date("2026-04-23T15:00:00Z"));
+
+    const { userId, orgId } = await context.user;
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 33,
+      status: "processed",
+      createdAt: new Date("2026-04-22T12:00:00Z"),
+      processedAt: new Date("2026-04-23T12:00:00Z"),
+    });
+
+    const yesterdayResponse = await GET(
+      makeRequest({ range: "yesterday", groupBy: "source", tz: "UTC" }),
+    );
+    expect(yesterdayResponse.status).toBe(200);
+    const yesterdayData =
+      (await yesterdayResponse.json()) as UsageInsightResponse;
+    const yesterdayTotals = sumBucketSeries(yesterdayData.buckets);
+
+    expect(yesterdayData.grandTotalCredits).toBe(33);
+    expect(yesterdayTotals["others"]).toEqual({ credits: 33, tokens: 0 });
+
+    const todayResponse = await GET(
+      makeRequest({ range: "today", groupBy: "source", tz: "UTC" }),
+    );
+    expect(todayResponse.status).toBe(200);
+    const todayData = (await todayResponse.json()) as UsageInsightResponse;
+
+    expect(todayData.grandTotalCredits).toBe(0);
+  });
+
   it("includes run-linked usage_event rows in agent buckets and channel totals", async () => {
     const { userId, orgId } = await context.user;
     const agentName = uniqueId("usage-event-agent");

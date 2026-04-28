@@ -29,10 +29,10 @@ function pgLit(value: string): string {
 }
 
 function usageBucketExpr(p: UsageInsightSqlParams): string {
-  return `date_trunc(${p.truncLit}, ${USAGE_ROW_ALIAS}.usage_time::timestamptz AT TIME ZONE ${p.tzLit})`;
+  return `date_trunc(${p.truncLit}, ${USAGE_ROW_ALIAS}.activity_time::timestamptz AT TIME ZONE ${p.tzLit})`;
 }
 
-function createdAtWindowPredicate(
+function activityTimeWindowPredicate(
   alias: string,
   p: UsageInsightSqlParams,
 ): string {
@@ -45,12 +45,21 @@ function usageRowTokenExpr(): string {
   return `CASE WHEN ue.kind = ${pgLit(MODEL_USAGE_KIND)} AND ue.category IN (${tokenCategoryList}) THEN ue.quantity ELSE 0 END`;
 }
 
+/**
+ * Reporting time terms:
+ * - activityTime maps to ledger created_at, when usage activity was recorded.
+ * - billingTime maps to ledger processed_at, when credits were settled.
+ *
+ * Usage insight is an activity chart, so it filters and buckets by
+ * activityTime while still requiring processed rows. Delayed billing must not
+ * move usage into a later activity bucket.
+ */
 function usageRowsCte(p: UsageInsightSqlParams): string {
   return `
     usage_rows AS (
       SELECT
         'legacy' AS ledger,
-        cu.created_at AS usage_time,
+        cu.created_at AS activity_time,
         cu.run_id,
         cu.user_id,
         cu.org_id,
@@ -60,13 +69,13 @@ function usageRowsCte(p: UsageInsightSqlParams): string {
       WHERE cu.user_id = ${p.userIdLit}
         AND cu.org_id = ${p.orgIdLit}
         AND cu.status = 'processed'
-        AND ${createdAtWindowPredicate("cu", p)}
+        AND ${activityTimeWindowPredicate("cu", p)}
 
       UNION ALL
 
       SELECT
         'event' AS ledger,
-        ue.created_at AS usage_time,
+        ue.created_at AS activity_time,
         ue.run_id,
         ue.user_id,
         ue.org_id,
@@ -76,7 +85,7 @@ function usageRowsCte(p: UsageInsightSqlParams): string {
       WHERE ue.user_id = ${p.userIdLit}
         AND ue.org_id = ${p.orgIdLit}
         AND ue.status = 'processed'
-        AND ${createdAtWindowPredicate("ue", p)}
+        AND ${activityTimeWindowPredicate("ue", p)}
     )`;
 }
 
