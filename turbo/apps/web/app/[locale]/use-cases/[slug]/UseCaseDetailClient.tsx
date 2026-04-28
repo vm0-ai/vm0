@@ -51,6 +51,94 @@ function Section({
   );
 }
 
+function ScreenshotCarousel({
+  screenshots,
+  alt,
+}: {
+  screenshots: string[];
+  alt: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const showControls = screenshots.length > 1;
+
+  return (
+    <div className="uc-carousel">
+      <div className="uc-screenshot-frame">
+        <Image
+          src={screenshots[activeIndex]}
+          alt={`${alt} — screenshot ${activeIndex + 1}`}
+          width={800}
+          height={450}
+          className="uc-screenshot-img"
+          priority
+        />
+      </div>
+      {showControls && (
+        <>
+          <button
+            className="uc-carousel-btn uc-carousel-btn--left"
+            onClick={() =>
+              setActiveIndex(
+                (activeIndex - 1 + screenshots.length) % screenshots.length,
+              )
+            }
+            aria-label="Previous screenshot"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M10 12L6 8L10 4"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            className="uc-carousel-btn uc-carousel-btn--right"
+            onClick={() =>
+              setActiveIndex((activeIndex + 1) % screenshots.length)
+            }
+            aria-label="Next screenshot"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M6 4L10 8L6 12"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <div className="uc-carousel-dots">
+            {screenshots.map((_, i) => (
+              <button
+                key={i}
+                className={`uc-carousel-dot${i === activeIndex ? " uc-carousel-dot--active" : ""}`}
+                onClick={() => setActiveIndex(i)}
+                aria-label={`Go to screenshot ${i + 1}`}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TryItLink({ href, label }: { href: string; label: string }) {
   return (
     <div className="mt-4 flex justify-start">
@@ -161,18 +249,12 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
           </header>
 
           {/* Section 1: What Zero delivers */}
-          {useCase.screenshot && (
+          {useCase.screenshots?.length && (
             <Section title={t("whatZeroDelivers")}>
-              <div className="uc-screenshot-frame">
-                <Image
-                  src={useCase.screenshot}
-                  alt={`${title} — sample output from Zero`}
-                  width={800}
-                  height={450}
-                  className="uc-screenshot-img"
-                  priority
-                />
-              </div>
+              <ScreenshotCarousel
+                screenshots={useCase.screenshots}
+                alt={`${title} — sample output from Zero`}
+              />
             </Section>
           )}
 
