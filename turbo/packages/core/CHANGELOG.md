@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.243.0](https://github.com/vm0-ai/vm0/compare/core-v8.242.1...core-v8.243.0) (2026-04-28)
+
+
+### Features
+
+* **core:** register codex framework + tighten compose schema enum ([#11424](https://github.com/vm0-ai/vm0/issues/11424)) ([6e54c7f](https://github.com/vm0-ai/vm0/commit/6e54c7ff9e1f10ff26fb702d265a4dac735e0580))
+
 ## [8.242.1](https://github.com/vm0-ai/vm0/compare/core-v8.242.0...core-v8.242.1) (2026-04-28)
 
 

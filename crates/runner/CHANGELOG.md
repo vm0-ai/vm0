@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.98.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.3...runner-rs-v0.98.0) (2026-04-28)
+
+
+### Features
+
+* **rootfs:** install codex cli binary in sandbox image ([#11425](https://github.com/vm0-ai/vm0/issues/11425)) ([00914b9](https://github.com/vm0-ai/vm0/commit/00914b9c1d98027f8ca2901df58ce4e0653cfba6)), closes [#11416](https://github.com/vm0-ai/vm0/issues/11416)
+* **runner:** framework-aware restore_session for codex ([#11429](https://github.com/vm0-ai/vm0/issues/11429)) ([6e10fcd](https://github.com/vm0-ai/vm0/commit/6e10fcdee3ab50f02f3771cd32aacc7d59dd184b))
+
 ## [0.97.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.2...runner-rs-v0.97.3) (2026-04-28)
 
 ## [0.97.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.1...runner-rs-v0.97.2) (2026-04-28)

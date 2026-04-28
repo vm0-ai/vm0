@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.14...sandbox-fc-v0.27.0) (2026-04-28)
+
+
+### Features
+
+* **rootfs:** install codex cli binary in sandbox image ([#11425](https://github.com/vm0-ai/vm0/issues/11425)) ([00914b9](https://github.com/vm0-ai/vm0/commit/00914b9c1d98027f8ca2901df58ce4e0653cfba6)), closes [#11416](https://github.com/vm0-ai/vm0/issues/11416)
+
 ## [0.26.14](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.13...sandbox-fc-v0.26.14) (2026-04-28)
 
 

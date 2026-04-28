@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.8...guest-agent-v0.25.0) (2026-04-28)
+
+
+### Features
+
+* **guest-agent:** codex command path + framework dispatch ([#11423](https://github.com/vm0-ai/vm0/issues/11423)) ([520e73c](https://github.com/vm0-ai/vm0/commit/520e73c1e0a1d15cddd096bd3f0f7c0746605e05))
+* **guest-agent:** codex session resume + checkpoint scan ([#11430](https://github.com/vm0-ai/vm0/issues/11430)) ([fd267b5](https://github.com/vm0-ai/vm0/commit/fd267b568eb9ae86b9f55d8357e486ed67285486))
+
 ## [0.24.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.7...guest-agent-v0.24.8) (2026-04-28)
 
 

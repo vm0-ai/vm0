@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.316.0](https://github.com/vm0-ai/vm0/compare/web-v12.315.0...web-v12.316.0) (2026-04-28)
+
+
+### Features
+
+* **core:** register codex framework + tighten compose schema enum ([#11424](https://github.com/vm0-ai/vm0/issues/11424)) ([6e54c7f](https://github.com/vm0-ai/vm0/commit/6e54c7ff9e1f10ff26fb702d265a4dac735e0580))
+* route deepseek-v4-pro through openrouter provider ([#11412](https://github.com/vm0-ai/vm0/issues/11412)) ([b109629](https://github.com/vm0-ai/vm0/commit/b109629fc06d793c854f2b5fff6f3d85fdd3a111))
+* **use-cases:** add screenshot preview to detail pages, pilot on sentry-triage ([#11277](https://github.com/vm0-ai/vm0/issues/11277)) ([0131096](https://github.com/vm0-ai/vm0/commit/0131096a97b0e287bcaf8d6d29f55db331dca434))
+* **web-infra:** framework-aware defaults for codex ([#11431](https://github.com/vm0-ai/vm0/issues/11431)) ([09860e3](https://github.com/vm0-ai/vm0/commit/09860e3a6cd63b09e20fd51a28d472f4d3ee1187))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.243.0
+
 ## [12.315.0](https://github.com/vm0-ai/vm0/compare/web-v12.314.0...web-v12.315.0) (2026-04-28)
 
 

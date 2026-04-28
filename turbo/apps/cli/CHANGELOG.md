@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.138.0](https://github.com/vm0-ai/vm0/compare/cli-v9.137.3...cli-v9.138.0) (2026-04-28)
+
+
+### Features
+
+* **cli:** codex JSONL event parser + factory dispatch ([#11432](https://github.com/vm0-ai/vm0/issues/11432)) ([035808d](https://github.com/vm0-ai/vm0/commit/035808d9afa72888ff1c2662c847dad794544fca))
+* **core:** register codex framework + tighten compose schema enum ([#11424](https://github.com/vm0-ai/vm0/issues/11424)) ([6e54c7f](https://github.com/vm0-ai/vm0/commit/6e54c7ff9e1f10ff26fb702d265a4dac735e0580))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.243.0
+
 ## [9.137.3](https://github.com/vm0-ai/vm0/compare/cli-v9.137.2...cli-v9.137.3) (2026-04-28)
 
 
