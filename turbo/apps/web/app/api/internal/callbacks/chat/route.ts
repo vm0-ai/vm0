@@ -219,10 +219,11 @@ async function handleCompleted(
   threadId: string,
   userId: string,
 ): Promise<void> {
-  // Final sweep: re-query Axiom and insert any events the live consumer
-  // missed. Inserts are idempotent via the `(run_id, sequence_number)`
-  // unique index, so concurrent writes from the consumer and this sweep
-  // cannot produce duplicates.
+  // Final sweep: re-query Axiom and insert any assistant output the live
+  // consumer missed. Result-only CLI output is inserted only when no assistant
+  // output exists for the run. Inserts are idempotent via the
+  // `(run_id, sequence_number)` unique index, so concurrent writes from the
+  // consumer and this sweep cannot produce duplicates.
   const { assistantItems, resultFallback } = await queryChatOutputEvents(runId);
   if (assistantItems.length > 0) {
     await insertAssistantEventMessages(runId, threadId, userId, assistantItems);
@@ -325,9 +326,9 @@ async function handleFailed(
  * POST /api/internal/callbacks/chat
  *
  * Chat callback handler for agent run completion.
- * Final sweep: inserts any assistant events not yet written by the
- * chat-assistant consumer (via `ON CONFLICT DO NOTHING`), then generates
- * title and sends push notification.
+ * Final sweep: inserts any assistant output not yet written by the
+ * chat-assistant consumer, or terminal result-only output when there is no
+ * assistant output, then generates title and sends push notification.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
