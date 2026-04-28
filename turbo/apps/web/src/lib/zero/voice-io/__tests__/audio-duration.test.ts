@@ -5,45 +5,51 @@ function fileFromBytes(bytes: Uint8Array, mimeType: string): File {
   return new File([bytes], "test", { type: mimeType });
 }
 
-/** Build a minimal valid WebM file with a given Duration (seconds) in Info. */
+/**
+ * Build a minimal valid WebM file with a given Duration (seconds) in Info.
+ * Constructs a correct EBML structure that the parser can traverse.
+ */
 function buildWebmFile(durationSeconds: number): File {
-  const header = new Uint8Array([
-    0x1a, 0x45, 0xdf, 0xa3, // EBML header
-    0x42, 0x82, // EBML version + read version (1 byte each, vint)
-    0x02, // max id length
-    0x02, // max size length
-    0x82, // doc type
-    0x01, // doc type version
-    0x02, // doc type read version
-  ]);
+  // Helper: encode an EBML element [vint-ID, vint-size, data]
+  function elem(id: number[], data: number[]): number[] {
+    const size = encodeVint(data.length);
+    return [...id, ...size, ...data];
+  }
 
   // Duration as float64 (nanoseconds)
   const durationNanos = durationSeconds * 1_000_000_000;
-  const durationBytes = new Uint8Array(8);
-  const view = new DataView(durationBytes.buffer);
-  view.setFloat64(0, durationNanos, false);
+  const durBuf = new ArrayBuffer(8);
+  new DataView(durBuf).setFloat64(0, durationNanos, false);
+  const durData = [...new Uint8Array(durBuf)];
 
-  const infoElement = concatBytes(
-    new Uint8Array([
-      0x15, 0x49, 0xa9, 0x66, // Info element ID
-      0x8b, // size: 11 bytes (1 Duration element)
-      0x44, 0x89, // Duration element ID
-      0x88, // size: 8 bytes
-    ]),
-    durationBytes,
-  );
+  const durationEl = elem([0x44, 0x89], durData); // Duration
+  const infoEl = elem([0x15, 0x49, 0xa9, 0x66], durationEl); // Info
+  const segmentContent = infoEl;
 
-  const segmentContent = concatBytes(infoElement, new Uint8Array(0));
-  const segmentSize = encodeVint(segmentContent.length);
-  const segmentHeader = concatBytes(
-    new Uint8Array([0x18, 0x53, 0x80, 0x67]),
-    segmentSize,
-  );
+  // Segment size: unknown (all-1s vint) for simplicity
+  const segmentEl = [
+    0x18, 0x53, 0x80, 0x67, // Segment ID
+    0xff, // unknown size (vint)
+    ...segmentContent,
+  ];
 
-  const full = concatBytes(
-    header,
-    concatBytes(segmentHeader, segmentContent),
-  );
+  // EBML header elements
+  const ebmlContent = [
+    ...elem([0x42, 0x86], [0x01]), // EBMLVersion = 1
+    ...elem([0x42, 0xf7], [0x01]), // EBMLReadVersion = 1
+    ...elem([0x42, 0xf2], [0x04]), // EBMLMaxIDLength = 4
+    ...elem([0x42, 0xf3], [0x08]), // EBMLMaxSizeLength = 8
+    ...[0x42, 0x82, 0x84, 0x77, 0x65, 0x62, 0x6d], // DocType = "webm" (2-byte ID, 1-byte size, 4-byte value)
+    ...elem([0x42, 0x87], [0x04]), // DocTypeVersion = 4
+    ...elem([0x42, 0x85], [0x02]), // DocTypeReadVersion = 2
+  ];
+
+  const full = new Uint8Array([
+    0x1a, 0x45, 0xdf, 0xa3, // EBML header ID
+    ...encodeVint(ebmlContent.length),
+    ...ebmlContent,
+    ...segmentEl,
+  ]);
   return fileFromBytes(full, "audio/webm");
 }
 
@@ -81,13 +87,6 @@ function buildWavFile(durationSeconds: number): File {
 }
 
 // --- helpers ---
-
-function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const result = new Uint8Array(a.length + b.length);
-  result.set(a, 0);
-  result.set(b, a.length);
-  return result;
-}
 
 function encodeVint(value: number): Uint8Array {
   if (value === 0) return new Uint8Array([0x80]);

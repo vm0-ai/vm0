@@ -24,9 +24,8 @@ export const DAILY_DURATION_LIMITS: Record<OrgTier, number | null> = {
 // Per-request maximum audio duration (seconds)
 export const MAX_REQUEST_DURATION_SECONDS = 5 * 60; // 5 minutes
 
-// Daily behavior key prefixes — suffixed with YYYY-MM-DD for automatic rollover
-export const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
-export const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
+const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
+const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
 
 interface AudioInputQuotaStatus {
   allowed: boolean;
@@ -58,33 +57,6 @@ export function dailyRateKey(date?: Date): string {
 export function dailyDurationKey(date?: Date): string {
   const d = date ?? new Date();
   return `${DAILY_DURATION_KEY_PREFIX}_${d.toISOString().slice(0, 10)}`;
-}
-
-export async function checkDailyRateLimit(
-  orgId: string,
-  userId: string,
-  orgTier: OrgTier,
-): Promise<AudioInputQuotaStatus> {
-  const limit = DAILY_RATE_LIMITS[orgTier];
-  if (limit === null || limit === undefined) {
-    return { allowed: true, count: 0, limit: null };
-  }
-  const count = await getCount(orgId, userId, dailyRateKey());
-  return { allowed: count < limit, count, limit };
-}
-
-export async function checkDailyDurationLimit(
-  orgId: string,
-  userId: string,
-  orgTier: OrgTier,
-  durationSeconds: number,
-): Promise<AudioInputQuotaStatus> {
-  const limit = DAILY_DURATION_LIMITS[orgTier];
-  if (limit === null || limit === undefined) {
-    return { allowed: true, count: 0, limit: null };
-  }
-  const count = await getCount(orgId, userId, dailyDurationKey());
-  return { allowed: count + durationSeconds <= limit, count, limit };
 }
 
 /**
