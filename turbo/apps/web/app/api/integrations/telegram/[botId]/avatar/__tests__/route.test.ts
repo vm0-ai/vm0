@@ -167,7 +167,7 @@ describe("GET /api/integrations/telegram/[botId]/avatar", () => {
     expect(receivedBytes.equals(fileBytes)).toBe(true);
   });
 
-  it("returns 404 when Telegram has no profile photo for the bot", async () => {
+  it("returns a fallback avatar when Telegram has no profile photo for the bot", async () => {
     const botId = uniqueId("tg-bot-no-avatar");
     await createTestTelegramInstallation({
       telegramBotId: botId,
@@ -194,9 +194,11 @@ describe("GET /api/integrations/telegram/[botId]/avatar", () => {
       createTestRequest(avatarUrl(botId)),
       routeParams(botId),
     );
-    const data = await response.json();
+    const body = await response.text();
 
-    expect(response.status).toBe(404);
-    expect(data.error.code).toBe("NOT_FOUND");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("image/svg+xml");
+    expect(response.headers.get("cache-control")).toBe("private, max-age=300");
+    expect(body).toContain("Telegram bot avatar fallback");
   });
 });
