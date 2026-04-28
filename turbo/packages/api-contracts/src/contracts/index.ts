@@ -366,6 +366,12 @@ export {
   type BindBb0DeviceResponse,
 } from "./device-token";
 export {
+  audioTranscriptionsV1Contract,
+  audioTranscriptionV1Schema,
+  type AudioTranscriptionsV1Contract,
+  type AudioTranscriptionV1,
+} from "./audio-transcriptions-v1";
+export {
   runnersPollContract,
   runnersJobClaimContract,
   runnersHeartbeatContract,

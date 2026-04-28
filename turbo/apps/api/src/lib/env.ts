@@ -9,6 +9,7 @@ const SCHEMA = {
   CLERK_PUBLISHABLE_KEY: z.string().min(1),
   SECRETS_ENCRYPTION_KEY: z.string().length(64),
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
+  OPENAI_API_KEY: z.string().min(1),
   SENTRY_DSN: z.url().optional(),
   VERCEL_GIT_COMMIT_SHA: z.string().optional(),
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),

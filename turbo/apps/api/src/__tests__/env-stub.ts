@@ -10,3 +10,4 @@ vi.stubEnv(
   "OFFICIAL_RUNNER_SECRET",
   "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 );
+vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
