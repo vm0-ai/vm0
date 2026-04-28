@@ -578,7 +578,7 @@ importers:
         specifier: '>=7.5.7'
         version: 7.5.13
       uuid:
-        specifier: 10.0.0
+        specifier: ^10.0.0
         version: 10.0.0
       web-push:
         specifier: ^3.6.7
@@ -621,7 +621,7 @@ importers:
         specifier: ^19.1.9
         version: 19.2.3(@types/react@19.2.14)
       '@types/uuid':
-        specifier: 10.0.0
+        specifier: ^10.0.0
         version: 10.0.0
       '@types/web-push':
         specifier: ^3.6.4
