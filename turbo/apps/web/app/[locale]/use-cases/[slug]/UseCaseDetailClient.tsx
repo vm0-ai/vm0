@@ -302,50 +302,6 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             </div>
           </Section>
 
-          {/* Integrations */}
-          <Section title={t(`content.${slug}.headings.integrations`)}>
-            <div className="uc-integrations">
-              {useCase.integrations.map((integration, i) => {
-                return (
-                  <div key={i} className="uc-integration">
-                    {integration.connector.icon ? (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
-                        <Image
-                          src={integration.connector.icon}
-                          alt={integration.connector.label}
-                          width={32}
-                          height={32}
-                          className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}${integration.connector.looseViewBox ? " scale-[2.2]" : ""}`}
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--gray-100))] text-sm font-medium text-[hsl(var(--muted-foreground))]">
-                        {integration.connector.label[0]}
-                      </div>
-                    )}
-                    <div className="uc-integration-info">
-                      <div className="uc-integration-name">
-                        {integration.connector.label}
-                      </div>
-                      <div className="uc-integration-desc">
-                        {t(`content.${slug}.integrations.${i}.description`)}
-                      </div>
-                    </div>
-                    <span
-                      className={`uc-integration-required ${
-                        integration.required
-                          ? "uc-integration-required--yes"
-                          : "uc-integration-required--no"
-                      }`}
-                    >
-                      {integration.required ? t("required") : t("optional")}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </Section>
-
           {/* Tips */}
           <div className="uc-section">
             <h2 className="uc-section-title" style={{ marginBottom: 16 }}>
