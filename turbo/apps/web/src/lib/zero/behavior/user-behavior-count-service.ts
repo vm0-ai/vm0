@@ -63,7 +63,10 @@ export async function getCounts(
   if (behaviorKeys.length === 0) return {};
   const db = globalThis.services.db;
   const rows = await db
-    .select({ key: userBehaviorCount.behaviorKey, count: userBehaviorCount.count })
+    .select({
+      key: userBehaviorCount.behaviorKey,
+      count: userBehaviorCount.count,
+    })
     .from(userBehaviorCount)
     .where(
       and(

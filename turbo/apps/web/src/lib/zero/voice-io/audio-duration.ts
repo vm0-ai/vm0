@@ -43,13 +43,12 @@ function parseWebmDuration(buf: Uint8Array): number | null {
 
   let pos = 4;
 
-  // Skip EBML header element: read element ID size from first byte's leading bits
-  const ebmlIdLen = vintLen(buf[pos] ?? 0);
-  if (ebmlIdLen === null || pos + ebmlIdLen > buf.length) return null;
-  pos += ebmlIdLen;
-  const ebmlSizeLen = readVint(buf, pos);
-  if (ebmlSizeLen === null) return null;
-  pos = ebmlSizeLen.next;
+  // The EBML header magic (0x1a45dfa3) was already matched. The next byte is the
+  // element size vint. Read it and skip past the header's children to reach the
+  // top-level Segment element.
+  const ebmlSize = readVint(buf, pos);
+  if (ebmlSize === null) return null;
+  pos = ebmlSize.next + ebmlSize.value;
 
   // Expect Segment element (0x18 0x53 0x80 0x67) at next position
   if (pos + 4 > buf.length) return null;
@@ -111,11 +110,7 @@ function findDurationInInfo(
     const valuePos = sizeResult.next;
 
     // Duration element ID: 0x44 0x89
-    if (
-      idLen === 2 &&
-      buf[elemStart] === 0x44 &&
-      buf[elemStart + 1] === 0x89
-    ) {
+    if (idLen === 2 && buf[elemStart] === 0x44 && buf[elemStart + 1] === 0x89) {
       if (valuePos + 8 > buf.length) return null;
       // Duration is a float64 in nanoseconds
       const view = new DataView(buf.buffer, buf.byteOffset + valuePos, 8);

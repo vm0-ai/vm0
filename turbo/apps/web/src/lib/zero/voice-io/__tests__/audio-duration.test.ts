@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { getAudioDuration, MIN_SPEECH_BITRATE_BPS } from "../audio-duration";
 
 function fileFromBytes(bytes: Uint8Array, mimeType: string): File {
-  return new File([bytes], "test", { type: mimeType });
+  return new File([bytes as BlobPart], "test", { type: mimeType });
 }
 
 /**
@@ -28,7 +28,10 @@ function buildWebmFile(durationSeconds: number): File {
 
   // Segment size: unknown (all-1s vint) for simplicity
   const segmentEl = [
-    0x18, 0x53, 0x80, 0x67, // Segment ID
+    0x18,
+    0x53,
+    0x80,
+    0x67, // Segment ID
     0xff, // unknown size (vint)
     ...segmentContent,
   ];
@@ -45,7 +48,10 @@ function buildWebmFile(durationSeconds: number): File {
   ];
 
   const full = new Uint8Array([
-    0x1a, 0x45, 0xdf, 0xa3, // EBML header ID
+    0x1a,
+    0x45,
+    0xdf,
+    0xa3, // EBML header ID
     ...encodeVint(ebmlContent.length),
     ...ebmlContent,
     ...segmentEl,

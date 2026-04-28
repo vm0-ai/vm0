@@ -11,7 +11,10 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
-import { readBehaviorCount } from "../../../../../../src/__tests__/db-test-seeders/behavior";
+import {
+  readBehaviorCount,
+  seedBehaviorCount,
+} from "../../../../../../src/__tests__/db-test-seeders/behavior";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
   AUDIO_INPUT_FREE_QUOTA,
@@ -20,7 +23,6 @@ import {
   dailyRateKey,
   dailyDurationKey,
 } from "../../../../../../src/lib/zero/voice-io/audio-input-policy";
-import { seedBehaviorCount } from "../../../../../../src/__tests__/db-test-seeders/behavior";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
   const actual =
@@ -30,13 +32,6 @@ vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
     isFeatureEnabled: vi.fn().mockReturnValue(true),
   };
 });
-
-vi.mock(
-  "../../../../../../src/lib/zero/voice-io/audio-duration",
-  async () => ({
-    getAudioDuration: vi.fn().mockResolvedValue(null),
-  }),
-);
 
 const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
 const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
@@ -64,6 +59,38 @@ function createAudioFile(
 ): File {
   const buffer = new ArrayBuffer(size);
   return new File([buffer], name, { type });
+}
+
+function createWavFile(durationSeconds: number): File {
+  const sampleRate = 16000;
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const bytesPerSample = (numChannels * bitsPerSample) / 8;
+  const dataSize = durationSeconds * sampleRate * bytesPerSample;
+
+  const buf = new ArrayBuffer(44);
+  const view = new DataView(buf);
+  const writeStr = (offset: number, s: string) => {
+    for (let i = 0; i < s.length; i++) {
+      view.setUint8(offset + i, s.charCodeAt(i));
+    }
+  };
+
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  return new File([buf], "test.wav", { type: "audio/wav" });
 }
 
 function createSttRequest(file?: File): Request {
@@ -317,13 +344,9 @@ describe("POST /api/zero/voice-io/stt", () => {
       const userId = uniqueId("stt-daily-dur");
       const { orgId } = await setupOrg(userId);
       await updateOrgTier(orgId, "pro");
-      const { getAudioDuration } = await import(
-        "../../../../../../src/lib/zero/voice-io/audio-duration"
-      );
-      (getAudioDuration as ReturnType<typeof vi.fn>).mockResolvedValue(60);
 
       const limit = DAILY_DURATION_LIMITS["pro"]!;
-      await seedBehaviorCount(orgId, userId, dailyDurationKey(), limit);
+      await seedBehaviorCount(orgId, userId, dailyDurationKey(), limit + 1);
 
       server.use(
         http.post("https://api.openai.com/v1/audio/transcriptions", () => {
@@ -345,25 +368,24 @@ describe("POST /api/zero/voice-io/stt", () => {
       const { orgId } = await setupOrg(userId);
       await updateOrgTier(orgId, "pro");
 
-      const { getAudioDuration } = await import(
-        "../../../../../../src/lib/zero/voice-io/audio-duration"
-      );
-      (getAudioDuration as ReturnType<typeof vi.fn>).mockResolvedValue(30);
-
       server.use(
         http.post("https://api.openai.com/v1/audio/transcriptions", () => {
           return HttpResponse.json({ text: "daily tracking test" });
         }),
       );
 
-      const response = await POST(createSttRequest(createAudioFile()));
+      // Use a real WAV file so getAudioDuration returns an actual duration
+      const wavFile = createWavFile(30);
+      const formData = new FormData();
+      formData.append("file", wavFile);
+      const req = new Request("http://localhost:3000/api/zero/voice-io/stt", {
+        method: "POST",
+        body: formData,
+      });
+      const response = await POST(req);
       expect(response.status).toBe(200);
 
-      const rateCount = await readBehaviorCount(
-        orgId,
-        userId,
-        dailyRateKey(),
-      );
+      const rateCount = await readBehaviorCount(orgId, userId, dailyRateKey());
       expect(rateCount).toBe(1);
 
       const durCount = await readBehaviorCount(
@@ -381,18 +403,17 @@ describe("POST /api/zero/voice-io/stt", () => {
 
       server.use(
         http.post("https://api.openai.com/v1/audio/transcriptions", () => {
-          return HttpResponse.json({ error: { message: "boom" } }, { status: 500 });
+          return HttpResponse.json(
+            { error: { message: "boom" } },
+            { status: 500 },
+          );
         }),
       );
 
       const response = await POST(createSttRequest(createAudioFile()));
       expect(response.status).toBe(500);
 
-      const rateCount = await readBehaviorCount(
-        orgId,
-        userId,
-        dailyRateKey(),
-      );
+      const rateCount = await readBehaviorCount(orgId, userId, dailyRateKey());
       expect(rateCount).toBe(0);
 
       const durCount = await readBehaviorCount(
