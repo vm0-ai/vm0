@@ -20,12 +20,28 @@ import {
 } from "../client";
 import { escapeHtml } from "../format";
 import { signConnectParams } from "../connect-token";
-import { pickBestPhoto, formatTelegramFileForContext } from "../images";
+import {
+  extractTelegramFileForContext,
+  formatTelegramFileForContext,
+  hasTelegramFileForContext,
+  type TelegramFileContext,
+} from "../images";
+import {
+  extractTelegramMessageEntities,
+  formatCurrentTelegramEntitiesForPrompt,
+} from "../entities";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 import type { UserInfoOptions } from "../../integration-prompt";
 
 const log = logger("telegram:shared");
+
+type TelegramContextMessageInput = Omit<
+  TelegramHandlerUpdate["message"],
+  "chat"
+> & {
+  chat?: TelegramHandlerUpdate["message"]["chat"];
+};
 
 /**
  * Sentinel value for a pending user link that hasn't been claimed yet.
@@ -142,25 +158,15 @@ export async function saveTelegramThreadSession(opts: {
 
 /**
  * Store an incoming Telegram message for context retrieval.
- * For photo messages, stores the caption as text and the best photo's file_id.
+ * Stores the text/caption, first supported attachment, and rich entities.
  */
 export async function storeTelegramMessage(
   installationId: string,
   chatId: string,
-  message: {
-    message_id: number;
-    from?: { id: number; username?: string; is_bot?: boolean };
-    text?: string;
-    caption?: string;
-    photo?: Array<{
-      file_id: string;
-      width: number;
-      height: number;
-      file_size?: number;
-    }>;
-  },
+  message: TelegramContextMessageInput,
 ): Promise<void> {
-  const bestPhoto = message.photo ? pickBestPhoto(message.photo) : undefined;
+  const file = extractTelegramFileForContext(message);
+  const entities = extractTelegramMessageEntities(message);
 
   await globalThis.services.db
     .insert(telegramMessages)
@@ -171,10 +177,33 @@ export async function storeTelegramMessage(
       fromUserId: String(message.from?.id ?? 0),
       fromUsername: message.from?.username ?? null,
       text: message.text ?? message.caption ?? null,
-      fileId: bestPhoto?.file_id ?? null,
+      ...telegramFileDbValues(file),
+      entities: entities ?? null,
       isBot: message.from?.is_bot ?? false,
     })
     .onConflictDoNothing();
+}
+
+function telegramFileDbValues(file: TelegramFileContext | undefined): {
+  fileId: string | null;
+  fileType: string | null;
+  fileName: string | null;
+  fileMimeType: string | null;
+  fileSize: number | null;
+  fileWidth: number | null;
+  fileHeight: number | null;
+  fileDuration: number | null;
+} {
+  return {
+    fileId: file?.file_id ?? null,
+    fileType: file?.file_type ?? null,
+    fileName: file?.file_name ?? null,
+    fileMimeType: file?.mime_type ?? null,
+    fileSize: file?.file_size ?? null,
+    fileWidth: file?.width ?? null,
+    fileHeight: file?.height ?? null,
+    fileDuration: file?.duration ?? null,
+  };
 }
 
 async function touchTelegramUserLink(
@@ -639,22 +668,42 @@ export function formatReplyQuote(
 }
 
 /**
- * Append an on-demand Telegram file reference if the message contains a photo.
+ * Return true when a Telegram message has content worth storing or sending to
+ * the agent. Telegram Bot API has no history API, so unsupported messages are
+ * intentionally ignored instead of creating empty context rows.
  */
-export function appendPhotoContext(
+export function hasTelegramMessageContextContent(
+  message: TelegramContextMessageInput,
+): boolean {
+  return Boolean(
+    message.text ||
+    message.caption ||
+    hasTelegramFileForContext(message) ||
+    extractTelegramMessageEntities(message),
+  );
+}
+
+/**
+ * Append on-demand Telegram file and entity references from the current message.
+ */
+export function appendTelegramMessageContext(
   prompt: string,
   message: TelegramHandlerUpdate["message"],
   botId: string,
 ): string {
-  if (!message.photo) {
-    return prompt;
+  const parts: string[] = [];
+  const file = extractTelegramFileForContext(message);
+  if (file) {
+    parts.push(formatTelegramFileForContext(file, { botId }));
   }
-  const bestPhoto = pickBestPhoto(message.photo);
-  if (!bestPhoto) {
-    return prompt;
+
+  const entities = formatCurrentTelegramEntitiesForPrompt(message);
+  if (entities) {
+    parts.push(entities);
   }
-  const fileContext = formatTelegramFileForContext(bestPhoto, { botId });
-  return prompt ? `${prompt}\n\n${fileContext}` : fileContext;
+
+  if (parts.length === 0) return prompt;
+  return prompt ? `${prompt}\n\n${parts.join("\n\n")}` : parts.join("\n\n");
 }
 
 /**

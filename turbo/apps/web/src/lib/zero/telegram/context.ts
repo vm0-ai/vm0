@@ -1,6 +1,13 @@
 import { eq, and, desc } from "drizzle-orm";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
-import { formatTelegramFileForContext } from "./images";
+import {
+  telegramMessages,
+  type TelegramMessageEntity,
+} from "@vm0/db/schema/telegram-message";
+import { formatTelegramEntitiesForContext } from "./entities";
+import {
+  formatTelegramFileForContext,
+  type TelegramFileContext,
+} from "./images";
 import type { TelegramClient } from "./client";
 import { logger } from "../../shared/logger";
 
@@ -22,6 +29,14 @@ interface TelegramContextMessage {
   fromUserId: string;
   text: string | null;
   fileId: string | null;
+  fileType: string | null;
+  fileName: string | null;
+  fileMimeType: string | null;
+  fileSize: number | null;
+  fileWidth: number | null;
+  fileHeight: number | null;
+  fileDuration: number | null;
+  entities: TelegramMessageEntity[] | null;
   isBot: boolean;
   messageId: string;
 }
@@ -49,6 +64,14 @@ export async function fetchTelegramContext(
       fromUserId: telegramMessages.fromUserId,
       text: telegramMessages.text,
       fileId: telegramMessages.fileId,
+      fileType: telegramMessages.fileType,
+      fileName: telegramMessages.fileName,
+      fileMimeType: telegramMessages.fileMimeType,
+      fileSize: telegramMessages.fileSize,
+      fileWidth: telegramMessages.fileWidth,
+      fileHeight: telegramMessages.fileHeight,
+      fileDuration: telegramMessages.fileDuration,
+      entities: telegramMessages.entities,
       isBot: telegramMessages.isBot,
       messageId: telegramMessages.messageId,
     })
@@ -112,6 +135,10 @@ function formatMessageWithMetadata(
   if (!msg.isBot && msg.fromUsername) {
     senderParts.push(`username: @${msg.fromUsername}`);
   }
+  const entitySummary = formatTelegramEntitiesForContext(
+    msg.text ?? "",
+    msg.entities,
+  );
 
   const parts: string[] = [
     "---",
@@ -119,6 +146,7 @@ function formatMessageWithMetadata(
     `- RELATIVE_INDEX: ${relativeIndex}`,
     `- MSG_ID: ${msg.messageId}`,
     `- SENDER: {${senderParts.join(", ")}}`,
+    ...(entitySummary ? [`- ENTITIES: ${entitySummary}`] : []),
     "",
     msg.text ?? "",
   ];
@@ -128,6 +156,32 @@ function formatMessageWithMetadata(
   }
 
   return parts.join("\n");
+}
+
+function fileContextFromMessage(
+  msg: TelegramContextMessage,
+): TelegramFileContext | undefined {
+  if (!msg.fileId) return undefined;
+
+  return {
+    file_id: msg.fileId,
+    file_type:
+      msg.fileType === "document" ||
+      msg.fileType === "video" ||
+      msg.fileType === "audio" ||
+      msg.fileType === "voice" ||
+      msg.fileType === "animation" ||
+      msg.fileType === "video_note" ||
+      msg.fileType === "sticker"
+        ? msg.fileType
+        : "photo",
+    file_name: msg.fileName ?? undefined,
+    mime_type: msg.fileMimeType ?? undefined,
+    file_size: msg.fileSize ?? undefined,
+    width: msg.fileWidth ?? undefined,
+    height: msg.fileHeight ?? undefined,
+    duration: msg.fileDuration ?? undefined,
+  };
 }
 
 /**
@@ -145,21 +199,13 @@ function formatContextForAgent(
 
   const formattedMessages = messages
     .filter((m) => {
-      return m.text || m.fileId;
+      return m.text || m.fileId || (m.entities && m.entities.length > 0);
     })
     .map((msg, index) => {
       const relativeIndex = index - totalMessages;
-      const fileParts = msg.fileId
-        ? [
-            formatTelegramFileForContext(
-              {
-                file_id: msg.fileId,
-                width: 0,
-                height: 0,
-              },
-              { botId },
-            ),
-          ]
+      const fileContext = fileContextFromMessage(msg);
+      const fileParts = fileContext
+        ? [formatTelegramFileForContext(fileContext, { botId })]
         : [];
 
       return formatMessageWithMetadata(msg, relativeIndex, fileParts);

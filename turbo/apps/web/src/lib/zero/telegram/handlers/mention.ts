@@ -8,7 +8,7 @@ import {
   sendQueuedNotification,
   enrichTelegramPrompt,
   formatReplyQuote,
-  appendPhotoContext,
+  appendTelegramMessageContext,
   lookupTelegramThreadSession,
   storeTelegramMessage,
   getWorkspaceAgent,
@@ -124,7 +124,7 @@ export async function handleTelegramMention(
     messageText,
     message.from,
   );
-  let enrichedPrompt = appendPhotoContext(
+  let enrichedPrompt = appendTelegramMessageContext(
     messageContent,
     message,
     installation.telegramBotId,

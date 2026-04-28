@@ -1,5 +1,7 @@
 import {
   boolean,
+  integer,
+  jsonb,
   pgTable,
   uuid,
   varchar,
@@ -9,6 +11,22 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import { telegramInstallations } from "./telegram-installation";
+
+export interface TelegramMessageEntity {
+  type: string;
+  offset: number;
+  length: number;
+  url?: string;
+  language?: string;
+  custom_emoji_id?: string;
+  user?: {
+    id: number;
+    is_bot?: boolean;
+    first_name?: string;
+    last_name?: string;
+    username?: string;
+  };
+}
 
 /**
  * Telegram Messages table
@@ -33,8 +51,16 @@ export const telegramMessages = pgTable(
     fromUserId: varchar("from_user_id", { length: 255 }).notNull(),
     fromUsername: varchar("from_username", { length: 255 }),
     text: text("text"),
-    /** Telegram file_id for photos — used to download images for context */
+    /** Telegram file_id for downloadable attachments — used for context downloads */
     fileId: varchar("file_id", { length: 255 }),
+    fileType: varchar("file_type", { length: 32 }),
+    fileName: text("file_name"),
+    fileMimeType: varchar("file_mime_type", { length: 255 }),
+    fileSize: integer("file_size"),
+    fileWidth: integer("file_width"),
+    fileHeight: integer("file_height"),
+    fileDuration: integer("file_duration"),
+    entities: jsonb("entities").$type<TelegramMessageEntity[]>(),
     isBot: boolean("is_bot").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import type { TelegramMessageEntity } from "@vm0/db/schema/telegram-message";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -249,6 +250,14 @@ interface InsertMessageOptions {
   fromUsername?: string;
   text?: string;
   fileId?: string;
+  fileType?: string;
+  fileName?: string;
+  fileMimeType?: string;
+  fileSize?: number;
+  fileWidth?: number;
+  fileHeight?: number;
+  fileDuration?: number;
+  entities?: TelegramMessageEntity[];
   isBot?: boolean;
   createdAt?: Date;
 }
@@ -270,6 +279,14 @@ export async function insertTelegramMessage(
     fromUsername: options.fromUsername ?? null,
     text: options.text ?? null,
     fileId: options.fileId ?? null,
+    fileType: options.fileType ?? null,
+    fileName: options.fileName ?? null,
+    fileMimeType: options.fileMimeType ?? null,
+    fileSize: options.fileSize ?? null,
+    fileWidth: options.fileWidth ?? null,
+    fileHeight: options.fileHeight ?? null,
+    fileDuration: options.fileDuration ?? null,
+    entities: options.entities ?? null,
     isBot: options.isBot ?? false,
     createdAt: options.createdAt ?? new Date(),
   });

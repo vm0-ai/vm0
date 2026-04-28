@@ -182,5 +182,63 @@ describe("fetchTelegramContext", () => {
     expect(result.executionContext).toContain("[ID] tg-file-1");
     expect(result.executionContext).toContain(`[Bot ID] ${installationId}`);
     expect(result.executionContext).not.toContain("curl -sS");
+    expect(result.executionContext).not.toContain("[Download]");
+  });
+
+  it("should render Telegram documents as on-demand file references", async () => {
+    const chatId = uniqueId("chat");
+
+    await insertTelegramMessage({
+      installationId,
+      chatId,
+      messageId: "1",
+      fromUserId: "111",
+      fromUsername: "alice",
+      text: "Document caption",
+      fileId: "doc-file-1",
+      fileType: "document",
+      fileName: "brief.pdf",
+      fileMimeType: "application/pdf",
+      fileSize: 4096,
+    });
+
+    const result = await fetchTelegramContext(installationId, chatId);
+
+    expect(result.executionContext).toContain(
+      "[Telegram file] brief.pdf (application/pdf)",
+    );
+    expect(result.executionContext).not.toContain("[Name] brief.pdf");
+    expect(result.executionContext).not.toContain("[Size] 4096 bytes");
+    expect(result.executionContext).toContain("[ID] doc-file-1");
+    expect(result.executionContext).toContain(`[Bot ID] ${installationId}`);
+  });
+
+  it("should include Telegram entity summaries", async () => {
+    const chatId = uniqueId("chat");
+
+    await insertTelegramMessage({
+      installationId,
+      chatId,
+      messageId: "1",
+      fromUserId: "111",
+      fromUsername: "alice",
+      text: "/deploy @bob docs",
+      entities: [
+        { type: "bot_command", offset: 0, length: 7 },
+        { type: "mention", offset: 8, length: 4 },
+        {
+          type: "text_link",
+          offset: 13,
+          length: 4,
+          url: "https://docs.test",
+        },
+      ],
+    });
+
+    const result = await fetchTelegramContext(installationId, chatId);
+
+    expect(result.executionContext).toContain(
+      'ENTITIES: bot_command /deploy; mention @bob; text_link "docs" -> https://docs.test',
+    );
   });
 });

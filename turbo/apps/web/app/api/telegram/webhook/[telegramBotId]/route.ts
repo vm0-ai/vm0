@@ -12,7 +12,10 @@ import {
   handleDisconnectCommand,
   handleHelpCommand,
 } from "../../../../../src/lib/zero/telegram/handlers/commands";
-import { storeTelegramMessage } from "../../../../../src/lib/zero/telegram/handlers/shared";
+import {
+  hasTelegramMessageContextContent,
+  storeTelegramMessage,
+} from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { logger } from "../../../../../src/lib/shared/logger";
 import type { TelegramHandlerUpdate } from "../../../../../src/lib/zero/telegram/handlers/types";
 
@@ -78,8 +81,8 @@ export async function POST(
   }
 
   const message = update.message;
-  if (!message || (!message.text && !message.photo)) {
-    // No text or photo — nothing to process
+  if (!message || !hasTelegramMessageContextContent(message)) {
+    // No supported content — nothing to process
     return new Response("OK", { status: 200 });
   }
 
