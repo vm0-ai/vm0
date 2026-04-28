@@ -14,6 +14,7 @@ const SCHEMA = {
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
   VITEST: z.enum(["true", "false"]).optional(),
   VM0_DEBUG: z.string().optional(),
+  VM0_WEB_URL: z.url().optional(),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({

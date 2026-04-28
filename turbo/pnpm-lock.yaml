@@ -143,6 +143,9 @@ importers:
       eslint:
         specifier: ^9.34.0
         version: 9.39.4(jiti@2.6.1)
+      msw:
+        specifier: ^2.13.2
+        version: 2.13.2(@types/node@24.3.0)(typescript@5.9.3)
       oxlint:
         specifier: ^1.57.0
         version: 1.57.0(oxlint-tsgolint@0.21.1)

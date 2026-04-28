@@ -39,6 +39,7 @@
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "eslint": "^9.34.0",
+    "msw": "^2.13.2",
     "oxlint": "^1.57.0",
     "oxlint-tsgolint": "0.21.1",
     "tsx": "^4.19.0",
