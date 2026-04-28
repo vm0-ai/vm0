@@ -71,6 +71,7 @@ jobs:
       guest-download-changed: ${{ steps.detect.outputs.guest-download-changed }}
       guest-agent-changed: ${{ steps.detect.outputs.guest-agent-changed }}
       guest-mock-claude-changed: ${{ steps.detect.outputs.guest-mock-claude-changed }}
+      guest-mock-codex-changed: ${{ steps.detect.outputs.guest-mock-codex-changed }}
       guest-reseed-changed: ${{ steps.detect.outputs.guest-reseed-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       metal-host: ${{ steps.host.outputs.host }}
@@ -118,6 +119,7 @@ jobs:
           check_crate guest-download
           check_crate guest-agent
           check_crate guest-mock-claude
+          check_crate guest-mock-codex
           check_crate guest-reseed
           check_crate nbd-cow
 
@@ -386,6 +388,7 @@ jobs:
         needs.detect.outputs.guest-download-changed == 'true' ||
         needs.detect.outputs.guest-agent-changed == 'true' ||
         needs.detect.outputs.guest-mock-claude-changed == 'true' ||
+        needs.detect.outputs.guest-mock-codex-changed == 'true' ||
         needs.detect.outputs.guest-reseed-changed == 'true'
       )
     timeout-minutes: 20
@@ -412,7 +415,7 @@ jobs:
         run: |
           cd crates
           cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |

@@ -59,7 +59,7 @@ cmd_deploy() {
   log "Building guest binaries..."
   cd "$CRATES_DIR"
   cargo build --release --target "$TARGET" \
-    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
+    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
 
   # Build runner
   log "Building runner with embedded guests..."

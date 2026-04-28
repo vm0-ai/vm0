@@ -8,6 +8,7 @@ members = [
     "guest-download",
     "guest-init",
     "guest-mock-claude",
+    "guest-mock-codex",
     "guest-reseed",
     "nbd-cow",
     "runner",
@@ -32,6 +33,7 @@ guest-common = { path = "guest-common" }
 guest-download = { path = "guest-download" }
 guest-init = { path = "guest-init" }
 guest-mock-claude = { path = "guest-mock-claude" }
+guest-mock-codex = { path = "guest-mock-codex" }
 guest-reseed = { path = "guest-reseed" }
 nbd-cow = { path = "nbd-cow" }
 sandbox = { path = "sandbox" }

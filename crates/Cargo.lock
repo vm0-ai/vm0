@@ -1311,6 +1311,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-mock-codex"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "serde_json",
+ "tempfile",
+ "uuid",
+ "zstd",
+]
+
+[[package]]
 name = "guest-reseed"
 version = "0.3.1"
 dependencies = [
