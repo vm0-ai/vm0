@@ -8,6 +8,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { hasSubscription } from "../../../mocks/ably.ts";
+import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   mockChatLifecycle,
@@ -821,6 +823,10 @@ describe("zero chat thread page display - artifacts drawer", () => {
     });
     expect(artifactsRequests).toBeGreaterThan(0);
     expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+    expect(
+      document.querySelectorAll('img[src="https://example.com/chart.png"]')
+        .length,
+    ).toBeGreaterThanOrEqual(3);
     const downloadButtons = screen.getAllByLabelText("Download chart.png");
     expect(downloadButtons[0]!.tagName).toBe("BUTTON");
     await user.click(downloadButtons[0]!);
@@ -845,6 +851,75 @@ describe("zero chat thread page display - artifacts drawer", () => {
 
     await user.click(screen.getByLabelText("Select data.csv"));
     expect(screen.getByTitle("Preview data.csv")).toBeInTheDocument();
+  });
+
+  it("refreshes uploaded files from the artifacts Ably signal while the drawer is open", async () => {
+    const threadId = "thread-test-1";
+    let artifactsRequests = 0;
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Upload from a run",
+          runId: "run-artifacts-ably",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        artifactsRequests += 1;
+        return respond(200, {
+          runs:
+            artifactsRequests === 1
+              ? []
+              : [
+                  {
+                    runId: "run-artifacts-ably",
+                    files: [
+                      {
+                        id: "file-ably",
+                        filename: "artifact.zip",
+                        contentType: "application/zip",
+                        size: 8192,
+                        url: "https://example.com/artifact.zip",
+                        createdAt: "2026-03-10T00:00:00Z",
+                      },
+                    ],
+                  },
+                ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ChatArtifactsDrawer]: true },
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open artifacts");
+    });
+    click(button);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No uploaded files in this chat yet."),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(
+        hasSubscription(`chatThreadArtifactsChanged:${threadId}`),
+      ).toBeTruthy();
+    });
+
+    updateChatArtifacts(threadId);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("artifact.zip").length).toBeGreaterThan(0);
+    });
+    expect(artifactsRequests).toBeGreaterThanOrEqual(2);
   });
 
   it("hides the artifacts button when the feature switch is off", async () => {

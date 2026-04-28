@@ -22,7 +22,7 @@ import {
   IconEye,
   IconFile,
   IconFileMusic,
-  IconFiles,
+  IconPackage,
   IconVideo,
 } from "@tabler/icons-react";
 import {
@@ -238,7 +238,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
             aria-label="Open artifacts"
             aria-pressed={open}
           >
-            <IconFiles size={17} stroke={1.5} />
+            <IconPackage size={17} stroke={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">Open artifacts</TooltipContent>
@@ -443,6 +443,21 @@ function ArtifactFileIcon({
   return <IconFile size={18} stroke={1.5} />;
 }
 
+function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
+  if (getArtifactPreviewKind(file) === "image") {
+    return (
+      <img
+        src={file.url}
+        alt=""
+        aria-hidden="true"
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+
+  return <ArtifactFileIcon file={file} />;
+}
+
 function ArtifactDownloadAction({
   file,
   className,
@@ -564,8 +579,8 @@ function ArtifactPreviewPanel({ item }: { item: ChatArtifactItem }) {
         <ArtifactPreviewFrame file={file} />
       </div>
       <div className="flex items-start gap-3 px-3 py-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <ArtifactFileIcon file={file} />
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
+          <ArtifactPreviewBadge file={file} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">
@@ -752,6 +767,7 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
 function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
   const open = useGet(thread.artifactsDrawerOpen$);
   const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+  const setArtifactsRealtimeRef = useSet(thread.setArtifactsRealtimeRef$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   return (
@@ -785,7 +801,11 @@ function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
           </SheetDescription>
         </SheetHeader>
         <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 -mb-6 pb-6">
-          {open && <ChatArtifactsDrawerContent thread={thread} />}
+          {open && (
+            <div ref={setArtifactsRealtimeRef}>
+              <ChatArtifactsDrawerContent thread={thread} />
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>
