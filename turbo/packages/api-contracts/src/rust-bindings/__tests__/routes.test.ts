@@ -138,13 +138,24 @@ describe("Rust route bindings", () => {
   it("renders Rust-safe field names for keyword path params", () => {
     const rendered = renderRustRoutes([
       validBinding({
-        route: { method: "POST", path: "/api/items/:type" },
-        rustModulePath: ["items", "by_type"],
+        route: {
+          method: "POST",
+          path: "/api/items/:async/:await/:dyn/:gen/:try/:union/:type",
+        },
+        rustModulePath: ["items", "by_keyword"],
         rustConstName: "FETCH",
       }),
     ]);
 
+    expect(rendered).toContain("pub async_: &'a str,");
+    expect(rendered).toContain("pub await_: &'a str,");
+    expect(rendered).toContain("pub dyn_: &'a str,");
+    expect(rendered).toContain("pub gen_: &'a str,");
+    expect(rendered).toContain("pub try_: &'a str,");
+    expect(rendered).toContain("pub union_: &'a str,");
     expect(rendered).toContain("pub type_: &'a str,");
+    expect(rendered).toContain("params.async_");
+    expect(rendered).toContain("params.gen_");
     expect(rendered).toContain("params.type_");
   });
 
