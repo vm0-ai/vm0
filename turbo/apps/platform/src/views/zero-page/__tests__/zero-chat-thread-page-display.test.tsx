@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
@@ -73,8 +73,26 @@ describe("zero chat thread page display - attachment image preview", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
+    const previewButton = await waitFor(() => {
+      return screen.getByLabelText("Preview photo.png");
+    });
+    const previewImage = within(previewButton).getByAltText("photo.png");
+    expect(previewImage).toBeInTheDocument();
+    expect(
+      within(previewButton).getByTestId("chat-image-preview-loading"),
+    ).toBeInTheDocument();
+
+    const hoverLayer = within(previewButton).getByTestId(
+      "chat-image-preview-hover",
+    );
+    expect(previewButton.className).toContain("group/image-preview");
+    expect(hoverLayer.className).toContain("group-hover/image-preview");
+
+    fireEvent.load(previewImage);
     await waitFor(() => {
-      expect(screen.getByAltText("photo.png")).toBeInTheDocument();
+      expect(
+        within(previewButton).queryByTestId("chat-image-preview-loading"),
+      ).not.toBeInTheDocument();
     });
   });
 });

@@ -8,6 +8,9 @@ import {
   IconPhoto,
   IconVideo,
   IconLoader2,
+  IconZoomIn,
+  IconZoomOut,
+  IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
@@ -31,6 +34,9 @@ import docHtmlIcon from "./assets/doc-html.svg";
 
 const log = logger("zero-attachment-chips");
 const TEXT_PREVIEW_MAX_BYTES = 65_536;
+const IMAGE_LIGHTBOX_MIN_ZOOM = 0.5;
+const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
+const IMAGE_LIGHTBOX_ZOOM_STEP = 0.25;
 
 /**
  * Return the icon path for a known file extension, or null for unknown types.
@@ -316,6 +322,241 @@ export function downloadAttachmentUrl(
   });
 }
 
+type ImageLoadStatus = "loading" | "loaded" | "error";
+type ImageLightboxImageState = {
+  imageStatus: ImageLoadStatus;
+  zoom: number;
+};
+
+function isImageLightboxZoomAtReset(zoom: number): boolean {
+  return Math.abs(zoom - 1) < 0.001;
+}
+
+function clampImageLightboxZoom(zoom: number): number {
+  return Math.min(
+    IMAGE_LIGHTBOX_MAX_ZOOM,
+    Math.max(IMAGE_LIGHTBOX_MIN_ZOOM, zoom),
+  );
+}
+
+function ImageLightboxControls({
+  closeLightbox,
+  download,
+  resetZoom,
+  zoom,
+  zoomIn,
+  zoomOut,
+}: {
+  closeLightbox: () => void;
+  download: () => void;
+  resetZoom: () => void;
+  zoom: number;
+  zoomIn: () => void;
+  zoomOut: () => void;
+}) {
+  return (
+    <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+      <div className="flex items-center gap-1 rounded-full bg-black/50 p-1 text-white">
+        <button
+          type="button"
+          onClick={zoomOut}
+          disabled={zoom <= IMAGE_LIGHTBOX_MIN_ZOOM}
+          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <IconZoomOut size={18} stroke={2} />
+        </button>
+        <span className="min-w-10 text-center text-xs font-medium tabular-nums">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          type="button"
+          onClick={zoomIn}
+          disabled={zoom >= IMAGE_LIGHTBOX_MAX_ZOOM}
+          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <IconZoomIn size={18} stroke={2} />
+        </button>
+        <button
+          type="button"
+          onClick={resetZoom}
+          disabled={isImageLightboxZoomAtReset(zoom)}
+          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
+          aria-label="Reset zoom"
+          title="Reset zoom"
+        >
+          <IconZoomReset size={18} stroke={2} />
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={download}
+        className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+        aria-label="Download"
+      >
+        <IconDownload size={20} stroke={2} />
+      </button>
+      <button
+        type="button"
+        onClick={closeLightbox}
+        className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+        aria-label="Close"
+      >
+        <IconX size={20} stroke={2} />
+      </button>
+    </div>
+  );
+}
+
+class ImageLightboxKeyboardShortcuts extends Component<{
+  resetZoom: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+}> {
+  componentDidMount() {
+    document.addEventListener("keydown", this.handleKeyDown);
+  }
+
+  componentWillUnmount() {
+    document.removeEventListener("keydown", this.handleKeyDown);
+  }
+
+  handleKeyDown = (event: KeyboardEvent) => {
+    if (!event.metaKey && !event.ctrlKey) {
+      return;
+    }
+
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.props.zoomIn();
+      return;
+    }
+
+    if (event.key === "-" || event.key === "_") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.props.zoomOut();
+      return;
+    }
+
+    if (event.key === "0") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.props.resetZoom();
+    }
+  };
+
+  render() {
+    return null;
+  }
+}
+
+class ImageLightboxContent extends Component<
+  {
+    closeLightbox: () => void;
+    pageSignal: AbortSignal;
+    url: string;
+  },
+  ImageLightboxImageState
+> {
+  state: ImageLightboxImageState = {
+    imageStatus: "loading",
+    zoom: 1,
+  };
+
+  componentDidUpdate(previousProps: Readonly<{ url: string }>) {
+    if (previousProps.url !== this.props.url) {
+      this.setState({
+        imageStatus: "loading",
+        zoom: 1,
+      });
+    }
+  }
+
+  setZoom = (nextZoom: number) => {
+    this.setState({ zoom: clampImageLightboxZoom(nextZoom) });
+  };
+
+  zoomOut = () => {
+    this.setZoom(this.state.zoom - IMAGE_LIGHTBOX_ZOOM_STEP);
+  };
+
+  zoomIn = () => {
+    this.setZoom(this.state.zoom + IMAGE_LIGHTBOX_ZOOM_STEP);
+  };
+
+  resetZoom = () => {
+    this.setState({ zoom: 1 });
+  };
+
+  download = () => {
+    const { pageSignal, url } = this.props;
+    detach(
+      downloadAttachmentUrl(url, pageSignal),
+      Reason.DomCallback,
+      "attachment download",
+    );
+  };
+
+  render() {
+    const { closeLightbox, url } = this.props;
+    const { imageStatus, zoom } = this.state;
+
+    return (
+      <>
+        <ImageLightboxKeyboardShortcuts
+          resetZoom={this.resetZoom}
+          zoomIn={this.zoomIn}
+          zoomOut={this.zoomOut}
+        />
+        <ImageLightboxControls
+          closeLightbox={closeLightbox}
+          download={this.download}
+          resetZoom={this.resetZoom}
+          zoom={zoom}
+          zoomIn={this.zoomIn}
+          zoomOut={this.zoomOut}
+        />
+        <div
+          className="relative flex items-center justify-center transition-transform duration-150 animate-in zoom-in-95"
+          style={{ transform: `scale(${String(zoom)})` }}
+        >
+          {imageStatus !== "loaded" && (
+            <div
+              data-testid="attachment-lightbox-image-loading"
+              className="flex h-[min(85vh,480px)] w-[min(90vw,720px)] items-center justify-center rounded-lg bg-black/30 text-white shadow-2xl"
+            >
+              {imageStatus === "loading" ? (
+                <IconLoader2 size={24} stroke={1.8} className="animate-spin" />
+              ) : (
+                <IconPhoto size={24} stroke={1.5} />
+              )}
+            </div>
+          )}
+          <img
+            src={url}
+            alt=""
+            data-testid="attachment-lightbox-image"
+            onLoad={() => {
+              this.setState({ imageStatus: "loaded" });
+            }}
+            onError={() => {
+              this.setState({ imageStatus: "error" });
+            }}
+            className={`max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl ${
+              imageStatus === "loaded" ? "" : "absolute inset-0 opacity-0"
+            }`}
+          />
+        </div>
+      </>
+    );
+  }
+}
+
 function ImageLightbox({ url }: { url: string }) {
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightbox = useSet(closeLightbox$);
@@ -338,36 +579,10 @@ function ImageLightbox({ url }: { url: string }) {
       aria-modal="true"
       data-testid="attachment-lightbox"
     >
-      <div className="absolute top-4 right-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              downloadAttachmentUrl(url, pageSignal),
-              Reason.DomCallback,
-              "attachment download",
-            );
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Download"
-        >
-          <IconDownload size={20} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            return closeLightbox();
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-          aria-label="Close"
-        >
-          <IconX size={20} stroke={2} />
-        </button>
-      </div>
-      <img
-        src={url}
-        alt=""
-        className="max-h-[85vh] max-w-[90vw] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-200"
+      <ImageLightboxContent
+        closeLightbox={closeLightbox}
+        pageSignal={pageSignal}
+        url={url}
       />
     </div>,
     document.body,
@@ -724,6 +939,99 @@ export function PreviewableFileAttachmentChip({
 // AttachmentChip — chip shown in the composer before the message is sent
 // ---------------------------------------------------------------------------
 
+class ComposerImagePreviewButton extends Component<
+  {
+    filename: string;
+    openImageLightbox: (url: string) => void;
+    url: string | undefined;
+  },
+  { imageStatus: ImageLoadStatus; url: string | null }
+> {
+  state: { imageStatus: ImageLoadStatus; url: string | null } = {
+    imageStatus: "loading",
+    url: null,
+  };
+
+  componentDidUpdate(previousProps: Readonly<{ url: string | undefined }>) {
+    if (previousProps.url !== this.props.url) {
+      this.setState({ imageStatus: "loading", url: null });
+    }
+  }
+
+  renderImage() {
+    const { url } = this.props;
+    const { imageStatus } = this.state;
+    const currentImageStatus =
+      url && this.state.url === url ? imageStatus : "loading";
+
+    if (!url) {
+      return (
+        <IconPhoto
+          size={20}
+          stroke={1.5}
+          className="text-muted-foreground m-auto h-full"
+        />
+      );
+    }
+
+    return (
+      <>
+        {currentImageStatus !== "loaded" && (
+          <span
+            data-testid="composer-image-preview-loading"
+            className="absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground"
+          >
+            {currentImageStatus === "loading" ? (
+              <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
+            ) : (
+              <IconPhoto size={16} stroke={1.5} />
+            )}
+          </span>
+        )}
+        <img
+          src={url}
+          alt=""
+          loading="lazy"
+          onLoad={() => {
+            this.setState({ imageStatus: "loaded", url });
+          }}
+          onError={() => {
+            this.setState({ imageStatus: "error", url });
+          }}
+          className={`h-full w-full object-cover ${
+            currentImageStatus === "loaded" ? "" : "opacity-0"
+          }`}
+        />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/image-preview:bg-black/30">
+          <IconPhoto
+            size={18}
+            className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
+          />
+        </span>
+      </>
+    );
+  }
+
+  render() {
+    const { filename, openImageLightbox, url } = this.props;
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          return url && openImageLightbox(url);
+        }}
+        disabled={!url}
+        aria-label={`Open image preview for ${filename}`}
+        title={filename}
+        className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+      >
+        {this.renderImage()}
+      </button>
+    );
+  }
+}
+
 function AttachmentChip({
   attachment,
   onRemove,
@@ -748,34 +1056,11 @@ function AttachmentChip({
         title={attachment.filename}
       >
         {isImage ? (
-          <button
-            type="button"
-            onClick={() => {
-              return url && openImageLightbox(url);
-            }}
-            disabled={!url}
-            aria-label={`Open image preview for ${attachment.filename}`}
-            title={attachment.filename}
-            className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-          >
-            {url ? (
-              <>
-                <img src={url} alt="" className="h-full w-full object-cover" />
-                <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                  <IconPhoto
-                    size={18}
-                    className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                  />
-                </span>
-              </>
-            ) : (
-              <IconPhoto
-                size={20}
-                stroke={1.5}
-                className="text-muted-foreground m-auto h-full"
-              />
-            )}
-          </button>
+          <ComposerImagePreviewButton
+            filename={attachment.filename}
+            openImageLightbox={openImageLightbox}
+            url={url}
+          />
         ) : isVideo ? (
           <IconVideo size={28} stroke={1.5} className="text-muted-foreground" />
         ) : isAudio ? (

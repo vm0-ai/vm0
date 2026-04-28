@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { Component, type CSSProperties } from "react";
 import {
   useGet,
   useSet,
@@ -22,6 +22,8 @@ import {
   IconEye,
   IconFile,
   IconFileMusic,
+  IconFiles,
+  IconLoader2,
   IconPackage,
   IconVideo,
 } from "@tabler/icons-react";
@@ -485,31 +487,135 @@ function ArtifactDownloadAction({
   );
 }
 
+type ImageLoadStatus = "loading" | "loaded" | "error";
+
+type ChatImagePreviewButtonProps = {
+  alt: string;
+  ariaLabel: string;
+  buttonClassName: string;
+  imageClassName: string;
+  onPreview: () => void;
+  overlayIcon?: "eye" | "photo";
+  placeholderClassName: string;
+  url: string;
+};
+
+class ChatImagePreviewButton extends Component<
+  ChatImagePreviewButtonProps,
+  { imageStatus: ImageLoadStatus }
+> {
+  state: { imageStatus: ImageLoadStatus } = {
+    imageStatus: "loading",
+  };
+
+  componentDidUpdate(previousProps: Readonly<ChatImagePreviewButtonProps>) {
+    if (previousProps.url !== this.props.url) {
+      this.setState({ imageStatus: "loading" });
+    }
+  }
+
+  renderPlaceholder() {
+    const { placeholderClassName } = this.props;
+    const { imageStatus } = this.state;
+
+    if (imageStatus === "loaded") {
+      return null;
+    }
+
+    return (
+      <span
+        data-testid="chat-image-preview-loading"
+        className={cn(
+          "flex items-center justify-center bg-muted/70 text-muted-foreground",
+          placeholderClassName,
+        )}
+      >
+        {imageStatus === "loading" ? (
+          <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+        ) : (
+          <IconPhoto size={18} stroke={1.5} />
+        )}
+      </span>
+    );
+  }
+
+  renderOverlay() {
+    const { overlayIcon = "photo" } = this.props;
+
+    return (
+      <span
+        data-testid="chat-image-preview-hover"
+        className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100"
+      >
+        {overlayIcon === "eye" ? (
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
+            <IconEye size={18} stroke={1.8} />
+          </span>
+        ) : (
+          <IconPhoto
+            size={18}
+            className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
+          />
+        )}
+      </span>
+    );
+  }
+
+  render() {
+    const { alt, ariaLabel, buttonClassName, imageClassName, onPreview, url } =
+      this.props;
+    const showPlaceholder = this.state.imageStatus !== "loaded";
+
+    return (
+      <button
+        type="button"
+        onClick={onPreview}
+        className={cn(
+          "group/image-preview relative overflow-hidden",
+          buttonClassName,
+        )}
+        aria-label={ariaLabel}
+      >
+        {this.renderPlaceholder()}
+        <img
+          src={url}
+          alt={alt}
+          loading="lazy"
+          onLoad={() => {
+            this.setState({ imageStatus: "loaded" });
+          }}
+          onError={() => {
+            this.setState({ imageStatus: "error" });
+          }}
+          className={cn(
+            imageClassName,
+            showPlaceholder && "absolute inset-0 opacity-0",
+          )}
+        />
+        {this.renderOverlay()}
+      </button>
+    );
+  }
+}
+
 function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const previewKind = getArtifactPreviewKind(file);
 
   if (previewKind === "image") {
     return (
-      <button
-        type="button"
-        onClick={() => {
+      <ChatImagePreviewButton
+        alt={`Preview ${file.filename}`}
+        ariaLabel={`Preview ${file.filename}`}
+        buttonClassName="flex h-full w-full items-center justify-center bg-muted"
+        imageClassName="h-full w-full object-contain"
+        onPreview={() => {
           openImageLightbox(file.url);
         }}
-        className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-muted"
-        aria-label={`Preview ${file.filename}`}
-      >
-        <img
-          src={file.url}
-          alt={`Preview ${file.filename}`}
-          className="h-full w-full object-contain"
-        />
-        <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover:bg-black/25 group-hover:opacity-100">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
-            <IconEye size={18} stroke={1.8} />
-          </span>
-        </span>
-      </button>
+        overlayIcon="eye"
+        placeholderClassName="h-full w-full"
+        url={file.url}
+      />
     );
   }
 
@@ -620,12 +726,7 @@ function ArtifactThumbnail({
       aria-hidden="true"
     >
       {previewKind === "image" ? (
-        <img
-          src={file.url}
-          alt=""
-          className="h-full w-full object-cover"
-          aria-hidden="true"
-        />
+        <ArtifactThumbnailImage url={file.url} />
       ) : (
         <span className="flex flex-col items-center gap-0.5 text-muted-foreground">
           <ArtifactFileIcon file={file} />
@@ -636,6 +737,57 @@ function ArtifactThumbnail({
       )}
     </div>
   );
+}
+
+class ArtifactThumbnailImage extends Component<
+  { url: string },
+  { imageStatus: ImageLoadStatus }
+> {
+  state: { imageStatus: ImageLoadStatus } = {
+    imageStatus: "loading",
+  };
+
+  componentDidUpdate(previousProps: Readonly<{ url: string }>) {
+    if (previousProps.url !== this.props.url) {
+      this.setState({ imageStatus: "loading" });
+    }
+  }
+
+  render() {
+    const { url } = this.props;
+    const { imageStatus } = this.state;
+    const showPlaceholder = imageStatus !== "loaded";
+
+    return (
+      <>
+        {showPlaceholder && (
+          <span className="flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground">
+            {imageStatus === "loading" ? (
+              <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
+            ) : (
+              <IconPhoto size={14} stroke={1.5} />
+            )}
+          </span>
+        )}
+        <img
+          src={url}
+          alt=""
+          loading="lazy"
+          onLoad={() => {
+            this.setState({ imageStatus: "loaded" });
+          }}
+          onError={() => {
+            this.setState({ imageStatus: "error" });
+          }}
+          className={cn(
+            "h-full w-full object-cover",
+            showPlaceholder && "absolute inset-0 opacity-0",
+          )}
+          aria-hidden="true"
+        />
+      </>
+    );
+  }
 }
 
 function ArtifactFileRow({
@@ -1550,27 +1702,18 @@ function BodyContentBlocks({
 
         if (block.preview.kind === "image") {
           return (
-            <button
+            <ChatImagePreviewButton
               key={block.id}
-              type="button"
-              onClick={() => {
+              alt={block.preview.filename}
+              ariaLabel={`Preview ${block.preview.filename}`}
+              buttonClassName="w-fit max-w-full rounded-lg border border-foreground/10"
+              imageClassName="max-h-48 max-w-full object-contain"
+              onPreview={() => {
                 openLightbox(block.preview.url);
               }}
-              className="group relative w-fit max-w-full overflow-hidden rounded-lg border border-foreground/10"
-              aria-label={`Preview ${block.preview.filename}`}
-            >
-              <img
-                src={block.preview.url}
-                alt={block.preview.filename}
-                className="max-h-48 max-w-full object-contain"
-              />
-              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                <IconPhoto
-                  size={18}
-                  className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                />
-              </span>
-            </button>
+              placeholderClassName="h-48 w-64 max-w-full"
+              url={block.preview.url}
+            />
           );
         }
 
@@ -1875,26 +2018,18 @@ function UserMessageAttachments({
       {attachments.map((a) => {
         if (a.isImage) {
           return (
-            <button
+            <ChatImagePreviewButton
               key={a.url}
-              type="button"
-              onClick={() => {
+              alt={a.filename}
+              ariaLabel={`Preview ${a.filename}`}
+              buttonClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+              imageClassName="h-9 max-w-[72px] object-cover"
+              onPreview={() => {
                 onImageClick(a.url);
               }}
-              className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-            >
-              <img
-                src={a.url}
-                alt={a.filename}
-                className="h-9 max-w-[72px] object-cover"
-              />
-              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                <IconPhoto
-                  size={18}
-                  className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                />
-              </span>
-            </button>
+              placeholderClassName="h-9 w-[72px]"
+              url={a.url}
+            />
           );
         }
         if (a.isVideo) {

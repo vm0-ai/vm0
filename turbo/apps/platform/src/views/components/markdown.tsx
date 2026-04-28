@@ -1,8 +1,13 @@
 import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
+import { IconLoader2, IconPhoto } from "@tabler/icons-react";
 import { useGet } from "ccstate-react";
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import {
+  Component,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
 import { theme$ } from "../../signals/theme.ts";
 
 type RewriteArgs = Parameters<
@@ -207,26 +212,65 @@ function PlainLink({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
   );
 }
 
-function MediaImage({
-  src,
-  alt,
-  onImageClick,
-}: {
-  src: string;
-  alt: string;
-  onImageClick?: (url: string) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        onImageClick?.(src);
-      }}
-      className="block max-w-full my-1 rounded-lg overflow-hidden cursor-zoom-in border border-foreground/10"
-    >
-      <img src={src} alt={alt} className="max-h-32 max-w-full object-contain" />
-    </button>
-  );
+type ImageLoadStatus = "loading" | "loaded" | "error";
+
+class MediaImage extends Component<
+  {
+    src: string;
+    alt: string;
+    onImageClick?: (url: string) => void;
+  },
+  { imageStatus: ImageLoadStatus }
+> {
+  state: { imageStatus: ImageLoadStatus } = {
+    imageStatus: "loading",
+  };
+
+  componentDidUpdate(previousProps: Readonly<{ src: string }>) {
+    if (previousProps.src !== this.props.src) {
+      this.setState({ imageStatus: "loading" });
+    }
+  }
+
+  render() {
+    const { src, alt, onImageClick } = this.props;
+    const { imageStatus } = this.state;
+    const showPlaceholder = imageStatus !== "loaded";
+
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          onImageClick?.(src);
+        }}
+        className="relative block max-w-full my-1 overflow-hidden rounded-lg border border-foreground/10 cursor-zoom-in"
+      >
+        {showPlaceholder && (
+          <span className="flex h-32 w-48 max-w-full items-center justify-center bg-muted/70 text-muted-foreground">
+            {imageStatus === "loading" ? (
+              <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+            ) : (
+              <IconPhoto size={18} stroke={1.5} />
+            )}
+          </span>
+        )}
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          onLoad={() => {
+            this.setState({ imageStatus: "loaded" });
+          }}
+          onError={() => {
+            this.setState({ imageStatus: "error" });
+          }}
+          className={`max-h-32 max-w-full object-contain ${
+            showPlaceholder ? "absolute inset-0 opacity-0" : ""
+          }`}
+        />
+      </button>
+    );
+  }
 }
 
 function MediaLink({
