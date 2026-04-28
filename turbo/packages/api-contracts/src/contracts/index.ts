@@ -350,6 +350,22 @@ export {
   type ChatMessageV1,
 } from "./chat-threads-v1";
 export {
+  deviceTokenContract,
+  bb0DeviceBindContract,
+  bb0DeviceCodeSchema,
+  bleSessionNonceSchema,
+  createDeviceTokenRequestSchema,
+  createDeviceTokenResponseSchema,
+  bindBb0DeviceRequestSchema,
+  bindBb0DeviceResponseSchema,
+  type DeviceTokenContract,
+  type Bb0DeviceBindContract,
+  type CreateDeviceTokenRequest,
+  type CreateDeviceTokenResponse,
+  type BindBb0DeviceRequest,
+  type BindBb0DeviceResponse,
+} from "./device-token";
+export {
   runnersPollContract,
   runnersJobClaimContract,
   runnersHeartbeatContract,

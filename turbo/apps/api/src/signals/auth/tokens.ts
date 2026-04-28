@@ -214,6 +214,24 @@ export function verifyCliToken(token: string): CliAuth | null {
   };
 }
 
+export function generateCliToken(
+  userId: string,
+  orgId: string,
+  tokenId: string,
+): string {
+  const nowSeconds = Math.floor(now() / 1000);
+  const payload: z.infer<typeof cliTokenPayloadSchema> = {
+    scope: "cli",
+    userId,
+    orgId,
+    tokenId,
+    iat: nowSeconds,
+    exp: nowSeconds + 90 * 24 * 60 * 60,
+  };
+
+  return PAT_TOKEN_PREFIX + signJwt(payload);
+}
+
 export function signSandboxJwtForTests(payload: JwtPayload): string {
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);
 }

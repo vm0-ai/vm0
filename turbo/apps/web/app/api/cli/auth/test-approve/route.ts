@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import {
@@ -38,7 +38,9 @@ export async function POST(req: Request) {
   const [session] = await globalThis.services.db
     .select()
     .from(deviceCodes)
-    .where(eq(deviceCodes.code, normalizedCode))
+    .where(
+      and(eq(deviceCodes.code, normalizedCode), eq(deviceCodes.purpose, "cli")),
+    )
     .limit(1);
 
   if (!session) {

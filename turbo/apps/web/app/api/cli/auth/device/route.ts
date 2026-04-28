@@ -13,6 +13,7 @@ const router = tsr.router(cliAuthDeviceContract, {
 
     await globalThis.services.db.insert(deviceCodes).values({
       code: deviceCode,
+      purpose: "cli",
       status: "pending",
       expiresAt,
       createdAt: new Date(),
