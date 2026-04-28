@@ -17,4 +17,4 @@ pub mod generated;
 
 mod route;
 
-pub use route::{Method, Route};
+pub use route::{Method, ResolvedRoute, Route, RouteTemplate};

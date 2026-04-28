@@ -4,6 +4,30 @@ import { type RustRouteBinding, rustRouteBindings } from "../routes";
 const expectedBindings = [
   {
     method: "POST",
+    path: "/api/runners/poll",
+    rustModulePath: ["runners", "poll"],
+    rustConstName: "POLL",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/jobs/:id/claim",
+    rustModulePath: ["runners", "jobs", "by_id", "claim"],
+    rustConstName: "CLAIM",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/heartbeat",
+    rustModulePath: ["runners", "heartbeat"],
+    rustConstName: "HEARTBEAT",
+  },
+  {
+    method: "POST",
+    path: "/api/runners/realtime/token",
+    rustModulePath: ["runners", "realtime", "token"],
+    rustConstName: "CREATE",
+  },
+  {
+    method: "POST",
     path: "/api/webhooks/agent/events",
     rustModulePath: ["webhooks", "agent", "events"],
     rustConstName: "SEND",
@@ -64,7 +88,7 @@ function validBinding(
 }
 
 describe("Rust route bindings", () => {
-  it("contains exactly the initial guest-agent webhook route set", () => {
+  it("contains exactly the supported Rust route set", () => {
     const actualBindings = rustRouteBindings.map((binding) => {
       return {
         method: binding.route.method,
@@ -96,6 +120,19 @@ describe("Rust route bindings", () => {
       expect(firstRender).toContain("crate::Method::Post");
       expect(firstRender).toContain(`"${binding.path}"`);
     }
+  });
+
+  it("renders typed params for routes with path params", () => {
+    const rendered = renderRustRoutes(rustRouteBindings);
+
+    expect(rendered).toContain(
+      "pub const CLAIM: crate::RouteTemplate = crate::RouteTemplate {",
+    );
+    expect(rendered).toContain("pub struct Params<'a> {");
+    expect(rendered).toContain("pub id: &'a str,");
+    expect(rendered).toContain("pub fn route(params: Params<'_>)");
+    expect(rendered).toContain("crate::ResolvedRoute::new(CLAIM.method");
+    expect(rendered).toContain("crate::route::encode_path_segment(params.id)");
   });
 
   it("fails clearly when a registry entry is malformed", () => {
