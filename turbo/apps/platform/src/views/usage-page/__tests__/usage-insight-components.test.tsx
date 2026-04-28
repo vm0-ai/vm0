@@ -29,7 +29,9 @@ function getTotalsRegion(): HTMLElement {
   return screen.getByRole("region", { name: "Credits totals" });
 }
 
-function makeFixture(overrides: Partial<UsageInsightResponse>): UsageInsightResponse {
+function makeFixture(
+  overrides: Partial<UsageInsightResponse>,
+): UsageInsightResponse {
   return { ...usageInsightFixture, ...overrides };
 }
 
@@ -37,12 +39,12 @@ function makeFixture(overrides: Partial<UsageInsightResponse>): UsageInsightResp
 // UsageInsightView — loading, error, and data states
 // ---------------------------------------------------------------------------
 
-describe("UsageInsightView - loading, error, and data states", () => {
+describe("usage insight view - loading, error, and data states", () => {
   it("shows loading skeleton before data arrives", async () => {
     // Slow response so skeleton is visible
     server.use(
-      mockApi(zeroUsageInsightContract.get, () => {
-        return new Promise(() => {});
+      mockApi(zeroUsageInsightContract.get, ({ never }) => {
+        return never();
       }),
     );
 
@@ -80,7 +82,9 @@ describe("UsageInsightView - loading, error, and data states", () => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Failed to load usage insights. Please try again later."),
+      screen.getByText(
+        "Failed to load usage insights. Please try again later.",
+      ),
     ).toBeInTheDocument();
   });
 
@@ -169,7 +173,7 @@ describe("UsageInsightView - loading, error, and data states", () => {
 // UsageInsightBarChart — chart rendering, GroupBy toggle, breakdown list
 // ---------------------------------------------------------------------------
 
-describe("UsageInsightBarChart - chart rendering", () => {
+describe("usage insight bar chart - chart rendering", () => {
   it("renders SVG chart when data is present", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -306,7 +310,7 @@ describe("UsageInsightBarChart - chart rendering", () => {
 // UsageInsightChatsTable — chat rows, hover, empty state, "more chats"
 // ---------------------------------------------------------------------------
 
-describe("UsageInsightChatsTable - rendering and interactions", () => {
+describe("usage insight chats table - rendering and interactions", () => {
   it("shows empty state when no chats", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -318,7 +322,6 @@ describe("UsageInsightChatsTable - rendering and interactions", () => {
             chats: [],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 0,
             grandTotalTokens: 0,
           }),
@@ -348,12 +351,21 @@ describe("UsageInsightChatsTable - rendering and interactions", () => {
             buckets: [],
             schedules: [],
             chats: [
-              { threadId: "t1", threadTitle: "Chat A", credits: 100, tokens: 200 },
-              { threadId: "t2", threadTitle: "Chat B", credits: 200, tokens: 400 },
+              {
+                threadId: "t1",
+                threadTitle: "Chat A",
+                credits: 100,
+                tokens: 200,
+              },
+              {
+                threadId: "t2",
+                threadTitle: "Chat B",
+                credits: 200,
+                tokens: 400,
+              },
             ],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 300,
             grandTotalTokens: 600,
           }),
@@ -379,13 +391,27 @@ describe("UsageInsightChatsTable - rendering and interactions", () => {
             buckets: [],
             schedules: [],
             chats: [
-              { threadId: "t1", threadTitle: "Design Review", credits: 250, tokens: 500 },
-              { threadId: "t2", threadTitle: "Sprint Planning", credits: 150, tokens: 300 },
-              { threadId: "t3", threadTitle: "Retrospective", credits: 75, tokens: 150 },
+              {
+                threadId: "t1",
+                threadTitle: "Design Review",
+                credits: 250,
+                tokens: 500,
+              },
+              {
+                threadId: "t2",
+                threadTitle: "Sprint Planning",
+                credits: 150,
+                tokens: 300,
+              },
+              {
+                threadId: "t3",
+                threadTitle: "Retrospective",
+                credits: 75,
+                tokens: 150,
+              },
             ],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 475,
             grandTotalTokens: 950,
           }),
@@ -416,10 +442,11 @@ describe("UsageInsightChatsTable - rendering and interactions", () => {
           makeFixture({
             buckets: [],
             schedules: [],
-            chats: [{ threadId: "t1", threadTitle: null, credits: 100, tokens: 200 }],
+            chats: [
+              { threadId: "t1", threadTitle: null, credits: 100, tokens: 200 },
+            ],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 100,
             grandTotalTokens: 200,
           }),
@@ -443,10 +470,16 @@ describe("UsageInsightChatsTable - rendering and interactions", () => {
           makeFixture({
             buckets: [],
             schedules: [],
-            chats: [{ threadId: "t1", threadTitle: "Visible Chat", credits: 50, tokens: 100 }],
+            chats: [
+              {
+                threadId: "t1",
+                threadTitle: "Visible Chat",
+                credits: 50,
+                tokens: 100,
+              },
+            ],
             chatOtherCount: 7,
             chatOtherCredits: 350,
-            chatOtherTokens: 700,
             grandTotalCredits: 400,
             grandTotalTokens: 800,
           }),
@@ -472,13 +505,17 @@ describe("UsageInsightChatsTable - rendering and interactions", () => {
             buckets: [],
             schedules: [],
             chats: [
-              { threadId: "t1", threadTitle: "Big Chat", credits: 5000, tokens: 10000 },
+              {
+                threadId: "t1",
+                threadTitle: "Big Chat",
+                credits: 5000,
+                tokens: 10_000,
+              },
             ],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 5000,
-            grandTotalTokens: 10000,
+            grandTotalTokens: 10_000,
           }),
         );
       }),
@@ -497,7 +534,7 @@ describe("UsageInsightChatsTable - rendering and interactions", () => {
 // UsageInsightSchedulesTable — schedule rows, hover, empty state, "more"
 // ---------------------------------------------------------------------------
 
-describe("UsageInsightSchedulesTable - rendering and interactions", () => {
+describe("usage insight schedules table - rendering and interactions", () => {
   it("shows empty state when no schedules", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -508,11 +545,9 @@ describe("UsageInsightSchedulesTable - rendering and interactions", () => {
             schedules: [],
             scheduleOtherCount: 0,
             scheduleOtherCredits: 0,
-            scheduleOtherTokens: 0,
             chats: [],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 0,
             grandTotalTokens: 0,
           }),
@@ -543,17 +578,30 @@ describe("UsageInsightSchedulesTable - rendering and interactions", () => {
           makeFixture({
             buckets: [],
             schedules: [
-              { scheduleId: "s1", scheduleName: "Daily Sync", credits: 100, tokens: 200 },
-              { scheduleId: "s2", scheduleName: "Weekly Review", credits: 200, tokens: 400 },
-              { scheduleId: "s3", scheduleName: "Monthly Report", credits: 150, tokens: 300 },
+              {
+                scheduleId: "s1",
+                scheduleName: "Daily Sync",
+                credits: 100,
+                tokens: 200,
+              },
+              {
+                scheduleId: "s2",
+                scheduleName: "Weekly Review",
+                credits: 200,
+                tokens: 400,
+              },
+              {
+                scheduleId: "s3",
+                scheduleName: "Monthly Report",
+                credits: 150,
+                tokens: 300,
+              },
             ],
             scheduleOtherCount: 0,
             scheduleOtherCredits: 0,
-            scheduleOtherTokens: 0,
             chats: [],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 450,
             grandTotalTokens: 900,
           }),
@@ -578,16 +626,24 @@ describe("UsageInsightSchedulesTable - rendering and interactions", () => {
           makeFixture({
             buckets: [],
             schedules: [
-              { scheduleId: "s1", scheduleName: "Daily Standup", credits: 50, tokens: 100 },
-              { scheduleId: "s2", scheduleName: "Weekly Planning", credits: 200, tokens: 400 },
+              {
+                scheduleId: "s1",
+                scheduleName: "Daily Standup",
+                credits: 50,
+                tokens: 100,
+              },
+              {
+                scheduleId: "s2",
+                scheduleName: "Weekly Planning",
+                credits: 200,
+                tokens: 400,
+              },
             ],
             scheduleOtherCount: 0,
             scheduleOtherCredits: 0,
-            scheduleOtherTokens: 0,
             chats: [],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 250,
             grandTotalTokens: 500,
           }),
@@ -613,15 +669,18 @@ describe("UsageInsightSchedulesTable - rendering and interactions", () => {
           makeFixture({
             buckets: [],
             schedules: [
-              { scheduleId: "s1", scheduleName: "Visible Schedule", credits: 30, tokens: 60 },
+              {
+                scheduleId: "s1",
+                scheduleName: "Visible Schedule",
+                credits: 30,
+                tokens: 60,
+              },
             ],
             scheduleOtherCount: 4,
             scheduleOtherCredits: 170,
-            scheduleOtherTokens: 340,
             chats: [],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 200,
             grandTotalTokens: 400,
           }),
@@ -648,11 +707,9 @@ describe("UsageInsightSchedulesTable - rendering and interactions", () => {
             schedules: [],
             scheduleOtherCount: 1,
             scheduleOtherCredits: 50,
-            scheduleOtherTokens: 100,
             chats: [],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            chatOtherTokens: 0,
             grandTotalCredits: 50,
             grandTotalTokens: 100,
           }),
@@ -673,7 +730,7 @@ describe("UsageInsightSchedulesTable - rendering and interactions", () => {
 // UsageInsightSelectors — date range dropdown
 // ---------------------------------------------------------------------------
 
-describe("UsageInsightSelectors - date range dropdown", () => {
+describe("usage insight selectors - date range dropdown", () => {
   it("renders the date range select with all four options", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -708,8 +765,14 @@ describe("UsageInsightSelectors - date range dropdown", () => {
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "Today" })).toBeInTheDocument();
     });
-    expect(screen.getByRole("option", { name: "Yesterday" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Last 7 days" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Last 28 days" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Yesterday" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Last 7 days" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Last 28 days" }),
+    ).toBeInTheDocument();
   });
 });
