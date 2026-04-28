@@ -179,8 +179,13 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             </div>
           )}
 
-          {/* Connect your tools */}
-          <Section title={t("connectYourTools")}>
+          {/* Scenario */}
+          <Section title={t(`content.${slug}.headings.scenario`)}>
+            <p className="uc-section-body">{t(`content.${slug}.scenario`)}</p>
+          </Section>
+
+          {/* Step 1: Connect your tools */}
+          <Section title={t(`content.${slug}.headings.connect`)}>
             <div className="uc-connect-grid">
               {useCase.integrations.map((integration, i) => {
                 return (
@@ -230,11 +235,6 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                 );
               })}
             </div>
-          </Section>
-
-          {/* Scenario */}
-          <Section title={t(`content.${slug}.headings.scenario`)}>
-            <p className="uc-section-body">{t(`content.${slug}.scenario`)}</p>
           </Section>
 
           {/* Prompt */}

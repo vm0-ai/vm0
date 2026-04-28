@@ -326,7 +326,8 @@
           "steps": "Cómo Zero fusiona tus PRs de release",
           "nextActions": "Endurece la política, escala los casos arriesgados o sube la frecuencia",
           "integrations": "Integraciones requeridas: GitHub y Slack",
-          "tips": "Buenas prácticas para la fusión autónoma de releases"
+          "tips": "Buenas prácticas para la fusión autónoma de releases",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Cada vez que main acumula suficientes commits se abre un nuevo PR de release - en la mayoría de los equipos, una o dos veces al día. Alguien tiene que mirar el diff, confirmar que CI está en verde, decidir si el changelog trae algo inquietante, darle a Merge y luego vigilar el despliegue. Si esa persona está en una reunión, dormida o en otro continente, el release se queda parado. Los commits se apilan, el changelog crece, la fusión se vuelve más arriesgada. Le dices a Zero una sola vez - corre la revisión una vez al día laboral, salta los arriesgados, fusiona en horario laboral, publica en el canal de releases - y desde ese momento, publicar pasa solo, al ritmo de tu equipo.",
         "promptVariants": [
@@ -404,11 +405,12 @@
         "timeSaved": "~25 min ahorrados",
         "headings": {
           "scenario": "Por qué la triaje de Sentry desperdicia tiempo de ingeniería",
-          "prompt": "Cómo pedir a Zero que priorice errores de Sentry",
-          "steps": "Cómo Zero analiza y clasifica tus errores de Sentry",
-          "nextActions": "Convierte la triaje de Sentry en issues de GitHub y automatización diaria",
+          "prompt": "Paso 2: Pregúntale a Zero",
+          "steps": "Paso 3: Lo que Zero hace",
+          "nextActions": "Paso 4: Toma acción",
           "integrations": "Integraciones requeridas: Sentry y GitHub",
-          "tips": "Buenas prácticas para la triaje automatizada de Sentry"
+          "tips": "Buenas prácticas para la triaje automatizada de Sentry",
+          "connect": "Paso 1: Conecta tus herramientas"
         },
         "scenario": "Lunes por la mañana. Abres Slack y hay una docena de alertas de Sentry en #dev. La mayoría son ruido: tests inestables, problemas conocidos, errores transitorios que se resuelven solos. Pero en algún lugar podría haber algo real: una integración rota, un bug de facturación, un fallo que está afectando a usuarios reales. No quieres abrir el dashboard de Sentry y revisar issues uno por uno. Solo quieres saber: cuáles importan, qué tan graves son y qué los está causando.",
         "promptVariants": [
@@ -490,7 +492,8 @@
           "steps": "Cómo Zero compila tu resumen de trabajo desde 3 herramientas",
           "nextActions": "Publicar en Slack, agregar bloqueantes o automatizar diariamente",
           "integrations": "Integraciones requeridas: Google Calendar, Gmail y Linear",
-          "tips": "Buenas prácticas para resúmenes de standup generados por IA"
+          "tips": "Buenas prácticas para resúmenes de standup generados por IA",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Son las 9:50 AM y el standup comienza en 10 minutos. Aún no has revisado tu calendario. Le pides a Zero que obtenga las reuniones de ayer, correos y tareas de Linear; Zero escribe un resumen que puedes pegar directamente en el hilo del equipo.",
         "promptVariants": [
@@ -575,7 +578,8 @@
           "steps": "Cómo Zero analiza perfiles de X y crea correos personalizados",
           "nextActions": "Evaluar compatibilidad del KOL, enviar en lote o rastrear en Notion CRM",
           "integrations": "Integraciones requeridas: X, Gmail y Notion",
-          "tips": "Buenas prácticas para contacto con KOL asistido por IA"
+          "tips": "Buenas prácticas para contacto con KOL asistido por IA",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Encontraste un KOL perfecto para una asociación, pero escribir un correo frío que no se sienta genérico toma 20 minutos de investigación: leer sus posts, entender qué les importa, encontrar el ángulo correcto. Le das a Zero su handle de X y obtienes un borrador personalizado en segundos.",
         "promptVariants": [
@@ -655,7 +659,8 @@
           "steps": "Cómo Zero analiza tu mensaje y crea un issue formateado",
           "nextActions": "Agregar detalles, crear issues en lote o automatizar la triaje",
           "integrations": "Integraciones requeridas: GitHub y Slack",
-          "tips": "Buenas prácticas para reportar bugs desde Slack"
+          "tips": "Buenas prácticas para reportar bugs desde Slack",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Acabas de notar un bug de UX durante una demo. En lugar de abrir GitHub, buscar el repositorio, escribir un issue formateado y asignar a alguien, lo describes en Slack. Zero crea el issue, agrega etiquetas y asigna a la persona correcta. Nunca dejas la conversación.",
         "promptVariants": [
@@ -737,7 +742,8 @@
           "steps": "Cómo Zero filtra el ruido y destaca mensajes accionables",
           "nextActions": "Responder directamente, crear tareas o automatizar la triaje diaria",
           "integrations": "Integraciones requeridas: Slack",
-          "tips": "Buenas prácticas para la triaje de mensajes de Slack"
+          "tips": "Buenas prácticas para la triaje de mensajes de Slack",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Abres Slack después de un bloque de concentración de 2 horas y hay 47 mensajes no leídos en 12 canales. La mayoría son notificaciones de bots, alertas automatizadas y conversaciones que no te necesitan. En algún lugar del ruido hay 3 cosas que realmente necesitan tu respuesta. En lugar de desplazarte por todo, le pides a Zero que encuentre lo que importa.",
         "promptVariants": [
@@ -817,7 +823,8 @@
           "steps": "Cómo Zero configura Notion, Calendar y Slack para un nuevo compañero",
           "nextActions": "Agregar aprovisionamiento de acceso o personalizar por rol",
           "integrations": "Integraciones requeridas: Slack, Notion, Google Calendar y Gmail",
-          "tips": "Buenas prácticas para el onboarding automatizado de empleados"
+          "tips": "Buenas prácticas para el onboarding automatizado de empleados",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Un nuevo compañero empieza el próximo lunes. Alguien necesita crear su documento de onboarding, programar reuniones de presentación con 5 personas, publicar un mensaje de bienvenida y enviarle la agenda de su primera semana. Son 45 minutos de coordinación que suceden de la misma manera cada vez. Se lo dices a Zero una vez y se encarga de todo.",
         "promptVariants": [
@@ -900,7 +907,8 @@
           "steps": "Cómo Zero va de tu descripción a una UI interactiva en vivo",
           "nextActions": "Refinar, compartir o entregar a ingeniería",
           "integrations": "Integraciones requeridas: v0",
-          "tips": "Buenas prácticas para prototipado rápido de ideas con v0"
+          "tips": "Buenas prácticas para prototipado rápido de ideas con v0",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Estás en un hilo de Slack debatiendo cómo debería funcionar una función. Alguien propone un nuevo patrón de UI: una paleta de comandos, un panel de configuración, un asistente de varios pasos. Las palabras no alcanzan. Dibujar en una pizarra no es opción. Programar una sesión de Figma pospone la decisión a la próxima semana. Describes la idea a Zero en lenguaje natural. Llama a v0, genera un prototipo React completamente interactivo y publica el enlace de vista previa en el hilo, en menos de un minuto. Todos pueden explorarlo antes de que la conversación avance.",
         "promptVariants": [
@@ -982,7 +990,8 @@
           "steps": "Cómo Zero encuentra, interpreta y registra decisiones en Notion",
           "nextActions": "Revisa, categoriza y comparte tu registro de decisiones",
           "integrations": "Integraciones requeridas: Slack y Notion",
-          "tips": "Buenas prácticas para la captura automatizada de decisiones"
+          "tips": "Buenas prácticas para la captura automatizada de decisiones",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Una llamada de producto termina. Se tomaron tres decisiones: una funcionalidad se elimina, la fecha de lanzamiento se mueve dos semanas y el modelo de precios cambia. Alguien dice que lo documentará. Una semana después, el documento aún no existe, el ingeniero construyó la funcionalidad eliminada de todos modos y dos personas tienen recuerdos diferentes de lo que se decidió. Zero observa el canal. Cuando ocurre una decisión, la registra inmediatamente, con el enlace al hilo, quién lo dijo y por qué.",
         "promptVariants": [
@@ -1064,7 +1073,8 @@
           "steps": "Cómo Zero ensambla tu informe matutino desde múltiples fuentes",
           "nextActions": "Personaliza el informe, compártelo más ampliamente o conviértelo en una presentación",
           "integrations": "Integraciones requeridas: Linear, GitHub, Slack y Calendar",
-          "tips": "Buenas prácticas para informes matutinos automatizados"
+          "tips": "Buenas prácticas para informes matutinos automatizados",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Son las 9:50 AM. El standup es en diez minutos. Tu PM está actualizando Linear, tu tech lead está revisando GitHub para PRs nocturnos y alguien está abriendo el dashboard de incidentes. Nadie tiene una imagen completa todavía. Podrías haber tenido todo esto esperando en Slack a las 9:00 AM. Zero obtiene datos de cada fuente que te importa, escribe el informe y lo publica antes de que alguien esté conectado.",
         "promptVariants": [
@@ -1152,7 +1162,8 @@
           "steps": "Cómo Zero escanea, clasifica y documenta los hallazgos de deuda técnica",
           "nextActions": "Asigna hallazgos, programa un sprint de deuda o configura escaneos recurrentes",
           "integrations": "Integraciones requeridas: GitHub",
-          "tips": "Buenas prácticas para auditorías automatizadas de deuda técnica"
+          "tips": "Buenas prácticas para auditorías automatizadas de deuda técnica",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "La deuda técnica existe en todo código. El problema no es que se acumule; es que se acumula silenciosamente. Sin ticket, sin responsable, sin prioridad. Aparece como un PR lento, un test inestable, un refactoring que nadie programó. Le dices a Zero que escanee el repositorio. Lo clona, lee el código, encuentra la deuda, la clasifica por severidad y crea un issue estructurado en GitHub para que el equipo pueda verlo y abordarlo.",
         "promptVariants": [
@@ -1231,7 +1242,8 @@
           "steps": "Cómo Zero monitorea, recopila y resume la actividad de los competidores",
           "nextActions": "Profundiza en un hallazgo, ajusta el alcance o comparte con liderazgo",
           "integrations": "Integraciones requeridas: X, Notion y Slack",
-          "tips": "Buenas prácticas para el monitoreo automatizado de competidores"
+          "tips": "Buenas prácticas para el monitoreo automatizado de competidores",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Mantenerse al día con los competidores debería ser un hábito semanal. En la práctica, ocurre cuando alguien ve algo en X, reenvía un tweet a Slack y el hilo muere dos días después sin ninguna acción. Zero se encarga de todo el proceso. Dale una lista de competidores. Revisa sus cuentas de X, lee sus páginas de producto en busca de cambios, guarda todo en un registro estructurado de Notion y publica un resumen en Slack cada lunes sin que se lo pidan.",
         "promptVariants": [
@@ -1316,7 +1328,8 @@
           "steps": "Cómo Zero obtiene, deduplica y registra errores de Sentry y Axiom",
           "nextActions": "Asigna issues, ajusta umbrales o combina con tu informe de standup",
           "integrations": "Integraciones requeridas: Sentry, GitHub y Axiom",
-          "tips": "Buenas prácticas para la clasificación programada de errores de producción"
+          "tips": "Buenas prácticas para la clasificación programada de errores de producción",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Cada mañana, alguien tiene que abrir Sentry, recorrer los errores no resueltos, determinar cuáles son nuevos, cuáles son duplicados, cuáles son realmente serios y decidir quién debería encargarse de cada uno. Eso son 20 a 30 minutos de tiempo de ingeniería enfocado antes de que comience cualquier trabajo real. Zero se ejecuta a las 8:45 AM, revisa Sentry y Axiom, deduplica entre ambos, selecciona los errores que importan, abre issues en GitHub con el stack trace completo ya adjunto y asigna cada uno antes de que alguien abra su laptop.",
         "promptVariants": [
@@ -1401,7 +1414,8 @@
           "steps": "Cómo Zero convierte contexto en un email enviado",
           "nextActions": "Itera, segmenta y programa campañas recurrentes",
           "integrations": "Integraciones requeridas: Resend y Slack",
-          "tips": "Buenas prácticas para emails de marketing redactados por Zero"
+          "tips": "Buenas prácticas para emails de marketing redactados por Zero",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Jueves por la tarde. Debes a tus suscriptores una actualización de producto. Tienes tres funciones enviadas esta semana en Linear, un teaser de lanzamiento en Notion y quince minutos antes de tu siguiente reunión. No quieres abrir un documento en blanco, copiar y pegar entradas de changelog, escribir copy nuevo, iniciar sesión en Resend, subir el HTML, redactar el asunto y verificar por tercera vez el tag de la audiencia. Solo quieres que salga un email limpio - con la voz de marca, a la audiencia correcta - sin perder el resto del día.",
         "promptVariants": [
@@ -1489,7 +1503,8 @@
           "steps": "Cómo @Zero extrae datos en tiempo real, calcula líneas base y marca anomalías",
           "nextActions": "Profundiza en anomalías, corrige conectores rotos o amplía el resumen",
           "integrations": "Integraciones requeridas: GitHub y Slack. Opcionales: Linear, Sentry, Plausible",
-          "tips": "Mejores prácticas para reportes de ingeniería programados con múltiples herramientas"
+          "tips": "Mejores prácticas para reportes de ingeniería programados con múltiples herramientas",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Cada mañana alguien abre cuatro pestañas diferentes: GitHub para la actividad de PRs, Linear para el progreso del sprint, Sentry para los errores nocturnos y Plausible para las tendencias de tráfico. Comparan manualmente los números de hoy con lo que recuerdan de la semana pasada e intentan detectar algo inusual antes del standup. Esa verificación cruzada toma de 15 a 20 minutos y depende de la memoria. @Zero se ejecuta antes del standup, extrae datos en tiempo real de las cuatro fuentes, calcula promedios móviles de 7 días, marca cualquier desviación significativa y publica un resumen limpio de cuatro secciones en Slack antes de que alguien abra su laptop.",
         "promptVariants": [
@@ -1584,7 +1599,8 @@
           "steps": "Cómo @Zero extrae, compara y reporta cambios de precios",
           "nextActions": "Profundiza en un cambio específico, ajusta la lista de seguimiento o comparte con liderazgo",
           "integrations": "Integraciones requeridas: Notion y Slack",
-          "tips": "Mejores prácticas para inteligencia de precios automatizada"
+          "tips": "Mejores prácticas para inteligencia de precios automatizada",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Un competidor elimina silenciosamente su plan gratuito. Otro agrega un nuevo plan empresarial. Te enteras tres semanas después por un prospecto que ya los eligió. @Zero revisa las páginas de precios de tus competidores cada lunes, compara qué cambió desde la semana pasada, escribe un resumen de impacto claro para cada cambio encontrado y publica un resumen en Slack antes de que la semana de tu equipo comience.",
         "promptVariants": [
@@ -1666,7 +1682,8 @@
           "steps": "Cómo @Zero busca y sintetiza el contexto del cliente en cinco fuentes",
           "nextActions": "Prepárate para una reunión específica, ejecuta en lote para un ciclo de revisión o identifica solo los riesgos",
           "integrations": "Integraciones requeridas: Gmail, Calendar y Slack",
-          "tips": "Mejores prácticas para consultas de contexto de clientes"
+          "tips": "Mejores prácticas para consultas de contexto de clientes",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Tu QBR es en una hora. Recuerdas que hubo un problema de soporte el mes pasado, algunos hilos de correo que se estancaron y una solicitud de funcionalidad registrada en algún lugar. Tienes 12 minutos y cuatro herramientas que revisar. @Zero busca en todas a la vez - correo, calendario, Slack, tickets - y regresa con un solo resumen: quiénes son, qué ha pasado recientemente, qué está sin resolver y exactamente qué deberías mencionar en la llamada.",
         "promptVariants": [
@@ -1761,7 +1778,8 @@
           "steps": "Cómo @Zero consulta fuentes, detecta señales y entrega el resumen",
           "nextActions": "Amplía tu lista de fuentes, profundiza en un tema o ejecútalo bajo demanda",
           "integrations": "Integraciones requeridas: X (Twitter) y Slack",
-          "tips": "Mejores prácticas para el monitoreo diario de tendencias"
+          "tips": "Mejores prácticas para el monitoreo diario de tendencias",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Tu equipo quiere responder a las tendencias más rápido. El proceso actual: alguien comparte un enlace en Slack, recibe tres reacciones, y tres días después no pasó nada. El problema no es la atención - es la calidad de la señal. Cada fuente produce ruido. Sin un umbral, estás leyendo todo y no actuando sobre nada. @Zero vigila tus fuentes, aplica un filtro de velocidad y solo publica cuando algo realmente está despegando.",
         "promptVariants": [
@@ -1850,7 +1868,8 @@
           "steps": "Cómo @Zero extrae métricas, puntúa publicaciones y escribe la narrativa",
           "nextActions": "Extrae bajo demanda, compara formatos de contenido o crea un resumen ejecutivo",
           "integrations": "Integraciones requeridas: X (Twitter), Slack y Notion - más Plausible para correlación de tráfico",
-          "tips": "Mejores prácticas para reportes automatizados de rendimiento de contenido"
+          "tips": "Mejores prácticas para reportes automatizados de rendimiento de contenido",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Sabes que deberías revisar el rendimiento del contenido semanalmente. No lo has hecho en tres semanas porque extraer los números de X, formatearlos y escribir una narrativa toma 90 minutos que no tienes un lunes por la mañana. @Zero hace todo con un programa. Extrae los números, ejecuta la fórmula de puntuación, escribe la narrativa, la publica en Slack y archiva los datos crudos en Notion - todo antes de tu primera reunión.",
         "promptVariants": [
@@ -1942,7 +1961,8 @@
           "steps": "How Zero fetches, summarizes, and stores the content",
           "nextActions": "Query the KB, compile articles, or chain into a weekly digest",
           "integrations": "Required integrations: Slack and GitHub",
-          "tips": "Best practices for building a living team knowledge base"
+          "tips": "Best practices for building a living team knowledge base",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Someone shares a good article, a competitor announcement, or a research paper in #news. It gets a few reacts, maybe a comment, and then it's gone. Three weeks later someone asks 'didn't we read something about this?' and nobody can find it. Zero turns any shared link into a permanent entry in your team KB - fetched, summarized, and categorized from a single Slack message.",
         "promptVariants": [
@@ -2024,7 +2044,8 @@
           "steps": "How Zero reads the diff and ranks its findings",
           "nextActions": "Create GitHub issues, request fixes, or verify CI status",
           "integrations": "Required integrations: GitHub",
-          "tips": "Best practices for AI-assisted code review"
+          "tips": "Best practices for AI-assisted code review",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "PRs pile up. Reviewers are busy. Someone hits 'approve' to clear their queue and a subtle bug ships. Zero gives every PR a thorough read without the queue. Point it at any PR number, and it returns a structured review - critical issues that must be fixed before merge, plus lower-priority suggestions - posted directly in Slack.",
         "promptVariants": [
@@ -2106,7 +2127,8 @@
           "steps": "How Zero pulls metrics, surfaces slow events, and creates an issue",
           "nextActions": "Assign the issue, schedule monitoring, or dig into a specific event",
           "integrations": "Required integrations: Axiom and GitHub",
-          "tips": "Best practices for proactive API performance monitoring"
+          "tips": "Best practices for proactive API performance monitoring",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "TP95 spikes don't always page you. They sit in your metrics dashboards, quietly degrading user experience while your team is focused on shipping. Zero makes it easy to check any endpoint's performance on demand - pull the last 7 days of TP95 data, see which requests are slow, and get a GitHub issue filed automatically so nothing gets dropped.",
         "promptVariants": [
@@ -2188,7 +2210,8 @@
           "steps": "How Zero pulls, analyzes, and delivers traffic insights",
           "nextActions": "Dig into a channel, schedule a weekly report, or correlate with content",
           "integrations": "Required integrations: Plausible and Slack",
-          "tips": "Best practices for marketing analytics with Zero"
+          "tips": "Best practices for marketing analytics with Zero",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "You know your traffic dashboard exists. You even open it occasionally. But turning raw pageview counts into an actionable insight takes time you don't have. Zero reads your Plausible data and delivers the answer - which channels are growing, which are flat, where the bounce rate spiked - in plain language, in Slack, on demand.",
         "promptVariants": [
@@ -2270,7 +2293,8 @@
           "steps": "How Zero translates your question into a safe read-only query",
           "nextActions": "Export results, schedule recurring counts, or file an issue from findings",
           "integrations": "Required integrations: vm0 (production database skill)",
-          "tips": "Best practices for safe production data access"
+          "tips": "Best practices for safe production data access",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "A stakeholder asks how many users completed onboarding in the last 30 days. It's a simple question, but answering it means opening a DB client, finding the right table, writing a query, making sure you're on read-only credentials, running it, and formatting the result. Zero handles the whole chain - just ask the question in Slack.",
         "promptVariants": [
@@ -2352,7 +2376,8 @@
           "steps": "How Zero gathers, cross-references, and summarizes compliance findings",
           "nextActions": "Document findings to Notion, create remediation issues, or schedule periodic audits",
           "integrations": "Required integrations: GitHub",
-          "tips": "Best practices for AI-assisted compliance research"
+          "tips": "Best practices for AI-assisted compliance research",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Your compliance team flags a question: where is customer data stored, and does it meet regional requirements? Answering it means checking your cloud provider configs, reading your deployment settings, cross-referencing documentation, and writing a summary. Zero does all of this from one Slack message - checking your Vercel regions, Cloudflare R2 config, and infrastructure files, then posting a structured brief.",
         "promptVariants": [
@@ -2434,7 +2459,8 @@
           "steps": "How Zero searches, synthesizes, and surfaces the brief",
           "nextActions": "Log the brief to Notion, schedule weekly updates, or escalate blockers",
           "integrations": "Required integrations: Slack and Linear",
-          "tips": "Best practices for cross-tool status queries"
+          "tips": "Best practices for cross-tool status queries",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Someone asks about the status of the Stripe integration. The last Slack thread is from two weeks ago. There's a Linear ticket but the status says 'In Progress' with no update. The Notion doc has a decision log from last month. GitHub has three open PRs. None of these sources tell the full story alone. Zero searches all four in parallel and gives you one answer.",
         "promptVariants": [
@@ -2526,7 +2552,8 @@
           "steps": "Cómo Zero escribe, localiza y sincroniza contenido con Strapi",
           "nextActions": "Programar publicaciones recurrentes, procesar un calendario de contenido o localizar contenido existente",
           "integrations": "Integraciones requeridas: Strapi y Notion",
-          "tips": "Mejores prácticas para publicación multilingüe asistida por IA"
+          "tips": "Mejores prácticas para publicación multilingüe asistida por IA",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Tu producto acaba de lanzar una nueva función. Necesita un artículo en tres idiomas - inglés para el sitio global, chino para el mercado asiático, japonés para el blog de Japón. Normalmente eso significa: escribir la versión en inglés, abrir una herramienta de traducción, copiar y pegar en Strapi para cada idioma, corregir el formato, verificar que no falten campos. Cuarenta y cinco minutos como mínimo, solo para una publicación. Le das a Zero los puntos clave y tus idiomas objetivo. Listo.",
         "promptVariants": [
@@ -2608,7 +2635,8 @@
           "steps": "Cómo Zero convierte 200 correos en una lectura de 2 minutos",
           "nextActions": "Convierte el resumen de tu bandeja en acción",
           "integrations": "Integraciones requeridas: Gmail y Slack",
-          "tips": "Buenas prácticas para el triaje automático de correo"
+          "tips": "Buenas prácticas para el triaje automático de correo",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Lunes por la mañana, 8:59. Abres Gmail y tienes más de 200 mensajes sin leer. La mayoría es ruido: notificaciones de GitHub, alertas automáticas, correos promocionales que nunca leerás. Enterrados ahí hay una alerta de seguridad sobre credenciales expuestos en tu repo, un aviso de pago fallido de tu proveedor cloud y una petición de cliente que necesita respuesta hoy. Podrías pasar 30 minutos hojeando líneas de asunto, o pedirle a Zero que separe lo urgente de lo ignorable y te envíe un resumen limpio a Slack antes de que se te enfríe el primer café.",
         "promptVariants": [
@@ -2690,7 +2718,8 @@
           "steps": "Cómo Zero escribe tests mientras duermes",
           "nextActions": "Mantén tu cobertura en aumento",
           "integrations": "Integraciones requeridas: GitHub y Slack",
-          "tips": "Buenas prácticas para la generación automática de tests"
+          "tips": "Buenas prácticas para la generación automática de tests",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Es martes por la mañana. CI está en rojo - la cobertura ha bajado del 82% al 79% durante la noche porque alguien fusionó una función nueva sin ningún test. Otra vez. Podrías parar lo que estás haciendo, leer su código y escribir los tests tú mismo. O puedes hacer que Zero lo haga cada mañana a las 4 AM, para cuando te sientes, ya haya un PR de tests esperando revisión.",
         "promptVariants": [
@@ -2772,7 +2801,8 @@
           "steps": "Cómo Zero convierte consultas en bruto en un informe matutino",
           "nextActions": "Convierte datos en decisiones de producto",
           "integrations": "Integraciones requeridas: vm0 (acceso a BD de producción) y Slack",
-          "tips": "Buenas prácticas para analítica de producto automatizada"
+          "tips": "Buenas prácticas para analítica de producto automatizada",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Miércoles, 10 de la mañana. Un usuario avanzado acaba de hacer churn y no tenías ni idea. Su uso bajó un 80% durante la última semana, pero nadie estaba vigilando la métrica correcta. Podrías escribir una consulta SQL, pero necesitarías recordar el esquema, hacer join de seis tablas, exportar el resultado y formatear un informe. O puedes dejar que Zero ejecute el mismo análisis cada mañana y señale la anomalía antes de que el usuario se vaya.",
         "promptVariants": [
@@ -2854,7 +2884,8 @@
           "steps": "Cómo Zero compila tu día en un resumen",
           "nextActions": "Amplía tu informe vespertino",
           "integrations": "Integraciones requeridas: Slack y GitHub",
-          "tips": "Buenas prácticas para resúmenes diarios automatizados"
+          "tips": "Buenas prácticas para resúmenes diarios automatizados",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Son las 6 PM del viernes. El CEO pregunta en el canal de all-hands: \"¿Qué publicamos esta semana?\" Alguien empieza a hojear Slack, otro abre GitHub, y 15 minutos después tienes una lista aproximada a la que le faltan tres PRs y mal atribuye dos funciones. Zero hace esto automáticamente - cada tarde lee la actividad del día, la categoriza por persona y proyecto, y publica un resumen limpio que responde a la pregunta antes de que alguien la haga.",
         "promptVariants": [
@@ -2936,7 +2967,8 @@
           "steps": "Cómo Zero identifica oportunidades de ahorro",
           "nextActions": "Implementa optimizaciones de costes de forma segura",
           "integrations": "Integraciones requeridas: vm0 y Slack",
-          "tips": "Buenas prácticas para la optimización de costes de IA"
+          "tips": "Buenas prácticas para la optimización de costes de IA",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Fin de mes. Llega la factura de infraestructura de IA: 17.000$ este mes, frente a 12.000$ del anterior. Revisas y descubres que el escaneo diario de deuda técnica - que ejecuta unos cuantos scripts de grep y crea issues en GitHub - está usando Claude Opus. El monitor de merge queue, que comprueba si CI está en verde y publica en Slack, también está en Opus. Ninguna tarea necesita nada parecido a Opus. Podrías auditar cada programación manualmente, o pedirle a Zero que clasifique cada tarea por complejidad y recomiende cuáles degradar.",
         "promptVariants": [
@@ -3018,7 +3050,8 @@
           "steps": "Cómo Zero detecta y diagnostica PRs bloqueados",
           "nextActions": "Mantén tu pipeline en movimiento",
           "integrations": "Integraciones requeridas: GitHub y Slack",
-          "tips": "Buenas prácticas para la monitorización de merge queue"
+          "tips": "Buenas prácticas para la monitorización de merge queue",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "El PR #9842 lleva dos horas en la merge queue. CI falló por un test inestable que no tiene nada que ver con los cambios del PR. Hay tres PRs más apilados detrás. Nadie se dio cuenta porque todos están concentrados en su propio trabajo, y GitHub no envía notificaciones cuando un PR se atasca en la cola. El release está bloqueado. Para cuando alguien lo descubre a las 4 PM, se ha perdido la mitad de la ventana de deploy del día. Zero lo detecta en minutos.",
         "promptVariants": [
@@ -3100,7 +3133,8 @@
           "steps": "Cómo Zero ejecuta tareas activadas por voz",
           "nextActions": "Escálala, encadénala o vuélvela rutina",
           "integrations": "Integraciones requeridas: Slack y un runtime de agentes gestionados",
-          "tips": "Buenas prácticas para flujos de agente sin manos"
+          "tips": "Buenas prácticas para flujos de agente sin manos",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Las mejores ideas casi nunca llegan cuando estás sentado frente al escritorio. Te pegan caminando, en tránsito, entre reuniones, justo cuando abrir un repo, levantar un sandbox y correr una tarea es poco práctico. Para cuando vuelves al teclado, la idea ya se enfrió. Hablar por voz con Zero cierra esa brecha: describe la tarea en voz alta y un agente gestionado la toma, clona el repo, corre el setup, ejecuta lo que pediste y publica los resultados. Sin cambio de contexto, sin momentum perdido.",
         "promptVariants": [
@@ -3185,7 +3219,8 @@
           "steps": "Cómo Zero clasifica preguntas de developers",
           "nextActions": "Enruta a un especialista, crea un ticket o cierra duplicados en automático",
           "integrations": "Integraciones requeridas: GitHub, Slack y Gmail",
-          "tips": "Buenas prácticas para la triaje de soporte a developers"
+          "tips": "Buenas prácticas para la triaje de soporte a developers",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Toda empresa con productos para developers recibe un goteo constante de preguntas tipo '¿por qué falla esto?' cayendo en Slack, correo y GitHub. La mitad son duplicados de issues existentes, un cuarto están documentados, el resto son bugs reales, pero ordenarlos le cuesta una hora cada mañana a tu ingeniero de guardia. Zero lee cada pregunta entrante, busca en tus issues, PRs y docs, y responde directo con un enlace o crea un ticket limpio y reproducible. El ingeniero de guardia despierta con una cola curada en lugar de un buzón.",
         "promptVariants": [
@@ -3270,7 +3305,8 @@
           "steps": "Cómo Zero arma tu brief matutino",
           "nextActions": "Personalízalo, mándalo a un canal de equipo o ajusta la señal",
           "integrations": "Integraciones requeridas: Calendar, tracker de issues y Slack",
-          "tips": "Buenas prácticas para un brief matutino útil"
+          "tips": "Buenas prácticas para un brief matutino útil",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Todas las mañanas arrancan igual: calendario para ver qué sigue, Linear para ver qué se movió, Slack para ponerte al día con las conversaciones de la noche, X para noticias del sector, GitHub para ver qué se mergeó. Veinte minutos se van antes de la primera tarea real. Morning Brief lo colapsa en un solo mensaje de Slack: las reuniones que importan, los issues que se movieron, los hilos que piden respuesta, las noticias relevantes y los PRs que se mergearon anoche, todo en un bloque compacto esperándote cuando abres Slack.",
         "promptVariants": [
@@ -3361,7 +3397,8 @@
           "steps": "Cómo Zero monitorea tu buzón",
           "nextActions": "Ajusta el filtro, responde en automático o reenvía correo clave",
           "integrations": "Integraciones requeridas: Gmail y Slack",
-          "tips": "Buenas prácticas para monitoreo de buzón en segundo plano"
+          "tips": "Buenas prácticas para monitoreo de buzón en segundo plano",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Estás concentrado en trabajo real. También estás esperando un correo: un lead, un contrato firmado, la respuesta de un cliente a tu propuesta. No quieres estar cambiando a Gmail cada rato, pero tampoco quieres perderlo seis horas. Gmail Polling DM resuelve exactamente eso: Zero revisa tu buzón cada cierto tiempo y, en cuanto cae algo nuevo que coincide con tu filtro, te manda DM con un resumen de una línea. Tú sigues enfocado; el correo importante igual te llega casi en tiempo real.",
         "promptVariants": [
@@ -3443,7 +3480,8 @@
           "steps": "Cómo Zero verifica la preparación del release",
           "nextActions": "Endurece los gates, notifica al equipo o haz auto-merge cuando esté verde",
           "integrations": "Integraciones requeridas: GitHub y Slack",
-          "tips": "Buenas prácticas para monitoreo de preparación de releases"
+          "tips": "Buenas prácticas para monitoreo de preparación de releases",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Antes de cada release, alguien tiene que verificar: todos los checks de CI en verde, versión bumpada correctamente, changelog generado, sin etiquetas bloqueantes, sin migraciones que requieran cuidado extra. Diez minutos de clicks entre pestañas, cualquiera de las cuales podría sacar un problema. Release Readiness Check lo convierte en un solo prompt: Zero lee el PR, verifica cada gate, saca lo que falta y te dice claramente: listo, o bloqueado en X. Cuando está listo, el equipo recibe luz verde en Slack; cuando no, saben exactamente qué arreglar.",
         "promptVariants": [
@@ -3525,7 +3563,8 @@
           "steps": "Cómo Zero convierte preguntas en docs",
           "nextActions": "Enruta al reviewer correcto, publica o amplía cobertura",
           "integrations": "Integraciones requeridas: Slack y GitHub",
-          "tips": "Buenas prácticas para updates de docs dirigidos por señales"
+          "tips": "Buenas prácticas para updates de docs dirigidos por señales",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Todo canal de soporte tiene cinco o seis preguntas que nunca mueren, no porque el producto sea confuso, sino porque los docs no las mencionan. Trackear esos hilos a mano, redactar updates y empujar PRs es del tipo de trabajo que siempre se queda colgado. Docs Auto-Update vigila tus canales de soporte, cuenta las preguntas recurrentes y, en cuanto una se ha hecho tres veces o más por personas distintas, redacta un update de docs y crea un PR. Un reviewer tarda dos minutos aprobando. La siguiente persona con la misma pregunta encuentra la respuesta en lugar de preguntar.",
         "promptVariants": [
@@ -3610,7 +3649,8 @@
           "steps": "Cómo Zero verifica tus controles de seguridad",
           "nextActions": "Remedia una desviación, escala cobertura o fija la agenda",
           "integrations": "Integraciones requeridas: GitHub, Notion y Slack",
-          "tips": "Buenas prácticas para verificación continua de controles"
+          "tips": "Buenas prácticas para verificación continua de controles",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Las auditorías solían ser un incendio trimestral para todos: capturas de pantalla de cada regla de firewall, cada política de IAM, cada revisión de acceso, armadas a mano en la semana previa a la llegada del auditor. Los controles habían derivado sin que nadie se diera cuenta; la remediación pasaba en modo crisis. La Verificación Continua de Controles corre los checks a ritmo sostenido y las derivas se atrapan la semana que ocurren, no la semana antes de la auditoría. El equipo de compliance recibe un registro fechado y firmado de cada revisión; ingeniería recibe una alerta cuando algo se desvía; los auditores reciben evidencia ya organizada.",
         "promptVariants": [
@@ -3695,7 +3735,8 @@
           "steps": "Cómo Zero convierte briefs en borradores",
           "nextActions": "Itera, traduce o agenda una publicación",
           "integrations": "Integraciones requeridas: Slack y tu CMS",
-          "tips": "Buenas prácticas para flujos de brief a borrador"
+          "tips": "Buenas prácticas para flujos de brief a borrador",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Toda pieza de contenido arranca con una idea suelta: 'deberíamos escribir algo sobre cómo pensamos los flujos por voz'. Entre esa idea y un borrador listo para publicar hay tres horas mirando una hoja en blanco, empezando dos veces y preguntándote si la estructura es la correcta. Brief-to-Draft lo comprime: platica con Zero cinco minutos ya que estás en Slack, Zero saca los argumentos clave, redacta el post completo en tu CMS con la estructura correcta y te manda una URL de preview. Revisas algo real, no un cursor que parpadea.",
         "promptVariants": [
@@ -3780,7 +3821,8 @@
           "steps": "Cómo Zero genera arte on-brand",
           "nextActions": "Ajusta el estilo, genera en lote o exporta a Figma",
           "integrations": "Integraciones requeridas: Slack y tu sistema de diseño",
-          "tips": "Buenas prácticas para arte de portada consistente"
+          "tips": "Buenas prácticas para arte de portada consistente",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "El borrador está listo, el copy está afilado y entonces te acuerdas: imagen de portada. O pasas una hora en Figma, o te conformas con una foto de stock que se ve como todas las fotos de stock, o le pides al diseñador que ya está saturado. Cover Art Generation se mete en medio: Zero genera arte que empata con tu sistema visual (misma paleta, mismo estilo de ilustración, misma tipografía) en segundos. El output no es stock genérico; es tuyo, consistentemente.",
         "promptVariants": [
@@ -3865,7 +3907,8 @@
           "steps": "Cómo Zero corre investigación → borrador → score",
           "nextActions": "Escala los ganadores, itera los amarillos o mata los rojos",
           "integrations": "Integraciones requeridas: X, Notion y Slack",
-          "tips": "Buenas prácticas para experimentación de contenido en loop cerrado"
+          "tips": "Buenas prácticas para experimentación de contenido en loop cerrado",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "La estrategia de contenido se rompe en medio: las ideas se generan, los posts se publican y luego nadie revisa qué funcionó de verdad. Dos meses después, se reciclan los mismos formatos perdedores porque nadie trackeó cuáles ganaron. Content Experiment Engine cierra el loop. Zero investiga temas en tendencia en tus fuentes, redacta ~8 variantes por ciclo, trackea el desempeño tras publicar y entrega un reporte scoreado: verde (escala esto), amarillo (itera), rojo (mata). El loop corre en cadencia fija para que siga andando aunque tu semana se destruya.",
         "promptVariants": [
@@ -3950,7 +3993,8 @@
           "steps": "Cómo Zero corre el pipeline de video",
           "nextActions": "Ajusta el guión, itera frames o agenda una serie",
           "integrations": "Integraciones requeridas: Slack y un runtime de agentes gestionados",
-          "tips": "Buenas prácticas para producción de video orquestada por agentes"
+          "tips": "Buenas prácticas para producción de video orquestada por agentes",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Un video de producto de 60 segundos toma un día completo a mano: guión, storyboard, slides, grabar voiceover, ensamblar, agregar subtítulos, corregir color, renderizar, exportar. La mayoría de los equipos no shippean videos porque el costo por unidad es demasiado alto. Agent-Orchestrated Video Production lo colapsa: un solo prompt arranca un agente gestionado que maneja cada herramienta (guión en una, slides en otra, voiceover con avatar en una tercera, edición final en una cuarta) y devuelve un MP4 listo para publicar. Revisas un video, no cien micro-decisiones.",
         "promptVariants": [
@@ -4035,7 +4079,8 @@
           "steps": "Cómo Zero arma tu reporte para el consejo",
           "nextActions": "Ajusta el formato, suma inversores al envío, programa la cadencia",
           "integrations": "Integraciones requeridas: gestor de issues, GitHub y analítica",
-          "tips": "Buenas prácticas para reportes automatizados a inversores"
+          "tips": "Buenas prácticas para reportes automatizados a inversores",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Los reportes al consejo siempre se ven fáciles en el calendario y difíciles la noche anterior. Alguien tiene que reunir la actividad de entregas del mes, reconciliarla con lo que realmente se había comprometido, desenterrar las cifras de tráfico y uso, y escribir una narrativa que no parezca un changelog. Cuatro horas perdidas, normalmente de madrugada, cada mes. Zero toma los datos en crudo (issues cerrados, PRs fusionados, tráfico, ingresos, victorias con clientes marcadas en Slack) y redacta el reporte completo con tu voz. Tú editas los matices y lo envías.",
         "promptVariants": [
@@ -4126,7 +4171,8 @@
           "steps": "Cómo Zero gestiona los leads entrantes",
           "nextActions": "Afina la puntuación, envía los mejores en automático, registra en el CRM",
           "integrations": "Integraciones requeridas: Gmail y Notion",
-          "tips": "Buenas prácticas para automatizar el seguimiento de leads"
+          "tips": "Buenas prácticas para automatizar el seguimiento de leads",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Un buen lead se enfría en 48 horas. Eso es lo que suele tardar en notarse en Gmail, hacer la búsqueda rápida en LinkedIn y en la web de la empresa, y escribir un seguimiento que no sea genérico. Para cuando tu respuesta llega, el prospecto ya habló con dos competidores. Lead Follow-ups cierra esa brecha. Zero lee cada lead entrante, lo puntúa contra tu ICP, extrae lo que puede de las señales del prospecto (empresa, rol, etapa) y redacta el seguimiento. Tú revisas y envías. El lead recibe una respuesta personal en menos de una hora, no en dos días.",
         "promptVariants": [
@@ -4208,7 +4254,8 @@
           "steps": "Cómo Zero convierte los commits en notas para el cliente",
           "nextActions": "Refina la voz, encadena con publicación, traduce",
           "integrations": "Integraciones requeridas: GitHub y Slack",
-          "tips": "Buenas prácticas para notas de versión automatizadas"
+          "tips": "Buenas prácticas para notas de versión automatizadas",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Las notas de versión siempre son lo último que se escribe y lo primero que se recorta cuando el release va tarde. El problema es el material fuente: mensajes de commit escritos para ingenieros, títulos de PR que asumen conocimiento tribal, y 30 PRs fusionados que, individualmente, a tus usuarios no les interesan. Release Notes Generator da vuelta el flujo. Zero lee los commits y las descripciones de PR, filtra los cambios visibles para el cliente, los agrupa por tema (nuevas funciones, mejoras, correcciones) y redacta las notas con la voz que tus clientes realmente leen. Tú revisas, y el próximo release sale con notas en lugar de silencio.",
         "promptVariants": [
@@ -4290,7 +4337,8 @@
           "steps": "Cómo Zero convierte las reuniones en trabajo rastreado",
           "nextActions": "Envía a tareas, escala los ítems sin responsable, resume la semana",
           "integrations": "Integraciones requeridas: Calendario, Slack y Notion",
-          "tips": "Buenas prácticas para dar seguimiento a reuniones"
+          "tips": "Buenas prácticas para dar seguimiento a reuniones",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Cada reunión produce tareas. Casi ninguna queda registrada. La reunión termina, la gente vuelve a su escritorio, y las tres cosas que Casey se comprometió a manejar esta semana viven solo en la memoria. Una semana después nadie recuerda quién era responsable de qué, y la siguiente reunión empieza con 'en qué nos quedamos?'. Meeting Action Items arregla esto sin agregar un paso más. Zero lee la transcripción de la reunión, extrae las tareas con su responsable y fecha, y las publica en el canal de Slack correcto o en tu gestor de tareas. Todos salen con la misma lista.",
         "promptVariants": [
@@ -4375,7 +4423,8 @@
           "steps": "Cómo Zero transforma material en bruto en un corto promocional profesional",
           "nextActions": "Ajusta el corte, reutiliza para otros canales o programa un lote",
           "integrations": "Integraciones requeridas: Slack, Google Drive y Notion",
-          "tips": "Buenas prácticas para la producción de videos promocionales con Zero"
+          "tips": "Buenas prácticas para la producción de videos promocionales con Zero",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Acabas de terminar de grabar un recorrido de una nueva funcionalidad: tres capturas de pantalla sin audio en una carpeta de Google Drive. Ahora viene la parte difícil: escribir el guión de narración, elegir música de fondo, sincronizar transiciones y editar todo en un promo de 60 segundos. Podrías pasar la tarde en un editor de video, o simplemente apuntar a Zero a la carpeta. Indícale tus grabaciones en Google Drive, dile qué debe comunicar el video, y te entrega un corto promocional SaaS pulido — narración, música, transiciones y todo — listo para publicar.",
         "promptVariants": [
@@ -4460,7 +4509,8 @@
           "steps": "Cómo Zero convierte datos de palabras clave en un borrador publicable",
           "nextActions": "Programar una cadencia de contenido, reutilizar en otros canales o rastrear posiciones",
           "integrations": "Integraciones requeridas: Ahrefs, Strapi y Fal.ai",
-          "tips": "Mejores prácticas para redacción de blogs SEO asistida por IA"
+          "tips": "Mejores prácticas para redacción de blogs SEO asistida por IA",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Necesitas un artículo de blog que realmente posicione. Eso significa abrir Ahrefs, filtrar palabras clave con buen volumen y baja dificultad, elegir una que encaje con tu estrategia de contenido, escribir 1.500 palabras, conseguir o crear una imagen destacada, formatear todo para el CMS y publicar. Para cuando terminas, la mañana se fue, y aún te quedan dos artículos más esta semana. Le dices a Zero el área temática y tu dominio. Extrae los datos de palabras clave, escribe el artículo, genera la imagen de portada y envía un borrador pulido a Strapi. Tú revisas y publicas.",
         "promptVariants": [
@@ -4545,7 +4595,8 @@
           "steps": "Cómo Zero encuentra, enriquece, personaliza e inscribe leads",
           "nextActions": "Refinar segmentación, expandir segmentos o programar ejecuciones recurrentes",
           "integrations": "Integraciones requeridas: Apollo e Instantly",
-          "tips": "Mejores prácticas para cold outreach potenciado por IA"
+          "tips": "Mejores prácticas para cold outreach potenciado por IA",
+          "connect": "Conecta tus herramientas"
         },
         "scenario": "Es lunes por la mañana. Necesitas 30 leads cualificados para la campaña de esta semana. Eso implica una hora en Apollo ajustando filtros, exportando CSVs, revisando sitios web de empresas para escribir líneas de apertura que no suenen a plantilla, y luego subir todo a Instantly. Para cuando se envía el primer email, ya perdiste media mañana. Con Zero, describes tu ICP en lenguaje natural y obtienes una lista de leads completamente personalizada y lista para campaña en minutos.",
         "promptVariants": [
