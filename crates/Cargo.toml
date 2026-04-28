@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "ably-subscriber",
+    "api-contracts",
     "guest-agent",
     "guest-common",
     "guest-download",
@@ -25,6 +26,7 @@ edition = "2024"
 [workspace.dependencies]
 # Internal crates
 ably-subscriber = { path = "ably-subscriber" }
+api-contracts = { path = "api-contracts" }
 guest-agent = { path = "guest-agent" }
 guest-common = { path = "guest-common" }
 guest-download = { path = "guest-download" }
