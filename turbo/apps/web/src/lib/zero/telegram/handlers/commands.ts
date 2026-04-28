@@ -53,7 +53,11 @@ export async function handleConnectCommand(
   );
   const client = createTelegramClient(botToken);
 
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+  );
 
   const replyOptions =
     message.chat.type !== "private"
@@ -102,6 +106,7 @@ export async function handleConnectCommand(
     installation.telegramBotId,
     fromUserId,
     botToken,
+    message.from?.username ?? null,
   );
   const agentName = await getWorkspaceAgentDisplayLabel(
     installation.defaultComposeId,
@@ -141,7 +146,11 @@ export async function handleDisconnectCommand(
   );
   const client = createTelegramClient(botToken);
 
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+  );
 
   const replyOptions =
     message.chat.type !== "private"

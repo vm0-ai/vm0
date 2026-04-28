@@ -83,7 +83,11 @@ export async function handleStartCommand(
 
   if (!token || token === "connect") {
     // No token or deep link from group chat (/start connect) → prompt login
-    const userLink = await resolveUserLink(installationId, fromUserId);
+    const userLink = await resolveUserLink(
+      installationId,
+      fromUserId,
+      message.from?.username ?? null,
+    );
     if (userLink) {
       const agentName = await getWorkspaceAgentDisplayLabel(
         installation.defaultComposeId,
@@ -104,6 +108,7 @@ export async function handleStartCommand(
       installation.telegramBotId,
       fromUserId,
       botToken,
+      message.from?.username ?? null,
     );
     const agentName = await getWorkspaceAgentDisplayLabel(
       installation.defaultComposeId,
@@ -140,6 +145,7 @@ export async function handleStartCommand(
 
   const linkResult = await linkTelegramUserToVm0User({
     telegramUserId: fromUserId,
+    telegramUsername: message.from?.username ?? null,
     installationId,
     vm0UserId: payload.vm0UserId,
   });

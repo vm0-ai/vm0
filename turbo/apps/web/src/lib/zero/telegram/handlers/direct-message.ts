@@ -65,7 +65,11 @@ export async function handleTelegramDirectMessage(
   const client = createTelegramClient(botToken);
 
   // 2. Check user link (auto-completes pending link if needed)
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+  );
 
   if (!userLink) {
     const agentName = await getWorkspaceAgentDisplayLabel(
@@ -75,6 +79,7 @@ export async function handleTelegramDirectMessage(
       installation.telegramBotId,
       fromUserId,
       botToken,
+      message.from?.username ?? null,
     );
     await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
       replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),

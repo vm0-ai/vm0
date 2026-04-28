@@ -53,7 +53,11 @@ export async function handleNewSessionCommand(
   );
   const client = createTelegramClient(botToken);
 
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+  );
   if (!userLink) {
     const agentName = await getWorkspaceAgentDisplayLabel(
       installation.defaultComposeId,
@@ -62,6 +66,7 @@ export async function handleNewSessionCommand(
       installation.telegramBotId,
       fromUserId,
       botToken,
+      message.from?.username ?? null,
     );
     await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
       replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),

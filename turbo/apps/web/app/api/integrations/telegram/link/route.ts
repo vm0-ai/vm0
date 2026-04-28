@@ -84,6 +84,7 @@ function linkConflictResponse(reason: LinkTelegramUserConflictReason) {
 async function linkUserOrConflict(params: {
   installationId: string;
   telegramUserId: string;
+  telegramUsername?: string | null;
   vm0UserId: string;
   orgId: string;
 }): Promise<NextResponse | undefined> {
@@ -154,6 +155,7 @@ export async function DELETE(request: Request) {
 
 const connectSignatureSchema = z.object({
   telegramUserId: z.string().min(1),
+  telegramUsername: z.string().max(255).optional(),
   timestamp: z.number(),
   signature: z.string().min(1),
 });
@@ -340,6 +342,7 @@ export async function POST(request: Request) {
     const conflictResponse = await linkUserOrConflict({
       installationId: installation.telegramBotId,
       telegramUserId,
+      telegramUsername: body.telegramAuth.username,
       vm0UserId: userId,
       orgId: org.orgId,
     });
@@ -365,6 +368,7 @@ export async function POST(request: Request) {
         body.connectSignature.timestamp,
         body.connectSignature.signature,
         botToken,
+        body.connectSignature.telegramUsername,
       )
     ) {
       return NextResponse.json(
@@ -384,6 +388,7 @@ export async function POST(request: Request) {
     const conflictResponse = await linkUserOrConflict({
       installationId: installation.telegramBotId,
       telegramUserId,
+      telegramUsername: body.connectSignature.telegramUsername,
       vm0UserId: userId,
       orgId: org.orgId,
     });

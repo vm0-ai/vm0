@@ -127,6 +127,23 @@ describe("buildTelegramResponse", () => {
     );
   });
 
+  it("should keep audit before attribution footer", () => {
+    const result = buildTelegramResponse(
+      "content",
+      "https://example.com/logs",
+      "Sent via My Assistant · Claude Opus 4.7",
+    );
+
+    expect(result).toBe(
+      [
+        "content",
+        "",
+        '<i><a href="https://example.com/logs">📋 Audit</a></i>',
+        "<i>Sent via My Assistant · Claude Opus 4.7</i>",
+      ].join("\n"),
+    );
+  });
+
   it("should not render agent name HTML", () => {
     const result = buildTelegramResponse("hi", "https://example.com/logs");
 
@@ -171,6 +188,25 @@ describe("buildTelegramErrorResponse", () => {
       '<i><a href="https://example.com/logs">📋 Audit</a></i>',
     );
     expect(result).not.toContain("View logs");
+  });
+
+  it("should keep error audit before attribution footer", () => {
+    const result = buildTelegramErrorResponse(
+      "failed",
+      "https://example.com/logs",
+      "Responded by Responder · Claude Opus 4.7",
+    );
+
+    expect(result).toBe(
+      [
+        "❌ <b>Agent Execution Error</b>",
+        "",
+        "failed",
+        "",
+        '<i><a href="https://example.com/logs">📋 Audit</a></i>',
+        "<i>Responded by Responder · Claude Opus 4.7</i>",
+      ].join("\n"),
+    );
   });
 
   it("should convert markdown links in error details", () => {

@@ -350,9 +350,8 @@ describe("POST /api/internal/callbacks/telegram", () => {
 
       expect(response.status).toBe(200);
       const text = sendMessageHandler.calls[0]?.text ?? "";
-      expect(text).toContain(
-        '<i>Responded by Responder · Reply to <a href="tg://user?id=777000">Telegram user 777000</a> · Claude Opus 4.7</i>',
-      );
+      expect(text).toContain("<i>Responded by Responder · Claude Opus 4.7</i>");
+      expect(text).not.toContain("Reply to");
     });
 
     it("renders markdown for group mention replies", async () => {

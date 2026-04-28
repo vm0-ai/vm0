@@ -93,6 +93,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     await insertTestTelegramUserLink({
       installationId: botId,
       telegramUserId: "777000",
+      telegramUsername: "ada_telegram",
       vm0UserId: user.userId,
     });
 
@@ -136,7 +137,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     });
     expect(String(telegramBody?.text)).toContain("Hello <b>world</b>");
     expect(String(telegramBody?.text)).toContain(
-      '<i>Sent via My Assistant · Triggered by <a href="tg://user?id=777000">Telegram user 777000</a> · Claude Opus 4.7</i>',
+      '<i>Sent via My Assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Opus 4.7</i>',
     );
     expect(await response.json()).toEqual({
       ok: true,

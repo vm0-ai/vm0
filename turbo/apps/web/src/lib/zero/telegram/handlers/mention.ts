@@ -72,7 +72,11 @@ export async function handleTelegramMention(
   const client = createTelegramClient(botToken);
 
   // 2. Check user link (auto-completes pending link if needed)
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+  );
 
   if (!userLink) {
     const agentName = await getWorkspaceAgentDisplayLabel(

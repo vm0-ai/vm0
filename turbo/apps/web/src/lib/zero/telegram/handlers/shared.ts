@@ -209,13 +209,25 @@ function telegramFileDbValues(file: TelegramFileContext | undefined): {
 
 async function touchTelegramUserLink(
   userLink: typeof telegramUserLinks.$inferSelect,
+  telegramUsername?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect> {
+  const nextTelegramUsername =
+    telegramUsername === undefined
+      ? userLink.telegramUsername
+      : normalizeTelegramUsername(telegramUsername);
   const [updated] = await globalThis.services.db
     .update(telegramUserLinks)
-    .set({ updatedAt: new Date() })
+    .set({ telegramUsername: nextTelegramUsername, updatedAt: new Date() })
     .where(eq(telegramUserLinks.id, userLink.id))
     .returning();
   return updated ?? userLink;
+}
+
+function normalizeTelegramUsername(
+  telegramUsername: string | null | undefined,
+): string | null {
+  const value = telegramUsername?.trim().replace(/^@+/, "");
+  return value ? value : null;
 }
 
 /**
@@ -229,6 +241,7 @@ async function touchTelegramUserLink(
 export async function linkTelegramUserToVm0User(params: {
   installationId: string;
   telegramUserId: string;
+  telegramUsername?: string | null;
   vm0UserId: string;
 }): Promise<LinkTelegramUserResult> {
   const [existingTelegramLink] = await globalThis.services.db
@@ -244,7 +257,10 @@ export async function linkTelegramUserToVm0User(params: {
 
   if (existingTelegramLink) {
     if (existingTelegramLink.vm0UserId === params.vm0UserId) {
-      const userLink = await touchTelegramUserLink(existingTelegramLink);
+      const userLink = await touchTelegramUserLink(
+        existingTelegramLink,
+        params.telegramUsername,
+      );
       await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
@@ -272,7 +288,10 @@ export async function linkTelegramUserToVm0User(params: {
 
   if (existingVm0Link) {
     if (existingVm0Link.telegramUserId === params.telegramUserId) {
-      const userLink = await touchTelegramUserLink(existingVm0Link);
+      const userLink = await touchTelegramUserLink(
+        existingVm0Link,
+        params.telegramUsername,
+      );
       await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
@@ -288,6 +307,7 @@ export async function linkTelegramUserToVm0User(params: {
         .update(telegramUserLinks)
         .set({
           telegramUserId: params.telegramUserId,
+          telegramUsername: normalizeTelegramUsername(params.telegramUsername),
           updatedAt: new Date(),
         })
         .where(eq(telegramUserLinks.id, existingVm0Link.id))
@@ -312,6 +332,7 @@ export async function linkTelegramUserToVm0User(params: {
     .insert(telegramUserLinks)
     .values({
       telegramUserId: params.telegramUserId,
+      telegramUsername: normalizeTelegramUsername(params.telegramUsername),
       installationId: params.installationId,
       vm0UserId: params.vm0UserId,
     })
@@ -366,6 +387,7 @@ export async function resolveTelegramAuditLogsUrl(opts: {
 export async function resolveUserLink(
   installationId: string,
   telegramUserId: string,
+  telegramUsername?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect | null> {
   const [userLink] = await globalThis.services.db
     .select()
@@ -379,10 +401,20 @@ export async function resolveUserLink(
     .limit(1);
 
   if (userLink) {
-    return userLink;
+    if (telegramUsername === undefined) return userLink;
+
+    const normalizedTelegramUsername =
+      normalizeTelegramUsername(telegramUsername);
+    return normalizedTelegramUsername === userLink.telegramUsername
+      ? userLink
+      : touchTelegramUserLink(userLink, normalizedTelegramUsername);
   }
 
-  const completed = await completePendingLink(installationId, telegramUserId);
+  const completed = await completePendingLink(
+    installationId,
+    telegramUserId,
+    telegramUsername,
+  );
   if (completed) {
     log.info("Auto-completed pending link", {
       installationId,
@@ -401,6 +433,7 @@ export async function resolveUserLink(
 async function completePendingLink(
   installationId: string,
   realTelegramUserId: string,
+  telegramUsername?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect | null> {
   const [pending] = await globalThis.services.db
     .select()
@@ -420,6 +453,7 @@ async function completePendingLink(
   const result = await linkTelegramUserToVm0User({
     installationId,
     telegramUserId: realTelegramUserId,
+    telegramUsername,
     vm0UserId: pending.vm0UserId,
   });
 
@@ -620,11 +654,29 @@ export function buildConnectUrl(
   telegramBotId: string,
   telegramUserId: string,
   botToken: string,
+  telegramUsername?: string | null,
 ): string {
   const appUrl = getAppUrl();
   const ts = Math.floor(Date.now() / 1000);
-  const sig = signConnectParams(telegramBotId, telegramUserId, ts, botToken);
-  return `${appUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
+  const normalizedTelegramUsername =
+    normalizeTelegramUsername(telegramUsername);
+  const sig = signConnectParams(
+    telegramBotId,
+    telegramUserId,
+    ts,
+    botToken,
+    normalizedTelegramUsername,
+  );
+  const params = new URLSearchParams({
+    bot: telegramBotId,
+    tgUser: telegramUserId,
+    ts: String(ts),
+    sig,
+  });
+  if (normalizedTelegramUsername) {
+    params.set("tgUserName", normalizedTelegramUsername);
+  }
+  return `${appUrl}/telegram/connect?${params.toString()}`;
 }
 
 export async function sendTypingAction(

@@ -60,6 +60,38 @@ describe("connect-token", () => {
       ).toBe(true);
     });
 
+    it("binds telegram username when provided", () => {
+      const timestamp = Math.floor(Date.now() / 1000);
+      const sig = signConnectParams(
+        INSTALLATION_ID,
+        TELEGRAM_USER_ID,
+        timestamp,
+        BOT_TOKEN,
+        "alice",
+      );
+
+      expect(
+        verifyConnectSignature(
+          INSTALLATION_ID,
+          TELEGRAM_USER_ID,
+          timestamp,
+          sig,
+          BOT_TOKEN,
+          "alice",
+        ),
+      ).toBe(true);
+      expect(
+        verifyConnectSignature(
+          INSTALLATION_ID,
+          TELEGRAM_USER_ID,
+          timestamp,
+          sig,
+          BOT_TOKEN,
+          "mallory",
+        ),
+      ).toBe(false);
+    });
+
     it("returns false for wrong bot token", () => {
       const timestamp = Math.floor(Date.now() / 1000);
       const sig = signConnectParams(
