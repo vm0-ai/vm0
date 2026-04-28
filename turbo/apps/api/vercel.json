@@ -2,5 +2,15 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "pnpm build",
   "framework": null,
-  "installCommand": "cd ../.. && pnpm install"
+  "installCommand": "cd ../.. && pnpm install",
+  "rewrites": [
+    {
+      "source": "/api/v1/chat-threads/messages",
+      "destination": "https://www.vm0.ai/api/v1/chat-threads/messages"
+    },
+    {
+      "source": "/api/agent/:path*",
+      "destination": "https://www.vm0.ai/api/agent/:path*"
+    }
+  ]
 }
