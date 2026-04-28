@@ -53,6 +53,7 @@
     "vscode": {
       "extensions": [
         "anthropic.claude-code",
+        "openai.chatgpt",
         "esbenp.prettier-vscode",
         "dbaeumer.vscode-eslint",
         "vitest.explorer",
