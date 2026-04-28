@@ -1191,6 +1191,30 @@ async fn finalize_sandbox_for_completion(
             BudgetOwnership::active(active_lease)
         } else {
             let mut pool = idle_pool.lock().await;
+            if cancel.is_cancelled() {
+                info!(
+                    run_id = %run_id,
+                    session_id,
+                    "job cancelled before idle pool ownership transfer, destroying VM"
+                );
+                drop(pool);
+                stop_and_destroy_sandbox(
+                    sandbox,
+                    &**factory,
+                    ActiveCleanupContext {
+                        run_id,
+                        sandbox_id,
+                        profile_name: &profile_name,
+                        session_id: Some(&session_id),
+                        reason: "cancelled",
+                    },
+                )
+                .await;
+                return CompletionReady::new(
+                    completion_payload,
+                    BudgetOwnership::active(active_lease),
+                );
+            }
             let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
                 sandbox,
                 factory,
@@ -2023,6 +2047,51 @@ mod tests {
             _config: sandbox::FactoryConfig,
         ) -> sandbox::Result<Box<dyn SandboxFactory>> {
             Ok(Box::new(PanickingDestroyFactory))
+        }
+
+        async fn shutdown(&mut self) {}
+    }
+
+    struct FailingCreateFactory;
+
+    #[async_trait]
+    impl SandboxFactory for FailingCreateFactory {
+        fn name(&self) -> &str {
+            "failing-create"
+        }
+
+        fn config_hash(&self) -> String {
+            "failing-create".into()
+        }
+
+        async fn startup(&mut self) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn create(
+            &self,
+            _config: sandbox::SandboxConfig,
+        ) -> sandbox::Result<Box<dyn Sandbox>> {
+            Err(sandbox::SandboxError::Initialization {
+                phase: sandbox::SandboxInitializationPhase::SandboxAllocation,
+                message: "create failed".into(),
+            })
+        }
+
+        async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {}
+
+        async fn shutdown(&mut self) {}
+    }
+
+    struct FailingCreateRuntime;
+
+    #[async_trait]
+    impl SandboxRuntime for FailingCreateRuntime {
+        async fn create_factory(
+            &self,
+            _config: sandbox::FactoryConfig,
+        ) -> sandbox::Result<Box<dyn SandboxFactory>> {
+            Ok(Box::new(FailingCreateFactory))
         }
 
         async fn shutdown(&mut self) {}
@@ -5491,6 +5560,48 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn create_failure_completes_and_cleans_run_state() {
+        let (config, env) = build_mock_run_config_with_runtime(
+            test_profiles(),
+            8,
+            16384,
+            4,
+            MockJobProvider::new,
+            Box::new(FailingCreateRuntime),
+            "http://localhost:0",
+        );
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let cancel_tokens = Arc::clone(&config.cancel_tokens);
+        let status_path = env._temp_dir.path().join("status.json");
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("create failure should still report completion");
+        assert_eq!(c.exit_code, 1);
+        let error = c.error.expect("create failure should report an error");
+        assert!(error.contains("create failed"), "got: {error}");
+
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(2)).await;
+        assert_eq!(idle_pool.lock().await.len(), 0);
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert!(
+            active_runs.is_empty(),
+            "create failure should remove active run from status"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
         let hooks = BlockingDestroyHooks::new();
         let (config, env) = build_mock_run_config_with_runtime(
@@ -5643,6 +5754,86 @@ mod tests {
         assert_eq!(c.unwrap().exit_code, 0);
 
         wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        assert_eq!(idle_pool.lock().await.len(), 0);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parking() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let park_entered = Arc::new(tokio::sync::Notify::new());
+        let park_release = Arc::new(tokio::sync::Notify::new());
+        let destroy_entered = Arc::new(tokio::sync::Notify::new());
+        let destroy_release = Arc::new(tokio::sync::Notify::new());
+        overrides.set_park_gate(Arc::clone(&park_entered), Arc::clone(&park_release));
+        overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
+
+        let park_entered_wait = park_entered.notified();
+        tokio::pin!(park_entered_wait);
+        park_entered_wait.as_mut().enable();
+        let destroy_entered_wait = destroy_entered.notified();
+        tokio::pin!(destroy_entered_wait);
+        destroy_entered_wait.as_mut().enable();
+
+        let counter = Arc::clone(&overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let cancel_tokens = Arc::clone(&config.cancel_tokens);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-cancel-while-locking")),
+        );
+        let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+        tokio::time::timeout(Duration::from_secs(5), park_entered_wait)
+            .await
+            .expect("sandbox park should start");
+        let pool_guard = idle_pool.lock().await;
+        park_release.notify_one();
+        // Let the job observe the first post-park cancel check, then block on
+        // the held pool lock. This opens the specific lock-wait window without
+        // relying on wall-clock sleeps.
+        tokio::task::yield_now().await;
+        token.cancel();
+        drop(pool_guard);
+
+        tokio::time::timeout(Duration::from_secs(5), destroy_entered_wait)
+            .await
+            .expect("cancelled lock-waiting sandbox should be destroyed");
+        assert_eq!(
+            counter.destroy_call_count(),
+            1,
+            "cancelled VM should be sent to destroy exactly once"
+        );
+        assert_eq!(
+            budget.allocated().2,
+            1,
+            "cancelled VM must retain budget while destroy is in-flight"
+        );
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            0,
+            "cancelled VM must not enter the idle pool after waiting for the lock"
+        );
+
+        destroy_release.notify_one();
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await
+            .expect("job should complete after destroy finishes");
+        assert_eq!(c.exit_code, 0);
+        assert!(c.error.is_none());
+
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(2)).await;
         assert_eq!(idle_pool.lock().await.len(), 0);
 
         shutdown(&env, run_handle).await;
