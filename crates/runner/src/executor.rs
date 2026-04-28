@@ -398,10 +398,10 @@ async fn unregister_proxy(config: &ExecutorConfig, context: &ExecutionContext, s
 /// Post-job cleanup: copy logs, unregister proxy.
 ///
 /// Called after `run_in_sandbox` completes, whether the sandbox will be
-/// parked (keep-alive) or destroyed. The mitmproxy network-log upload is
-/// deliberately **not** done here — `spawn_job` (in `cmd/start.rs`) runs
-/// it after `provider.complete` so the user-visible run-complete signal
-/// isn't blocked on the best-effort upload (~1.6 s saved per job).
+/// parked (keep-alive) or destroyed. The network-log upload is deliberately
+/// **not** done here — `spawn_job` (in `cmd/start.rs`) runs it after
+/// `provider.complete` so the user-visible run-complete signal isn't blocked
+/// on the best-effort upload (~1.6 s saved per job).
 async fn post_job_cleanup(
     sandbox: &dyn Sandbox,
     config: &ExecutorConfig,

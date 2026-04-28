@@ -2448,7 +2448,7 @@ mod tests {
             .mock_async(|when, then| {
                 when.method(POST)
                     .path("/api/webhooks/agent/telemetry")
-                    .body_includes("networkLogs");
+                    .body_includes("pending.example");
                 then.delay(MOCK_DELAY)
                     .status(200)
                     .header("content-type", "application/json")

@@ -27,7 +27,7 @@ struct NetworkLogPayload {
 
 /// Upload network logs from the per-run JSONL file.
 /// Reads the file at `path`, POSTs to telemetry endpoint,
-/// and deletes the file on success. Best-effort — failures only warn.
+/// and keeps the local file for debugging/log GC. Best-effort — failures only warn.
 pub async fn upload_network_logs(
     http: &HttpClient,
     run_id: RunId,
