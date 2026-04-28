@@ -7,10 +7,14 @@ import { webhookUsageContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { creditUsage } from "@vm0/db/schema/credit-usage";
+import { usageEvent } from "@vm0/db/schema/usage-event";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";
+import {
+  buildModelUsageEventDrafts,
+  getPositiveModelUsageTokenQuantities,
+} from "../../../../../src/lib/zero/billing/model-usage-event-adapter";
 
 const log = logger("webhooks:usage");
 
@@ -34,13 +38,11 @@ const router = tsr.router(webhookUsageContract, {
 
     const { userId } = auth;
 
-    // Verify run exists and belongs to user; fetch modelProvider from zeroRuns
-    // (same pattern as events webhook — ensures consistency with credit_usage)
+    // Verify run exists and belongs to user.
     const [run] = await globalThis.services.db
       .select({
         id: agentRuns.id,
         orgId: agentRuns.orgId,
-        modelProvider: zeroRuns.modelProvider,
         selectedModel: zeroRuns.selectedModel,
       })
       .from(agentRuns)
@@ -60,40 +62,67 @@ const router = tsr.router(webhookUsageContract, {
       };
     }
 
-    // Insert proxy-reported usage into credit_usage (the billing source).
-    // Rows are charged later by processOrgCredits().  Insertion errors
-    // propagate so the handler returns 5xx and mitmproxy retries via
-    // `_report_usage_with_retry`; swallowing them would silently lose
-    // billing records.
-    //
-    // Model precedence: `run.selectedModel` (the user's run selection) wins
-    // because it is guaranteed to match a row in credit_pricing; `u.model`
-    // (proxy-observed) may carry a variant string that has no pricing entry
-    // and would silently charge zero credits.
     const u = body.usage;
-    await globalThis.services.db
-      .insert(creditUsage)
-      .values({
+    const tokenQuantities = getPositiveModelUsageTokenQuantities(u);
+    if (tokenQuantities.length === 0) {
+      log.debug("Proxy usage contained no positive token quantities", {
         runId: body.runId,
-        orgId: run.orgId,
-        userId,
-        model: run.selectedModel ?? u.model ?? "unknown",
-        modelProvider: run.modelProvider ?? "",
-        inputTokens: u.input_tokens ?? 0,
-        outputTokens: u.output_tokens ?? 0,
-        cacheReadInputTokens: u.cache_read_input_tokens ?? 0,
-        cacheCreationInputTokens: u.cache_creation_input_tokens ?? 0,
-        webSearchRequests: u.web_search_requests ?? 0,
-        messageId: u.message_id ?? null,
-        // status defaults to "pending" via schema default
-      })
+        model: u.model,
+      });
+      return {
+        status: 200 as const,
+        body: {
+          success: true,
+        },
+      };
+    }
+
+    if (!u.message_id) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "usage.message_id is required for billable token usage",
+            code: "BAD_REQUEST",
+          },
+        },
+      };
+    }
+
+    // Insert proxy-reported model usage into usage_event. Rows are charged
+    // later by processUsageEvents(). Insertion errors propagate so mitmproxy
+    // retries rather than silently losing billable records.
+    //
+    // Model precedence stays equivalent to the legacy credit_usage writer:
+    // `run.selectedModel` wins over proxy-observed `u.model`.
+    const provider = run.selectedModel ?? u.model ?? "unknown";
+    const events = buildModelUsageEventDrafts({
+      runId: body.runId,
+      messageId: u.message_id,
+      provider,
+      usage: u,
+    });
+
+    await globalThis.services.db
+      .insert(usageEvent)
+      .values(
+        events.map((event) => {
+          return {
+            runId: body.runId,
+            orgId: run.orgId,
+            userId,
+            ...event,
+          };
+        }),
+      )
       .onConflictDoNothing({
-        target: [creditUsage.runId, creditUsage.messageId],
+        target: [usageEvent.idempotencyKey],
       });
 
     log.debug("Proxy usage recorded", {
       runId: body.runId,
-      model: u.model,
+      provider,
+      eventCount: events.length,
       inputTokens: u.input_tokens,
       outputTokens: u.output_tokens,
     });
