@@ -137,6 +137,7 @@ export const storedExecutionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  modelUsageProvider: z.string().optional(),
 });
 
 /**
@@ -186,6 +187,7 @@ export const executionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  modelUsageProvider: z.string().optional(),
 });
 
 /**

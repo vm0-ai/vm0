@@ -411,6 +411,7 @@ const router = tsr.router(runsMainContract, {
           debugNoMockClaude: body.debugNoMockClaude,
           captureNetworkBodies: body.captureNetworkBodies,
           billableFirewalls: resolved.billableFirewalls,
+          modelUsageProvider: resolved.modelUsageProvider,
           apiStartTime,
         });
 
