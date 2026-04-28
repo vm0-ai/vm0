@@ -33,7 +33,7 @@ import {
   setAcceptingInvitationId$,
 } from "../../signals/select-org/org-switcher-ui.ts";
 
-function OrgAvatar({
+export function OrgAvatar({
   name,
   imageUrl,
   size = "sm",
@@ -205,7 +205,7 @@ function OtherMembershipsList() {
   );
 }
 
-function OrgDropdownContent() {
+export function OrgDropdownContent() {
   const openManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
   const clerkLoadable = useLastLoadable(clerk$);
@@ -269,7 +269,7 @@ function OrgDropdownContent() {
   );
 }
 
-function PendingInvitationsBadge() {
+export function PendingInvitationsBadge() {
   const pendingInvitations = useLastResolved(userInvitations$);
   const hasPendingInvitations =
     pendingInvitations !== undefined && pendingInvitations.length > 0;

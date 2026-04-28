@@ -306,6 +306,38 @@ describe("mobile top bar - hamburger hidden when redesign on (MOBILE-TOP-001)", 
   });
 });
 
+describe("mobile top bar - org switcher pill shown when redesign on (MOBILE-TOP-002)", () => {
+  it("renders the org switcher pill in place of the hamburger", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+      org: {
+        activeOrg: { id: "org_test", name: "vm0-ai" },
+        memberships: [{ id: "org_test" }],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-org-switcher")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("mobile-org-switcher")).toHaveTextContent("vm0-ai");
+  });
+});
+
+describe("mobile top bar - org switcher hidden when redesign off (MOBILE-TOP-003)", () => {
+  it("does not render the org switcher pill with the default switch state", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/agents" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Open menu")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("mobile-org-switcher")).not.toBeInTheDocument();
+  });
+});
+
 describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () => {
   it("marks the Teammates tab as the current page on /agents", async () => {
     mockBaseAPIs();

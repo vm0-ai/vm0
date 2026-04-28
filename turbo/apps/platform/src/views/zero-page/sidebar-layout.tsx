@@ -62,6 +62,7 @@ import {
   IosInstallModal,
 } from "../pwa-install/install-banner.tsx";
 import { MobileBottomTabBar } from "./mobile-bottom-tab-bar.tsx";
+import { MobileOrgSwitcherPill } from "./mobile-org-switcher-pill.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -204,13 +205,15 @@ function MobileTopBar() {
 
   // When the mobile redesign is on, the bottom tab bar's "More" tab opens
   // the same sidebar overlay as the hamburger, so the top-bar hamburger is
-  // redundant. Hide it.
+  // redundant — drop it and surface the org switcher pill in that slot.
   const features = useLastResolved(featureSwitch$);
-  const hideHamburger = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
 
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
-      {!hideHamburger && (
+      {mobileNativeOn ? (
+        <MobileOrgSwitcherPill />
+      ) : (
         <button
           type="button"
           onClick={() => {
