@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.242.0](https://github.com/vm0-ai/vm0/compare/core-v8.241.0...core-v8.242.0) (2026-04-28)
+
+
+### Features
+
+* enable telegram integration for all users ([#11387](https://github.com/vm0-ai/vm0/issues/11387)) ([1d92124](https://github.com/vm0-ai/vm0/commit/1d92124d203c86464de407e62e308b602928b328))
+
 ## [8.241.0](https://github.com/vm0-ai/vm0/compare/core-v8.240.0...core-v8.241.0) (2026-04-28)
 
 
