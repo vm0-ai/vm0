@@ -21,20 +21,25 @@ pub enum Framework {
 }
 
 impl Framework {
+    /// Resolve the framework once and cache it. Subsequent calls are a
+    /// `LazyLock` deref — no repeat env reads, no repeat warning logs,
+    /// and a single source of truth if a third framework is added later.
     pub fn from_env() -> Self {
-        match cli_agent_type() {
-            "codex" => Framework::Codex,
-            "" | "claude-code" => Framework::ClaudeCode,
-            other => {
-                log_warn!(
-                    LOG_TAG,
-                    "Unknown CLI_AGENT_TYPE={other:?}, defaulting to claude-code"
-                );
-                Framework::ClaudeCode
-            }
-        }
+        *FRAMEWORK
     }
 }
+
+static FRAMEWORK: LazyLock<Framework> = LazyLock::new(|| match cli_agent_type() {
+    "codex" => Framework::Codex,
+    "" | "claude-code" => Framework::ClaudeCode,
+    other => {
+        log_warn!(
+            LOG_TAG,
+            "Unknown CLI_AGENT_TYPE={other:?}, defaulting to claude-code"
+        );
+        Framework::ClaudeCode
+    }
+});
 
 // ---------------------------------------------------------------------------
 // Core
@@ -101,8 +106,21 @@ static MOCK_CODEX_PATH: LazyLock<String> = LazyLock::new(|| {
     std::env::var("VM0_MOCK_CODEX_PATH").unwrap_or_else(|_| DEFAULT_MOCK_CODEX_PATH.to_string())
 });
 
-static HOME_DIR: LazyLock<String> =
-    LazyLock::new(|| std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string()));
+/// `$HOME` is always set in the guest sandbox (rootfs init guarantees it).
+/// If it isn't, the rootfs is misconfigured and we want a loud, visible
+/// failure rather than papering over it with a magic path that would
+/// silently land codex auth state in the wrong directory.
+///
+/// # Panics
+/// Panics if `HOME` is unset. This indicates a rootfs/runner contract
+/// violation and is not user-recoverable; the same fail-fast policy as
+/// `load_artifacts` (`VM0_ARTIFACTS`).
+#[allow(clippy::expect_used)]
+fn load_home_dir() -> String {
+    std::env::var("HOME").expect("HOME must be set in guest sandbox (rootfs init contract)")
+}
+
+static HOME_DIR: LazyLock<String> = LazyLock::new(load_home_dir);
 /// Read an optional `u64` env var, falling back to `default` when it's
 /// unset or unparseable. Emits a stderr warning on the unparseable case so
 /// the mistake is visible in runner logs rather than silently absorbed.
