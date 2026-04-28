@@ -76,14 +76,20 @@ const router = tsr.router(zeroAgentsMainContract, {
     };
 
     // Enforce maximum 7 agents per organization.
-    // FOR UPDATE serializes concurrent creates for the same org so the
-    // count check and insert are atomic.
+    // Lock existing agent rows with FOR UPDATE so concurrent creates for
+    // the same org serialize. Then count — PostgreSQL forbids FOR UPDATE
+    // on aggregate queries, so we lock and count in two steps.
     const txResult = await globalThis.services.db.transaction(async (tx) => {
-      const [row] = await tx
-        .select({ value: count() })
+      await tx
+        .select()
         .from(zeroAgents)
         .where(eq(zeroAgents.orgId, org.orgId))
         .for("update");
+
+      const [row] = await tx
+        .select({ value: count() })
+        .from(zeroAgents)
+        .where(eq(zeroAgents.orgId, org.orgId));
       const agentCount = row?.value ?? 0;
 
       if (agentCount >= 7) {
