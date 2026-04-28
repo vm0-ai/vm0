@@ -10,11 +10,74 @@
 #[path = "../src/axiom_layer.rs"]
 mod axiom_layer;
 
+use std::sync::{Arc, Mutex};
+
 use httpmock::Method::POST;
 use httpmock::MockServer;
-use tracing_subscriber::layer::SubscriberExt;
+use tracing::field::{Field, Visit};
+use tracing::{Event, Subscriber};
+use tracing_subscriber::layer::{Context, Layer, SubscriberExt};
 
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[derive(Clone, Debug)]
+struct RecordedEvent {
+    level: tracing::Level,
+    target: String,
+    message: Option<String>,
+}
+
+#[derive(Clone, Default)]
+struct RecordingLayer {
+    events: Arc<Mutex<Vec<RecordedEvent>>>,
+}
+
+impl RecordingLayer {
+    fn events(&self) -> Vec<RecordedEvent> {
+        self.events
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+    }
+}
+
+impl<S> Layer<S> for RecordingLayer
+where
+    S: Subscriber,
+{
+    fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
+        struct MessageVisitor {
+            message: Option<String>,
+        }
+
+        impl Visit for MessageVisitor {
+            fn record_str(&mut self, field: &Field, value: &str) {
+                if field.name() == "message" {
+                    self.message = Some(value.to_string());
+                }
+            }
+
+            fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+                if field.name() == "message" {
+                    self.message = Some(format!("{value:?}"));
+                }
+            }
+        }
+
+        let mut visitor = MessageVisitor { message: None };
+        event.record(&mut visitor);
+
+        let metadata = event.metadata();
+        self.events
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push(RecordedEvent {
+                level: *metadata.level(),
+                target: metadata.target().to_string(),
+                message: visitor.message,
+            });
+    }
+}
 
 fn clear_axiom_env() {
     // SAFETY: setenv is not thread-safe, but we hold ENV_LOCK for the
@@ -81,7 +144,7 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "test-token", "test")
         .expect("init_with_base_url must succeed");
 
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::warn!(foo = "bar", "a warning");
@@ -92,6 +155,66 @@ async fn warn_and_error_events_are_ingested_with_ts_shape() {
     guard.shutdown().await;
 
     content_mock.assert_calls_async(1).await;
+    info_mock.assert_calls_async(0).await;
+}
+
+#[tokio::test]
+async fn axiom_filter_does_not_suppress_sibling_local_layers() {
+    let server = MockServer::start_async().await;
+
+    let warn_mock = server
+        .mock_async(|when, then| {
+            when.method(POST)
+                .path("/v1/datasets/vm0-web-logs-test/ingest")
+                .body_includes(r#""level":"warn""#)
+                .body_includes(r#""message":"local warn""#);
+            then.status(200).body("{}");
+        })
+        .await;
+    let info_mock = server
+        .mock_async(|when, then| {
+            when.method(POST).body_includes(r#""message":"local info""#);
+            then.status(200).body("{}");
+        })
+        .await;
+
+    let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
+        .expect("init must succeed");
+    let recording = RecordingLayer::default();
+    let subscriber = tracing_subscriber::registry()
+        .with(recording.clone())
+        .with(axiom_layer::with_ingest_filter(layer));
+
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::info!("local info");
+        tracing::warn!("local warn");
+    }
+    guard.shutdown().await;
+
+    let events = recording.events();
+    assert!(
+        events.iter().any(|event| {
+            event.level == tracing::Level::INFO
+                && event
+                    .message
+                    .as_deref()
+                    .is_some_and(|message| message.contains("local info"))
+        }),
+        "sibling local layer did not record INFO event: {events:?}",
+    );
+    assert!(
+        events.iter().any(|event| {
+            event.level == tracing::Level::WARN
+                && event
+                    .message
+                    .as_deref()
+                    .is_some_and(|message| message.contains("local warn"))
+        }),
+        "sibling local layer did not record WARN event: {events:?}",
+    );
+
+    warn_mock.assert_calls_async(1).await;
     info_mock.assert_calls_async(0).await;
 }
 
@@ -152,7 +275,7 @@ async fn error_field_serializes_with_message_and_source_chain() {
 
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
         .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         let err = ChainErr {
@@ -188,9 +311,9 @@ async fn burst_past_channel_cap_drops_without_blocking_or_feeding_back() {
         .await;
 
     // Negative: the layer's own "axiom channel full" warning (emitted under
-    // INTERNAL_TARGET every 1000 drops) must NOT reach ingest. `enabled()`
-    // filters INTERNAL_TARGET to prevent the diagnostic from re-entering the
-    // already-full channel and feedback-flooding.
+    // INTERNAL_TARGET every 1000 drops) must NOT reach ingest. The Axiom
+    // per-layer filter excludes INTERNAL_TARGET to prevent the diagnostic
+    // from re-entering the already-full channel and feedback-flooding.
     let feedback = server
         .mock_async(|when, then| {
             when.method(POST).body_includes("axiom channel full");
@@ -200,7 +323,7 @@ async fn burst_past_channel_cap_drops_without_blocking_or_feeding_back() {
 
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
         .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
 
     // 3000 > CHANNEL_CAP (1024) + 1000 so we both overflow the channel and
     // cross the drop counter's multiple-of-1000 branch at least twice
@@ -266,16 +389,30 @@ async fn non_success_ingest_response_does_not_hang_shutdown_or_panic() {
 
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
         .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let recording = RecordingLayer::default();
+    let subscriber = tracing_subscriber::registry()
+        .with(recording.clone())
+        .with(axiom_layer::with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::error!("trigger ingest failure");
+        guard.shutdown().await;
     }
 
-    // If the failure path panics or leaks the task, this await never returns
+    // If the failure path panics or leaks the task, shutdown never returns
     // (the test harness enforces its own timeout, so we'd see a hang).
-    guard.shutdown().await;
     mock.assert_calls_async(1).await;
+    let events = recording.events();
+    assert!(
+        events.iter().any(|event| {
+            event.target == axiom_layer::INTERNAL_TARGET
+                && event
+                    .message
+                    .as_deref()
+                    .is_some_and(|message| message.contains("axiom ingest returned non-success"))
+        }),
+        "sibling local layer did not record Axiom internal diagnostic: {events:?}",
+    );
 }
 
 // -- Debug field truncation (DEBUG_FIELD_MAX_BYTES = 4 KiB) ------------------
@@ -305,7 +442,7 @@ async fn debug_field_over_limit_is_truncated_with_marker() {
 
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
         .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         // 5000 A's → sentinel → 3000 A's. Debug form: `"` + 5000 + sentinel
@@ -338,7 +475,7 @@ async fn debug_field_truncation_walks_to_utf8_char_boundary() {
 
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
         .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         // 2500 × 2-byte `ñ` = 5000 bytes; Debug adds surrounding quotes →
@@ -381,7 +518,7 @@ async fn debug_field_at_exact_limit_passes_through_unmodified() {
 
     let (layer, guard) = axiom_layer::init_with_base_url(&server.base_url(), "t", "test")
         .expect("init must succeed");
-    let subscriber = tracing_subscriber::registry().with(layer);
+    let subscriber = tracing_subscriber::registry().with(axiom_layer::with_ingest_filter(layer));
     {
         let _sub = tracing::subscriber::set_default(subscriber);
         // Debug form of a &str is `"<contents>"` — surrounding quotes cost
