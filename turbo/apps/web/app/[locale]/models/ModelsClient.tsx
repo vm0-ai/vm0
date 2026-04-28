@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Link } from "../../../navigation";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
@@ -11,28 +12,31 @@ const PAGE_PADDING = 24;
 
 type FilterKey = "all" | "recommended" | "multimodal" | "cost-saving";
 
+const FILTER_LABEL_MAP: Record<FilterKey, string> = {
+  all: "filterAll",
+  recommended: "filterRecommended",
+  multimodal: "filterMultimodal",
+  "cost-saving": "filterCostSaving",
+};
+
 const FILTERS: {
   key: FilterKey;
-  label: string;
   match: (m: ModelEntry) => boolean;
 }[] = [
   {
     key: "all",
-    label: "All",
     match: () => {
       return true;
     },
   },
   {
     key: "recommended",
-    label: "Recommended",
     match: (m) => {
       return m.vm0Tier === "core";
     },
   },
   {
     key: "multimodal",
-    label: "Multimodal",
     match: (m) => {
       return m.modalities.some((mod) => {
         return ["Vision", "Image", "Video"].includes(mod);
@@ -41,14 +45,19 @@ const FILTERS: {
   },
   {
     key: "cost-saving",
-    label: "Cost-saving",
     match: (m) => {
       return m.vm0Tier === "cost-saving";
     },
   },
 ];
 
-function ModelCard({ model }: { model: ModelEntry }) {
+function ModelCard({
+  model,
+  readMoreLabel,
+}: {
+  model: ModelEntry;
+  readMoreLabel: string;
+}) {
   const iconPath = vendorIconPath(model.vendor);
   return (
     <article
@@ -85,7 +94,7 @@ function ModelCard({ model }: { model: ModelEntry }) {
           href={`/models/${model.slug}`}
           className="inline-flex items-center gap-1 text-[14px] font-medium text-[#ed4e01] transition-all hover:gap-2"
         >
-          Read more about {model.name}
+          {readMoreLabel}
           <span aria-hidden="true">→</span>
         </Link>
       </div>
@@ -94,6 +103,7 @@ function ModelCard({ model }: { model: ModelEntry }) {
 }
 
 export function ModelsClient() {
+  const t = useTranslations("models");
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
 
   const visibleModels = useMemo(() => {
@@ -117,11 +127,8 @@ export function ModelsClient() {
             padding: `0 ${PAGE_PADDING}px`,
           }}
         >
-          <h1 className="hero-title">AI models on VM0</h1>
-          <p className="hero-description">
-            Every model available to your agents. What it&rsquo;s good at, and
-            when to pick it.
-          </p>
+          <h1 className="hero-title">{t("heroTitle")}</h1>
+          <p className="hero-description">{t("heroDescription")}</p>
         </div>
       </section>
 
@@ -137,7 +144,7 @@ export function ModelsClient() {
           <div
             className="flex flex-wrap gap-2"
             role="tablist"
-            aria-label="Filter models"
+            aria-label={t("filterAriaLabel")}
           >
             {FILTERS.map((filter) => {
               const isActive = activeFilter === filter.key;
@@ -152,7 +159,7 @@ export function ModelsClient() {
                     setActiveFilter(filter.key);
                   }}
                 >
-                  {filter.label}
+                  {t(FILTER_LABEL_MAP[filter.key])}
                 </button>
               );
             })}
@@ -171,7 +178,13 @@ export function ModelsClient() {
           className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 lg:grid-cols-3"
         >
           {visibleModels.map((model) => {
-            return <ModelCard key={model.slug} model={model} />;
+            return (
+              <ModelCard
+                key={model.slug}
+                model={model}
+                readMoreLabel={t("readMoreAbout", { name: model.name })}
+              />
+            );
           })}
         </div>
       </section>
