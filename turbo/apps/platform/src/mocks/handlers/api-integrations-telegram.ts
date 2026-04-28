@@ -11,6 +11,7 @@ const defaultTelegramBots: TelegramBot[] = [
   {
     id: "bot_123",
     username: "test_bot",
+    avatarUrl: null,
     agent: { id: "compose_1", name: "default-agent" },
     isOwner: true,
     isConnected: true,
@@ -46,6 +47,7 @@ function statusToBot(status: TelegramBotStatus): TelegramBot {
   return {
     id: status.id,
     username: status.username,
+    avatarUrl: status.avatarUrl,
     agent: status.agent,
     isOwner: status.isOwner,
     isConnected: status.isConnected,
@@ -231,6 +233,9 @@ export const apiIntegrationsTelegramHandlers = [
       const status: TelegramBotStatus = {
         ...existing,
         tokenStatus: "valid",
+        avatarUrl:
+          existing.avatarUrl ??
+          `/api/integrations/telegram/${encodeURIComponent(existing.id)}/avatar`,
       };
       mockTelegramStatuses[status.id] = structuredClone(status);
       mockTelegramList.bots = mockTelegramList.bots.map((bot) => {
@@ -254,6 +259,7 @@ export const apiIntegrationsTelegramHandlers = [
           ? "registered_bot"
           : `registered_bot_${mockRegisterCounter}`,
       agent: { id: agentId, name: "default-agent" },
+      avatarUrl: `/api/integrations/telegram/${encodeURIComponent(id)}/avatar`,
       isOwner: true,
       isConnected: false,
       tokenStatus: "valid",

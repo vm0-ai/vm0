@@ -18,6 +18,7 @@ import { logger } from "../../../../src/lib/shared/logger";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import { listSecrets } from "../../../../src/lib/zero/secret/secret-service";
 import { checkTelegramDomain } from "../../../../src/lib/zero/telegram/check-domain";
+import { buildTelegramBotAvatarUrl } from "../../../../src/lib/zero/telegram/avatar-url";
 import {
   getMe,
   isTelegramApiError,
@@ -187,6 +188,7 @@ export async function buildTelegramBot(
   return {
     id: installation.telegramBotId,
     username: installation.botUsername,
+    avatarUrl: buildTelegramBotAvatarUrl(installation.telegramBotId),
     agent: compose ? { id: compose.id, name: compose.name } : null,
     isOwner: installation.ownerUserId === userId,
     isConnected: !!userLink,
@@ -215,6 +217,7 @@ export async function buildTelegramBotStatus(
   return {
     id: installation.telegramBotId,
     username: installation.botUsername,
+    avatarUrl: buildTelegramBotAvatarUrl(installation.telegramBotId),
     agent: compose ? { id: compose.id, name: compose.name } : null,
     isOwner: installation.ownerUserId === userId,
     isConnected: !!userLink,
