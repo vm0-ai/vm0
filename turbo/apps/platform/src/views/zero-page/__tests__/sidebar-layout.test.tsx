@@ -396,6 +396,49 @@ describe("mobile workspace drawer - shows workspace name (MOBILE-DRAWER-002)", (
   });
 });
 
+describe("mobile top bar - breadcrumb hidden on index pages when redesign on (MOBILE-TOP-004)", () => {
+  it("does not render the mobile breadcrumb on /agents when MobileNativeV1 is on", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-org-switcher")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("mobile-breadcrumb")).not.toBeInTheDocument();
+  });
+});
+
+describe("mobile top bar - breadcrumb kept on detail pages when redesign on (MOBILE-TOP-005)", () => {
+  it("still renders the breadcrumb name on /agents/:id", async () => {
+    setMockTeam([
+      {
+        id: DEFAULT_AGENT_ID,
+        displayName: "My Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    detachedSetupPage({
+      context,
+      path: `/agents/${DEFAULT_AGENT_ID}`,
+      featureSwitches: mobileNativeOn(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("breadcrumb-name")).toHaveTextContent(
+        "My Agent",
+      );
+    });
+  });
+});
+
 describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () => {
   it("marks the Teammates tab as the current page on /agents", async () => {
     mockBaseAPIs();

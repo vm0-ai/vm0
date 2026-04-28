@@ -209,6 +209,15 @@ function MobileTopBar() {
   const features = useLastResolved(featureSwitch$);
   const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
 
+  // On index pages the breadcrumb just repeats the bottom-tab label and the
+  // page's own header. Hide it when the redesign is on to give the org pill
+  // and action buttons more room. Detail pages and chat routes still show
+  // the breadcrumb because the agent / schedule name is real context.
+  const isChatPage = isChatRoute(activeId);
+  const hasDetailName = breadcrumb?.name !== undefined;
+  const showBreadcrumb =
+    breadcrumb !== null && (!mobileNativeOn || isChatPage || hasDetailName);
+
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       {mobileNativeOn ? (
@@ -225,8 +234,11 @@ function MobileTopBar() {
           <IconMenu2 size={18} stroke={1.8} />
         </button>
       )}
-      {breadcrumb && (
-        <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
+      {showBreadcrumb && breadcrumb && (
+        <div
+          className="flex-1 min-w-0 flex items-center gap-2 min-w-0"
+          data-testid="mobile-breadcrumb"
+        >
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
           <div className="flex items-center gap-2 min-w-0">
             <div className="text-sm font-medium text-foreground flex items-center gap-1 min-w-0">
@@ -248,7 +260,7 @@ function MobileTopBar() {
           </div>
         </div>
       )}
-      {!breadcrumb && <div className="flex-1" />}
+      {!showBreadcrumb && <div className="flex-1" />}
       <MobileTopBarActions activeId={activeId} />
     </div>
   );
