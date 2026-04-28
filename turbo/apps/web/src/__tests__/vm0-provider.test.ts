@@ -159,7 +159,9 @@ describe("VM0 managed model provider", () => {
         "openrouter-api-key",
       );
       expect(getVm0Vendor("deepseek-v4-pro")).toBe("openrouter");
-      expect(getVm0ApiModel("deepseek-v4-pro")).toBe("deepseek/deepseek-v4-pro");
+      expect(getVm0ApiModel("deepseek-v4-pro")).toBe(
+        "deepseek/deepseek-v4-pro",
+      );
     });
 
     it("should resolve deepseek-v4-flash to deepseek-api-key", () => {
