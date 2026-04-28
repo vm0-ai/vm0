@@ -1971,8 +1971,25 @@ async fn reap_orphaned_active_runs(
         status,
         non_idle_records,
         &discovered.firecrackers,
+        firecracker_discovery_incomplete_for_current_runner(&discovered.firecrackers).await,
     )
     .await;
+}
+
+async fn firecracker_discovery_incomplete_for_current_runner(
+    firecrackers: &[process::FirecrackerProcessInfo],
+) -> bool {
+    let current_runner_pid = std::process::id();
+    for firecracker in firecrackers
+        .iter()
+        .filter(|firecracker| firecracker.base_dir.is_none())
+    {
+        match process::process_has_ancestor(firecracker.pid, &[current_runner_pid]).await {
+            Some(false) => {}
+            Some(true) | None => return true,
+        }
+    }
+    false
 }
 
 async fn reap_orphaned_active_runs_with_firecrackers(
@@ -1980,9 +1997,8 @@ async fn reap_orphaned_active_runs_with_firecrackers(
     status: &StatusTracker,
     records: Vec<OrphanedActiveRun>,
     firecrackers: &[process::FirecrackerProcessInfo],
+    discovery_incomplete_for_current_runner: bool,
 ) {
-    let discovery_incomplete =
-        process::firecracker_discovery_has_unresolved_sandbox_id(firecrackers);
     for record in records {
         let sandbox_id = record.sandbox_id.to_string();
         if process::firecracker_process_exists_for_sandbox_id(firecrackers, &sandbox_id) {
@@ -1997,10 +2013,7 @@ async fn reap_orphaned_active_runs_with_firecrackers(
             continue;
         }
 
-        if discovery_incomplete {
-            orphaned_active_runs
-                .reset_absent_scans_if_matching(record.run_id, record.sandbox_id)
-                .await;
+        if discovery_incomplete_for_current_runner {
             warn!(
                 run_id = %record.run_id,
                 sandbox_id = %record.sandbox_id,
@@ -2696,6 +2709,7 @@ mod tests {
             &status,
             orphans.snapshot().await,
             &[],
+            false,
         )
         .await;
 
@@ -2709,6 +2723,7 @@ mod tests {
             &status,
             orphans.snapshot().await,
             &[],
+            false,
         )
         .await;
 
@@ -2719,7 +2734,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn orphan_reaper_defers_when_firecracker_discovery_is_incomplete() {
+    async fn orphan_reaper_defers_incomplete_discovery_without_resetting_absent_confirmation() {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
@@ -2734,6 +2749,7 @@ mod tests {
             &status,
             orphans.snapshot().await,
             &[],
+            false,
         )
         .await;
         let unresolved_firecracker = process::FirecrackerProcessInfo {
@@ -2747,6 +2763,7 @@ mod tests {
             &status,
             orphans.snapshot().await,
             &[unresolved_firecracker],
+            true,
         )
         .await;
 
@@ -2760,16 +2777,16 @@ mod tests {
             &status,
             orphans.snapshot().await,
             &[],
+            false,
         )
         .await;
         let (_idle_sessions, active_runs) =
             status_idle_sessions_and_active_runs(&status_path).await;
-        assert_eq!(
-            active_runs,
-            vec![run_id.to_string()],
-            "incomplete discovery should reset absent confirmation"
+        assert!(
+            active_runs.is_empty(),
+            "incomplete discovery should not count as absent, but should not globally reset prior conclusive absence"
         );
-        assert_eq!(orphans.len().await, 1);
+        assert_eq!(orphans.len().await, 0);
     }
 
     #[tokio::test]
@@ -2794,6 +2811,7 @@ mod tests {
             &status,
             orphans.snapshot().await,
             &[firecracker],
+            false,
         )
         .await;
 

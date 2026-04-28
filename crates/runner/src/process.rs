@@ -315,14 +315,25 @@ pub fn firecracker_process_exists_for_sandbox_id(
         .any(|process| process.sandbox_id == sandbox_id)
 }
 
-/// Return true when at least one Firecracker process was found but its
-/// workspace-derived sandbox ID could not be resolved from `/proc/{pid}/cwd`.
-pub fn firecracker_discovery_has_unresolved_sandbox_id(
-    firecrackers: &[FirecrackerProcessInfo],
-) -> bool {
-    firecrackers
-        .iter()
-        .any(|process| process.base_dir.is_none())
+/// Walk the ppid chain from `pid` upward to determine whether it descends from
+/// one of `ancestor_pids`.
+///
+/// Returns `None` when the chain cannot be read, so callers can choose whether
+/// to treat an unreadable process tree as conservative or absent.
+pub async fn process_has_ancestor(pid: u32, ancestor_pids: &[u32]) -> Option<bool> {
+    let mut current = pid;
+    // Max depth prevents infinite loops from circular pid references.
+    for _ in 0..16 {
+        let ppid = read_ppid(current).await?;
+        if ancestor_pids.contains(&ppid) {
+            return Some(true);
+        }
+        if ppid <= 1 {
+            return Some(false);
+        }
+        current = ppid;
+    }
+    Some(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -640,29 +651,6 @@ mod tests {
         assert!(!firecracker_process_exists_for_sandbox_id(
             &processes, "sandbox"
         ));
-    }
-
-    #[test]
-    fn firecracker_discovery_has_unresolved_sandbox_id_checks_base_dir() {
-        let resolved = FirecrackerProcessInfo {
-            pid: 42,
-            ppid: Some(1),
-            sandbox_id: "sandbox-a".to_string(),
-            base_dir: Some(PathBuf::from("/var/lib/vm0-runner")),
-        };
-        let unresolved = FirecrackerProcessInfo {
-            pid: 43,
-            ppid: Some(1),
-            sandbox_id: "pid-43".to_string(),
-            base_dir: None,
-        };
-
-        assert!(!firecracker_discovery_has_unresolved_sandbox_id(&[
-            resolved
-        ]));
-        assert!(firecracker_discovery_has_unresolved_sandbox_id(&[
-            unresolved
-        ]));
     }
 
     // -- Mitmdump parser tests --
