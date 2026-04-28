@@ -7,12 +7,13 @@ use bytes::{Bytes, BytesMut};
 use guest_common::log_warn;
 use http_body::{Frame, SizeHint};
 use pin_project_lite::pin_project;
-use reqwest::Client;
+use reqwest::{Client, RequestBuilder, Response};
 use serde::Serialize;
 use serde_json::Value;
+use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncSeekExt, ReadBuf};
@@ -28,6 +29,49 @@ static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
         .unwrap_or_else(|_| Client::new())
 });
 
+async fn send_with_retry<BuildRequest, BuildRequestFuture, BuildClientError, ClientErrorFuture>(
+    label: &str,
+    max_retries: u32,
+    final_error: String,
+    mut build_request: BuildRequest,
+    mut build_client_error: BuildClientError,
+) -> Result<Response, AgentError>
+where
+    BuildRequest: FnMut() -> BuildRequestFuture,
+    BuildRequestFuture: Future<Output = Result<RequestBuilder, AgentError>>,
+    BuildClientError: FnMut(Response, u32, u32) -> ClientErrorFuture,
+    ClientErrorFuture: Future<Output = AgentError>,
+{
+    for attempt in 1..=max_retries {
+        match build_request().await?.send().await {
+            Ok(resp) if resp.status().is_success() => return Ok(resp),
+            Ok(resp) => {
+                let status = resp.status();
+                // 4xx errors are deterministic except for rate limits.
+                if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
+                    return Err(build_client_error(resp, attempt, max_retries).await);
+                }
+                log_warn!(
+                    LOG_TAG,
+                    "HTTP {label} failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                );
+            }
+            Err(e) => {
+                log_warn!(
+                    LOG_TAG,
+                    "HTTP {label} failed (attempt {attempt}/{max_retries}): {e}"
+                );
+            }
+        }
+
+        if attempt < max_retries {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+
+    Err(AgentError::Http(final_error))
+}
+
 /// POST JSON to a webhook endpoint with Bearer auth, Vercel bypass, and retry.
 ///
 /// Returns the parsed JSON response on success, or `None` if the response body
@@ -38,77 +82,61 @@ pub async fn post_json(
     body: &impl Serialize,
     max_retries: u32,
 ) -> Result<Option<Value>, AgentError> {
-    for attempt in 1..=max_retries {
-        let mut req = HTTP_CLIENT
-            .post(url)
-            .header("Authorization", format!("Bearer {}", env::api_token()))
-            .json(body);
+    let resp = send_with_retry(
+        "POST",
+        max_retries,
+        format!("POST failed after {max_retries} attempts to {url}"),
+        || {
+            let mut req = HTTP_CLIENT
+                .post(url)
+                .header("Authorization", format!("Bearer {}", env::api_token()))
+                .json(body);
 
-        let bypass = env::vercel_bypass();
-        if !bypass.is_empty() {
-            req = req.header("x-vercel-protection-bypass", bypass);
-        }
+            let bypass = env::vercel_bypass();
+            if !bypass.is_empty() {
+                req = req.header("x-vercel-protection-bypass", bypass);
+            }
 
-        match req.send().await {
-            Ok(resp) if resp.status().is_success() => {
-                let text = resp
+            std::future::ready(Ok(req))
+        },
+        |resp, attempt, max_retries| {
+            let url = url.to_owned();
+            async move {
+                let status = resp.status();
+                let error_msg = resp
                     .text()
                     .await
-                    .map_err(|e| AgentError::Http(e.to_string()))?;
-                if text.is_empty() {
-                    return Ok(None);
-                }
-                let val: Value =
-                    serde_json::from_str(&text).map_err(|e| AgentError::Http(e.to_string()))?;
-                return Ok(Some(val));
-            }
-            Ok(resp) => {
-                let status = resp.status();
-                // 4xx errors (except 429) are deterministic — retrying won't help
-                if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
-                    // Try to extract error message from response body
-                    let error_msg = resp
-                        .text()
-                        .await
-                        .ok()
-                        .and_then(|body| serde_json::from_str::<Value>(&body).ok())
-                        .and_then(|v| v.get("error")?.get("message")?.as_str().map(String::from));
+                    .ok()
+                    .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+                    .and_then(|v| v.get("error")?.get("message")?.as_str().map(String::from));
 
-                    return match error_msg {
-                        Some(msg) => {
-                            log_warn!(LOG_TAG, "HTTP POST failed: HTTP {status} — {msg}",);
-                            Err(AgentError::Http(format!("POST {url}: {msg}")))
-                        }
-                        None => {
-                            log_warn!(
-                                LOG_TAG,
-                                "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
-                            );
-                            Err(AgentError::Http(format!("POST {url}: HTTP {status}")))
-                        }
-                    };
+                match error_msg {
+                    Some(msg) => {
+                        log_warn!(LOG_TAG, "HTTP POST failed: HTTP {status} — {msg}",);
+                        AgentError::Http(format!("POST {url}: {msg}"))
+                    }
+                    None => {
+                        log_warn!(
+                            LOG_TAG,
+                            "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                        );
+                        AgentError::Http(format!("POST {url}: HTTP {status}"))
+                    }
                 }
-                log_warn!(
-                    LOG_TAG,
-                    "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
-                );
             }
-            Err(e) => {
-                log_warn!(
-                    LOG_TAG,
-                    "HTTP POST failed (attempt {attempt}/{max_retries}): {e}"
-                );
-            }
-        }
+        },
+    )
+    .await?;
 
-        if attempt < max_retries {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| AgentError::Http(e.to_string()))?;
+    if text.is_empty() {
+        return Ok(None);
     }
-
-    Err(AgentError::Http(format!(
-        "POST failed after {max_retries} attempts to {url}"
-    )))
+    let val: Value = serde_json::from_str(&text).map_err(|e| AgentError::Http(e.to_string()))?;
+    Ok(Some(val))
 }
 
 /// PUT raw bytes to a presigned S3 URL with retry.
@@ -119,43 +147,30 @@ pub async fn post_json(
 pub async fn put_presigned(url: &str, data: Bytes, content_type: &str) -> Result<(), AgentError> {
     let max_retries = constants::HTTP_MAX_RETRIES;
 
-    for attempt in 1..=max_retries {
-        match HTTP_CLIENT
-            .put(url)
-            .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
-            .header("Content-Type", content_type)
-            .body(data.clone())
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => return Ok(()),
-            Ok(resp) => {
-                let status = resp.status();
-                log_warn!(
-                    LOG_TAG,
-                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
-                );
-                // 4xx errors (except 429) are deterministic — retrying won't help
-                if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
-                    return Err(AgentError::Http(format!("PUT presigned: HTTP {status}")));
-                }
-            }
-            Err(e) => {
-                log_warn!(
-                    LOG_TAG,
-                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): {e}"
-                );
-            }
-        }
+    send_with_retry(
+        "PUT presigned",
+        max_retries,
+        format!("PUT presigned failed after {max_retries} attempts"),
+        move || {
+            let data = data.clone();
+            std::future::ready(Ok(HTTP_CLIENT
+                .put(url)
+                .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
+                .header("Content-Type", content_type)
+                .body(data)))
+        },
+        |resp, attempt, max_retries| async move {
+            let status = resp.status();
+            log_warn!(
+                LOG_TAG,
+                "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
+            );
+            AgentError::Http(format!("PUT presigned: HTTP {status}"))
+        },
+    )
+    .await?;
 
-        if attempt < max_retries {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-    }
-
-    Err(AgentError::Http(format!(
-        "PUT presigned failed after {max_retries} attempts"
-    )))
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -269,49 +284,39 @@ pub async fn put_presigned_file(
     content_type: &str,
 ) -> Result<(), AgentError> {
     let max_retries = constants::HTTP_MAX_RETRIES;
-    let source_file = tokio::fs::File::open(path).await?;
+    let source_file = Arc::new(tokio::fs::File::open(path).await?);
     let file_len = source_file.metadata().await?.len();
 
-    for attempt in 1..=max_retries {
-        let mut file = source_file.try_clone().await?;
-        file.seek(std::io::SeekFrom::Start(0)).await?;
-        let body = reqwest::Body::wrap(SizedBody::new(file, file_len));
+    send_with_retry(
+        "PUT presigned",
+        max_retries,
+        format!("PUT presigned failed after {max_retries} attempts"),
+        move || {
+            let source_file = Arc::clone(&source_file);
+            async move {
+                let mut file = source_file.try_clone().await?;
+                file.seek(std::io::SeekFrom::Start(0)).await?;
+                let body = reqwest::Body::wrap(SizedBody::new(file, file_len));
 
-        match HTTP_CLIENT
-            .put(url)
-            .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
-            .header("Content-Type", content_type)
-            .body(body)
-            .send()
-            .await
-        {
-            Ok(resp) if resp.status().is_success() => return Ok(()),
-            Ok(resp) => {
-                let status = resp.status();
-                log_warn!(
-                    LOG_TAG,
-                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
-                );
-                if status.is_client_error() && status.as_u16() != HTTP_TOO_MANY_REQUESTS {
-                    return Err(AgentError::Http(format!("PUT presigned: HTTP {status}")));
-                }
+                Ok(HTTP_CLIENT
+                    .put(url)
+                    .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
+                    .header("Content-Type", content_type)
+                    .body(body))
             }
-            Err(e) => {
-                log_warn!(
-                    LOG_TAG,
-                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): {e}"
-                );
-            }
-        }
+        },
+        |resp, attempt, max_retries| async move {
+            let status = resp.status();
+            log_warn!(
+                LOG_TAG,
+                "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
+            );
+            AgentError::Http(format!("PUT presigned: HTTP {status}"))
+        },
+    )
+    .await?;
 
-        if attempt < max_retries {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-        }
-    }
-
-    Err(AgentError::Http(format!(
-        "PUT presigned failed after {max_retries} attempts"
-    )))
+    Ok(())
 }
 
 #[cfg(test)]
