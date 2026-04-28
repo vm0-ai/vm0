@@ -128,6 +128,7 @@ export {
 
 // Domain modules - Integrations Telegram
 export {
+  listTelegramBots,
   sendTelegramMessage,
   downloadTelegramFile,
   initTelegramFileUpload,

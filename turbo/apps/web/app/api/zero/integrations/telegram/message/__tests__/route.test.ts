@@ -84,8 +84,9 @@ describe("POST /api/zero/integrations/telegram/message", () => {
   it("sends a Telegram message and appends the Slack-aligned footer", async () => {
     const { token, runId } = await zeroTokenWithRun();
     await setTestRunSelectedModel(runId, "claude-opus-4-7");
+    const telegramBotId = uniqueId("tg-bot-message");
     const botId = await createTestTelegramInstallation({
-      telegramBotId: "tg-bot-message",
+      telegramBotId,
       orgId: user.orgId,
       ownerUserId: user.userId,
     });
@@ -135,7 +136,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     });
     expect(String(telegramBody?.text)).toContain("Hello <b>world</b>");
     expect(String(telegramBody?.text)).toContain(
-      'Sent via My Assistant · Triggered by <a href="tg://user?id=777000">Telegram user 777000</a> · Claude Opus 4.7',
+      '<i>Sent via My Assistant · Triggered by <a href="tg://user?id=777000">Telegram user 777000</a> · Claude Opus 4.7</i>',
     );
     expect(await response.json()).toEqual({
       ok: true,
@@ -166,7 +167,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
   it("returns 400 when Telegram rejects sendMessage", async () => {
     const { token } = await zeroTokenWithRun();
     const botId = await createTestTelegramInstallation({
-      telegramBotId: "tg-bot-reject-message",
+      telegramBotId: uniqueId("tg-bot-reject-message"),
       orgId: user.orgId,
       ownerUserId: user.userId,
     });

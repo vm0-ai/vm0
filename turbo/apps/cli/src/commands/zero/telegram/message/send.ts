@@ -29,7 +29,8 @@ Examples:
   Forum topic message: zero telegram message send --bot-id 123456789 -c -1001234567890 --message-thread-id 7 -t "topic update"
 
 Notes:
-  - Message text can be provided with --text or piped on stdin`,
+  - Message text can be provided with --text or piped on stdin
+  - Choose an explicit --bot-id. Run "zero telegram bot list" to inspect available bots.`,
   )
   .action(
     withErrorHandler(

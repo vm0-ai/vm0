@@ -116,7 +116,15 @@ describe("buildTelegramResponse", () => {
       "Sent via My Assistant",
     );
 
-    expect(result).toBe("content\n\nSent via My Assistant");
+    expect(result).toBe("content\n\n<i>Sent via My Assistant</i>");
+  });
+
+  it("should render audit footer with muted Telegram styling", () => {
+    const result = buildTelegramResponse("content", "https://example.com/logs");
+
+    expect(result).toContain(
+      '<i><a href="https://example.com/logs">📋 Audit</a></i>',
+    );
   });
 
   it("should not render agent name HTML", () => {
@@ -159,7 +167,9 @@ describe("buildTelegramErrorResponse", () => {
       "https://example.com/logs",
     );
 
-    expect(result).toContain('<a href="https://example.com/logs">📋 Audit</a>');
+    expect(result).toContain(
+      '<i><a href="https://example.com/logs">📋 Audit</a></i>',
+    );
     expect(result).not.toContain("View logs");
   });
 

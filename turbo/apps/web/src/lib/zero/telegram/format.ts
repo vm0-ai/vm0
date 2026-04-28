@@ -113,6 +113,10 @@ function convertMarkdownLinksInHtmlText(text: string): string {
 const TELEGRAM_HTML_MARKUP_PATTERN =
   /<\/?(?:a|b|strong|i|em|u|ins|s|strike|del|span|tg-spoiler|code|pre|blockquote)\b|&(?:lt|gt|amp|quot|#x27);/i;
 
+function mutedTelegramFooter(text: string): string {
+  return `<i>${text}</i>`;
+}
+
 /**
  * Normalize text for Telegram's HTML parse mode.
  *
@@ -140,10 +144,12 @@ export function buildTelegramResponse(
   const footers: string[] = [];
 
   if (logsUrl) {
-    footers.push(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`);
+    footers.push(
+      mutedTelegramFooter(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`),
+    );
   }
   if (footerText) {
-    footers.push(footerText);
+    footers.push(mutedTelegramFooter(footerText));
   }
 
   if (footers.length === 0) {
@@ -173,10 +179,12 @@ export function buildTelegramErrorResponse(
   const footers: string[] = [];
 
   if (logsUrl) {
-    footers.push(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`);
+    footers.push(
+      mutedTelegramFooter(`<a href="${escapeHtml(logsUrl)}">📋 Audit</a>`),
+    );
   }
   if (footerText) {
-    footers.push(footerText);
+    footers.push(mutedTelegramFooter(footerText));
   }
 
   if (footers.length === 0) {

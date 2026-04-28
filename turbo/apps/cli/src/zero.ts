@@ -130,6 +130,7 @@ program
 Examples:
   Check a connector?     zero doctor check-connector --env-name <ENV_NAME>
   Send a Slack message?  zero slack message send --help
+  List Telegram bots?    zero telegram bot list
   Send Telegram?         zero telegram message send --help
   Upload Telegram?       zero telegram upload-file --help
   Download Telegram?     zero telegram download-file --help
