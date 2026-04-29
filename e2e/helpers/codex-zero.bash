@@ -105,13 +105,23 @@ wait_for_chat_assistant_done() {
     return 1
 }
 
-# Print the framework field of a run record. Used in assertions.
-# Reads from /api/zero/runs/:id/telemetry/agent (which projects `framework`
-# via agentEventsResponseSchema) rather than /api/zero/runs/:id (which does
-# not — see getRunResponseSchema in
-# turbo/packages/api-contracts/src/contracts/runs.ts).
-get_run_framework() {
-    local run_id="$1"
-    _codex_zero_curl "/api/zero/runs/$run_id/telemetry/agent?limit=1" 2>/dev/null \
-        | jq -r '.framework // ""'
+# Print the latestSessionProviderType of a chat thread.
+#
+# This is the eager-pinned provider type written by createChatThread (#11528).
+# When the test compose declares no `model_provider`, eager-pin selects the
+# org default — for this BYOK smoke test the only available provider is
+# `openai-api-key`, which is the framework=codex routing signal.
+#
+# We assert against this rather than `framework` because (a)
+# `/api/zero/runs/:id` does not project `framework`
+# (`getRunResponseSchema`), and (b) `/api/zero/runs/:id/telemetry/agent`
+# derives `framework` from `compose.agents.<name>.framework`
+# (`extractFrameworkFromCompose`) — which is intentionally absent from the
+# test compose, so it would fall back to "claude-code" and false-negative.
+# `latestSessionProviderType` reads directly from `chat_threads.modelProviderId`
+# joined to the providers table, reflecting the post-eager-pin reality.
+get_thread_provider_type() {
+    local thread_id="$1"
+    _codex_zero_curl "/api/zero/chat-threads/$thread_id" 2>/dev/null \
+        | jq -r '.latestSessionProviderType // ""'
 }

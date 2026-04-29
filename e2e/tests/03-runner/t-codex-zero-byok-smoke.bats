@@ -77,8 +77,14 @@ teardown_file() {
     [[ "$LAST_MSG_CONTENT" == *"RESULT=579"* ]] \
         || fail "Expected 'RESULT=579' in assistant content, got: $LAST_MSG_CONTENT"
 
-    # Assert: server-side framework is codex (proves provider routing worked).
-    framework=$(get_run_framework "$LAST_RUN_ID")
-    [[ "$framework" == "codex" ]] \
-        || fail "Expected framework=codex, got: $framework (run=$LAST_RUN_ID)"
+    # Assert: thread is eager-pinned (#11528) to the openai-api-key BYOK
+    # provider. This proves the compose's missing model_provider was
+    # filled in by the org default and that the openai-api-key → codex
+    # routing chain resolved end-to-end. (We can't read the runtime
+    # framework directly because it isn't projected on /runs/:id and the
+    # telemetry route derives it from compose.agents.*.framework which
+    # this compose intentionally omits.)
+    provider_type=$(get_thread_provider_type "$THREAD_ID")
+    [[ "$provider_type" == "openai-api-key" ]] \
+        || fail "Expected latestSessionProviderType=openai-api-key, got: $provider_type (thread=$THREAD_ID)"
 }
