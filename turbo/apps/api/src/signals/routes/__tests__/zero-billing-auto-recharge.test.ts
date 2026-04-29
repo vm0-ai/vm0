@@ -12,11 +12,12 @@ import {
 } from "./helpers/zero-billing-auto-recharge";
 import {
   createFixtureTracker,
-  mockClerkSession,
+  createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/billing/auto-recharge", () => {
   const track = createFixtureTracker<AutoRechargeOrgFixture>((fixture) => {
@@ -31,7 +32,7 @@ describe("GET /api/zero/billing/auto-recharge", () => {
         amount: 5000,
       }),
     );
-    mockClerkSession(context, fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({
       context,
@@ -55,7 +56,7 @@ describe("GET /api/zero/billing/auto-recharge", () => {
   it("returns the legacy default when the org metadata row does not exist", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    mockClerkSession(context, userId, orgId);
+    mocks.clerk.session(userId, orgId);
 
     const client = setupApp({
       context,

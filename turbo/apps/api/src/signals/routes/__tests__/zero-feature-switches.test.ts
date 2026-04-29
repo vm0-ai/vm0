@@ -12,11 +12,12 @@ import {
 } from "./helpers/zero-feature-switches";
 import {
   createFixtureTracker,
-  mockClerkSession,
+  createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/feature-switches", () => {
   const track = createFixtureTracker<FeatureSwitchesFixture>((fixture) => {
@@ -30,7 +31,7 @@ describe("GET /api/zero/feature-switches", () => {
         audioInput: false,
       }),
     );
-    mockClerkSession(context, fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({
       context,
@@ -55,7 +56,7 @@ describe("GET /api/zero/feature-switches", () => {
   it("returns empty switches when no override row exists", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    mockClerkSession(context, userId, orgId);
+    mocks.clerk.session(userId, orgId);
 
     const client = setupApp({
       context,

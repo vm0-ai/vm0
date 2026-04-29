@@ -4,7 +4,31 @@ import type { TestContext } from "../../../../__tests__/test-helpers";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 
-export function mockClerkSession(
+interface ZeroRouteClerkMocks {
+  readonly session: (
+    userId: string,
+    orgId: string | null,
+    orgRole?: ClerkOrgRole,
+  ) => void;
+}
+
+interface MockS3Object {
+  readonly bucket: string;
+  readonly key: string;
+  readonly size: number;
+  readonly lastModified?: Date;
+}
+
+interface ZeroRouteS3Mocks {
+  readonly listObjects: (objects: readonly MockS3Object[]) => void;
+}
+
+interface ZeroRouteMocks {
+  readonly clerk: ZeroRouteClerkMocks;
+  readonly s3: ZeroRouteS3Mocks;
+}
+
+function setClerkSessionMock(
   context: TestContext,
   userId: string,
   orgId: string | null,
@@ -22,13 +46,6 @@ export function mockClerkSession(
   });
 }
 
-interface MockS3Object {
-  readonly bucket: string;
-  readonly key: string;
-  readonly size: number;
-  readonly lastModified?: Date;
-}
-
 function commandInput(command: unknown): Record<string, unknown> {
   if (
     typeof command === "object" &&
@@ -42,7 +59,7 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
-export function mockS3ListObjects(
+function setS3ListObjectsMock(
   context: TestContext,
   objects: readonly MockS3Object[],
 ): void {
@@ -65,6 +82,25 @@ export function mockS3ListObjects(
 
     return Promise.resolve({ Contents: contents });
   });
+}
+
+export function createZeroRouteMocks(context: TestContext): ZeroRouteMocks {
+  return {
+    clerk: {
+      session: (
+        userId: string,
+        orgId: string | null,
+        orgRole?: ClerkOrgRole,
+      ) => {
+        setClerkSessionMock(context, userId, orgId, orgRole);
+      },
+    },
+    s3: {
+      listObjects: (objects: readonly MockS3Object[]) => {
+        setS3ListObjectsMock(context, objects);
+      },
+    },
+  };
 }
 
 export function createFixtureTracker<T>(

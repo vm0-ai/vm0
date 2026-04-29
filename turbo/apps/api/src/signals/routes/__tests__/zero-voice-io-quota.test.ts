@@ -10,11 +10,12 @@ import {
 } from "./helpers/zero-voice-io-quota";
 import {
   createFixtureTracker,
-  mockClerkSession,
+  createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/voice-io/quota", () => {
   const track = createFixtureTracker<VoiceIoQuotaFixture>((fixture) => {
@@ -23,7 +24,7 @@ describe("GET /api/zero/voice-io/quota", () => {
 
   it("defaults a missing org metadata row to the free quota", async () => {
     const fixture = await track(seedVoiceIoQuotaOrg(store));
-    mockClerkSession(context, fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({
       context,
@@ -46,7 +47,7 @@ describe("GET /api/zero/voice-io/quota", () => {
 
   it("blocks free tier users at the lifetime audio input quota", async () => {
     const fixture = await track(seedVoiceIoQuotaOrg(store, { count: 10 }));
-    mockClerkSession(context, fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({
       context,
@@ -74,7 +75,7 @@ describe("GET /api/zero/voice-io/quota", () => {
         count: 10,
       }),
     );
-    mockClerkSession(context, fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({
       context,

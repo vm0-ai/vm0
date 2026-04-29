@@ -12,11 +12,12 @@ import {
 } from "./helpers/zero-onboarding-status";
 import {
   createFixtureTracker,
-  mockClerkSession,
+  createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/onboarding/status", () => {
   const track = createFixtureTracker<OnboardingStatusFixture>((fixture) => {
@@ -24,7 +25,7 @@ describe("GET /api/zero/onboarding/status", () => {
   });
 
   it("returns onboarding required when the session has no active org", async () => {
-    mockClerkSession(context, `user_${randomUUID()}`, null);
+    mocks.clerk.session(`user_${randomUUID()}`, null);
 
     const client = setupApp({
       context,
@@ -50,7 +51,7 @@ describe("GET /api/zero/onboarding/status", () => {
 
   it("requires admin onboarding when the org has no default agent", async () => {
     const fixture = await track(seedOnboardingStatusOrg(store));
-    mockClerkSession(context, fixture.userId, fixture.orgId, "org:admin");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({
       context,
@@ -84,7 +85,7 @@ describe("GET /api/zero/onboarding/status", () => {
         onboardingDone: true,
       }),
     );
-    mockClerkSession(context, fixture.userId, fixture.orgId, "org:member");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({
       context,

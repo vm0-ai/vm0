@@ -13,11 +13,12 @@ import {
 } from "./helpers/zero-queue-position";
 import {
   createFixtureTracker,
-  mockClerkSession,
+  createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/queue-position", () => {
   const track = createFixtureTracker<QueuePositionFixture>((fixture) => {
@@ -28,7 +29,7 @@ describe("GET /api/zero/queue-position", () => {
     const fixture = await track(
       seedQueuePositionRuns(store, { queuedRuns: 2 }),
     );
-    mockClerkSession(context, fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     const runId = fixture.queuedRunIds[1];
     if (!runId) {
       throw new Error("Expected queued run fixture");
@@ -57,7 +58,7 @@ describe("GET /api/zero/queue-position", () => {
     const fixture = await track(
       seedQueuePositionRuns(store, { unqueuedRuns: 1 }),
     );
-    mockClerkSession(context, fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
     const runId = fixture.unqueuedRunIds[0];
     if (!runId) {
       throw new Error("Expected unqueued run fixture");
@@ -86,7 +87,7 @@ describe("GET /api/zero/queue-position", () => {
     const fixture = await track(
       seedQueuePositionRuns(store, { queuedRuns: 1 }),
     );
-    mockClerkSession(context, `user_${randomUUID()}`, fixture.orgId);
+    mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
     const runId = fixture.queuedRunIds[0];
     if (!runId) {
       throw new Error("Expected queued run fixture");
@@ -109,7 +110,7 @@ describe("GET /api/zero/queue-position", () => {
   });
 
   it("returns 404 for an unknown run", async () => {
-    mockClerkSession(context, `user_${randomUUID()}`, `org_${randomUUID()}`);
+    mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({
       context,

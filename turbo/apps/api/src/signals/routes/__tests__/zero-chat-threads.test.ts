@@ -14,12 +14,12 @@ import {
 } from "./helpers/zero-chat-threads";
 import {
   createFixtureTracker,
-  mockClerkSession,
-  mockS3ListObjects,
+  createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
+const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/chat-threads/:id", () => {
   const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
@@ -36,8 +36,8 @@ describe("GET /api/zero/chat-threads/:id", () => {
       attachFiles: ["file_123"],
       createdAt: new Date("2025-01-01T00:00:00.000Z"),
     });
-    mockClerkSession(context, fixture.userId, fixture.orgId);
-    mockS3ListObjects(context, [
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.s3.listObjects([
       {
         bucket: "test-user-storages",
         key: `uploads/${fixture.userId}/file_123/report.pdf`,
@@ -103,8 +103,8 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
       attachFiles: ["image_file"],
       createdAt: new Date("2025-01-01T00:00:00.000Z"),
     });
-    mockClerkSession(context, fixture.userId, fixture.orgId);
-    mockS3ListObjects(context, [
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.s3.listObjects([
       {
         bucket: "test-user-storages",
         key: `uploads/${fixture.userId}/image_file/screenshot.png`,
