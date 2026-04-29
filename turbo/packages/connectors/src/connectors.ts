@@ -159,6 +159,7 @@ import { v0 } from "./connectors/v0";
 import { db9 } from "./connectors/db9";
 import { drive9 } from "./connectors/drive9";
 import { msg9 } from "./connectors/msg9";
+import { nanoBanana } from "./connectors/nano-banana";
 import { amplitude } from "./connectors/amplitude";
 import { attio } from "./connectors/attio";
 import { buffer } from "./connectors/buffer";
@@ -520,6 +521,7 @@ const CONNECTOR_TYPES_DEF = {
   ...db9,
   ...drive9,
   ...msg9,
+  ...nanoBanana,
   ...amplitude,
   ...attio,
   ...buffer,
