@@ -837,6 +837,20 @@ mod tests {
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
     }
 
+    #[test]
+    fn cancelled_ready_acquire_returns_index_to_ready() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.ready.push_back(3);
+        let (respond_to, response) = oneshot::channel();
+        drop(response);
+
+        pool.handle_acquire(respond_to);
+
+        assert_eq!(pool.ready.iter().copied().collect::<Vec<_>>(), vec![3]);
+        assert!(pool.in_flight.is_empty());
+        assert!(pool.waiting_acquires.is_empty());
+    }
+
     #[tokio::test]
     async fn warmup_after_cleanup_does_not_restart_pool() {
         let mut pool = test_pool_for_pending_scan();
@@ -967,6 +981,47 @@ mod tests {
         assert_eq!(pool.waiting_acquires.len(), 1);
         assert_eq!(pool.pending.len(), 1);
         pool.cleanup().await;
+    }
+
+    #[test]
+    fn ready_assignment_skips_cancelled_waiter() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.ready.push_back(4);
+        let (cancelled_tx, cancelled_rx) = oneshot::channel();
+        let (active_tx, mut active_rx) = oneshot::channel();
+        drop(cancelled_rx);
+        pool.waiting_acquires.push_back(cancelled_tx);
+        pool.waiting_acquires.push_back(active_tx);
+
+        assert!(pool.satisfy_waiters_from_ready());
+
+        let lease = active_rx.try_recv().unwrap().unwrap();
+        assert_eq!(lease.index(), 4);
+        assert!(pool.waiting_acquires.is_empty());
+        assert!(pool.ready.is_empty());
+        assert!(pool.in_flight.contains(&4));
+    }
+
+    #[test]
+    fn validation_success_skips_cancelled_waiter() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.ready.extend([0, 1, 2, 3]);
+        let (cancelled_tx, cancelled_rx) = oneshot::channel();
+        let (active_tx, mut active_rx) = oneshot::channel();
+        drop(cancelled_rx);
+        pool.waiting_acquires.push_back(cancelled_tx);
+        pool.waiting_acquires.push_back(active_tx);
+
+        pool.handle_validation_join(Ok(ValidationResult {
+            purpose: ValidationPurpose::Demand,
+            result: Ok(4),
+        }));
+
+        let lease = active_rx.try_recv().unwrap().unwrap();
+        assert_eq!(lease.index(), 4);
+        assert!(pool.waiting_acquires.is_empty());
+        assert!(pool.in_flight.contains(&4));
+        assert!(pool.pending.is_empty());
     }
 
     #[tokio::test]
