@@ -1532,12 +1532,12 @@ jobs:
         run: |
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
 
-          deploy_to_host() {
+          prepare_host() {
             local HOST=$1
             local HOST_INDEX=$2
             local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             local REMOTE="${METAL_USER}@${HOST}"
-            echo "=== Deploying to ${HOST} (runner: ${RUNNER_NAME}) ==="
+            echo "=== Preparing ${HOST} (runner: ${RUNNER_NAME}) ==="
 
             # Clean previous run artifacts and upload runner (guests are embedded)
             # shellcheck disable=SC2029
@@ -1559,6 +1559,31 @@ jobs:
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
+            echo "=== Done preparing ${HOST} ==="
+          }
+
+          warm_rootfs_cache() {
+            local HOST=$1
+            local REMOTE="${METAL_USER}@${HOST}"
+            echo "=== Warming shared rootfs cache on ${HOST} ==="
+
+            # Warm exactly once before the per-host snapshot build fan-out. This
+            # prevents every metal host from racing into the slow local rootfs
+            # build path when a PR introduces a new rootfs_hash.
+            # shellcheck disable=SC2029
+            ssh "$REMOTE" "sudo \
+              R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
+              R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
+              R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
+              R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
+              ${BIN_DIR}/runner build --profile vm0/default --warm-rootfs-cache"
+            echo "=== Done warming shared rootfs cache on ${HOST} ==="
+          }
+
+          build_snapshot_on_host() {
+            local HOST=$1
+            local REMOTE="${METAL_USER}@${HOST}"
+            echo "=== Building rootfs/snapshot on ${HOST} ==="
 
             # Run build to create rootfs + snapshot (outputs hashes to stdout).
             # R2_* env vars are inlined after `sudo` so they reach the runner
@@ -1570,7 +1595,7 @@ jobs:
               R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
               R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
               ${BIN_DIR}/runner build --profile vm0/default"
-            echo "=== Done deploying to ${HOST} ==="
+            echo "=== Done building rootfs/snapshot on ${HOST} ==="
           }
 
           LOG_DIR=$(mktemp -d)
@@ -1579,7 +1604,7 @@ jobs:
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
-            deploy_to_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            prepare_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.prepare.log" 2>&1 &
             PIDS+=($!)
             HOSTS+=("$HOST")
           done
@@ -1588,10 +1613,44 @@ jobs:
           for i in "${!PIDS[@]}"; do
             if ! wait "${PIDS[$i]}"; then
               FAILED=1
-              echo "::error::Deployment failed on ${HOSTS[$i]}"
+              echo "::error::Runner preparation failed on ${HOSTS[$i]}"
             fi
-            echo "=== ${HOSTS[$i]} ==="
-            cat "${LOG_DIR}/${HOSTS[$i]}.log"
+            echo "=== ${HOSTS[$i]} prepare ==="
+            cat "${LOG_DIR}/${HOSTS[$i]}.prepare.log"
+          done
+          if [ "$FAILED" -ne 0 ]; then
+            rm -rf "$LOG_DIR"
+            exit 1
+          fi
+
+          if [ -n "${R2_ACCOUNT_ID}" ] && [ -n "${R2_ACCESS_KEY_ID}" ] && [ -n "${R2_SECRET_ACCESS_KEY}" ] && [ -n "${R2_USER_STORAGES_BUCKET_NAME}" ]; then
+            WARM_HOST="${HOSTS[0]}"
+            WARM_LOG="${LOG_DIR}/warm-rootfs-cache.log"
+            if ! warm_rootfs_cache "$WARM_HOST" > "$WARM_LOG" 2>&1; then
+              echo "::error::Shared rootfs cache warm failed on ${WARM_HOST}"
+              cat "$WARM_LOG"
+              rm -rf "$LOG_DIR"
+              exit 1
+            fi
+            cat "$WARM_LOG"
+          else
+            echo "::warning::Skipping shared rootfs cache warm because R2 image cache credentials are incomplete"
+          fi
+
+          PIDS=()
+          for HOST in "${HOSTS[@]}"; do
+            build_snapshot_on_host "$HOST" > "${LOG_DIR}/${HOST}.build.log" 2>&1 &
+            PIDS+=($!)
+          done
+
+          FAILED=0
+          for i in "${!PIDS[@]}"; do
+            if ! wait "${PIDS[$i]}"; then
+              FAILED=1
+              echo "::error::Runner image build failed on ${HOSTS[$i]}"
+            fi
+            echo "=== ${HOSTS[$i]} build ==="
+            cat "${LOG_DIR}/${HOSTS[$i]}.build.log"
           done
           if [ "$FAILED" -ne 0 ]; then
             rm -rf "$LOG_DIR"
@@ -1603,8 +1662,8 @@ jobs:
           ROOTFS_MAP=$(jq -n '{}')
           SNAPSHOT_MAP=$(jq -n '{}')
           for HOST in "${HOSTS[@]}"; do
-            ROOTFS_HASH=$(grep '^rootfs_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
-            SNAPSHOT_HASH=$(grep '^snapshot_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
+            ROOTFS_HASH=$(grep '^rootfs_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2)
+            SNAPSHOT_HASH=$(grep '^snapshot_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2)
             if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
               echo "::error::Failed to extract rootfs/snapshot hash from ${HOST} log"
               rm -rf "$LOG_DIR"
