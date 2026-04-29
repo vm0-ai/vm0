@@ -1670,8 +1670,8 @@ jobs:
           ROOTFS_MAP=$(jq -n '{}')
           SNAPSHOT_MAP=$(jq -n '{}')
           for HOST in "${HOSTS[@]}"; do
-            ROOTFS_HASH=$(grep '^rootfs_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2)
-            SNAPSHOT_HASH=$(grep '^snapshot_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2)
+            ROOTFS_HASH=$(grep '^rootfs_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2 || true)
+            SNAPSHOT_HASH=$(grep '^snapshot_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2 || true)
             if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
               echo "::error::Failed to extract rootfs/snapshot hash from ${HOST} log"
               rm -rf "$LOG_DIR"
