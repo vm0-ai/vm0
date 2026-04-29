@@ -30,11 +30,10 @@ _UTF8_LEAD_MAX_1BYTE = 0x80  # ASCII: 0xxxxxxx
 _UTF8_LEAD_MAX_2BYTE = 0xE0  # 2-byte lead: 110xxxxx
 _UTF8_LEAD_MAX_3BYTE = 0xF0  # 3-byte lead: 1110xxxx
 
-# Decompression cap for response bodies that need full parsing for usage
-# extraction (model-provider non-SSE JSON, billable-connector JSON).  Larger
-# than STREAM_BUFFER_LIMIT (which guards capture-mode body logging) so large
-# search/timeline payloads decompress fully.  Still bounded so a malicious
-# upstream cannot exhaust memory via a decompression bomb.
+# Decompression cap for legacy/test one-shot usage extraction fallbacks.
+# Production billable JSON paths use streaming decompression plus selective
+# extraction; this remains larger than STREAM_BUFFER_LIMIT for direct helper
+# calls while still bounding decompression bombs.
 LARGE_RESPONSE_DECOMPRESS_LIMIT = 5 * 1024 * 1024  # 5 MB
 
 
