@@ -52,6 +52,17 @@ EOF
     AGENT_ID=$(printf '%s' "$compose_json" | jq -r '.composeId')
     [[ -n "$AGENT_ID" && "$AGENT_ID" != "null" ]] \
         || { echo "# compose --json output: $compose_json" >&2; return 1; }
+
+    # 4. Seed the zero_agents row (PK = composeId). vm0 compose's
+    # POST /api/agent/composes only inserts agent_composes +
+    # agent_compose_versions; the zero_agents row is created lazily by
+    # the web composer's metadata upsert. POST /api/zero/chat/messages
+    # requires that row (route.ts calls fetchZeroAgentForRun WHERE id =
+    # body.agentId and 404s when undefined). PATCHing metadata is the
+    # smallest write that triggers the upsert in
+    # zero-compose-service.ts updateComposeMetadata.
+    _codex_zero_curl "/api/zero/composes/$AGENT_ID/metadata" \
+        -X PATCH -d '{"displayName":"BYOK codex e2e"}' >/dev/null
 }
 
 teardown_file() {
