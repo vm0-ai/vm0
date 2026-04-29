@@ -10,7 +10,6 @@ import {
   getVm0Vendor,
   getVm0ApiModel,
   type ModelProviderType,
-  type ModelProviderFramework,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { badRequest, noModelProvider } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
@@ -153,8 +152,12 @@ interface ModelProviderSecretResult {
    *  servicePlaceholders logic; literals (base URLs, model names) are plain strings. */
   injectedEnvironment: Record<string, string> | undefined;
   /** The resolved model provider type (e.g. "anthropic", "vercel-ai-gateway").
-   *  Undefined when provider resolution was skipped (explicit env vars or non-claude-code). */
+   *  Undefined when provider resolution was skipped (explicit env vars). */
   resolvedModelProvider: ModelProviderType | undefined;
+  /** Canonical framework for this resolution. When a provider was resolved this
+   *  is the provider's framework (source-of-truth for downstream); otherwise
+   *  the input `framework` is echoed back. */
+  framework: string;
   /** For meta-providers like "vm0", the concrete provider type resolved at build time.
    *  Used for firewall lookup instead of the meta-provider type. */
   concreteProviderType?: ModelProviderType;
@@ -196,6 +199,7 @@ async function resolveVm0Provider(
     secrets,
     injectedEnvironment,
     resolvedModelProvider: "vm0",
+    framework: getFrameworkForType("vm0"),
     concreteProviderType: concreteType,
     selectedModel,
   };
@@ -262,6 +266,7 @@ async function resolveMultiAuthProviderSecrets(
     secrets: secretsMap,
     injectedEnvironment,
     resolvedModelProvider: providerType,
+    framework: getFrameworkForType(providerType),
     selectedModel,
   };
 }
@@ -285,12 +290,15 @@ export async function resolveModelProviderSecrets(
 ): Promise<ModelProviderSecretResult> {
   const secrets: Record<string, string> | undefined = undefined;
 
-  // Skip if explicit model provider config exists or framework doesn't use model providers
-  if (hasExplicitModelProviderConfig || framework !== "claude-code") {
+  // Skip if compose already declares the framework's auth env var directly.
+  // Framework-agnostic: codex with explicit OPENAI_API_KEY short-circuits here
+  // just like claude-code with explicit ANTHROPIC_API_KEY.
+  if (hasExplicitModelProviderConfig) {
     return {
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: undefined,
+      framework,
     };
   }
 
@@ -299,10 +307,7 @@ export async function resolveModelProviderSecrets(
   if (modelProviderId) {
     defaultProvider = await getModelProviderByIdForOrg(orgId, modelProviderId);
   } else {
-    defaultProvider = await getOrgDefaultModelProvider(
-      orgId,
-      framework as ModelProviderFramework,
-    );
+    defaultProvider = await getOrgDefaultModelProvider(orgId, framework);
   }
 
   const secretUserId = ORG_SENTINEL_USER_ID;
@@ -324,6 +329,8 @@ export async function resolveModelProviderSecrets(
     return resolveVm0Provider(selectedModel);
   }
 
+  const resolvedFramework = getFrameworkForType(providerType);
+
   // Handle multi-auth providers (like aws-bedrock)
   if (hasAuthMethods(providerType)) {
     const resolved = await resolveMultiAuthProviderSecrets(
@@ -338,6 +345,7 @@ export async function resolveModelProviderSecrets(
         secrets,
         injectedEnvironment: undefined,
         resolvedModelProvider: providerType,
+        framework: resolvedFramework,
         selectedModel,
       }
     );
@@ -350,6 +358,7 @@ export async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: providerType,
+      framework: resolvedFramework,
       selectedModel,
     };
   }
@@ -366,6 +375,7 @@ export async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: providerType,
+      framework: resolvedFramework,
       selectedModel,
     };
   }
@@ -385,6 +395,7 @@ export async function resolveModelProviderSecrets(
     secrets: { [secretName]: secretValue },
     injectedEnvironment,
     resolvedModelProvider: providerType,
+    framework: resolvedFramework,
     selectedModel,
   };
 }
