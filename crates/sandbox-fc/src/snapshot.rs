@@ -68,10 +68,11 @@ impl SnapshotError {
 ///  7. Bind vsock listener
 ///  8. Start instance
 ///  9. Wait for guest vsock connection
-/// 10. Pause VM
-/// 11. Create snapshot
-/// 12. Move COW file to output dir
-/// 13. Cleanup (kill Firecracker, destroy netns, release base image)
+/// 10. Pre-warm guest caches (PAM/nsswitch, CLI modules)
+/// 11. Pause VM
+/// 12. Create snapshot
+/// 13. Move COW file + bitmap to output dir
+/// 14. Cleanup (kill Firecracker, destroy netns, release base image)
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
