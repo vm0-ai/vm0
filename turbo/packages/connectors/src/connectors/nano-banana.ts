@@ -4,9 +4,9 @@ import { FeatureSwitchKey } from "../feature-switch-key";
 export const nanoBanana = {
   "nano-banana": {
     label: "Nano Banana",
+    category: "ai-image-video",
     environmentMapping: {},
-    helpText:
-      "Google Gemini image generation, billed to your org credits",
+    helpText: "Google Gemini image generation, billed to your org credits",
     featureFlag: FeatureSwitchKey.PlatformConnectors,
     authMethods: {
       platform: {

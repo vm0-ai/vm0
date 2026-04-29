@@ -104,6 +104,7 @@ import { generate as generateMixpanel } from "./mixpanel";
 import { generate as generateMonday } from "./monday";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
+import { generate as generateNanoBanana } from "./nano-banana";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOnyx } from "./onyx";
@@ -273,6 +274,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   monday: generateMonday,
   msg9: generateMsg9,
   n8n: generateN8n,
+  "nano-banana": generateNanoBanana,
   neon: generateNeon,
   notion: generateNotion,
   onyx: generateOnyx,

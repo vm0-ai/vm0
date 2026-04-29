@@ -119,6 +119,7 @@
     "generate:mixpanel": "tsx src/index.ts mixpanel",
     "generate:monday": "tsx src/index.ts monday",
     "generate:n8n": "tsx src/index.ts n8n",
+    "generate:nano-banana": "tsx src/index.ts nano-banana",
     "generate:neon": "tsx src/index.ts neon",
     "generate:notion": "tsx src/index.ts notion",
     "generate:openai": "tsx src/index.ts openai",
