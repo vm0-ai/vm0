@@ -1,4 +1,5 @@
-import { useState, type MouseEvent, type ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
+import { useGet, useSet } from "ccstate-react";
 import { IconChevronDown, IconChevronUp, IconCpu } from "@tabler/icons-react";
 import {
   Select,
@@ -26,6 +27,10 @@ import {
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
+import {
+  showAllVm0Models$,
+  toggleShowAllVm0Models$,
+} from "../../../signals/zero-page/model-picker-ui";
 import {
   getUILabel,
   getVm0ModelMultiplier,
@@ -507,14 +512,19 @@ function ShowMoreToggleRow({
   );
 }
 
+interface RenderProviderGroupContext {
+  idx: number;
+  last: number;
+  selectedModel: string | null;
+  showAll: boolean;
+  onToggleShowAll: () => void;
+}
+
 function renderProviderGroup(
   group: ProviderGroup,
-  idx: number,
-  last: number,
-  selectedModel: string | null,
-  showAll: boolean,
-  onToggleShowAll: () => void,
+  ctx: RenderProviderGroupContext,
 ): ReactNode[] {
+  const { idx, last, selectedModel, showAll, onToggleShowAll } = ctx;
   // Only the VM0 group is collapsible — BYOK groups list a handful of models.
   const collapsible = group.isVm0;
   const visibleModels =
@@ -602,7 +612,8 @@ function ModelSelectDropdown({
     ? getModelDisplayName(resolved.selectedModel)
     : placeholder;
   const lastGroupIdx = groups.length - 1;
-  const [showAll, setShowAll] = useState(false);
+  const showAll = useGet(showAllVm0Models$);
+  const toggleShowAll = useSet(toggleShowAllVm0Models$);
   return (
     <Select
       value={encodeValue(value)}
@@ -653,18 +664,13 @@ function ModelSelectDropdown({
         )}
         {(!showUseDefault || value !== null) &&
           groups.flatMap((group, idx) => {
-            return renderProviderGroup(
-              group,
+            return renderProviderGroup(group, {
               idx,
-              lastGroupIdx,
-              resolved?.selectedModel ?? null,
+              last: lastGroupIdx,
+              selectedModel: resolved?.selectedModel ?? null,
               showAll,
-              () => {
-                setShowAll((s) => {
-                  return !s;
-                });
-              },
-            );
+              onToggleShowAll: toggleShowAll,
+            });
           })}
       </SelectContent>
     </Select>

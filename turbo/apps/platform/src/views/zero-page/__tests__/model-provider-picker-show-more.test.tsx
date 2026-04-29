@@ -31,21 +31,6 @@ const context = testContext();
 const THREAD_ID = "thread-test-show-more";
 const PROVIDER_ID = "00000000-0000-4000-a000-000000000099";
 
-const PRIMARY_LABELS = [
-  "Claude Opus 4.7",
-  "Claude Opus 4.6",
-  "Claude Sonnet 4.6",
-  "DeepSeek V4 Pro",
-];
-const SECONDARY_LABELS = [
-  "GLM-5.1",
-  "Claude Haiku 4.5",
-  "Kimi K2.6",
-  "Kimi K2.5",
-  "MiniMax M2.7",
-  "DeepSeek V4 Flash",
-];
-
 function setupVm0Provider(selectedModel: string): void {
   setMockFeatureSwitches({});
   setMockOrgModelProviders([
@@ -82,9 +67,13 @@ async function openPicker(user: ReturnType<typeof userEvent.setup>) {
   });
 }
 
-function optionLabels(): string[] {
-  return screen.getAllByRole("option").map((el) => {
-    return el.textContent ?? "";
+function listboxText(): string {
+  return screen.getByRole("listbox").textContent ?? "";
+}
+
+function findToggleButton(matcher: RegExp): HTMLElement | undefined {
+  return screen.getAllByRole("button").find((el) => {
+    return matcher.test(el.textContent ?? "");
   });
 }
 
@@ -102,17 +91,19 @@ describe("model-provider-picker — VM0 show more", () => {
 
     await openPicker(user);
 
-    const labels = optionLabels();
-    for (const primary of PRIMARY_LABELS) {
-      expect(labels.some((l) => l.includes(primary))).toBe(true);
-    }
-    for (const secondary of SECONDARY_LABELS) {
-      expect(labels.some((l) => l.includes(secondary))).toBe(false);
-    }
+    const text = listboxText();
+    expect(text).toContain("Claude Opus 4.7");
+    expect(text).toContain("Claude Opus 4.6");
+    expect(text).toContain("Claude Sonnet 4.6");
+    expect(text).toContain("DeepSeek V4 Pro");
+    expect(text).not.toContain("GLM-5.1");
+    expect(text).not.toContain("Claude Haiku 4.5");
+    expect(text).not.toContain("Kimi K2.6");
+    expect(text).not.toContain("Kimi K2.5");
+    expect(text).not.toContain("MiniMax M2.7");
+    expect(text).not.toContain("DeepSeek V4 Flash");
 
-    expect(
-      screen.getByRole("button", { name: /show all models/i }),
-    ).toBeInTheDocument();
+    expect(findToggleButton(/show all models/i)).toBeDefined();
   });
 
   // MPKR-SM-002: Clicking "Show all models" reveals the full list and the
@@ -123,16 +114,20 @@ describe("model-provider-picker — VM0 show more", () => {
 
     await openPicker(user);
 
-    await user.click(screen.getByRole("button", { name: /show all models/i }));
+    const showAll = findToggleButton(/show all models/i);
+    expect(showAll).toBeDefined();
+    await user.click(showAll!);
 
-    const labels = optionLabels();
-    for (const label of [...PRIMARY_LABELS, ...SECONDARY_LABELS]) {
-      expect(labels.some((l) => l.includes(label))).toBe(true);
-    }
+    const text = listboxText();
+    expect(text).toContain("Claude Opus 4.7");
+    expect(text).toContain("GLM-5.1");
+    expect(text).toContain("Claude Haiku 4.5");
+    expect(text).toContain("Kimi K2.6");
+    expect(text).toContain("Kimi K2.5");
+    expect(text).toContain("MiniMax M2.7");
+    expect(text).toContain("DeepSeek V4 Flash");
 
-    expect(
-      screen.getByRole("button", { name: /show fewer models/i }),
-    ).toBeInTheDocument();
+    expect(findToggleButton(/show fewer models/i)).toBeDefined();
   });
 
   // MPKR-SM-003: When the active selection is a non-primary model, it stays
@@ -143,11 +138,11 @@ describe("model-provider-picker — VM0 show more", () => {
 
     await openPicker(user);
 
-    const labels = optionLabels();
-    expect(labels.some((l) => l.includes("Kimi K2.5"))).toBe(true);
+    const text = listboxText();
+    expect(text).toContain("Kimi K2.5");
     // Other secondary models remain hidden — only the active one leaks
     // through.
-    expect(labels.some((l) => l.includes("MiniMax M2.7"))).toBe(false);
-    expect(labels.some((l) => l.includes("DeepSeek V4 Flash"))).toBe(false);
+    expect(text).not.toContain("MiniMax M2.7");
+    expect(text).not.toContain("DeepSeek V4 Flash");
   });
 });

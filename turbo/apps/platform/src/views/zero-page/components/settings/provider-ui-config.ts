@@ -232,13 +232,11 @@ export function getVm0ModelMultiplier(model: string): number | undefined {
 // The VM0 model dropdown shows the full list (10+ entries) which is too long
 // for the chat composer. Collapse to these flagship/budget picks by default;
 // the "Show all models" toggle reveals the rest.
-export const VM0_PRIMARY_MODELS: ReadonlySet<string> = new Set([
-  "claude-opus-4-7",
-  "claude-opus-4-6",
-  "claude-sonnet-4-6",
-  "deepseek-v4-pro",
-]);
-
 export function isVm0PrimaryModel(model: string): boolean {
-  return VM0_PRIMARY_MODELS.has(model);
+  return (
+    model === "claude-opus-4-7" ||
+    model === "claude-opus-4-6" ||
+    model === "claude-sonnet-4-6" ||
+    model === "deepseek-v4-pro"
+  );
 }
