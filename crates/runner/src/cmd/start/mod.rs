@@ -1458,7 +1458,7 @@ async fn finalize_sandbox_for_completion(
                         run_id,
                     );
                     // Push fresh idle state to status.json BEFORE
-                    // `status.remove_run` (below) clears the run_id
+                    // conditional active-run removal (below) clears the run_id
                     // from active_runs. Without this, doctor would
                     // briefly see the FC as unknown (neither active
                     // nor idle) until the next idle_cleanup tick
@@ -2475,12 +2475,12 @@ mod tests {
         assert_eq!(
             active_runs_at_complete.load(Ordering::SeqCst),
             1,
-            "status.remove_run must happen after provider.complete",
+            "active status removal must happen after provider.complete",
         );
         assert_eq!(
             status_active_run_count(&status_path).await,
             0,
-            "status.remove_run should complete before active budget release returns",
+            "active status removal should complete before active budget release returns",
         );
         assert_eq!(
             cleanup_state.disposition(),

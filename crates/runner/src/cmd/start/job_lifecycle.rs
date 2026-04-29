@@ -17,7 +17,7 @@ pub(super) enum RunCleanupDisposition {
     IdlePoolOwned,
     /// The active sandbox was explicitly destroyed and destroy returned normally.
     DestroyCompleted,
-    /// Normal completion already removed the active run from status.
+    /// Normal completion already cleared, or no longer owns, active status.
     StatusRemoved,
 }
 

@@ -61,6 +61,9 @@ impl LeakCleaner {
         device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
         netns_pool: std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
     ) -> Self {
+        // Drop cannot await, and losing a leak report can strand host resources.
+        // Keep this unbounded: reports only come from exceptional cleanup paths,
+        // with runner GC as the final backstop if the cleaner stalls.
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
         let handle = tokio::spawn(drain_leaked_resources(

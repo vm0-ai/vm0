@@ -86,8 +86,8 @@ pub struct StatusTracker {
 struct MutableState {
     mode: RunnerMode,
     /// Map of run_id → sandbox_id for all active runs. Keyed by run_id so
-    /// `remove_run(run_id)` stays O(log n); the paired `sandbox_id` is the
-    /// join key used by doctor and kill to find the FC process.
+    /// conditional active-run removal stays O(log n); the paired `sandbox_id`
+    /// is the join key used by doctor and kill to find the FC process.
     ///
     /// BTreeMap (not HashMap) for deterministic iteration order — status.json
     /// output should be stable across runs for readability and diffing.
