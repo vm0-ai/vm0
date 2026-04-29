@@ -1,6 +1,6 @@
-import { env } from "./external/env";
+import { env } from "../lib/env";
+import { logger } from "../lib/log";
 import { lazySingleton } from "./external/lazy-singleton";
-import { logger } from "./external/log";
 
 export enum Mechanism {
   WaitUntil = "wait_until",

@@ -6,7 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/composes";
 import { z } from "zod";
 
-import { env } from "../external/env";
+import { env } from "../../lib/env";
 import { lazySingleton } from "../external/lazy-singleton";
 import { now } from "../external/time";
 import { safeJsonParse } from "../utils";

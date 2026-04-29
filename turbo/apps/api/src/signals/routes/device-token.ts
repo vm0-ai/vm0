@@ -19,26 +19,30 @@ const createBody$ = bodyResultOf(deviceTokenContract.create);
 const pollBody$ = bodyResultOf(deviceTokenContract.poll);
 const confirmBody$ = bodyResultOf(bb0DeviceConfirmContract.confirm);
 
-const createDeviceToken$ = command(async ({ set }, signal: AbortSignal) => {
-  const body = await set(createBody$, signal);
-  if (!body.ok) {
-    return body.response;
-  }
+const createDeviceToken$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(createBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
 
-  const result = await set(
-    createBb0DeviceCode$,
-    body.data.ble_session_nonce,
-    signal,
-  );
+    const result = await set(
+      createBb0DeviceCode$,
+      body.data.ble_session_nonce,
+      signal,
+    );
 
-  return {
-    status: 200 as const,
-    body: result,
-  };
-});
+    return {
+      status: 200 as const,
+      body: result,
+    };
+  },
+);
 
-const pollDeviceToken$ = command(async ({ set }, signal: AbortSignal) => {
-  const body = await set(pollBody$, signal);
+const pollDeviceToken$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const body = await get(pollBody$);
+  signal.throwIfAborted();
   if (!body.ok) {
     return body.response;
   }
@@ -81,7 +85,8 @@ const pollDeviceToken$ = command(async ({ set }, signal: AbortSignal) => {
 
 const confirmBb0DeviceInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const body = await set(confirmBody$, signal);
+    const body = await get(confirmBody$);
+    signal.throwIfAborted();
     if (!body.ok) {
       return body.response;
     }
