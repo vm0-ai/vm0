@@ -3616,6 +3616,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_treats_file_candidate_as_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+        let candidate = storage_candidate_for(entry.clone()).await;
+
+        std::fs::remove_dir_all(&entry).unwrap();
+        std::fs::write(&entry, b"not-a-directory").unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, None);
+        assert!(!result.remaining_entry);
+        assert!(!result.evicted);
+        assert!(
+            entry.is_file(),
+            "non-directory replacement must not be treated as a live cache entry"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_storage_cache_delete_recheck_keeps_candidate_that_became_recent() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
