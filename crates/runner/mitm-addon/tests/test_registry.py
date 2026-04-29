@@ -63,6 +63,22 @@ class TestLoadRegistry:
         assert log.warn.call_count == 1
         assert "Failed to stat" in log.warn.call_args_list[0].args[0]
 
+    def test_missing_file_after_success_returns_cached_registry(self, registry_file):
+        """A transiently missing registry file should not drop the last valid cache."""
+        cached = registry.load_registry(str(registry_file))
+        registry_file.unlink()
+
+        log = MagicMock()
+        with patch.object(registry.ctx, "log", log, create=True):
+            result1 = registry.load_registry(str(registry_file))
+            result2 = registry.load_registry(str(registry_file))
+
+        assert result1 is cached
+        assert result2 is cached
+        assert result1["10.200.0.1"]["runId"] == "run-abc-123"
+        assert log.warn.call_count == 1
+        assert "Failed to stat" in log.warn.call_args_list[0].args[0]
+
     def test_parse_failure_logs_once_and_does_not_reparse(self, tmp_path):
         """Parse failure on a fixed file: key match short-circuits re-parse."""
         bad = tmp_path / "bad.json"
@@ -75,6 +91,26 @@ class TestLoadRegistry:
             for _ in range(5):
                 assert registry.load_registry(str(bad)) == {}
 
+        assert spy.call_count == 1
+        assert log.warn.call_count == 1
+        assert "Failed to parse" in log.warn.call_args_list[0].args[0]
+
+    def test_parse_failure_after_success_returns_cached_registry(self, registry_file):
+        """A transient parse failure should preserve the last valid registry cache."""
+        cached = registry.load_registry(str(registry_file))
+        registry_file.write_text("{ not valid json after success")
+
+        log = MagicMock()
+        with (
+            patch.object(registry.ctx, "log", log, create=True),
+            patch.object(registry.json, "load", wraps=registry.json.load) as spy,
+        ):
+            result1 = registry.load_registry(str(registry_file))
+            result2 = registry.load_registry(str(registry_file))
+
+        assert result1 is cached
+        assert result2 is cached
+        assert result1["10.200.0.1"]["runId"] == "run-abc-123"
         assert spy.call_count == 1
         assert log.warn.call_count == 1
         assert "Failed to parse" in log.warn.call_args_list[0].args[0]
@@ -137,6 +173,64 @@ class TestLoadRegistry:
         assert ("run-other", "api-0") in auth._cache_locks
         assert ("run-other", "api-0") in auth._force_refresh_markers
         assert ("run-other", "api-0") in auth._last_force_refresh_at
+
+    def test_parse_failure_does_not_evict_header_cache(self, registry_file):
+        """Auth cache eviction only runs after a successfully parsed registry reload."""
+        registry.load_registry(str(registry_file))
+
+        auth._firewall_header_cache[("run-abc-123", "api-0")] = {
+            "headers": {"Authorization": "Bearer tok"},
+        }
+        auth._cache_locks[("run-abc-123", "api-0")] = asyncio.Lock()
+        auth._force_refresh_markers.add(("run-abc-123", "api-0"))
+        auth._last_force_refresh_at[("run-abc-123", "api-0")] = 100.0
+
+        registry_file.write_text("{ broken while preserving cache")
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            registry.load_registry(str(registry_file))
+
+        assert ("run-abc-123", "api-0") in auth._firewall_header_cache
+        assert ("run-abc-123", "api-0") in auth._cache_locks
+        assert ("run-abc-123", "api-0") in auth._force_refresh_markers
+        assert ("run-abc-123", "api-0") in auth._last_force_refresh_at
+
+    def test_registry_entries_without_run_id_do_not_keep_header_cache(self, registry_file):
+        """Registry entries with missing/empty runId are not active cache owners."""
+        registry.load_registry(str(registry_file))
+
+        auth._firewall_header_cache[("", "api-0")] = {"headers": {}}
+        auth._cache_locks[("", "api-0")] = asyncio.Lock()
+        auth._force_refresh_markers.add(("", "api-0"))
+        auth._last_force_refresh_at[("", "api-0")] = 100.0
+        auth._firewall_header_cache[("run-active", "api-0")] = {"headers": {}}
+        auth._cache_locks[("run-active", "api-0")] = asyncio.Lock()
+        auth._force_refresh_markers.add(("run-active", "api-0"))
+        auth._last_force_refresh_at[("run-active", "api-0")] = 200.0
+
+        registry_file.write_text(
+            json.dumps(
+                {
+                    "vms": {
+                        "10.200.0.1": {"runId": ""},
+                        "10.200.0.2": {},
+                        "10.200.0.3": {"runId": "run-active"},
+                    },
+                    "updatedAt": 0,
+                }
+            )
+        )
+
+        registry.load_registry(str(registry_file))
+
+        assert ("", "api-0") not in auth._firewall_header_cache
+        assert ("", "api-0") not in auth._cache_locks
+        assert ("", "api-0") not in auth._force_refresh_markers
+        assert ("", "api-0") not in auth._last_force_refresh_at
+        assert ("run-active", "api-0") in auth._firewall_header_cache
+        assert ("run-active", "api-0") in auth._cache_locks
+        assert ("run-active", "api-0") in auth._force_refresh_markers
+        assert ("run-active", "api-0") in auth._last_force_refresh_at
 
 
 class TestGetVmInfo:
