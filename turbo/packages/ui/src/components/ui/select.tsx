@@ -128,8 +128,22 @@ SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
 const SelectItem = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
->(({ className, children, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & {
+    /**
+     * Optional element rendered at the row's right edge, before the check
+     * indicator. Useful for badges, multipliers, or other trailing metadata
+     * that should align in a column across rows.
+     *
+     * Why a dedicated prop instead of styling the children: Radix's
+     * `Select.ItemText` strips `className` from its props before rendering,
+     * so it's impossible to put flex/grow/truncate styling on the text
+     * wrapper itself. With an `endSlot`, this component owns the layout
+     * (flex container, grow on text, shrink-0 on slot) so callers can't
+     * accidentally land in a content-width-only state.
+     */
+    endSlot?: React.ReactNode;
+  }
+>(({ className, children, endSlot, ...props }, ref) => {
   return (
     <SelectPrimitive.Item
       ref={ref}
@@ -139,9 +153,16 @@ const SelectItem = React.forwardRef<
       )}
       {...props}
     >
-      <SelectPrimitive.ItemText className="flex flex-1 min-w-0 items-center gap-2">
-        {children}
-      </SelectPrimitive.ItemText>
+      {endSlot !== undefined ? (
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate">
+            <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+          </span>
+          {endSlot}
+        </span>
+      ) : (
+        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      )}
       <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
           <IconCheck className="h-4 w-4" />
