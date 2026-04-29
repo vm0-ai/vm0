@@ -543,6 +543,32 @@ describe("networkContent", () => {
     expect(getMenuCheckbox("DNS")).toHaveAttribute("aria-checked", "false");
   });
 
+  it("should treat blank network log type as HTTP", async () => {
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [
+          makeNetworkEntry({
+            type: "",
+            url: "https://blank-type.example.com/data",
+          }),
+        ],
+        hasMore: false,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("https://blank-type.example.com/data"),
+      ).toBeInTheDocument();
+    });
+
+    await openNetworkTypeFilter();
+    expect(getMenuCheckbox("HTTP")).toHaveAttribute("aria-checked", "true");
+  });
+
   it("should support multiple selected network type filters", async () => {
     const httpEntry = makeNetworkEntry({
       timestamp: "2026-03-10T14:56:05Z",
@@ -595,6 +621,36 @@ describe("networkContent", () => {
       ).not.toBeInTheDocument();
     });
     expect(screen.getByText("api.example.com:53")).toBeInTheDocument();
+  });
+
+  it("should keep load more visible when current loaded results do not match the type filter", async () => {
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [
+          makeNetworkEntry({
+            timestamp: "2026-03-10T14:56:06Z",
+            type: "dns",
+            action: undefined,
+            method: undefined,
+            url: undefined,
+            status: undefined,
+            host: "api.example.com",
+            port: 53,
+          }),
+        ],
+        hasMore: true,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No matching logs in loaded results"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Load more")).toBeInTheDocument();
   });
 
   it("should include newly loaded types while all network types are selected", async () => {

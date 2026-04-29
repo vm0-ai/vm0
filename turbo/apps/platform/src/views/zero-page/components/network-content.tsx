@@ -53,7 +53,7 @@ function formatLatency(ms: number | undefined | null): string {
 }
 
 function entryType(entry: NetworkLogEntry): string {
-  return (entry.type ?? "http").toUpperCase();
+  return entry.type ? entry.type.toUpperCase() : "HTTP";
 }
 
 function typeBadgeColor(type: string): BadgeColor {
@@ -579,7 +579,7 @@ export function NetworkContent({
                 colSpan={7}
                 className="h-24 text-center text-sm text-muted-foreground"
               >
-                No matching network logs
+                No matching logs in loaded results
               </td>
             </TableRow>
           ) : (
