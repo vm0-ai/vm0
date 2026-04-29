@@ -139,6 +139,7 @@ const pool = lazySingleton((): Pool => {
     new Pool({
       allowExitOnIdle: true,
       connectionString: env("DATABASE_URL"),
+      min: 1,
       max: 5,
     }),
   );
