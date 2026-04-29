@@ -18,7 +18,7 @@ const navigateToFirstThread$ = command(
 // Keyboard shortcuts for the agent chat landing page (/agents/:agentId/chat).
 //
 // Listener is attached to `document` so it fires even while focus is inside
-// the composer textarea, mirroring setupChatPageKeyboard$ on the thread page.
+// the landing-page composer textarea.
 //
 // - mod+shift+down → jump into the first thread in the list (no-op when empty)
 export const setupAgentChatPageKeyboard$ = command(

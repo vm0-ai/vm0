@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -17,6 +16,25 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+
+function mainChatPane(): HTMLElement {
+  const element = document.querySelector<HTMLElement>(
+    "[data-chat-thread-container-id]",
+  );
+  expect(element).not.toBeNull();
+  return element!;
+}
+
+function fireMainShortcut(
+  key: "ArrowUp" | "ArrowDown",
+  options?: { shiftKey?: boolean },
+): void {
+  fireEvent.keyDown(mainChatPane(), {
+    key,
+    ctrlKey: true,
+    shiftKey: options?.shiftKey ?? false,
+  });
+}
 
 function mockEmptyMessages(threadId: string) {
   server.use(
@@ -63,7 +81,6 @@ function mockThreadList(threads: { id: string; title: string }[]) {
 
 describe("chat page keyboard shortcuts", () => {
   it("mod+shift+down navigates to the next thread", async () => {
-    const user = userEvent.setup();
     mockThreadList([
       { id: "thread-1", title: "First" },
       { id: "thread-2", title: "Second" },
@@ -81,7 +98,7 @@ describe("chat page keyboard shortcuts", () => {
       ).toBeInTheDocument();
     });
 
-    await user.keyboard("{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}");
+    fireMainShortcut("ArrowDown", { shiftKey: true });
 
     await waitFor(() => {
       expect(pathname()).toBe("/chats/thread-2");
@@ -89,7 +106,6 @@ describe("chat page keyboard shortcuts", () => {
   });
 
   it("mod+shift+up navigates to the previous thread", async () => {
-    const user = userEvent.setup();
     mockThreadList([
       { id: "thread-1", title: "First" },
       { id: "thread-2", title: "Second" },
@@ -107,7 +123,7 @@ describe("chat page keyboard shortcuts", () => {
       ).toBeInTheDocument();
     });
 
-    await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
+    fireMainShortcut("ArrowUp", { shiftKey: true });
 
     await waitFor(() => {
       expect(pathname()).toBe("/chats/thread-1");
@@ -115,7 +131,6 @@ describe("chat page keyboard shortcuts", () => {
   });
 
   it("mod+shift+up on the first thread escapes to the agent chat page", async () => {
-    const user = userEvent.setup();
     mockThreadList([
       { id: "thread-1", title: "First" },
       { id: "thread-2", title: "Second" },
@@ -131,7 +146,7 @@ describe("chat page keyboard shortcuts", () => {
       ).toBeInTheDocument();
     });
 
-    await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
+    fireMainShortcut("ArrowUp", { shiftKey: true });
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
@@ -139,7 +154,6 @@ describe("chat page keyboard shortcuts", () => {
   });
 
   it("mod+shift+up on the first thread uses the list item's agent.id", async () => {
-    const user = userEvent.setup();
     // The escape navigation must use agent.id, not agentId.
     const AGENT_ID_FROM_OBJECT = "a2222222-0000-4000-a000-000000000002";
     // Include the thread's agent in the team so the chat page setup does not
@@ -208,7 +222,7 @@ describe("chat page keyboard shortcuts", () => {
       ).toBeInTheDocument();
     });
 
-    await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
+    fireMainShortcut("ArrowUp", { shiftKey: true });
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID_FROM_OBJECT}/chat`);
@@ -216,7 +230,6 @@ describe("chat page keyboard shortcuts", () => {
   });
 
   it("mod+shift+down is a no-op on the last thread", async () => {
-    const user = userEvent.setup();
     mockThreadList([
       { id: "thread-1", title: "First" },
       { id: "thread-2", title: "Second" },
@@ -236,8 +249,8 @@ describe("chat page keyboard shortcuts", () => {
     // mod+shift+up which is expected to navigate to thread-1. If the first
     // shortcut had incorrectly navigated, the second navigation would end up
     // somewhere other than thread-1.
-    await user.keyboard("{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}");
-    await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
+    fireMainShortcut("ArrowDown", { shiftKey: true });
+    fireMainShortcut("ArrowUp", { shiftKey: true });
 
     await waitFor(() => {
       expect(pathname()).toBe("/chats/thread-1");
@@ -245,7 +258,6 @@ describe("chat page keyboard shortcuts", () => {
   });
 
   it("mod+down scrolls the message list to the bottom", async () => {
-    const user = userEvent.setup();
     mockThreadList([{ id: "thread-scroll", title: "Scroll test" }]);
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -299,7 +311,7 @@ describe("chat page keyboard shortcuts", () => {
       configurable: true,
     });
     scrollContainer!.scrollTop = 0;
-    await user.keyboard("{Control>}{ArrowDown}{/Control}");
+    fireMainShortcut("ArrowDown");
 
     await waitFor(() => {
       expect(scrollContainer!.scrollTop).toBe(1200);
@@ -307,7 +319,6 @@ describe("chat page keyboard shortcuts", () => {
   });
 
   it("mod+up scrolls the message list to the top", async () => {
-    const user = userEvent.setup();
     mockThreadList([{ id: "thread-scroll-top", title: "Scroll top test" }]);
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -353,7 +364,7 @@ describe("chat page keyboard shortcuts", () => {
     expect(scrollContainer).not.toBeNull();
 
     scrollContainer!.scrollTop = 500;
-    await user.keyboard("{Control>}{ArrowUp}{/Control}");
+    fireMainShortcut("ArrowUp");
 
     await waitFor(() => {
       expect(scrollContainer!.scrollTop).toBe(0);

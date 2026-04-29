@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   useGet,
   useSet,
@@ -28,6 +28,8 @@ import {
 } from "@tabler/icons-react";
 import {
   cn,
+  isEditableTarget,
+  matchShortcut,
   Sheet,
   SheetContent,
   SheetDescription,
@@ -107,6 +109,14 @@ import {
   imageLoadStatusRef$,
   setImageLoadStatus$,
 } from "../../signals/view-component-state.ts";
+import {
+  chatSidebarThread$,
+  chatSidebarThreadId$,
+} from "../../signals/chat-page/chat-sidebar.ts";
+import {
+  navigateToAdjacentThread$,
+  scrollCurrentThread$,
+} from "../../signals/chat-page/chat-keyboard.ts";
 
 const CHAT_SHORTCUT_SECTIONS = [
   {
@@ -249,10 +259,14 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
 
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const displayName = useLastResolved(thread.agentDisplayName$);
+  const threadData = useLastResolved(thread.threadData$);
+  const sidebarThreadId = useGet(chatSidebarThreadId$);
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
+  const threadTitle = threadData?.title?.trim() ?? "";
+  const showThreadTitle = sidebarThreadId !== null && threadTitle.length > 0;
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -261,11 +275,20 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
           <HeaderAgentAvatar thread={thread} />
           <PinPillButton thread={thread} />
         </div>
-        {displayName ? (
-          <span className="font-semibold text-foreground">{displayName}</span>
-        ) : (
-          <Skeleton className="h-5 w-32 rounded" />
-        )}
+        <span className="flex min-w-0 items-baseline gap-2">
+          {displayName ? (
+            <span className="shrink-0 font-semibold text-foreground">
+              {displayName}
+            </span>
+          ) : (
+            <Skeleton className="h-5 w-32 shrink-0 rounded" />
+          )}
+          {showThreadTitle && (
+            <span className="min-w-0 truncate text-sm font-medium text-muted-foreground">
+              {threadTitle}
+            </span>
+          )}
+        </span>
       </div>
       <div className="hidden sm:flex items-center gap-0.5">
         <ArtifactsButton thread={thread} />
@@ -944,14 +967,49 @@ function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
+function ChatThread({ thread }: { thread: ChatThreadSignals }) {
+  const setRuntimeRef = useSet(thread.setRuntimeRef$);
+  const onKeyDown = useChatThreadKeyDown(thread);
+
+  return (
+    <section
+      ref={setRuntimeRef}
+      aria-label="Chat thread"
+      className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
+      data-chat-thread-container-id={thread.threadId}
+      onKeyDown={onKeyDown}
+      tabIndex={-1}
+    >
+      <ChatThreadContent thread={thread} />
+    </section>
+  );
+}
+
 export function ZeroChatThreadPage({ thread }: ZeroChatThreadPageProps) {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
+  const sidebarThread = useGet(chatSidebarThread$);
+  const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   return (
     <>
-      <ZeroChatThreadPageInner thread={thread} />
+      <div className="flex flex-1 min-h-0 bg-transparent">
+        <ChatThread key={thread.threadId} thread={thread} />
+        {sidebarThread && (
+          <>
+            <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+            <ChatThread key={sidebarThread.threadId} thread={sidebarThread} />
+          </>
+        )}
+      </div>
       <ChatArtifactsDrawer thread={thread} />
+      {sidebarThread && (
+        <ChatArtifactsDrawer
+          key={sidebarThread.threadId}
+          thread={sidebarThread}
+        />
+      )}
+      {lightboxUrl && <AttachmentLightbox />}
       <ShortcutHelpDialog
         open={shortcutHelpOpen}
         onOpenChange={setShortcutHelpOpen}
@@ -981,16 +1039,71 @@ function resolveSessionError(
       ? groupsLoadable.error.message
       : "Failed to load messages";
   }
+  if (
+    threadDataLoadable.state === "hasData" &&
+    threadDataLoadable.data === null
+  ) {
+    return "Chat not found";
+  }
   return null;
 }
 
-function ZeroChatThreadPageInner({
-  thread,
-  autoFocus = true,
-}: {
-  thread: ChatThreadSignals;
-  autoFocus?: boolean;
-}) {
+function useChatThreadKeyDown(thread: ChatThreadSignals) {
+  const pageSignal = useGet(pageSignal$);
+  const scrollCurrentThread = useSet(scrollCurrentThread$);
+  const navigateToAdjacentThread = useSet(navigateToAdjacentThread$);
+  const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
+
+  return (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    if (matchShortcut("mod+arrowup", event)) {
+      event.preventDefault();
+      scrollCurrentThread(thread, "top");
+      return;
+    }
+    if (matchShortcut("mod+arrowdown", event)) {
+      event.preventDefault();
+      scrollCurrentThread(thread, "bottom");
+      return;
+    }
+    if (matchShortcut("mod+shift+arrowup", event)) {
+      event.preventDefault();
+      detach(
+        navigateToAdjacentThread(
+          {
+            currentThreadId: thread.threadId,
+            direction: "prev",
+          },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
+      return;
+    }
+    if (matchShortcut("mod+shift+arrowdown", event)) {
+      event.preventDefault();
+      detach(
+        navigateToAdjacentThread(
+          {
+            currentThreadId: thread.threadId,
+            direction: "next",
+          },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
+      return;
+    }
+    if (matchShortcut("shift+/", event) && !isEditableTarget(event.target)) {
+      event.preventDefault();
+      setShortcutHelpOpen(true);
+    }
+  };
+}
+
+function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
   const features = useLastResolved(featureSwitch$);
   const groupsLoadable = useLastLoadable(thread.groupedChatMessages$);
   const hasOlderHistory = useLastResolved(thread.hasOlderHistory$) ?? false;
@@ -1003,7 +1116,6 @@ function ZeroChatThreadPageInner({
   const groups = groupsLoadable.state === "hasData" ? groupsLoadable.data : [];
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const skeletonVisible = useGet(thread.skeletonVisible$);
-  const lightboxUrl = useGet(attachmentLightboxUrl$);
   const manualHistoryEnabled =
     features?.[FeatureSwitchKey.ChatManualHistory] ?? false;
   const loadingHistory = loadHistoryLoadable.state === "loading";
@@ -1013,7 +1125,7 @@ function ZeroChatThreadPageInner({
   });
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 bg-transparent">
+    <>
       <ChatThreadHeader thread={thread} />
 
       <div className="flex-1 min-h-0 relative isolate">
@@ -1095,9 +1207,8 @@ function ZeroChatThreadPageInner({
         )}
       </div>
 
-      <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
-      {lightboxUrl && <AttachmentLightbox />}
-    </div>
+      <ChatThreadComposer thread={thread} />
+    </>
   );
 }
 

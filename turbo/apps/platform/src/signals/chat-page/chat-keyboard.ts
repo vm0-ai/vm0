@@ -1,103 +1,72 @@
 import { command } from "ccstate";
-import { matchShortcut, isEditableTarget } from "@vm0/ui";
 import { chatThreads$, currentChatThreadId$ } from "../agent-chat.ts";
-import { navigateToChat$ } from "../zero-page/zero-nav.ts";
+import {
+  chatSidebarThreadId$,
+  navigateMainChatPreservingSidebar$,
+  openChatSidebar$,
+} from "./chat-sidebar.ts";
 import { detachedNavigateTo$ } from "../route.ts";
-import { onDomEventFn } from "../utils.ts";
 import type { ChatThreadSignals } from "./create-chat-thread.ts";
-import { setChatShortcutHelpOpen$ } from "./chat-shortcut-help.ts";
 
-const navigateToAdjacentThread$ = command(
+export const navigateToAdjacentThread$ = command(
   async (
     { get, set },
-    direction: "prev" | "next",
+    args: {
+      currentThreadId: string;
+      direction: "prev" | "next";
+    },
     signal: AbortSignal,
   ): Promise<void> => {
-    const currentId = get(currentChatThreadId$);
-    if (!currentId) {
+    const mainThreadId = get(currentChatThreadId$);
+    const sidebarThreadId = get(chatSidebarThreadId$);
+    const inMainPane = args.currentThreadId === mainThreadId;
+    const inSidebarPane = args.currentThreadId === sidebarThreadId;
+    if (!inMainPane && !inSidebarPane) {
       return;
     }
+
     const threads = await get(chatThreads$);
     signal.throwIfAborted();
-    const idx = threads.findIndex((t) => {
-      return t.id === currentId;
+    const excludedThreadId = inMainPane ? sidebarThreadId : mainThreadId;
+    const availableThreads = threads.filter((thread) => {
+      return thread.id !== excludedThreadId;
+    });
+    const idx = availableThreads.findIndex((t) => {
+      return t.id === args.currentThreadId;
     });
     if (idx === -1) {
       return;
     }
-    if (direction === "prev" && idx === 0) {
+    if (args.direction === "prev" && idx === 0) {
       // Escape upwards from the first thread to the agent chat page.
-      const agentId = threads[0]!.agent.id;
+      if (inSidebarPane) {
+        return;
+      }
+      const agentId = availableThreads[0]!.agent.id;
       set(detachedNavigateTo$, "/agents/:agentId/chat", {
         pathParams: { agentId },
       });
       return;
     }
-    const targetIdx = direction === "prev" ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= threads.length) {
+    const targetIdx = args.direction === "prev" ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= availableThreads.length) {
       return;
     }
-    set(navigateToChat$, threads[targetIdx]!.id);
+    const targetThreadId = availableThreads[targetIdx]!.id;
+    if (inMainPane) {
+      set(navigateMainChatPreservingSidebar$, targetThreadId);
+    } else {
+      set(openChatSidebar$, targetThreadId);
+    }
   },
 );
 
-const scrollCurrentThread$ = command(
+export const scrollCurrentThread$ = command(
   ({ set }, thread: ChatThreadSignals, position: "top" | "bottom") => {
     if (position === "top") {
       set(thread.scrollToTop$);
     } else {
       set(thread.scrollToBottom$);
     }
-  },
-);
-
-// Keyboard shortcuts for the chat thread page.
-//
-// These run even while focus is in the composer textarea, so we attach the
-// listener directly to `document` instead of going through setupGlobalShortcut
-// (which filters out editable targets). Shortcuts whose key would collide
-// with plain typing (e.g. shift+/ → "?") explicitly skip editable targets.
-//
-// - mod+up / mod+down        → scroll messages to top / bottom
-// - mod+shift+up / shift+down → jump to previous / next thread in the list
-//   (mod+shift+up on the first thread escapes to /agents/:agentId/chat;
-//    mod+shift+down on the last thread is a no-op)
-// - shift+/                   → open keyboard shortcut help (non-editable only)
-export const setupChatPageKeyboard$ = command(
-  ({ set }, thread: ChatThreadSignals, signal: AbortSignal) => {
-    document.addEventListener(
-      "keydown",
-      onDomEventFn(async (e: KeyboardEvent) => {
-        if (e.defaultPrevented) {
-          return;
-        }
-        if (matchShortcut("mod+arrowup", e)) {
-          e.preventDefault();
-          set(scrollCurrentThread$, thread, "top");
-          return;
-        }
-        if (matchShortcut("mod+arrowdown", e)) {
-          e.preventDefault();
-          set(scrollCurrentThread$, thread, "bottom");
-          return;
-        }
-        if (matchShortcut("mod+shift+arrowup", e)) {
-          e.preventDefault();
-          await set(navigateToAdjacentThread$, "prev", signal);
-          return;
-        }
-        if (matchShortcut("mod+shift+arrowdown", e)) {
-          e.preventDefault();
-          await set(navigateToAdjacentThread$, "next", signal);
-          return;
-        }
-        if (matchShortcut("shift+/", e) && !isEditableTarget(e.target)) {
-          e.preventDefault();
-          set(setChatShortcutHelpOpen$, true);
-          return;
-        }
-      }),
-      { signal },
-    );
   },
 );

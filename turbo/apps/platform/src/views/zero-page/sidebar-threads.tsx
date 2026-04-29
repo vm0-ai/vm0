@@ -39,6 +39,11 @@ import {
   deleteChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
 import {
+  chatSidebarThreadId$,
+  navigateMainChatPreservingSidebar$,
+  openChatSidebar$,
+} from "../../signals/chat-page/chat-sidebar.ts";
+import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
   pendingOptimisticChatThreads$,
@@ -59,6 +64,7 @@ import {
 import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
+type ChatThreadPaneIndicator = "main" | "sidebar";
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
@@ -86,29 +92,122 @@ function SessionStateIndicator({ state }: { state: IndicatorState }) {
   );
 }
 
-function ChatThreadItem({
-  session,
-  isSelected,
-  onSelect,
-}: {
-  session: ChatThreadListItem;
-  isSelected: boolean;
-  onSelect?: () => void;
-}) {
-  const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
-  const isRunning = session.running;
-  const isUnread = !session.isRead && !isSelected;
-  const hasDraft = (session.hasDraft ?? false) && !isSelected;
+function ChatThreadListPaneIcon({ pane }: { pane: ChatThreadPaneIndicator }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid={`chat-thread-list-pane-icon-${pane}`}
+      className="grid h-3 w-4 shrink-0 grid-cols-2 overflow-hidden rounded-[2px] border border-current"
+    >
+      <span className={pane === "main" ? "bg-current" : "bg-transparent"} />
+      <span className={pane === "sidebar" ? "bg-current" : "bg-transparent"} />
+    </span>
+  );
+}
 
-  // Priority: running > unread > draft. Only one indicator occupies the
-  // right slot at a time; on hover the slot swaps to the delete button.
-  const indicatorState: IndicatorState | null = isRunning
-    ? "running"
-    : isUnread
-      ? "unread"
-      : hasDraft
-        ? "draft"
-        : null;
+function getChatThreadPaneIndicator({
+  isCurrentPage,
+  sidebarThreadId,
+  threadId,
+}: {
+  isCurrentPage: boolean;
+  sidebarThreadId: string | null;
+  threadId: string;
+}): ChatThreadPaneIndicator | null {
+  if (!sidebarThreadId) {
+    return null;
+  }
+  if (isCurrentPage) {
+    return "main";
+  }
+  return sidebarThreadId === threadId ? "sidebar" : null;
+}
+
+function getIndicatorState({
+  hasDraft,
+  isRunning,
+  isUnread,
+}: {
+  hasDraft: boolean;
+  isRunning: boolean;
+  isUnread: boolean;
+}): IndicatorState | null {
+  if (isRunning) {
+    return "running";
+  }
+  if (isUnread) {
+    return "unread";
+  }
+  return hasDraft ? "draft" : null;
+}
+
+function handleChatThreadClick(
+  e: React.MouseEvent<HTMLAnchorElement>,
+  {
+    canOpenSidebar,
+    closeSidebarOnSelect,
+    isHighlighted,
+    navigateMainChatPreservingSidebar,
+    openChatSidebar,
+    threadId,
+  }: {
+    canOpenSidebar: boolean;
+    closeSidebarOnSelect: () => void;
+    isHighlighted: boolean;
+    navigateMainChatPreservingSidebar: (threadId: string) => void;
+    openChatSidebar: (threadId: string) => void;
+    threadId: string;
+  },
+) {
+  if (e.altKey && canOpenSidebar) {
+    e.preventDefault();
+    openChatSidebar(threadId);
+    if (!isHighlighted) {
+      closeSidebarOnSelect();
+    }
+    return;
+  }
+  if (e.metaKey || e.ctrlKey || e.shiftKey) {
+    return;
+  }
+  if (isHighlighted) {
+    e.preventDefault();
+    return;
+  }
+  if (canOpenSidebar) {
+    e.preventDefault();
+    navigateMainChatPreservingSidebar(threadId);
+  }
+  closeSidebarOnSelect();
+}
+
+function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
+  const pathParams = useGet(pathParams$);
+  const selectedThreadId =
+    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
+  const sidebarThreadId = useGet(chatSidebarThreadId$);
+  const setSidebarExpanded = useSet(setSidebarExpanded$);
+  const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
+  const openChatSidebar = useSet(openChatSidebar$);
+  const navigateMainChatPreservingSidebar = useSet(
+    navigateMainChatPreservingSidebar$,
+  );
+  const isCurrentPage = selectedThreadId === session.id;
+  const isHighlighted = isCurrentPage || sidebarThreadId === session.id;
+  const paneIndicator = getChatThreadPaneIndicator({
+    isCurrentPage,
+    sidebarThreadId,
+    threadId: session.id,
+  });
+  const canOpenSidebar = selectedThreadId !== null;
+  const isRunning = session.running;
+  const isUnread = !session.isRead && !isHighlighted;
+  const hasDraft = (session.hasDraft ?? false) && !isHighlighted;
+  const indicatorState = getIndicatorState({
+    hasDraft,
+    isRunning,
+    isUnread,
+  });
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
@@ -116,29 +215,40 @@ function ChatThreadItem({
     setPendingDeleteThreadId(session.id);
   }
 
+  function closeSidebarOnSelect() {
+    setSidebarExpanded(false);
+  }
+
   return (
     <div className="group relative">
       <Link
         pathname="/chats/:threadId"
         options={{ pathParams: { threadId: session.id } }}
-        aria-current={isSelected ? "page" : undefined}
+        aria-current={isCurrentPage ? "page" : undefined}
         data-chat-thread-id={session.id}
         onClick={(e) => {
-          if (e.metaKey || e.ctrlKey || e.shiftKey) {
-            return;
-          }
-          onSelect?.();
+          handleChatThreadClick(e, {
+            canOpenSidebar,
+            closeSidebarOnSelect,
+            isHighlighted,
+            navigateMainChatPreservingSidebar,
+            openChatSidebar,
+            threadId: session.id,
+          });
         }}
         className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
-          isSelected
+          isHighlighted
             ? "bg-gray-200 text-gray-900 font-medium"
             : isUnread
               ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
               : "text-sidebar-foreground hover:bg-sidebar-accent"
         }`}
       >
-        <span className="truncate min-w-0 flex-1">
-          {session.title ?? "New chat"}
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          {paneIndicator && <ChatThreadListPaneIcon pane={paneIndicator} />}
+          <span className="min-w-0 truncate">
+            {session.title ?? "New chat"}
+          </span>
         </span>
       </Link>
       <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
@@ -159,7 +269,7 @@ function ChatThreadItem({
                   type="button"
                   onClick={handleDeleteClick}
                   className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
-                    isSelected
+                    isHighlighted
                       ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
                       : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
                   }`}
@@ -180,10 +290,6 @@ function ChatThreadItem({
 }
 
 function ChatThreads() {
-  const pathParams = useGet(pathParams$);
-  const selectedThreadId =
-    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
-  const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const deleteChatThread = useSet(deleteChatThread$);
@@ -204,10 +310,6 @@ function ChatThreads() {
         return (s.title ?? "").toLowerCase().includes(trimmedTerm);
       })
     : optimisticChatThreads;
-
-  const onRecentSelect = () => {
-    setSidebarExpanded(false);
-  };
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -233,24 +335,10 @@ function ChatThreads() {
   return (
     <>
       {filteredOptimisticChatThreads.map((session) => {
-        return (
-          <ChatThreadItem
-            key={session.id}
-            session={session}
-            isSelected={selectedThreadId === session.id}
-            onSelect={onRecentSelect}
-          />
-        );
+        return <ChatThreadItem key={session.id} session={session} />;
       })}
       {filteredChatThreads.map((session) => {
-        return (
-          <ChatThreadItem
-            key={session.id}
-            session={session}
-            isSelected={selectedThreadId === session.id}
-            onSelect={onRecentSelect}
-          />
-        );
+        return <ChatThreadItem key={session.id} session={session} />;
       })}
       <Dialog
         open={pendingDeleteThreadId !== null}

@@ -135,6 +135,7 @@ function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
 // ---------------------------------------------------------------------------
 
 export interface ChatThreadSignals {
+  threadId: string;
   // ── Data signals ──────────────────────────────────────────────────────────
   threadData$: Computed<Promise<ChatThread | null>>;
   // ── Composer model override ──────────────────────────────────────────────
@@ -179,6 +180,7 @@ export interface ChatThreadSignals {
   // ── Focus ─────────────────────────────────────────────────────────────────
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
+  setRuntimeRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   // ── Draft sync ────────────────────────────────────────────────────────────
   scheduleDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // ── Paged messages (sole rendering path) ─────────────────────────────────
@@ -991,6 +993,68 @@ function createInputRef() {
   return { setInputRef$, focusInput$ };
 }
 
+function createRuntimeRef({
+  threadData$,
+  groupedChatMessages$,
+  hideSkeleton$,
+  scrollToBottom$,
+  runPhraseLoop$,
+  loadPagedMessages$,
+}: {
+  threadData$: Computed<Promise<ChatThread | null>>;
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  hideSkeleton$: Command<void, []>;
+  scrollToBottom$: Command<void, []>;
+  runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
+  loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
+}) {
+  return onRef(
+    command(async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
+      const threadData = await get(threadData$);
+      signal.throwIfAborted();
+      if (!threadData) {
+        set(hideSkeleton$);
+        return;
+      }
+
+      await get(groupedChatMessages$);
+      signal.throwIfAborted();
+
+      animationFrame(
+        () => {
+          set(scrollToBottom$);
+          set(hideSkeleton$);
+        },
+        { signal },
+      );
+
+      await Promise.all([
+        set(runPhraseLoop$, signal),
+        set(loadPagedMessages$, signal),
+      ]);
+    }),
+  );
+}
+
+function createLatestRunStatus(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  return computed(async (get): Promise<string | null> => {
+    const thread = await get(threadData$);
+    return thread?.activeRuns[0]?.status ?? null;
+  });
+}
+
+function createLoadHistoryWithPrependScroll(
+  recordScrollHeightForPrepend$: Command<void, []>,
+  loadPagedHistory$: Command<Promise<void>, [AbortSignal]>,
+) {
+  return command(async ({ set }, signal: AbortSignal): Promise<void> => {
+    set(recordScrollHeightForPrepend$);
+    await set(loadPagedHistory$, signal);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Factory: createRunTracking
 // ---------------------------------------------------------------------------
@@ -1400,13 +1464,9 @@ export function createChatThreadSignals(
     insertOptimisticMessage$,
   } = createPagedMessages(threadId, threadData$, options);
 
-  // Anchor the scroll viewport to current content before the prepend so the
-  // ResizeObserver compensation keeps the user reading the same spot.
-  const loadHistory$: Command<Promise<void>, [AbortSignal]> = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(recordScrollHeightForPrepend$);
-      await set(loadPagedHistory$, signal);
-    },
+  const loadHistory$ = createLoadHistoryWithPrependScroll(
+    recordScrollHeightForPrepend$,
+    loadPagedHistory$,
   );
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
@@ -1443,16 +1503,18 @@ export function createChatThreadSignals(
     setArtifactPreviewKey$,
   } = createArtifacts(threadId, groupedChatMessages$);
 
-  // Status of the currently-active run, sourced from threadData$.activeRuns.
-  // `chatThreadRunUpdated` Ably events trigger reloadThread$, so this signal
-  // flips from "queued" → "running" as soon as the run is dispatched. Null
-  // once the run enters a terminal state and drops out of activeRuns.
-  const latestRunStatus$ = computed(async (get): Promise<string | null> => {
-    const thread = await get(threadData$);
-    return thread?.activeRuns[0]?.status ?? null;
+  const latestRunStatus$ = createLatestRunStatus(threadData$);
+  const setRuntimeRef$ = createRuntimeRef({
+    threadData$,
+    groupedChatMessages$,
+    hideSkeleton$,
+    scrollToBottom$,
+    runPhraseLoop$,
+    loadPagedMessages$,
   });
 
   return {
+    threadId,
     threadData$,
     modelSelection$,
     setModelSelection$,
@@ -1477,6 +1539,7 @@ export function createChatThreadSignals(
     copyMessage$,
     setInputRef$,
     focusInput$,
+    setRuntimeRef$,
     scheduleDraftSync$,
     earliestChatMessageId$,
     latestChatMessageId$,

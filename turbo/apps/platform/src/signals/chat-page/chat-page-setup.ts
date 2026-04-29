@@ -14,7 +14,6 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
-import { setupChatPageKeyboard$ } from "./chat-keyboard.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import {
   clearMatchingOptimisticChatThread$,
@@ -42,7 +41,6 @@ export const setupChatPage$ = command(
 
     const { draft, isNew } = set(ensureDraft$, threadId);
     const thread = createChatThreadSignals(threadId, draft);
-    set(setupChatPageKeyboard$, thread, signal);
 
     const optimisticThread = get(optimisticChatThread$);
     const matchingOptimisticThread =
