@@ -59,10 +59,10 @@
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       If all are provided on the install path, rollback warms the shared
-#       rootfs cache once before per-host rebuilds. If omitted, rollback keeps
-#       its offline-capable local rebuild behavior. Also passed to `runner gc`
-#       for best-effort R2-side cleanup.
+#       Passed to `runner build` for best-effort rootfs cache download/upload
+#       and to `runner gc` for best-effort R2-side cleanup. Rollback does not
+#       run the newer `--warm-rootfs-cache` path because the target rollback
+#       binary may predate that flag.
 
 - name: Rollback VM0 Runner
   hosts: all
@@ -337,34 +337,12 @@
       when: not (skip_install | default(false))
       command: "{{ bin_dir }}/runner setup"
 
-    - name: Warm shared rootfs cache when R2 credentials are available
-      when:
-        - not (skip_install | default(false))
-        - r2_account_id is defined and r2_account_id | length > 0
-        - r2_access_key_id is defined and r2_access_key_id | length > 0
-        - r2_secret_access_key is defined and r2_secret_access_key | length > 0
-        - r2_bucket is defined and r2_bucket | length > 0
-      run_once: true
-      command: >
-        {{ bin_dir }}/runner build
-        --profile vm0/default
-        --warm-rootfs-cache
-      environment:
-        # Fail visibly if the shared R2 cache cannot be warmed. This prevents
-        # every rollback install target from stampeding into the slow local
-        # rootfs build path when the target rootfs_hash is not already cached.
-        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
-        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
-        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
-        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
-      register: default_rootfs_warm_output
-
     # Always runs on install path. Content-addressed by hash of embedded
     # guests + recipe; if target's rootfs/snapshot are already on disk at
-    # the matching hash path, this returns in ~1s. When R2 credentials were
-    # provided, the warm step above ensures remote cache can satisfy a local
-    # rootfs miss in seconds instead of rebuilding. Without R2 credentials,
-    # rollback intentionally preserves the old offline-capable local path.
+    # the matching hash path, this returns in ~1s. When R2 credentials are
+    # provided, the build can best-effort download/upload rootfs through the
+    # shared cache. Without R2 credentials, rollback intentionally preserves
+    # the old offline-capable local path.
     - name: Rebuild default rootfs and snapshot
       when: not (skip_install | default(false))
       command: >
