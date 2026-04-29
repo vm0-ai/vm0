@@ -160,8 +160,9 @@ describe("network insights page - data rendering", () => {
 
     detachedSetupPage({ context, path: "/insights" });
 
+    // Top agent appears in both the digest line and the masonry → multiple matches
     await waitFor(() => {
-      expect(screen.getByText("Alpha Bot")).toBeInTheDocument();
+      expect(screen.getAllByText("Alpha Bot").length).toBeGreaterThanOrEqual(1);
     });
     expect(screen.getByText("Beta Bot")).toBeInTheDocument();
   });
@@ -342,7 +343,7 @@ describe("network insights page - data rendering", () => {
     });
   });
 
-  it("should render multiple days", async () => {
+  it("should render a digest row per day with only the newest auto-expanded", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago),
       sampleDay(day2Ago, {
@@ -355,9 +356,27 @@ describe("network insights page - data rendering", () => {
     detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(screen.getByText("Alpha Bot")).toBeInTheDocument();
+      expect(screen.getByText("Yesterday")).toBeInTheDocument();
     });
-    expect(screen.getByText("Gamma Bot")).toBeInTheDocument();
+    // Two digest rows render — older day's row contains an h2 inside the button
+    const digestButtons = screen.getAllByRole("button").filter((b) => {
+      return b.querySelector("h2") !== null;
+    });
+    expect(digestButtons).toHaveLength(2);
+    // Newest is auto-expanded; older is collapsed
+    expect(
+      digestButtons.filter((b) => {
+        return b.getAttribute("aria-expanded") === "true";
+      }),
+    ).toHaveLength(1);
+    expect(
+      digestButtons.filter((b) => {
+        return b.getAttribute("aria-expanded") === "false";
+      }),
+    ).toHaveLength(1);
+    // Older day's masonry-only artifact (PermissionsAllowedCard heading) absent
+    // because the older day is collapsed; the expanded newest day still shows it.
+    expect(screen.getAllByText("Allowed")).toHaveLength(1);
   });
 });
 
@@ -402,7 +421,7 @@ describe("network insights page - date range filter", () => {
     });
   });
 
-  it("should switch to Last 30 Days range", async () => {
+  it("should switch to Last 30 Days range and surface older day's digest row", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago),
       sampleDay(day25Ago, {
@@ -414,21 +433,38 @@ describe("network insights page - date range filter", () => {
 
     detachedSetupPage({ context, path: "/insights" });
 
-    // Default is "Last 7 Days" — OldBot not visible
+    // Default is "Last 7 Days" — OldBot's day filtered out entirely
     await waitFor(() => {
       expect(screen.getByText("Last 7 Days")).toBeInTheDocument();
     });
     expect(screen.queryByText("OldBot")).not.toBeInTheDocument();
 
-    // Open dropdown and select "Last 30 Days"
     click(screen.getByText("Last 7 Days"));
     await waitFor(() => {
       expect(screen.getByText("Last 30 Days")).toBeInTheDocument();
     });
     click(screen.getByText("Last 30 Days"));
 
+    // Older day's digest row appears but content stays collapsed by default —
+    // expand it to reveal OldBot.
     await waitFor(() => {
-      expect(screen.getByText("OldBot")).toBeInTheDocument();
+      const collapsed = screen
+        .getAllByRole("button", { expanded: false })
+        .find((b) => {
+          return b.querySelector("h2") !== null;
+        });
+      expect(collapsed).toBeDefined();
+    });
+    const collapsedDigest = screen
+      .getAllByRole("button", { expanded: false })
+      .find((b) => {
+        return b.querySelector("h2") !== null;
+      })!;
+    click(collapsedDigest);
+
+    // OldBot now appears in both the digest line and the masonry
+    await waitFor(() => {
+      expect(screen.getAllByText("OldBot").length).toBeGreaterThanOrEqual(2);
     });
   });
 });
@@ -518,9 +554,12 @@ describe("network insights page - data refetch", () => {
     detachedSetupPage({ context, path: "/insights" });
 
     // The page setup calls reloadInsights$ which triggers a second fetch,
-    // so the UI should eventually show the refreshed data.
+    // so the UI should eventually show the refreshed data. RefreshedBot is
+    // the top agent → appears in both the digest line and the masonry.
     await waitFor(() => {
-      expect(screen.getByText("RefreshedBot")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("RefreshedBot").length,
+      ).toBeGreaterThanOrEqual(1);
     });
     expect(callCount).toBeGreaterThanOrEqual(2);
   });
@@ -847,5 +886,165 @@ describe("network insights page - embedded usage panels", () => {
     expect(
       screen.queryByRole("region", { name: "Credits totals" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Daily diary — collapse/expand
+// ---------------------------------------------------------------------------
+
+describe("network insights page - daily diary", () => {
+  it("should auto-expand only the most recent day", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago),
+      sampleDay(day2Ago, {
+        agents: [
+          { agentName: "Older Bot", agentId: "a-old", runs: 2, credits: 30 },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Yesterday")).toBeInTheDocument();
+    });
+    // The masonry's PermissionsAllowedCard heading is unique to the expanded
+    // day's content — exactly one "Allowed" means exactly one day expanded.
+    expect(screen.getAllByText("Allowed")).toHaveLength(1);
+  });
+
+  it("should reveal an older day's masonry on expand", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago),
+      sampleDay(day2Ago, {
+        agents: [
+          { agentName: "Older Bot", agentId: "a-old", runs: 2, credits: 30 },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Yesterday")).toBeInTheDocument();
+    });
+    // Before expand: Older Bot only in collapsed digest (1 occurrence)
+    expect(screen.getAllByText("Older Bot")).toHaveLength(1);
+
+    const collapsedDigest = screen
+      .getAllByRole("button", { expanded: false })
+      .find((b) => {
+        return b.querySelector("h2") !== null;
+      })!;
+    click(collapsedDigest);
+
+    // After expand: Older Bot appears in both digest line and masonry
+    await waitFor(() => {
+      expect(screen.getAllByText("Older Bot").length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  it("should collapse an expanded day on second click", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    // Newest day auto-expanded → masonry "Allowed" heading visible
+    await waitFor(() => {
+      expect(screen.getByText("Allowed")).toBeInTheDocument();
+    });
+
+    const expandedDigest = screen
+      .getAllByRole("button", { expanded: true })
+      .find((b) => {
+        return b.querySelector("h2") !== null;
+      })!;
+    click(expandedDigest);
+
+    // After collapse: masonry artifacts gone
+    await waitFor(() => {
+      expect(screen.queryByText("Allowed")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should display credits and runs in the digest line", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    // sampleDay totals: 200 credits, 5+3=8 runs
+    await waitFor(() => {
+      expect(screen.getByText("Yesterday")).toBeInTheDocument();
+    });
+    // Credits and runs appear in the digest header
+    const digestRow = screen
+      .getAllByRole("button", { expanded: true })
+      .find((b) => {
+        return b.querySelector("h2") !== null;
+      })!;
+    expect(digestRow.textContent).toContain("200");
+    expect(digestRow.textContent).toContain("8 runs");
+  });
+
+  it("should show top agent in the digest line", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Yesterday")).toBeInTheDocument();
+    });
+    // Alpha Bot has 120 credits vs Beta Bot's 80 → Alpha Bot is top
+    const digestRow = screen
+      .getAllByRole("button", { expanded: true })
+      .find((b) => {
+        return b.querySelector("h2") !== null;
+      })!;
+    expect(digestRow.textContent).toContain("Alpha Bot");
+  });
+
+  it("should show blocked badge in digest line when denials exist", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        permissions: [
+          {
+            label: "stripe:charge",
+            connectorType: "stripe",
+            allowed: 0,
+            denied: 4,
+            agentNames: ["Alpha Bot"],
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("4 blocked")).toBeInTheDocument();
+    });
+  });
+
+  it("should not show blocked badge when no denials", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        permissions: [
+          {
+            label: "chat:write",
+            allowed: 10,
+            denied: 0,
+            agentNames: ["Alpha Bot"],
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Yesterday")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/\d+ blocked$/)).not.toBeInTheDocument();
   });
 });
