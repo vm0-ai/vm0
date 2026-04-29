@@ -10,6 +10,7 @@ import {
   type ChatThreadSignals,
 } from "./create-chat-thread.ts";
 import { createDraftSignals } from "../zero-page/chat-draft.ts";
+import { sidebarOptimisticChatThread$ } from "./optimistic-chat-thread-page.ts";
 
 const SIDEBAR_PARAM = "sidebar";
 
@@ -31,6 +32,11 @@ export const chatSidebarThread$ = computed((get): ChatThreadSignals | null => {
   const sidebarThreadId = get(chatSidebarThreadId$);
   if (!sidebarThreadId) {
     return null;
+  }
+
+  const optimisticThread = get(sidebarOptimisticChatThread$);
+  if (optimisticThread?.threadId === sidebarThreadId) {
+    return optimisticThread.pendingThread;
   }
 
   return createChatThreadSignals(sidebarThreadId, createDraftSignals());

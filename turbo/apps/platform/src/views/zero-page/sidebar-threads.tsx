@@ -46,6 +46,7 @@ import {
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
+  type OptimisticChatPane,
   pendingOptimisticChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
@@ -383,8 +384,11 @@ function ChatThreadsTitle() {
   const { titleLabel, searchPlaceholder, newChatAriaLabel } =
     useChatThreadsTitleLabels();
   const newChatDisabled = useGet(optimisticChatThread$) !== null;
-  const onNewChat = () => {
-    detach(createNewChat(currentChatAgentId, rootSignal), Reason.DomCallback);
+  const onNewChat = (pane: OptimisticChatPane) => {
+    detach(
+      createNewChat(currentChatAgentId, pane, rootSignal),
+      Reason.DomCallback,
+    );
     setExpanded(false);
   };
   const searchOpen = useGet(threadSearchOpen$);
@@ -471,7 +475,7 @@ function ChatThreadsTitle() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onNewChat();
+                  onNewChat(e.altKey ? "sidebar" : "main");
                 }}
                 disabled={newChatDisabled}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50"

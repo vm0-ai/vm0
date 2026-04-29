@@ -4,6 +4,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import {
   chatThreadByIdContract,
@@ -37,26 +38,83 @@ function isThreadId(value: string): value is ThreadId {
   return value in threadTitles;
 }
 
-function mockChatSidebarApis(): void {
+function mockChatSidebarApis(): {
+  createdThreadIds: string[];
+  createdThreads: Map<string, { agentId: string; title: string | null }>;
+  recordCreatedThread: (
+    id: string,
+    agentId: string,
+    title: string | null,
+  ) => void;
+} {
+  const createdThreadIds: string[] = [];
+  const createdThreads = new Map<
+    string,
+    { agentId: string; title: string | null }
+  >();
+  const recordCreatedThread = (
+    id: string,
+    agentId: string,
+    title: string | null,
+  ) => {
+    createdThreadIds.unshift(id);
+    createdThreads.set(id, { agentId, title });
+  };
+
   server.use(
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, {
-        threads: Object.entries(threadTitles).map(([id, title]) => {
-          return {
-            id,
-            title,
-            agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-            isRead: false,
-            isArchived: false,
-            running: false,
-          };
-        }),
+        threads: [
+          ...createdThreadIds.map((id) => {
+            const thread = createdThreads.get(id);
+            return {
+              id,
+              title: thread?.title ?? null,
+              agent: {
+                id: thread?.agentId ?? DEFAULT_AGENT_ID,
+                avatarUrl: null,
+              },
+              createdAt: "2026-03-10T00:00:01Z",
+              updatedAt: "2026-03-10T00:00:01Z",
+              isRead: true,
+              isArchived: false,
+              running: false,
+            };
+          }),
+          ...Object.entries(threadTitles).map(([id, title]) => {
+            return {
+              id,
+              title,
+              agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+              createdAt: "2026-03-10T00:00:00Z",
+              updatedAt: "2026-03-10T00:00:00Z",
+              isRead: false,
+              isArchived: false,
+              running: false,
+            };
+          }),
+        ],
       });
     }),
     mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       const id = String(params.id);
+      const createdThread = createdThreads.get(id);
+      if (createdThread) {
+        return respond(200, {
+          id,
+          title: createdThread.title,
+          agentId: createdThread.agentId,
+          chatMessages: [],
+          latestSessionId: null,
+          lastReadMessageId: null,
+          activeRunIds: [],
+          activeRuns: [],
+          createdAt: "2026-03-10T00:00:01Z",
+          updatedAt: "2026-03-10T00:00:01Z",
+          draftContent: null,
+          draftAttachments: null,
+        });
+      }
       if (!isThreadId(id)) {
         return respond(404, {
           error: { message: "Not found", code: "NOT_FOUND" },
@@ -79,6 +137,9 @@ function mockChatSidebarApis(): void {
     }),
     mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
       const id = String(params.threadId);
+      if (createdThreads.has(id)) {
+        return respond(200, { messages: [], hasHistoryBefore: false });
+      }
       if (!isThreadId(id)) {
         return respond(404, {
           error: { message: "Not found", code: "NOT_FOUND" },
@@ -99,10 +160,22 @@ function mockChatSidebarApis(): void {
         hasHistoryBefore: false,
       });
     }),
+    mockApi(chatThreadsContract.create, ({ body, respond }) => {
+      const id =
+        body.clientThreadId ?? `created-thread-${createdThreadIds.length + 1}`;
+      recordCreatedThread(id, body.agentId, body.title ?? null);
+      return respond(201, {
+        id,
+        title: body.title ?? null,
+        createdAt: "2026-03-10T00:00:01Z",
+      });
+    }),
     mockApi(chatThreadMarkReadContract.markRead, ({ respond }) => {
       return respond(200, { lastReadMessageId: null, changed: false });
     }),
   );
+
+  return { createdThreadIds, createdThreads, recordCreatedThread };
 }
 
 function chatThreadLink(title: string): HTMLAnchorElement {
@@ -123,6 +196,12 @@ function chatThreadContainer(threadId: string): HTMLElement {
   );
   expect(element).not.toBeNull();
   return element!;
+}
+
+function sidebarNewChatButton(): HTMLElement {
+  return within(
+    screen.getByRole("navigation", { name: "Sidebar" }),
+  ).getByLabelText(/^New chat/);
 }
 
 function fireModShiftArrow(
@@ -192,6 +271,112 @@ describe("chat sidebar", () => {
         ),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("keeps the sidebar open when directly creating a new main chat", async () => {
+    const { createdThreadIds } = mockChatSidebarApis();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-main?sidebar=thread-sidebar",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Primary thread answer")).toBeInTheDocument();
+      expect(screen.getByText("Sidebar thread answer")).toBeInTheDocument();
+    });
+
+    fireEvent.click(sidebarNewChatButton());
+
+    await waitFor(() => {
+      expect(createdThreadIds).toHaveLength(1);
+    });
+    const createdThreadId = createdThreadIds[0]!;
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${createdThreadId}`);
+      expect(search()).toBe("?sidebar=thread-sidebar");
+      expect(chatThreadContainer(createdThreadId)).toBeInTheDocument();
+      expect(chatThreadContainer("thread-sidebar")).toBeInTheDocument();
+    });
+  });
+
+  it("creates a new sidebar chat on option-clicking the new chat button", async () => {
+    const { createdThreadIds } = mockChatSidebarApis();
+
+    detachedSetupPage({ context, path: "/chats/thread-main" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Primary thread answer")).toBeInTheDocument();
+    });
+
+    fireEvent.click(sidebarNewChatButton(), { altKey: true });
+
+    await waitFor(() => {
+      expect(createdThreadIds).toHaveLength(1);
+    });
+    const createdThreadId = createdThreadIds[0]!;
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/chats/thread-main");
+      expect(search()).toBe(`?sidebar=${createdThreadId}`);
+      expect(chatThreadContainer("thread-main")).toBeInTheDocument();
+      expect(
+        within(chatThreadContainer(createdThreadId)).getByText(
+          "Send a message to start the conversation",
+        ),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("renders the option-clicked new sidebar chat optimistically before create settles", async () => {
+    const { createdThreadIds, createdThreads } = mockChatSidebarApis();
+    const createDeferred = createDeferredPromise<void>(context.signal);
+
+    server.use(
+      mockApi(chatThreadsContract.create, async ({ body, respond }) => {
+        const id =
+          body.clientThreadId ??
+          `created-thread-${createdThreadIds.length + 1}`;
+        createdThreadIds.unshift(id);
+        await createDeferred.promise;
+        createdThreads.set(id, {
+          agentId: body.agentId,
+          title: body.title ?? null,
+        });
+        return respond(201, {
+          id,
+          title: body.title ?? null,
+          createdAt: "2026-03-10T00:00:01Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-main" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Primary thread answer")).toBeInTheDocument();
+    });
+
+    fireEvent.click(sidebarNewChatButton(), { altKey: true });
+
+    await waitFor(() => {
+      expect(createdThreadIds).toHaveLength(1);
+    });
+    const createdThreadId = createdThreadIds[0]!;
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/chats/thread-main");
+      expect(search()).toBe(`?sidebar=${createdThreadId}`);
+      expect(chatThreadContainer("thread-main")).toBeInTheDocument();
+      expect(
+        within(chatThreadContainer(createdThreadId)).getByText(
+          "Send a message to start the conversation",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    createDeferred.resolve();
   });
 
   it("shows pane icons in highlighted sidebar chat titles only while two chats are open", async () => {

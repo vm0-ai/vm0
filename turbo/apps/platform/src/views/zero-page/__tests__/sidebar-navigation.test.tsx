@@ -373,6 +373,7 @@ describe("sidebar new chat navigation", () => {
     await context.store.set(
       createNewChatThreadOptimistically$,
       "c0000000-0000-4000-a000-000000000001",
+      "main",
       context.signal,
     );
     expect(createCount).toBe(1);
@@ -390,6 +391,7 @@ describe("sidebar new chat navigation", () => {
     await context.store.set(
       createNewChatThreadOptimistically$,
       "c0000000-0000-4000-a000-000000000001",
+      "main",
       context.signal,
     );
 

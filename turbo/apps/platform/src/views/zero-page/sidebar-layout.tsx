@@ -24,6 +24,7 @@ import {
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
+  type OptimisticChatPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
@@ -153,9 +154,9 @@ function NewOrUnreadChatButtonLeaf() {
     );
   }
 
-  const handleNewChat = () => {
+  const handleNewChat = (pane: OptimisticChatPane) => {
     detach(
-      createNewChat(currentChatAgentId ?? null, rootSignal),
+      createNewChat(currentChatAgentId ?? null, pane, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -163,7 +164,9 @@ function NewOrUnreadChatButtonLeaf() {
   return (
     <button
       type="button"
-      onClick={handleNewChat}
+      onClick={(event) => {
+        handleNewChat(event.altKey ? "sidebar" : "main");
+      }}
       disabled={creating}
       className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0 disabled:opacity-50"
     >

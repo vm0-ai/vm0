@@ -69,6 +69,7 @@ import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
   sendNewThreadOptimistically$,
+  type OptimisticChatPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
@@ -180,9 +181,9 @@ function NewChatButton() {
   const creating = useGet(optimisticChatThread$) !== null;
   const { signal: rootSignal } = useGet(rootSignal$);
 
-  const handleNewChat = () => {
+  const handleNewChat = (pane: OptimisticChatPane) => {
     detach(
-      createNewChat(currentChatAgentId ?? null, rootSignal),
+      createNewChat(currentChatAgentId ?? null, pane, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -191,7 +192,9 @@ function NewChatButton() {
     <Button
       variant="outline"
       size="sm"
-      onClick={handleNewChat}
+      onClick={(event) => {
+        handleNewChat(event.altKey ? "sidebar" : "main");
+      }}
       disabled={creating}
       className="zero-btn-morandi gap-1.5"
       data-testid="chat-header-new-button"
