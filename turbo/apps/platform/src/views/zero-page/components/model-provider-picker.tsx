@@ -556,14 +556,12 @@ function renderProviderGroup(
             value={`${group.provider.id}::${model}`}
             disabled={group.incompatible}
           >
-            <span className="flex items-center gap-2 w-full">
-              <span className="truncate min-w-0 flex-1">
-                {getModelDisplayName(model)}
-              </span>
-              {multiplier !== undefined && (
-                <MultiplierBadge multiplier={multiplier} />
-              )}
+            <span className="truncate min-w-0 flex-1">
+              {getModelDisplayName(model)}
             </span>
+            {multiplier !== undefined && (
+              <MultiplierBadge multiplier={multiplier} />
+            )}
           </SelectItem>
         );
       })}
