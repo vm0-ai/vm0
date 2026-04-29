@@ -4,7 +4,7 @@
  * Covers: UsageInsightBarChart, UsageInsightChatsTable,
  * UsageInsightSchedulesTable, UsageInsightSelectors, UsageInsightView
  *
- * Entry point: detachedSetupPage({ context, path: "/_/usage" })
+ * Entry point: detachedSetupPage({ context, path: "/usage" })
  * Mock (external): HTTP via MSW zeroUsageInsightContract
  * Real (internal): All signals, components, rendering
  */
@@ -48,7 +48,7 @@ describe("usage insight view - loading, error, and data states", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -70,7 +70,7 @@ describe("usage insight view - loading, error, and data states", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -143,7 +143,7 @@ describe("usage insight view - loading, error, and data states", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -201,7 +201,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // Wait for the credits label to appear
     await waitFor(() => {
@@ -232,7 +232,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // The breakdown list renders when stackOrder.length > 1 && total > 0.
     // With 3 categories (chat, slack, others), the breakdown list should appear.
@@ -274,7 +274,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -299,7 +299,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -332,7 +332,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -370,7 +370,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -414,7 +414,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // Wait for the chat titles to appear
     await waitFor(() => {
@@ -460,7 +460,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("Design Review")).toBeInTheDocument();
@@ -495,7 +495,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("2")).toBeInTheDocument();
@@ -528,7 +528,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("Visible Chat")).toBeInTheDocument();
@@ -562,7 +562,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // The breakdown list shows "5.0K" for the Big Chat row (5000 >= 1000)
     await waitFor(() => {
@@ -596,7 +596,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -653,7 +653,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // Wait for schedule content to appear, then verify count "3" is visible
     await waitFor(() => {
@@ -697,7 +697,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("Daily Standup")).toBeInTheDocument();
@@ -735,7 +735,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("Visible Schedule")).toBeInTheDocument();
@@ -779,7 +779,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // s1: description present → render description
     await waitFor(() => {
@@ -809,7 +809,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // When scheduleOtherCount is 1, the "+1 more schedule" row appears (singular)
     await waitFor(() => {
@@ -839,7 +839,7 @@ describe("usage insight selectors - date range dropdown", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(

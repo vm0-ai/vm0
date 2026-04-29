@@ -28,7 +28,7 @@ export const ROUTES = {
   signInToken: "/sign-in-token",
   lab: "/_/lab",
   insights: "/insights",
-  usage: "/_/usage",
+  usage: "/usage",
   internalConnectorLogos: "/__internal-connector-logos",
   reportError: "/runs/:runId/report-error",
   redeemCampaign: "/redeem/:campaign",
