@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.99.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.0...runner-rs-v0.99.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* bound runner storage cache cardinality ([#11554](https://github.com/vm0-ai/vm0/issues/11554)) ([1950c8b](https://github.com/vm0-ai/vm0/commit/1950c8b97ae9deacd61a971af90b2c84ba16fd69))
+
 ## [0.99.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.7...runner-rs-v0.99.0) (2026-04-29)
 
 
