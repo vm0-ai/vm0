@@ -107,9 +107,8 @@ async function withCleanCreditUsageTransaction(
   const client = postgres(databaseUrl, { max: 1 });
   try {
     try {
-      await client.begin(async (tx) => {
-        // Isolate unscoped migration tests from stale rows in the shared test DB.
-        await tx`DELETE FROM usage_event`;
+      await client.begin("isolation level repeatable read", async (tx) => {
+        // Isolate unscoped migration tests from stale source rows in the shared test DB.
         await tx`DELETE FROM credit_usage`;
         await callback(tx);
         throw ROLLBACK_TEST_TRANSACTION;
@@ -456,6 +455,7 @@ describe("migration 0329 backfill credit_usage to usage_event", () => {
           quantity::int AS quantity,
           credits_charged::int AS "creditsCharged"
         FROM usage_event
+        WHERE org_id IN (${orgA}, ${orgB})
         ORDER BY org_id, category
       `;
       expect(rows).toEqual([
@@ -535,6 +535,7 @@ describe("migration 0329 backfill credit_usage to usage_event", () => {
           quantity::int AS quantity,
           credits_charged::int AS "creditsCharged"
         FROM usage_event
+        WHERE org_id = ${orgId}
         ORDER BY org_id, category
       `;
       expect(rows).toEqual([
