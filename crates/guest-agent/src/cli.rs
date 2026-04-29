@@ -316,8 +316,10 @@ pub async fn execute_cli(
         env::Framework::ClaudeCode => {
             // Suppress Claude CLI features that are unnecessary or harmful in a
             // sandbox: startup network calls (statsig, Datadog, Segment, GCS
-            // update check, GitHub) add ~2s latency, telemetry has no receiver,
-            // and the CLI version is baked into the rootfs image.
+            // update check, GitHub) add ~2s latency, background tasks can keep
+            // a one-shot run alive after its final result, telemetry has no
+            // receiver, and the CLI version is baked into the rootfs image.
+            cmd.env("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
             cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
             cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
             cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
