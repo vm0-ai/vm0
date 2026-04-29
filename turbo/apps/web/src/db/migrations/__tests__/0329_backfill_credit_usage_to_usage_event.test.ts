@@ -126,6 +126,7 @@ async function insertRunBoundCreditUsage(params: {
   userId: string;
   model?: string;
   modelProvider?: string;
+  resultUuid?: string | null;
   messageId?: string | null;
   inputTokens?: number;
   outputTokens?: number;
@@ -184,7 +185,7 @@ async function insertRunBoundCreditUsage(params: {
     .insert(creditUsage)
     .values({
       runId: run!.id,
-      resultUuid: null,
+      resultUuid: params.resultUuid ?? null,
       messageId: params.messageId ?? null,
       orgId: params.orgId,
       userId: params.userId,
@@ -420,6 +421,57 @@ describe("migration 0329 backfill credit_usage to usage_event", () => {
     ]);
   });
 
+  it("backfills all token categories when pricing exactly preserves the source total", async () => {
+    const user = testIdentity();
+    const model = `all-categories-${randomUUID()}`;
+    await insertCreditPricing({
+      model,
+      modelProvider: "anthropic",
+      inputTokenPrice: 1_000_000,
+      outputTokenPrice: 2_000_000,
+      cacheReadTokenPrice: 3_000_000,
+      cacheCreationTokenPrice: 4_000_000,
+    });
+    await insertRunBoundCreditUsage({
+      orgId: user.orgId,
+      userId: user.userId,
+      model,
+      modelProvider: "anthropic",
+      messageId: "msg-all-categories",
+      inputTokens: 1,
+      outputTokens: 2,
+      cacheReadInputTokens: 3,
+      cacheCreationInputTokens: 4,
+      status: "processed",
+      creditsCharged: 30,
+    });
+
+    await runMigrationForOrg(user.orgId);
+
+    const rowsByCategory = new Map(
+      (await findUsageEventsForOrg(user.orgId)).map((row) => {
+        return [row.category, row] as const;
+      }),
+    );
+    expect(rowsByCategory.size).toBe(4);
+    expect(rowsByCategory.get("tokens.cache_creation")).toMatchObject({
+      quantity: 4,
+      creditsCharged: 16,
+    });
+    expect(rowsByCategory.get("tokens.cache_read")).toMatchObject({
+      quantity: 3,
+      creditsCharged: 9,
+    });
+    expect(rowsByCategory.get("tokens.input")).toMatchObject({
+      quantity: 1,
+      creditsCharged: 1,
+    });
+    expect(rowsByCategory.get("tokens.output")).toMatchObject({
+      quantity: 2,
+      creditsCharged: 4,
+    });
+  });
+
   it("uses backfill-specific idempotency keys for runless rows and preserves null credits", async () => {
     const user = testIdentity();
     const resultUuid = randomUUID();
@@ -468,6 +520,43 @@ describe("migration 0329 backfill credit_usage to usage_event", () => {
     ]);
   });
 
+  it("uses backfill-specific idempotency keys for run-bound rows without message IDs", async () => {
+    const user = testIdentity();
+    const resultUuid = randomUUID();
+    const sourceId = await insertRunBoundCreditUsage({
+      orgId: user.orgId,
+      userId: user.userId,
+      resultUuid,
+      messageId: null,
+      inputTokens: 9,
+      outputTokens: 0,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      status: "processed",
+      creditsCharged: 3,
+    });
+    const source = await readCreditUsageSource(sourceId);
+
+    await runMigrationForOrg(user.orgId);
+
+    expect(await findUsageEventsForOrg(user.orgId)).toMatchObject([
+      {
+        idempotencyKey: expectedIdempotencyKey([
+          "credit-usage-backfill:v1",
+          source.id,
+          source.runId!,
+          "<null-message-id>",
+          resultUuid,
+          "tokens.input",
+        ]),
+        runId: source.runId,
+        category: "tokens.input",
+        quantity: 9,
+        creditsCharged: 3,
+      },
+    ]);
+  });
+
   it("falls back to deterministic token-quantity credit allocation when pricing is unavailable", async () => {
     const user = testIdentity();
     await insertRunBoundCreditUsage({
@@ -495,6 +584,72 @@ describe("migration 0329 backfill credit_usage to usage_event", () => {
     ).toEqual([
       { category: "tokens.input", creditsCharged: 2 },
       { category: "tokens.output", creditsCharged: 5 },
+    ]);
+  });
+
+  it("falls back to token-quantity allocation when complete pricing does not match source credits", async () => {
+    const user = testIdentity();
+    const model = `mismatched-pricing-${randomUUID()}`;
+    await insertCreditPricing({
+      model,
+      inputTokenPrice: 1_000_000,
+      outputTokenPrice: 1_000_000,
+    });
+    await insertRunBoundCreditUsage({
+      orgId: user.orgId,
+      userId: user.userId,
+      model,
+      messageId: "msg-mismatched-pricing",
+      inputTokens: 10,
+      outputTokens: 30,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      status: "processed",
+      creditsCharged: 7,
+    });
+
+    await runMigrationForOrg(user.orgId);
+
+    expect(
+      (await findUsageEventsForOrg(user.orgId)).map((row) => {
+        return {
+          category: row.category,
+          creditsCharged: row.creditsCharged,
+        };
+      }),
+    ).toEqual([
+      { category: "tokens.input", creditsCharged: 2 },
+      { category: "tokens.output", creditsCharged: 5 },
+    ]);
+  });
+
+  it("uses category order to break equal fallback allocation remainders", async () => {
+    const user = testIdentity();
+    await insertRunBoundCreditUsage({
+      orgId: user.orgId,
+      userId: user.userId,
+      model: `tie-allocation-${randomUUID()}`,
+      messageId: "msg-tie-allocation",
+      inputTokens: 1,
+      outputTokens: 1,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      status: "processed",
+      creditsCharged: 1,
+    });
+
+    await runMigrationForOrg(user.orgId);
+
+    expect(
+      (await findUsageEventsForOrg(user.orgId)).map((row) => {
+        return {
+          category: row.category,
+          creditsCharged: row.creditsCharged,
+        };
+      }),
+    ).toEqual([
+      { category: "tokens.input", creditsCharged: 1 },
+      { category: "tokens.output", creditsCharged: 0 },
     ]);
   });
 
