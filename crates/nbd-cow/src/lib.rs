@@ -505,6 +505,14 @@ impl PooledNbdCowDevice {
 
     /// Destroy the device, removing the COW file and bitmap.
     pub async fn destroy_with_retries(self, policy: DestroyRetryPolicy) -> Result<()> {
+        // Once finalization starts, let it run to completion even if the caller's
+        // future is cancelled. Otherwise dropping the owned device mid-finalizer
+        // can disconnect best-effort but leave the pool lease in flight.
+        let handle = tokio::spawn(async move { self.destroy_with_retries_inner(policy).await });
+        Self::await_finalizer(handle).await
+    }
+
+    async fn destroy_with_retries_inner(self, policy: DestroyRetryPolicy) -> Result<()> {
         let Self {
             mut device,
             mut lease,
@@ -538,6 +546,17 @@ impl PooledNbdCowDevice {
 
     /// Destroy the device while preserving COW data for snapshot persistence.
     pub async fn destroy_keep_cow_with_retries(
+        self,
+        policy: DestroyRetryPolicy,
+    ) -> Result<KeptCow> {
+        // See destroy_with_retries(): the COW file must either be finalized or
+        // abandoned with the lease retired even if the awaiting task is dropped.
+        let handle =
+            tokio::spawn(async move { self.destroy_keep_cow_with_retries_inner(policy).await });
+        Self::await_finalizer(handle).await
+    }
+
+    async fn destroy_keep_cow_with_retries_inner(
         self,
         policy: DestroyRetryPolicy,
     ) -> Result<KeptCow> {
@@ -582,6 +601,13 @@ impl PooledNbdCowDevice {
 
     /// Mark the device as abandoned and retire the pool lease as uncertain.
     pub async fn abandon(self) {
+        let handle = tokio::spawn(async move { self.abandon_inner().await });
+        if let Err(e) = handle.await {
+            tracing::warn!(error = %e, "pooled NBD COW abandon task failed");
+        }
+    }
+
+    async fn abandon_inner(self) {
         let Self {
             mut device,
             mut lease,
@@ -589,6 +615,15 @@ impl PooledNbdCowDevice {
         } = self;
         device.abandon();
         Self::retire_uncertain(&pool, &mut lease).await;
+    }
+
+    async fn await_finalizer<T>(handle: JoinHandle<Result<T>>) -> Result<T> {
+        match handle.await {
+            Ok(result) => result,
+            Err(e) => Err(error::NbdCowError::Io(std::io::Error::other(format!(
+                "pooled NBD COW finalizer task failed: {e}"
+            )))),
+        }
     }
 
     async fn release_clean(pool: &pool::DevicePoolHandle, lease: &mut LeaseGuard) {

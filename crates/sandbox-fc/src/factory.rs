@@ -28,8 +28,10 @@ pub(crate) const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration:
 ///
 /// Shutdown is the graceful path, so already-queued leak reports should drain
 /// before the pool Arcs are unwrapped. If cleanup gets stuck, fall back to
-/// aborting and let the next `runner gc` clean leftovers.
-const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+/// aborting and let the next `runner gc` clean leftovers. This must exceed the
+/// COW destroy retry budget because leaked sandbox cleanup now owns the pooled
+/// COW device and may need a full finalizer pass before releasing netns/dirs.
+const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Resources that require async cleanup when a sandbox is dropped without
 /// going through `factory.destroy()` or when create is dropped mid-allocation.
