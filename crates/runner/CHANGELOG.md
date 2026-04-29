@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.98.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.3...runner-rs-v0.98.4) (2026-04-29)
+
+
+### Refactoring
+
+* extract mitm registry cache ([#11492](https://github.com/vm0-ai/vm0/issues/11492)) ([a184fff](https://github.com/vm0-ai/vm0/commit/a184fff36e741d2c16cb7f28cc9ad13425da6a42))
+
 ## [0.98.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.2...runner-rs-v0.98.3) (2026-04-29)
 
 

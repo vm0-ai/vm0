@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.320.0](https://github.com/vm0-ai/vm0/compare/web-v12.319.0...web-v12.320.0) (2026-04-29)
+
+
+### Features
+
+* add model usage ranking ([#11486](https://github.com/vm0-ai/vm0/issues/11486)) ([f4a3513](https://github.com/vm0-ai/vm0/commit/f4a3513015b7a6c046d7c741b8b5e97270b76c3e))
+* add zero web voice to agent prompt ([#11496](https://github.com/vm0-ai/vm0/issues/11496)) ([9d72135](https://github.com/vm0-ai/vm0/commit/9d72135fba03b9f518e15d7f74bf4f564a234d42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.246.0
+
 ## [12.319.0](https://github.com/vm0-ai/vm0/compare/web-v12.318.0...web-v12.319.0) (2026-04-29)
 
 
