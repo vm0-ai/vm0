@@ -136,8 +136,7 @@ impl DevicePool {
     ///
     /// Reads `nbds_max` from sysfs to determine the device range.
     /// Call [`warmup()`](Self::warmup) before first use to pre-populate
-    /// the ready queue and avoid a synchronous sysfs scan on the first
-    /// [`acquire()`](Self::acquire).
+    /// the ready queue and avoid a synchronous sysfs scan on first use.
     pub fn new(config: DevicePoolConfig) -> Self {
         let max_devices = netlink::nbds_max();
         Self {
@@ -469,6 +468,16 @@ mod tests {
 
         assert!(!pool.active);
         assert!(pool.in_flight.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cleanup_rejects_acquire() {
+        let mut pool = test_pool_for_pending_scan();
+
+        pool.cleanup().await;
+
+        let result = pool.acquire().await;
+        assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
     }
 
     #[tokio::test]
