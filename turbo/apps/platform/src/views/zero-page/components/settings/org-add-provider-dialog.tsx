@@ -11,10 +11,12 @@ import {
   getSelectableProviderTypes,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   orgConfiguredProviders$,
   orgOpenAddDialog$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
 
@@ -70,6 +72,8 @@ export function OrgAddProviderDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
+  const features = useLastResolved(featureSwitch$);
+  const codexBetaEnabled = features?.[FeatureSwitchKey.CodexBeta] ?? false;
   const openAdd = useSet(orgOpenAddDialog$);
   const configuredSet = new Set(
     configuredProviders?.map((p) => {
@@ -82,7 +86,13 @@ export function OrgAddProviderDialog({
   };
 
   const availableTypes = getProviderTypes().filter((type) => {
-    return !configuredSet.has(type);
+    if (configuredSet.has(type)) {
+      return false;
+    }
+    if (type === "openai-api-key" && !codexBetaEnabled) {
+      return false;
+    }
+    return true;
   });
 
   return (
