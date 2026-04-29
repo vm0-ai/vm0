@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   deriveUsageEventIdempotencyKey,
   encodeUuidName,
+  parseCliOptions,
   planUsageEventsForSourceRow,
   splitCreditsForSourceRow,
   uuidV5,
@@ -50,6 +51,46 @@ function pricing(overrides: Partial<CreditPricingRow> = {}): CreditPricingRow {
 }
 
 describe("credit_usage usage_event backfill helpers", () => {
+  it("defaults CLI options to dry-run mode", () => {
+    expect(parseCliOptions([])).toEqual({
+      migrate: false,
+      batchSize: 500,
+      orgId: undefined,
+      limit: undefined,
+      failOnAnomaly: false,
+    });
+  });
+
+  it("parses scoped write options and rejects non-positive numeric options", () => {
+    expect(
+      parseCliOptions([
+        "--migrate",
+        "--org-id=org_test",
+        "--limit=10",
+        "--batch-size=25",
+        "--fail-on-anomaly",
+      ]),
+    ).toEqual({
+      migrate: true,
+      batchSize: 25,
+      orgId: "org_test",
+      limit: 10,
+      failOnAnomaly: true,
+    });
+
+    expect(() => {
+      parseCliOptions(["--limit=0"]);
+    }).toThrow("--limit must be a positive safe integer");
+
+    expect(() => {
+      parseCliOptions(["--batch-size=1001"]);
+    }).toThrow("--batch-size must be <= 1000");
+
+    expect(() => {
+      parseCliOptions(["--org-id="]);
+    }).toThrow("--org-id must not be blank");
+  });
+
   it("encodes UUID names with byte-length-prefixed parts", () => {
     expect(encodeUuidName(["run-123", "msg-456", "tokens.input"])).toBe(
       "7:run-123\0" + "7:msg-456\0" + "12:tokens.input",
@@ -138,6 +179,54 @@ describe("credit_usage usage_event backfill helpers", () => {
     expect(split.creditsByCategory.get("tokens.output")).toBe(5);
   });
 
+  it("falls back to deterministic token allocation when pricing is missing", () => {
+    const split = splitCreditsForSourceRow(
+      sourceRow({ inputTokens: 10, outputTokens: 30, creditsCharged: 7 }),
+      undefined,
+    );
+
+    expect(split.strategy).toBe("token-allocation");
+    expect(split.warning?.code).toBe("missing_credit_pricing");
+    expect(split.creditsByCategory.get("tokens.input")).toBe(2);
+    expect(split.creditsByCategory.get("tokens.output")).toBe(5);
+  });
+
+  it("allocates high safe integer totals without floating point drift", () => {
+    const split = splitCreditsForSourceRow(
+      sourceRow({
+        inputTokens: Number.MAX_SAFE_INTEGER,
+        outputTokens: 1,
+        creditsCharged: Number.MAX_SAFE_INTEGER,
+      }),
+      undefined,
+    );
+
+    expect(split.strategy).toBe("token-allocation");
+    expect(split.creditsByCategory.get("tokens.input")).toBe(
+      Number.MAX_SAFE_INTEGER - 1,
+    );
+    expect(split.creditsByCategory.get("tokens.output")).toBe(1);
+  });
+
+  it("allocates zero credits across all positive categories", () => {
+    const { events, split } = planUsageEventsForSourceRow(
+      sourceRow({
+        inputTokens: 10,
+        outputTokens: 30,
+        creditsCharged: 0,
+      }),
+      undefined,
+    );
+
+    expect(split.strategy).toBe("token-allocation");
+    expect(events).toHaveLength(2);
+    expect(
+      events.map((event) => {
+        return event.creditsCharged;
+      }),
+    ).toEqual([0, 0]);
+  });
+
   it("keeps NULL credits as NULL on every generated event", () => {
     const { events, split } = planUsageEventsForSourceRow(
       sourceRow({
@@ -194,5 +283,62 @@ describe("credit_usage usage_event backfill helpers", () => {
         pricing(),
       );
     }).toThrow("negative token quantity");
+  });
+
+  it("rejects negative source credits", () => {
+    expect(() => {
+      planUsageEventsForSourceRow(
+        sourceRow({ inputTokens: 1, outputTokens: 2, creditsCharged: -1 }),
+        pricing(),
+      );
+    }).toThrow("source credits_charged is negative");
+  });
+
+  it("rejects unsafe source numbers", () => {
+    expect(() => {
+      planUsageEventsForSourceRow(
+        sourceRow({ inputTokens: Number.MAX_SAFE_INTEGER + 1 }),
+        pricing(),
+      );
+    }).toThrow("source inputTokens is not a safe integer");
+
+    expect(() => {
+      planUsageEventsForSourceRow(
+        sourceRow({ creditsCharged: Number.MAX_SAFE_INTEGER + 1 }),
+        pricing(),
+      );
+    }).toThrow("source credits_charged is not a safe integer");
+  });
+
+  it("rejects negative credit pricing", () => {
+    expect(() => {
+      planUsageEventsForSourceRow(
+        sourceRow({ inputTokens: 1, outputTokens: 2, creditsCharged: 1 }),
+        pricing({ inputTokenPrice: -1 }),
+      );
+    }).toThrow("negative credit pricing");
+  });
+
+  it("rejects unsafe credit pricing", () => {
+    expect(() => {
+      planUsageEventsForSourceRow(
+        sourceRow({ inputTokens: 1, outputTokens: 2, creditsCharged: 1 }),
+        pricing({ inputTokenPrice: Number.MAX_SAFE_INTEGER + 1 }),
+      );
+    }).toThrow("credit pricing for tokens.input is not a safe integer");
+  });
+
+  it("rejects source rows with no positive token categories", () => {
+    expect(() => {
+      planUsageEventsForSourceRow(
+        sourceRow({
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadInputTokens: 0,
+          cacheCreationInputTokens: 0,
+        }),
+        pricing(),
+      );
+    }).toThrow("source row has no positive token categories");
   });
 });

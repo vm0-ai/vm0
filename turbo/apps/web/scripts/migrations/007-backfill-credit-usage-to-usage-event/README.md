@@ -118,7 +118,7 @@ pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usa
 # Scan at most 100 eligible source rows.
 pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --limit=100
 
-# Override the default 500 row batch size.
+# Override the default 500 row batch size. Maximum is 1000.
 pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --batch-size=250
 ```
 

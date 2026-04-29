@@ -20,7 +20,7 @@
  * Optional flags:
  *   --org-id=org_xxx       scope to one org; omitted means all orgs
  *   --limit=100            scan at most 100 source rows
- *   --batch-size=250       override the default 500 row batch size
+ *   --batch-size=250       override the default 500 row batch size; max 1000
  *   --fail-on-anomaly      treat warnings as fatal
  *
  * If DATABASE_URL is already exported in the shell, omit the dotenv wrapper.
@@ -56,6 +56,7 @@ const NULL_RUN_ID = "<null-run-id>";
 const NULL_MESSAGE_ID = "<null-message-id>";
 const NULL_RESULT_UUID = "<null-result-uuid>";
 const DEFAULT_BATCH_SIZE = 500;
+const MAX_BATCH_SIZE = 1_000;
 const MAX_PROVIDER_LENGTH = 100;
 const CREDITS_UNIT_SIZE = 1_000_000;
 const ISSUE_SAMPLE_LIMIT = 5;
@@ -263,8 +264,9 @@ export function parseCliOptions(argv: string[]): CliOptions {
       values["batch-size"],
       "--batch-size",
       DEFAULT_BATCH_SIZE,
+      MAX_BATCH_SIZE,
     ),
-    orgId: values["org-id"],
+    orgId: parseOptionalOrgId(values["org-id"]),
     limit:
       values.limit === undefined
         ? undefined
@@ -277,16 +279,28 @@ function parsePositiveInteger(
   value: string | undefined,
   name: string,
   fallback?: number,
+  max?: number,
 ): number {
   if (value === undefined) {
     if (fallback !== undefined) return fallback;
     throw new Error(`${name} is required`);
   }
   const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`${name} must be a positive integer`);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive safe integer`);
+  }
+  if (max !== undefined && parsed > max) {
+    throw new Error(`${name} must be <= ${max}`);
   }
   return parsed;
+}
+
+function parseOptionalOrgId(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  if (value.trim().length === 0) {
+    throw new Error("--org-id must not be blank");
+  }
+  return value;
 }
 
 export function encodeUuidName(parts: readonly string[]): string {
@@ -362,6 +376,26 @@ function hasNegativeTokens(row: CreditUsageSourceRow): boolean {
   });
 }
 
+function validateSourceNumbers(row: CreditUsageSourceRow): void {
+  if (hasNegativeTokens(row)) {
+    throw new Error("source row contains negative token quantity");
+  }
+
+  for (const token of TOKEN_CATEGORIES) {
+    if (!Number.isSafeInteger(row[token.sourceField])) {
+      throw new Error(`source ${token.sourceField} is not a safe integer`);
+    }
+  }
+
+  if (row.creditsCharged === null) return;
+  if (row.creditsCharged < 0) {
+    throw new Error("source credits_charged is negative");
+  }
+  if (!Number.isSafeInteger(row.creditsCharged)) {
+    throw new Error("source credits_charged is not a safe integer");
+  }
+}
+
 function pricingKey(model: string, modelProvider: string): string {
   return `${model}\0${modelProvider}`;
 }
@@ -376,13 +410,34 @@ function pricingValue(
   if (!token) {
     throw new Error(`Unknown token category: ${category}`);
   }
-  return pricing[token.pricingField as PricingField];
+  const value = pricing[token.pricingField as PricingField];
+  if (value < 0) {
+    throw new Error(`negative credit pricing for ${category}`);
+  }
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(`credit pricing for ${category} is not a safe integer`);
+  }
+  return value;
+}
+
+function ceilDiv(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator - 1n) / denominator;
+}
+
+function safeBigIntToNumber(value: bigint, label: string): number {
+  const numeric = Number(value);
+  if (!Number.isSafeInteger(numeric)) {
+    throw new Error(`${label} is not a safe integer`);
+  }
+  return numeric;
 }
 
 export function splitCreditsForSourceRow(
   row: CreditUsageSourceRow,
   pricing: CreditPricingRow | undefined,
 ): CreditSplitResult {
+  validateSourceNumbers(row);
+
   const positiveEntries = positiveTokenEntries(row);
   const creditsByCategory = new Map<TokenCategory, number | null>();
 
@@ -400,30 +455,32 @@ export function splitCreditsForSourceRow(
     };
   }
 
-  if (row.creditsCharged < 0) {
-    throw new Error("source credits_charged is negative");
-  }
-
   if (positiveEntries.length === 1) {
     creditsByCategory.set(positiveEntries[0]!.category, row.creditsCharged);
     return { creditsByCategory, strategy: "single" };
   }
 
   if (pricing) {
-    let pricingTotal = 0;
-    const pricingSplit = new Map<TokenCategory, number>();
+    let pricingTotal = 0n;
+    const pricingSplit = new Map<TokenCategory, bigint>();
     for (const entry of positiveEntries) {
-      const categoryCredits = Math.ceil(
-        (entry.quantity * pricingValue(pricing, entry.category)) /
-          CREDITS_UNIT_SIZE,
+      const categoryCredits = ceilDiv(
+        BigInt(entry.quantity) * BigInt(pricingValue(pricing, entry.category)),
+        BigInt(CREDITS_UNIT_SIZE),
       );
       pricingSplit.set(entry.category, categoryCredits);
       pricingTotal += categoryCredits;
     }
 
-    if (pricingTotal === row.creditsCharged) {
+    if (pricingTotal === BigInt(row.creditsCharged)) {
       for (const [category, categoryCredits] of pricingSplit) {
-        creditsByCategory.set(category, categoryCredits);
+        creditsByCategory.set(
+          category,
+          safeBigIntToNumber(
+            categoryCredits,
+            `pricing credits for ${category}`,
+          ),
+        );
       }
       return { creditsByCategory, strategy: "pricing" };
     }
@@ -471,19 +528,23 @@ function allocateCreditsByTokenQuantity(
   }
 
   const totalQuantity = entries.reduce((sum, entry) => {
-    return sum + entry.quantity;
-  }, 0);
-  if (totalQuantity <= 0) {
+    return sum + BigInt(entry.quantity);
+  }, 0n);
+  if (totalQuantity <= 0n) {
     throw new Error("cannot allocate credits without positive token quantity");
   }
+  const totalCreditsBigInt = BigInt(totalCredits);
 
   const floors = entries.map((entry, index) => {
-    const raw = (totalCredits * entry.quantity) / totalQuantity;
-    const floor = Math.floor(raw);
+    const numerator = totalCreditsBigInt * BigInt(entry.quantity);
+    const floor = numerator / totalQuantity;
     return {
       category: entry.category,
-      floor,
-      fraction: raw - floor,
+      floor: safeBigIntToNumber(
+        floor,
+        `allocated credits for ${entry.category}`,
+      ),
+      fractionalNumerator: numerator % totalQuantity,
       index,
     };
   });
@@ -494,8 +555,8 @@ function allocateCreditsByTokenQuantity(
   let remainder = totalCredits - allocated;
 
   const byRemainder = [...floors].sort((left, right) => {
-    if (right.fraction !== left.fraction) {
-      return right.fraction - left.fraction;
+    if (right.fractionalNumerator !== left.fractionalNumerator) {
+      return right.fractionalNumerator > left.fractionalNumerator ? 1 : -1;
     }
     return left.index - right.index;
   });
@@ -534,9 +595,7 @@ export function planUsageEventsForSourceRow(
   if (row.model.length > MAX_PROVIDER_LENGTH) {
     throw new Error("source model is too long for usage_event.provider");
   }
-  if (hasNegativeTokens(row)) {
-    throw new Error("source row contains negative token quantity");
-  }
+  validateSourceNumbers(row);
 
   const positiveEntries = positiveTokenEntries(row);
   if (positiveEntries.length === 0) {
@@ -556,7 +615,7 @@ export function planUsageEventsForSourceRow(
       provider: row.model,
       category: entry.category,
       quantity: entry.quantity,
-      creditsCharged: split.creditsByCategory.get(entry.category) ?? null,
+      creditsCharged: splitCreditForCategory(split, entry.category),
       status: "processed" as const,
       billingError: null,
       createdAt: row.createdAt,
@@ -796,6 +855,16 @@ function validateCreditParity(
       `source credits ${row.creditsCharged} != planned event credits ${eventTotal}`,
     );
   }
+}
+
+function splitCreditForCategory(
+  split: CreditSplitResult,
+  category: TokenCategory,
+): number | null {
+  if (!split.creditsByCategory.has(category)) {
+    throw new Error(`missing credit split for ${category}`);
+  }
+  return split.creditsByCategory.get(category)!;
 }
 
 function updateStatsForPlan(
