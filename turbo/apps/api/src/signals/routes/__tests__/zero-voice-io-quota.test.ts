@@ -2,7 +2,7 @@ import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voic
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { zeroVoiceIoQuotaRoutes } from "../zero-voice-io-quota";
+import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   deleteVoiceIoQuotaOrg,
   seedVoiceIoQuotaOrg,
@@ -25,11 +25,9 @@ describe("GET /api/zero/voice-io/quota", () => {
   it("defaults a missing org metadata row to the free quota", async () => {
     const fixture = await track(seedVoiceIoQuotaOrg(store));
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([zeroVoiceIoQuotaContract.get]);
 
-    const client = setupApp({
-      context,
-      routes: zeroVoiceIoQuotaRoutes("api"),
-    })(zeroVoiceIoQuotaContract);
+    const client = setupApp({ context })(zeroVoiceIoQuotaContract);
 
     const response = await accept(
       client.get({
@@ -48,11 +46,9 @@ describe("GET /api/zero/voice-io/quota", () => {
   it("blocks free tier users at the lifetime audio input quota", async () => {
     const fixture = await track(seedVoiceIoQuotaOrg(store, { count: 10 }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([zeroVoiceIoQuotaContract.get]);
 
-    const client = setupApp({
-      context,
-      routes: zeroVoiceIoQuotaRoutes("api"),
-    })(zeroVoiceIoQuotaContract);
+    const client = setupApp({ context })(zeroVoiceIoQuotaContract);
 
     const response = await accept(
       client.get({
@@ -76,11 +72,9 @@ describe("GET /api/zero/voice-io/quota", () => {
       }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([zeroVoiceIoQuotaContract.get]);
 
-    const client = setupApp({
-      context,
-      routes: zeroVoiceIoQuotaRoutes("api"),
-    })(zeroVoiceIoQuotaContract);
+    const client = setupApp({ context })(zeroVoiceIoQuotaContract);
 
     const response = await accept(
       client.get({

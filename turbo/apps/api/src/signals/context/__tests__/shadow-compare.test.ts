@@ -7,7 +7,10 @@ import { z } from "zod";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { shadowCompareRoute } from "../shadow-compare";
+import {
+  mockApiShadowCompareRoutes,
+  shadowCompareRoute,
+} from "../shadow-compare";
 
 const context = testContext();
 const c = initContract();
@@ -49,9 +52,8 @@ describe("shadowCompareRoute", () => {
         {
           route: shadowCompareContract.check,
           handler: shadowCompareRoute({
-            routeName: "test.shadow-compare",
+            route: shadowCompareContract.check,
             handler: apiHandler$,
-            source: "web",
           }),
         },
       ],
@@ -68,6 +70,7 @@ describe("shadowCompareRoute", () => {
 
   it("returns the api response when api is selected", async () => {
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+    mockApiShadowCompareRoutes([shadowCompareContract.check]);
     let comparedWithWeb = false;
     server.use(
       http.get("https://www.vm0.ai/__test/shadow-compare", () => {
@@ -82,9 +85,8 @@ describe("shadowCompareRoute", () => {
         {
           route: shadowCompareContract.check,
           handler: shadowCompareRoute({
-            routeName: "test.shadow-compare",
+            route: shadowCompareContract.check,
             handler: apiHandler$,
-            source: "api",
           }),
         },
       ],

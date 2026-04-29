@@ -1,6 +1,8 @@
+import type { AppRoute } from "@ts-rest/core";
 import { command, type Command } from "ccstate";
 
 import { env } from "../../lib/env";
+import { testOverride } from "../../lib/lazy-singleton";
 import { logger } from "../../lib/log";
 import { safeJsonParse } from "../utils";
 import type { SignalRouteHandler } from "./route";
@@ -21,7 +23,7 @@ const HOP_BY_HOP_HEADERS: Readonly<Record<string, true>> = {
   upgrade: true,
 };
 
-export type ShadowCompareSource = "api" | "web";
+type ShadowCompareSource = "api" | "web";
 
 interface RouteResult {
   readonly status: number;
@@ -35,10 +37,25 @@ interface Difference {
 }
 
 interface ShadowCompareOptions {
-  readonly routeName: string;
+  readonly route: AppRoute;
   readonly handler: SignalRouteHandler<unknown>;
-  readonly source: ShadowCompareSource;
   readonly timeoutMs?: number;
+}
+
+const {
+  get: getApiRouteOverrides,
+  set: setApiRouteOverrides,
+  clear: clearApiRouteOverrides,
+} = testOverride<ReadonlySet<AppRoute>>(() => {
+  return new Set<AppRoute>();
+});
+
+export function mockApiShadowCompareRoutes(routes: readonly AppRoute[]): void {
+  setApiRouteOverrides(new Set(routes));
+}
+
+export function clearMockApiShadowCompareRoutes(): void {
+  clearApiRouteOverrides();
 }
 
 function isCommand(
@@ -179,7 +196,7 @@ function diffJson(
 }
 
 function compareRouteResults(
-  routeName: string,
+  route: AppRoute,
   request: Request,
   apiValue: unknown,
   web: RouteResult,
@@ -203,7 +220,7 @@ function compareRouteResults(
   if (differences.length > 0) {
     const url = new URL(request.url);
     log.warn("response shadow divergence", {
-      route: routeName,
+      route: routeLabel(route),
       method: request.method,
       path: url.pathname,
       webStatus: web.status,
@@ -214,23 +231,30 @@ function compareRouteResults(
 }
 
 function logRejected(
-  routeName: string,
+  route: AppRoute,
   source: ShadowCompareSource,
   result: PromiseRejectedResult,
 ): void {
   const reason = result.reason;
   const message = reason instanceof Error ? reason.message : String(reason);
   log.warn("response shadow request failed", {
-    route: routeName,
+    route: routeLabel(route),
     source,
     error: message,
   });
 }
 
+function routeLabel(route: AppRoute): string {
+  return `${route.method} ${route.path}`;
+}
+
+function selectedSource(route: AppRoute): ShadowCompareSource {
+  return getApiRouteOverrides().has(route) ? "api" : "web";
+}
+
 export function shadowCompareRoute({
-  routeName,
+  route,
   handler,
-  source,
   timeoutMs = 2000,
 }: ShadowCompareOptions): Command<Promise<unknown>, [AbortSignal]> {
   return command(
@@ -262,21 +286,16 @@ export function shadowCompareRoute({
         apiResult.status === "fulfilled" &&
         webResult.status === "fulfilled"
       ) {
-        compareRouteResults(
-          routeName,
-          request,
-          apiResult.value,
-          webResult.value,
-        );
+        compareRouteResults(route, request, apiResult.value, webResult.value);
       }
       if (apiResult.status === "rejected") {
-        logRejected(routeName, "api", apiResult);
+        logRejected(route, "api", apiResult);
       }
       if (webResult.status === "rejected") {
-        logRejected(routeName, "web", webResult);
+        logRejected(route, "web", webResult);
       }
 
-      const selected = source === "web" ? webResult : apiResult;
+      const selected = selectedSource(route) === "web" ? webResult : apiResult;
       if (selected.status === "fulfilled") {
         return selected.value;
       }

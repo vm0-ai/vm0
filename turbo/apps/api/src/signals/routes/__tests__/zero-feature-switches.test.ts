@@ -4,7 +4,7 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { zeroFeatureSwitchesRoutes } from "../zero-feature-switches";
+import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   deleteFeatureSwitches,
   seedFeatureSwitches,
@@ -32,11 +32,9 @@ describe("GET /api/zero/feature-switches", () => {
       }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([zeroFeatureSwitchesContract.get]);
 
-    const client = setupApp({
-      context,
-      routes: zeroFeatureSwitchesRoutes("api"),
-    })(zeroFeatureSwitchesContract);
+    const client = setupApp({ context })(zeroFeatureSwitchesContract);
 
     const response = await accept(
       client.get({
@@ -57,11 +55,9 @@ describe("GET /api/zero/feature-switches", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
+    mockApiShadowCompareRoutes([zeroFeatureSwitchesContract.get]);
 
-    const client = setupApp({
-      context,
-      routes: zeroFeatureSwitchesRoutes("api"),
-    })(zeroFeatureSwitchesContract);
+    const client = setupApp({ context })(zeroFeatureSwitchesContract);
 
     const response = await accept(
       client.get({

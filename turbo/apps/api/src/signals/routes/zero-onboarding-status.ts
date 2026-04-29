@@ -3,10 +3,7 @@ import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboardin
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import {
-  shadowCompareRoute,
-  type ShadowCompareSource,
-} from "../context/shadow-compare";
+import { shadowCompareRoute } from "../context/shadow-compare";
 import type { RouteEntry } from "../route";
 import { onboardingStatus } from "../services/onboarding.service";
 
@@ -19,17 +16,12 @@ const getOnboardingStatusInner$ = computed(async (get): Promise<unknown> => {
   };
 });
 
-export function zeroOnboardingStatusRoutes(
-  source: ShadowCompareSource = "web",
-): readonly RouteEntry[] {
-  return [
-    {
+export const zeroOnboardingStatusRoutes: readonly RouteEntry[] = [
+  {
+    route: onboardingStatusContract.getStatus,
+    handler: shadowCompareRoute({
       route: onboardingStatusContract.getStatus,
-      handler: shadowCompareRoute({
-        routeName: "zero.onboarding.status.get",
-        handler: authRoute({}, getOnboardingStatusInner$),
-        source,
-      }),
-    },
-  ];
-}
+      handler: authRoute({}, getOnboardingStatusInner$),
+    }),
+  },
+];

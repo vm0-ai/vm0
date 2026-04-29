@@ -4,7 +4,7 @@ import { zeroBillingAutoRechargeContract } from "@vm0/api-contracts/contracts/ze
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { zeroBillingAutoRechargeRoutes } from "../zero-billing-auto-recharge";
+import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   deleteAutoRechargeOrg,
   seedAutoRechargeOrg,
@@ -33,11 +33,9 @@ describe("GET /api/zero/billing/auto-recharge", () => {
       }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([zeroBillingAutoRechargeContract.get]);
 
-    const client = setupApp({
-      context,
-      routes: zeroBillingAutoRechargeRoutes("api"),
-    })(zeroBillingAutoRechargeContract);
+    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
 
     const response = await accept(
       client.get({
@@ -57,11 +55,9 @@ describe("GET /api/zero/billing/auto-recharge", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
+    mockApiShadowCompareRoutes([zeroBillingAutoRechargeContract.get]);
 
-    const client = setupApp({
-      context,
-      routes: zeroBillingAutoRechargeRoutes("api"),
-    })(zeroBillingAutoRechargeContract);
+    const client = setupApp({ context })(zeroBillingAutoRechargeContract);
 
     const response = await accept(
       client.get({

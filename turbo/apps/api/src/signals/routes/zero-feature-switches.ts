@@ -3,10 +3,7 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import {
-  shadowCompareRoute,
-  type ShadowCompareSource,
-} from "../context/shadow-compare";
+import { shadowCompareRoute } from "../context/shadow-compare";
 import type { RouteEntry } from "../route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
@@ -21,20 +18,15 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
   };
 });
 
-export function zeroFeatureSwitchesRoutes(
-  source: ShadowCompareSource = "web",
-): readonly RouteEntry[] {
-  return [
-    {
+export const zeroFeatureSwitchesRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroFeatureSwitchesContract.get,
+    handler: shadowCompareRoute({
       route: zeroFeatureSwitchesContract.get,
-      handler: shadowCompareRoute({
-        routeName: "zero.feature-switches.get",
-        handler: authRoute(
-          { requireOrganization: true, missingOrganizationStatus: 401 },
-          getFeatureSwitchesInner$,
-        ),
-        source,
-      }),
-    },
-  ];
-}
+      handler: authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        getFeatureSwitchesInner$,
+      ),
+    }),
+  },
+];

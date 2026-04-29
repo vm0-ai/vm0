@@ -3,10 +3,7 @@ import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voic
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import {
-  shadowCompareRoute,
-  type ShadowCompareSource,
-} from "../context/shadow-compare";
+import { shadowCompareRoute } from "../context/shadow-compare";
 import type { RouteEntry } from "../route";
 import { audioInputQuota } from "../services/voice-io.service";
 
@@ -19,20 +16,15 @@ const getVoiceIoQuotaInner$ = computed(async (get): Promise<unknown> => {
   };
 });
 
-export function zeroVoiceIoQuotaRoutes(
-  source: ShadowCompareSource = "web",
-): readonly RouteEntry[] {
-  return [
-    {
+export const zeroVoiceIoQuotaRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroVoiceIoQuotaContract.get,
+    handler: shadowCompareRoute({
       route: zeroVoiceIoQuotaContract.get,
-      handler: shadowCompareRoute({
-        routeName: "zero.voice-io.quota.get",
-        handler: authRoute(
-          { requireOrganization: true, missingOrganizationStatus: 401 },
-          getVoiceIoQuotaInner$,
-        ),
-        source,
-      }),
-    },
-  ];
-}
+      handler: authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        getVoiceIoQuotaInner$,
+      ),
+    }),
+  },
+];

@@ -5,7 +5,7 @@ import { createStore } from "ccstate";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { zeroQueuePositionRoutes } from "../zero-queue-position";
+import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   deleteQueuePositionRuns,
   seedQueuePositionRuns,
@@ -34,11 +34,9 @@ describe("GET /api/zero/queue-position", () => {
     if (!runId) {
       throw new Error("Expected queued run fixture");
     }
+    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
 
-    const client = setupApp({
-      context,
-      routes: zeroQueuePositionRoutes("api"),
-    })(zeroQueuePositionContract);
+    const client = setupApp({ context })(zeroQueuePositionContract);
 
     const response = await accept(
       client.getPosition({
@@ -63,11 +61,9 @@ describe("GET /api/zero/queue-position", () => {
     if (!runId) {
       throw new Error("Expected unqueued run fixture");
     }
+    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
 
-    const client = setupApp({
-      context,
-      routes: zeroQueuePositionRoutes("api"),
-    })(zeroQueuePositionContract);
+    const client = setupApp({ context })(zeroQueuePositionContract);
 
     const response = await accept(
       client.getPosition({
@@ -92,11 +88,9 @@ describe("GET /api/zero/queue-position", () => {
     if (!runId) {
       throw new Error("Expected queued run fixture");
     }
+    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
 
-    const client = setupApp({
-      context,
-      routes: zeroQueuePositionRoutes("api"),
-    })(zeroQueuePositionContract);
+    const client = setupApp({ context })(zeroQueuePositionContract);
 
     const response = await accept(
       client.getPosition({
@@ -111,11 +105,9 @@ describe("GET /api/zero/queue-position", () => {
 
   it("returns 404 for an unknown run", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
 
-    const client = setupApp({
-      context,
-      routes: zeroQueuePositionRoutes("api"),
-    })(zeroQueuePositionContract);
+    const client = setupApp({ context })(zeroQueuePositionContract);
 
     const response = await accept(
       client.getPosition({
@@ -129,9 +121,9 @@ describe("GET /api/zero/queue-position", () => {
   });
 
   it("returns 400 when runId is missing before auth", async () => {
+    mockApiShadowCompareRoutes([zeroQueuePositionContract.getPosition]);
     const app = createApp({
       signal: context.signal,
-      routes: zeroQueuePositionRoutes("api"),
     });
 
     const response = await app.request("/api/zero/queue-position", {

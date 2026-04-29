@@ -5,10 +5,7 @@ import { notFound } from "../../lib/error";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import {
-  shadowCompareRoute,
-  type ShadowCompareSource,
-} from "../context/shadow-compare";
+import { shadowCompareRoute } from "../context/shadow-compare";
 import type { RouteEntry } from "../route";
 import { queuePosition } from "../services/queue-position.service";
 
@@ -35,17 +32,12 @@ const getQueuePositionInner$ = computed(async (get): Promise<unknown> => {
   };
 });
 
-export function zeroQueuePositionRoutes(
-  source: ShadowCompareSource = "web",
-): readonly RouteEntry[] {
-  return [
-    {
+export const zeroQueuePositionRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroQueuePositionContract.getPosition,
+    handler: shadowCompareRoute({
       route: zeroQueuePositionContract.getPosition,
-      handler: shadowCompareRoute({
-        routeName: "zero.queue-position.get",
-        handler: authRoute({}, getQueuePositionInner$),
-        source,
-      }),
-    },
-  ];
-}
+      handler: authRoute({}, getQueuePositionInner$),
+    }),
+  },
+];

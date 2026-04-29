@@ -4,7 +4,7 @@ import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboardin
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { zeroOnboardingStatusRoutes } from "../zero-onboarding-status";
+import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   deleteOnboardingStatusOrg,
   seedOnboardingStatusOrg,
@@ -26,11 +26,9 @@ describe("GET /api/zero/onboarding/status", () => {
 
   it("returns onboarding required when the session has no active org", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
+    mockApiShadowCompareRoutes([onboardingStatusContract.getStatus]);
 
-    const client = setupApp({
-      context,
-      routes: zeroOnboardingStatusRoutes("api"),
-    })(onboardingStatusContract);
+    const client = setupApp({ context })(onboardingStatusContract);
 
     const response = await accept(
       client.getStatus({
@@ -52,11 +50,9 @@ describe("GET /api/zero/onboarding/status", () => {
   it("requires admin onboarding when the org has no default agent", async () => {
     const fixture = await track(seedOnboardingStatusOrg(store));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    mockApiShadowCompareRoutes([onboardingStatusContract.getStatus]);
 
-    const client = setupApp({
-      context,
-      routes: zeroOnboardingStatusRoutes("api"),
-    })(onboardingStatusContract);
+    const client = setupApp({ context })(onboardingStatusContract);
 
     const response = await accept(
       client.getStatus({
@@ -86,11 +82,9 @@ describe("GET /api/zero/onboarding/status", () => {
       }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    mockApiShadowCompareRoutes([onboardingStatusContract.getStatus]);
 
-    const client = setupApp({
-      context,
-      routes: zeroOnboardingStatusRoutes("api"),
-    })(onboardingStatusContract);
+    const client = setupApp({ context })(onboardingStatusContract);
 
     const response = await accept(
       client.getStatus({

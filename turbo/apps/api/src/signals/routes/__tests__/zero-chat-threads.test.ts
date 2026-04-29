@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { zeroChatThreadRoutes } from "../zero-chat-threads";
+import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
   deleteZeroChatThread,
   seedZeroChatMessage,
@@ -44,11 +44,9 @@ describe("GET /api/zero/chat-threads/:id", () => {
         size: 42,
       },
     ]);
+    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
 
-    const client = setupApp({
-      context,
-      routes: zeroChatThreadRoutes("api"),
-    })(chatThreadByIdContract);
+    const client = setupApp({ context })(chatThreadByIdContract);
 
     const response = await accept(
       client.get({
@@ -111,11 +109,9 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
         size: 128,
       },
     ]);
+    mockApiShadowCompareRoutes([chatThreadMessagesContract.list]);
 
-    const client = setupApp({
-      context,
-      routes: zeroChatThreadRoutes("api"),
-    })(chatThreadMessagesContract);
+    const client = setupApp({ context })(chatThreadMessagesContract);
 
     const response = await accept(
       client.list({

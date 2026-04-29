@@ -3,10 +3,7 @@ import { zeroBillingAutoRechargeContract } from "@vm0/api-contracts/contracts/ze
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import {
-  shadowCompareRoute,
-  type ShadowCompareSource,
-} from "../context/shadow-compare";
+import { shadowCompareRoute } from "../context/shadow-compare";
 import { autoRechargeConfig } from "../services/billing.service";
 import type { RouteEntry } from "../route";
 
@@ -19,20 +16,15 @@ const getAutoRechargeInner$ = computed(async (get): Promise<unknown> => {
   };
 });
 
-export function zeroBillingAutoRechargeRoutes(
-  source: ShadowCompareSource = "web",
-): readonly RouteEntry[] {
-  return [
-    {
+export const zeroBillingAutoRechargeRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroBillingAutoRechargeContract.get,
+    handler: shadowCompareRoute({
       route: zeroBillingAutoRechargeContract.get,
-      handler: shadowCompareRoute({
-        routeName: "zero.billing.auto-recharge.get",
-        handler: authRoute(
-          { requireOrganization: true, missingOrganizationStatus: 401 },
-          getAutoRechargeInner$,
-        ),
-        source,
-      }),
-    },
-  ];
-}
+      handler: authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        getAutoRechargeInner$,
+      ),
+    }),
+  },
+];

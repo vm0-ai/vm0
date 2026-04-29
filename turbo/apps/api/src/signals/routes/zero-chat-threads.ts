@@ -8,10 +8,7 @@ import { z } from "zod";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
-import {
-  shadowCompareRoute,
-  type ShadowCompareSource,
-} from "../context/shadow-compare";
+import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
 import {
   zeroChatThreadDetail,
@@ -74,25 +71,19 @@ const listChatThreadMessagesInner$ = computed(async (get) => {
   };
 });
 
-export function zeroChatThreadRoutes(
-  source: ShadowCompareSource = "web",
-): readonly RouteEntry[] {
-  return [
-    {
+export const zeroChatThreadRoutes: readonly RouteEntry[] = [
+  {
+    route: chatThreadByIdContract.get,
+    handler: shadowCompareRoute({
       route: chatThreadByIdContract.get,
-      handler: shadowCompareRoute({
-        routeName: "zero.chat-threads.byId",
-        handler: authRoute({}, getChatThreadInner$),
-        source,
-      }),
-    },
-    {
+      handler: authRoute({}, getChatThreadInner$),
+    }),
+  },
+  {
+    route: chatThreadMessagesContract.list,
+    handler: shadowCompareRoute({
       route: chatThreadMessagesContract.list,
-      handler: shadowCompareRoute({
-        routeName: "zero.chat-threads.messages",
-        handler: authRoute({}, listChatThreadMessagesInner$),
-        source,
-      }),
-    },
-  ];
-}
+      handler: authRoute({}, listChatThreadMessagesInner$),
+    }),
+  },
+];
