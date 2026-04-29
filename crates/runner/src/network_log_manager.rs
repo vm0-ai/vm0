@@ -356,6 +356,30 @@ mod tests {
             .collect()
     }
 
+    async fn source_ip_registered(manager: &NetworkLogManager, source_ip: &str) -> bool {
+        manager
+            .inner
+            .state
+            .lock()
+            .await
+            .source_paths
+            .contains_key(source_ip)
+    }
+
+    async fn wait_source_ip_unregistered(manager: &NetworkLogManager, source_ip: &str) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            if !source_ip_registered(manager, source_ip).await {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "source IP {source_ip} stayed registered after session drop",
+            );
+            tokio::task::yield_now().await;
+        }
+    }
+
     #[tokio::test]
     async fn append_for_ip_writes_json_line_to_registered_path() {
         let dir = tempfile::tempdir().unwrap();
@@ -681,6 +705,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dropped_unclosed_session_finalizes_mapping() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(source_ip_registered(&manager, "10.200.0.2").await);
+
+        drop(session);
+        wait_source_ip_unregistered(&manager, "10.200.0.2").await;
+
+        assert!(
+            !manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"after-drop.test"}))
+                .await
+        );
+        manager.flush_path(&path).await;
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
     async fn close_for_upload_waits_for_barrier_and_flushes_late_rows() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("network.jsonl");
@@ -709,6 +753,56 @@ mod tests {
         let lines = read_json_lines(&path);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0]["host"], "during-drain.test");
+        assert!(
+            !manager
+                .append_for_ip(
+                    "10.200.0.2",
+                    json!({"type":"dns","host":"after-close.test"})
+                )
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn close_for_upload_with_unavailable_producer_finalizes_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let (producer, drain_rx) = NetworkLogDrainProducer::channel("closed");
+        drop(drain_rx);
+        let drain = NetworkLogDrainCoordinator::new(vec![producer]);
+
+        session.close_for_upload(RunId::nil(), &drain).await;
+
+        assert!(!source_ip_registered(&manager, "10.200.0.2").await);
+        assert!(
+            !manager
+                .append_for_ip(
+                    "10.200.0.2",
+                    json!({"type":"dns","host":"after-close.test"})
+                )
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn close_for_upload_with_dropped_ack_finalizes_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let (producer, mut drain_rx) = NetworkLogDrainProducer::channel("dropped-ack");
+        let drain = NetworkLogDrainCoordinator::new(vec![producer]);
+        let receiver = tokio::spawn(async move {
+            let request = drain_rx.recv().await.expect("drain request");
+            drop(request);
+        });
+
+        session.close_for_upload(RunId::nil(), &drain).await;
+        receiver.await.unwrap();
+
+        assert!(!source_ip_registered(&manager, "10.200.0.2").await);
         assert!(
             !manager
                 .append_for_ip(
