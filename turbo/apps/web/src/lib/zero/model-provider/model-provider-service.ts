@@ -16,6 +16,7 @@ import { encryptSecretValue } from "../../shared/crypto";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import type { Database } from "../../../types/global";
 
 const log = logger("service:model-provider");
 
@@ -1028,6 +1029,31 @@ export function getOrgDefaultModelProvider(
   framework: ModelProviderFramework,
 ): Promise<ModelProviderInfo | null> {
   return getDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID, framework);
+}
+
+/**
+ * Get the org-level default model provider type for run-policy checks.
+ *
+ * This intentionally keeps the query narrow and accepts a db handle so callers
+ * inside queue-drain transactions can keep the read in the same boundary.
+ */
+export async function getOrgDefaultModelProviderType(
+  orgId: string,
+  db: Database = globalThis.services.db,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    )
+    .limit(1);
+
+  return row?.type ?? null;
 }
 
 /**
