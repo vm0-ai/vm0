@@ -72,8 +72,12 @@ function toModelProviderInfo(params: {
 
 /**
  * Get all provider types that belong to a given framework.
+ *
+ * Accepts `string` rather than `ModelProviderFramework` so callers that derive
+ * the framework from a compose document (codex, claude-code, …) can filter
+ * without first widening the registry's enum.
  */
-function getTypesForFramework(framework: ModelProviderFramework): string[] {
+function getTypesForFramework(framework: string): string[] {
   return Object.keys(MODEL_PROVIDER_TYPES).filter((t) => {
     return getFrameworkForType(t as ModelProviderType) === framework;
   });
@@ -868,7 +872,7 @@ async function updateModelProviderModel(
 async function getDefaultModelProvider(
   orgId: string,
   userId: string,
-  framework: ModelProviderFramework,
+  framework: string,
 ): Promise<ModelProviderInfo | null> {
   // Use leftJoin to include multi-auth providers that don't have secretId
   const allProviders = await globalThis.services.db
@@ -1022,11 +1026,15 @@ export function updateOrgModelProviderModel(
 }
 
 /**
- * Get the org-level default model provider for a framework
+ * Get the org-level default model provider for a framework.
+ *
+ * `framework` accepts any string so non-claude-code frameworks (e.g. codex)
+ * can resolve their own default without widening the registry's enum.
+ * Unknown frameworks naturally return null because no registry type matches.
  */
 export function getOrgDefaultModelProvider(
   orgId: string,
-  framework: ModelProviderFramework,
+  framework: string,
 ): Promise<ModelProviderInfo | null> {
   return getDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID, framework);
 }
@@ -1034,13 +1042,24 @@ export function getOrgDefaultModelProvider(
 /**
  * Get the org-level default model provider type for run-policy checks.
  *
- * This intentionally keeps the query narrow and accepts a db handle so callers
- * inside queue-drain transactions can keep the read in the same boundary.
+ * Filters by framework so a claude-code default does not satisfy a codex run
+ * (and vice versa) — without this filter, admission checks would pass for
+ * cross-framework configurations and fail later at provider-resolution time
+ * with a worse error.
+ *
+ * Accepts a db handle so callers inside queue-drain transactions can keep
+ * the read in the same boundary.
  */
 export async function getOrgDefaultModelProviderType(
   orgId: string,
+  framework: string,
   db: Database = globalThis.services.db,
 ): Promise<string | null> {
+  const frameworkTypes = getTypesForFramework(framework);
+  if (frameworkTypes.length === 0) {
+    return null;
+  }
+
   const [row] = await db
     .select({ type: modelProviders.type })
     .from(modelProviders)
@@ -1049,6 +1068,7 @@ export async function getOrgDefaultModelProviderType(
         eq(modelProviders.orgId, orgId),
         eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
         eq(modelProviders.isDefault, true),
+        inArray(modelProviders.type, frameworkTypes),
       ),
     )
     .limit(1);
