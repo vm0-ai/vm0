@@ -70,6 +70,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.1037.0
+        version: 3.1037.0
       '@clerk/backend':
         specifier: ^3.4.1
         version: 3.4.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)

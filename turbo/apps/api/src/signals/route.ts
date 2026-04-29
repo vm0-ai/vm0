@@ -9,6 +9,7 @@ import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { modelStatsRoutes } from "./routes/model-stats";
 import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
+import { zeroChatThreadRoutes } from "./routes/zero-chat-threads";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
 import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
@@ -29,6 +30,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...healthAuthProbeRoutes,
   ...deviceTokenRoutes,
   ...zeroBillingAutoRechargeRoutes(),
+  ...zeroChatThreadRoutes(),
   ...zeroFeatureSwitchesRoutes(),
   ...zeroVoiceIoQuotaRoutes(),
   ...zeroQueuePositionRoutes(),

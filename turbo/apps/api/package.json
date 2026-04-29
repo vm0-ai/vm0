@@ -13,6 +13,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1037.0",
     "@clerk/backend": "^3.4.1",
     "@hono/node-server": "^1.19.14",
     "@hono/otel": "^1.1.1",
