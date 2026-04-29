@@ -121,17 +121,21 @@ export function UsageInsightChatsTable({
             );
           })}
           {chatOtherCount > 0 && (
-            <li
-              className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
-                hoveredId === null ? "opacity-100" : "opacity-30"
-              }`}
-            >
-              <span className="text-sm text-muted-foreground truncate col-span-2">
-                +{chatOtherCount} more {chatOtherCount === 1 ? "chat" : "chats"}
-              </span>
-              <span className="text-xs tabular-nums text-muted-foreground text-right">
-                {formatValue(chatOtherCredits)}
-              </span>
+            <li>
+              <Link
+                pathname="/chats"
+                className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md transition-all duration-150 hover:bg-foreground/5 ${
+                  hoveredId === null ? "opacity-100" : "opacity-30"
+                }`}
+              >
+                <span className="text-sm text-muted-foreground truncate col-span-2 decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                  +{chatOtherCount} more{" "}
+                  {chatOtherCount === 1 ? "chat" : "chats"}
+                </span>
+                <span className="text-xs tabular-nums text-muted-foreground text-right">
+                  {formatValue(chatOtherCredits)}
+                </span>
+              </Link>
             </li>
           )}
         </ul>
