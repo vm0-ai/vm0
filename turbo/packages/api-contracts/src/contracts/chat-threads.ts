@@ -308,6 +308,13 @@ export const chatMessagesContract = c.router({
       // Lets the client render an optimistic row and reconcile with the
       // server row by id — no temp-id swap, no React remount.
       clientMessageId: z.string().uuid().optional(),
+      // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
+      // set (CI default), allow the request to bypass the mock and execute
+      // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
+      // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
+      // entry path end-to-end.
+      debugNoMockClaude: z.boolean().optional(),
+      debugNoMockCodex: z.boolean().optional(),
     }),
     responses: {
       201: z.object({

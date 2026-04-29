@@ -506,6 +506,8 @@ const router = tsr.router(chatMessagesContract, {
         modelProvider,
         modelProviderId: override.providerId ?? undefined,
         selectedModelOverride: override.selectedModel ?? undefined,
+        debugNoMockClaude: body.debugNoMockClaude,
+        debugNoMockCodex: body.debugNoMockCodex,
         appendSystemPrompt: buildAppendSystemPrompt(incompleteContext),
         callbacks: [chatCallback],
         chatThreadId: threadId,

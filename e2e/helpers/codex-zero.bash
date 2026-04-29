@@ -137,10 +137,17 @@ send_chat_run_message() {
     local agent_id="$1"
     local prompt="$2"
     local payload body
+    # debugNoMockCodex=true bypasses USE_MOCK_CODEX in the runner so the real
+    # codex CLI executes against $OPENAI_API_KEY. Without it, CI's
+    # USE_MOCK_CODEX=true env var causes guest-mock-codex to echo the prompt
+    # verbatim — see crates/runner/src/executor.rs:1307-1313 and
+    # crates/guest-mock-codex/src/main.rs:233-245. The chat/messages contract
+    # exposes this flag via chatMessagesContract.body.debugNoMockCodex, mirroring
+    # the same passthrough on /api/zero/runs.
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
-        '{agentId: $agentId, prompt: $prompt, hasTextContent: true}')
+        '{agentId: $agentId, prompt: $prompt, hasTextContent: true, debugNoMockCodex: true}')
     body=$(_codex_zero_curl "/api/zero/chat/messages" \
         -X POST \
         -d "$payload")
