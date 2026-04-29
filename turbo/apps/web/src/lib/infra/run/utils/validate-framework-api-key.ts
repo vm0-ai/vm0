@@ -1,25 +1,33 @@
 import { getValidatedFramework } from "@vm0/core/frameworks";
 import { badRequest } from "@vm0/api-services/errors";
+import {
+  getSecretNameForType,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { resolveFrameworkApiKeyEnvVar } from "../../framework/framework-config";
 import type { AgentComposeYaml } from "../../agent-compose/types";
 
 /**
  * Validate that a compose's environment block declares the framework's
- * required API-key env var.
+ * required API-key env var, OR that a configured model provider supplies
+ * the equivalent secret at runtime.
  *
  * claude-code is exempt: the org-level model-provider system
  * (`checkModelProviderConfigured`) already gates runs that lack
- * `ANTHROPIC_API_KEY` and supports runtime injection from the org's default
- * provider. Frameworks without an org-level injection path (codex today)
- * must declare the key in the compose `environment` — either as a literal
- * value or as a `${{ secrets.X }}` placeholder; the runner resolves the
- * placeholder at execution time and surfaces its own error if the secret
- * is missing.
+ * `ANTHROPIC_API_KEY`. Other frameworks (codex today) are satisfied when
+ * either:
+ *   (a) compose `environment` declares the framework's key (literal or
+ *       `${{ secrets.X }}` placeholder), OR
+ *   (b) a configured `providerType`'s `secretName` matches the framework's
+ *       required env var — runtime injection from the provider supplies the
+ *       key without compose-level declaration.
  *
- * @throws BadRequestError if the env var is absent for a framework that
- *   requires compose-level declaration.
+ * @throws BadRequestError when neither path is satisfied.
  */
-export function validateFrameworkApiKey(compose: AgentComposeYaml): void {
+export function validateFrameworkApiKey(
+  compose: AgentComposeYaml,
+  providerType?: ModelProviderType | null,
+): void {
   const agents = compose.agents ? Object.values(compose.agents) : [];
   const agent = agents[0];
   if (!agent) return;
@@ -29,11 +37,15 @@ export function validateFrameworkApiKey(compose: AgentComposeYaml): void {
 
   const requiredVar = resolveFrameworkApiKeyEnvVar(framework);
   const env = agent.environment ?? {};
-  if (!(requiredVar in env)) {
-    throw badRequest(
-      `Compose with framework "${framework}" requires ${requiredVar} ` +
-        `in agent environment. Set it as a literal value or as a secret ` +
-        `reference: \${{ secrets.${requiredVar} }}`,
-    );
+  if (requiredVar in env) return;
+
+  if (providerType && getSecretNameForType(providerType) === requiredVar) {
+    return;
   }
+
+  throw badRequest(
+    `Compose with framework "${framework}" requires ${requiredVar} ` +
+      `in agent environment. Set it as a literal value or as a secret ` +
+      `reference: \${{ secrets.${requiredVar} }}`,
+  );
 }
