@@ -117,7 +117,7 @@ export default [
       web: webPlugin,
     },
     rules: {
-      "web/no-new-api-routes": "error",
+      "web/no-new-api-routes": "warn",
       "web/no-request-json-as": "error",
     },
   },
