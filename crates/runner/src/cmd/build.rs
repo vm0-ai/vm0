@@ -913,6 +913,29 @@ mod tests {
         ]
     }
 
+    fn rootfs_input<'a>(
+        home: &'a HomePaths,
+        rootfs: &'a RootfsPaths,
+        guest: &'a Path,
+        policy: RootfsCachePolicy,
+        r2: Option<&'a R2ImageCache>,
+    ) -> RootfsBuildInput<'a> {
+        RootfsBuildInput {
+            paths: home,
+            rootfs_hash: "test-hash",
+            rootfs_paths: rootfs,
+            r2,
+            policy,
+            disk_mb: 16384,
+            guest_agent: guest,
+            guest_download: guest,
+            guest_init: guest,
+            guest_mock_claude: guest,
+            guest_mock_codex: guest,
+            guest_reseed: guest,
+        }
+    }
+
     #[test]
     fn build_args_parse_warm_rootfs_cache_flag() {
         let mut args = build_args().to_vec();
@@ -949,20 +972,7 @@ mod tests {
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
         let rootfs = RootfsPaths::new(&home, "strict-hash");
         let guest = dir.path().join("guest");
-        let input = RootfsBuildInput {
-            paths: &home,
-            rootfs_hash: "strict-hash",
-            rootfs_paths: &rootfs,
-            r2: None,
-            policy: RootfsCachePolicy::StrictWarm,
-            disk_mb: 16384,
-            guest_agent: &guest,
-            guest_download: &guest,
-            guest_init: &guest,
-            guest_mock_claude: &guest,
-            guest_mock_codex: &guest,
-            guest_reseed: &guest,
-        };
+        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::StrictWarm, None);
 
         let err = upload_rootfs_to_r2(&input, false).await.unwrap_err();
 
@@ -975,22 +985,47 @@ mod tests {
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
         let rootfs = RootfsPaths::new(&home, "best-effort-hash");
         let guest = dir.path().join("guest");
-        let input = RootfsBuildInput {
-            paths: &home,
-            rootfs_hash: "best-effort-hash",
-            rootfs_paths: &rootfs,
-            r2: None,
-            policy: RootfsCachePolicy::BestEffort,
-            disk_mb: 16384,
-            guest_agent: &guest,
-            guest_download: &guest,
-            guest_init: &guest,
-            guest_mock_claude: &guest,
-            guest_mock_codex: &guest,
-            guest_reseed: &guest,
-        };
+        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::BestEffort, None);
 
         upload_rootfs_to_r2(&input, false).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn strict_warm_existing_rootfs_still_requires_r2_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "strict-local-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"local-rootfs")
+            .await
+            .unwrap();
+        let guest = dir.path().join("guest");
+        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::StrictWarm, None);
+
+        let err = ensure_rootfs_under_lock(input).await.unwrap_err();
+
+        assert!(err.to_string().contains("--warm-rootfs-cache requires R2"));
+        assert!(
+            rootfs.rootfs().exists(),
+            "strict warm must not remove a valid local rootfs when R2 is missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn best_effort_existing_rootfs_allows_missing_r2_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "best-effort-local-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"local-rootfs")
+            .await
+            .unwrap();
+        let guest = dir.path().join("guest");
+        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::BestEffort, None);
+
+        ensure_rootfs_under_lock(input).await.unwrap();
+
+        assert!(rootfs.rootfs().exists());
     }
 
     #[test]
