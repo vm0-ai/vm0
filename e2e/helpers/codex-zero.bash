@@ -49,18 +49,24 @@ _codex_zero_curl() {
 }
 
 # Enable the codex-beta feature switch for the current test user.
+# Key must match FeatureSwitchKey.CodexBeta = "codexBeta" (camelCase) in
+# turbo/packages/connectors/src/feature-switch-key.ts. isFeatureEnabled()
+# resolves overrides via ctx.overrides[key] keyed by the enum value, so a
+# wrong-cased key would be silently ignored.
 enable_codex_beta() {
     _codex_zero_curl "/api/zero/feature-switches" \
         -X POST \
-        -d '{"switches":{"codex-beta":true}}' \
+        -d '{"switches":{"codexBeta":true}}' \
         >/dev/null
 }
 
-# Disable the codex-beta override (best-effort cleanup).
+# Clear all of the current test user's feature-switch overrides (best-effort
+# cleanup). Using DELETE rather than POST-flip-to-false avoids leaking the
+# override to subsequent serial-layer tests sharing E2E_SERIAL_EMAIL if the
+# request 5xxs.
 disable_codex_beta() {
     _codex_zero_curl "/api/zero/feature-switches" \
-        -X POST \
-        -d '{"switches":{"codex-beta":false}}' \
+        -X DELETE \
         >/dev/null 2>&1 || true
 }
 
@@ -80,7 +86,7 @@ wait_for_chat_assistant_done() {
             status_value=$(printf '%s' "$body" \
                 | jq -r '[.messages[] | select(.role == "assistant")] | last | .status // ""' 2>/dev/null)
             case "$status_value" in
-                completed|succeeded|failed)
+                completed|failed|timeout|cancelled)
                     run_id=$(printf '%s' "$body" \
                         | jq -r '[.messages[] | select(.role == "assistant")] | last | .runId // ""')
                     content=$(printf '%s' "$body" \
@@ -100,8 +106,12 @@ wait_for_chat_assistant_done() {
 }
 
 # Print the framework field of a run record. Used in assertions.
+# Reads from /api/zero/runs/:id/telemetry/agent (which projects `framework`
+# via agentEventsResponseSchema) rather than /api/zero/runs/:id (which does
+# not — see getRunResponseSchema in
+# turbo/packages/api-contracts/src/contracts/runs.ts).
 get_run_framework() {
     local run_id="$1"
-    _codex_zero_curl "/api/zero/runs/$run_id" 2>/dev/null \
+    _codex_zero_curl "/api/zero/runs/$run_id/telemetry/agent?limit=1" 2>/dev/null \
         | jq -r '.framework // ""'
 }
