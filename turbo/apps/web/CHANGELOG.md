@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.318.0](https://github.com/vm0-ai/vm0/compare/web-v12.317.0...web-v12.318.0) (2026-04-29)
+
+
+### Features
+
+* add model usage rankings ([#11464](https://github.com/vm0-ai/vm0/issues/11464)) ([e251a05](https://github.com/vm0-ai/vm0/commit/e251a05dcc738ea7b2ae0c798ef9a47e21978746))
+
+
+### Bug Fixes
+
+* preserve cancelled run chat error ([#11459](https://github.com/vm0-ai/vm0/issues/11459)) ([8fc17bf](https://github.com/vm0-ai/vm0/commit/8fc17bfe5fcf9684784e29714b71e895492df71b))
+
 ## [12.317.0](https://github.com/vm0-ai/vm0/compare/web-v12.316.1...web-v12.317.0) (2026-04-29)
 
 

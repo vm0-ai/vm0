@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.138.2](https://github.com/vm0-ai/vm0/compare/cli-v9.138.1...cli-v9.138.2) (2026-04-29)
+
+
+### Bug Fixes
+
+* **cli:** align zero web upload file types ([#11456](https://github.com/vm0-ai/vm0/issues/11456)) ([d9c1049](https://github.com/vm0-ai/vm0/commit/d9c10497e76535ceb8340bc8a6a15811c542c4de))
+
 ## [9.138.1](https://github.com/vm0-ai/vm0/compare/cli-v9.138.0...cli-v9.138.1) (2026-04-29)
 
 
