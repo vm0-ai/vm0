@@ -67,6 +67,7 @@ import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
 import { greenhouseHandler } from "./providers/greenhouse-handler";
 import { groqHandler } from "./providers/groq-handler";
+import { gumroadHandler } from "./providers/gumroad-handler";
 import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
 import { heliconeHandler } from "./providers/helicone-handler";
@@ -248,6 +249,7 @@ export const PROVIDER_HANDLERS: Record<
   granola: granolaHandler,
   greenhouse: greenhouseHandler,
   groq: groqHandler,
+  gumroad: gumroadHandler,
   github: githubHandler,
   gmail: gmailHandler,
   heygen: heygenHandler,
