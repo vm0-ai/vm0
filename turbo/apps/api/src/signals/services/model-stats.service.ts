@@ -3,9 +3,12 @@ import { sql } from "drizzle-orm";
 import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { usageEvent } from "@vm0/db/schema/usage-event";
-import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  VM0_MODEL_ALIAS_TO_MODEL,
+  VM0_MODEL_TO_PROVIDER,
+} from "@vm0/api-contracts/contracts/model-providers";
 
-import { writeDb$ } from "../external/db";
+import { type Db, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 
 const HOUR_MS = 60 * 60_000;
@@ -16,13 +19,22 @@ const TOKEN_CATEGORY_INPUT = "tokens.input";
 const TOKEN_CATEGORY_OUTPUT = "tokens.output";
 const TOKEN_CATEGORY_CACHE_READ = "tokens.cache_read";
 const TOKEN_CATEGORY_CACHE_CREATION = "tokens.cache_creation";
-const MODEL_STATS_MODEL_IDS = Object.keys(VM0_MODEL_TO_PROVIDER);
-const MODEL_STATS_MODEL_ID_SQL = sql.join(
-  MODEL_STATS_MODEL_IDS.map((model) => {
-    return sql`${model}`;
-  }),
-  sql`, `,
-);
+
+function getModelAliasEntries() {
+  return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
+}
+
+function getModelStatsModelIdSql() {
+  return sql.join(
+    [
+      ...Object.keys(VM0_MODEL_TO_PROVIDER),
+      ...Object.keys(VM0_MODEL_ALIAS_TO_MODEL),
+    ].map((model) => {
+      return sql`${model}`;
+    }),
+    sql`, `,
+  );
+}
 
 interface ModelStatsAggregationResult {
   readonly windowStart: Date;
@@ -41,23 +53,48 @@ function utcHourStart(date: Date): Date {
   );
 }
 
-export const aggregateModelStats$ = command(
-  async (
-    { set },
-    hours: number,
-    signal: AbortSignal,
-  ): Promise<ModelStatsAggregationResult> => {
-    const db = set(writeDb$);
-    const windowEnd = utcHourStart(nowDate());
-    const windowStart = new Date(windowEnd.getTime() - hours * HOUR_MS);
+function creditUsageModelExpression() {
+  const modelColumn = sql.raw('"credit_usage"."model"');
+  return sql<string>`CASE ${sql.join(
+    getModelAliasEntries().map(([alias, model]) => {
+      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
+    }),
+    sql` `,
+  )} ELSE ${modelColumn} END`;
+}
 
-    signal.throwIfAborted();
-    const result = await db.execute(sql`
+function usageEventModelExpression() {
+  const providerColumn = sql.raw('"usage_event"."provider"');
+  return sql<string>`CASE ${sql.join(
+    getModelAliasEntries().map(([alias, model]) => {
+      return sql`WHEN ${providerColumn} = ${alias} THEN ${model}`;
+    }),
+    sql` `,
+  )} ELSE ${providerColumn} END`;
+}
+
+async function replaceModelStats(
+  db: Db,
+  windowStart: Date,
+  windowEnd: Date,
+): Promise<number> {
+  const creditUsageModelExpr = creditUsageModelExpression();
+  const usageEventModelExpr = usageEventModelExpression();
+  const modelStatsModelIdSql = getModelStatsModelIdSql();
+
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      DELETE FROM ${modelStat}
+      WHERE ${modelStat.hourStart} >= ${windowStart}
+        AND ${modelStat.hourStart} < ${windowEnd}
+        AND ${modelStat.model} IN (${modelStatsModelIdSql})
+    `);
+
+    return tx.execute(sql`
       WITH usage_rows AS (
         SELECT
           date_trunc('hour', ${creditUsage.createdAt})::timestamp AS hour_start,
-          ${creditUsage.model} AS model,
-          ${creditUsage.modelProvider} AS model_provider,
+          ${creditUsageModelExpr} AS model,
           ${creditUsage.orgId} AS org_id,
           ${creditUsage.userId} AS user_id,
           COALESCE(${creditUsage.runId}::text, ${creditUsage.id}::text) AS request_key,
@@ -69,14 +106,13 @@ export const aggregateModelStats$ = command(
         FROM ${creditUsage}
         WHERE ${creditUsage.createdAt} >= ${windowStart}
           AND ${creditUsage.createdAt} < ${windowEnd}
-          AND ${creditUsage.model} IN (${MODEL_STATS_MODEL_ID_SQL})
+          AND ${creditUsage.model} IN (${modelStatsModelIdSql})
 
         UNION ALL
 
         SELECT
           date_trunc('hour', ${usageEvent.createdAt})::timestamp AS hour_start,
-          ${usageEvent.provider} AS model,
-          ''::varchar(100) AS model_provider,
+          ${usageEventModelExpr} AS model,
           ${usageEvent.orgId} AS org_id,
           ${usageEvent.userId} AS user_id,
           COALESCE(${usageEvent.runId}::text, ${usageEvent.idempotencyKey}::text) AS request_key,
@@ -93,13 +129,12 @@ export const aggregateModelStats$ = command(
         WHERE ${usageEvent.createdAt} >= ${windowStart}
           AND ${usageEvent.createdAt} < ${windowEnd}
           AND ${usageEvent.kind} = ${MODEL_USAGE_KIND}
-          AND ${usageEvent.provider} IN (${MODEL_STATS_MODEL_ID_SQL})
+          AND ${usageEvent.provider} IN (${modelStatsModelIdSql})
       ),
       aggregated AS (
         SELECT
           hour_start,
           model,
-          model_provider,
           COUNT(DISTINCT request_key)::bigint AS request_count,
           COUNT(DISTINCT org_id)::int AS org_count,
           COUNT(DISTINCT user_id)::int AS user_count,
@@ -116,7 +151,7 @@ export const aggregateModelStats$ = command(
           COALESCE(SUM(credits_charged), 0)::bigint AS credits_charged
         FROM usage_rows
         WHERE model <> ''
-        GROUP BY hour_start, model, model_provider
+        GROUP BY hour_start, model
       )
       INSERT INTO ${modelStat} (
         "hour_start",
@@ -135,7 +170,7 @@ export const aggregateModelStats$ = command(
       SELECT
         hour_start,
         model,
-        model_provider,
+        ''::varchar(100) AS model_provider,
         request_count,
         org_count,
         user_count,
@@ -159,12 +194,29 @@ export const aggregateModelStats$ = command(
         updated_at = NOW()
       RETURNING id
     `);
+  });
+
+  return result.rowCount ?? 0;
+}
+
+export const aggregateModelStats$ = command(
+  async (
+    { set },
+    hours: number,
+    signal: AbortSignal,
+  ): Promise<ModelStatsAggregationResult> => {
+    const db = set(writeDb$);
+    const windowEnd = utcHourStart(nowDate());
+    const windowStart = new Date(windowEnd.getTime() - hours * HOUR_MS);
+
+    signal.throwIfAborted();
+    const aggregated = await replaceModelStats(db, windowStart, windowEnd);
     signal.throwIfAborted();
 
     return {
       windowStart,
       windowEnd,
-      aggregated: result.rowCount ?? 0,
+      aggregated,
     };
   },
 );

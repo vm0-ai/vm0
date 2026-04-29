@@ -42,6 +42,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
   it("aggregates hourly model usage and excludes connector usage", async () => {
     const db = store.set(writeDb$);
     const model = "claude-sonnet-4-6";
+    const modelAlias = "anthropic/claude-sonnet-4.6";
     const unknownModel = `unknown-model-${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
@@ -70,6 +71,20 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         cacheReadInputTokens: 10,
         cacheCreationInputTokens: 5,
         creditsCharged: 12,
+        status: "processed",
+        createdAt,
+        processedAt: createdAt,
+      },
+      {
+        orgId,
+        userId,
+        model: modelAlias,
+        modelProvider: "openrouter-api-key",
+        inputTokens: 50,
+        outputTokens: 5,
+        cacheReadInputTokens: 2,
+        cacheCreationInputTokens: 3,
+        creditsCharged: 2,
         status: "processed",
         createdAt,
         processedAt: createdAt,
@@ -135,6 +150,19 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         orgId,
         userId,
         kind: "model",
+        provider: modelAlias,
+        category: "tokens.input",
+        quantity: 25,
+        creditsCharged: 1,
+        status: "processed",
+        createdAt,
+        processedAt: createdAt,
+      },
+      {
+        idempotencyKey: randomUUID(),
+        orgId,
+        userId,
+        kind: "model",
         provider: unknownModel,
         category: "tokens.input",
         quantity: 300_000,
@@ -168,13 +196,14 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
 
     expect(row).toMatchObject({
       hourStart: expectedHourStart,
-      inputTokens: 400,
-      outputTokens: 240,
-      cacheReadInputTokens: 10,
-      cacheCreationInputTokens: 5,
-      totalTokens: 655,
-      creditsCharged: 19,
-      requestCount: 3,
+      modelProvider: "",
+      inputTokens: 475,
+      outputTokens: 245,
+      cacheReadInputTokens: 12,
+      cacheCreationInputTokens: 8,
+      totalTokens: 740,
+      creditsCharged: 22,
+      requestCount: 5,
       orgCount: 1,
       userCount: 1,
     });
@@ -207,7 +236,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       )
       .limit(1);
 
-    expect(updatedRow?.creditsCharged).toBe(23);
+    expect(updatedRow?.creditsCharged).toBe(26);
 
     const [connectorRow] = await db
       .select()

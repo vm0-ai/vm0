@@ -92,6 +92,26 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
   },
 };
 
+export const VM0_MODEL_ALIAS_TO_MODEL = {
+  "anthropic/claude-opus-4.7": "claude-opus-4-7",
+  "anthropic/claude-opus-4.6": "claude-opus-4-6",
+  "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
+  "anthropic/claude-haiku-4.5": "claude-haiku-4-5",
+  "z-ai/glm-5.1": "glm-5.1",
+  "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
+  "deepseek/deepseek-v4-flash": "deepseek-v4-flash",
+  "moonshotai/kimi-k2.6": "kimi-k2.6",
+  "moonshotai/kimi-k2.5": "kimi-k2.5",
+  "minimax/minimax-m2.7": "MiniMax-M2.7",
+} as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
+
+const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
+  VM0_MODEL_ALIAS_TO_MODEL;
+
+export function normalizeVm0ModelId(model: string): string {
+  return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
+}
+
 /**
  * Return the VM0 managed models visible to the caller, filtered by feature
  * switches. Models without a featureFlag are always visible; models with a

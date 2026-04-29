@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { sql } from "drizzle-orm";
 import { modelStat } from "@vm0/db/schema/model-stat";
+import {
+  VM0_MODEL_ALIAS_TO_MODEL,
+  normalizeVm0ModelId,
+} from "@vm0/api-contracts/contracts/model-providers";
 
 import { type Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
@@ -32,26 +36,20 @@ interface RankingRow {
   readonly name: string;
   readonly vendor: string;
   readonly iconPath: string | null;
-  readonly providers: string;
-  readonly requestCount: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cacheTokens: number;
   readonly totalTokens: number;
-  readonly creditsCharged: number;
   readonly previousTotalTokens: number;
   readonly share: number;
 }
 
 interface RawRankingRow {
   readonly model: unknown;
-  readonly providers: unknown;
-  readonly request_count: unknown;
   readonly input_tokens: unknown;
   readonly output_tokens: unknown;
   readonly cache_tokens: unknown;
   readonly total_tokens: unknown;
-  readonly credits_charged: unknown;
   readonly previous_total_tokens: unknown;
 }
 
@@ -65,6 +63,10 @@ const MODELS_BY_ID = new Map(
     ] as const;
   }),
 );
+
+function getModelAliasEntries() {
+  return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
+}
 
 export async function generateMetadata({
   params,
@@ -162,13 +164,6 @@ function toNumber(value: unknown): number {
   return 0;
 }
 
-function formatCompact(value: number): string {
-  return new Intl.NumberFormat("en", {
-    notation: "compact",
-    maximumFractionDigits: value >= 1_000_000 ? 1 : 0,
-  }).format(value);
-}
-
 function formatTokens(value: number): string {
   if (value >= 1_000_000_000_000) {
     return `${(value / 1_000_000_000_000).toFixed(2)}T`;
@@ -217,13 +212,24 @@ function formatChange(
 }
 
 function resolveModel(modelId: string): ModelEntry | undefined {
-  const direct = MODELS_BY_ID.get(modelId.toLowerCase());
+  const normalizedModelId = normalizeVm0ModelId(modelId);
+  const direct = MODELS_BY_ID.get(normalizedModelId.toLowerCase());
   if (direct) return direct;
 
-  const [, suffix] = modelId.split("/");
+  const [, suffix] = normalizedModelId.split("/");
   if (!suffix) return undefined;
 
   return MODELS_BY_ID.get(suffix.toLowerCase());
+}
+
+function modelStatModelExpression() {
+  const modelColumn = sql.raw('"model_stat"."model"');
+  return sql<string>`CASE ${sql.join(
+    getModelAliasEntries().map(([alias, model]) => {
+      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
+    }),
+    sql` `,
+  )} ELSE ${modelColumn} END`;
 }
 
 async function getRankings(period: PeriodKey): Promise<{
@@ -238,41 +244,36 @@ async function getRankings(period: PeriodKey): Promise<{
   const duration = Math.max(window.end.getTime() - window.start.getTime(), 0);
   const previousEnd = window.start;
   const previousStart = new Date(previousEnd.getTime() - duration);
+  const modelExpr = modelStatModelExpression();
 
   const result = await globalThis.services.db.execute(sql`
     WITH current_period AS (
       SELECT
-        ${modelStat.model} AS model,
-        COALESCE(string_agg(DISTINCT NULLIF(${modelStat.modelProvider}, ''), ', '), '') AS providers,
-        COALESCE(SUM(${modelStat.requestCount}), 0)::bigint AS request_count,
+        ${modelExpr} AS model,
         COALESCE(SUM(${modelStat.inputTokens}), 0)::bigint AS input_tokens,
         COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
         COALESCE(SUM(${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS cache_tokens,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens,
-        COALESCE(SUM(${modelStat.creditsCharged}), 0)::bigint AS credits_charged
+        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
       FROM ${modelStat}
       WHERE ${modelStat.hourStart} >= ${window.start}
         AND ${modelStat.hourStart} < ${window.end}
-      GROUP BY ${modelStat.model}
+      GROUP BY 1
     ),
     previous_period AS (
       SELECT
-        ${modelStat.model} AS model,
+        ${modelExpr} AS model,
         COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS previous_total_tokens
       FROM ${modelStat}
       WHERE ${modelStat.hourStart} >= ${previousStart}
         AND ${modelStat.hourStart} < ${previousEnd}
-      GROUP BY ${modelStat.model}
+      GROUP BY 1
     )
     SELECT
       current_period.model,
-      current_period.providers,
-      current_period.request_count,
       current_period.input_tokens,
       current_period.output_tokens,
       current_period.cache_tokens,
       current_period.total_tokens,
-      current_period.credits_charged,
       COALESCE(previous_period.previous_total_tokens, 0)::bigint AS previous_total_tokens
     FROM current_period
     LEFT JOIN previous_period ON previous_period.model = current_period.model
@@ -316,13 +317,10 @@ async function getRankings(period: PeriodKey): Promise<{
         name: item.modelEntry.name,
         vendor: item.modelEntry.vendor,
         iconPath: vendorIconPath(item.modelEntry.vendor),
-        providers: String(item.row.providers ?? ""),
-        requestCount: toNumber(item.row.request_count),
         inputTokens: toNumber(item.row.input_tokens),
         outputTokens: toNumber(item.row.output_tokens),
         cacheTokens: toNumber(item.row.cache_tokens),
         totalTokens: item.totalTokens,
-        creditsCharged: toNumber(item.row.credits_charged),
         previousTotalTokens: toNumber(item.row.previous_total_tokens),
         share: totalTokens > 0 ? (item.totalTokens / totalTokens) * 100 : 0,
       };
@@ -396,7 +394,7 @@ function RankingTable({
 
   return (
     <div className="overflow-x-auto border-y border-[hsl(var(--gray-200))]">
-      <table className="w-full min-w-[760px] border-collapse text-left">
+      <table className="w-full min-w-[640px] border-collapse text-left">
         <thead>
           <tr className="border-b border-[hsl(var(--gray-200))] text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
             <th className="w-[64px] px-3 py-3 font-medium">Rank</th>
@@ -404,13 +402,10 @@ function RankingTable({
             <th className="px-3 py-3 text-right font-medium">Tokens</th>
             <th className="px-3 py-3 text-right font-medium">Share</th>
             <th className="px-3 py-3 text-right font-medium">Change</th>
-            <th className="px-3 py-3 text-right font-medium">Requests</th>
-            <th className="px-3 py-3 text-right font-medium">Credits</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => {
-            const provider = row.providers || row.vendor;
             return (
               <tr
                 key={row.model}
@@ -442,7 +437,7 @@ function RankingTable({
                         {row.name}
                       </div>
                       <div className="truncate text-[12px] text-[hsl(var(--muted-foreground))]">
-                        {provider}
+                        {row.vendor}
                       </div>
                     </div>
                   </div>
@@ -464,12 +459,6 @@ function RankingTable({
                     current={row.totalTokens}
                     previous={row.previousTotalTokens}
                   />
-                </td>
-                <td className="px-3 py-4 text-right text-[14px] text-[hsl(var(--foreground))]">
-                  {formatCompact(row.requestCount)}
-                </td>
-                <td className="px-3 py-4 text-right text-[14px] text-[hsl(var(--foreground))]">
-                  {formatCompact(row.creditsCharged)}
                 </td>
               </tr>
             );

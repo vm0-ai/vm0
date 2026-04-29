@@ -44,7 +44,7 @@ describe("GET /api/zero/model-usage-ranking", () => {
     expect(response.status).toBe(403);
   });
 
-  it("returns platform-wide model credit ranking without org or user details", async () => {
+  it("returns platform-wide model token ranking without org or user details", async () => {
     await seedUserFeatureSwitches(user.orgId, user.userId, {
       [FeatureSwitchKey.ModelUsageRanking]: true,
     });
@@ -55,7 +55,15 @@ describe("GET /api/zero/model-usage-ranking", () => {
     const modelB = `test-model-b-${Date.now()}`;
     const pendingModel = `test-model-pending-${Date.now()}`;
     const oldModel = `test-model-old-${Date.now()}`;
-    const insertedModels = [modelA, modelB, pendingModel, oldModel];
+    const sonnetAlias = "anthropic/claude-sonnet-4.6";
+    const sonnetModel = "claude-sonnet-4-6";
+    const insertedModels = [
+      modelA,
+      modelB,
+      pendingModel,
+      oldModel,
+      sonnetAlias,
+    ];
 
     try {
       await insertTestUsageEvent("org-a", {
@@ -88,6 +96,16 @@ describe("GET /api/zero/model-usage-ranking", () => {
         creditsCharged: 50_000_000,
         createdAt: now,
       });
+      await insertTestUsageEvent("org-sonnet", {
+        userId: "user-sonnet",
+        kind: "model",
+        provider: sonnetAlias,
+        category: "tokens.input",
+        quantity: 90_000_000,
+        status: "processed",
+        creditsCharged: 1,
+        createdAt: now,
+      });
       await insertTestUsageEvent("org-d", {
         userId: "user-d",
         kind: "model",
@@ -118,6 +136,9 @@ describe("GET /api/zero/model-usage-ranking", () => {
       const modelBRow = data.models.find((row) => {
         return row.model === modelB;
       });
+      const sonnetRow = data.models.find((row) => {
+        return row.model === sonnetModel;
+      });
       const modelAIndex = data.models.findIndex((row) => {
         return row.model === modelA;
       });
@@ -125,19 +146,17 @@ describe("GET /api/zero/model-usage-ranking", () => {
         return row.model === modelB;
       });
       expect(data.range).toBe("30d");
-      expect(data.grandTotalTokens).toBeGreaterThanOrEqual(45_000_000);
-      expect(data.grandTotalCredits).toBeGreaterThanOrEqual(80_000_000);
+      expect(data.grandTotalTokens).toBeGreaterThanOrEqual(135_000_000);
       expect(modelBIndex).toBeGreaterThanOrEqual(0);
       expect(modelAIndex).toBeGreaterThanOrEqual(0);
-      expect(modelBIndex).toBeLessThan(modelAIndex);
+      expect(modelAIndex).toBeLessThan(modelBIndex);
       expect(modelARow).toMatchObject({
         model: modelA,
         inputTokens: 20_000_000,
         outputTokens: 10_000_000,
         cacheTokens: 0,
         totalTokens: 30_000_000,
-        credits: 30_000_000,
-        previousCredits: 0,
+        previousTotalTokens: 0,
         changePercent: null,
       });
       expect(modelBRow).toMatchObject({
@@ -146,10 +165,15 @@ describe("GET /api/zero/model-usage-ranking", () => {
         outputTokens: 0,
         cacheTokens: 0,
         totalTokens: 15_000_000,
-        credits: 50_000_000,
-        previousCredits: 0,
+        previousTotalTokens: 0,
         changePercent: null,
       });
+      expect(sonnetRow).toMatchObject({
+        model: sonnetModel,
+        inputTokens: expect.any(Number),
+        totalTokens: expect.any(Number),
+      });
+      expect(sonnetRow?.inputTokens).toBeGreaterThanOrEqual(90_000_000);
       expect(data.daily).toHaveLength(30);
       const today = new Date(
         Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
@@ -163,12 +187,10 @@ describe("GET /api/zero/model-usage-ranking", () => {
         expect.arrayContaining([
           expect.objectContaining({
             model: modelA,
-            credits: 30_000_000,
             totalTokens: 30_000_000,
           }),
           expect.objectContaining({
             model: modelB,
-            credits: 50_000_000,
             totalTokens: 15_000_000,
           }),
         ]),
@@ -183,8 +205,15 @@ describe("GET /api/zero/model-usage-ranking", () => {
           return row.model === oldModel;
         }),
       ).toBe(false);
+      expect(
+        data.models.some((row) => {
+          return row.model === sonnetAlias;
+        }),
+      ).toBe(false);
       expect(JSON.stringify(data)).not.toContain("org-a");
       expect(JSON.stringify(data)).not.toContain("user-a");
+      expect(JSON.stringify(data)).not.toContain("credits");
+      expect(JSON.stringify(data)).not.toContain("request");
     } finally {
       await deleteTestUsageEventsByProvider(insertedModels);
     }

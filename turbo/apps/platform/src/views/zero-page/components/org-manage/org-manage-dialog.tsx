@@ -186,7 +186,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
     activeTab === "providers" && rankingOpen ? "Model Popularity" : meta.title;
   const description =
     activeTab === "providers" && rankingOpen
-      ? "Ranking of the most popular models on VM0, based on platform-wide credits."
+      ? "Ranking of the most popular models on VM0, based on platform-wide tokens."
       : meta.description;
 
   const handleOpenChange = (nextOpen: boolean) => {

@@ -5,6 +5,7 @@ import type {
   ModelUsageRankingRange,
   ModelUsageRankingResponse,
 } from "@vm0/api-contracts/contracts/zero-model-usage-ranking";
+import { VM0_MODEL_ALIAS_TO_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import type { Database } from "../../../types/global";
 import {
   MODEL_TOKEN_CATEGORIES,
@@ -23,7 +24,6 @@ interface ModelUsageAggregateRow {
   inputTokens: number;
   outputTokens: number;
   cacheTokens: number;
-  credits: number;
 }
 
 interface ModelUsageRowWithTotal extends ModelUsageAggregateRow {
@@ -33,8 +33,11 @@ interface ModelUsageRowWithTotal extends ModelUsageAggregateRow {
 interface ModelUsageDailyAggregateRow {
   date: string;
   model: string;
-  credits: number;
   totalTokens: number;
+}
+
+function getModelAliasEntries() {
+  return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
 }
 
 function getRangeDays(range: ModelUsageRankingRange): number {
@@ -68,20 +71,37 @@ function usageEventTokenSum(category: string, alias: string) {
   );
 }
 
+function usageEventModelExpression() {
+  const providerColumn = sql.raw('"usage_event"."provider"');
+  return sql<string>`CASE ${sql.join(
+    getModelAliasEntries().map(([alias, model]) => {
+      return sql`WHEN ${providerColumn} = ${alias} THEN ${model}`;
+    }),
+    sql` `,
+  )} ELSE ${providerColumn} END`;
+}
+
+function creditUsageModelExpression() {
+  const modelColumn = sql.raw('"credit_usage"."model"');
+  return sql<string>`CASE ${sql.join(
+    getModelAliasEntries().map(([alias, model]) => {
+      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
+    }),
+    sql` `,
+  )} ELSE ${modelColumn} END`;
+}
+
 async function queryUsageEventDailyRows(
   db: Database,
   start: Date,
   end: Date,
 ): Promise<ModelUsageDailyAggregateRow[]> {
   const dateExpr = sql<string>`to_char(date_trunc('day', ${usageEvent.processedAt}), 'YYYY-MM-DD')`;
+  const modelExpr = usageEventModelExpression();
   const rows = await db
     .select({
       date: dateExpr.as("date"),
-      model: usageEvent.provider,
-      credits:
-        sql<number>`COALESCE(SUM(${usageEvent.creditsCharged}), 0)::bigint`.as(
-          "credits",
-        ),
+      model: modelExpr.as("model"),
       totalTokens:
         sql<number>`COALESCE(SUM(${usageEvent.quantity}), 0)::bigint`.as(
           "total_tokens",
@@ -97,13 +117,12 @@ async function queryUsageEventDailyRows(
         lt(usageEvent.processedAt, end),
       ),
     )
-    .groupBy(dateExpr, usageEvent.provider);
+    .groupBy(sql.raw("1"), sql.raw("2"));
 
   return rows.map((row) => {
     return {
       date: row.date,
       model: row.model,
-      credits: Number(row.credits),
       totalTokens: Number(row.totalTokens),
     };
   });
@@ -115,14 +134,11 @@ async function queryLegacyCreditUsageDailyRows(
   end: Date,
 ): Promise<ModelUsageDailyAggregateRow[]> {
   const dateExpr = sql<string>`to_char(date_trunc('day', ${creditUsage.processedAt}), 'YYYY-MM-DD')`;
+  const modelExpr = creditUsageModelExpression();
   const rows = await db
     .select({
       date: dateExpr.as("date"),
-      model: creditUsage.model,
-      credits:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits",
-        ),
+      model: modelExpr.as("model"),
       totalTokens:
         sql<number>`COALESCE(SUM(${creditUsage.inputTokens} + ${creditUsage.outputTokens} + ${creditUsage.cacheReadInputTokens} + ${creditUsage.cacheCreationInputTokens}), 0)::bigint`.as(
           "total_tokens",
@@ -136,13 +152,12 @@ async function queryLegacyCreditUsageDailyRows(
         lt(creditUsage.processedAt, end),
       ),
     )
-    .groupBy(dateExpr, creditUsage.model);
+    .groupBy(sql.raw("1"), sql.raw("2"));
 
   return rows.map((row) => {
     return {
       date: row.date,
       model: row.model,
-      credits: Number(row.credits),
       totalTokens: Number(row.totalTokens),
     };
   });
@@ -153,18 +168,15 @@ async function queryUsageEventModelRows(
   start: Date,
   end: Date,
 ): Promise<ModelUsageAggregateRow[]> {
+  const modelExpr = usageEventModelExpression();
   const rows = await db
     .select({
-      model: usageEvent.provider,
+      model: modelExpr.as("model"),
       inputTokens: usageEventTokenSum(TOKEN_CATEGORY_INPUT, "input_tokens"),
       outputTokens: usageEventTokenSum(TOKEN_CATEGORY_OUTPUT, "output_tokens"),
       cacheTokens:
         sql<number>`COALESCE(SUM(CASE WHEN ${usageEvent.category} IN (${TOKEN_CATEGORY_CACHE_READ}, ${TOKEN_CATEGORY_CACHE_CREATION}) THEN ${usageEvent.quantity} ELSE 0 END), 0)::bigint`.as(
           "cache_tokens",
-        ),
-      credits:
-        sql<number>`COALESCE(SUM(${usageEvent.creditsCharged}), 0)::bigint`.as(
-          "credits",
         ),
     })
     .from(usageEvent)
@@ -177,7 +189,7 @@ async function queryUsageEventModelRows(
         lt(usageEvent.processedAt, end),
       ),
     )
-    .groupBy(usageEvent.provider);
+    .groupBy(sql.raw("1"));
 
   return rows.map((row) => {
     return {
@@ -185,7 +197,6 @@ async function queryUsageEventModelRows(
       inputTokens: Number(row.inputTokens),
       outputTokens: Number(row.outputTokens),
       cacheTokens: Number(row.cacheTokens),
-      credits: Number(row.credits),
     };
   });
 }
@@ -195,9 +206,10 @@ async function queryLegacyCreditUsageModelRows(
   start: Date,
   end: Date,
 ): Promise<ModelUsageAggregateRow[]> {
+  const modelExpr = creditUsageModelExpression();
   const rows = await db
     .select({
-      model: creditUsage.model,
+      model: modelExpr.as("model"),
       inputTokens:
         sql<number>`COALESCE(SUM(${creditUsage.inputTokens}), 0)::bigint`.as(
           "input_tokens",
@@ -210,10 +222,6 @@ async function queryLegacyCreditUsageModelRows(
         sql<number>`COALESCE(SUM(${creditUsage.cacheReadInputTokens} + ${creditUsage.cacheCreationInputTokens}), 0)::bigint`.as(
           "cache_tokens",
         ),
-      credits:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits",
-        ),
     })
     .from(creditUsage)
     .where(
@@ -223,7 +231,7 @@ async function queryLegacyCreditUsageModelRows(
         lt(creditUsage.processedAt, end),
       ),
     )
-    .groupBy(creditUsage.model);
+    .groupBy(sql.raw("1"));
 
   return rows.map((row) => {
     return {
@@ -231,7 +239,6 @@ async function queryLegacyCreditUsageModelRows(
       inputTokens: Number(row.inputTokens),
       outputTokens: Number(row.outputTokens),
       cacheTokens: Number(row.cacheTokens),
-      credits: Number(row.credits),
     };
   });
 }
@@ -247,7 +254,6 @@ function mergeRows(rows: ModelUsageAggregateRow[]): ModelUsageAggregateRow[] {
     current.inputTokens += row.inputTokens;
     current.outputTokens += row.outputTokens;
     current.cacheTokens += row.cacheTokens;
-    current.credits += row.credits;
   }
   return [...byModel.values()];
 }
@@ -263,7 +269,6 @@ function mergeDailyRows(
       byDateAndModel.set(key, { ...row });
       continue;
     }
-    current.credits += row.credits;
     current.totalTokens += row.totalTokens;
   }
   return [...byDateAndModel.values()];
@@ -306,43 +311,41 @@ export async function getModelUsageRanking(
     queryLegacyCreditUsageDailyRows(db, start, now),
   ]);
   const rows = withTotalTokens(mergeRows([...eventRows, ...legacyRows]));
-  const previousRows = mergeRows([...previousEventRows, ...previousLegacyRows]);
-  const previousCreditsByModel = new Map(
+  const previousRows = withTotalTokens(
+    mergeRows([...previousEventRows, ...previousLegacyRows]),
+  );
+  const previousTotalTokensByModel = new Map(
     previousRows.map((row) => {
-      return [row.model, row.credits] as const;
+      return [row.model, row.totalTokens] as const;
     }),
   );
 
   const grandTotalTokens = rows.reduce((sum, row) => {
     return sum + row.totalTokens;
   }, 0);
-  const grandTotalCredits = rows.reduce((sum, row) => {
-    return sum + row.credits;
-  }, 0);
-
   const models = rows
     .filter((row) => {
-      return row.credits > 0;
+      return row.totalTokens > 0;
     })
     .sort((a, b) => {
-      return b.credits - a.credits;
+      return b.totalTokens - a.totalTokens;
     })
     .slice(0, MODEL_USAGE_RANKING_LIMIT)
     .map((row) => {
-      const previousCredits = previousCreditsByModel.get(row.model) ?? 0;
+      const previousTotalTokens =
+        previousTotalTokensByModel.get(row.model) ?? 0;
       return {
         model: row.model,
         inputTokens: row.inputTokens,
         outputTokens: row.outputTokens,
         cacheTokens: row.cacheTokens,
         totalTokens: row.totalTokens,
-        credits: row.credits,
-        previousCredits,
+        previousTotalTokens,
         changePercent:
-          previousCredits > 0
-            ? (row.credits - previousCredits) / previousCredits
+          previousTotalTokens > 0
+            ? (row.totalTokens - previousTotalTokens) / previousTotalTokens
             : null,
-        share: grandTotalCredits > 0 ? row.credits / grandTotalCredits : 0,
+        share: grandTotalTokens > 0 ? row.totalTokens / grandTotalTokens : 0,
       };
     });
   const rankedModels = models.map((row) => {
@@ -359,15 +362,11 @@ export async function getModelUsageRanking(
       const row = dailyRowsByDateAndModel.get(`${date}:${model}`);
       return {
         model,
-        credits: row?.credits ?? 0,
         totalTokens: row?.totalTokens ?? 0,
       };
     });
     return {
       date,
-      totalCredits: dailyModels.reduce((sum, row) => {
-        return sum + row.credits;
-      }, 0),
       totalTokens: dailyModels.reduce((sum, row) => {
         return sum + row.totalTokens;
       }, 0),
@@ -379,7 +378,6 @@ export async function getModelUsageRanking(
     range,
     generatedAt: now.toISOString(),
     grandTotalTokens,
-    grandTotalCredits,
     models,
     daily,
   };

@@ -485,7 +485,7 @@ function TopModelsTrendPanel({ data }: { data: ModelUsageRankingResponse }) {
               width={52}
               axisLine={false}
               tickLine={false}
-              tickFormatter={formatRankingCredits}
+              tickFormatter={formatRankingTokens}
               tick={{
                 fill: "hsl(var(--muted-foreground))",
                 fontSize: 11,
@@ -585,7 +585,7 @@ function LeaderboardRow({
       </div>
       <div className="min-w-[5.5rem] text-right">
         <div className="text-sm font-semibold tabular-nums text-foreground">
-          {formatRankingCredits(item.credits)}
+          {formatRankingTokens(item.totalTokens)}
         </div>
         <div className="mt-0.5 flex items-center justify-end text-xs">
           <RankingChangeBadge item={item} />
@@ -660,7 +660,7 @@ function TrendTooltip({ active, payload, label }: TooltipContentProps) {
                 <span className="truncate">{entry.name}</span>
               </span>
               <span className="font-medium tabular-nums text-foreground">
-                {formatRankingCredits(entry.value)}
+                {formatRankingTokens(entry.value)}
               </span>
             </div>
           );
@@ -690,7 +690,7 @@ function buildTrendChartData(
       const model = bucket.models.find((entry) => {
         return entry.model === item.model;
       });
-      row[item.key] = model?.credits ?? 0;
+      row[item.key] = model?.totalTokens ?? 0;
     }
     return row;
   });
@@ -791,7 +791,7 @@ function rankingBarColor(index: number): string {
   }
 }
 
-function formatRankingCredits(value: number): string {
+function formatRankingTokens(value: number): string {
   return new Intl.NumberFormat("en-US", {
     notation: "compact",
     maximumFractionDigits: value >= 1_000_000 ? 1 : 0,

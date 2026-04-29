@@ -22,8 +22,7 @@ const defaultModelUsageRankingModels: ModelUsageRankingItem[] = [
     outputTokens: 310_000,
     cacheTokens: 120_000,
     totalTokens: 1_280_000,
-    credits: 12_400,
-    previousCredits: 9000,
+    previousTotalTokens: 929_000,
     changePercent: 0.3778,
     share: 0.6,
   },
@@ -33,8 +32,7 @@ const defaultModelUsageRankingModels: ModelUsageRankingItem[] = [
     outputTokens: 180_000,
     cacheTokens: 60_000,
     totalTokens: 660_000,
-    credits: 4900,
-    previousCredits: 3600,
+    previousTotalTokens: 485_000,
     changePercent: 0.3611,
     share: 0.24,
   },
@@ -44,8 +42,7 @@ const defaultModelUsageRankingModels: ModelUsageRankingItem[] = [
     outputTokens: 170_000,
     cacheTokens: 30_000,
     totalTokens: 440_000,
-    credits: 3200,
-    previousCredits: 0,
+    previousTotalTokens: 0,
     changePercent: null,
     share: 0.16,
   },
@@ -105,15 +102,11 @@ function makeMockModelUsageDaily(
       const weight = 0.5 + progress * (0.7 + modelIndex * 0.12);
       return {
         model: item.model,
-        credits: Math.round((item.credits / dayCount) * weight),
         totalTokens: Math.round((item.totalTokens / dayCount) * weight),
       };
     });
     return {
       date,
-      totalCredits: dailyModels.reduce((sum, item) => {
-        return sum + item.credits;
-      }, 0),
       totalTokens: dailyModels.reduce((sum, item) => {
         return sum + item.totalTokens;
       }, 0),
@@ -131,17 +124,10 @@ export const apiUsageHandlers = [
     const grandTotalTokens = mockModelUsageRankingModels.reduce((sum, item) => {
       return sum + item.totalTokens;
     }, 0);
-    const grandTotalCredits = mockModelUsageRankingModels.reduce(
-      (sum, item) => {
-        return sum + item.credits;
-      },
-      0,
-    );
     return respond(200, {
       range: query.range as ModelUsageRankingRange,
       generatedAt: "2026-04-29T00:00:00.000Z",
       grandTotalTokens,
-      grandTotalCredits,
       models: mockModelUsageRankingModels,
       daily: makeMockModelUsageDaily(
         mockModelUsageRankingModels,

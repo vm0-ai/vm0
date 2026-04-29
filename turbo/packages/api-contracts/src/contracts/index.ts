@@ -276,10 +276,12 @@ export {
   // VM0 managed provider
   VM0_ORG_SLUG,
   VM0_MODEL_TO_PROVIDER,
+  VM0_MODEL_ALIAS_TO_MODEL,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
   getVm0VisibleModels,
+  normalizeVm0ModelId,
 } from "./model-providers";
 export {
   sessionsByIdContract,

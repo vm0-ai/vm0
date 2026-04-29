@@ -7,6 +7,7 @@ import {
   getDefaultModel,
   getEnvironmentMapping,
   getVm0VisibleModels,
+  normalizeVm0ModelId,
   VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   type ModelProviderType,
@@ -160,6 +161,22 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels({});
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("deepseek-v4-flash");
+  });
+});
+
+describe("normalizeVm0ModelId", () => {
+  it.each([
+    ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
+    ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
+    ["z-ai/glm-5.1", "glm-5.1"],
+    ["moonshotai/kimi-k2.6", "kimi-k2.6"],
+    ["minimax/minimax-m2.7", "MiniMax-M2.7"],
+  ])("normalizes %s to %s", (model, expected) => {
+    expect(normalizeVm0ModelId(model)).toBe(expected);
+  });
+
+  it("keeps unknown model ids unchanged", () => {
+    expect(normalizeVm0ModelId("custom/model")).toBe("custom/model");
   });
 });
 

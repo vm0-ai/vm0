@@ -12,21 +12,18 @@ const modelUsageRankingItemSchema = z.object({
   outputTokens: z.number(),
   cacheTokens: z.number(),
   totalTokens: z.number(),
-  credits: z.number(),
-  previousCredits: z.number(),
+  previousTotalTokens: z.number(),
   changePercent: z.number().nullable(),
   share: z.number(),
 });
 
 const modelUsageRankingDailyModelSchema = z.object({
   model: z.string(),
-  credits: z.number(),
   totalTokens: z.number(),
 });
 
 const modelUsageRankingDailyBucketSchema = z.object({
   date: z.string(),
-  totalCredits: z.number(),
   totalTokens: z.number(),
   models: z.array(modelUsageRankingDailyModelSchema),
 });
@@ -35,7 +32,6 @@ const modelUsageRankingResponseSchema = z.object({
   range: modelUsageRankingRangeSchema,
   generatedAt: z.string(),
   grandTotalTokens: z.number(),
-  grandTotalCredits: z.number(),
   models: z.array(modelUsageRankingItemSchema),
   daily: z.array(modelUsageRankingDailyBucketSchema),
 });

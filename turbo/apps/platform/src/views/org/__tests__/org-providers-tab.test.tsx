@@ -141,8 +141,7 @@ describe("org providers tab - display", () => {
         outputTokens: 250_000,
         cacheTokens: 50_000,
         totalTokens: 1_200_000,
-        credits: 11_000,
-        previousCredits: 8000,
+        previousTotalTokens: 872_727,
         changePercent: 0.375,
         share: 0.75,
       },
@@ -152,8 +151,7 @@ describe("org providers tab - display", () => {
         outputTokens: 150_000,
         cacheTokens: 50_000,
         totalTokens: 400_000,
-        credits: 3000,
-        previousCredits: 0,
+        previousTotalTokens: 0,
         changePercent: null,
         share: 0.25,
       },
@@ -174,7 +172,7 @@ describe("org providers tab - display", () => {
     });
     expect(
       screen.getByText(
-        "Ranking of the most popular models on VM0, based on platform-wide credits.",
+        "Ranking of the most popular models on VM0, based on platform-wide tokens.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("Default provider")).not.toBeInTheDocument();
