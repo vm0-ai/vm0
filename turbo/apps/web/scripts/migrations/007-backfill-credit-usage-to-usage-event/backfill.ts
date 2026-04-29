@@ -35,6 +35,7 @@ export const MODEL_USAGE_EVENT_NAMESPACE =
   "18a22204-d25e-4170-8973-86477f864bfb";
 const BACKFILL_RESULT_SOURCE = "credit-usage-backfill:v1";
 const NULL_RUN_ID = "<null-run-id>";
+const NULL_MESSAGE_ID = "<null-message-id>";
 const NULL_RESULT_UUID = "<null-result-uuid>";
 const DEFAULT_BATCH_SIZE = 500;
 const MAX_PROVIDER_LENGTH = 100;
@@ -307,10 +308,10 @@ export function deriveUsageEventIdempotencyKey(
   row: Pick<CreditUsageSourceRow, "id" | "runId" | "messageId" | "resultUuid">,
   category: TokenCategory,
 ): string {
-  if (row.messageId) {
+  if (row.runId && row.messageId) {
     return uuidV5(
       MODEL_USAGE_EVENT_NAMESPACE,
-      encodeUuidName([row.runId ?? NULL_RUN_ID, row.messageId, category]),
+      encodeUuidName([row.runId, row.messageId, category]),
     );
   }
 
@@ -319,6 +320,8 @@ export function deriveUsageEventIdempotencyKey(
     encodeUuidName([
       BACKFILL_RESULT_SOURCE,
       row.id,
+      row.runId ?? NULL_RUN_ID,
+      row.messageId ?? NULL_MESSAGE_ID,
       row.resultUuid ?? NULL_RESULT_UUID,
       category,
     ]),

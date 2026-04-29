@@ -87,7 +87,29 @@ describe("credit_usage usage_event backfill helpers", () => {
       "tokens.cache_read",
     );
 
-    expect(key).toBe("5d36263d-9612-5c7f-b905-0960e7e53988");
+    expect(key).toBe("ded013ae-7871-500f-812b-a53ba9025393");
+  });
+
+  it("uses source identity for message_id rows whose run_id was deleted", () => {
+    const first = deriveUsageEventIdempotencyKey(
+      sourceRow({
+        id: "source-a",
+        runId: null,
+        messageId: "message-1",
+      }),
+      "tokens.input",
+    );
+    const second = deriveUsageEventIdempotencyKey(
+      sourceRow({
+        id: "source-b",
+        runId: null,
+        messageId: "message-1",
+      }),
+      "tokens.input",
+    );
+
+    expect(first).toBe("13fc02e4-35af-524f-ad90-bda3b933fd5a");
+    expect(second).toBe("cf184e09-7a22-5a68-b7ec-21c2f795a7e6");
   });
 
   it("uses credit_pricing split when it matches the source total", () => {

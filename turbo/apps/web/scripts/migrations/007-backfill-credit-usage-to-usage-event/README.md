@@ -63,10 +63,13 @@ sum(backfilled usage_event.credits_charged) == credit_usage.credits_charged
 
 The script uses deterministic UUIDv5 idempotency keys.
 
-- Rows with `message_id` use the same `(run_id, message_id, category)` shape
-  as the current model usage producer so rollout overlaps are detected.
-- Older rows without `message_id` use a backfill-specific identity shape based
-  on `credit_usage.id`, optional `result_uuid`, and category.
+- Rows with both `run_id` and `message_id` use the same
+  `(run_id, message_id, category)` shape as the current model usage producer so
+  rollout overlaps are detected.
+- Older rows without `message_id`, and rows whose `run_id` was cleared by
+  `ON DELETE SET NULL`, use a backfill-specific identity shape based on
+  `credit_usage.id`, optional `run_id`, optional `message_id`, optional
+  `result_uuid`, and category.
 - Inserts use `ON CONFLICT DO NOTHING`, so the script is safe to rerun.
 
 ## Usage
