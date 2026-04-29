@@ -221,6 +221,60 @@ describe("zero web upload-file command", () => {
       const parsed = JSON.parse(stdout) as Record<string, unknown>;
       expect(parsed.contentType).toBe("text/html");
     });
+
+    it.each([
+      ["image.avif", "image/avif"],
+      ["clip.mp3", "audio/mpeg"],
+      ["voice.wav", "audio/wav"],
+    ])("should infer %s as %s", async (filename, expectedContentType) => {
+      const filePath = join(tmpDir, filename);
+      writeFileSync(filePath, Buffer.from("fake bytes"));
+
+      let putReceivedContentType: string | null = null;
+
+      server.use(
+        http.post(PREPARE_URL, async ({ request }) => {
+          const body = (await request.json()) as {
+            filename: string;
+            contentType: string;
+          };
+          expect(body.filename).toBe(filename);
+          expect(body.contentType).toBe(expectedContentType);
+
+          return HttpResponse.json(
+            {
+              id: `${filename}-uuid`,
+              filename,
+              contentType: expectedContentType,
+              size: 10,
+              uploadUrl: PUT_URL,
+              url: `https://presigned.example.com/${filename}`,
+            },
+            { status: 200 },
+          );
+        }),
+        http.put(PUT_URL, ({ request }) => {
+          putReceivedContentType = request.headers.get("content-type");
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.post(COMPLETE_URL, () => {
+          return HttpResponse.json({
+            id: `${filename}-uuid`,
+            filename,
+            contentType: expectedContentType,
+            size: 10,
+            url: `https://presigned.example.com/${filename}`,
+          });
+        }),
+      );
+
+      await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
+
+      expect(putReceivedContentType).toBe(expectedContentType);
+      const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+      const parsed = JSON.parse(stdout) as Record<string, unknown>;
+      expect(parsed.contentType).toBe(expectedContentType);
+    });
   });
 
   describe("validation errors", () => {
