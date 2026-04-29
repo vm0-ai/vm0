@@ -1176,6 +1176,9 @@ async fn gc_storage_cache_with_limits(
     // without racing the writer, and counting them would evict eligible
     // entries to make room for unmeasurable ones.
     let mut total_size: u64 = 0;
+    // Entry cardinality is independent from byte accounting: locked or
+    // probe-error entries still contribute to filesystem pressure even when
+    // they cannot be safely evicted in this pass.
     let mut total_entries: u64 = 0;
     let mut freed: u64 = 0;
     let mut scanned_entries: u64 = 0;
@@ -1237,14 +1240,10 @@ async fn gc_storage_cache_with_limits(
                 LockProbe::Free(l) => l,
                 LockProbe::Held => {
                     skipped_locked = skipped_locked.saturating_add(1);
-                    tracing::debug!("storages/{name_str}/{version_str}: in use, skipping");
                     continue;
                 }
-                LockProbe::Error(e) => {
+                LockProbe::Error(_) => {
                     lock_probe_errors = lock_probe_errors.saturating_add(1);
-                    tracing::debug!(
-                        "storages/{name_str}/{version_str}: lock probe failed ({e}), skipping"
-                    );
                     continue;
                 }
             };
@@ -1255,10 +1254,6 @@ async fn gc_storage_cache_with_limits(
             drop(lock);
             if age < GC_MIN_AGE {
                 skipped_recent = skipped_recent.saturating_add(1);
-                tracing::debug!(
-                    "storages/{name_str}/{version_str}: too recent ({}s), keeping",
-                    age.as_secs()
-                );
                 continue;
             }
 
@@ -1276,11 +1271,6 @@ async fn gc_storage_cache_with_limits(
     }
 
     if total_size <= max_bytes && total_entries <= max_entries {
-        tracing::debug!(
-            "storage cache gc: scanned={scanned_entries}, eligible={eligible_entries}, skipped_recent={skipped_recent}, skipped_locked={skipped_locked}, lock_probe_errors={lock_probe_errors}, bytes={}, entries={total_entries}, limits=({}, {max_entries} entries)",
-            human_bytes(total_size),
-            human_bytes(max_bytes)
-        );
         return Ok(freed);
     }
 
@@ -1406,16 +1396,6 @@ async fn evict_storage_candidate(
     }
 
     if dry_run {
-        info!(
-            "[dry-run] would evict storages/{}/{} ({})",
-            candidate.name,
-            candidate.version,
-            human_bytes(size)
-        );
-        info!(
-            "[dry-run] would remove storage lock {}",
-            lock_path.display()
-        );
         return StorageEvictionResult {
             freed: size,
             remaining_size: None,
@@ -1433,12 +1413,6 @@ async fn evict_storage_candidate(
                 &candidate.version,
             )
             .await;
-            info!(
-                "evicted storages/{}/{} ({})",
-                candidate.name,
-                candidate.version,
-                human_bytes(size)
-            );
             StorageEvictionResult {
                 freed: size,
                 remaining_size: None,
@@ -1474,36 +1448,18 @@ async fn remove_storage_lock_after_eviction(
     version_hash: &str,
 ) {
     let Ok(lock_meta) = lock.metadata() else {
-        tracing::debug!(
-            "storages/{name_hash}/{version_hash}: cannot stat held lock {}, leaving it for orphan cleanup",
-            lock_path.display()
-        );
         return;
     };
 
     match std::fs::metadata(lock_path) {
         Ok(path_meta) if path_meta.ino() == lock_meta.ino() => {}
-        Ok(_) => {
-            tracing::debug!(
-                "storages/{name_hash}/{version_hash}: lock path inode changed, leaving {} intact",
-                lock_path.display()
-            );
-            return;
-        }
+        Ok(_) => return,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
-        Err(e) => {
-            tracing::debug!(
-                "storages/{name_hash}/{version_hash}: cannot stat lock {}: {e}",
-                lock_path.display()
-            );
-            return;
-        }
+        Err(_) => return,
     }
 
     match tokio::fs::remove_file(lock_path).await {
-        Ok(()) => {
-            tracing::debug!("removed storage lock {}", lock_path.display());
-        }
+        Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
             warn!(
@@ -3325,6 +3281,34 @@ mod tests {
         assert!(
             !lock_path.exists(),
             "matching storage lock should be removed with the evicted entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_lock_cleanup_keeps_replaced_lock_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let lock_path = home.storage_lock("foo", "v1");
+        let held_lock = match probe_lock(&lock_path) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => panic!("new test lock must not be held"),
+            LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
+        };
+
+        std::fs::remove_file(&lock_path).unwrap();
+        drop(lock::open_lock_file(&lock_path).unwrap());
+        assert!(
+            lock_path.exists(),
+            "test setup must recreate the lock path with a new inode"
+        );
+
+        remove_storage_lock_after_eviction(&lock_path, &held_lock, "foo", "v1").await;
+
+        assert!(
+            lock_path.exists(),
+            "cleanup must not remove a lock path recreated after this lock was acquired"
         );
     }
 
