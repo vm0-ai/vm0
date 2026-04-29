@@ -59,9 +59,10 @@
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Required on the install path for the pre-fan-out rootfs cache warm
-#       step, and passed to `runner gc` for R2-side cleanup. If `skip_install`
-#       is true, only the GC use remains best-effort.
+#       If all are provided on the install path, rollback warms the shared
+#       rootfs cache once before per-host rebuilds. If omitted, rollback keeps
+#       its offline-capable local rebuild behavior. Also passed to `runner gc`
+#       for best-effort R2-side cleanup.
 
 - name: Rollback VM0 Runner
   hosts: all
@@ -336,8 +337,13 @@
       when: not (skip_install | default(false))
       command: "{{ bin_dir }}/runner setup"
 
-    - name: Warm shared rootfs cache
-      when: not (skip_install | default(false))
+    - name: Warm shared rootfs cache when R2 credentials are available
+      when:
+        - not (skip_install | default(false))
+        - r2_account_id is defined and r2_account_id | length > 0
+        - r2_access_key_id is defined and r2_access_key_id | length > 0
+        - r2_secret_access_key is defined and r2_secret_access_key | length > 0
+        - r2_bucket is defined and r2_bucket | length > 0
       run_once: true
       command: >
         {{ bin_dir }}/runner build
@@ -355,9 +361,10 @@
 
     # Always runs on install path. Content-addressed by hash of embedded
     # guests + recipe; if target's rootfs/snapshot are already on disk at
-    # the matching hash path, this returns in ~1s. The warm step above
-    # ensures remote cache can satisfy a local rootfs miss in seconds
-    # instead of rebuilding.
+    # the matching hash path, this returns in ~1s. When R2 credentials were
+    # provided, the warm step above ensures remote cache can satisfy a local
+    # rootfs miss in seconds instead of rebuilding. Without R2 credentials,
+    # rollback intentionally preserves the old offline-capable local path.
     - name: Rebuild default rootfs and snapshot
       when: not (skip_install | default(false))
       command: >
