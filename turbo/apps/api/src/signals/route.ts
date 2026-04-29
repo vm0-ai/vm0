@@ -8,6 +8,7 @@ import { deviceTokenRoutes } from "./routes/device-token";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
 import { modelStatsRoutes } from "./routes/model-stats";
+import { zeroBillingAutoRechargeRoutes } from "./routes/zero-billing-auto-recharge";
 
 export type { SignalRouteHandler };
 
@@ -23,6 +24,7 @@ export const ROUTES: readonly RouteEntry[] = [
   },
   ...healthAuthProbeRoutes,
   ...deviceTokenRoutes,
+  ...zeroBillingAutoRechargeRoutes(),
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,

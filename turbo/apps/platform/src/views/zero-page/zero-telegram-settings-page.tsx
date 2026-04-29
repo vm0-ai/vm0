@@ -1,4 +1,9 @@
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconAlertTriangle,
@@ -1451,7 +1456,7 @@ function TelegramBotRow({
   const unlinkingBotId = useGet(telegramUnlinkingBotId$);
   const uninstallingBotId = useGet(telegramUninstallingBotId$);
   const reinstallingBotId = useGet(telegramReinstallingBotId$);
-  const apiBase = useGet(apiBase$);
+  const apiBase = useLastResolved(apiBase$);
   const saving = savingBotId === bot.id;
   const unlinking = unlinkingBotId === bot.id;
   const uninstalling = uninstallingBotId === bot.id;
@@ -1459,7 +1464,7 @@ function TelegramBotRow({
   const actionDisabled =
     disabled || saving || unlinking || uninstalling || reinstalling;
   const options = buildBotAgentOptions(bot, agents, defaultAgent);
-  const avatarUrl = resolveTelegramBotAvatarUrl(bot.avatarUrl, apiBase);
+  const avatarUrl = resolveTelegramBotAvatarUrl(bot.avatarUrl, apiBase ?? "");
 
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">

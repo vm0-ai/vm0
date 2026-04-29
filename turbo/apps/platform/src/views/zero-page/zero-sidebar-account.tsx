@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useLoadable, useLastResolved, useGet } from "ccstate-react";
+import { useLoadable, useLastResolved } from "ccstate-react";
 import {
   IconAdjustmentsHorizontal,
   IconUser,
@@ -387,7 +387,7 @@ export function AccountDropdown({
   const user =
     userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
-  const apiBase = useGet(apiBaseForNavigation$);
+  const apiBase = useLastResolved(apiBaseForNavigation$);
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const apiKeysEnabled = features?.[FeatureSwitchKey.ApiKeys] ?? false;
 

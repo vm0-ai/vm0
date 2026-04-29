@@ -1,4 +1,10 @@
-import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useLoadable,
+  useSet,
+} from "ccstate-react";
 import type { JSX, ReactNode } from "react";
 import {
   IconAlertCircle,
@@ -335,7 +341,11 @@ function ConnectActions({
   }
 
   return (
-    <Button className="w-full" disabled={connecting} onClick={openLogin}>
+    <Button
+      className="w-full"
+      disabled={connecting || !apiBase}
+      onClick={openLogin}
+    >
       {connecting ? <IconLoader2 size={16} className="animate-spin" /> : null}
       {connecting ? "Connecting..." : "Continue with Telegram"}
     </Button>
@@ -344,7 +354,7 @@ function ConnectActions({
 
 export function ZeroTelegramConnectPage(): JSX.Element {
   const params = useGet(searchParams$);
-  const apiBase = useGet(apiBaseForNavigation$);
+  const apiBase = useLastResolved(apiBaseForNavigation$);
   const parsed = parseTelegramConnectParams(params);
   const clerkLoadable = useLoadable(clerk$);
   const linkStatusLoadable = useLastLoadable(telegramConnectLinkStatus$);
@@ -448,7 +458,7 @@ export function ZeroTelegramConnectPage(): JSX.Element {
       <div className="flex w-full flex-col gap-4">
         <ConnectActions
           parsed={parsed.params}
-          apiBase={apiBase}
+          apiBase={apiBase ?? ""}
           connecting={connecting}
           onConnectSigned={() => {
             detach(
