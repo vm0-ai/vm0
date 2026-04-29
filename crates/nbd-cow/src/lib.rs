@@ -745,6 +745,9 @@ impl PooledNbdCowDevice {
     }
 
     /// Destroy the device, removing the COW file and bitmap.
+    ///
+    /// Finalization starts immediately. Dropping the returned future does not
+    /// cancel cleanup; it continues in the background and logs its result.
     pub fn destroy_with_retries(
         self,
         policy: DestroyRetryPolicy,
@@ -791,6 +794,9 @@ impl PooledNbdCowDevice {
     }
 
     /// Destroy the device while preserving COW data for snapshot persistence.
+    ///
+    /// Finalization starts immediately. Dropping the returned future does not
+    /// cancel cleanup; it continues in the background and logs its result.
     pub fn destroy_keep_cow_with_retries(
         self,
         policy: DestroyRetryPolicy,
@@ -965,11 +971,10 @@ mod tests {
     #[tokio::test]
     #[should_panic(expected = "pooled finalizer panic")]
     async fn pooled_finalizer_propagates_panic_when_awaited() {
-        let finalizer = PooledNbdCowDevice::run_finalizer(async move {
-            panic!("pooled finalizer panic");
-            #[allow(unreachable_code)]
-            Ok::<(), error::NbdCowError>(())
-        });
+        let finalizer =
+            PooledNbdCowDevice::run_finalizer::<()>(
+                async move { panic!("pooled finalizer panic") },
+            );
 
         let _ = finalizer.await;
     }
