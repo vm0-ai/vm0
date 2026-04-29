@@ -16,6 +16,7 @@ const SCHEMA = {
   VITEST: z.enum(["true", "false"]).optional(),
   VM0_DEBUG: z.string().optional(),
   VM0_WEB_URL: z.url().optional(),
+  CRON_SECRET: z.string().min(1).optional(),
   AXIOM_TOKEN_TELEMETRY: z.string().min(1),
   AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
 } as const;

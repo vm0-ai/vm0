@@ -78,6 +78,9 @@ export const usageEvent = pgTable(
         table.orgId,
         table.createdAt.desc(),
       ),
+      index("idx_usage_event_model_created")
+        .on(table.createdAt.desc())
+        .where(sql`${table.kind} = 'model'`),
       index("idx_usage_event_org_user_status_processed").on(
         table.orgId,
         table.userId,
