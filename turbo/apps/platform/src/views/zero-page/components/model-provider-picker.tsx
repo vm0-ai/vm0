@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { IconChevronDown, IconChevronUp, IconCpu } from "@tabler/icons-react";
+import { IconCpu } from "@tabler/icons-react";
 import {
   Select,
   SelectContent,
@@ -120,9 +120,7 @@ function MultiplierBadge({ multiplier }: { multiplier: number }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          {/* `bg-card` (instead of bg-muted/50) keeps the badge visible when
-              the row turns accent on hover/highlight. */}
-          <span className="shrink-0 rounded border border-border bg-card px-1 py-px text-[11px] font-medium tabular-nums text-muted-foreground">
+          <span className="shrink-0 cursor-help text-xs tabular-nums text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
             {formatMultiplier(multiplier)}
           </span>
         </TooltipTrigger>
@@ -490,7 +488,7 @@ function ShowMoreToggleRow({
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-accent transition-colors"
+      className="rounded-md px-2 py-1.5 text-sm text-muted-foreground cursor-pointer hover:bg-accent transition-colors"
       onClick={(e) => {
         e.preventDefault();
         onToggle();
@@ -502,14 +500,7 @@ function ShowMoreToggleRow({
         }
       }}
     >
-      <span className="text-muted-foreground">
-        {expanded ? "Show fewer models" : `Show all models (+${hiddenCount})`}
-      </span>
-      {expanded ? (
-        <IconChevronUp size={14} className="text-muted-foreground" />
-      ) : (
-        <IconChevronDown size={14} className="text-muted-foreground" />
-      )}
+      {expanded ? "Show fewer models" : `Show all models (+${hiddenCount})`}
     </div>
   );
 }
@@ -555,13 +546,13 @@ function renderProviderGroup(
             key={`${group.provider.id}::${model}`}
             value={`${group.provider.id}::${model}`}
             disabled={group.incompatible}
-            endSlot={
-              multiplier !== undefined ? (
-                <MultiplierBadge multiplier={multiplier} />
-              ) : undefined
-            }
           >
-            {getModelDisplayName(model)}
+            <span className="inline-flex items-baseline gap-1.5">
+              <span>{getModelDisplayName(model)}</span>
+              {multiplier !== undefined && (
+                <MultiplierBadge multiplier={multiplier} />
+              )}
+            </span>
           </SelectItem>
         );
       })}
