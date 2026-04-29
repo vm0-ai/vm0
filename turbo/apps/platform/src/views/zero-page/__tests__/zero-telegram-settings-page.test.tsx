@@ -222,6 +222,9 @@ describe("telegram settings page", () => {
       expect(
         within(dialog).getByText("Set the Telegram login domain"),
       ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(/allow the connect flow for this bot/),
+      ).toBeInTheDocument();
     });
     setMockTelegramIntegration({
       setupStatus: {
@@ -236,6 +239,11 @@ describe("telegram settings page", () => {
     await waitFor(() => {
       expect(within(dialog).getByText("/setprivacy")).toBeInTheDocument();
       expect(within(dialog).getByText("disable")).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          /read group context around mentions and replies/,
+        ),
+      ).toBeInTheDocument();
       expect(
         within(dialog).queryByText("If you keep privacy mode on"),
       ).not.toBeInTheDocument();
@@ -269,6 +277,9 @@ describe("telegram settings page", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Default agent")).toHaveTextContent("Zero");
+      expect(
+        within(dialog).getByText(/mention the bot in a group or send it a DM/),
+      ).toBeInTheDocument();
       expect(
         within(dialog).queryByText(
           "Privacy mode still appears to be on. Turn it off in BotFather, then try again.",

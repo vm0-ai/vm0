@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.308.0](https://github.com/vm0-ai/vm0/compare/app-v0.307.0...app-v0.308.0) (2026-04-29)
+
+
+### Features
+
+* add network log type filter ([#11460](https://github.com/vm0-ai/vm0/issues/11460)) ([39e6dd4](https://github.com/vm0-ai/vm0/commit/39e6dd4d6ef57f5b811b4473547588b4da18088e))
+
+
+### Bug Fixes
+
+* allow direct bb0 device code entry ([#11469](https://github.com/vm0-ai/vm0/issues/11469)) ([fb12d85](https://github.com/vm0-ai/vm0/commit/fb12d851f7271dfcd1b21482c6405086a06423aa))
+* refresh account profile display ([#11457](https://github.com/vm0-ai/vm0/issues/11457)) ([c1330ca](https://github.com/vm0-ai/vm0/commit/c1330ca9f63ddf720057f8537ae84fddef921fa3))
+
+## [0.307.0](https://github.com/vm0-ai/vm0/compare/app-v0.306.2...app-v0.307.0) (2026-04-29)
+
+
+### Features
+
+* add credit addition records ([#11447](https://github.com/vm0-ai/vm0/issues/11447)) ([07a164a](https://github.com/vm0-ai/vm0/commit/07a164a2f4025615c0f5d657e419d93b886cc249))
+* launch usage page ([#11446](https://github.com/vm0-ai/vm0/issues/11446)) ([55fa993](https://github.com/vm0-ai/vm0/commit/55fa9934e2d1bf95ff6329ed858853f24eb3b4d3))
+
+
+### Refactoring
+
+* **platform:** remove view class component disables ([#11448](https://github.com/vm0-ai/vm0/issues/11448)) ([c052726](https://github.com/vm0-ai/vm0/commit/c05272677c55bf262f65886226ad195c095f22ac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.244.0
+
+## [0.306.2](https://github.com/vm0-ai/vm0/compare/app-v0.306.1...app-v0.306.2) (2026-04-29)
+
+
+### Bug Fixes
+
+* adjust deepseek-v4-pro credit multiplier from 0.3x to 0.06x ([#11435](https://github.com/vm0-ai/vm0/issues/11435)) ([049f315](https://github.com/vm0-ai/vm0/commit/049f31501d973889dc39f336e5c2139e4568ed3c))
+
 ## [0.306.1](https://github.com/vm0-ai/vm0/compare/app-v0.306.0...app-v0.306.1) (2026-04-28)
 
 

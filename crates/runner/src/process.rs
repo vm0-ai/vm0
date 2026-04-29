@@ -305,6 +305,37 @@ pub async fn discover_all() -> DiscoveredProcesses {
     }
 }
 
+/// Return true when the discovered Firecracker list contains `sandbox_id`.
+pub fn firecracker_process_exists_for_sandbox_id(
+    firecrackers: &[FirecrackerProcessInfo],
+    sandbox_id: &str,
+) -> bool {
+    firecrackers
+        .iter()
+        .any(|process| process.sandbox_id == sandbox_id)
+}
+
+/// Walk the ppid chain from `pid` upward to determine whether it descends from
+/// one of `ancestor_pids`.
+///
+/// Returns `None` when the chain cannot be read, so callers can choose whether
+/// to treat an unreadable process tree as conservative or absent.
+pub async fn process_has_ancestor(pid: u32, ancestor_pids: &[u32]) -> Option<bool> {
+    let mut current = pid;
+    // Max depth prevents infinite loops from circular pid references.
+    for _ in 0..16 {
+        let ppid = read_ppid(current).await?;
+        if ancestor_pids.contains(&ppid) {
+            return Some(true);
+        }
+        if ppid <= 1 {
+            return Some(false);
+        }
+        current = ppid;
+    }
+    Some(false)
+}
+
 // ---------------------------------------------------------------------------
 // Orphan detection
 // ---------------------------------------------------------------------------
@@ -602,6 +633,24 @@ mod tests {
     #[test]
     fn is_firecracker_empty() {
         assert!(!is_firecracker_cmdline(&[]));
+    }
+
+    #[test]
+    fn firecracker_process_exists_for_sandbox_id_matches_exact_id() {
+        let processes = vec![FirecrackerProcessInfo {
+            pid: 42,
+            ppid: Some(1),
+            sandbox_id: "sandbox-a".to_string(),
+            base_dir: None,
+        }];
+
+        assert!(firecracker_process_exists_for_sandbox_id(
+            &processes,
+            "sandbox-a"
+        ));
+        assert!(!firecracker_process_exists_for_sandbox_id(
+            &processes, "sandbox"
+        ));
     }
 
     // -- Mitmdump parser tests --

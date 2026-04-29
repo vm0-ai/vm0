@@ -1,10 +1,73 @@
 use sandbox::SandboxId;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 
 use crate::ids::RunId;
 use crate::provider::JobProvider;
 use crate::resource_budget::BudgetLease;
 use crate::status::StatusTracker;
 use crate::types::SandboxReuseResult;
+
+/// Ownership facts known by the outer runner task for panic cleanup.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum RunCleanupDisposition {
+    /// The sandbox may still be active, or ownership is otherwise uncertain.
+    ActiveOrUnknown,
+    /// The sandbox has been accepted by the idle pool.
+    IdlePoolOwned,
+    /// The active sandbox was explicitly destroyed and destroy returned normally.
+    DestroyCompleted,
+    /// Normal completion already cleared, or no longer owns, active status.
+    StatusRemoved,
+}
+
+/// Shared monotonic cleanup state for a claimed run.
+#[derive(Clone, Debug)]
+pub(super) struct RunCleanupState {
+    state: Arc<AtomicU8>,
+}
+
+impl RunCleanupState {
+    const ACTIVE_OR_UNKNOWN: u8 = 0;
+    const DESTROY_COMPLETED: u8 = 1;
+    const IDLE_POOL_OWNED: u8 = 2;
+    const STATUS_REMOVED: u8 = 3;
+
+    pub(super) fn new() -> Self {
+        Self {
+            state: Arc::new(AtomicU8::new(Self::ACTIVE_OR_UNKNOWN)),
+        }
+    }
+
+    pub(super) fn disposition(&self) -> RunCleanupDisposition {
+        match self.state.load(Ordering::Acquire) {
+            Self::STATUS_REMOVED => RunCleanupDisposition::StatusRemoved,
+            Self::IDLE_POOL_OWNED => RunCleanupDisposition::IdlePoolOwned,
+            Self::DESTROY_COMPLETED => RunCleanupDisposition::DestroyCompleted,
+            _ => RunCleanupDisposition::ActiveOrUnknown,
+        }
+    }
+
+    pub(super) fn mark_idle_pool_owned(&self) {
+        self.mark_at_least(Self::IDLE_POOL_OWNED);
+    }
+
+    pub(super) fn mark_destroy_completed(&self) {
+        self.mark_at_least(Self::DESTROY_COMPLETED);
+    }
+
+    pub(super) fn mark_status_removed(&self) {
+        self.mark_at_least(Self::STATUS_REMOVED);
+    }
+
+    fn mark_at_least(&self, next: u8) {
+        let _ = self
+            .state
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
+                (next > current).then_some(next)
+            });
+    }
+}
 
 /// Budget ownership while a claimed job is active in the outer task.
 pub(super) struct ActiveBudgetLease(BudgetLease);
@@ -90,6 +153,7 @@ impl CompletionReady {
         self,
         provider: &dyn JobProvider,
         status: &StatusTracker,
+        cleanup_state: &RunCleanupState,
     ) {
         let Self { payload, budget } = self;
         let CompletionPayload {
@@ -109,7 +173,8 @@ impl CompletionReady {
                 Some(reuse_result),
             )
             .await;
-        status.remove_run(run_id).await;
+        status.remove_run_if_matching(run_id, sandbox_id).await;
+        cleanup_state.mark_status_removed();
         budget.release();
     }
 }

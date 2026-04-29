@@ -363,20 +363,24 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         return
 
     buf = bytearray()
-    state = {"truncated": False}
+    state = {"truncated": False, "total_bytes": 0}
 
-    # Set up usage extraction only for billable model-provider responses.
-    # For non-SSE billable model-provider responses, disable buffer truncation
-    # so the full JSON body is available for usage extraction in response().
+    # Set up usage extraction for billable response classes that need body
+    # inspection. The forensic stream_buffer remains capped; billing parsers
+    # consume chunks separately so a large response cannot grow that buffer.
     sse_parser = None
     sse_decompressor = None
+    model_json_parser = None
+    model_json_decompressor = None
     ndjson_parser = None
     ndjson_decompressor = None
+    x_json_parser = None
+    x_json_decompressor = None
     firewall_name = flow.metadata.get("firewall_name", "")
     is_model_provider = firewall_name.startswith("model-provider:")
     # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
     # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
-    # and the full-body response buffering that billing payload extraction needs.
+    # and the incremental response parsers used for billing payload extraction.
     is_billable_flow = flow.metadata.get("firewall_billable", False)
     is_billable_model_provider = is_model_provider and is_billable_flow
     # X-specific NDJSON stream classification — tied to the x firewall itself,
@@ -390,10 +394,9 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # later in response() by report_connector_usage.
     #
     # Gated on 2xx status so error responses (4xx/5xx on stream endpoints
-    # return JSON, not NDJSON) fall through to the existing unbounded-buffer
-    # path and preserve the full error body for forensic inspection in
-    # network logs.  report_connector_usage already skips non-2xx responses
-    # so no billing record is affected either way.
+    # return JSON, not NDJSON) skip the billing parser and only use the capped
+    # forensic stream buffer.  report_connector_usage already skips non-2xx
+    # responses so no billing record is affected either way.
     #
     # Reads ``original_url`` with no fallback — kept consistent with
     # :func:`usage._parse_x_request_metadata` so the log entry's
@@ -412,6 +415,11 @@ def responseheaders(flow: http.HTTPFlow) -> None:
             sse_parser = parser_fn
             flow.metadata["model_provider_usage"] = usage_dict
             sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+        else:
+            extractor = usage.create_model_json_usage_extractor()
+            model_json_parser = extractor.feed
+            flow.metadata["model_json_usage_finish"] = extractor.finish
+            model_json_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
     elif is_x_stream:
         parser_fn, ndjson_state = usage.x.create_ndjson_extractor()
         ndjson_parser = parser_fn
@@ -420,36 +428,88 @@ def responseheaders(flow: http.HTTPFlow) -> None:
         # x_ndjson_state is only consumed by report_connector_usage.
         flow.metadata["x_ndjson_state"] = ndjson_state
         ndjson_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+    elif (
+        is_x_flow
+        and is_billable_flow
+        and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
+    ):
+        extractor = usage.x.create_json_response_extractor()
+        x_json_parser = extractor.feed
+        flow.metadata["x_json_response_finish"] = extractor.finish
+        x_json_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
 
     # Buffer cap policy:
-    # - Billable flows keep the full body for billing extraction.
-    # - X stream endpoints are the exception: the incremental parser handles
-    #   bytes as they arrive, so the buffer is only for forensic logging.
-    # - Everything else uses STREAM_BUFFER_LIMIT (default 64 KB).
-    buf_limit = None if is_billable_flow and not is_x_stream else body_utils.STREAM_BUFFER_LIMIT
+    # - stream_buffer is only for forensic logging / capture and is always
+    #   capped at STREAM_BUFFER_LIMIT.
+    # - Billing extraction uses the incremental parsers above.
+    buf_limit = body_utils.STREAM_BUFFER_LIMIT
 
     def stream_and_buffer(chunk: bytes) -> bytes:
+        state["total_bytes"] += len(chunk)
         if not state["truncated"]:
-            if buf_limit is None:
+            remaining = buf_limit - len(buf)
+            if len(chunk) <= remaining:
                 buf.extend(chunk)
             else:
-                remaining = buf_limit - len(buf)
-                if len(chunk) <= remaining:
-                    buf.extend(chunk)
-                else:
-                    buf.extend(chunk[:remaining])
-                    state["truncated"] = True
+                buf.extend(chunk[:remaining])
+                state["truncated"] = True
         if sse_parser is not None:
             plaintext = sse_decompressor(chunk) if sse_decompressor else chunk
             sse_parser(plaintext)
+        elif model_json_parser is not None:
+            plaintext = model_json_decompressor(chunk) if model_json_decompressor else chunk
+            model_json_parser(plaintext)
         elif ndjson_parser is not None:
             plaintext = ndjson_decompressor(chunk) if ndjson_decompressor else chunk
             ndjson_parser(plaintext)
+        elif x_json_parser is not None:
+            plaintext = x_json_decompressor(chunk) if x_json_decompressor else chunk
+            x_json_parser(plaintext)
         return chunk
 
     flow.response.stream = stream_and_buffer
     flow.metadata["stream_buffer"] = buf
     flow.metadata["stream_buffer_state"] = state
+    flow.metadata["_vm0_response_stream_callback"] = stream_and_buffer
+
+
+def _finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
+    finish = flow.metadata.pop("model_json_usage_finish", None)
+    if finish is None:
+        return
+    flow.metadata["_model_json_usage_finalized"] = True
+    usage_result, error = finish()
+    if usage_result:
+        flow.metadata["model_provider_usage"] = usage_result
+        return
+    if error:
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            "Model provider JSON usage extraction failed",
+            type="usage_event",
+            error=error,
+        )
+
+
+def _finalize_x_json_state(flow: http.HTTPFlow) -> None:
+    finish = flow.metadata.pop("x_json_response_finish", None)
+    if finish is None:
+        return
+    state, error = finish()
+    if error:
+        state["parse_error"] = error
+    flow.metadata["x_json_state"] = state
+
+
+def _release_response_stream_state(flow: http.HTTPFlow) -> None:
+    stream_callback = flow.metadata.pop("_vm0_response_stream_callback", None)
+    flow.metadata.pop("stream_buffer", None)
+    flow.metadata.pop("stream_buffer_state", None)
+    flow.metadata.pop("model_json_usage_finish", None)
+    flow.metadata.pop("x_json_response_finish", None)
+    if stream_callback is not None and flow.response and flow.response.stream is stream_callback:
+        flow.response.stream = False
 
 
 def _track_usage_flow(fn):
@@ -465,6 +525,7 @@ def _track_usage_flow(fn):
         try:
             return fn(flow, *args, **kwargs)
         finally:
+            _release_response_stream_state(flow)
             _release_tracked_usage_flow(flow)
 
     return wrapper
@@ -496,7 +557,9 @@ def response(flow: http.HTTPFlow) -> None:
     # Use buffered body length when complete; fall back to Content-Length header.
     stream_buf = flow.metadata.get("stream_buffer")
     stream_state = flow.metadata.get("stream_buffer_state")
-    if stream_buf is not None and stream_state and not stream_state["truncated"]:
+    if stream_buf is not None and stream_state and "total_bytes" in stream_state:
+        response_size = int(stream_state["total_bytes"])
+    elif stream_buf is not None and stream_state and not stream_state["truncated"]:
         response_size = len(stream_buf)
     elif flow.response:
         response_size = int(flow.response.headers.get("content-length", 0))
@@ -544,10 +607,17 @@ def response(flow: http.HTTPFlow) -> None:
 
         log_network_entry(network_log_path, log_entry)
 
+    _finalize_model_json_usage(flow, proxy_log_path)
+
     # Report proxy-extracted usage for model provider responses.
     # For non-streaming responses, fall back to extracting usage from the
-    # buffered JSON body (buffer is never truncated for billable model providers).
-    if not flow.metadata.get("model_provider_usage") and stream_buf:
+    # buffered JSON body only for legacy/test flows that did not pass through
+    # responseheaders() and therefore have no incremental extractor.
+    if (
+        not flow.metadata.get("_model_json_usage_finalized")
+        and not flow.metadata.get("model_provider_usage")
+        and stream_buf
+    ):
         firewall_name = flow.metadata.get("firewall_name", "")
         if firewall_name.startswith("model-provider:") and flow.metadata.get(
             "firewall_billable", False
@@ -561,6 +631,7 @@ def response(flow: http.HTTPFlow) -> None:
     usage.report_model_provider_usage(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).
+    _finalize_x_json_state(flow)
     usage.report_connector_usage(flow, run_id)
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers.
@@ -652,10 +723,11 @@ def error(flow: http.HTTPFlow) -> None:
     # Billable connector usage for X NDJSON streams that crash mid-flight
     # (issue #9534): the incremental parser populated x_ndjson_state during
     # chunks; log what was observed so partial streams aren't silently
-    # dropped from billing.  report_connector_usage no-ops when there's no
-    # response or the status is non-2xx, so normal model-provider errors
-    # are unaffected.
-    usage.report_connector_usage(flow, run_id)
+    # dropped from billing.  Do not run the generic connector fallback for
+    # non-streaming JSON errors: partial bodies could otherwise be treated
+    # as unparseable successes and billed from request-side hints.
+    if flow.metadata.get("x_ndjson_state") is not None:
+        usage.report_connector_usage(flow, run_id)
 
     log_proxy_entry(
         proxy_log_path,

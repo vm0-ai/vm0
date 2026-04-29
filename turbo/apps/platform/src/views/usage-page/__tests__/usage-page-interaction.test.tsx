@@ -42,7 +42,7 @@ function emptyUsageInsight() {
   };
 }
 
-describe("/_/usage page - selector interactions", () => {
+describe("/usage page - selector interactions", () => {
   it("re-fetches with range=7d when Last 7 days is selected", async () => {
     let capturedRange: string | undefined;
 
@@ -53,7 +53,7 @@ describe("/_/usage page - selector interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -93,7 +93,7 @@ describe("/_/usage page - selector interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -119,7 +119,7 @@ describe("/_/usage page - selector interactions", () => {
   });
 });
 
-describe("/_/usage page - bucket densification", () => {
+describe("/usage page - bucket densification", () => {
   it("fills yesterday as the full local calendar day", async () => {
     vi.spyOn(Date, "now").mockReturnValue(
       new Date("2026-04-27T05:30:00.000Z").getTime(),
@@ -145,7 +145,7 @@ describe("/_/usage page - bucket densification", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -192,7 +192,7 @@ describe("/_/usage page - bucket densification", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -216,7 +216,7 @@ describe("/_/usage page - bucket densification", () => {
   });
 });
 
-describe("/_/usage page - error state", () => {
+describe("/usage page - error state", () => {
   it("shows error message when API fails", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -226,7 +226,7 @@ describe("/_/usage page - error state", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -246,7 +246,7 @@ describe("/_/usage page - error state", () => {
   });
 });
 
-describe("/_/usage page - empty state", () => {
+describe("/usage page - empty state", () => {
   it("shows zero credits when no data", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -268,7 +268,7 @@ describe("/_/usage page - empty state", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -288,7 +288,7 @@ describe("/_/usage page - empty state", () => {
   });
 });
 
-describe("/_/usage page - schedule and chat lists", () => {
+describe("/usage page - schedule and chat lists", () => {
   it("shows schedules and chats side-by-side", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -296,7 +296,7 @@ describe("/_/usage page - schedule and chat lists", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(

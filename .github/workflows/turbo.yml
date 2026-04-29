@@ -1913,6 +1913,7 @@ jobs:
           USE_MOCK_CLAUDE: "true"
           USE_MOCK_CODEX: "true"
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
           E2E_RUNNER_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+runner@vm0-e2e.ai

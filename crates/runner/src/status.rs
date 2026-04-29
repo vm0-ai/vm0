@@ -86,8 +86,8 @@ pub struct StatusTracker {
 struct MutableState {
     mode: RunnerMode,
     /// Map of run_id → sandbox_id for all active runs. Keyed by run_id so
-    /// `remove_run(run_id)` stays O(log n); the paired `sandbox_id` is the
-    /// join key used by doctor and kill to find the FC process.
+    /// conditional active-run removal stays O(log n); the paired `sandbox_id`
+    /// is the join key used by doctor and kill to find the FC process.
     ///
     /// BTreeMap (not HashMap) for deterministic iteration order — status.json
     /// output should be stable across runs for readability and diffing.
@@ -167,12 +167,19 @@ impl StatusTracker {
         applied
     }
 
-    /// Drop an active run from the status file. Silently succeeds if
-    /// `run_id` was not present.
-    pub async fn remove_run(&self, run_id: RunId) {
+    /// Drop an active run only if it still points at the expected sandbox.
+    ///
+    /// Returns `false` if another task already removed the run or reused the
+    /// `run_id` with a different sandbox.
+    pub async fn remove_run_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
         let mut state = self.state.lock().await;
-        state.active_runs.remove(&run_id);
-        self.write_status(&state).await;
+        let removed =
+            matches!(state.active_runs.get(&run_id), Some(current) if *current == sandbox_id);
+        if removed {
+            state.active_runs.remove(&run_id);
+            self.write_status(&state).await;
+        }
+        removed
     }
 
     /// Replace the idle VM list in the status file with `idle_vms`.
@@ -333,13 +340,45 @@ mod tests {
         let status = read_status(&path);
         assert_eq!(status["active_runs"].as_array().unwrap().len(), 2);
 
-        tracker.remove_run(run1).await;
+        assert!(tracker.remove_run_if_matching(run1, sb1).await);
 
         let status = read_status(&path);
         let runs = status["active_runs"].as_array().unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0]["run_id"], run2.to_string());
         assert_eq!(runs[0]["sandbox_id"], sb2.to_string());
+    }
+
+    #[tokio::test]
+    async fn remove_run_if_matching_preserves_replaced_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4, None, None);
+
+        let run_id = RunId::new_v4();
+        let old_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+
+        tracker.write_initial().await;
+        tracker.add_run(run_id, old_sandbox_id).await;
+        tracker.add_run(run_id, current_sandbox_id).await;
+
+        assert!(!tracker.remove_run_if_matching(run_id, old_sandbox_id).await);
+
+        let status = read_status(&path);
+        let runs = status["active_runs"].as_array().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0]["run_id"], run_id.to_string());
+        assert_eq!(runs[0]["sandbox_id"], current_sandbox_id.to_string());
+
+        assert!(
+            tracker
+                .remove_run_if_matching(run_id, current_sandbox_id)
+                .await
+        );
+
+        let status = read_status(&path);
+        assert!(status["active_runs"].as_array().unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -69,7 +69,7 @@ const TAB_META = {
     description: "Manage your plan and payment method.",
   },
   usage: {
-    title: "Usage",
+    title: "Credit balance",
     description:
       "Credit balance and per-member credit consumption this billing period.",
   },
@@ -88,7 +88,7 @@ const BILLING_GROUP = {
   label: "Billing & pricing",
   items: [
     { id: "billing", label: "Billing", icon: IconCreditCard as NavIcon },
-    { id: "usage", label: "Usage", icon: IconCoins as NavIcon },
+    { id: "usage", label: "Credit balance", icon: IconCoins as NavIcon },
     { id: "invoices", label: "Invoices", icon: IconFileInvoice as NavIcon },
   ],
 } as const satisfies SidebarGroup;

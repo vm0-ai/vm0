@@ -1,4 +1,3 @@
-import { Component } from "react";
 import {
   useGet,
   useSet,
@@ -72,6 +71,10 @@ import {
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { voiceChatStatus$ } from "../../signals/voice-chat/voice-chat-session.ts";
 import { startChatNavigationTiming$ } from "../../lib/posthog.ts";
+import {
+  typewriterDisplayed$,
+  typewriterRef$,
+} from "../../signals/view-component-state.ts";
 
 function getTagline(
   agentName: string,
@@ -111,60 +114,35 @@ function getTagline(
   return taglines[index % taglines.length];
 }
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class TypewriterText extends Component<
-  { text: string; speed?: number },
-  { displayed: string }
-> {
-  private timer: number | undefined;
-  state = { displayed: "" };
+function TypewriterText({
+  text,
+  speed = 40,
+}: {
+  text: string;
+  speed?: number;
+}) {
+  const displayed = useGet(typewriterDisplayed$);
+  const typewriterRef = useSet(typewriterRef$);
+  const typewriterKey = `${text}:${String(speed)}`;
+  const displayedText = displayed[typewriterKey] ?? "";
 
-  componentDidMount() {
-    this.startTypewriter();
-  }
-
-  componentDidUpdate(prev: { text: string; speed?: number }) {
-    if (prev.text !== this.props.text || prev.speed !== this.props.speed) {
-      this.cleanup();
-      this.startTypewriter();
-    }
-  }
-
-  componentWillUnmount() {
-    this.cleanup();
-  }
-
-  private startTypewriter() {
-    this.setState({ displayed: "" });
-    let i = 0;
-    const { text, speed = 40 } = this.props;
-    this.timer = window.setInterval(() => {
-      i++;
-      this.setState({ displayed: text.slice(0, i) });
-      if (i >= text.length) {
-        window.clearInterval(this.timer);
-      }
-    }, speed);
-  }
-
-  private cleanup() {
-    if (this.timer !== undefined) {
-      window.clearInterval(this.timer);
-    }
-  }
-
-  render() {
-    const { text } = this.props;
-    const { displayed } = this.state;
-    return (
-      <>
-        {displayed}
-        {displayed.length < text.length && (
-          <span className="inline-block w-[2px] h-[1em] bg-foreground/60 ml-0.5 align-middle animate-pulse" />
-        )}
-      </>
-    );
-  }
+  return (
+    <>
+      <span
+        key={typewriterKey}
+        ref={typewriterRef}
+        className="contents"
+        data-typewriter-speed={String(speed)}
+        data-typewriter-key={typewriterKey}
+        data-typewriter-text={text}
+      >
+        {displayedText}
+      </span>
+      {displayedText.length < text.length && (
+        <span className="inline-block w-[2px] h-[1em] bg-foreground/60 ml-0.5 align-middle animate-pulse" />
+      )}
+    </>
+  );
 }
 
 function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {

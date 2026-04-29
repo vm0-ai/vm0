@@ -184,6 +184,15 @@ describe("GET /api/zero/billing/status", () => {
     const data = await response.json();
     expect(data.creditExpiry.expiringNextCycle).toBe(15000);
     expect(data.creditExpiry.nextExpiryDate).toBe(expiryDate.toISOString());
+    expect(data.creditGrants).toEqual([
+      expect.objectContaining({
+        source: "subscription_renewal",
+        label: "Pro plan",
+        amount: 20000,
+        remaining: 15000,
+        expiresAt: expiryDate.toISOString(),
+      }),
+    ]);
   });
 
   it("returns zero creditExpiry for free org", async () => {
@@ -281,6 +290,11 @@ describe("GET /api/zero/billing/status", () => {
       label: "Pay as you go",
       credits: 20_000,
     });
+    expect(
+      data.creditGrants.filter((grant: { source: string }) => {
+        return grant.source === "auto_recharge";
+      }),
+    ).toHaveLength(2);
   });
 
   it("maps subscription_renewal at Pro amount to Pro plan segment", async () => {
@@ -506,6 +520,11 @@ describe("GET /api/zero/billing/status", () => {
         credits: 5_000,
       },
     ]);
+    expect(
+      data.creditGrants.some((grant: { source: string }) => {
+        return grant.source === "auto_recharge";
+      }),
+    ).toBe(false);
   });
 
   it("merges untracked balance on free tier into Free plan segment", async () => {

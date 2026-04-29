@@ -1,5 +1,43 @@
 # Changelog
 
+## [12.318.0](https://github.com/vm0-ai/vm0/compare/web-v12.317.0...web-v12.318.0) (2026-04-29)
+
+
+### Features
+
+* add model usage rankings ([#11464](https://github.com/vm0-ai/vm0/issues/11464)) ([e251a05](https://github.com/vm0-ai/vm0/commit/e251a05dcc738ea7b2ae0c798ef9a47e21978746))
+
+
+### Bug Fixes
+
+* preserve cancelled run chat error ([#11459](https://github.com/vm0-ai/vm0/issues/11459)) ([8fc17bf](https://github.com/vm0-ai/vm0/commit/8fc17bfe5fcf9684784e29714b71e895492df71b))
+
+## [12.317.0](https://github.com/vm0-ai/vm0/compare/web-v12.316.1...web-v12.317.0) (2026-04-29)
+
+
+### Features
+
+* add credit addition records ([#11447](https://github.com/vm0-ai/vm0/issues/11447)) ([07a164a](https://github.com/vm0-ai/vm0/commit/07a164a2f4025615c0f5d657e419d93b886cc249))
+
+
+### Bug Fixes
+
+* forward bb0 device code routes to api ([#11449](https://github.com/vm0-ai/vm0/issues/11449)) ([433f3b2](https://github.com/vm0-ai/vm0/commit/433f3b2b466c390394ca0e8877985e451cd74d5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.244.0
+
+## [12.316.1](https://github.com/vm0-ai/vm0/compare/web-v12.316.0...web-v12.316.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* adjust deepseek-v4-pro credit multiplier from 0.3x to 0.06x ([#11435](https://github.com/vm0-ai/vm0/issues/11435)) ([049f315](https://github.com/vm0-ai/vm0/commit/049f31501d973889dc39f336e5c2139e4568ed3c))
+
 ## [12.316.0](https://github.com/vm0-ai/vm0/compare/web-v12.315.0...web-v12.316.0) (2026-04-28)
 
 

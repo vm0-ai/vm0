@@ -24,6 +24,7 @@ interface MockedUser {
   id: string;
   fullName: string;
   firstName?: string;
+  imageUrl?: string;
   primaryEmailAddress: { emailAddress: string } | null;
   unsafeMetadata: Record<string, unknown>;
   createOrganizationEnabled: boolean;
@@ -55,12 +56,14 @@ export function mockUser(
     fullName: string;
     email?: string;
     firstName?: string;
+    imageUrl?: string;
   } | null,
   session: { token: string } | null,
 ) {
   if (user) {
     internalMockedUser = {
       ...user,
+      imageUrl: user.imageUrl,
       primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
       unsafeMetadata: {},
       createOrganizationEnabled: false,

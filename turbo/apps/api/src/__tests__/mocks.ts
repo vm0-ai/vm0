@@ -15,7 +15,9 @@ export interface ApiTestMocks {
   };
   readonly sentry: {
     readonly captureException: SyncMock;
+    readonly httpIntegration: Mock<(...args: unknown[]) => unknown>;
     readonly init: SyncMock;
+    readonly nativeNodeFetchIntegration: Mock<(...args: unknown[]) => unknown>;
   };
 }
 
@@ -35,7 +37,15 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     sentry: {
       captureException: vi.fn<(...args: unknown[]) => void>(),
+      httpIntegration: vi.fn<(...args: unknown[]) => unknown>((options) => {
+        return { name: "Http", options };
+      }),
       init: vi.fn<(...args: unknown[]) => void>(),
+      nativeNodeFetchIntegration: vi.fn<(...args: unknown[]) => unknown>(
+        (options) => {
+          return { name: "NodeFetch", options };
+        },
+      ),
     },
   };
 });
@@ -65,5 +75,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.otel.registerOTel.mockReset();
   apiTestMocks.sentry.captureException.mockReset();
+  apiTestMocks.sentry.httpIntegration.mockClear();
   apiTestMocks.sentry.init.mockReset();
+  apiTestMocks.sentry.nativeNodeFetchIntegration.mockClear();
 }

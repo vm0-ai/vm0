@@ -41,6 +41,7 @@ describe("org manage dialog - display", () => {
 
     // Admin-visible tabs
     expect(screen.getByText(/Model Providers/i)).toBeInTheDocument();
+    expect(screen.getByText("Credit balance")).toBeInTheDocument();
   });
 
   it("shows the active tab heading on initial load", async () => {

@@ -39,6 +39,17 @@ function defaultBillingStatus(): BillingStatusResponse {
     creditBreakdown: [
       { category: "free", label: "Free plan", credits: 10_000 },
     ],
+    creditGrants: [
+      {
+        id: "starter-grant",
+        source: "starter_grant",
+        label: "Free plan",
+        amount: 10_000,
+        remaining: 10_000,
+        createdAt: "2098-12-01T00:00:00.000Z",
+        expiresAt: MOCK_STARTER_GRANT_EXPIRY,
+      },
+    ],
   };
 }
 

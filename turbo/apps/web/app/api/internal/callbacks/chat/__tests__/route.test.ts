@@ -817,6 +817,34 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(errorMsg?.content).toBe(actionableError);
     });
 
+    it("should preserve user-cancelled run errors", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: "Run cancelled",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const chatMessages = await getTestChatMessagesByThread(threadId);
+      const errorMsg = chatMessages.find((message) => {
+        return message.role === "assistant" && message.error !== null;
+      });
+      expect(errorMsg?.error).toBe("Run cancelled");
+      expect(errorMsg?.content).toBe("Run cancelled");
+    });
+
     it("should not derive sessionId on failed run without agentSessionId", async () => {
       const { threadId, runId, secret } = await setupRunAndThread({
         status: "failed",

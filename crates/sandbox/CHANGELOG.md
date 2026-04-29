@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.8](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.7...sandbox-v0.12.8) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** clean up outer job panic bookkeeping ([#11393](https://github.com/vm0-ai/vm0/issues/11393)) ([4ecf0b6](https://github.com/vm0-ai/vm0/commit/4ecf0b65e25c66a86eec0151a29dd4f0fa0deeb0))
+
 ## [0.12.7](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.6...sandbox-v0.12.7) (2026-04-27)
 
 

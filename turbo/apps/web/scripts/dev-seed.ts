@@ -228,6 +228,13 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
   ...usageGroup("image", "gemini-2.5-flash-image", [
     ["output_image", usd(0.0387), 1],
   ]),
+
+  // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
+  // $0.015/minute cost with 20% gross margin = $0.01875/minute,
+  // rounded to 19 credits/minute.
+  ...usageGroup("audio", "gpt-4o-mini-tts", [
+    ["output_audio_seconds", usd(0.01875), 60],
+  ]),
 ];
 
 /**

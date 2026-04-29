@@ -1,6 +1,15 @@
-import { IconLoader2 } from "@tabler/icons-react";
+import {
+  IconCheck,
+  IconChevronDown,
+  IconFilter,
+  IconLoader2,
+} from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Table,
   TableBody,
   TableCell,
@@ -12,7 +21,11 @@ import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
 import { CapturedBodySections } from "./captured-body-sections.tsx";
 import {
+  defaultNetworkLogTypes,
+  type NetworkLogTypeFilter,
   networkLogExpandedRows$,
+  networkLogTypeFilter$,
+  setNetworkLogTypeFilter$,
   toggleNetworkLogRowExpanded$,
 } from "../../../signals/zero-page/network-log-ui.ts";
 
@@ -40,16 +53,7 @@ function formatLatency(ms: number | undefined | null): string {
 }
 
 function entryType(entry: NetworkLogEntry): string {
-  if (entry.action === "DENY") {
-    return "DENY";
-  }
-  if (entry.type === "tcp") {
-    return "TCP";
-  }
-  if (entry.type && entry.type !== "http") {
-    return entry.type.toUpperCase();
-  }
-  return "HTTP";
+  return entry.type ? entry.type.toUpperCase() : "HTTP";
 }
 
 function typeBadgeColor(type: string): BadgeColor {
@@ -64,9 +68,6 @@ function typeBadgeColor(type: string): BadgeColor {
   }
   if (type === "DNS") {
     return "teal";
-  }
-  if (type === "DENY") {
-    return "red";
   }
   return "muted";
 }
@@ -101,8 +102,172 @@ function latencyColor(ms: number | undefined | null): string {
 // Row components
 // ---------------------------------------------------------------------------
 
-function TypeBadge({ type }: { type: string }) {
-  return <InlineBadge color={typeBadgeColor(type)}>{type}</InlineBadge>;
+function TypeBadge({
+  type,
+  denied = false,
+}: {
+  type: string;
+  denied?: boolean;
+}) {
+  return (
+    <InlineBadge color={denied ? "red" : typeBadgeColor(type)}>
+      <span className={denied ? "line-through" : undefined}>{type}</span>
+    </InlineBadge>
+  );
+}
+
+function typeRank(type: string): number {
+  switch (type) {
+    case "HTTP": {
+      return 0;
+    }
+    case "DNS": {
+      return 1;
+    }
+    case "TCP": {
+      return 2;
+    }
+    case "UDP": {
+      return 3;
+    }
+    case "ICMP": {
+      return 4;
+    }
+    default: {
+      return Number.MAX_SAFE_INTEGER;
+    }
+  }
+}
+
+function sortTypes(types: string[]): string[] {
+  return [...types].sort((a, b) => {
+    const rankDelta = typeRank(a) - typeRank(b);
+    if (rankDelta !== 0) {
+      return rankDelta;
+    }
+    return a.localeCompare(b);
+  });
+}
+
+function networkTypeOptions(
+  networkLogs: NetworkLogEntry[],
+  typeFilter: NetworkLogTypeFilter,
+): string[] {
+  const selectedTypes = typeFilter.mode === "selected" ? typeFilter.types : [];
+  const types = new Set<string>([
+    ...defaultNetworkLogTypes(),
+    ...selectedTypes,
+  ]);
+  for (const entry of networkLogs) {
+    types.add(entryType(entry));
+  }
+  return sortTypes(Array.from(types));
+}
+
+function selectedTypeValues(
+  typeFilter: NetworkLogTypeFilter,
+  typeOptions: string[],
+): string[] {
+  return typeFilter.mode === "all" ? typeOptions : [...typeFilter.types];
+}
+
+function toggleSelectedType(
+  typeFilter: NetworkLogTypeFilter,
+  typeOptions: string[],
+  type: string,
+): NetworkLogTypeFilter {
+  const selectedTypes = selectedTypeValues(typeFilter, typeOptions);
+  const nextTypes = selectedTypes.includes(type)
+    ? selectedTypes.filter((selected) => {
+        return selected !== type;
+      })
+    : sortTypes([...selectedTypes, type]);
+  if (nextTypes.length === 0) {
+    return { mode: "all" };
+  }
+  return { mode: "selected", types: nextTypes };
+}
+
+function typeFilterLabel(typeFilter: NetworkLogTypeFilter): string {
+  if (typeFilter.mode === "all") {
+    return "All types";
+  }
+  const selectedTypes = typeFilter.types;
+  if (selectedTypes.length === 0) {
+    return "All types";
+  }
+  if (selectedTypes.length === 1) {
+    return selectedTypes[0] ?? "All types";
+  }
+  return `${selectedTypes.length} types`;
+}
+
+function TypeFilter({
+  typeOptions,
+  typeFilter,
+  onChange,
+}: {
+  typeOptions: string[];
+  typeFilter: NetworkLogTypeFilter;
+  onChange: (filter: NetworkLogTypeFilter) => void;
+}) {
+  const selectedTypes = selectedTypeValues(typeFilter, typeOptions);
+  const selectedSet = new Set(selectedTypes);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Type filter"
+          className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-accent focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+        >
+          <span className="flex items-center gap-1.5">
+            <IconFilter size={14} stroke={1.5} className="shrink-0" />
+            {typeFilterLabel(typeFilter)}
+          </span>
+          <IconChevronDown
+            size={14}
+            className="shrink-0 text-muted-foreground"
+          />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuItem
+          role="menuitemcheckbox"
+          aria-checked={typeFilter.mode === "all"}
+          onSelect={(event) => {
+            event.preventDefault();
+            onChange({ mode: "all" });
+          }}
+        >
+          <span className="flex h-4 w-4 items-center justify-center">
+            {typeFilter.mode === "all" && <IconCheck size={14} />}
+          </span>
+          All types
+        </DropdownMenuItem>
+        {typeOptions.map((type) => {
+          const selected = selectedSet.has(type);
+          return (
+            <DropdownMenuItem
+              key={type}
+              role="menuitemcheckbox"
+              aria-checked={selected}
+              onSelect={(event) => {
+                event.preventDefault();
+                onChange(toggleSelectedType(typeFilter, typeOptions, type));
+              }}
+            >
+              <span className="flex h-4 w-4 items-center justify-center">
+                {selected && <IconCheck size={14} />}
+              </span>
+              {type}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function formatValue(value: unknown): string {
@@ -314,7 +479,7 @@ function NetworkLogRow({
   const toggleExpanded = useSet(toggleNetworkLogRowExpanded$);
   const expanded = expandedRows.has(rowKey);
   const type = entryType(entry);
-  const isHttp = type === "HTTP" || type === "DENY";
+  const isHttp = type === "HTTP";
 
   const target = isHttp
     ? (entry.url ?? "—")
@@ -332,7 +497,7 @@ function NetworkLogRow({
           {formatTime(entry.timestamp)}
         </TableCell>
         <TableCell>
-          <TypeBadge type={type} />
+          <TypeBadge type={type} denied={entry.action === "DENY"} />
         </TableCell>
         <TableCell className="font-mono text-xs whitespace-nowrap">
           {isHttp ? (entry.method ?? "—") : "—"}
@@ -374,8 +539,27 @@ export function NetworkContent({
   loading?: boolean;
   onLoadMore?: () => void;
 }) {
+  const typeFilter = useGet(networkLogTypeFilter$);
+  const setTypeFilter = useSet(setNetworkLogTypeFilter$);
+  const typeOptions = networkTypeOptions(networkLogs, typeFilter);
+  const selectedTypes = selectedTypeValues(typeFilter, typeOptions);
+  const selectedTypeSet = new Set(selectedTypes);
+  const filteredNetworkLogs =
+    typeFilter.mode === "all"
+      ? networkLogs
+      : networkLogs.filter((entry) => {
+          return selectedTypeSet.has(entryType(entry));
+        });
+
   return (
     <div className="pb-8">
+      <div className="mb-3 flex justify-end">
+        <TypeFilter
+          typeOptions={typeOptions}
+          typeFilter={typeFilter}
+          onChange={setTypeFilter}
+        />
+      </div>
       <Table>
         <TableHeader>
           <TableRow>
@@ -389,10 +573,21 @@ export function NetworkContent({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {networkLogs.map((entry, idx) => {
-            const key = `${entry.timestamp}-${entry.type}-${entry.host}-${entry.port}-${entry.url}-${idx}`;
-            return <NetworkLogRow key={key} rowKey={key} entry={entry} />;
-          })}
+          {filteredNetworkLogs.length === 0 ? (
+            <TableRow>
+              <td
+                colSpan={7}
+                className="h-24 text-center text-sm text-muted-foreground"
+              >
+                No matching logs in loaded results
+              </td>
+            </TableRow>
+          ) : (
+            filteredNetworkLogs.map((entry, idx) => {
+              const key = `${entry.timestamp}-${entry.type}-${entry.host}-${entry.port}-${entry.url}-${idx}`;
+              return <NetworkLogRow key={key} rowKey={key} entry={entry} />;
+            })
+          )}
         </TableBody>
       </Table>
       {hasMore && onLoadMore && (

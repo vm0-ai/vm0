@@ -273,6 +273,16 @@ pub struct IdlePoolSnapshot {
     pub idle_vms: Vec<IdleVm>,
 }
 
+/// Result of an explicit sandbox destroy attempt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DestroyOutcome {
+    /// `SandboxFactory::destroy` returned normally and no panic was observed.
+    /// A non-panic `stop()` error is logged, then destroy still proves teardown.
+    Completed,
+    /// Cleanup fell back to panic/drop behavior, so process teardown is not proven.
+    Uncertain,
+}
+
 /// Reusable sandbox state handed to the executor after a successful unpark.
 ///
 /// The budget lease is intentionally not part of this payload. The outer job
@@ -320,12 +330,16 @@ pub(crate) struct IdleDestroyPayload {
 
 impl IdleDestroyPayload {
     /// Stop the sandbox and destroy it via its factory.
-    pub(crate) async fn stop_and_destroy(self) {
+    pub(crate) async fn stop_and_destroy(self) -> DestroyOutcome {
         let mut sandbox = self.sandbox;
+        let mut uncertain = false;
         match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
             Ok(Ok(())) => {}
             Ok(Err(e)) => tracing::warn!(error = %e, "failed to stop idle sandbox"),
-            Err(_) => tracing::warn!("idle sandbox stop panicked"),
+            Err(_) => {
+                tracing::warn!("idle sandbox stop panicked");
+                uncertain = true;
+            }
         }
         if AssertUnwindSafe(self.factory.destroy(sandbox))
             .catch_unwind()
@@ -333,6 +347,12 @@ impl IdleDestroyPayload {
             .is_err()
         {
             tracing::warn!("idle sandbox destroy panicked");
+            uncertain = true;
+        }
+        if uncertain {
+            DestroyOutcome::Uncertain
+        } else {
+            DestroyOutcome::Completed
         }
     }
 }
@@ -355,7 +375,7 @@ impl IdleDestroyJob {
             session_id: _,
             profile_name: _,
         } = self;
-        payload.stop_and_destroy().await;
+        let _ = payload.stop_and_destroy().await;
         drop(budget_lease);
     }
 
@@ -624,6 +644,13 @@ impl IdlePool {
             revision: self.revision,
             idle_vms: vms,
         }
+    }
+
+    /// Return true when the idle pool currently owns `sandbox_id`.
+    pub fn contains_sandbox_id(&self, sandbox_id: SandboxId) -> bool {
+        self.entries
+            .values()
+            .any(|entry| entry.sandbox_id == sandbox_id)
     }
 
     /// Return a sorted-by-session_id snapshot of the idle pool suitable
@@ -937,6 +964,20 @@ mod tests {
     fn held_snapshot_empty_pool() {
         let pool = IdlePool::new(pool_config(0));
         assert!(pool.held_snapshot().is_empty());
+    }
+
+    #[test]
+    fn contains_sandbox_id_tracks_current_idle_ownership() {
+        let mut pool = IdlePool::new(pool_config(0));
+        let candidate = make_candidate_for("s1", 2, 2048);
+        let sandbox_id = candidate.sandbox_id;
+        assert!(!pool.contains_sandbox_id(sandbox_id));
+
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        assert!(pool.contains_sandbox_id(sandbox_id));
+
+        assert!(pool.take("s1").is_some());
+        assert!(!pool.contains_sandbox_id(sandbox_id));
     }
 
     #[test]

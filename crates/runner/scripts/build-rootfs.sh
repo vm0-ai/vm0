@@ -135,7 +135,7 @@ ROOTFS_DIR=""
 
 # Pinned versions (changes here invalidate the rootfs cache via script hash)
 GO_VERSION="1.26.2"
-CLAUDE_CODE_VERSION="2.1.121"
+CLAUDE_CODE_VERSION="2.1.123"
 CODEX_CLI_VERSION="0.125.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"

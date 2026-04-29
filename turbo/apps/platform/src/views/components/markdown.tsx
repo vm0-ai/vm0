@@ -2,13 +2,14 @@ import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
 import { IconLoader2, IconPhoto } from "@tabler/icons-react";
-import { useGet } from "ccstate-react";
-import {
-  Component,
-  type ComponentPropsWithoutRef,
-  type ReactNode,
-} from "react";
+import { useGet, useSet } from "ccstate-react";
+import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { theme$ } from "../../signals/theme.ts";
+import {
+  imageLoadStatusByKey$,
+  imageLoadStatusRef$,
+  setImageLoadStatus$,
+} from "../../signals/view-component-state.ts";
 
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
@@ -212,66 +213,58 @@ function PlainLink({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
   );
 }
 
-type ImageLoadStatus = "loading" | "loaded" | "error";
+function MediaImage({
+  src,
+  alt,
+  onImageClick,
+}: {
+  src: string;
+  alt: string;
+  onImageClick?: (url: string) => void;
+}) {
+  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const imageLoadKey = `markdown:${src}`;
+  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
+  const showPlaceholder = imageStatus !== "loaded";
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class MediaImage extends Component<
-  {
-    src: string;
-    alt: string;
-    onImageClick?: (url: string) => void;
-  },
-  { imageStatus: ImageLoadStatus }
-> {
-  state: { imageStatus: ImageLoadStatus } = {
-    imageStatus: "loading",
-  };
-
-  componentDidUpdate(previousProps: Readonly<{ src: string }>) {
-    if (previousProps.src !== this.props.src) {
-      this.setState({ imageStatus: "loading" });
-    }
-  }
-
-  render() {
-    const { src, alt, onImageClick } = this.props;
-    const { imageStatus } = this.state;
-    const showPlaceholder = imageStatus !== "loaded";
-
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          onImageClick?.(src);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        onImageClick?.(src);
+      }}
+      className="relative block max-w-full my-1 overflow-hidden rounded-lg border border-foreground/10 cursor-zoom-in"
+    >
+      {showPlaceholder && (
+        <span className="flex h-32 w-48 max-w-full items-center justify-center bg-muted/70 text-muted-foreground">
+          {imageStatus === "loading" ? (
+            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+          ) : (
+            <IconPhoto size={18} stroke={1.5} />
+          )}
+        </span>
+      )}
+      <img
+        key={imageLoadKey}
+        ref={imageLoadStatusRef}
+        src={src}
+        alt={alt}
+        data-image-load-key={imageLoadKey}
+        loading="lazy"
+        onLoad={() => {
+          setImageLoadStatus(imageLoadKey, "loaded");
         }}
-        className="relative block max-w-full my-1 overflow-hidden rounded-lg border border-foreground/10 cursor-zoom-in"
-      >
-        {showPlaceholder && (
-          <span className="flex h-32 w-48 max-w-full items-center justify-center bg-muted/70 text-muted-foreground">
-            {imageStatus === "loading" ? (
-              <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
-            ) : (
-              <IconPhoto size={18} stroke={1.5} />
-            )}
-          </span>
-        )}
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          onLoad={() => {
-            this.setState({ imageStatus: "loaded" });
-          }}
-          onError={() => {
-            this.setState({ imageStatus: "error" });
-          }}
-          className={`max-h-32 max-w-full object-contain ${
-            showPlaceholder ? "absolute inset-0 opacity-0" : ""
-          }`}
-        />
-      </button>
-    );
-  }
+        onError={() => {
+          setImageLoadStatus(imageLoadKey, "error");
+        }}
+        className={`max-h-32 max-w-full object-contain ${
+          showPlaceholder ? "absolute inset-0 opacity-0" : ""
+        }`}
+      />
+    </button>
+  );
 }
 
 function MediaLink({

@@ -13,11 +13,14 @@ use crate::constants;
 use crate::error::AgentError;
 use crate::http;
 use crate::urls;
+use api_contracts::generated::types::webhooks::agent::storages::{
+    commit as storage_commit, prepare as storage_prepare,
+};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, Metadata};
@@ -34,33 +37,38 @@ pub(crate) struct FileEntry {
     pub(crate) size: u64,
 }
 
-#[derive(Deserialize)]
-struct PrepareResponse {
-    #[serde(rename = "versionId")]
-    version_id: Option<String>,
-    existing: Option<bool>,
-    uploads: Option<Uploads>,
-}
-
-#[derive(Deserialize)]
-struct Uploads {
-    archive: Option<UploadInfo>,
-    manifest: Option<UploadInfo>,
-}
-
-#[derive(Deserialize)]
-struct UploadInfo {
-    #[serde(rename = "presignedUrl")]
-    presigned_url: String,
-}
-
-#[derive(Deserialize)]
-struct CommitResponse {
-    success: Option<bool>,
-}
-
 pub(crate) struct SnapshotResult {
     pub(crate) version_id: String,
+}
+
+fn non_empty_string(value: &str) -> Option<String> {
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn to_prepare_files(files: &[FileEntry]) -> Vec<storage_prepare::RequestFile> {
+    files
+        .iter()
+        .map(|file| storage_prepare::RequestFile {
+            path: file.path.clone(),
+            hash: file.hash.clone(),
+            size: file.size,
+        })
+        .collect()
+}
+
+fn to_commit_files(files: &[FileEntry]) -> Vec<storage_commit::RequestFile> {
+    files
+        .iter()
+        .map(|file| storage_commit::RequestFile {
+            path: file.path.clone(),
+            hash: file.hash.clone(),
+            size: file.size,
+        })
+        .collect()
 }
 
 /// Walk `mount_path` in a blocking task and collect `FileEntry` records,
@@ -99,17 +107,16 @@ pub(crate) async fn create_snapshot(
     // Step 1: Prepare
     log_info!(LOG_TAG, "Calling prepare endpoint...");
     let prep_start = std::time::Instant::now();
-    let mut prep_payload = json!({
-        "storageName": storage_name,
-        "storageType": storage_type,
-        "files": files,
-        "runId": run_id,
-    });
-    if !parent_version_id.is_empty()
-        && let Some(obj) = prep_payload.as_object_mut()
-    {
-        obj.insert("parentVersionId".to_string(), json!(parent_version_id));
-    }
+    let prep_payload = storage_prepare::Request {
+        run_id: run_id.to_string(),
+        storage_name: storage_name.to_string(),
+        storage_type: storage_type.to_string(),
+        files: to_prepare_files(&files),
+        parent_version_id: non_empty_string(parent_version_id),
+        force: None,
+        base_version: None,
+        changes: None,
+    };
 
     let prep_result = http::post_json(
         urls::storage_prepare_url(),
@@ -128,22 +135,25 @@ pub(crate) async fn create_snapshot(
             return Err(e);
         }
     };
-    let prep: PrepareResponse =
-        serde_json::from_value(prep_resp).map_err(|e| AgentError::Checkpoint(e.to_string()))?;
-
-    let version_id = match prep.version_id {
-        Some(id) => id,
-        None => {
-            record_sandbox_op("artifact_prepare_api", prep_start.elapsed(), false, None);
-            return Err(AgentError::Checkpoint(
-                "No versionId in prepare response".into(),
-            ));
+    let prep: storage_prepare::Response = match serde_json::from_value(prep_resp) {
+        Ok(prep) => prep,
+        Err(e) => {
+            let message = e.to_string();
+            record_sandbox_op(
+                "artifact_prepare_api",
+                prep_start.elapsed(),
+                false,
+                Some(&message),
+            );
+            return Err(AgentError::Checkpoint(message));
         }
     };
+
+    let version_id = prep.version_id;
     record_sandbox_op("artifact_prepare_api", prep_start.elapsed(), true, None);
 
     // Step 2: Deduplication check
-    if prep.existing.unwrap_or(false) {
+    if prep.existing {
         log_info!(
             LOG_TAG,
             "Version already exists (deduplicated), updating HEAD"
@@ -189,33 +199,32 @@ pub(crate) async fn create_snapshot(
             None,
         );
 
-        let mut commit_payload = json!({
-            "storageName": storage_name,
-            "storageType": storage_type,
-            "versionId": version_id,
-            "files": files,
-            "runId": run_id,
-        });
-        if !parent_version_id.is_empty()
-            && let Some(obj) = commit_payload.as_object_mut()
-        {
-            obj.insert("parentVersionId".to_string(), json!(parent_version_id));
-        }
+        let commit_payload = storage_commit::Request {
+            run_id: run_id.to_string(),
+            storage_name: storage_name.to_string(),
+            storage_type: storage_type.to_string(),
+            version_id: version_id.clone(),
+            parent_version_id: non_empty_string(parent_version_id),
+            files: to_commit_files(&files),
+            message: None,
+        };
         let resp = http::post_json(
             urls::storage_commit_url(),
             &commit_payload,
             constants::HTTP_MAX_RETRIES,
         )
         .await?;
-        let commit: CommitResponse = resp
+        let commit_success = resp
             .map(|v| {
-                serde_json::from_value(v).unwrap_or_else(|e| {
-                    log_warn!(LOG_TAG, "Failed to parse dedup commit response: {e}");
-                    CommitResponse { success: None }
-                })
+                serde_json::from_value::<storage_commit::Response>(v)
+                    .map(|commit| commit.success)
+                    .unwrap_or_else(|e| {
+                        log_warn!(LOG_TAG, "Failed to parse dedup commit response: {e}");
+                        false
+                    })
             })
-            .unwrap_or(CommitResponse { success: None });
-        if commit.success != Some(true) {
+            .unwrap_or(false);
+        if !commit_success {
             return Err(AgentError::Checkpoint("Failed to update HEAD".into()));
         }
         return Ok(SnapshotResult { version_id });
@@ -225,14 +234,8 @@ pub(crate) async fn create_snapshot(
     let uploads = prep
         .uploads
         .ok_or_else(|| AgentError::Checkpoint("No upload URLs in prepare response".into()))?;
-    let archive_url = uploads
-        .archive
-        .ok_or_else(|| AgentError::Checkpoint("No archive upload info".into()))?
-        .presigned_url;
-    let manifest_url = uploads
-        .manifest
-        .ok_or_else(|| AgentError::Checkpoint("No manifest upload info".into()))?
-        .presigned_url;
+    let archive_url = uploads.archive.presigned_url;
+    let manifest_url = uploads.manifest.presigned_url;
 
     // Step 4: Create archive + manifest in temp dir
     let temp_dir = tempfile::tempdir().map_err(AgentError::Io)?;
@@ -291,19 +294,15 @@ pub(crate) async fn create_snapshot(
     // Step 6: Commit
     log_info!(LOG_TAG, "Calling commit endpoint...");
     let commit_start = std::time::Instant::now();
-    let mut commit_payload = json!({
-        "storageName": storage_name,
-        "storageType": storage_type,
-        "versionId": version_id,
-        "files": files,
-        "runId": run_id,
-        "message": message,
-    });
-    if !parent_version_id.is_empty()
-        && let Some(obj) = commit_payload.as_object_mut()
-    {
-        obj.insert("parentVersionId".to_string(), json!(parent_version_id));
-    }
+    let commit_payload = storage_commit::Request {
+        run_id: run_id.to_string(),
+        storage_name: storage_name.to_string(),
+        storage_type: storage_type.to_string(),
+        version_id: version_id.clone(),
+        parent_version_id: non_empty_string(parent_version_id),
+        files: to_commit_files(&files),
+        message: Some(message.to_string()),
+    };
     let resp = match http::post_json(
         urls::storage_commit_url(),
         &commit_payload,
@@ -317,16 +316,18 @@ pub(crate) async fn create_snapshot(
             return Err(e);
         }
     };
-    let commit: CommitResponse = resp
+    let commit_success = resp
         .map(|v| {
-            serde_json::from_value(v).unwrap_or_else(|e| {
-                log_warn!(LOG_TAG, "Failed to parse commit response: {e}");
-                CommitResponse { success: None }
-            })
+            serde_json::from_value::<storage_commit::Response>(v)
+                .map(|commit| commit.success)
+                .unwrap_or_else(|e| {
+                    log_warn!(LOG_TAG, "Failed to parse commit response: {e}");
+                    false
+                })
         })
-        .unwrap_or(CommitResponse { success: None });
+        .unwrap_or(false);
 
-    if commit.success != Some(true) {
+    if !commit_success {
         record_sandbox_op("artifact_commit_api", commit_start.elapsed(), false, None);
         return Err(AgentError::Checkpoint("Commit failed".into()));
     }

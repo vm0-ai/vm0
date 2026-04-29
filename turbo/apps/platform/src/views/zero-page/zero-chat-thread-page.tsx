@@ -1,4 +1,4 @@
-import { Component, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import {
   useGet,
   useSet,
@@ -102,6 +102,11 @@ import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import {
+  imageLoadStatusByKey$,
+  imageLoadStatusRef$,
+  setImageLoadStatus$,
+} from "../../signals/view-component-state.ts";
 
 const CHAT_SHORTCUT_SECTIONS = [
   {
@@ -480,8 +485,6 @@ function ArtifactDownloadAction({
   );
 }
 
-type ImageLoadStatus = "loading" | "loaded" | "error";
-
 type ChatImagePreviewButtonProps = {
   alt: string;
   ariaLabel: string;
@@ -493,50 +496,67 @@ type ChatImagePreviewButtonProps = {
   url: string;
 };
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class ChatImagePreviewButton extends Component<
-  ChatImagePreviewButtonProps,
-  { imageStatus: ImageLoadStatus }
-> {
-  state: { imageStatus: ImageLoadStatus } = {
-    imageStatus: "loading",
-  };
+function ChatImagePreviewButton({
+  alt,
+  ariaLabel,
+  buttonClassName,
+  imageClassName,
+  onPreview,
+  overlayIcon = "photo",
+  placeholderClassName,
+  url,
+}: ChatImagePreviewButtonProps) {
+  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const imageLoadKey = `chat-image-preview:${url}`;
+  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
 
-  componentDidUpdate(previousProps: Readonly<ChatImagePreviewButtonProps>) {
-    if (previousProps.url !== this.props.url) {
-      this.setState({ imageStatus: "loading" });
-    }
-  }
+  const showPlaceholder = imageStatus !== "loaded";
 
-  renderPlaceholder() {
-    const { placeholderClassName } = this.props;
-    const { imageStatus } = this.state;
-
-    if (imageStatus === "loaded") {
-      return null;
-    }
-
-    return (
-      <span
-        data-testid="chat-image-preview-loading"
+  return (
+    <button
+      type="button"
+      onClick={onPreview}
+      className={cn(
+        "group/image-preview relative overflow-hidden",
+        buttonClassName,
+      )}
+      aria-label={ariaLabel}
+    >
+      {showPlaceholder && (
+        <span
+          data-testid="chat-image-preview-loading"
+          className={cn(
+            "flex items-center justify-center bg-muted/70 text-muted-foreground",
+            placeholderClassName,
+          )}
+        >
+          {imageStatus === "loading" ? (
+            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+          ) : (
+            <IconPhoto size={18} stroke={1.5} />
+          )}
+        </span>
+      )}
+      <img
+        key={imageLoadKey}
+        ref={imageLoadStatusRef}
+        src={url}
+        alt={alt}
+        data-image-load-key={imageLoadKey}
+        loading="lazy"
+        onLoad={() => {
+          setImageLoadStatus(imageLoadKey, "loaded");
+        }}
+        onError={() => {
+          setImageLoadStatus(imageLoadKey, "error");
+        }}
         className={cn(
-          "flex items-center justify-center bg-muted/70 text-muted-foreground",
-          placeholderClassName,
+          imageClassName,
+          showPlaceholder && "absolute inset-0 opacity-0",
         )}
-      >
-        {imageStatus === "loading" ? (
-          <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
-        ) : (
-          <IconPhoto size={18} stroke={1.5} />
-        )}
-      </span>
-    );
-  }
-
-  renderOverlay() {
-    const { overlayIcon = "photo" } = this.props;
-
-    return (
+      />
       <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100">
         {overlayIcon === "eye" ? (
           <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
@@ -549,44 +569,8 @@ class ChatImagePreviewButton extends Component<
           />
         )}
       </span>
-    );
-  }
-
-  render() {
-    const { alt, ariaLabel, buttonClassName, imageClassName, onPreview, url } =
-      this.props;
-    const showPlaceholder = this.state.imageStatus !== "loaded";
-
-    return (
-      <button
-        type="button"
-        onClick={onPreview}
-        className={cn(
-          "group/image-preview relative overflow-hidden",
-          buttonClassName,
-        )}
-        aria-label={ariaLabel}
-      >
-        {this.renderPlaceholder()}
-        <img
-          src={url}
-          alt={alt}
-          loading="lazy"
-          onLoad={() => {
-            this.setState({ imageStatus: "loaded" });
-          }}
-          onError={() => {
-            this.setState({ imageStatus: "error" });
-          }}
-          className={cn(
-            imageClassName,
-            showPlaceholder && "absolute inset-0 opacity-0",
-          )}
-        />
-        {this.renderOverlay()}
-      </button>
-    );
-  }
+    </button>
+  );
 }
 
 function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
@@ -730,56 +714,47 @@ function ArtifactThumbnail({
   );
 }
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class ArtifactThumbnailImage extends Component<
-  { url: string },
-  { imageStatus: ImageLoadStatus }
-> {
-  state: { imageStatus: ImageLoadStatus } = {
-    imageStatus: "loading",
-  };
+function ArtifactThumbnailImage({ url }: { url: string }) {
+  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const imageLoadKey = `artifact-thumbnail:${url}`;
+  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
 
-  componentDidUpdate(previousProps: Readonly<{ url: string }>) {
-    if (previousProps.url !== this.props.url) {
-      this.setState({ imageStatus: "loading" });
-    }
-  }
+  const showPlaceholder = imageStatus !== "loaded";
 
-  render() {
-    const { url } = this.props;
-    const { imageStatus } = this.state;
-    const showPlaceholder = imageStatus !== "loaded";
-
-    return (
-      <>
-        {showPlaceholder && (
-          <span className="flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground">
-            {imageStatus === "loading" ? (
-              <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
-            ) : (
-              <IconPhoto size={14} stroke={1.5} />
-            )}
-          </span>
-        )}
-        <img
-          src={url}
-          alt=""
-          loading="lazy"
-          onLoad={() => {
-            this.setState({ imageStatus: "loaded" });
-          }}
-          onError={() => {
-            this.setState({ imageStatus: "error" });
-          }}
-          className={cn(
-            "h-full w-full object-cover",
-            showPlaceholder && "absolute inset-0 opacity-0",
+  return (
+    <>
+      {showPlaceholder && (
+        <span className="flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground">
+          {imageStatus === "loading" ? (
+            <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
+          ) : (
+            <IconPhoto size={14} stroke={1.5} />
           )}
-          aria-hidden="true"
-        />
-      </>
-    );
-  }
+        </span>
+      )}
+      <img
+        key={imageLoadKey}
+        ref={imageLoadStatusRef}
+        src={url}
+        alt=""
+        data-image-load-key={imageLoadKey}
+        loading="lazy"
+        onLoad={() => {
+          setImageLoadStatus(imageLoadKey, "loaded");
+        }}
+        onError={() => {
+          setImageLoadStatus(imageLoadKey, "error");
+        }}
+        className={cn(
+          "h-full w-full object-cover",
+          showPlaceholder && "absolute inset-0 opacity-0",
+        )}
+        aria-hidden="true"
+      />
+    </>
+  );
 }
 
 function ArtifactFileRow({

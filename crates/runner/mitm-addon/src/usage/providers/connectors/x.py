@@ -18,6 +18,7 @@ import body_utils
 from auth import get_api_url
 from logging_utils import log_proxy_entry
 
+from ...json_selective import JsonSelectiveExtractor, ScalarField
 from ...namespaces import USAGE_EVENT_NAMESPACE_CONNECTOR
 from ...webhook import _enqueue_webhook
 from .x_billing import (
@@ -64,8 +65,13 @@ def is_stream_path(path: str) -> bool:
 # ``body_utils.py``.  A real X tweet line (``data`` + ``includes`` +
 # ``matching_rules`` with full expansion) should never approach this size;
 # exceeding it indicates malformed or hostile upstream data, so the parser
-# drops ``line_buf`` to protect memory.
+# discards that row through its terminating newline to protect memory.
 MAX_NDJSON_LINE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+_X_JSON_RESULT_COUNT_FIELDS = {
+    ("meta", "result_count"): ScalarField("int", max_bytes=64),
+    ("meta", "total_tweet_count"): ScalarField("int", max_bytes=64),
+}
 
 
 class NdjsonState(TypedDict):
@@ -83,7 +89,7 @@ class NdjsonState(TypedDict):
     lines_parsed: int
     """JSON-parseable non-blank lines."""
     lines_failed: int
-    """Lines that failed JSON decoding."""
+    """Lines that failed JSON decoding or exceeded the single-line safety cap."""
 
 
 def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
@@ -105,13 +111,15 @@ def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
     - ``includes``: dict[str, int] — running sum across all lines of
       ``len(includes.<key>)`` for each expansion resource key.
     - ``lines_parsed``: int — JSON-parseable non-blank lines.
-    - ``lines_failed``: int — lines that failed JSON decoding.
+    - ``lines_failed``: int — lines that failed JSON decoding or exceeded
+      the single-line safety cap.
 
     The parser keeps a ``line_buf`` holding the in-flight partial line
     across chunk boundaries.  If a single line ever exceeds
-    :data:`MAX_NDJSON_LINE_BYTES` the buffer is reset (malformed / hostile
-    upstream).  A truncated trailing line at connection close (no final
-    ``\\n``) stays in the buffer uncounted — worst-case under-count is 1.
+    :data:`MAX_NDJSON_LINE_BYTES` the whole line is discarded until its
+    terminating newline (malformed / hostile upstream).  A truncated
+    trailing line at connection close (no final ``\\n``) stays in the buffer
+    uncounted — worst-case under-count is 1.
     """
     state: NdjsonState = {
         "data_count": 0,
@@ -123,22 +131,51 @@ def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
     # ``parse_chunk`` — captured by the closure.  Rebinding via
     # ``line_buf = ...`` would create a new local and lose cross-call state.
     line_buf = bytearray()
+    discarding_overlong_line = False
 
     def parse_chunk(chunk: bytes) -> None:
-        line_buf.extend(chunk)
-        while b"\n" in line_buf:
-            raw, _, rest = line_buf.partition(b"\n")
-            line_buf[:] = rest
-            line = raw.rstrip(b"\r")
+        nonlocal discarding_overlong_line
+
+        start = 0
+        while start < len(chunk):
+            newline = chunk.find(b"\n", start)
+            end = len(chunk) if newline == -1 else newline
+            fragment_len = end - start
+
+            if discarding_overlong_line:
+                if newline == -1:
+                    return
+                discarding_overlong_line = False
+                start = newline + 1
+                continue
+
+            if len(line_buf) + fragment_len > MAX_NDJSON_LINE_BYTES:
+                line_buf[:] = b""
+                state["lines_failed"] += 1
+                if newline == -1:
+                    discarding_overlong_line = True
+                    return
+                start = newline + 1
+                continue
+
+            line_buf.extend(chunk[start:end])
+            if newline == -1:
+                return
+
+            line = bytes(line_buf).rstrip(b"\r")
+            line_buf[:] = b""
             if not line:
+                start = newline + 1
                 continue  # keep-alive blank line
             try:
                 obj = json.loads(line)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 state["lines_failed"] += 1
+                start = newline + 1
                 continue
             state["lines_parsed"] += 1
             if not isinstance(obj, dict):
+                start = newline + 1
                 continue
             if isinstance(obj.get("data"), dict):
                 state["data_count"] += 1
@@ -147,13 +184,61 @@ def create_ndjson_extractor() -> tuple[Callable[[bytes], None], NdjsonState]:
                 for k, v in inc.items():
                     if isinstance(v, list):
                         state["includes"][k] = state["includes"].get(k, 0) + len(v)
-        # Defense: if a single line exceeds MAX_NDJSON_LINE_BYTES (malformed
-        # or hostile upstream) reset line_buf so we don't hold unbounded
-        # memory.  Subsequent lines parse normally.
-        if len(line_buf) > MAX_NDJSON_LINE_BYTES:
-            line_buf[:] = b""
+            start = newline + 1
 
     return parse_chunk, state
+
+
+class XJsonResponseExtractor:
+    """Incrementally extract billing metadata from non-streaming X JSON."""
+
+    def __init__(self) -> None:
+        self._extractor = JsonSelectiveExtractor(
+            scalar_fields=_X_JSON_RESULT_COUNT_FIELDS,
+            array_count_paths={("data",), ("errors",)},
+            wildcard_array_count_paths={("includes", "*")},
+            object_presence_paths={(), ("data",)},
+        )
+
+    def feed(self, chunk: bytes) -> None:
+        self._extractor.feed(chunk)
+
+    def finish(self) -> tuple[dict, str | None]:
+        result: dict = {"body_parsed": False, "body_truncated": False}
+        extracted = self._extractor.finish()
+        if not extracted.complete:
+            return result, extracted.error
+        if () not in extracted.object_present:
+            return result, None
+
+        result["body_parsed"] = True
+        data_count = extracted.array_counts.get(("data",))
+        if data_count is not None:
+            result["response_data_count"] = data_count
+        elif ("data",) in extracted.object_present:
+            result["response_data_count"] = 1
+
+        errors_count = extracted.array_counts.get(("errors",), 0)
+        if errors_count:
+            result["response_errors_count"] = errors_count
+
+        includes = extracted.wildcard_array_counts.get(("includes", "*"), {})
+        if includes:
+            result["response_includes"] = dict(includes)
+
+        rcs = [
+            value
+            for path in (("meta", "result_count"), ("meta", "total_tweet_count"))
+            if isinstance((value := extracted.values.get(path)), int)
+        ]
+        if rcs:
+            result["response_result_count"] = max(rcs)
+
+        return result, None
+
+
+def create_json_response_extractor() -> XJsonResponseExtractor:
+    return XJsonResponseExtractor()
 
 
 def _parse_request_metadata(flow: http.HTTPFlow) -> dict:
@@ -214,8 +299,8 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
     incremental parser that populates ``flow.metadata["x_ndjson_state"]``
     as response bytes arrive.  When that state is present we return its
     accumulated counters directly (``body_format: "ndjson"``) and skip
-    the full-body ``json.loads`` path, since stream buffers are capped
-    at ``STREAM_BUFFER_LIMIT`` and don't contain the full response.
+    the legacy buffered ``json.loads`` fallback, since stream buffers are
+    capped at ``STREAM_BUFFER_LIMIT`` and don't contain the full response.
     For streams ``body_truncated`` is always ``False`` — the incremental
     parser saw every byte even if the forensic ``stream_buffer`` filled up.
 
@@ -247,6 +332,10 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         result["ndjson_lines_parsed"] = ndjson_state["lines_parsed"]
         result["ndjson_lines_failed"] = ndjson_state["lines_failed"]
         return result
+
+    json_state = flow.metadata.get("x_json_state")
+    if isinstance(json_state, dict):
+        return {**result, **json_state}
 
     buf = flow.metadata.get("stream_buffer")
     if not buf:
