@@ -1273,8 +1273,8 @@ impl NetnsPool {
         }
     }
 
-    /// Delete all namespaces currently in the pool queue and cancel
-    /// in-flight background creation tasks.
+    /// Delete all namespaces currently in the pool queue and wait for
+    /// in-flight background creation tasks so their resources can be deleted.
     ///
     /// Namespaces that have been acquired but not yet released are **not**
     /// cleaned up here — they will be caught by orphan cleanup on the next
@@ -1340,10 +1340,14 @@ impl NetnsPool {
 
 impl Drop for NetnsPool {
     fn drop(&mut self) {
-        if self.active {
+        let queued = self.plain_queue.len() + self.proxy_queue.len();
+        let pending = self.pending_plain.len() + self.pending_proxy.len();
+        if self.active || queued != 0 || pending != 0 || !self.in_flight.is_empty() {
             warn!(
-                queued = self.plain_queue.len() + self.proxy_queue.len(),
-                pending = self.pending_plain.len() + self.pending_proxy.len(),
+                active = self.active,
+                queued,
+                pending,
+                in_flight = self.in_flight.len(),
                 "NetnsPool dropped without calling cleanup()"
             );
         }

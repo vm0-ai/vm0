@@ -500,7 +500,8 @@ async fn run_snapshot_workflow(
 
     // Release network namespace back to the pool before teardown.
     // Without this, the namespace resources (veth, iptables) leak
-    // because cleanup() only drains queued (unused) namespaces.
+    // because cleanup() only drains pool-owned namespaces, not checked-out
+    // leases.
     let mut network = Some(network);
     if let Err(e) = netns_pool.release(&mut network).await {
         tracing::warn!(error = %e, "failed to release netns");
