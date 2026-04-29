@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -235,6 +235,31 @@ export async function insertTestUsagePricing(params: {
       target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
       set: { unitPrice: params.unitPrice, unitSize, updatedAt: new Date() },
     });
+}
+
+/**
+ * Delete a usage_pricing row for tests that need to exercise missing-pricing
+ * fallback/error paths.
+ *
+ * @why-db-direct Usage pricing is normally seeded by migrations/dev seed.
+ * Tests that validate unconfigured billing paths need precise control over
+ * this ledger row.
+ */
+export async function deleteTestUsagePricing(params: {
+  kind: string;
+  provider: string;
+  category: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(usagePricing)
+    .where(
+      and(
+        eq(usagePricing.kind, params.kind),
+        eq(usagePricing.provider, params.provider),
+        eq(usagePricing.category, params.category),
+      ),
+    );
 }
 
 /**

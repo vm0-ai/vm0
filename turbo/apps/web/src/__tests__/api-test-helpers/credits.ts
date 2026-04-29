@@ -16,6 +16,7 @@ export {
   insertTestCreditUsage,
   insertTestCreditUsageForRun,
   insertTestUsagePricing,
+  deleteTestUsagePricing,
   insertTestUsageEvent,
   setTestCreditUsageCreatedAt,
   seedCreditUsageRecord,
