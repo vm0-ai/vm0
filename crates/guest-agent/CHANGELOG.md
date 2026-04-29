@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.25.0...guest-agent-v0.26.0) (2026-04-29)
+
+
+### Features
+
+* **api-contracts:** add rust dto generation for storage webhooks ([#11450](https://github.com/vm0-ai/vm0/issues/11450)) ([5e42002](https://github.com/vm0-ai/vm0/commit/5e42002fa5ed4aede5e0e4399913d8e0c6f51f8d))
+
 ## [0.25.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.8...guest-agent-v0.25.0) (2026-04-28)
 
 
