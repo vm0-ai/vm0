@@ -765,6 +765,23 @@ export async function linkRunToSchedule(
 }
 
 /**
+ * Link an existing run to a chat thread by setting its chatThreadId.
+ *
+ * @why-db-direct Sets chatThreadId on zero_runs; no API for run-thread
+ * linking — this is set during web chat dispatch.
+ */
+export async function linkRunToChatThread(
+  runId: string,
+  chatThreadId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set({ chatThreadId })
+    .where(eq(zeroRuns.id, runId));
+}
+
+/**
  * Insert a test conversation record.
  *
  * @why-db-direct Creates conversation record; conversations are created by

@@ -18,6 +18,11 @@ import {
   DATASETS,
 } from "../../../../src/lib/shared/axiom";
 import {
+  queryUsageInsightTopSchedules,
+  queryUsageInsightTopChats,
+  type UsageInsightSqlParams,
+} from "../../../../src/lib/zero/billing/usage-insight-ledger";
+import {
   getConnectorFirewall,
   isFirewallConnectorType,
 } from "@vm0/connectors/firewalls";
@@ -126,6 +131,14 @@ function getLocalToday(
 
 function normalizeDbDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
+}
+
+/**
+ * Escape a string value as a PostgreSQL single-quoted literal.
+ * Doubles any single quotes inside to prevent injection.
+ */
+function pgLit(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 // ---------------------------------------------------------------------------
@@ -332,6 +345,19 @@ interface InsightData {
     denied: number;
     agentNames: string[];
   }[];
+  schedules: {
+    scheduleId: string;
+    scheduleName: string;
+    scheduleDescription: string | null;
+    credits: number;
+    tokens: number;
+  }[];
+  chats: {
+    threadId: string;
+    threadTitle: string | null;
+    credits: number;
+    tokens: number;
+  }[];
   axiomDegraded?: boolean;
 }
 
@@ -347,6 +373,8 @@ function buildUserInsight(
     agentNames: string[];
     agentCredits: Record<string, number>;
   }>,
+  schedules: InsightData["schedules"],
+  chats: InsightData["chats"],
   axiomDegraded?: boolean,
 ): InsightData {
   const services = networkData
@@ -399,6 +427,8 @@ function buildUserInsight(
     topTask,
     services,
     permissions,
+    schedules,
+    chats,
     ...(axiomDegraded ? { axiomDegraded: true } : {}),
   };
 }
@@ -998,12 +1028,27 @@ async function processWindowGroup(
     const orgCredits = orgCreditsMap.get(orgId);
     const networkData = userNetworkMap.get(key);
 
+    const ledgerParams: UsageInsightSqlParams = {
+      userIdLit: pgLit(userId),
+      orgIdLit: pgLit(orgId),
+      startTsLit: pgLit(dayStart.toISOString()),
+      endTsLit: pgLit(dayEnd.toISOString()),
+      truncLit: pgLit("day"),
+      tzLit: pgLit("UTC"),
+    };
+    const [{ schedules }, { chats }] = await Promise.all([
+      queryUsageInsightTopSchedules(db, ledgerParams),
+      queryUsageInsightTopChats(db, ledgerParams),
+    ]);
+
     const data = buildUserInsight(
       networkData,
       agents,
       orgCredits?.creditsUsed ?? 0,
       orgBalanceMap.get(orgId) ?? 0,
       orgCredits?.teamUsage ?? [],
+      schedules,
+      chats,
       axiomDegraded,
     );
 

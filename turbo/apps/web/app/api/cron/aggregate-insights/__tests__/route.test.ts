@@ -14,8 +14,17 @@ import {
   seedUserCacheEntry,
   setOrgCredits,
 } from "../../../../../src/__tests__/api-test-helpers";
-import { createTestZeroAgent } from "../../../../../src/__tests__/db-test-seeders/agents";
-import { seedCompletedTestRun } from "../../../../../src/__tests__/db-test-seeders/runs";
+import {
+  createTestZeroAgent,
+  insertTestChatThread,
+} from "../../../../../src/__tests__/db-test-seeders/agents";
+import {
+  insertTestZeroRun,
+  linkRunToChatThread,
+  linkRunToSchedule,
+  seedCompletedTestRun,
+} from "../../../../../src/__tests__/db-test-seeders/runs";
+import { seedTestSchedule } from "../../../../../src/__tests__/db-test-seeders/schedules";
 import { reloadEnv } from "../../../../../src/env";
 
 vi.hoisted(() => {
@@ -57,6 +66,7 @@ function todayDateStr(): string {
 
 describe("GET /api/cron/aggregate-insights", () => {
   let composeVersionId: string;
+  let composeId: string;
   let composeName: string;
   let userId: string;
   let orgId: string;
@@ -68,10 +78,11 @@ describe("GET /api/cron/aggregate-insights", () => {
     const user = await context.setupUser();
     userId = user.userId;
     orgId = user.orgId;
-    const { versionId, name } = await createTestCompose(
+    const { versionId, name, agentId } = await createTestCompose(
       uniqueId("insights-agent"),
     );
     composeVersionId = versionId;
+    composeId = agentId;
     composeName = name;
 
     // Ensure org has metadata row for credit balance lookup
@@ -770,6 +781,97 @@ describe("GET /api/cron/aggregate-insights", () => {
     }>;
     expect(teamUsage).toHaveLength(1);
     expect(teamUsage[0]!.name).toBe("bob");
+  });
+
+  it("should aggregate schedules and chats with credits", async () => {
+    const { date } = recentDate();
+
+    // ── Schedule-triggered run with credits ────────────────────────────
+    const scheduleId = await seedTestSchedule({
+      agentId: composeId,
+      userId,
+      orgId,
+      name: "Daily digest",
+      description: "Sends a daily summary",
+    });
+    const scheduleRunId = await seedCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: date,
+      startedAt: date,
+      completedAt: date,
+    });
+    await insertTestZeroRun(scheduleRunId, { triggerSource: "schedule" });
+    await linkRunToSchedule(scheduleRunId, scheduleId);
+    await seedCreditUsageRecord({
+      runId: scheduleRunId,
+      orgId,
+      userId,
+      creditsCharged: 800,
+      createdAt: date,
+    });
+
+    // ── Chat-triggered run with credits ────────────────────────────────
+    const threadId = await insertTestChatThread(
+      userId,
+      composeId,
+      "Investigate billing",
+    );
+    const chatRunId = await seedCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: date,
+      startedAt: date,
+      completedAt: date,
+    });
+    await insertTestZeroRun(chatRunId, { triggerSource: "web" });
+    await linkRunToChatThread(chatRunId, threadId);
+    await seedCreditUsageRecord({
+      runId: chatRunId,
+      orgId,
+      userId,
+      creditsCharged: 250,
+      createdAt: date,
+    });
+
+    await seedUserCacheEntry(userId, "test@example.com");
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+
+    const data = row!.data as {
+      schedules: Array<{
+        scheduleId: string;
+        scheduleName: string;
+        scheduleDescription: string | null;
+        credits: number;
+        tokens: number;
+      }>;
+      chats: Array<{
+        threadId: string;
+        threadTitle: string | null;
+        credits: number;
+        tokens: number;
+      }>;
+    };
+
+    expect(data.schedules).toHaveLength(1);
+    expect(data.schedules[0]).toMatchObject({
+      scheduleId,
+      scheduleName: "Daily digest",
+      scheduleDescription: "Sends a daily summary",
+      credits: 800,
+    });
+
+    expect(data.chats).toHaveLength(1);
+    expect(data.chats[0]).toMatchObject({
+      threadId,
+      threadTitle: "Investigate billing",
+      credits: 250,
+    });
   });
 
   it("should be idempotent on rerun", async () => {
