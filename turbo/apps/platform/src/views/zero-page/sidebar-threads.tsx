@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   useGet,
   useSet,
@@ -11,7 +12,6 @@ import {
   IconChevronRight,
   IconTrash,
   IconPencil,
-  IconLoader2,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
@@ -65,17 +65,76 @@ import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
+const RUNNING_INDICATOR_ANIMATION_MS = 2400;
+let runningIndicatorConsumers = 0;
+let runningIndicatorFrame: number | null = null;
+
+function setRunningIndicatorFrame(now: number): void {
+  const phase =
+    (now % RUNNING_INDICATOR_ANIMATION_MS) / RUNNING_INDICATOR_ANIMATION_MS;
+  const rippleStart = 0.52;
+  const smooth = (value: number): number => {
+    return value * value * (3 - 2 * value);
+  };
+  const centerProgress = smooth(Math.min(phase / rippleStart, 1));
+  const rippleProgress =
+    phase < rippleStart ? 0 : smooth((phase - rippleStart) / (1 - rippleStart));
+  const centerBaseScale = 0.64;
+  const centerScaleRange = 0.24;
+  const rippleOpacity =
+    phase < rippleStart ? 0 : Math.pow(1 - rippleProgress, 1.35) * 0.34;
+  const rootStyle = document.documentElement.style;
+  rootStyle.setProperty(
+    "--zero-running-indicator-center-scale",
+    (
+      centerBaseScale +
+      centerProgress * centerScaleRange -
+      rippleProgress * centerScaleRange
+    ).toFixed(3),
+  );
+  rootStyle.setProperty(
+    "--zero-running-indicator-center-opacity",
+    (0.34 + centerProgress * 0.18 - rippleProgress * 0.18).toFixed(3),
+  );
+  rootStyle.setProperty(
+    "--zero-running-indicator-ripple-scale",
+    (0.8 + rippleProgress * 0.76).toFixed(3),
+  );
+  rootStyle.setProperty(
+    "--zero-running-indicator-ripple-opacity",
+    rippleOpacity.toFixed(3),
+  );
+}
+
+function tickRunningIndicator(now: number): void {
+  setRunningIndicatorFrame(now);
+  runningIndicatorFrame = window.requestAnimationFrame(tickRunningIndicator);
+}
+
+function useSyncedRunningIndicator(enabled: boolean): void {
+  useEffect(() => {
+    if (!enabled || typeof window === "undefined") {
+      return;
+    }
+    runningIndicatorConsumers += 1;
+    if (runningIndicatorConsumers === 1) {
+      tickRunningIndicator(window.performance.now());
+    }
+    return () => {
+      runningIndicatorConsumers -= 1;
+      if (runningIndicatorConsumers === 0 && runningIndicatorFrame !== null) {
+        window.cancelAnimationFrame(runningIndicatorFrame);
+        runningIndicatorFrame = null;
+      }
+    };
+  }, [enabled]);
+}
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
+  useSyncedRunningIndicator(state === "running");
+
   if (state === "running") {
-    return (
-      <IconLoader2
-        aria-label="Running"
-        size={16}
-        stroke={2}
-        className="animate-spin text-sky-600"
-      />
-    );
+    return <span aria-label="Running" className="zero-running-indicator" />;
   }
   if (state === "unread") {
     return (
