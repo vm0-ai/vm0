@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.306.2](https://github.com/vm0-ai/vm0/compare/app-v0.306.1...app-v0.306.2) (2026-04-29)
+
+
+### Bug Fixes
+
+* adjust deepseek-v4-pro credit multiplier from 0.3x to 0.06x ([#11435](https://github.com/vm0-ai/vm0/issues/11435)) ([049f315](https://github.com/vm0-ai/vm0/commit/049f31501d973889dc39f336e5c2139e4568ed3c))
+
 ## [0.306.1](https://github.com/vm0-ai/vm0/compare/app-v0.306.0...app-v0.306.1) (2026-04-28)
 
 

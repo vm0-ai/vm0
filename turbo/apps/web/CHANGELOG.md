@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.316.1](https://github.com/vm0-ai/vm0/compare/web-v12.316.0...web-v12.316.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* adjust deepseek-v4-pro credit multiplier from 0.3x to 0.06x ([#11435](https://github.com/vm0-ai/vm0/issues/11435)) ([049f315](https://github.com/vm0-ai/vm0/commit/049f31501d973889dc39f336e5c2139e4568ed3c))
+
 ## [12.316.0](https://github.com/vm0-ai/vm0/compare/web-v12.315.0...web-v12.316.0) (2026-04-28)
 
 
