@@ -30,6 +30,8 @@ import {
   setInsightsHoveredAgent$,
   expandedAllowedDays$,
   toggleExpandedAllowed$,
+  dayExpansion$,
+  setDayExpansion$,
   type DayInsight,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
@@ -978,7 +980,7 @@ function formatDate(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Day section — masonry of cards (dim approach for hover)
+// Day section — masonry of cards (rendered inside DayDigestRow when expanded)
 // ---------------------------------------------------------------------------
 
 function DaySection({
@@ -998,39 +1000,121 @@ function DaySection({
   };
 
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold text-foreground sticky top-0 bg-background/80 backdrop-blur-sm py-2 z-10">
-        {formatDate(day.date)}
-      </h2>
-      <div className="columns-1 sm:columns-2 lg:columns-3 gap-3">
-        <SummaryCard day={day} />
-        {isAdmin && (
-          <TeamCreditUsageCard
-            day={day}
-            colorIndex={1}
-            hoveredAgent={hoveredAgent}
-          />
-        )}
-        <YourCreditUsageCard
+    <div className="columns-1 sm:columns-2 lg:columns-3 gap-3">
+      <SummaryCard day={day} />
+      {isAdmin && (
+        <TeamCreditUsageCard
           day={day}
           colorIndex={1}
-          userId={userId}
           hoveredAgent={hoveredAgent}
         />
-        <AgentsCard
-          day={day}
-          colorIndex={0}
-          hoveredAgent={hoveredAgent}
-          onHoverAgent={handleHoverAgent}
+      )}
+      <YourCreditUsageCard
+        day={day}
+        colorIndex={1}
+        userId={userId}
+        hoveredAgent={hoveredAgent}
+      />
+      <AgentsCard
+        day={day}
+        colorIndex={0}
+        hoveredAgent={hoveredAgent}
+        onHoverAgent={handleHoverAgent}
+      />
+      <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
+      <PermissionsAllowedCard
+        day={day}
+        colorIndex={5}
+        hoveredAgent={hoveredAgent}
+      />
+      <PermissionsBlockedCard day={day} hoveredAgent={hoveredAgent} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Day digest row — single-line summary, expands to show DaySection on click
+// ---------------------------------------------------------------------------
+
+function DayDigestRow({
+  day,
+  isAdmin,
+  userId,
+  defaultExpanded,
+}: {
+  day: DayInsight;
+  isAdmin: boolean;
+  userId: string | null;
+  defaultExpanded: boolean;
+}) {
+  const expansion = useGet(dayExpansion$);
+  const setExpansion = useSet(setDayExpansion$);
+  const userChoice = expansion.get(day.date);
+  const isExpanded = userChoice ?? defaultExpanded;
+
+  const totalRuns = day.agents.reduce((s, a) => {
+    return s + a.runs;
+  }, 0);
+  const topAgent = [...day.agents].sort((a, b) => {
+    return b.credits - a.credits;
+  })[0];
+  const blocked = day.permissions.reduce((s, p) => {
+    return s + p.denied;
+  }, 0);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <button
+        type="button"
+        onClick={() => {
+          setExpansion(day.date, !isExpanded);
+        }}
+        aria-expanded={isExpanded}
+        className="group flex items-center gap-3 w-full text-left rounded-[14px] border border-border bg-card px-4 py-3 hover:border-foreground/20 transition-colors"
+      >
+        <IconChevronDown
+          size={16}
+          className={`text-muted-foreground transition-transform ${
+            isExpanded ? "" : "-rotate-90"
+          }`}
         />
-        <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
-        <PermissionsAllowedCard
-          day={day}
-          colorIndex={5}
-          hoveredAgent={hoveredAgent}
-        />
-        <PermissionsBlockedCard day={day} hoveredAgent={hoveredAgent} />
-      </div>
+        <h2 className="text-base font-semibold text-foreground">
+          {formatDate(day.date)}
+        </h2>
+        <span className="text-xs text-muted-foreground">·</span>
+        <span
+          className="text-sm font-medium text-foreground"
+          title={day.creditsUsed.toLocaleString()}
+        >
+          {formatCredits(day.creditsUsed)}
+        </span>
+        <span className="text-xs text-muted-foreground">credits</span>
+        {totalRuns > 0 && (
+          <>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-sm text-foreground">
+              {totalRuns} {totalRuns === 1 ? "run" : "runs"}
+            </span>
+          </>
+        )}
+        {topAgent && (
+          <>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-xs text-muted-foreground">top:</span>
+            <span className="text-sm text-foreground truncate max-w-[180px]">
+              {topAgent.agentName}
+            </span>
+          </>
+        )}
+        {blocked > 0 && (
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
+            {blocked} blocked
+          </span>
+        )}
+      </button>
+      {isExpanded && (
+        <DaySection day={day} isAdmin={isAdmin} userId={userId} />
+      )}
     </section>
   );
 }
@@ -1118,13 +1202,14 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
             </p>
           </div>
         ) : (
-          filtered.map((day) => {
+          filtered.map((day, idx) => {
             return (
-              <DaySection
+              <DayDigestRow
                 key={day.date}
                 day={day}
                 isAdmin={isAdmin}
                 userId={userId}
+                defaultExpanded={idx === 0}
               />
             );
           })
