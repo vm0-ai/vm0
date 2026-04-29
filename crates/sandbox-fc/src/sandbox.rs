@@ -296,6 +296,7 @@ pub struct FirecrackerSandbox {
     /// Sender for leaked resource cleanup. When Drop fires without prior
     /// `factory.destroy()`, pool resources are sent here for async cleanup.
     leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
+    delete_workspace_on_leak_cleanup: bool,
     /// Set to `true` by `factory.destroy()` to suppress Drop-based leak recovery.
     pub(crate) destroyed: bool,
     /// Tracks whether the sandbox is currently in the idle/parked state.
@@ -369,6 +370,7 @@ impl FirecrackerSandbox {
             control_server: None,
             balloon_controller: None,
             leak_tx,
+            delete_workspace_on_leak_cleanup: true,
             destroyed: false,
             is_parked: false,
         }
@@ -378,6 +380,10 @@ impl FirecrackerSandbox {
         self.cow_device.as_ref().ok_or_else(|| SandboxError::Start {
             message: "COW device missing before sandbox start".into(),
         })
+    }
+
+    pub(crate) fn preserve_workspace_on_leak_cleanup(&mut self) {
+        self.delete_workspace_on_leak_cleanup = false;
     }
 
     fn current_state(&self) -> SandboxState {
@@ -766,6 +772,7 @@ impl Drop for FirecrackerSandbox {
                 network: self.network.take_lease(),
                 sock_dir: self.sock_paths.dir().to_owned(),
                 workspace: self.sandbox_paths.workspace().to_owned(),
+                delete_workspace: self.delete_workspace_on_leak_cleanup,
             };
             if tx.send(resources).is_err() {
                 tracing::warn!(

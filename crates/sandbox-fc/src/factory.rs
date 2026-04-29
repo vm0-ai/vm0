@@ -44,6 +44,7 @@ pub(crate) struct LeakedResources {
     pub(crate) network: Option<NetnsLease>,
     pub(crate) sock_dir: PathBuf,
     pub(crate) workspace: PathBuf,
+    pub(crate) delete_workspace: bool,
 }
 
 /// Owns the leaked-resource cleanup channel and its background drain task.
@@ -191,6 +192,7 @@ struct SandboxCreateTransaction {
     network: Option<NetnsLease>,
     cow_device: Option<PooledNbdCowDevice>,
     leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
+    delete_workspace_on_leak_cleanup: bool,
 }
 
 impl SandboxCreateTransaction {
@@ -211,6 +213,7 @@ impl SandboxCreateTransaction {
             network: None,
             cow_device: None,
             leak_tx,
+            delete_workspace_on_leak_cleanup: true,
         }
     }
 
@@ -323,6 +326,9 @@ impl SandboxCreateTransaction {
         } else {
             false
         };
+        if keep_workspace {
+            self.delete_workspace_on_leak_cleanup = false;
+        }
         if let Some(network) = self.network.take() {
             self.network = Some(network);
             cleanup.release_network(&mut self.network).await;
@@ -383,6 +389,7 @@ impl SandboxCreateTransaction {
             network: self.network.take(),
             sock_dir,
             workspace,
+            delete_workspace: self.delete_workspace_on_leak_cleanup,
         };
 
         match leak_tx.send(leaked) {
@@ -424,7 +431,15 @@ impl Drop for SandboxCreateTransaction {
             let _ = std::fs::remove_dir_all(sock_dir);
         }
         if let Some(workspace) = self.workspace.take() {
-            let _ = std::fs::remove_dir_all(workspace);
+            if self.delete_workspace_on_leak_cleanup {
+                let _ = std::fs::remove_dir_all(workspace);
+            } else {
+                warn!(
+                    id = %self.id,
+                    path = %workspace.display(),
+                    "preserving workspace after failed COW cleanup"
+                );
+            }
         }
         if self.cow_device.is_some() {
             warn!(
@@ -557,7 +572,10 @@ async fn cleanup_leaked_resource(
     if let Err(e) = tokio::fs::remove_dir_all(&leaked.sock_dir).await {
         warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked sock dir");
     }
-    if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&leaked.workspace).await {
+    if cow_destroyed
+        && leaked.delete_workspace
+        && let Err(e) = tokio::fs::remove_dir_all(&leaked.workspace).await
+    {
         warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked workspace");
     }
     info!(id = %leaked.sandbox_id, "leaked sandbox resources cleaned up");
@@ -1048,6 +1066,9 @@ async fn destroy_firecracker_sandbox(
         Some(cow_device) => destroy_cow_device_with_retries(&sandbox_id, cow_device).await,
         None => true,
     };
+    if !cow_destroyed {
+        sandbox.preserve_workspace_on_leak_cleanup();
+    }
 
     // Return the network namespace to the pool.
     let mut pool = netns_pool.lock().await;
@@ -1372,6 +1393,7 @@ mod tests {
             network: None,
             sock_dir: PathBuf::from("/nonexistent"),
             workspace: PathBuf::from("/nonexistent"),
+            delete_workspace: true,
         }
     }
 
@@ -1671,6 +1693,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_transaction_drop_sync_fallback_respects_workspace_preservation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.delete_workspace_on_leak_cleanup = false;
+
+        drop(tx);
+
+        assert!(workspace.exists());
+        assert!(!sock_dir.exists());
+    }
+
+    #[tokio::test]
     async fn create_transaction_drop_does_not_drop_queued_leak_cleanup_work() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
@@ -1769,6 +1810,7 @@ mod tests {
             network: Some(test_network()),
             sock_dir: PathBuf::from("/tmp/nonexistent-sock"),
             workspace: PathBuf::from("/tmp/nonexistent-ws"),
+            delete_workspace: true,
         })
         .unwrap();
 
@@ -1791,6 +1833,7 @@ mod tests {
             network: Some(test_network()),
             sock_dir: PathBuf::from("/nonexistent"),
             workspace: PathBuf::from("/nonexistent"),
+            delete_workspace: true,
         };
 
         // Should not panic — just returns Err with the original payload.
@@ -1798,6 +1841,32 @@ mod tests {
         let network = resources.network.take().unwrap();
         assert_eq!(network.name(), "test-ns");
         let _ = network.into_info_for_test();
+    }
+
+    #[tokio::test]
+    async fn cleanup_leaked_resource_respects_workspace_preservation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_dir = tmp.path().join("sock");
+        let workspace = tmp.path().join("workspace");
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        let netns_pool = tokio::sync::Mutex::new(NetnsPool::inactive_for_test());
+
+        cleanup_leaked_resource(
+            LeakedResources {
+                sandbox_id: "sandbox".into(),
+                cow_device: None,
+                network: None,
+                sock_dir: sock_dir.clone(),
+                workspace: workspace.clone(),
+                delete_workspace: false,
+            },
+            &netns_pool,
+        )
+        .await;
+
+        assert!(!sock_dir.exists());
+        assert!(workspace.exists());
     }
 
     #[test]
