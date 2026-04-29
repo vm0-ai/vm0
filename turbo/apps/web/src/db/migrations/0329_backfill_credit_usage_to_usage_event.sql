@@ -81,11 +81,6 @@ END
 $$;
 --> statement-breakpoint
 
--- Freeze the legacy source table while the plan is materialized, so rows
--- cannot become processed after the snapshot and be missed by the backfill.
-LOCK TABLE credit_usage IN SHARE MODE;
---> statement-breakpoint
-
 DO $$
 DECLARE
   invalid_count bigint;
