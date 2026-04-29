@@ -311,7 +311,7 @@ function ExtraAccountActions({
 }: {
   apiKeysEnabled: boolean;
   showExportData: boolean;
-  apiBase: string;
+  apiBase: string | undefined;
   onAccountAction: (action: ZeroAccountAction) => void;
 }) {
   return (
@@ -338,7 +338,11 @@ function ExtraAccountActions({
       )}
       {showExportData && (
         <DropdownMenuItem
+          disabled={!apiBase}
           onClick={() => {
+            if (!apiBase) {
+              return;
+            }
             return window.open(`${apiBase}/export`, "_blank");
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
