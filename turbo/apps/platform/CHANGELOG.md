@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.314.1](https://github.com/vm0-ai/vm0/compare/app-v0.314.0...app-v0.314.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* eliminate 1px sub-pixel gap between composer gradient and footer ([#11563](https://github.com/vm0-ai/vm0/issues/11563)) ([14af5d1](https://github.com/vm0-ai/vm0/commit/14af5d17b5d94845d25a90c9752e1f6b0a3c6b0f))
+
 ## [0.314.0](https://github.com/vm0-ai/vm0/compare/app-v0.313.0...app-v0.314.0) (2026-04-29)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.99.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.1...runner-rs-v0.99.2) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** drain network logs before source release ([#11552](https://github.com/vm0-ai/vm0/issues/11552)) ([b297e3c](https://github.com/vm0-ai/vm0/commit/b297e3c20afb94c2796311111fd60ed732c9d1e9))
+
 ## [0.99.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.0...runner-rs-v0.99.1) (2026-04-29)
 
 

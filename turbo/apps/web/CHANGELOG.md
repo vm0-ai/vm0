@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.323.0](https://github.com/vm0-ai/vm0/compare/web-v12.322.0...web-v12.323.0) (2026-04-29)
+
+
+### Features
+
+* **zero:** wire codex item.completed events into chat thread persistence ([#11561](https://github.com/vm0-ai/vm0/issues/11561)) ([3358cbb](https://github.com/vm0-ai/vm0/commit/3358cbbc7d4afd56429a20670f0471608ab95ec3)), closes [#11559](https://github.com/vm0-ai/vm0/issues/11559) [#11520](https://github.com/vm0-ai/vm0/issues/11520)
+
 ## [12.322.0](https://github.com/vm0-ai/vm0/compare/web-v12.321.0...web-v12.322.0) (2026-04-29)
 
 
