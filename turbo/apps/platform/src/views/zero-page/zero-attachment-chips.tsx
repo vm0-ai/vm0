@@ -1,4 +1,4 @@
-import { Component, type MouseEvent, type ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
@@ -17,6 +17,23 @@ import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts
 import { logger } from "../../signals/log.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  IMAGE_LIGHTBOX_MAX_ZOOM,
+  IMAGE_LIGHTBOX_MIN_ZOOM,
+  imageLightboxImageRef$,
+  imageLightboxKeyboardShortcutsRef$,
+  imageLightboxState$,
+  imageLoadStatusByKey$,
+  imageLoadStatusRef$,
+  resetImageLightboxZoom$,
+  setImageLightboxStatus$,
+  setImageLoadStatus$,
+  textPreviewLoaderRef$,
+  textPreviewLoadStateByKey$,
+  type TextPreviewLoadState,
+  zoomImageLightboxIn$,
+  zoomImageLightboxOut$,
+} from "../../signals/view-component-state.ts";
 import { Markdown } from "../components/markdown.tsx";
 import {
   lightboxUrl$,
@@ -33,10 +50,6 @@ import docJsonIcon from "./assets/doc-json.svg";
 import docHtmlIcon from "./assets/doc-html.svg";
 
 const log = logger("zero-attachment-chips");
-const TEXT_PREVIEW_MAX_BYTES = 65_536;
-const IMAGE_LIGHTBOX_MIN_ZOOM = 0.5;
-const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
-const IMAGE_LIGHTBOX_ZOOM_STEP = 0.25;
 
 /**
  * Return the icon path for a known file extension, or null for unknown types.
@@ -111,138 +124,34 @@ function triggerDirectDownload(url: string, filename: string): void {
   a.remove();
 }
 
-function toRawUrl(url: string): string {
-  if (!URL.canParse(url, window.location.origin)) {
-    const hashIndex = url.indexOf("#");
-    const base = hashIndex === -1 ? url : url.slice(0, hashIndex);
-    const hash = hashIndex === -1 ? "" : url.slice(hashIndex);
-    if (base.includes("raw=1")) {
-      return url;
-    }
-    return `${base}${base.includes("?") ? "&" : "?"}raw=1${hash}`;
-  }
-
-  const parsed = new URL(url, window.location.origin);
-  if (parsed.searchParams.get("raw") !== "1") {
-    parsed.searchParams.set("raw", "1");
-  }
-  return parsed.toString();
-}
-
-async function readLimitedText(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return "";
-  }
-
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  let reachedLimit = false;
-
-  while (received < TEXT_PREVIEW_MAX_BYTES) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    const remaining = TEXT_PREVIEW_MAX_BYTES - received;
-    const chunk =
-      value.byteLength > remaining ? value.slice(0, remaining) : value;
-    chunks.push(chunk);
-    received += chunk.byteLength;
-    if (received >= TEXT_PREVIEW_MAX_BYTES) {
-      reachedLimit = true;
-      break;
-    }
-  }
-
-  if (reachedLimit) {
-    await reader.cancel();
-  }
-
-  const bytes = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
-}
-
-function fetchPreviewText(url: string, signal: AbortSignal): Promise<string> {
-  return fetch(toRawUrl(url), {
-    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
-    signal,
-  }).then(async (res) => {
-    if (!res.ok) {
-      throw new Error(`HTTP ${String(res.status)}`);
-    }
-    return await readLimitedText(res);
-  });
-}
-
-type TextLoadState = {
-  status: "loading" | "loaded" | "error";
-  text: string;
-};
-
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class TextPreviewLoader extends Component<
-  {
-    url: string;
-    signal: AbortSignal;
-    children: (state: TextLoadState) => ReactNode;
-  },
-  TextLoadState
-> {
-  state: TextLoadState = {
+function TextPreviewLoader({
+  url,
+  children,
+}: {
+  url: string;
+  signal: AbortSignal;
+  children: (state: TextPreviewLoadState) => ReactNode;
+}) {
+  const textPreviewLoadStates = useGet(textPreviewLoadStateByKey$);
+  const textPreviewLoaderRef = useSet(textPreviewLoaderRef$);
+  const textPreviewKey = `attachment-lightbox:${url}`;
+  const loadState = textPreviewLoadStates[textPreviewKey] ?? {
     status: "loading",
     text: "",
   };
 
-  #active = false;
-
-  componentDidMount() {
-    this.#active = true;
-    this.loadText();
-  }
-
-  componentDidUpdate(
-    previousProps: Readonly<{ url: string; signal: AbortSignal }>,
-  ) {
-    if (
-      previousProps.url !== this.props.url ||
-      previousProps.signal !== this.props.signal
-    ) {
-      this.loadText();
-    }
-  }
-
-  componentWillUnmount() {
-    this.#active = false;
-  }
-
-  loadText() {
-    this.setState({ status: "loading", text: "" });
-    const { signal, url } = this.props;
-
-    fetchPreviewText(url, signal)
-      .then((text) => {
-        if (this.#active && this.props.url === url && !signal.aborted) {
-          this.setState({ status: "loaded", text });
-        }
-      })
-      .catch(() => {
-        if (this.#active && this.props.url === url && !signal.aborted) {
-          this.setState({ status: "error", text: "" });
-        }
-      });
-  }
-
-  render() {
-    const { status, text } = this.state;
-    return this.props.children({ status, text });
-  }
+  return (
+    <>
+      <span
+        key={textPreviewKey}
+        ref={textPreviewLoaderRef}
+        data-text-preview-key={textPreviewKey}
+        data-text-preview-url={url}
+        hidden
+      />
+      {children(loadState)}
+    </>
+  );
 }
 
 function formatPlainPreviewText(
@@ -323,21 +232,8 @@ export function downloadAttachmentUrl(
   });
 }
 
-type ImageLoadStatus = "loading" | "loaded" | "error";
-type ImageLightboxImageState = {
-  imageStatus: ImageLoadStatus;
-  zoom: number;
-};
-
 function isImageLightboxZoomAtReset(zoom: number): boolean {
   return Math.abs(zoom - 1) < 0.001;
-}
-
-function clampImageLightboxZoom(zoom: number): number {
-  return Math.min(
-    IMAGE_LIGHTBOX_MAX_ZOOM,
-    Math.max(IMAGE_LIGHTBOX_MIN_ZOOM, zoom),
-  );
 }
 
 function ImageLightboxControls({
@@ -412,92 +308,29 @@ function ImageLightboxControls({
   );
 }
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class ImageLightboxKeyboardShortcuts extends Component<{
-  resetZoom: () => void;
-  zoomIn: () => void;
-  zoomOut: () => void;
-}> {
-  componentDidMount() {
-    document.addEventListener("keydown", this.handleKeyDown);
-  }
+function ImageLightboxKeyboardShortcuts() {
+  const keyboardShortcutsRef = useSet(imageLightboxKeyboardShortcutsRef$);
 
-  componentWillUnmount() {
-    document.removeEventListener("keydown", this.handleKeyDown);
-  }
-
-  handleKeyDown = (event: KeyboardEvent) => {
-    if (!event.metaKey && !event.ctrlKey) {
-      return;
-    }
-
-    if (event.key === "+" || event.key === "=") {
-      event.preventDefault();
-      event.stopPropagation();
-      this.props.zoomIn();
-      return;
-    }
-
-    if (event.key === "-" || event.key === "_") {
-      event.preventDefault();
-      event.stopPropagation();
-      this.props.zoomOut();
-      return;
-    }
-
-    if (event.key === "0") {
-      event.preventDefault();
-      event.stopPropagation();
-      this.props.resetZoom();
-    }
-  };
-
-  render() {
-    return null;
-  }
+  return <span ref={keyboardShortcutsRef} hidden />;
 }
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class ImageLightboxContent extends Component<
-  {
-    closeLightbox: () => void;
-    pageSignal: AbortSignal;
-    url: string;
-  },
-  ImageLightboxImageState
-> {
-  state: ImageLightboxImageState = {
-    imageStatus: "loading",
-    zoom: 1,
-  };
+function ImageLightboxContent({
+  closeLightbox,
+  pageSignal,
+  url,
+}: {
+  closeLightbox: () => void;
+  pageSignal: AbortSignal;
+  url: string;
+}) {
+  const imageLightboxImageRef = useSet(imageLightboxImageRef$);
+  const imageState = useGet(imageLightboxState$);
+  const resetZoom = useSet(resetImageLightboxZoom$);
+  const setImageLightboxStatus = useSet(setImageLightboxStatus$);
+  const zoomIn = useSet(zoomImageLightboxIn$);
+  const zoomOut = useSet(zoomImageLightboxOut$);
 
-  componentDidUpdate(previousProps: Readonly<{ url: string }>) {
-    if (previousProps.url !== this.props.url) {
-      this.setState({
-        imageStatus: "loading",
-        zoom: 1,
-      });
-    }
-  }
-
-  setZoom = (nextZoom: number) => {
-    this.setState({ zoom: clampImageLightboxZoom(nextZoom) });
-  };
-
-  zoomOut = () => {
-    this.setZoom(this.state.zoom - IMAGE_LIGHTBOX_ZOOM_STEP);
-  };
-
-  zoomIn = () => {
-    this.setZoom(this.state.zoom + IMAGE_LIGHTBOX_ZOOM_STEP);
-  };
-
-  resetZoom = () => {
-    this.setState({ zoom: 1 });
-  };
-
-  download = () => {
-    const { pageSignal, url } = this.props;
+  const download = () => {
     detach(
       downloadAttachmentUrl(url, pageSignal),
       Reason.DomCallback,
@@ -505,59 +338,54 @@ class ImageLightboxContent extends Component<
     );
   };
 
-  render() {
-    const { closeLightbox, url } = this.props;
-    const { imageStatus, zoom } = this.state;
+  const { imageStatus, zoom } = imageState;
 
-    return (
-      <>
-        <ImageLightboxKeyboardShortcuts
-          resetZoom={this.resetZoom}
-          zoomIn={this.zoomIn}
-          zoomOut={this.zoomOut}
+  return (
+    <>
+      <ImageLightboxKeyboardShortcuts />
+      <ImageLightboxControls
+        closeLightbox={closeLightbox}
+        download={download}
+        resetZoom={resetZoom}
+        zoom={zoom}
+        zoomIn={zoomIn}
+        zoomOut={zoomOut}
+      />
+      <div
+        className="relative flex items-center justify-center transition-transform duration-150 animate-in zoom-in-95"
+        style={{ transform: `scale(${String(zoom)})` }}
+      >
+        {imageStatus !== "loaded" && (
+          <div
+            data-testid="attachment-lightbox-image-loading"
+            className="flex h-[min(85vh,480px)] w-[min(90vw,720px)] items-center justify-center rounded-lg bg-black/30 text-white shadow-2xl"
+          >
+            {imageStatus === "loading" ? (
+              <IconLoader2 size={24} stroke={1.8} className="animate-spin" />
+            ) : (
+              <IconPhoto size={24} stroke={1.5} />
+            )}
+          </div>
+        )}
+        <img
+          key={url}
+          ref={imageLightboxImageRef}
+          src={url}
+          alt=""
+          data-testid="attachment-lightbox-image"
+          onLoad={() => {
+            setImageLightboxStatus("loaded");
+          }}
+          onError={() => {
+            setImageLightboxStatus("error");
+          }}
+          className={`max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl ${
+            imageStatus === "loaded" ? "" : "absolute inset-0 opacity-0"
+          }`}
         />
-        <ImageLightboxControls
-          closeLightbox={closeLightbox}
-          download={this.download}
-          resetZoom={this.resetZoom}
-          zoom={zoom}
-          zoomIn={this.zoomIn}
-          zoomOut={this.zoomOut}
-        />
-        <div
-          className="relative flex items-center justify-center transition-transform duration-150 animate-in zoom-in-95"
-          style={{ transform: `scale(${String(zoom)})` }}
-        >
-          {imageStatus !== "loaded" && (
-            <div
-              data-testid="attachment-lightbox-image-loading"
-              className="flex h-[min(85vh,480px)] w-[min(90vw,720px)] items-center justify-center rounded-lg bg-black/30 text-white shadow-2xl"
-            >
-              {imageStatus === "loading" ? (
-                <IconLoader2 size={24} stroke={1.8} className="animate-spin" />
-              ) : (
-                <IconPhoto size={24} stroke={1.5} />
-              )}
-            </div>
-          )}
-          <img
-            src={url}
-            alt=""
-            data-testid="attachment-lightbox-image"
-            onLoad={() => {
-              this.setState({ imageStatus: "loaded" });
-            }}
-            onError={() => {
-              this.setState({ imageStatus: "error" });
-            }}
-            className={`max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl ${
-              imageStatus === "loaded" ? "" : "absolute inset-0 opacity-0"
-            }`}
-          />
-        </div>
-      </>
-    );
-  }
+      </div>
+    </>
+  );
 }
 
 function ImageLightbox({ url }: { url: string }) {
@@ -942,98 +770,89 @@ export function PreviewableFileAttachmentChip({
 // AttachmentChip — chip shown in the composer before the message is sent
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class ComposerImagePreviewButton extends Component<
-  {
-    filename: string;
-    openImageLightbox: (url: string) => void;
-    url: string | undefined;
-  },
-  { imageStatus: ImageLoadStatus; url: string | null }
-> {
-  state: { imageStatus: ImageLoadStatus; url: string | null } = {
-    imageStatus: "loading",
-    url: null,
-  };
+function ComposerImagePreviewButton({
+  filename,
+  openImageLightbox,
+  url,
+}: {
+  filename: string;
+  openImageLightbox: (url: string) => void;
+  url: string | undefined;
+}) {
+  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const imageLoadKey = url ? `composer-image:${url}` : null;
 
-  componentDidUpdate(previousProps: Readonly<{ url: string | undefined }>) {
-    if (previousProps.url !== this.props.url) {
-      this.setState({ imageStatus: "loading", url: null });
-    }
-  }
+  const currentImageStatus = imageLoadKey
+    ? (imageLoadStatuses[imageLoadKey] ?? "loading")
+    : "loading";
 
-  renderImage() {
-    const { url } = this.props;
-    const { imageStatus } = this.state;
-    const currentImageStatus =
-      url && this.state.url === url ? imageStatus : "loading";
-
-    if (!url) {
-      return (
+  if (!url || !imageLoadKey) {
+    return (
+      <button
+        type="button"
+        disabled
+        aria-label={`Open image preview for ${filename}`}
+        title={filename}
+        className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+      >
         <IconPhoto
           size={20}
           stroke={1.5}
           className="text-muted-foreground m-auto h-full"
         />
-      );
-    }
-
-    return (
-      <>
-        {currentImageStatus !== "loaded" && (
-          <span
-            data-testid="composer-image-preview-loading"
-            className="absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground"
-          >
-            {currentImageStatus === "loading" ? (
-              <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
-            ) : (
-              <IconPhoto size={16} stroke={1.5} />
-            )}
-          </span>
-        )}
-        <img
-          src={url}
-          alt=""
-          loading="lazy"
-          onLoad={() => {
-            this.setState({ imageStatus: "loaded", url });
-          }}
-          onError={() => {
-            this.setState({ imageStatus: "error", url });
-          }}
-          className={`h-full w-full object-cover ${
-            currentImageStatus === "loaded" ? "" : "opacity-0"
-          }`}
-        />
-        <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/image-preview:bg-black/30">
-          <IconPhoto
-            size={18}
-            className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
-          />
-        </span>
-      </>
-    );
-  }
-
-  render() {
-    const { filename, openImageLightbox, url } = this.props;
-
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          return url && openImageLightbox(url);
-        }}
-        disabled={!url}
-        aria-label={`Open image preview for ${filename}`}
-        title={filename}
-        className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
-      >
-        {this.renderImage()}
       </button>
     );
   }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        openImageLightbox(url);
+      }}
+      aria-label={`Open image preview for ${filename}`}
+      title={filename}
+      className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+    >
+      {currentImageStatus !== "loaded" && (
+        <span
+          data-testid="composer-image-preview-loading"
+          className="absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground"
+        >
+          {currentImageStatus === "loading" ? (
+            <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
+          ) : (
+            <IconPhoto size={16} stroke={1.5} />
+          )}
+        </span>
+      )}
+      <img
+        key={imageLoadKey}
+        ref={imageLoadStatusRef}
+        src={url}
+        alt=""
+        data-image-load-key={imageLoadKey}
+        loading="lazy"
+        onLoad={() => {
+          setImageLoadStatus(imageLoadKey, "loaded");
+        }}
+        onError={() => {
+          setImageLoadStatus(imageLoadKey, "error");
+        }}
+        className={`h-full w-full object-cover ${
+          currentImageStatus === "loaded" ? "" : "opacity-0"
+        }`}
+      />
+      <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/image-preview:bg-black/30">
+        <IconPhoto
+          size={18}
+          className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
+        />
+      </span>
+    </button>
+  );
 }
 
 function AttachmentChip({

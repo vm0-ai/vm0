@@ -1,5 +1,5 @@
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
-import { Component } from "react";
+import type { JSX, ReactNode } from "react";
 import {
   IconAlertCircle,
   IconArrowLeft,
@@ -13,12 +13,15 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
   connectTelegramAccount$,
-  reloadTelegramConnectLinkStatus$,
   telegramConnectError$,
   telegramConnectLinkStatus$,
   telegramConnectStatus$,
   telegramConnectSuccess$,
 } from "../../signals/zero-page/telegram-connect-signals.ts";
+import {
+  telegramAutoOpenRef$,
+  telegramDomainStatusPollerRef$,
+} from "../../signals/view-component-state.ts";
 import {
   parseTelegramConnectParams,
   type TelegramConnectParams,
@@ -46,7 +49,7 @@ function BackLink() {
   );
 }
 
-function PageShell({ children }: { children: React.ReactNode }) {
+function PageShell({ children }: { children: ReactNode }) {
   return (
     <div className="zero-app flex h-dvh w-full bg-background zero-workspace-bg">
       <div className="flex flex-1 items-center justify-center p-4">
@@ -88,7 +91,7 @@ function TelegramMark({
   );
 }
 
-function CenterText({ title, body }: { title: string; body: React.ReactNode }) {
+function CenterText({ title, body }: { title: string; body: ReactNode }) {
   return (
     <div className="text-center space-y-1.5">
       <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -107,21 +110,17 @@ function InvalidState({ title, message }: { title: string; message: string }) {
   );
 }
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class TelegramAutoOpen extends Component<{ href: string }> {
-  override componentDidMount() {
-    window.location.assign(this.props.href);
-  }
+function TelegramAutoOpen({ href }: { href: string }) {
+  const telegramAutoOpenRef = useSet(telegramAutoOpenRef$);
 
-  override componentDidUpdate(prevProps: { href: string }) {
-    if (prevProps.href !== this.props.href) {
-      window.location.assign(this.props.href);
-    }
-  }
-
-  override render() {
-    return null;
-  }
+  return (
+    <span
+      key={href}
+      ref={telegramAutoOpenRef}
+      data-telegram-href={href}
+      hidden
+    />
+  );
 }
 
 function SuccessState({ botUsername }: { botUsername: string }) {
@@ -217,34 +216,12 @@ function getTelegramLoginDomain(): string {
   return location.hostname;
 }
 
-// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
-class TelegramDomainStatusPoller extends Component<{ onPoll: () => void }> {
-  private intervalId: number | null = null;
-
-  override componentDidMount() {
-    this.intervalId = window.setInterval(() => {
-      this.props.onPoll();
-    }, 3000);
-  }
-
-  override componentWillUnmount() {
-    if (this.intervalId === null) {
-      return;
-    }
-    window.clearInterval(this.intervalId);
-  }
-
-  override render() {
-    return null;
-  }
-}
-
 function DomainStatusPolling() {
-  const reloadLinkStatus = useSet(reloadTelegramConnectLinkStatus$);
+  const domainStatusPollerRef = useSet(telegramDomainStatusPollerRef$);
 
   return (
     <>
-      <TelegramDomainStatusPoller onPoll={reloadLinkStatus} />
+      <span ref={domainStatusPollerRef} hidden />
       <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
         <IconLoader2 size={13} className="animate-spin" />
         Checking domain status...
@@ -365,7 +342,7 @@ function ConnectActions({
   );
 }
 
-export function ZeroTelegramConnectPage(): React.JSX.Element {
+export function ZeroTelegramConnectPage(): JSX.Element {
   const params = useGet(searchParams$);
   const apiBase = useGet(apiBaseForNavigation$);
   const parsed = parseTelegramConnectParams(params);
