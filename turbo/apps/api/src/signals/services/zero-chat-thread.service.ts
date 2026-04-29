@@ -189,6 +189,9 @@ function resolveAttachFileUrls(
 ): Computed<Promise<readonly ResolvedAttachFile[]>> {
   return computed(async (get): Promise<readonly ResolvedAttachFile[]> => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    if (!bucket) {
+      return [];
+    }
     const resolved = await Promise.all(
       fileIds.map(async (fileId): Promise<ResolvedAttachFile | null> => {
         const prefix = `uploads/${userId}/${fileId}/`;
