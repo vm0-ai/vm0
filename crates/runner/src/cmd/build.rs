@@ -122,6 +122,36 @@ pub struct BuildArgs {
     /// Compute and print the image hash without building
     #[arg(long)]
     pub dry_run: bool,
+    /// Build or upload only the shared R2 rootfs cache, without creating a snapshot
+    #[arg(long)]
+    pub warm_rootfs_cache: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RootfsCachePolicy {
+    BestEffort,
+    StrictWarm,
+}
+
+impl RootfsCachePolicy {
+    fn is_strict(self) -> bool {
+        matches!(self, Self::StrictWarm)
+    }
+}
+
+struct RootfsBuildInput<'a> {
+    paths: &'a HomePaths,
+    rootfs_hash: &'a str,
+    rootfs_paths: &'a RootfsPaths,
+    r2: Option<&'a R2ImageCache>,
+    policy: RootfsCachePolicy,
+    disk_mb: u32,
+    guest_agent: &'a Path,
+    guest_download: &'a Path,
+    guest_init: &'a Path,
+    guest_mock_claude: &'a Path,
+    guest_mock_codex: &'a Path,
+    guest_reseed: &'a Path,
 }
 
 /// Resolve a guest binary path: CLI arg takes priority, then bundled binary
@@ -158,6 +188,7 @@ async fn resolve_guest(
 pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> RunnerResult<()> {
     let def = profile::get(&args.profile)?;
     let dry_run = args.dry_run;
+    let warm_rootfs_cache = args.warm_rootfs_cache;
 
     // Create temp dir for any bundled guest binaries that need extracting.
     // IMPORTANT: tmp_dir must outlive build script execution — dropping it deletes extracted guests.
@@ -221,7 +252,8 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     let snapshot_dir = snapshot_paths.dir();
 
     // Fast path: both rootfs and snapshot already present.
-    if is_rootfs_present(&rootfs_paths).await?
+    if !warm_rootfs_cache
+        && is_rootfs_present(&rootfs_paths).await?
         && provider.is_complete(snapshot_dir).await.unwrap_or(false)
     {
         tracing::info!("[OK] image already built: rootfs={rootfs_hash}, snapshot={snapshot_hash}");
@@ -236,16 +268,28 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         .await
         .map_err(|e| RunnerError::Internal(format!("R2 cache init: {e}")))?;
     if r2.is_none() {
+        if warm_rootfs_cache {
+            return Err(RunnerError::Internal(
+                "--warm-rootfs-cache requires all R2_* image cache environment variables".into(),
+            ));
+        }
         // Info, not warn — dev environments routinely run without R2 configured.
         tracing::info!("R2 cache disabled (R2_* env vars not set) — skipping download and upload");
     }
 
-    // Acquire exclusive locks to prevent concurrent builds and block GC.
+    // Acquire the rootfs lock before any rootfs mutation. Full builds keep it
+    // through snapshot creation so GC cannot reap the rootfs while the snapshot
+    // provider is reading it.
     let _rootfs_lock = lock::acquire(paths.rootfs_lock(&rootfs_hash)).await?;
-    let _snapshot_lock = lock::acquire(paths.snapshot_lock(&snapshot_hash)).await?;
+    let _snapshot_lock = if warm_rootfs_cache {
+        None
+    } else {
+        Some(lock::acquire(paths.snapshot_lock(&snapshot_hash)).await?)
+    };
 
     // Re-check after acquiring lock — another process may have completed the build.
-    if is_rootfs_present(&rootfs_paths).await?
+    if !warm_rootfs_cache
+        && is_rootfs_present(&rootfs_paths).await?
         && provider.is_complete(snapshot_dir).await.unwrap_or(false)
     {
         tracing::info!("[OK] image already built: rootfs={rootfs_hash}, snapshot={snapshot_hash}");
@@ -254,218 +298,30 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         return Ok(());
     }
 
-    // Clear any `rootfs.ext4.staging` residue from a previous crashed or
-    // failed build. Holding the rootfs flock means the previous writer has
-    // already exited (kernel releases flocks on process death), so any
-    // staging file on disk is guaranteed to be stale — never a concurrent
-    // writer's work-in-progress. This is the recovery arm of the
-    // staging-rename contract; see `RootfsPaths::rootfs_staging`.
-    clear_rootfs_staging(&rootfs_paths).await;
-
-    // Write scripts to a temp directory (needed for both R2 and local paths).
-    let work_dir =
-        tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
-    tokio::fs::write(work_dir.path().join("build-rootfs.sh"), BUILD_SCRIPT)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write build script: {e}")))?;
-    tokio::fs::write(work_dir.path().join("verify-rootfs.sh"), VERIFY_SCRIPT)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write verify script: {e}")))?;
-    tokio::fs::write(work_dir.path().join("inject-ca.sh"), INJECT_CA_SCRIPT)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write inject-ca script: {e}")))?;
-
-    let ca_dir = paths.ca_dir();
-
-    // --- Phase 1: Obtain rootfs ---
-    //
-    // R2 caches only rootfs.ext4. Snapshots are always created locally
-    // because they contain host-specific state (page cache, kernel metadata).
-    // Multiple snapshot variants can share one rootfs.
-
-    let mut force_reupload = false;
-    let mut rootfs_from_r2 = false;
-
-    let need_rootfs = !is_rootfs_present(&rootfs_paths).await?;
-
-    if need_rootfs {
-        // Try R2 download (rootfs only). try_download manages its own staging
-        // directory and atomic rename, so rootfs_dir stays absent on failure.
-        if let Some(cache) = &r2 {
-            match cache.try_download(&rootfs_hash, rootfs_dir).await {
-                Ok(true) => {
-                    if tokio::fs::try_exists(rootfs_paths.rootfs())
-                        .await
-                        .unwrap_or(false)
-                    {
-                        // Remove any non-rootfs files from the download (e.g. stale
-                        // snapshot artifacts from an old archive format).
-                        remove_all_except_rootfs(&rootfs_paths).await;
-                        tracing::info!("[OK] rootfs downloaded from R2: {}", rootfs_dir.display());
-                        // Demote the downloaded image to staging before CA
-                        // injection runs. The R2-cached rootfs carries the
-                        // build host's CA; Phase 1.5 replaces it. Keeping
-                        // the file at the committed `rootfs.ext4` path
-                        // during injection would let a mid-script crash
-                        // leave a rootfs whose CA file no longer matches
-                        // its system bundle, permanently poisoning the
-                        // Fast-path reuse check.
-                        demote_to_staging(&rootfs_paths).await?;
-                        rootfs_from_r2 = true;
-                    } else {
-                        tracing::warn!(
-                            "R2 download for {rootfs_hash} succeeded but rootfs missing — \
-                             will rebuild locally and force-overwrite the bad object"
-                        );
-                        force_reupload = true;
-                        if let Err(e) = tokio::fs::remove_dir_all(rootfs_dir).await {
-                            tracing::warn!(
-                                "failed to clean bad R2 download at {}: {e}",
-                                rootfs_dir.display()
-                            );
-                        }
-                    }
-                }
-                Ok(false) => {
-                    tracing::info!("R2 cache miss for {rootfs_hash} — building locally")
-                }
-                Err(e) => {
-                    tracing::warn!("R2 download failed: {e} — falling back to local build")
-                }
-            }
-        }
-
-        if !rootfs_from_r2 {
-            // Create rootfs_dir for local build (R2 path creates it via rename).
-            tokio::fs::create_dir_all(rootfs_dir).await.map_err(|e| {
-                RunnerError::Internal(format!("create {}: {e}", rootfs_dir.display()))
-            })?;
-
-            // Local rootfs build — the slow path (debootstrap + apt install).
-            let rootfs_dir_str = rootfs_dir.to_string_lossy();
-            let guest_agent_str = guest_agent.to_string_lossy();
-            let guest_download_str = guest_download.to_string_lossy();
-            let guest_init_str = guest_init.to_string_lossy();
-            let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
-            let guest_mock_codex_str = guest_mock_codex.to_string_lossy();
-            let guest_reseed_str = guest_reseed.to_string_lossy();
-            let ca_dir_str = ca_dir.to_string_lossy();
-            let debootstrap_dir = paths.debootstrap_dir();
-            tokio::fs::create_dir_all(&debootstrap_dir)
-                .await
-                .map_err(|e| {
-                    RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display()))
-                })?;
-            let debootstrap_dir_str = debootstrap_dir.to_string_lossy();
-            let disk_mb_str = def.disk_mb.to_string();
-
-            let status = tokio::process::Command::new("bash")
-                .arg(work_dir.path().join("build-rootfs.sh"))
-                .args([
-                    "--output-dir",
-                    &rootfs_dir_str,
-                    "--ca-dir",
-                    &ca_dir_str,
-                    "--debootstrap-dir",
-                    &debootstrap_dir_str,
-                    "--hash",
-                    &rootfs_hash,
-                    "--disk-mb",
-                    &disk_mb_str,
-                    "--guest-agent",
-                    &guest_agent_str,
-                    "--guest-download",
-                    &guest_download_str,
-                    "--guest-init",
-                    &guest_init_str,
-                    "--guest-mock-claude",
-                    &guest_mock_claude_str,
-                    "--guest-mock-codex",
-                    &guest_mock_codex_str,
-                    "--guest-reseed",
-                    &guest_reseed_str,
-                    "--dns-nameserver",
-                    "8.8.8.8",
-                ])
-                .stdin(std::process::Stdio::null())
-                .status()
-                .await
-                .map_err(|e| RunnerError::Internal(format!("spawn build script: {e}")))?;
-
-            if !status.success() {
-                return Err(RunnerError::Internal(format!(
-                    "build-rootfs.sh failed with {status}"
-                )));
-            }
-
-            let rootfs_str = rootfs_paths.rootfs().to_string_lossy().into_owned();
-            let status = tokio::process::Command::new("bash")
-                .arg(work_dir.path().join("verify-rootfs.sh"))
-                .args(["--rootfs", &rootfs_str])
-                .stdin(std::process::Stdio::null())
-                .status()
-                .await
-                .map_err(|e| RunnerError::Internal(format!("spawn verify script: {e}")))?;
-
-            if !status.success() {
-                return Err(RunnerError::Internal(format!(
-                    "verify-rootfs.sh failed with {status}"
-                )));
-            }
-
-            let rootfs_sz = file_sizes(&rootfs_paths.rootfs()).await;
-            tracing::info!(
-                rootfs_logical = %rootfs_sz.0,
-                rootfs_disk = %rootfs_sz.1,
-                "rootfs creation complete"
-            );
-
-            // Upload rootfs to R2 BEFORE CA injection — the cached rootfs should
-            // be generic (build host's CA) so other hosts can download and inject
-            // their own CA.
-            if let Some(cache) = &r2 {
-                let files = vec![rootfs_paths.rootfs()];
-                match cache.upload(&rootfs_hash, &files, force_reupload).await {
-                    Ok(()) => tracing::info!("uploaded rootfs to R2: {rootfs_hash}"),
-                    Err(e) => tracing::warn!("R2 upload failed: {e} — rootfs is on local disk"),
-                }
-            }
-        }
+    let policy = if warm_rootfs_cache {
+        RootfsCachePolicy::StrictWarm
     } else {
-        tracing::info!("[OK] rootfs already present: {}", rootfs_dir.display());
-    }
+        RootfsCachePolicy::BestEffort
+    };
+    ensure_rootfs_under_lock(RootfsBuildInput {
+        paths: &paths,
+        rootfs_hash: &rootfs_hash,
+        rootfs_paths: &rootfs_paths,
+        r2: r2.as_ref(),
+        policy,
+        disk_mb: def.disk_mb,
+        guest_agent: &guest_agent,
+        guest_download: &guest_download,
+        guest_init: &guest_init,
+        guest_mock_claude: &guest_mock_claude,
+        guest_mock_codex: &guest_mock_codex,
+        guest_reseed: &guest_reseed,
+    })
+    .await?;
 
-    // --- Phase 1.5: Replace CA cert (R2-downloaded rootfs only) ---
-    //
-    // Operates on `rootfs.ext4.staging` (not `rootfs.ext4`). On non-zero
-    // exit we leave the staging file in place — the next build's
-    // `clear_rootfs_staging` step above deletes it. We deliberately do
-    // NOT remove `rootfs_dir`: snapshots for other snapshot_hashes (same
-    // rootfs_hash, different vcpu/memory profile) live under
-    // `<rootfs_dir>/snapshots/` and would be collateral damage.
-    if rootfs_from_r2 {
-        let staging = rootfs_paths.rootfs_staging();
-        let staging_str = staging.to_string_lossy().into_owned();
-        let ca_dir_str = ca_dir.to_string_lossy().into_owned();
-        let status = tokio::process::Command::new("bash")
-            .arg(work_dir.path().join("inject-ca.sh"))
-            .args(["--rootfs", &staging_str, "--ca-dir", &ca_dir_str])
-            .stdin(std::process::Stdio::null())
-            .status()
-            .await
-            .map_err(|e| RunnerError::Internal(format!("spawn inject-ca script: {e}")))?;
-
-        if !status.success() {
-            return Err(RunnerError::Internal(format!(
-                "inject-ca.sh failed with {status}"
-            )));
-        }
-        // Commit the rootfs. Same-filesystem rename is POSIX-atomic, so
-        // `rootfs.ext4` only becomes visible once CA injection has fully
-        // succeeded — future `is_rootfs_present` / Fast-path checks can
-        // now trust its presence as "assembly pipeline completed".
-        commit_staging(&rootfs_paths).await?;
-        tracing::info!("CA cert replaced in R2-downloaded rootfs");
+    if warm_rootfs_cache {
+        tracing::info!("rootfs cache warm complete: rootfs={rootfs_hash}");
+        return Ok(());
     }
 
     // --- Phase 2: Build snapshot ---
@@ -505,6 +361,274 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     );
 
     tracing::info!("image creation complete: rootfs={rootfs_hash}, snapshot={snapshot_hash}");
+    Ok(())
+}
+
+async fn ensure_rootfs_under_lock(input: RootfsBuildInput<'_>) -> RunnerResult<()> {
+    let rootfs_dir = input.rootfs_paths.dir();
+
+    // Clear any `rootfs.ext4.staging` residue from a previous crashed or
+    // failed build. Holding the rootfs flock means the previous writer has
+    // already exited (kernel releases flocks on process death), so any
+    // staging file on disk is guaranteed to be stale — never a concurrent
+    // writer's work-in-progress. This is the recovery arm of the
+    // staging-rename contract; see `RootfsPaths::rootfs_staging`.
+    clear_rootfs_staging(input.rootfs_paths).await;
+
+    // --- Phase 1: Obtain rootfs ---
+    //
+    // R2 caches only rootfs.ext4. Snapshots are always created locally
+    // because they contain host-specific state (page cache, kernel metadata).
+    // Multiple snapshot variants can share one rootfs.
+    let mut force_reupload = false;
+    let mut rootfs_from_r2 = false;
+
+    let need_rootfs = !is_rootfs_present(input.rootfs_paths).await?;
+    let mut work_dir = None;
+
+    if need_rootfs {
+        // Try R2 download (rootfs only). try_download manages its own staging
+        // directory and atomic rename, so rootfs_dir stays absent on failure.
+        if let Some(cache) = input.r2 {
+            match cache.try_download(input.rootfs_hash, rootfs_dir).await {
+                Ok(true) => {
+                    if tokio::fs::try_exists(input.rootfs_paths.rootfs())
+                        .await
+                        .unwrap_or(false)
+                    {
+                        // Remove any non-rootfs files from the download (e.g. stale
+                        // snapshot artifacts from an old archive format).
+                        remove_all_except_rootfs(input.rootfs_paths).await;
+                        tracing::info!("[OK] rootfs downloaded from R2: {}", rootfs_dir.display());
+                        // Demote the downloaded image to staging before CA
+                        // injection runs. The R2-cached rootfs carries the
+                        // build host's CA; Phase 1.5 replaces it. Keeping
+                        // the file at the committed `rootfs.ext4` path
+                        // during injection would let a mid-script crash
+                        // leave a rootfs whose CA file no longer matches
+                        // its system bundle, permanently poisoning the
+                        // Fast-path reuse check.
+                        demote_to_staging(input.rootfs_paths).await?;
+                        rootfs_from_r2 = true;
+                    } else {
+                        tracing::warn!(
+                            "R2 download for {} succeeded but rootfs missing — \
+                             will rebuild locally and force-overwrite the bad object",
+                            input.rootfs_hash
+                        );
+                        force_reupload = true;
+                        if let Err(e) = tokio::fs::remove_dir_all(rootfs_dir).await {
+                            tracing::warn!(
+                                "failed to clean bad R2 download at {}: {e}",
+                                rootfs_dir.display()
+                            );
+                        }
+                    }
+                }
+                Ok(false) => {
+                    tracing::info!("R2 cache miss for {} — building locally", input.rootfs_hash)
+                }
+                Err(e) => {
+                    if input.policy.is_strict() {
+                        return Err(RunnerError::Internal(format!(
+                            "R2 download failed while warming rootfs cache: {e}"
+                        )));
+                    }
+                    tracing::warn!("R2 download failed: {e} — falling back to local build");
+                }
+            }
+        }
+
+        if !rootfs_from_r2 {
+            let work_dir_path = work_dir_for_rootfs(&mut work_dir).await?;
+            build_rootfs_locally(&input, &work_dir_path).await?;
+            upload_rootfs_to_r2(&input, force_reupload).await?;
+        }
+    } else {
+        tracing::info!("[OK] rootfs already present: {}", rootfs_dir.display());
+        if input.policy.is_strict() {
+            upload_rootfs_to_r2(&input, false).await?;
+        }
+    }
+
+    // --- Phase 1.5: Replace CA cert (R2-downloaded rootfs only) ---
+    //
+    // Operates on `rootfs.ext4.staging` (not `rootfs.ext4`). On non-zero
+    // exit we leave the staging file in place — the next build's
+    // `clear_rootfs_staging` step above deletes it. We deliberately do
+    // NOT remove `rootfs_dir`: snapshots for other snapshot_hashes (same
+    // rootfs_hash, different vcpu/memory profile) live under
+    // `<rootfs_dir>/snapshots/` and would be collateral damage.
+    if rootfs_from_r2 {
+        let work_dir_path = work_dir_for_rootfs(&mut work_dir).await?;
+        inject_ca_into_staging(&input, &work_dir_path).await?;
+        // Commit the rootfs. Same-filesystem rename is POSIX-atomic, so
+        // `rootfs.ext4` only becomes visible once CA injection has fully
+        // succeeded — future `is_rootfs_present` / Fast-path checks can
+        // now trust its presence as "assembly pipeline completed".
+        commit_staging(input.rootfs_paths).await?;
+        tracing::info!("CA cert replaced in R2-downloaded rootfs");
+    }
+
+    Ok(())
+}
+
+async fn work_dir_for_rootfs(work_dir: &mut Option<tempfile::TempDir>) -> RunnerResult<PathBuf> {
+    if work_dir.is_none() {
+        let dir = tempfile::tempdir()
+            .map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
+        tokio::fs::write(dir.path().join("build-rootfs.sh"), BUILD_SCRIPT)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("write build script: {e}")))?;
+        tokio::fs::write(dir.path().join("verify-rootfs.sh"), VERIFY_SCRIPT)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("write verify script: {e}")))?;
+        tokio::fs::write(dir.path().join("inject-ca.sh"), INJECT_CA_SCRIPT)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("write inject-ca script: {e}")))?;
+        *work_dir = Some(dir);
+    }
+    match work_dir.as_ref() {
+        Some(dir) => Ok(dir.path().to_path_buf()),
+        None => Err(RunnerError::Internal(
+            "rootfs work dir was not initialized".into(),
+        )),
+    }
+}
+
+async fn build_rootfs_locally(input: &RootfsBuildInput<'_>, work_dir: &Path) -> RunnerResult<()> {
+    let rootfs_dir = input.rootfs_paths.dir();
+    // Create rootfs_dir for local build (R2 path creates it via rename).
+    tokio::fs::create_dir_all(rootfs_dir)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", rootfs_dir.display())))?;
+
+    // Local rootfs build — the slow path (debootstrap + apt install).
+    let rootfs_dir_str = rootfs_dir.to_string_lossy();
+    let guest_agent_str = input.guest_agent.to_string_lossy();
+    let guest_download_str = input.guest_download.to_string_lossy();
+    let guest_init_str = input.guest_init.to_string_lossy();
+    let guest_mock_claude_str = input.guest_mock_claude.to_string_lossy();
+    let guest_mock_codex_str = input.guest_mock_codex.to_string_lossy();
+    let guest_reseed_str = input.guest_reseed.to_string_lossy();
+    let ca_dir = input.paths.ca_dir();
+    let ca_dir_str = ca_dir.to_string_lossy();
+    let debootstrap_dir = input.paths.debootstrap_dir();
+    tokio::fs::create_dir_all(&debootstrap_dir)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
+    let debootstrap_dir_str = debootstrap_dir.to_string_lossy();
+    let disk_mb_str = input.disk_mb.to_string();
+
+    let status = tokio::process::Command::new("bash")
+        .arg(work_dir.join("build-rootfs.sh"))
+        .args([
+            "--output-dir",
+            &rootfs_dir_str,
+            "--ca-dir",
+            &ca_dir_str,
+            "--debootstrap-dir",
+            &debootstrap_dir_str,
+            "--hash",
+            input.rootfs_hash,
+            "--disk-mb",
+            &disk_mb_str,
+            "--guest-agent",
+            &guest_agent_str,
+            "--guest-download",
+            &guest_download_str,
+            "--guest-init",
+            &guest_init_str,
+            "--guest-mock-claude",
+            &guest_mock_claude_str,
+            "--guest-mock-codex",
+            &guest_mock_codex_str,
+            "--guest-reseed",
+            &guest_reseed_str,
+            "--dns-nameserver",
+            "8.8.8.8",
+        ])
+        .stdin(std::process::Stdio::null())
+        .status()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("spawn build script: {e}")))?;
+
+    if !status.success() {
+        return Err(RunnerError::Internal(format!(
+            "build-rootfs.sh failed with {status}"
+        )));
+    }
+
+    let rootfs_str = input.rootfs_paths.rootfs().to_string_lossy().into_owned();
+    let status = tokio::process::Command::new("bash")
+        .arg(work_dir.join("verify-rootfs.sh"))
+        .args(["--rootfs", &rootfs_str])
+        .stdin(std::process::Stdio::null())
+        .status()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("spawn verify script: {e}")))?;
+
+    if !status.success() {
+        return Err(RunnerError::Internal(format!(
+            "verify-rootfs.sh failed with {status}"
+        )));
+    }
+
+    let rootfs_sz = file_sizes(&input.rootfs_paths.rootfs()).await;
+    tracing::info!(
+        rootfs_logical = %rootfs_sz.0,
+        rootfs_disk = %rootfs_sz.1,
+        "rootfs creation complete"
+    );
+
+    Ok(())
+}
+
+async fn upload_rootfs_to_r2(input: &RootfsBuildInput<'_>, force: bool) -> RunnerResult<()> {
+    let Some(cache) = input.r2 else {
+        if input.policy.is_strict() {
+            return Err(RunnerError::Internal(
+                "--warm-rootfs-cache requires R2 cache configuration".into(),
+            ));
+        }
+        return Ok(());
+    };
+
+    let files = vec![input.rootfs_paths.rootfs()];
+    match cache.upload(input.rootfs_hash, &files, force).await {
+        Ok(()) => {
+            tracing::info!("uploaded rootfs to R2: {}", input.rootfs_hash);
+            Ok(())
+        }
+        Err(e) if input.policy.is_strict() => Err(RunnerError::Internal(format!(
+            "R2 upload failed while warming rootfs cache: {e}"
+        ))),
+        Err(e) => {
+            tracing::warn!("R2 upload failed: {e} — rootfs is on local disk");
+            Ok(())
+        }
+    }
+}
+
+async fn inject_ca_into_staging(input: &RootfsBuildInput<'_>, work_dir: &Path) -> RunnerResult<()> {
+    let staging = input.rootfs_paths.rootfs_staging();
+    let staging_str = staging.to_string_lossy().into_owned();
+    let ca_dir = input.paths.ca_dir();
+    let ca_dir_str = ca_dir.to_string_lossy().into_owned();
+    let status = tokio::process::Command::new("bash")
+        .arg(work_dir.join("inject-ca.sh"))
+        .args(["--rootfs", &staging_str, "--ca-dir", &ca_dir_str])
+        .stdin(std::process::Stdio::null())
+        .status()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("spawn inject-ca script: {e}")))?;
+
+    if !status.success() {
+        return Err(RunnerError::Internal(format!(
+            "inject-ca.sh failed with {status}"
+        )));
+    }
+
     Ok(())
 }
 
@@ -762,6 +886,112 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(clap::Parser)]
+    struct TestBuildCli {
+        #[command(flatten)]
+        args: BuildArgs,
+    }
+
+    fn build_args() -> [&'static str; 15] {
+        [
+            "runner-build",
+            "--guest-agent",
+            "/tmp/guest-agent",
+            "--guest-download",
+            "/tmp/guest-download",
+            "--guest-init",
+            "/tmp/guest-init",
+            "--guest-mock-claude",
+            "/tmp/guest-mock-claude",
+            "--guest-mock-codex",
+            "/tmp/guest-mock-codex",
+            "--guest-reseed",
+            "/tmp/guest-reseed",
+            "--profile",
+            "vm0/default",
+        ]
+    }
+
+    #[test]
+    fn build_args_parse_warm_rootfs_cache_flag() {
+        let mut args = build_args().to_vec();
+        args.push("--warm-rootfs-cache");
+
+        let cli = <TestBuildCli as clap::Parser>::try_parse_from(args).unwrap();
+
+        assert!(cli.args.warm_rootfs_cache);
+        assert!(!cli.args.dry_run);
+    }
+
+    #[test]
+    fn rootfs_cache_policy_marks_only_warm_as_strict() {
+        assert!(!RootfsCachePolicy::BestEffort.is_strict());
+        assert!(RootfsCachePolicy::StrictWarm.is_strict());
+    }
+
+    #[tokio::test]
+    async fn work_dir_for_rootfs_writes_embedded_scripts_once() {
+        let mut work_dir = None;
+
+        let first = work_dir_for_rootfs(&mut work_dir).await.unwrap();
+        let second = work_dir_for_rootfs(&mut work_dir).await.unwrap();
+
+        assert_eq!(first, second);
+        assert!(first.join("build-rootfs.sh").exists());
+        assert!(first.join("verify-rootfs.sh").exists());
+        assert!(first.join("inject-ca.sh").exists());
+    }
+
+    #[tokio::test]
+    async fn strict_upload_requires_r2_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "strict-hash");
+        let guest = dir.path().join("guest");
+        let input = RootfsBuildInput {
+            paths: &home,
+            rootfs_hash: "strict-hash",
+            rootfs_paths: &rootfs,
+            r2: None,
+            policy: RootfsCachePolicy::StrictWarm,
+            disk_mb: 16384,
+            guest_agent: &guest,
+            guest_download: &guest,
+            guest_init: &guest,
+            guest_mock_claude: &guest,
+            guest_mock_codex: &guest,
+            guest_reseed: &guest,
+        };
+
+        let err = upload_rootfs_to_r2(&input, false).await.unwrap_err();
+
+        assert!(err.to_string().contains("--warm-rootfs-cache requires R2"));
+    }
+
+    #[tokio::test]
+    async fn best_effort_upload_allows_missing_r2_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "best-effort-hash");
+        let guest = dir.path().join("guest");
+        let input = RootfsBuildInput {
+            paths: &home,
+            rootfs_hash: "best-effort-hash",
+            rootfs_paths: &rootfs,
+            r2: None,
+            policy: RootfsCachePolicy::BestEffort,
+            disk_mb: 16384,
+            guest_agent: &guest,
+            guest_download: &guest,
+            guest_init: &guest,
+            guest_mock_claude: &guest,
+            guest_mock_codex: &guest,
+            guest_reseed: &guest,
+        };
+
+        upload_rootfs_to_r2(&input, false).await.unwrap();
+    }
 
     #[test]
     fn human_bytes_formatting() {

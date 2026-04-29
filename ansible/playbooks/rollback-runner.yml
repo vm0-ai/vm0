@@ -59,9 +59,9 @@
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Passed to `runner build` (speeds up rootfs cache hit on fresh hosts)
-#       and to `runner gc` (R2-side cache cleanup). If omitted, local-only
-#       behavior is used in both cases.
+#       Required on the install path for the pre-fan-out rootfs cache warm
+#       step, and passed to `runner gc` for R2-side cleanup. If `skip_install`
+#       is true, only the GC use remains best-effort.
 
 - name: Rollback VM0 Runner
   hosts: all
@@ -335,6 +335,23 @@
     - name: Download runner dependencies
       when: not (skip_install | default(false))
       command: "{{ bin_dir }}/runner setup"
+
+    - name: Warm shared rootfs cache
+      when: not (skip_install | default(false))
+      run_once: true
+      command: >
+        {{ bin_dir }}/runner build
+        --profile vm0/default
+        --warm-rootfs-cache
+      environment:
+        # Fail visibly if the shared R2 cache cannot be warmed. This prevents
+        # every rollback install target from stampeding into the slow local
+        # rootfs build path when the target rootfs_hash is not already cached.
+        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
+        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
+        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
+      register: default_rootfs_warm_output
 
     # Always runs on install path. Content-addressed by hash of embedded
     # guests + recipe; if target's rootfs/snapshot are already on disk at
