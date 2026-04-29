@@ -27,8 +27,8 @@ from .x_billing import (
     refine_bucket_with_body,
 )
 
-# HTTP 2xx success range (RFC 9110).  Also defined in ``mitm_addon.py``; kept
-# local to avoid introducing a constants module for two callers.  The upper
+# HTTP 2xx success range (RFC 9110).  Also defined in ``response_streaming.py``;
+# kept local to avoid introducing a constants module for two callers.  The upper
 # bound is ``REDIRECT_MIN`` (300) because 300 is the first 3xx status — using
 # ``status < _HTTP_STATUS_REDIRECT_MIN`` reads as "still in 2xx" without the
 # ambiguity of an ``OK_MAX`` that is itself excluded from the OK range.
@@ -38,8 +38,8 @@ _USAGE_EVENT_BATCH_SIZE = 100
 
 # X v2 NDJSON streaming endpoint paths (exact match — ``/2/tweets/search/stream/rules``
 # is a regular request/response endpoint for rules management, NOT a stream).
-# Streams deliver one JSON object per line, possibly for hours; responseheaders
-# registers an incremental NDJSON parser as the stream callback so we never
+# Streams deliver one JSON object per line, possibly for hours; the responseheaders
+# hook registers an incremental NDJSON parser as the stream callback so we never
 # buffer the response body.
 _STREAM_ENDPOINTS = frozenset(
     {
@@ -295,7 +295,7 @@ def _parse_response_metadata(flow: http.HTTPFlow) -> dict:
         ``meta``).  Both fields are alternative spellings of the same
         billing dimension, so we collapse them into one log key.
 
-    For X NDJSON streaming endpoints, ``responseheaders`` registers an
+    For X NDJSON streaming endpoints, the responseheaders hook registers an
     incremental parser that populates ``flow.metadata["x_ndjson_state"]``
     as response bytes arrive.  When that state is present we return its
     accumulated counters directly (``body_format: "ndjson"``) and skip
