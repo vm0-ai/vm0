@@ -1097,10 +1097,10 @@ describe("network insights page - per-day schedules and chats", () => {
     await waitFor(() => {
       expect(screen.getByText(/schedules used 100 credits/)).toBeInTheDocument();
     });
-    // Chats: singular "chat used" and "30 credits"
+    // Chats: singular "chat used" with the total
     expect(screen.getByText(/chat used 30 credits/)).toBeInTheDocument();
-    // Per-row values include the credits unit inline
-    expect(screen.getByText("60 credits")).toBeInTheDocument();
-    expect(screen.getByText("40 credits")).toBeInTheDocument();
+    // Per-row values are bare numbers — subtitle already names the unit
+    expect(screen.queryByText(/^60 credits?$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^40 credits?$/)).not.toBeInTheDocument();
   });
 });

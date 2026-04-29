@@ -1094,8 +1094,7 @@ function DaySchedulesCard({
                     />
                   </div>
                   <span className="text-xs opacity-60 tabular-nums shrink-0">
-                    {formatCardValue(row.credits)}{" "}
-                    {row.credits === 1 ? "credit" : "credits"}
+                    {formatCardValue(row.credits)}
                   </span>
                 </Link>
               </li>
@@ -1210,8 +1209,7 @@ function DayChatsCard({
                     />
                   </div>
                   <span className="text-xs opacity-60 tabular-nums shrink-0">
-                    {formatCardValue(row.credits)}{" "}
-                    {row.credits === 1 ? "credit" : "credits"}
+                    {formatCardValue(row.credits)}
                   </span>
                 </Link>
               </li>
