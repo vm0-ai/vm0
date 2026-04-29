@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.27.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.0...sandbox-fc-v0.27.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** clean up outer job panic bookkeeping ([#11393](https://github.com/vm0-ai/vm0/issues/11393)) ([4ecf0b6](https://github.com/vm0-ai/vm0/commit/4ecf0b65e25c66a86eec0151a29dd4f0fa0deeb0))
+* shut down control server with sandbox runtime ([#11443](https://github.com/vm0-ai/vm0/issues/11443)) ([6b5d0cf](https://github.com/vm0-ai/vm0/commit/6b5d0cf7cca922494a02c3790f57f2e8bf4421af))
+
 ## [0.27.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.14...sandbox-fc-v0.27.0) (2026-04-28)
 
 

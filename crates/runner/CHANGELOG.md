@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.98.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.0...runner-rs-v0.98.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** clean up outer job panic bookkeeping ([#11393](https://github.com/vm0-ai/vm0/issues/11393)) ([4ecf0b6](https://github.com/vm0-ai/vm0/commit/4ecf0b65e25c66a86eec0151a29dd4f0fa0deeb0))
+
 ## [0.98.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.3...runner-rs-v0.98.0) (2026-04-28)
 
 

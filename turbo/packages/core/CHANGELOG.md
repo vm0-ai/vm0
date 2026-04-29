@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.244.0](https://github.com/vm0-ai/vm0/compare/core-v8.243.0...core-v8.244.0) (2026-04-29)
+
+
+### Features
+
+* launch usage page ([#11446](https://github.com/vm0-ai/vm0/issues/11446)) ([55fa993](https://github.com/vm0-ai/vm0/commit/55fa9934e2d1bf95ff6329ed858853f24eb3b4d3))
+
 ## [8.243.0](https://github.com/vm0-ai/vm0/compare/core-v8.242.1...core-v8.243.0) (2026-04-28)
 
 

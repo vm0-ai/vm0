@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.317.0](https://github.com/vm0-ai/vm0/compare/web-v12.316.1...web-v12.317.0) (2026-04-29)
+
+
+### Features
+
+* add credit addition records ([#11447](https://github.com/vm0-ai/vm0/issues/11447)) ([07a164a](https://github.com/vm0-ai/vm0/commit/07a164a2f4025615c0f5d657e419d93b886cc249))
+
+
+### Bug Fixes
+
+* forward bb0 device code routes to api ([#11449](https://github.com/vm0-ai/vm0/issues/11449)) ([433f3b2](https://github.com/vm0-ai/vm0/commit/433f3b2b466c390394ca0e8877985e451cd74d5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.244.0
+
 ## [12.316.1](https://github.com/vm0-ai/vm0/compare/web-v12.316.0...web-v12.316.1) (2026-04-29)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.307.0](https://github.com/vm0-ai/vm0/compare/app-v0.306.2...app-v0.307.0) (2026-04-29)
+
+
+### Features
+
+* add credit addition records ([#11447](https://github.com/vm0-ai/vm0/issues/11447)) ([07a164a](https://github.com/vm0-ai/vm0/commit/07a164a2f4025615c0f5d657e419d93b886cc249))
+* launch usage page ([#11446](https://github.com/vm0-ai/vm0/issues/11446)) ([55fa993](https://github.com/vm0-ai/vm0/commit/55fa9934e2d1bf95ff6329ed858853f24eb3b4d3))
+
+
+### Refactoring
+
+* **platform:** remove view class component disables ([#11448](https://github.com/vm0-ai/vm0/issues/11448)) ([c052726](https://github.com/vm0-ai/vm0/commit/c05272677c55bf262f65886226ad195c095f22ac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.244.0
+
 ## [0.306.2](https://github.com/vm0-ai/vm0/compare/app-v0.306.1...app-v0.306.2) (2026-04-29)
 
 
