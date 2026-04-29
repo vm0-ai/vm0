@@ -14,6 +14,8 @@ describe("buildAgentPrompt", () => {
       "The user cannot see files on your local filesystem",
     );
     expect(prompt).toContain("zero web upload-file");
+    expect(prompt).toContain('zero web voice --text "Hello"');
+    expect(prompt).toContain("shareable `/f/` URL");
     expect(prompt).toContain("zero slack upload-file");
     expect(prompt).toContain("zero telegram message");
     expect(prompt).toContain("zero telegram bot list");
