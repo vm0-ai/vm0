@@ -1832,6 +1832,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cleanup_retries_when_pool_is_inactive_but_not_drained() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.plain_queue.push_back(test_info("test-ns"));
+
+        pool.cleanup().await.unwrap();
+
+        assert!(!pool.active);
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
     async fn acquire_requeues_namespace_when_checkout_detects_in_flight_duplicate() {
         let mut pool = NetnsPool::inactive_for_test();
         pool.active = true;
