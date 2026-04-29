@@ -183,7 +183,6 @@ export const bb0CanConfirmCode$ = computed((get) => {
   const stateValue = get(internalProvisioningState$);
   const deviceCode = normalizeDeviceCode(get(internalDeviceCodeInput$));
   return (
-    stateValue.wifiSent &&
     stateValue.operationStatus !== "confirmed" &&
     BB0_DEVICE_CODE_PATTERN.test(deviceCode)
   );
