@@ -206,48 +206,6 @@ export const setInsightsActiveTab$ = command(({ set }, tab: InsightsTab) => {
 });
 
 // ---------------------------------------------------------------------------
-// "Show all" toggle for per-day schedules / chats cards (keyed by day date)
-// ---------------------------------------------------------------------------
-
-const internalExpandedSchedules$ = state<Set<string>>(new Set());
-
-export const expandedScheduleDays$ = computed((get) => {
-  return get(internalExpandedSchedules$);
-});
-
-export const toggleExpandedScheduleDay$ = command(
-  ({ get, set }, dayDate: string) => {
-    const current = get(internalExpandedSchedules$);
-    const next = new Set(current);
-    if (next.has(dayDate)) {
-      next.delete(dayDate);
-    } else {
-      next.add(dayDate);
-    }
-    set(internalExpandedSchedules$, next);
-  },
-);
-
-const internalExpandedChats$ = state<Set<string>>(new Set());
-
-export const expandedChatDays$ = computed((get) => {
-  return get(internalExpandedChats$);
-});
-
-export const toggleExpandedChatDay$ = command(
-  ({ get, set }, dayDate: string) => {
-    const current = get(internalExpandedChats$);
-    const next = new Set(current);
-    if (next.has(dayDate)) {
-      next.delete(dayDate);
-    } else {
-      next.add(dayDate);
-    }
-    set(internalExpandedChats$, next);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // "Load more" toggle for allowed-permissions card (keyed by day date)
 // ---------------------------------------------------------------------------
 

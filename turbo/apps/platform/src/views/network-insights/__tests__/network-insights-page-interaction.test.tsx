@@ -984,7 +984,7 @@ describe("network insights page - per-day schedules and chats", () => {
     expect(screen.queryByText("Chats")).not.toBeInTheDocument();
   });
 
-  it("collapses extra schedules into a +N more row", async () => {
+  it("renders all schedules without a +N more / Show less toggle", async () => {
     const many = Array.from({ length: 7 }, (_, i) => {
       return {
         scheduleId: `sch-${i}`,
@@ -998,43 +998,13 @@ describe("network insights page - per-day schedules and chats", () => {
 
     detachedSetupPage({ context, path: "/insights" });
 
-    await waitFor(() => {
-      expect(screen.getByText("+3 more schedules")).toBeInTheDocument();
-    });
-  });
-
-  it("expands hidden schedules on +N more click and collapses on Show less", async () => {
-    const many = Array.from({ length: 7 }, (_, i) => {
-      return {
-        scheduleId: `sch-${i}`,
-        scheduleName: `schedule-${i}`,
-        scheduleDescription: null,
-        credits: 10 * (i + 1),
-        tokens: 1000 * (i + 1),
-      };
-    });
-    mockInsightsAPI([sampleDay(day1Ago, { schedules: many })]);
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    await waitFor(() => {
-      expect(screen.getByText("+3 more schedules")).toBeInTheDocument();
-    });
-    // schedule-6 (the 7th) is hidden behind the +N row
-    expect(screen.queryByText("schedule-6")).not.toBeInTheDocument();
-
-    click(screen.getByText("+3 more schedules"));
-
+    // All 7 schedules visible, no overflow row
     await waitFor(() => {
       expect(screen.getByText("schedule-6")).toBeInTheDocument();
     });
-    expect(screen.getByText("Show less")).toBeInTheDocument();
-
-    click(screen.getByText("Show less"));
-
-    await waitFor(() => {
-      expect(screen.queryByText("schedule-6")).not.toBeInTheDocument();
-    });
+    expect(screen.getByText("schedule-0")).toBeInTheDocument();
+    expect(screen.queryByText(/more schedules/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Show less")).not.toBeInTheDocument();
   });
 
   it("renders schedule rows as links to the schedule detail page", async () => {

@@ -38,10 +38,6 @@ import {
   setInsightsHoveredAgent$,
   expandedAllowedDays$,
   toggleExpandedAllowed$,
-  expandedScheduleDays$,
-  toggleExpandedScheduleDay$,
-  expandedChatDays$,
-  toggleExpandedChatDay$,
   insightsActiveTab$,
   setInsightsActiveTab$,
   type DayInsight,
@@ -1009,17 +1005,8 @@ function formatCardValue(n: number): string {
   return n.toLocaleString();
 }
 
-function DaySchedulesCard({
-  dayDate,
-  schedules,
-}: {
-  dayDate: string;
-  schedules: DaySchedule[];
-}) {
+function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
   const { accent } = getCardPalette(2);
-  const expandedDays = useGet(expandedScheduleDays$);
-  const toggleExpanded = useSet(toggleExpandedScheduleDay$);
-  const showAll = expandedDays.has(dayDate);
 
   if (schedules.length === 0) {
     return null;
@@ -1028,8 +1015,6 @@ function DaySchedulesCard({
   const totalCredits = schedules.reduce((s, r) => {
     return s + r.credits;
   }, 0);
-  const visible = showAll ? schedules : schedules.slice(0, 4);
-  const overflow = schedules.length - visible.length;
   const maxValue = Math.max(
     1,
     ...schedules.map((s) => {
@@ -1054,7 +1039,7 @@ function DaySchedulesCard({
       </p>
       <TooltipProvider delayDuration={300}>
         <ul className="flex flex-col gap-2.5 mt-4">
-          {visible.map((row) => {
+          {schedules.map((row) => {
             const fullName =
               row.scheduleDescription?.trim() || row.scheduleName;
             const pct = (row.credits / maxValue) * 100;
@@ -1097,21 +1082,6 @@ function DaySchedulesCard({
               </li>
             );
           })}
-          {(overflow > 0 || showAll) && (
-            <li>
-              <button
-                type="button"
-                onClick={() => {
-                  toggleExpanded(dayDate);
-                }}
-                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
-              >
-                {showAll
-                  ? "Show less"
-                  : `+${overflow} more ${overflow === 1 ? "schedule" : "schedules"}`}
-              </button>
-            </li>
-          )}
         </ul>
       </TooltipProvider>
     </section>
@@ -1122,17 +1092,8 @@ function DaySchedulesCard({
 // Per-day Chats card
 // ---------------------------------------------------------------------------
 
-function DayChatsCard({
-  dayDate,
-  chats,
-}: {
-  dayDate: string;
-  chats: DayChat[];
-}) {
+function DayChatsCard({ chats }: { chats: DayChat[] }) {
   const { accent } = getCardPalette(5);
-  const expandedDays = useGet(expandedChatDays$);
-  const toggleExpanded = useSet(toggleExpandedChatDay$);
-  const showAll = expandedDays.has(dayDate);
 
   if (chats.length === 0) {
     return null;
@@ -1141,8 +1102,6 @@ function DayChatsCard({
   const totalCredits = chats.reduce((s, r) => {
     return s + r.credits;
   }, 0);
-  const visible = showAll ? chats : chats.slice(0, 4);
-  const overflow = chats.length - visible.length;
   const maxValue = Math.max(
     1,
     ...chats.map((c) => {
@@ -1166,7 +1125,7 @@ function DayChatsCard({
       </p>
       <TooltipProvider delayDuration={300}>
         <ul className="flex flex-col gap-2.5 mt-4">
-          {visible.map((row) => {
+          {chats.map((row) => {
             const fullTitle = row.threadTitle ?? "(untitled)";
             const pct = (row.credits / maxValue) * 100;
             return (
@@ -1208,21 +1167,6 @@ function DayChatsCard({
               </li>
             );
           })}
-          {(overflow > 0 || showAll) && (
-            <li>
-              <button
-                type="button"
-                onClick={() => {
-                  toggleExpanded(dayDate);
-                }}
-                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
-              >
-                {showAll
-                  ? "Show less"
-                  : `+${overflow} more ${overflow === 1 ? "chat" : "chats"}`}
-              </button>
-            </li>
-          )}
         </ul>
       </TooltipProvider>
     </section>
@@ -1276,8 +1220,8 @@ function DaySection({
           onHoverAgent={handleHoverAgent}
         />
         <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
-        <DaySchedulesCard dayDate={day.date} schedules={day.schedules} />
-        <DayChatsCard dayDate={day.date} chats={day.chats} />
+        <DaySchedulesCard schedules={day.schedules} />
+        <DayChatsCard chats={day.chats} />
         <PermissionsAllowedCard
           day={day}
           colorIndex={5}
@@ -1367,13 +1311,9 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
               setActiveTab(v as InsightsTab);
             }}
           >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger value="daily" className="px-3 text-xs">
-                Daily breakdown
-              </TabsTrigger>
-              <TabsTrigger value="time-range" className="px-3 text-xs">
-                Time range
-              </TabsTrigger>
+            <TabsList>
+              <TabsTrigger value="daily">Daily breakdown</TabsTrigger>
+              <TabsTrigger value="time-range">Time range</TabsTrigger>
             </TabsList>
           </Tabs>
         )}
