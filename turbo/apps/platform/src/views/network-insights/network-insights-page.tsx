@@ -15,6 +15,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from "@vm0/ui";
 import {
   networkInsightsData$,
@@ -32,7 +35,12 @@ import {
   toggleExpandedAllowed$,
   dayExpansion$,
   setDayExpansion$,
+  insightsActiveTab$,
+  setInsightsActiveTab$,
   type DayInsight,
+  type DaySchedule,
+  type DayChat,
+  type InsightsTab,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
 import { UsageInsightView } from "../usage-page/components/usage-insight-view.tsx";
@@ -981,6 +989,159 @@ function formatDate(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Per-day Schedules card
+// ---------------------------------------------------------------------------
+
+function formatCardValue(n: number): string {
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(1)}M`;
+  }
+  if (n >= 1000) {
+    return `${(n / 1000).toFixed(1)}K`;
+  }
+  return n.toLocaleString();
+}
+
+function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
+  const { accent } = getCardPalette(2);
+
+  if (schedules.length === 0) {
+    return null;
+  }
+
+  const visible = schedules.slice(0, 4);
+  const overflow = schedules.slice(4);
+  const overflowCredits = overflow.reduce((s, r) => {
+    return s + r.credits;
+  }, 0);
+  const maxValue = Math.max(
+    1,
+    ...schedules.map((s) => {
+      return s.credits;
+    }),
+  );
+
+  return (
+    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid mb-3">
+      <p
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        style={{ color: accent }}
+      >
+        Schedules
+      </p>
+      <p className="text-5xl font-black leading-none tabular-nums font-serif">
+        {schedules.length}
+      </p>
+      <ul className="flex flex-col gap-2.5 mt-4">
+        {visible.map((row) => {
+          const fullName = row.scheduleDescription?.trim() || row.scheduleName;
+          const pct = (row.credits / maxValue) * 100;
+          return (
+            <li
+              key={row.scheduleId}
+              className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3"
+            >
+              <span className="text-sm font-medium truncate">{fullName}</span>
+              <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${pct}%`, backgroundColor: accent }}
+                />
+              </div>
+              <span className="text-xs tabular-nums opacity-70 text-right">
+                {formatCardValue(row.credits)}
+              </span>
+            </li>
+          );
+        })}
+        {overflow.length > 0 && (
+          <li className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3">
+            <span className="text-sm text-muted-foreground truncate col-span-2">
+              +{overflow.length} more{" "}
+              {overflow.length === 1 ? "schedule" : "schedules"}
+            </span>
+            <span className="text-xs tabular-nums text-muted-foreground text-right">
+              {formatCardValue(overflowCredits)}
+            </span>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-day Chats card
+// ---------------------------------------------------------------------------
+
+function DayChatsCard({ chats }: { chats: DayChat[] }) {
+  const { accent } = getCardPalette(5);
+
+  if (chats.length === 0) {
+    return null;
+  }
+
+  const visible = chats.slice(0, 4);
+  const overflow = chats.slice(4);
+  const overflowCredits = overflow.reduce((s, r) => {
+    return s + r.credits;
+  }, 0);
+  const maxValue = Math.max(
+    1,
+    ...chats.map((c) => {
+      return c.credits;
+    }),
+  );
+
+  return (
+    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid mb-3">
+      <p
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        style={{ color: accent }}
+      >
+        Chats
+      </p>
+      <p className="text-5xl font-black leading-none tabular-nums font-serif">
+        {chats.length}
+      </p>
+      <ul className="flex flex-col gap-2.5 mt-4">
+        {visible.map((row) => {
+          const fullTitle = row.threadTitle ?? "(untitled)";
+          const pct = (row.credits / maxValue) * 100;
+          return (
+            <li
+              key={row.threadId}
+              className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3"
+            >
+              <span className="text-sm font-medium truncate">{fullTitle}</span>
+              <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${pct}%`, backgroundColor: accent }}
+                />
+              </div>
+              <span className="text-xs tabular-nums opacity-70 text-right">
+                {formatCardValue(row.credits)}
+              </span>
+            </li>
+          );
+        })}
+        {overflow.length > 0 && (
+          <li className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3">
+            <span className="text-sm text-muted-foreground truncate col-span-2">
+              +{overflow.length} more {overflow.length === 1 ? "chat" : "chats"}
+            </span>
+            <span className="text-xs tabular-nums text-muted-foreground text-right">
+              {formatCardValue(overflowCredits)}
+            </span>
+          </li>
+        )}
+      </ul>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Day section — masonry of cards (rendered inside DayDigestRow when expanded)
 // ---------------------------------------------------------------------------
 
@@ -1023,6 +1184,8 @@ function DaySection({
         onHoverAgent={handleHoverAgent}
       />
       <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
+      <DaySchedulesCard schedules={day.schedules} />
+      <DayChatsCard chats={day.chats} />
       <PermissionsAllowedCard
         day={day}
         colorIndex={5}
@@ -1141,6 +1304,8 @@ function formatAbsoluteTime(iso: string): string {
 function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
+  const activeTab = useGet(insightsActiveTab$);
+  const setActiveTab = useSet(setInsightsActiveTab$);
   const prefsLoadable = useLastLoadable(userPreferences$);
   const adminLoadable = useLastLoadable(isOrgAdmin$);
   const userLoadable = useLastLoadable(user$);
@@ -1189,7 +1354,23 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
           )}
         </div>
 
-        {data.days.length > 0 && <UsageInsightView />}
+        {data.days.length > 0 && (
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => {
+              setActiveTab(v as InsightsTab);
+            }}
+          >
+            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+              <TabsTrigger value="daily" className="px-3 text-xs">
+                Daily breakdown
+              </TabsTrigger>
+              <TabsTrigger value="time-range" className="px-3 text-xs">
+                Time range
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
@@ -1204,6 +1385,8 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
                 : "No activity in this time range."}
             </p>
           </div>
+        ) : activeTab === "time-range" ? (
+          <UsageInsightView />
         ) : (
           filtered.map((day, idx) => {
             return (

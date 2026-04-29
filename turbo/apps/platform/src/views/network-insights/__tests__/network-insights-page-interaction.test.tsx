@@ -108,6 +108,8 @@ function sampleDay(
         agentNames: ["Beta Bot"],
       },
     ],
+    schedules: [],
+    chats: [],
     ...overrides,
   };
 }
@@ -849,7 +851,7 @@ describe("network insights page - allowed card layout", () => {
 // ---------------------------------------------------------------------------
 
 describe("network insights page - embedded usage panels", () => {
-  it("renders the Usage chart and tables alongside the per-day cards", async () => {
+  it("renders the Usage chart and tables when the Time range tab is active", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -858,6 +860,12 @@ describe("network insights page - embedded usage panels", () => {
     );
 
     detachedSetupPage({ context, path: "/insights" });
+
+    // Default tab is daily breakdown — switch to Time range to expose Usage view
+    await waitFor(() => {
+      expect(screen.getByText("Time range")).toBeInTheDocument();
+    });
+    click(screen.getByText("Time range"));
 
     await waitFor(() => {
       expect(
@@ -883,6 +891,8 @@ describe("network insights page - embedded usage panels", () => {
         screen.getByText("Run an agent to see insights here."),
       ).toBeInTheDocument();
     });
+    // Tabs are not shown in the empty state, so Time range cannot be reached
+    expect(screen.queryByText("Time range")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: "Credits totals" }),
     ).not.toBeInTheDocument();
@@ -1046,5 +1056,145 @@ describe("network insights page - daily diary", () => {
       expect(screen.getByText("Yesterday")).toBeInTheDocument();
     });
     expect(screen.queryByText(/\d+ blocked$/)).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tabs — daily breakdown vs. time-range
+// ---------------------------------------------------------------------------
+
+describe("network insights page - tabs", () => {
+  it("defaults to the daily breakdown tab", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Daily breakdown")).toBeInTheDocument();
+    });
+    // Newest day's masonry is visible under daily tab
+    expect(screen.getByText("Allowed")).toBeInTheDocument();
+  });
+
+  it("switches to time range and hides the per-day diary", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Time range")).toBeInTheDocument();
+    });
+    click(screen.getByText("Time range"));
+
+    // Daily masonry artifact gone; time-range view's totals region appears.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "Credits totals" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Allowed")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-day Schedules / Chats cards
+// ---------------------------------------------------------------------------
+
+describe("network insights page - per-day schedules and chats", () => {
+  it("renders Schedules card inside the day masonry", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        schedules: [
+          {
+            scheduleId: "sch-1",
+            scheduleName: "morning-brief",
+            scheduleDescription: "Morning summary",
+            credits: 80,
+            tokens: 8000,
+          },
+          {
+            scheduleId: "sch-2",
+            scheduleName: "weekly-report",
+            scheduleDescription: null,
+            credits: 40,
+            tokens: 4000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    // Card heading + the two schedule names visible inside the expanded day
+    await waitFor(() => {
+      expect(screen.getByText("Schedules")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Morning summary")).toBeInTheDocument();
+    expect(screen.getByText("weekly-report")).toBeInTheDocument();
+  });
+
+  it("renders Chats card inside the day masonry", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        chats: [
+          {
+            threadId: "t-1",
+            threadTitle: "Refactor billing",
+            credits: 60,
+            tokens: 6000,
+          },
+          {
+            threadId: "t-2",
+            threadTitle: null,
+            credits: 30,
+            tokens: 3000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Chats")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Refactor billing")).toBeInTheDocument();
+    expect(screen.getByText("(untitled)")).toBeInTheDocument();
+  });
+
+  it("hides the Schedules card when no schedules fired that day", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Allowed")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
+    expect(screen.queryByText("Chats")).not.toBeInTheDocument();
+  });
+
+  it("collapses extra schedules into a +N more row", async () => {
+    const many = Array.from({ length: 7 }, (_, i) => {
+      return {
+        scheduleId: `sch-${i}`,
+        scheduleName: `schedule-${i}`,
+        scheduleDescription: null,
+        credits: 10 * (i + 1),
+        tokens: 1000 * (i + 1),
+      };
+    });
+    mockInsightsAPI([sampleDay(day1Ago, { schedules: many })]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("+3 more schedules")).toBeInTheDocument();
+    });
   });
 });

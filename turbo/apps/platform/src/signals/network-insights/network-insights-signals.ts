@@ -46,6 +46,21 @@ export interface MemberCredits {
   agentCredits?: Record<string, number>;
 }
 
+export interface DaySchedule {
+  scheduleId: string;
+  scheduleName: string;
+  scheduleDescription: string | null;
+  credits: number;
+  tokens: number;
+}
+
+export interface DayChat {
+  threadId: string;
+  threadTitle: string | null;
+  credits: number;
+  tokens: number;
+}
+
 /** A single day's insight snapshot */
 export interface DayInsight {
   date: string; // ISO date, e.g. "2026-04-03"
@@ -56,6 +71,8 @@ export interface DayInsight {
   topTask: TopTask | null;
   services: ServiceUsage[];
   permissions: PermissionEntry[];
+  schedules: DaySchedule[];
+  chats: DayChat[];
 }
 
 export interface NetworkInsightsData {
@@ -170,6 +187,22 @@ export const reloadInsights$ = command(({ set }) => {
   set(internalReloadInsights$, (x) => {
     return x + 1;
   });
+});
+
+// ---------------------------------------------------------------------------
+// Active tab: daily diary vs. period-wide time-range view
+// ---------------------------------------------------------------------------
+
+export type InsightsTab = "daily" | "time-range";
+
+const internalActiveTab$ = state<InsightsTab>("daily");
+
+export const insightsActiveTab$ = computed((get) => {
+  return get(internalActiveTab$);
+});
+
+export const setInsightsActiveTab$ = command(({ set }, tab: InsightsTab) => {
+  set(internalActiveTab$, tab);
 });
 
 // ---------------------------------------------------------------------------
