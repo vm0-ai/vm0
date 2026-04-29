@@ -81,15 +81,12 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when Gumroad returns an error in response body", async () => {
-      const { handler } = http.post(
-        "https://gumroad.com/oauth/token",
-        () => {
-          return HttpResponse.json({
-            error: "invalid_grant",
-            error_description: "Authorization code expired",
-          });
-        },
-      );
+      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: "Authorization code expired",
+        });
+      });
       server.use(handler);
 
       await expect(
@@ -103,12 +100,9 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when no access token in response", async () => {
-      const { handler } = http.post(
-        "https://gumroad.com/oauth/token",
-        () => {
-          return HttpResponse.json({});
-        },
-      );
+      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+        return HttpResponse.json({});
+      });
       server.use(handler);
 
       await expect(
@@ -122,12 +116,9 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when token endpoint returns HTTP error", async () => {
-      const { handler } = http.post(
-        "https://gumroad.com/oauth/token",
-        () => {
-          return new HttpResponse("Internal Server Error", { status: 500 });
-        },
-      );
+      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+        return new HttpResponse("Internal Server Error", { status: 500 });
+      });
       server.use(handler);
 
       await expect(
@@ -143,15 +134,12 @@ describe("connector/providers/gumroad", () => {
 
   describe("refreshGumroadToken", () => {
     it("refreshes access token successfully", async () => {
-      const { handler } = http.post(
-        "https://gumroad.com/oauth/token",
-        () => {
-          return HttpResponse.json({
-            access_token: "new-gumroad-token",
-            refresh_token: "new-refresh-token",
-          });
-        },
-      );
+      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+        return HttpResponse.json({
+          access_token: "new-gumroad-token",
+          refresh_token: "new-refresh-token",
+        });
+      });
       server.use(handler);
 
       const result = await refreshGumroadToken(
@@ -165,15 +153,12 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when refresh returns an error", async () => {
-      const { handler } = http.post(
-        "https://gumroad.com/oauth/token",
-        () => {
-          return HttpResponse.json({
-            error: "invalid_grant",
-            error_description: "Refresh token revoked",
-          });
-        },
-      );
+      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+        return HttpResponse.json({
+          error: "invalid_grant",
+          error_description: "Refresh token revoked",
+        });
+      });
       server.use(handler);
 
       await expect(
@@ -182,12 +167,9 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when no access token in refresh response", async () => {
-      const { handler } = http.post(
-        "https://gumroad.com/oauth/token",
-        () => {
-          return HttpResponse.json({});
-        },
-      );
+      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+        return HttpResponse.json({});
+      });
       server.use(handler);
 
       await expect(
@@ -196,12 +178,9 @@ describe("connector/providers/gumroad", () => {
     });
 
     it("throws when refresh endpoint returns HTTP error", async () => {
-      const { handler } = http.post(
-        "https://gumroad.com/oauth/token",
-        () => {
-          return new HttpResponse("Bad Request", { status: 400 });
-        },
-      );
+      const { handler } = http.post("https://gumroad.com/oauth/token", () => {
+        return new HttpResponse("Bad Request", { status: 400 });
+      });
       server.use(handler);
 
       await expect(

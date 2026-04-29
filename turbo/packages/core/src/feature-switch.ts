@@ -275,6 +275,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
+  [FeatureSwitchKey.GumroadConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable the Gumroad creator commerce connector (api-token + OAuth).",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {
