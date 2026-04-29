@@ -627,7 +627,7 @@ function ModelSelectDropdown({
           />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="max-h-[280px]">
+      <SelectContent className="max-h-[280px] min-w-[260px]">
         {showUseDefault && (
           <InheritToggleRow
             effectiveDefault={effectiveDefault}
