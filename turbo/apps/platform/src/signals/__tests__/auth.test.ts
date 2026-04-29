@@ -245,6 +245,10 @@ describe("watchOrgSwitch$ JWT rotation on org change", () => {
       withoutRender: true,
     });
 
+    // Clear any getToken calls made during setup by prior tests in this
+    // describe block (mocks are not auto-cleared between tests).
+    mockedClerk.sessionGetToken.mockClear();
+
     // Simulate Clerk transiently clearing clerk.organization to undefined
     // during a background token refresh (the observed mobile crash path).
     mockOrganization({
@@ -253,8 +257,9 @@ describe("watchOrgSwitch$ JWT rotation on org change", () => {
     });
     fireClerkListeners();
 
-    // Give microtasks time to settle — reload must NOT have fired.
-    await new Promise<void>((r) => setTimeout(r, 50));
+    // The guard exits synchronously before calling getToken; flush
+    // microtasks to let any queued promise chains settle.
+    await Promise.resolve();
     expect(mockedClerk.sessionGetToken).not.toHaveBeenCalled();
     expect(window.location.pathname).toBe("/agents");
   });
