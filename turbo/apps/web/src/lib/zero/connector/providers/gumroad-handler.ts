@@ -1,19 +1,41 @@
 import { type ProviderHandler } from "../provider-types";
+import {
+  buildGumroadAuthorizationUrl,
+  exchangeGumroadCode,
+  getGumroadSecretName,
+  refreshGumroadToken,
+} from "./gumroad";
 
 export const gumroadHandler: ProviderHandler = {
-  buildAuthUrl() {
-    throw new Error("Gumroad does not support OAuth — use API token auth");
+  buildAuthUrl: buildGumroadAuthorizationUrl,
+  async exchangeCode(clientId, clientSecret, code, redirectUri) {
+    const result = await exchangeGumroadCode(
+      clientId,
+      clientSecret,
+      code,
+      redirectUri,
+    );
+    return {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresIn: result.expiresIn,
+      scopes: result.scopes,
+      userInfo: {
+        id: result.userInfo.id,
+        username: result.userInfo.username,
+        email: result.userInfo.email,
+      },
+    };
   },
-  exchangeCode() {
-    throw new Error("Gumroad does not support OAuth — use API token auth");
+  getClientId: (e) => {
+    return e.GUMROAD_OAUTH_CLIENT_ID;
   },
-  getClientId: () => {
-    return undefined;
+  getClientSecret: (e) => {
+    return e.GUMROAD_OAUTH_CLIENT_SECRET;
   },
-  getClientSecret: () => {
-    return undefined;
+  getSecretName: getGumroadSecretName,
+  getRefreshSecretName: () => {
+    return "GUMROAD_REFRESH_TOKEN";
   },
-  getSecretName: () => {
-    return "GUMROAD_TOKEN";
-  },
+  refreshToken: refreshGumroadToken,
 };

@@ -50,4 +50,5 @@ export enum FeatureSwitchKey {
 
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
+  GumroadConnector = "gumroadConnector",
 }
