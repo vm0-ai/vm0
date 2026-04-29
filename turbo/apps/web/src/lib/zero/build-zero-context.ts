@@ -177,6 +177,7 @@ async function resolveSecretsAndEnvironment(
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
+  resolvedFramework: string;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
   selectedModel: string | undefined;
   connectorPermissionConfigs: ExpandedFirewallConfig[];
@@ -329,6 +330,9 @@ async function resolveSecretsAndEnvironment(
     environment,
     secretConnectorMap,
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
+    // Provider-derived framework when resolution ran; otherwise the compose
+    // framework. Source-of-truth for downstream framework-aware logic.
+    resolvedFramework: modelProviderResult.framework ?? framework,
     modelProviderConfig,
     selectedModel: modelProviderResult.selectedModel,
     connectorPermissionConfigs,
@@ -348,6 +352,8 @@ interface BuildZeroContextResult {
   timings: BuildZeroContextTimings;
   /** The resolved model provider type, if provider resolution ran during context build. */
   resolvedModelProvider: ModelProviderType | undefined;
+  /** Provider-derived framework, source-of-truth for downstream. */
+  resolvedFramework: string;
   /** The logical model name selected by the user, for credit usage billing. */
   selectedModel: string | undefined;
 }
@@ -718,6 +724,7 @@ export async function buildZeroExecutionContext(
     environment,
     secretConnectorMap,
     resolvedModelProvider,
+    resolvedFramework,
     modelProviderConfig,
     selectedModel,
     connectorPermissionConfigs,
@@ -784,6 +791,7 @@ export async function buildZeroExecutionContext(
       resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
     },
     resolvedModelProvider,
+    resolvedFramework,
     selectedModel,
   };
 }
