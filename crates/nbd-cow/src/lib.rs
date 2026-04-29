@@ -29,8 +29,11 @@ pub mod pool;
 pub mod protocol;
 pub mod server;
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use error::Result;
@@ -69,6 +72,86 @@ pub struct KeptCow {
     pub cow_file: PathBuf,
     /// Persisted dirty bitmap sidecar path.
     pub bitmap_file: PathBuf,
+}
+
+struct PooledCowFinalizer<T: Send + 'static> {
+    handle: Option<JoinHandle<Result<T>>>,
+}
+
+impl<T: Send + 'static> PooledCowFinalizer<T> {
+    fn new(handle: JoinHandle<Result<T>>) -> Self {
+        Self {
+            handle: Some(handle),
+        }
+    }
+}
+
+impl<T: Send + 'static> Future for PooledCowFinalizer<T> {
+    type Output = Result<T>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let Some(handle) = this.handle.as_mut() else {
+            return Poll::Ready(Err(error::NbdCowError::Io(std::io::Error::other(
+                "pooled NBD COW finalizer polled after completion",
+            ))));
+        };
+
+        match Pin::new(handle).poll(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(result) => {
+                this.handle.take();
+                Poll::Ready(finish_finalizer_join(result))
+            }
+        }
+    }
+}
+
+impl<T: Send + 'static> Drop for PooledCowFinalizer<T> {
+    fn drop(&mut self) {
+        let Some(handle) = self.handle.take() else {
+            return;
+        };
+
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(observe_detached_finalizer(handle));
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "pooled NBD COW finalizer future dropped outside Tokio runtime; continuing without observer"
+                );
+            }
+        }
+    }
+}
+
+fn finish_finalizer_join<T>(
+    result: std::result::Result<Result<T>, tokio::task::JoinError>,
+) -> Result<T> {
+    match result {
+        Ok(result) => result,
+        Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+        Err(e) => Err(error::NbdCowError::Io(std::io::Error::other(format!(
+            "pooled NBD COW finalizer task was cancelled: {e}"
+        )))),
+    }
+}
+
+async fn observe_detached_finalizer<T: Send + 'static>(handle: JoinHandle<Result<T>>) {
+    match handle.await {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "detached pooled NBD COW finalizer failed");
+        }
+        Err(e) if e.is_panic() => {
+            tracing::error!(error = %e, "detached pooled NBD COW finalizer panicked");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "detached pooled NBD COW finalizer task was cancelled");
+        }
+    }
 }
 
 /// Result of checking NBD device ownership via sysfs PID.
@@ -762,10 +845,13 @@ impl PooledNbdCowDevice {
 
     /// Mark the device as abandoned and retire the pool lease as uncertain.
     pub fn abandon(self) -> impl std::future::Future<Output = ()> + Send + 'static {
-        let handle = tokio::spawn(async move { self.abandon_inner().await });
+        let finalizer = Self::run_finalizer(async move {
+            self.abandon_inner().await;
+            Ok(())
+        });
         async move {
-            if let Err(e) = handle.await {
-                tracing::warn!(error = %e, "pooled NBD COW abandon task failed");
+            if let Err(e) = finalizer.await {
+                tracing::warn!(error = %e, "pooled NBD COW abandon finalizer failed");
             }
         }
     }
@@ -782,21 +868,11 @@ impl PooledNbdCowDevice {
 
     fn run_finalizer<T>(
         future: impl std::future::Future<Output = Result<T>> + Send + 'static,
-    ) -> impl std::future::Future<Output = Result<T>> + Send + 'static
+    ) -> PooledCowFinalizer<T>
     where
         T: Send + 'static,
     {
-        let handle = tokio::spawn(future);
-        async move { Self::await_finalizer(handle).await }
-    }
-
-    async fn await_finalizer<T>(handle: JoinHandle<Result<T>>) -> Result<T> {
-        match handle.await {
-            Ok(result) => result,
-            Err(e) => Err(error::NbdCowError::Io(std::io::Error::other(format!(
-                "pooled NBD COW finalizer task failed: {e}"
-            )))),
-        }
+        PooledCowFinalizer::new(tokio::spawn(future))
     }
 
     async fn release_clean(pool: &pool::DevicePoolHandle, lease: &mut LeaseGuard) {
@@ -884,6 +960,18 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "pooled finalizer panic")]
+    async fn pooled_finalizer_propagates_panic_when_awaited() {
+        let finalizer = PooledNbdCowDevice::run_finalizer(async move {
+            panic!("pooled finalizer panic");
+            #[allow(unreachable_code)]
+            Ok::<(), error::NbdCowError>(())
+        });
+
+        let _ = finalizer.await;
     }
 
     #[tokio::test]
