@@ -887,6 +887,7 @@ PY
             "auth.py",
             "body_utils.py",
             "matching.py",
+            "response_streaming.py",
             "url_utils.py",
             "logging_utils.py",
             "usage/__init__.py",

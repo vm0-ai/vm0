@@ -2,8 +2,8 @@
 
 Exports:
 
-- ``STREAM_BUFFER_LIMIT`` — 64 KB cap used by the streaming buffer in
-  ``mitm_addon.responseheaders`` and by the decompression safety cap.
+- ``STREAM_BUFFER_LIMIT`` — 64 KB cap used by the responseheaders streaming
+  buffer and by the decompression safety cap.
 - Streaming / one-shot decompression for gzip, deflate, br, zstd.
 - UTF-8-safe truncation, text/binary content detection and encoding.
 - Header redaction for sensitive names (auth, token, cookie, …).

@@ -2759,6 +2759,30 @@ class TestErrorHandler:
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_provider_usage" not in flow.metadata
 
+    def test_error_without_run_id_releases_streaming_state(self, real_flow, mitm_ctx):
+        """Early-returning error flows should still drop response parser closures."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(b'{"data":[{"id":"1"}')
+        assert "x_json_response_finish" in flow.metadata
+        flow.error = Error("connection reset")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
+
     def test_error_does_not_bill_partial_x_json_response(
         self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
     ):

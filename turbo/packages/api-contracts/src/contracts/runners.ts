@@ -70,8 +70,11 @@ export const runnersPollContract = c.router({
  * Storage entry in manifest
  */
 export const storageEntrySchema = z.object({
+  name: z.string(),
   mountPath: z.string(),
-  archiveUrl: z.string().nullable(),
+  vasStorageName: z.string(),
+  vasVersionId: z.string(),
+  archiveUrl: z.string(),
 });
 
 /**
@@ -79,9 +82,11 @@ export const storageEntrySchema = z.object({
  */
 export const artifactEntrySchema = z.object({
   mountPath: z.string(),
-  archiveUrl: z.string().nullable(),
   vasStorageName: z.string(),
+  vasStorageId: z.string(),
   vasVersionId: z.string(),
+  archiveUrl: z.string(),
+  manifestUrl: z.string().optional(),
 });
 
 /**

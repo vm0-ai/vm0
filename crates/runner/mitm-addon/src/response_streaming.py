@@ -1,0 +1,182 @@
+"""Response streaming setup and parser state for the mitmproxy addon."""
+
+import urllib.parse
+
+from mitmproxy import http
+
+import body_utils
+import usage
+from logging_utils import log_proxy_entry
+
+# HTTP 2xx success range (RFC 9110).  Also defined in
+# ``usage.providers.connectors.x`` for local response-phase classification.
+_HTTP_STATUS_OK_MIN = 200
+_HTTP_STATUS_REDIRECT_MIN = 300
+
+_MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
+_MODEL_JSON_USAGE_FINALIZED = "_model_json_usage_finalized"
+_RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
+_X_JSON_RESPONSE_FINISH = "x_json_response_finish"
+
+
+def configure_response_stream(flow: http.HTTPFlow) -> None:
+    """
+    Enable response streaming with body buffering.
+
+    Uses a callback to stream response data to the client immediately
+    while accumulating a copy in memory (up to ``STREAM_BUFFER_LIMIT``).
+    Once the limit is exceeded, buffering stops but streaming continues
+    uninterrupted.  The buffered body is available in the ``response()``
+    hook via ``flow.metadata["stream_buffer"]``.
+    """
+    if not flow.response:
+        return
+
+    buf = bytearray()
+    state = {"truncated": False, "total_bytes": 0}
+
+    # Set up usage extraction for billable response classes that need body
+    # inspection. The forensic stream_buffer remains capped; billing parsers
+    # consume chunks separately so a large response cannot grow that buffer.
+    sse_parser = None
+    sse_decompressor = None
+    model_json_parser = None
+    model_json_decompressor = None
+    ndjson_parser = None
+    ndjson_decompressor = None
+    x_json_parser = None
+    x_json_decompressor = None
+    firewall_name = flow.metadata.get("firewall_name", "")
+    is_model_provider = firewall_name.startswith("model-provider:")
+    # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
+    # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
+    # and the incremental response parsers used for billing payload extraction.
+    is_billable_flow = flow.metadata.get("firewall_billable", False)
+    is_billable_model_provider = is_model_provider and is_billable_flow
+    # X-specific NDJSON stream classification — tied to the x firewall itself,
+    # not to billing.  Kept separate so a future non-x billable connector
+    # doesn't accidentally inherit X stream parsing.
+    is_x_flow = firewall_name == "x"
+
+    # Classify X NDJSON streams early so we can register an incremental parser
+    # and avoid buffering the (potentially multi-GB) stream body.  Only a
+    # cheap path-only check happens here — full request metadata is parsed
+    # later in response() by report_connector_usage.
+    #
+    # Gated on 2xx status so error responses (4xx/5xx on stream endpoints
+    # return JSON, not NDJSON) skip the billing parser and only use the capped
+    # forensic stream buffer.  report_connector_usage already skips non-2xx
+    # responses so no billing record is affected either way.
+    #
+    # Reads ``original_url`` with no fallback — kept consistent with
+    # :func:`usage.x._parse_request_metadata` so the log entry's
+    # ``is_stream`` field cannot diverge from the parser registration
+    # decision.  For any x firewall flow, ``request()`` has already
+    # populated ``original_url`` before ``responseheaders`` fires.
+    is_x_stream = False
+    if is_x_flow and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN:
+        stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
+        is_x_stream = usage.x.is_stream_path(stream_path)
+
+    if is_billable_model_provider:
+        content_type = flow.response.headers.get("content-type", "")
+        if "text/event-stream" in content_type:
+            parser_fn, usage_dict = usage.create_sse_usage_extractor()
+            sse_parser = parser_fn
+            flow.metadata["model_provider_usage"] = usage_dict
+            sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+        else:
+            extractor = usage.create_model_json_usage_extractor()
+            model_json_parser = extractor.feed
+            flow.metadata[_MODEL_JSON_USAGE_FINISH] = extractor.finish
+            model_json_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+    elif is_x_stream:
+        parser_fn, ndjson_state = usage.x.create_ndjson_extractor()
+        ndjson_parser = parser_fn
+        # Deliberately NOT "model_provider_usage" — that key would route through
+        # report_model_provider_usage and trigger the model-provider webhook.
+        # x_ndjson_state is only consumed by report_connector_usage.
+        flow.metadata["x_ndjson_state"] = ndjson_state
+        ndjson_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+    elif (
+        is_x_flow
+        and is_billable_flow
+        and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN
+    ):
+        extractor = usage.x.create_json_response_extractor()
+        x_json_parser = extractor.feed
+        flow.metadata[_X_JSON_RESPONSE_FINISH] = extractor.finish
+        x_json_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
+
+    # Buffer cap policy:
+    # - stream_buffer is only for forensic logging / capture and is always
+    #   capped at STREAM_BUFFER_LIMIT.
+    # - Billing extraction uses the incremental parsers above.
+    buf_limit = body_utils.STREAM_BUFFER_LIMIT
+
+    def stream_and_buffer(chunk: bytes) -> bytes:
+        state["total_bytes"] += len(chunk)
+        if not state["truncated"]:
+            remaining = buf_limit - len(buf)
+            if len(chunk) <= remaining:
+                buf.extend(chunk)
+            else:
+                buf.extend(chunk[:remaining])
+                state["truncated"] = True
+        if sse_parser is not None:
+            plaintext = sse_decompressor(chunk) if sse_decompressor else chunk
+            sse_parser(plaintext)
+        elif model_json_parser is not None:
+            plaintext = model_json_decompressor(chunk) if model_json_decompressor else chunk
+            model_json_parser(plaintext)
+        elif ndjson_parser is not None:
+            plaintext = ndjson_decompressor(chunk) if ndjson_decompressor else chunk
+            ndjson_parser(plaintext)
+        elif x_json_parser is not None:
+            plaintext = x_json_decompressor(chunk) if x_json_decompressor else chunk
+            x_json_parser(plaintext)
+        return chunk
+
+    flow.response.stream = stream_and_buffer
+    flow.metadata["stream_buffer"] = buf
+    flow.metadata["stream_buffer_state"] = state
+    flow.metadata[_RESPONSE_STREAM_CALLBACK] = stream_and_buffer
+
+
+def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
+    finish = flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)
+    if finish is None:
+        return
+    flow.metadata[_MODEL_JSON_USAGE_FINALIZED] = True
+    usage_result, error = finish()
+    if usage_result:
+        flow.metadata["model_provider_usage"] = usage_result
+        return
+    if error:
+        log_proxy_entry(
+            proxy_log_path,
+            "warn",
+            "Model provider JSON usage extraction failed",
+            type="usage_event",
+            error=error,
+        )
+
+
+def finalize_x_json_state(flow: http.HTTPFlow) -> None:
+    finish = flow.metadata.pop(_X_JSON_RESPONSE_FINISH, None)
+    if finish is None:
+        return
+    state, error = finish()
+    if error:
+        state["parse_error"] = error
+    flow.metadata["x_json_state"] = state
+
+
+def release_response_stream_state(flow: http.HTTPFlow) -> None:
+    stream_callback = flow.metadata.pop(_RESPONSE_STREAM_CALLBACK, None)
+    flow.metadata.pop("stream_buffer", None)
+    flow.metadata.pop("stream_buffer_state", None)
+    flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)
+    flow.metadata.pop(_X_JSON_RESPONSE_FINISH, None)
+    if stream_callback is not None and flow.response and flow.response.stream is stream_callback:
+        flow.response.stream = False

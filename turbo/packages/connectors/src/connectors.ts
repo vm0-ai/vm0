@@ -172,6 +172,7 @@ import { pandadoc } from "./connectors/pandadoc";
 import { greenhouse } from "./connectors/greenhouse";
 import { zoom } from "./connectors/zoom";
 import { groq } from "./connectors/groq";
+import { gumroad } from "./connectors/gumroad";
 import { langfuse } from "./connectors/langfuse";
 import { n8n } from "./connectors/n8n";
 import { wandb } from "./connectors/wandb";
@@ -532,6 +533,7 @@ const CONNECTOR_TYPES_DEF = {
   ...greenhouse,
   ...zoom,
   ...groq,
+  ...gumroad,
   ...langfuse,
   ...n8n,
   ...wandb,

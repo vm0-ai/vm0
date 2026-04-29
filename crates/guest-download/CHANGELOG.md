@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.5](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.4...guest-download-v0.20.5) (2026-04-29)
+
+
+### Refactoring
+
+* split runner storage manifest boundaries ([#11487](https://github.com/vm0-ai/vm0/issues/11487)) ([7bfc3f8](https://github.com/vm0-ai/vm0/commit/7bfc3f86717495cf2ed8d72c796fb1e3b6a98f30))
+
 ## [0.20.4](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.3...guest-download-v0.20.4) (2026-04-27)
 
 

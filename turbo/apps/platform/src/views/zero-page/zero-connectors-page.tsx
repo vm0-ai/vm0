@@ -111,10 +111,10 @@ function ConnectorCategoryMenu({
   }
 
   return (
-    <aside className="pointer-events-none absolute bottom-0 left-full top-[60px] ml-16 hidden w-44 xl:block">
+    <aside className="pointer-events-none absolute bottom-0 top-[60px] hidden w-44 min-[1184px]:left-[960px] min-[1184px]:block 2xl:left-full 2xl:ml-16">
       <nav
         aria-label="Connector categories"
-        className="group pointer-events-auto sticky top-[28vh] flex flex-col gap-3 pb-3 pl-5"
+        className="group pointer-events-auto sticky top-[28vh] flex max-h-[68vh] flex-col gap-3 overflow-y-auto pb-3 pl-5"
       >
         {groups.flatMap((group) => {
           if (group.kind === "group") {
@@ -723,15 +723,14 @@ export function ZeroConnectorsPage() {
     renderCard,
     search,
   });
-
   return (
     <div
       ref={scrollContainerRef}
       className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
     >
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
-        <div className="mx-auto max-w-[960px]">
-          <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="mx-auto w-full max-w-[960px] min-[1184px]:max-w-[1136px] 2xl:max-w-[960px]">
+          <div className="flex w-full max-w-[960px] flex-wrap items-end justify-between gap-4">
             <div className="min-w-0 hidden md:block">
               <h1 className="text-lg font-semibold tracking-tight text-foreground">
                 Connectors
@@ -761,7 +760,7 @@ export function ZeroConnectorsPage() {
       </header>
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
-        <div className="relative mx-auto w-full max-w-[960px]">
+        <div className="relative mx-auto w-full max-w-[960px] min-[1184px]:max-w-[1136px] 2xl:max-w-[960px]">
           {activeTab === "builtin" &&
             allTypesLoadable.state === "hasData" &&
             showConnectorCategories && (
@@ -771,7 +770,7 @@ export function ZeroConnectorsPage() {
               />
             )}
 
-          <div className="min-w-0 flex flex-col gap-6">
+          <div className="min-w-0 flex w-full max-w-[960px] flex-col gap-6">
             <div className="flex items-center justify-between">
               <Tabs
                 value={activeTab}

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.98.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.2...runner-rs-v0.98.3) (2026-04-29)
+
+
+### Refactoring
+
+* extract mitm response streaming state ([#11488](https://github.com/vm0-ai/vm0/issues/11488)) ([3e6a471](https://github.com/vm0-ai/vm0/commit/3e6a471ff4ce1c802b36e610e6e51a6a91ff8fe5))
+* split runner storage manifest boundaries ([#11487](https://github.com/vm0-ai/vm0/issues/11487)) ([7bfc3f8](https://github.com/vm0-ai/vm0/commit/7bfc3f86717495cf2ed8d72c796fb1e3b6a98f30))
+
 ## [0.98.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.1...runner-rs-v0.98.2) (2026-04-29)
 
 ## [0.98.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.0...runner-rs-v0.98.1) (2026-04-29)

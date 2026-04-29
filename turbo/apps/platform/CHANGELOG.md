@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.309.0](https://github.com/vm0-ai/vm0/compare/app-v0.308.0...app-v0.309.0) (2026-04-29)
+
+
+### Features
+
+* add gumroad connector (api-token + oauth) ([#11470](https://github.com/vm0-ai/vm0/issues/11470)) ([e9039db](https://github.com/vm0-ai/vm0/commit/e9039db1f992be2520f54ecf07b1601dc2537d7b))
+
+
+### Bug Fixes
+
+* adapt connector category menu layout ([#11484](https://github.com/vm0-ai/vm0/issues/11484)) ([369daef](https://github.com/vm0-ai/vm0/commit/369daeff442a9c059a12110bb699115722bd8585))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.245.0
+
 ## [0.308.0](https://github.com/vm0-ai/vm0/compare/app-v0.307.0...app-v0.308.0) (2026-04-29)
 
 

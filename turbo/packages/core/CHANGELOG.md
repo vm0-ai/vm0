@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.245.0](https://github.com/vm0-ai/vm0/compare/core-v8.244.0...core-v8.245.0) (2026-04-29)
+
+
+### Features
+
+* add gumroad connector (api-token + oauth) ([#11470](https://github.com/vm0-ai/vm0/issues/11470)) ([e9039db](https://github.com/vm0-ai/vm0/commit/e9039db1f992be2520f54ecf07b1601dc2537d7b))
+
 ## [8.244.0](https://github.com/vm0-ai/vm0/compare/core-v8.243.0...core-v8.244.0) (2026-04-29)
 
 

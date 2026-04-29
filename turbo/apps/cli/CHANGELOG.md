@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.139.0](https://github.com/vm0-ai/vm0/compare/cli-v9.138.2...cli-v9.139.0) (2026-04-29)
+
+
+### Features
+
+* add web voice cli ([#11465](https://github.com/vm0-ai/vm0/issues/11465)) ([bcd8ff8](https://github.com/vm0-ai/vm0/commit/bcd8ff820e5621facaccc1b823ace3a582cb034b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.245.0
+
 ## [9.138.2](https://github.com/vm0-ai/vm0/compare/cli-v9.138.1...cli-v9.138.2) (2026-04-29)
 
 

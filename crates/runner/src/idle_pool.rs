@@ -23,8 +23,6 @@ pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
 /// Used to skip re-downloading unchanged storages on VM reuse.
 ///
 /// All comparisons use `(vas_storage_name, vas_version_id)` tuples.
-/// For regular storages without version fields, the entry is omitted
-/// from the map and will always be re-downloaded.
 #[derive(Clone, Debug, Default)]
 pub struct StorageFingerprints {
     /// mount_path → (vas_storage_name, vas_version_id) for regular storages.
@@ -37,9 +35,10 @@ impl StorageFingerprints {
     pub fn from_manifest(manifest: &StorageManifest) -> Self {
         let mut storages = HashMap::new();
         for s in &manifest.storages {
-            if let (Some(name), Some(ver)) = (&s.vas_storage_name, &s.vas_version_id) {
-                storages.insert(s.mount_path.clone(), (name.clone(), ver.clone()));
-            }
+            storages.insert(
+                s.mount_path.clone(),
+                (s.vas_storage_name.clone(), s.vas_version_id.clone()),
+            );
         }
         let mut artifacts = HashMap::new();
         for a in &manifest.artifacts {

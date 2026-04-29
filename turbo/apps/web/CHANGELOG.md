@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.319.0](https://github.com/vm0-ai/vm0/compare/web-v12.318.0...web-v12.319.0) (2026-04-29)
+
+
+### Features
+
+* add gumroad connector (api-token + oauth) ([#11470](https://github.com/vm0-ai/vm0/issues/11470)) ([e9039db](https://github.com/vm0-ai/vm0/commit/e9039db1f992be2520f54ecf07b1601dc2537d7b))
+* add web voice cli ([#11465](https://github.com/vm0-ai/vm0/issues/11465)) ([bcd8ff8](https://github.com/vm0-ai/vm0/commit/bcd8ff820e5621facaccc1b823ace3a582cb034b))
+
+
+### Bug Fixes
+
+* **api:** stop @sentry/node from emitting duplicate spans ([#11462](https://github.com/vm0-ai/vm0/issues/11462)) ([5fe6c4f](https://github.com/vm0-ai/vm0/commit/5fe6c4f61686f826a654932614e6f5942cf4f280))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.245.0
+
 ## [12.318.0](https://github.com/vm0-ai/vm0/compare/web-v12.317.0...web-v12.318.0) (2026-04-29)
 
 
