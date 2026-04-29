@@ -398,6 +398,88 @@ describe("POST /api/internal/callbacks/chat", () => {
       expect(resultMsg!.sequenceNumber).toBe(2);
     });
 
+    it("should persist codex item.completed agent_message in final sweep", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          sequenceNumber: 0,
+          eventType: "item.completed",
+          eventData: {
+            type: "item.completed",
+            item: {
+              id: "item_1",
+              type: "agent_message",
+              text: "Codex final sweep text",
+            },
+          },
+        },
+      ]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      expect(messages).toHaveLength(2);
+      const assistant = messages.find((m) => {
+        return m.role === "assistant" && m.sequenceNumber !== null;
+      });
+      expect(assistant).toBeDefined();
+      expect(assistant!.content).toBe("Codex final sweep text");
+      expect(assistant!.runId).toBe(runId);
+    });
+
+    it("should skip non-agent_message codex item.completed events in final sweep", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          sequenceNumber: 0,
+          eventType: "item.completed",
+          eventData: {
+            type: "item.completed",
+            item: {
+              id: "cmd_1",
+              type: "command_execution",
+              command: "ls",
+              exit_code: 0,
+              output: "README.md",
+            },
+          },
+        },
+      ]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const messages = await getTestChatMessagesByThread(threadId);
+      const assistantRows = messages.filter((m) => {
+        return m.role === "assistant";
+      });
+      expect(assistantRows).toHaveLength(0);
+    });
+
     it("should read result fallback sequence from eventData when needed", async () => {
       const { threadId, runId, secret } = await setupRunAndThread();
 

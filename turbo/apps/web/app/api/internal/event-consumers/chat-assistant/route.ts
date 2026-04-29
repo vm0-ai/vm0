@@ -11,13 +11,7 @@ import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("event-consumer:chat-assistant");
 
-/**
- * Concatenate all text blocks in a single assistant event into one string.
- * Assistant events usually carry a single text block, but may carry several
- * interleaved with tool_use blocks. Tool_use blocks are ignored here —
- * activity summaries are rendered live from the telemetry endpoint.
- */
-function eventText(event: AgentEvent): string | null {
+function anthropicMessageText(event: AgentEvent): string | null {
   const msg = event.message;
   if (
     typeof msg !== "object" ||
@@ -44,18 +38,55 @@ function eventText(event: AgentEvent): string | null {
   return parts.length === 1 ? parts[0]! : parts.join("\n\n");
 }
 
+function codexAgentMessageText(event: AgentEvent): string | null {
+  if (event.type !== "item.completed") return null;
+  const item = event.item;
+  if (
+    typeof item !== "object" ||
+    item === null ||
+    !("type" in item) ||
+    item.type !== "agent_message" ||
+    !("text" in item) ||
+    typeof item.text !== "string" ||
+    item.text.length === 0
+  ) {
+    return null;
+  }
+  return item.text;
+}
+
 /**
- * Extract the Anthropic message ID from an assistant event.
- * Real Claude Code events include message.id (e.g. "msg_01abc...").
- * Returns undefined for mock/test events that lack this field.
+ * Extract user-facing assistant text from a single agent event. Two shapes
+ * are supported: Anthropic `assistant` events with `message.content[]` text
+ * blocks, and codex `item.completed` events whose item is an `agent_message`.
+ * Tool-call / command / reasoning items return null — activity summaries are
+ * rendered live from the telemetry endpoint, not chat persistence.
+ */
+function eventText(event: AgentEvent): string | null {
+  const fromMessage = anthropicMessageText(event);
+  if (fromMessage !== null) return fromMessage;
+  return codexAgentMessageText(event);
+}
+
+/**
+ * Extract the upstream message ID from an event for run_event_id dedup.
+ * Anthropic events expose `message.id` (e.g. "msg_01abc..."); codex
+ * `item.completed` events expose `item.id` (e.g. "item_1").
  */
 function eventMessageId(event: AgentEvent): string | undefined {
   const msg = event.message;
-  if (typeof msg !== "object" || msg === null || !("id" in msg)) {
-    return undefined;
+  if (typeof msg === "object" && msg !== null && "id" in msg) {
+    const id = (msg as { id: unknown }).id;
+    if (typeof id === "string") return id;
   }
-  const id = (msg as { id: unknown }).id;
-  return typeof id === "string" ? id : undefined;
+
+  const item = event.item;
+  if (typeof item === "object" && item !== null && "id" in item) {
+    const id = (item as { id: unknown }).id;
+    if (typeof id === "string") return id;
+  }
+
+  return undefined;
 }
 
 /**

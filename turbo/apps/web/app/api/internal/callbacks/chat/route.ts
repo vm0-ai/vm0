@@ -46,11 +46,17 @@ interface ContentBlock {
   text?: string;
 }
 
+interface CodexItem {
+  type?: string;
+  text?: string;
+}
+
 interface AxiomChatOutputEvent {
   eventType?: string;
   sequenceNumber?: number;
   eventData?: {
     message?: { content?: ContentBlock[] };
+    item?: CodexItem;
     result?: string;
     sequenceNumber?: number;
   };
@@ -78,7 +84,7 @@ async function queryChatOutputEvents(runId: string): Promise<{
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
 | where runId == "${runId}"
-| where eventType == "assistant" or eventType == "result"
+| where eventType == "assistant" or eventType == "result" or eventType == "item.completed"
 | order by sequenceNumber asc
 | limit 200`;
 
@@ -90,33 +96,63 @@ async function queryChatOutputEvents(runId: string): Promise<{
     const seq = e.sequenceNumber ?? e.eventData?.sequenceNumber;
     if (typeof seq !== "number") continue;
 
-    const content = e.eventData?.message?.content;
-    if (content) {
-      const parts: string[] = [];
-      for (const block of content) {
-        if (block.type === "text" && typeof block.text === "string") {
-          parts.push(block.text);
-        }
-      }
-      if (parts.length > 0) {
-        assistantItems.push({
-          sequenceNumber: seq,
-          content: parts.length === 1 ? parts[0]! : parts.join("\n\n"),
-        });
-      }
+    const assistant = extractAssistantContent(e);
+    if (assistant !== null) {
+      assistantItems.push({ sequenceNumber: seq, content: assistant });
       continue;
     }
 
-    const result = e.eventData?.result;
-    if (typeof result !== "string") continue;
-    const trimmed = result.trim();
-    if (!trimmed) continue;
-    resultFallback = {
-      sequenceNumber: seq,
-      content: result,
-    };
+    const fallback = extractResultFallback(seq, e);
+    if (fallback !== null) {
+      resultFallback = fallback;
+    }
   }
   return { assistantItems, resultFallback };
+}
+
+function extractAnthropicContent(blocks: ContentBlock[]): string | null {
+  const parts: string[] = [];
+  for (const block of blocks) {
+    if (block.type === "text" && typeof block.text === "string") {
+      parts.push(block.text);
+    }
+  }
+  if (parts.length === 0) return null;
+  return parts.length === 1 ? parts[0]! : parts.join("\n\n");
+}
+
+function extractCodexAgentMessageContent(item: CodexItem): string | null {
+  if (
+    item.type !== "agent_message" ||
+    typeof item.text !== "string" ||
+    item.text.length === 0
+  ) {
+    return null;
+  }
+  return item.text;
+}
+
+function extractAssistantContent(e: AxiomChatOutputEvent): string | null {
+  const content = e.eventData?.message?.content;
+  if (content) {
+    return extractAnthropicContent(content);
+  }
+  const item = e.eventData?.item;
+  if (item) {
+    return extractCodexAgentMessageContent(item);
+  }
+  return null;
+}
+
+function extractResultFallback(
+  seq: number,
+  e: AxiomChatOutputEvent,
+): ResultEventItem | null {
+  const result = e.eventData?.result;
+  if (typeof result !== "string") return null;
+  const trimmed = result.trim();
+  if (!trimmed) return null;
+  return { sequenceNumber: seq, content: result };
 }
 
 async function latestEventBackedAssistantMessage(

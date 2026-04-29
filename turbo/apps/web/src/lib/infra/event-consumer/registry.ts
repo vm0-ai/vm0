@@ -15,7 +15,7 @@ export const eventConsumers: EventConsumerConfig[] = [
   {
     name: "chat-assistant",
     path: "/api/internal/event-consumers/chat-assistant",
-    eventTypes: ["assistant"],
+    eventTypes: ["assistant", "item.completed"],
   },
   {
     name: "telegram-typing",
