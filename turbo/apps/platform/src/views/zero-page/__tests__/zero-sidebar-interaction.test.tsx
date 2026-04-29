@@ -305,18 +305,20 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
 describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () => {
   it("creates a new chat session and navigates to it", async () => {
     mockBaseAPIs();
+    let createdThreadId: string | null = null;
 
     server.use(
-      mockApi(chatThreadsContract.create, ({ respond }) => {
+      mockApi(chatThreadsContract.create, ({ body, respond }) => {
+        createdThreadId = body.clientThreadId ?? "new-thread-id";
         return respond(201, {
-          id: "new-thread-id",
+          id: createdThreadId,
           title: null,
           createdAt: "2026-03-10T00:00:00Z",
         });
       }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         return respond(200, {
-          id: "new-thread-id",
+          id: params.id,
           title: null,
           agentId: DEFAULT_AGENT_ID,
           chatMessages: [],
@@ -348,7 +350,10 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
     click(newChatButton);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-id");
+      if (createdThreadId === null) {
+        throw new Error("expected a thread to be created");
+      }
+      expect(pathname()).toBe(`/chats/${createdThreadId}`);
     });
   });
 });
