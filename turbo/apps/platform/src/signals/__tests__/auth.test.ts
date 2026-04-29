@@ -231,6 +231,34 @@ describe("watchOrgSwitch$ JWT rotation on org change", () => {
     });
   });
 
+  it("does NOT reload when org transiently disappears (mobile token refresh)", async () => {
+    window.location.href = "http://localhost/agents";
+    expect(window.location.pathname).toBe("/agents");
+
+    await setupPage({
+      context,
+      path: "/agents",
+      org: {
+        activeOrg: { id: "org_A", name: "Org A" },
+        memberships: [{ id: "org_A" }],
+      },
+      withoutRender: true,
+    });
+
+    // Simulate Clerk transiently clearing clerk.organization to undefined
+    // during a background token refresh (the observed mobile crash path).
+    mockOrganization({
+      activeOrg: null,
+      memberships: [{ id: "org_A" }],
+    });
+    fireClerkListeners();
+
+    // Give microtasks time to settle — reload must NOT have fired.
+    await new Promise<void>((r) => setTimeout(r, 50));
+    expect(mockedClerk.sessionGetToken).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/agents");
+  });
+
   it("still reloads when getToken rejects (refresh failure is swallowed)", async () => {
     // Force `window.location` away from "/" so the reload is
     // observable (see explanation in the happy-path test above).
