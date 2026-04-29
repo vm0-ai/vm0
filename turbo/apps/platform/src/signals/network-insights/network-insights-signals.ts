@@ -206,30 +206,6 @@ export const setInsightsActiveTab$ = command(({ set }, tab: InsightsTab) => {
 });
 
 // ---------------------------------------------------------------------------
-// Day-level expand/collapse for the daily diary
-// ---------------------------------------------------------------------------
-
-/**
- * Per-date user choice to expand (true) or collapse (false) the day's masonry.
- * Dates not in the map fall back to the page-level default (newest day is
- * expanded, others collapsed).
- */
-const internalDayExpansion$ = state<Map<string, boolean>>(new Map());
-
-export const dayExpansion$ = computed((get) => {
-  return get(internalDayExpansion$);
-});
-
-export const setDayExpansion$ = command(
-  ({ get, set }, dayDate: string, expanded: boolean) => {
-    const current = get(internalDayExpansion$);
-    const next = new Map(current);
-    next.set(dayDate, expanded);
-    set(internalDayExpansion$, next);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // "Show all" toggle for per-day schedules / chats cards (keyed by day date)
 // ---------------------------------------------------------------------------
 

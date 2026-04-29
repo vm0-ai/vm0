@@ -344,7 +344,7 @@ describe("network insights page - data rendering", () => {
     });
   });
 
-  it("should render a digest row per day with only the newest auto-expanded", async () => {
+  it("should render every day's masonry with a date title above it", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago),
       sampleDay(day2Ago, {
@@ -359,25 +359,11 @@ describe("network insights page - data rendering", () => {
     await waitFor(() => {
       expect(screen.getByText("Yesterday")).toBeInTheDocument();
     });
-    // Two digest rows render — older day's row contains an h2 inside the button
-    const digestButtons = screen.getAllByRole("button").filter((b) => {
-      return b.querySelector("h2") !== null;
-    });
-    expect(digestButtons).toHaveLength(2);
-    // Newest is auto-expanded; older is collapsed
-    expect(
-      digestButtons.filter((b) => {
-        return b.getAttribute("aria-expanded") === "true";
-      }),
-    ).toHaveLength(1);
-    expect(
-      digestButtons.filter((b) => {
-        return b.getAttribute("aria-expanded") === "false";
-      }),
-    ).toHaveLength(1);
-    // Older day's masonry-only artifact (PermissionsAllowedCard heading) absent
-    // because the older day is collapsed; the expanded newest day still shows it.
-    expect(screen.getAllByText("Allowed")).toHaveLength(1);
+    // Both days render their full masonry — agent names from each day visible
+    expect(screen.getByText("Alpha Bot")).toBeInTheDocument();
+    expect(screen.getByText("Gamma Bot")).toBeInTheDocument();
+    // PermissionsAllowedCard heading appears once per day's masonry
+    expect(screen.getAllByText("Allowed")).toHaveLength(2);
   });
 });
 
@@ -422,7 +408,7 @@ describe("network insights page - date range filter", () => {
     });
   });
 
-  it("should switch to Last 30 Days range and surface older day's digest row", async () => {
+  it("should switch to Last 30 Days range and surface older day's masonry", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago),
       sampleDay(day25Ago, {
@@ -446,24 +432,7 @@ describe("network insights page - date range filter", () => {
     });
     click(screen.getByText("Last 30 Days"));
 
-    // Older day's digest row appears but content stays collapsed by default —
-    // expand it to reveal OldBot.
-    await waitFor(() => {
-      const collapsed = screen
-        .getAllByRole("button", { expanded: false })
-        .find((b) => {
-          return b.querySelector("h2") !== null;
-        });
-      expect(collapsed).toBeDefined();
-    });
-    const collapsedDigest = screen
-      .getAllByRole("button", { expanded: false })
-      .find((b) => {
-        return b.querySelector("h2") !== null;
-      })!;
-    click(collapsedDigest);
-
-    // After expand, OldBot is rendered in the masonry's AgentsCard
+    // Older day's masonry is now rendered in full — OldBot visible
     await waitFor(() => {
       expect(screen.getByText("OldBot")).toBeInTheDocument();
     });
@@ -892,103 +861,6 @@ describe("network insights page - embedded usage panels", () => {
     expect(
       screen.queryByRole("region", { name: "Credits totals" }),
     ).not.toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Daily diary — collapse/expand
-// ---------------------------------------------------------------------------
-
-describe("network insights page - daily diary", () => {
-  it("should auto-expand only the most recent day", async () => {
-    mockInsightsAPI([
-      sampleDay(day1Ago),
-      sampleDay(day2Ago, {
-        agents: [
-          { agentName: "Older Bot", agentId: "a-old", runs: 2, credits: 30 },
-        ],
-      }),
-    ]);
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Yesterday")).toBeInTheDocument();
-    });
-    // The masonry's PermissionsAllowedCard heading is unique to the expanded
-    // day's content — exactly one "Allowed" means exactly one day expanded.
-    expect(screen.getAllByText("Allowed")).toHaveLength(1);
-  });
-
-  it("should reveal an older day's masonry on expand", async () => {
-    mockInsightsAPI([
-      sampleDay(day1Ago),
-      sampleDay(day2Ago, {
-        agents: [
-          { agentName: "Older Bot", agentId: "a-old", runs: 2, credits: 30 },
-        ],
-      }),
-    ]);
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Yesterday")).toBeInTheDocument();
-    });
-    // Before expand: Older Bot's day is collapsed, masonry not rendered
-    expect(screen.queryByText("Older Bot")).not.toBeInTheDocument();
-
-    const collapsedDigest = screen
-      .getAllByRole("button", { expanded: false })
-      .find((b) => {
-        return b.querySelector("h2") !== null;
-      })!;
-    click(collapsedDigest);
-
-    // After expand: masonry renders Older Bot inside AgentsCard
-    await waitFor(() => {
-      expect(screen.getByText("Older Bot")).toBeInTheDocument();
-    });
-  });
-
-  it("should collapse an expanded day on second click", async () => {
-    mockInsightsAPI([sampleDay(day1Ago)]);
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    // Newest day auto-expanded → masonry "Allowed" heading visible
-    await waitFor(() => {
-      expect(screen.getByText("Allowed")).toBeInTheDocument();
-    });
-
-    const expandedDigest = screen
-      .getAllByRole("button", { expanded: true })
-      .find((b) => {
-        return b.querySelector("h2") !== null;
-      })!;
-    click(expandedDigest);
-
-    // After collapse: masonry artifacts gone
-    await waitFor(() => {
-      expect(screen.queryByText("Allowed")).not.toBeInTheDocument();
-    });
-  });
-
-  it("should show only the date in the digest line", async () => {
-    mockInsightsAPI([sampleDay(day1Ago)]);
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Yesterday")).toBeInTheDocument();
-    });
-    const digestRow = screen
-      .getAllByRole("button", { expanded: true })
-      .find((b) => {
-        return b.querySelector("h2") !== null;
-      })!;
-    // Digest is just the chevron + date — no credits/runs/top agent/blocked tail
-    expect(digestRow.textContent?.trim()).toBe("Yesterday");
   });
 });
 

@@ -42,8 +42,6 @@ import {
   toggleExpandedScheduleDay$,
   expandedChatDays$,
   toggleExpandedChatDay$,
-  dayExpansion$,
-  setDayExpansion$,
   insightsActiveTab$,
   setInsightsActiveTab$,
   type DayInsight,
@@ -1232,7 +1230,7 @@ function DayChatsCard({
 }
 
 // ---------------------------------------------------------------------------
-// Day section — masonry of cards (rendered inside DayDigestRow when expanded)
+// Day section — date title + masonry of cards
 // ---------------------------------------------------------------------------
 
 function DaySection({
@@ -1252,83 +1250,41 @@ function DaySection({
   };
 
   return (
-    <div className="columns-1 sm:columns-2 lg:columns-3 gap-3">
-      <SummaryCard day={day} />
-      {isAdmin && (
-        <TeamCreditUsageCard
+    <section className="flex flex-col gap-3">
+      <h2 className="text-lg font-semibold text-foreground">
+        {formatDate(day.date)}
+      </h2>
+      <div className="columns-1 sm:columns-2 lg:columns-3 gap-3">
+        <SummaryCard day={day} />
+        {isAdmin && (
+          <TeamCreditUsageCard
+            day={day}
+            colorIndex={1}
+            hoveredAgent={hoveredAgent}
+          />
+        )}
+        <YourCreditUsageCard
           day={day}
           colorIndex={1}
+          userId={userId}
           hoveredAgent={hoveredAgent}
         />
-      )}
-      <YourCreditUsageCard
-        day={day}
-        colorIndex={1}
-        userId={userId}
-        hoveredAgent={hoveredAgent}
-      />
-      <AgentsCard
-        day={day}
-        colorIndex={0}
-        hoveredAgent={hoveredAgent}
-        onHoverAgent={handleHoverAgent}
-      />
-      <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
-      <DaySchedulesCard dayDate={day.date} schedules={day.schedules} />
-      <DayChatsCard dayDate={day.date} chats={day.chats} />
-      <PermissionsAllowedCard
-        day={day}
-        colorIndex={5}
-        hoveredAgent={hoveredAgent}
-      />
-      <PermissionsBlockedCard day={day} hoveredAgent={hoveredAgent} />
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Day digest row — single-line summary, expands to show DaySection on click
-// ---------------------------------------------------------------------------
-
-function DayDigestRow({
-  day,
-  isAdmin,
-  userId,
-  defaultExpanded,
-}: {
-  day: DayInsight;
-  isAdmin: boolean;
-  userId: string | null;
-  defaultExpanded: boolean;
-}) {
-  const expansion = useGet(dayExpansion$);
-  const setExpansion = useSet(setDayExpansion$);
-  const userChoice = expansion.get(day.date);
-  const isExpanded = userChoice ?? defaultExpanded;
-
-  return (
-    <section className="flex flex-col gap-3">
-      <button
-        type="button"
-        onClick={() => {
-          setExpansion(day.date, !isExpanded);
-        }}
-        aria-expanded={isExpanded}
-        className="group flex items-center gap-3 w-full text-left rounded-[14px] border border-border bg-card px-4 py-3 hover:border-foreground/20 transition-colors"
-      >
-        <IconChevronDown
-          size={16}
-          className={`text-muted-foreground transition-transform ${
-            isExpanded ? "" : "-rotate-90"
-          }`}
+        <AgentsCard
+          day={day}
+          colorIndex={0}
+          hoveredAgent={hoveredAgent}
+          onHoverAgent={handleHoverAgent}
         />
-        <h2 className="text-base font-semibold text-foreground">
-          {formatDate(day.date)}
-        </h2>
-      </button>
-      {isExpanded && (
-        <DaySection day={day} isAdmin={isAdmin} userId={userId} />
-      )}
+        <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
+        <DaySchedulesCard dayDate={day.date} schedules={day.schedules} />
+        <DayChatsCard dayDate={day.date} chats={day.chats} />
+        <PermissionsAllowedCard
+          day={day}
+          colorIndex={5}
+          hoveredAgent={hoveredAgent}
+        />
+        <PermissionsBlockedCard day={day} hoveredAgent={hoveredAgent} />
+      </div>
     </section>
   );
 }
@@ -1438,14 +1394,13 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
         ) : activeTab === "time-range" ? (
           <UsageInsightView />
         ) : (
-          filtered.map((day, idx) => {
+          filtered.map((day) => {
             return (
-              <DayDigestRow
+              <DaySection
                 key={day.date}
                 day={day}
                 isAdmin={isAdmin}
                 userId={userId}
-                defaultExpanded={idx === 0}
               />
             );
           })
