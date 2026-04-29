@@ -1100,15 +1100,23 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
     Ok((cleaned, freed))
 }
 
-/// Eligible `<version>` directory holding the exclusive per-version flock
-/// until the candidate is deleted or the LRU pass completes.
+/// Eligible `<version>` directory discovered during the scan phase.
+///
+/// The scan-time size and mtime are advisory: deletion reacquires the
+/// per-version lock and revalidates both before removing the directory.
 struct StorageCandidate {
     path: PathBuf,
     name: String,
     version: String,
     size: u64,
     mtime: SystemTime,
-    _lock: Flock<std::fs::File>,
+}
+
+struct StorageEvictionResult {
+    freed: u64,
+    /// Candidate contribution to keep in `total_size` after this attempt.
+    /// `None` removes the scan-time size from the cap calculation.
+    remaining_size: Option<u64>,
 }
 
 /// Bound `/var/lib/vm0-runner/storages/` to `STORAGE_CACHE_MAX_BYTES` by
@@ -1206,6 +1214,7 @@ async fn gc_storage_cache_with_cap(
             let (size, mtime) = dir_stats(&version_path).await;
             let age = now.duration_since(mtime).unwrap_or_default();
             total_size = total_size.saturating_add(size);
+            drop(lock);
             if age < GC_MIN_AGE {
                 info!(
                     "storages/{name_str}/{version_str}: too recent ({}s), keeping",
@@ -1222,7 +1231,6 @@ async fn gc_storage_cache_with_cap(
                 version,
                 size,
                 mtime,
-                _lock: lock,
             });
         }
     }
@@ -1238,29 +1246,134 @@ async fn gc_storage_cache_with_cap(
         if total_size <= max_bytes {
             break;
         }
-        if dry_run {
-            info!(
-                "[dry-run] would evict storages/{}/{} ({})",
-                c.name,
-                c.version,
-                human_bytes(c.size)
-            );
-        } else if let Err(e) = tokio::fs::remove_dir_all(&c.path).await {
-            warn!("failed to remove storages/{}/{}: {e}", c.name, c.version);
-            continue;
-        } else {
-            info!(
-                "evicted storages/{}/{} ({})",
-                c.name,
-                c.version,
-                human_bytes(c.size)
-            );
-        }
-        freed = freed.saturating_add(c.size);
+        let result = evict_storage_candidate(home, &c, now, dry_run).await;
+        freed = freed.saturating_add(result.freed);
         total_size = total_size.saturating_sub(c.size);
+        if let Some(remaining_size) = result.remaining_size {
+            total_size = total_size.saturating_add(remaining_size);
+        }
     }
 
     Ok(freed)
+}
+
+async fn evict_storage_candidate(
+    home: &HomePaths,
+    candidate: &StorageCandidate,
+    now: SystemTime,
+    dry_run: bool,
+) -> StorageEvictionResult {
+    let lock_path = home.storage_lock_for_cache_key(&candidate.name, &candidate.version);
+    let _lock = match probe_lock(&lock_path) {
+        LockProbe::Free(lock) => lock,
+        LockProbe::Held => {
+            info!(
+                "storages/{}/{}: in use, skipping",
+                candidate.name, candidate.version
+            );
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: None,
+            };
+        }
+        LockProbe::Error(e) => {
+            info!(
+                "storages/{}/{}: lock probe failed ({e}), skipping",
+                candidate.name, candidate.version
+            );
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: None,
+            };
+        }
+    };
+
+    match tokio::fs::metadata(&candidate.path).await {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => {
+            info!(
+                "storages/{}/{}: no longer a directory, skipping",
+                candidate.name, candidate.version
+            );
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: None,
+            };
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: None,
+            };
+        }
+        Err(e) => {
+            warn!(
+                "storages/{}/{}: stat failed ({e}), skipping",
+                candidate.name, candidate.version
+            );
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: Some(candidate.size),
+            };
+        }
+    }
+
+    let (size, mtime) = dir_stats(&candidate.path).await;
+    let age = now.duration_since(mtime).unwrap_or_default();
+    if age < GC_MIN_AGE {
+        info!(
+            "storages/{}/{}: too recent ({}s), keeping",
+            candidate.name,
+            candidate.version,
+            age.as_secs()
+        );
+        return StorageEvictionResult {
+            freed: 0,
+            remaining_size: Some(size),
+        };
+    }
+
+    if dry_run {
+        info!(
+            "[dry-run] would evict storages/{}/{} ({})",
+            candidate.name,
+            candidate.version,
+            human_bytes(size)
+        );
+        return StorageEvictionResult {
+            freed: size,
+            remaining_size: None,
+        };
+    }
+
+    match tokio::fs::remove_dir_all(&candidate.path).await {
+        Ok(()) => {
+            info!(
+                "evicted storages/{}/{} ({})",
+                candidate.name,
+                candidate.version,
+                human_bytes(size)
+            );
+            StorageEvictionResult {
+                freed: size,
+                remaining_size: None,
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => StorageEvictionResult {
+            freed: 0,
+            remaining_size: None,
+        },
+        Err(e) => {
+            warn!(
+                "failed to remove storages/{}/{}: {e}",
+                candidate.name, candidate.version
+            );
+            StorageEvictionResult {
+                freed: 0,
+                remaining_size: Some(size),
+            }
+        }
+    }
 }
 
 async fn gc_storage_staging_dir(
@@ -2763,6 +2876,34 @@ mod tests {
         make_storage_entry_at(final_dir.with_file_name(tmp_name), archive_bytes, mtime)
     }
 
+    fn count_storage_cache_versions(home: &HomePaths) -> usize {
+        let Ok(name_entries) = std::fs::read_dir(home.storages_dir()) else {
+            return 0;
+        };
+
+        name_entries
+            .filter_map(Result::ok)
+            .map(|name_entry| name_entry.path())
+            .filter(|path| path.is_dir())
+            .map(|name_path| {
+                let Ok(version_entries) = std::fs::read_dir(name_path) else {
+                    return 0;
+                };
+                version_entries
+                    .filter_map(Result::ok)
+                    .map(|version_entry| version_entry.path())
+                    .filter(|path| {
+                        path.is_dir()
+                            && !path
+                                .file_name()
+                                .and_then(|name| name.to_str())
+                                .is_some_and(|name| name.ends_with(".tmp"))
+                    })
+                    .count()
+            })
+            .sum()
+    }
+
     #[tokio::test]
     async fn gc_storage_cache_missing_dir_returns_zero() {
         let dir = tempfile::tempdir().unwrap();
@@ -2986,6 +3127,105 @@ mod tests {
             tmp.exists(),
             "dry-run must not delete stale .tmp staging dir"
         );
+    }
+
+    const LOW_FD_STORAGE_GC_CHILD_ENV: &str = "VM0_RUNNER_LOW_FD_STORAGE_GC_CHILD";
+
+    #[test]
+    fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .env(LOW_FD_STORAGE_GC_CHILD_ENV, "1")
+            .arg("gc_storage_cache_many_candidates_low_fd_child")
+            .arg("--ignored")
+            .arg("--nocapture")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(
+            output.status.success(),
+            "low-fd storage GC child failed\nstatus: {}\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            stdout,
+            stderr
+        );
+        assert!(
+            stdout.contains("gc_storage_cache_many_candidates_low_fd_child"),
+            "low-fd storage GC child did not run\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by gc_storage_cache_many_candidates_does_not_exhaust_lock_fds"]
+    async fn gc_storage_cache_many_candidates_low_fd_child() {
+        if std::env::var_os(LOW_FD_STORAGE_GC_CHILD_ENV).is_none() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry_count = 220usize;
+        let keep_count = 20usize;
+        let mut entry_size = 0;
+        for index in 0..entry_count {
+            let entry =
+                make_storage_entry(&home, &format!("low-fd-{index}"), "v1", &[0u8; 4096], old);
+            if index == 0 {
+                entry_size = dir_stats(&entry).await.0;
+            }
+        }
+        assert!(
+            entry_size > 0,
+            "test storage entries must consume disk blocks"
+        );
+
+        set_soft_nofile_limit_for_child(128);
+
+        let cap = entry_size * keep_count as u64;
+        let freed = gc_storage_cache_with_cap(&home, cap, false).await.unwrap();
+        let remaining = count_storage_cache_versions(&home);
+
+        assert!(
+            remaining <= keep_count,
+            "storage GC left {remaining} versions with cap for {keep_count}; freed {freed}"
+        );
+    }
+
+    fn set_soft_nofile_limit_for_child(limit: u64) {
+        // This helper runs only in the spawned child process, so lowering the
+        // process-wide fd limit cannot leak into the parent test runner.
+        unsafe {
+            let mut current = std::mem::MaybeUninit::<nix::libc::rlimit>::uninit();
+            let rc = nix::libc::getrlimit(nix::libc::RLIMIT_NOFILE, current.as_mut_ptr());
+            assert_eq!(
+                rc,
+                0,
+                "getrlimit(RLIMIT_NOFILE) failed: {}",
+                std::io::Error::last_os_error()
+            );
+            let current = current.assume_init();
+            let target = std::cmp::min(limit as nix::libc::rlim_t, current.rlim_max);
+            assert!(
+                target >= 64,
+                "RLIMIT_NOFILE hard limit {target} is too low for this regression test"
+            );
+
+            let next = nix::libc::rlimit {
+                rlim_cur: target,
+                rlim_max: current.rlim_max,
+            };
+            let rc = nix::libc::setrlimit(nix::libc::RLIMIT_NOFILE, &next);
+            assert_eq!(
+                rc,
+                0,
+                "setrlimit(RLIMIT_NOFILE) failed: {}",
+                std::io::Error::last_os_error()
+            );
+        }
     }
 
     #[test]
