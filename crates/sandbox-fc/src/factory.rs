@@ -1792,6 +1792,18 @@ mod tests {
         assert!(aborted.load(Ordering::SeqCst));
     }
 
+    #[test]
+    fn leak_cleaner_shutdown_timeout_covers_cow_destroy_retry_budget() {
+        let retry_budget = DESTROY_RETRY_DELAY
+            .checked_mul(DESTROY_RETRIES)
+            .expect("destroy retry budget should fit in Duration");
+
+        assert!(
+            LEAK_CLEANUP_SHUTDOWN_TIMEOUT > retry_budget,
+            "leak cleaner shutdown timeout must allow queued COW finalizers to finish"
+        );
+    }
+
     #[tokio::test]
     async fn leak_cleaner_abort_closes_sender_and_aborts_task() {
         struct AbortFlag(Arc<AtomicBool>);

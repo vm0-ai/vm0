@@ -504,12 +504,17 @@ impl PooledNbdCowDevice {
     }
 
     /// Destroy the device, removing the COW file and bitmap.
-    pub async fn destroy_with_retries(self, policy: DestroyRetryPolicy) -> Result<()> {
+    pub fn destroy_with_retries(
+        self,
+        policy: DestroyRetryPolicy,
+    ) -> impl std::future::Future<Output = Result<()>> + Send + 'static {
         // Once finalization starts, let it run to completion even if the caller's
         // future is cancelled. Otherwise dropping the owned device mid-finalizer
         // can disconnect best-effort but leave the pool lease in flight.
-        let handle = tokio::spawn(async move { self.destroy_with_retries_inner(policy).await });
-        Self::await_finalizer(handle).await
+        //
+        // This must spawn before returning the Future: an `async fn` body would
+        // not run if the returned future was dropped before its first poll.
+        Self::run_finalizer(async move { self.destroy_with_retries_inner(policy).await })
     }
 
     async fn destroy_with_retries_inner(self, policy: DestroyRetryPolicy) -> Result<()> {
@@ -545,15 +550,13 @@ impl PooledNbdCowDevice {
     }
 
     /// Destroy the device while preserving COW data for snapshot persistence.
-    pub async fn destroy_keep_cow_with_retries(
+    pub fn destroy_keep_cow_with_retries(
         self,
         policy: DestroyRetryPolicy,
-    ) -> Result<KeptCow> {
+    ) -> impl std::future::Future<Output = Result<KeptCow>> + Send + 'static {
         // See destroy_with_retries(): the COW file must either be finalized or
         // abandoned with the lease retired even if the awaiting task is dropped.
-        let handle =
-            tokio::spawn(async move { self.destroy_keep_cow_with_retries_inner(policy).await });
-        Self::await_finalizer(handle).await
+        Self::run_finalizer(async move { self.destroy_keep_cow_with_retries_inner(policy).await })
     }
 
     async fn destroy_keep_cow_with_retries_inner(
@@ -600,10 +603,12 @@ impl PooledNbdCowDevice {
     }
 
     /// Mark the device as abandoned and retire the pool lease as uncertain.
-    pub async fn abandon(self) {
+    pub fn abandon(self) -> impl std::future::Future<Output = ()> + Send + 'static {
         let handle = tokio::spawn(async move { self.abandon_inner().await });
-        if let Err(e) = handle.await {
-            tracing::warn!(error = %e, "pooled NBD COW abandon task failed");
+        async move {
+            if let Err(e) = handle.await {
+                tracing::warn!(error = %e, "pooled NBD COW abandon task failed");
+            }
         }
     }
 
@@ -615,6 +620,16 @@ impl PooledNbdCowDevice {
         } = self;
         device.abandon();
         Self::retire_uncertain(&pool, &mut lease).await;
+    }
+
+    fn run_finalizer<T>(
+        future: impl std::future::Future<Output = Result<T>> + Send + 'static,
+    ) -> impl std::future::Future<Output = Result<T>> + Send + 'static
+    where
+        T: Send + 'static,
+    {
+        let handle = tokio::spawn(future);
+        async move { Self::await_finalizer(handle).await }
     }
 
     async fn await_finalizer<T>(handle: JoinHandle<Result<T>>) -> Result<T> {
@@ -685,6 +700,33 @@ impl Drop for NbdCowDevice {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn pooled_finalizer_starts_before_returned_future_is_polled() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+
+        let finalizer = PooledNbdCowDevice::run_finalizer(async move {
+            let _ = started_tx.send(());
+            finish_rx.await.map_err(|e| {
+                error::NbdCowError::Io(std::io::Error::other(format!(
+                    "test finalizer release dropped: {e}"
+                )))
+            })?;
+            let _ = done_tx.send(());
+            Ok(())
+        });
+
+        started_rx.await.unwrap();
+        drop(finalizer);
+        finish_tx.send(()).unwrap();
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), done_rx)
+            .await
+            .unwrap()
+            .unwrap();
+    }
 
     /// Verify is_our_thread correctly identifies the main thread (TID == TGID).
     #[test]
