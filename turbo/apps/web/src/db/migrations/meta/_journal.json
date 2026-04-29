@@ -2304,6 +2304,13 @@
       "when": 1777457068891,
       "tag": "0328_drop_chat_threads_model_provider_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 329,
+      "version": "7",
+      "when": 1777478742643,
+      "tag": "0329_backfill_credit_usage_to_usage_event",
+      "breakpoints": true
     }
   ]
 }
