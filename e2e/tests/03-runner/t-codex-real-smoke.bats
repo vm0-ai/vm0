@@ -6,12 +6,17 @@
 # `OPENAI_API_KEY` in the host environment and uses --debug-no-mock-codex
 # to suppress USE_MOCK_CODEX forwarding so the real codex binary runs
 # inside the sandbox.
+#
+# OPENAI_API_KEY is mandatory — CI injects it via secrets.OPENAI_API_KEY and
+# local runs must export it. Missing the key is a hard failure, never a skip,
+# so we always exercise the real codex pipeline on every run.
 
 load '../../helpers/setup'
 
 setup_file() {
     if [ -z "$OPENAI_API_KEY" ]; then
-        skip "OPENAI_API_KEY not set - required for real codex tests"
+        echo "OPENAI_API_KEY is required for real codex tests — refusing to skip" >&2
+        return 1
     fi
 
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
@@ -55,10 +60,6 @@ teardown_file() {
 }
 
 @test "t-codex-real-smoke-0: print sandbox codex version" {
-    if [ -z "$OPENAI_API_KEY" ]; then
-        skip "OPENAI_API_KEY not set"
-    fi
-
     run $VM0_CLI run "$AGENT_NAME" \
         --secrets "OPENAI_API_KEY=$OPENAI_API_KEY" \
         --debug-no-mock-codex \
@@ -70,10 +71,6 @@ teardown_file() {
 }
 
 @test "t-codex-real-smoke-1: basic run with real codex" {
-    if [ -z "$OPENAI_API_KEY" ]; then
-        skip "OPENAI_API_KEY not set"
-    fi
-
     run $VM0_CLI run "$AGENT_NAME" \
         --secrets "OPENAI_API_KEY=$OPENAI_API_KEY" \
         --debug-no-mock-codex \
