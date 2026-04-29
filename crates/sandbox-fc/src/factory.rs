@@ -954,67 +954,25 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
-        let mut sandbox = match (sandbox as Box<dyn std::any::Any>).downcast::<FirecrackerSandbox>()
-        {
+        let sandbox = match (sandbox as Box<dyn std::any::Any>).downcast::<FirecrackerSandbox>() {
             Ok(s) => *s,
             Err(_) => {
                 warn!("destroy called with non-firecracker sandbox, ignoring");
                 return;
             }
         };
+        let netns_pool = std::sync::Arc::clone(self.netns_pool());
 
-        // Ensure the sandbox is killed before releasing pool resources.
-        // After kill(), `sandbox.process` is `None`, so the Drop impl's
-        // killpg becomes a no-op when `sandbox` is dropped below.
-        let _ = sandbox.kill().await;
-
-        // Clone lightweight handles before dropping sandbox.
-        let sandbox_id = sandbox.id.clone();
-        let network = sandbox.network.clone();
-        let sock_dir = sandbox.sock_paths.dir().to_owned();
-        let workspace = sandbox.sandbox_paths.workspace().to_owned();
-
-        // Log NBD COW stats before teardown for performance debugging.
-        if let Some(cow_device) = sandbox.cow_device.as_ref() {
-            cow_device.log_status().await;
+        // Move all cleanup-owned resources into a task before the first await.
+        // If the caller drops this destroy future mid-cleanup, the task keeps
+        // running instead of letting FirecrackerSandbox::Drop race the COW
+        // finalizer and directory cleanup.
+        let handle = tokio::spawn(destroy_firecracker_sandbox(sandbox, netns_pool));
+        match handle.await {
+            Ok(()) => {}
+            Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+            Err(e) => warn!(error = %e, "sandbox destroy task was cancelled"),
         }
-
-        // Destroy the NBD COW device (flushes data, disconnects, removes COW file).
-        //
-        // After kill_process_group + child.wait(), the kernel may still be
-        // releasing file descriptors (particularly the NBD device fd).
-        // Retry a few times to let it finish.
-        let cow_destroyed = match sandbox.cow_device.take() {
-            Some(cow_device) => destroy_cow_device_with_retries(&sandbox_id, cow_device).await,
-            None => true,
-        };
-
-        // Return the network namespace to the pool.
-        let mut netns_pool = self.netns_pool().lock().await;
-        if let Err(e) = netns_pool.release(network).await {
-            warn!(id = %sandbox_id, error = %e, "failed to release netns");
-        }
-        drop(netns_pool);
-
-        // Delete the socket directory.
-        if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
-            warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
-        }
-
-        // Delete the workspace directory only if the COW device was fully torn
-        // down.  When destroy() failed, the NBD device may still reference
-        // the COW file — keep the workspace intact for debugging.
-        if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
-            warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
-        }
-
-        // Mark as destroyed only after all explicit cleanup steps complete.
-        // Until this point, `FirecrackerSandbox::Drop` remains armed as a
-        // panic fallback and sends pool resources to the leak-cleanup task.
-        sandbox.destroyed = true;
-        drop(sandbox);
-
-        info!(id = %sandbox_id, "sandbox destroyed");
     }
 
     async fn shutdown(&mut self) {
@@ -1044,6 +1002,64 @@ impl SandboxFactory for FirecrackerFactory {
         self.started = false;
         info!("factory shutdown complete");
     }
+}
+
+async fn destroy_firecracker_sandbox(
+    mut sandbox: FirecrackerSandbox,
+    netns_pool: std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
+) {
+    // Ensure the sandbox is killed before releasing pool resources.
+    // After kill(), `sandbox.process` is `None`, so the Drop impl's
+    // killpg becomes a no-op when `sandbox` is dropped below.
+    let _ = sandbox.kill().await;
+
+    // Clone lightweight handles before dropping sandbox.
+    let sandbox_id = sandbox.id.clone();
+    let network = sandbox.network.clone();
+    let sock_dir = sandbox.sock_paths.dir().to_owned();
+    let workspace = sandbox.sandbox_paths.workspace().to_owned();
+
+    // Log NBD COW stats before teardown for performance debugging.
+    if let Some(cow_device) = sandbox.cow_device.as_ref() {
+        cow_device.log_status().await;
+    }
+
+    // Destroy the NBD COW device (flushes data, disconnects, removes COW file).
+    //
+    // After kill_process_group + child.wait(), the kernel may still be
+    // releasing file descriptors (particularly the NBD device fd).
+    // Retry a few times to let it finish.
+    let cow_destroyed = match sandbox.cow_device.take() {
+        Some(cow_device) => destroy_cow_device_with_retries(&sandbox_id, cow_device).await,
+        None => true,
+    };
+
+    // Return the network namespace to the pool.
+    let mut pool = netns_pool.lock().await;
+    if let Err(e) = pool.release(network).await {
+        warn!(id = %sandbox_id, error = %e, "failed to release netns");
+    }
+    drop(pool);
+
+    // Delete the socket directory.
+    if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
+        warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
+    }
+
+    // Delete the workspace directory only if the COW device was fully torn
+    // down.  When destroy() failed, the NBD device may still reference
+    // the COW file — keep the workspace intact for debugging.
+    if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
+        warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
+    }
+
+    // Mark as destroyed only after all explicit cleanup steps complete.
+    // Until this point, `FirecrackerSandbox::Drop` remains armed as a
+    // panic fallback and sends pool resources to the leak-cleanup task.
+    sandbox.destroyed = true;
+    drop(sandbox);
+
+    info!(id = %sandbox_id, "sandbox destroyed");
 }
 
 impl Drop for FirecrackerFactory {
