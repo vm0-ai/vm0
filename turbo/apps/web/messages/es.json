@@ -4917,5 +4917,33 @@
     "tierExplanationCore": "VM0 posiciona {name} como modelo principal de agente, recomendado junto a Claude Opus 4.7, Claude Opus 4.6 y Claude Sonnet 4.6 para los pasos que determinan el resultado real de una ejecución. Estos son los modelos que elegimos para el rol de orquestador, para agentes que trabajan con código y para cualquier paso donde una respuesta incorrecta sea costosa.",
     "tierExplanationCostSaving": "VM0 posiciona {name} como una opción de ahorro en lugar de un modelo principal de agente. Úsalo para optimizar el coste unitario en trabajo no principal, como clasificación masiva, prefiltros, respuestas cortas con requisitos de latencia o agentes heredados fijos, manteniendo Claude Opus 4.7, Claude Opus 4.6 o Claude Sonnet 4.6 en los pasos que deciden la ejecución.",
     "availableSince": "Disponible en VM0 desde {date}."
+  },
+  "rankingsPage": {
+    "pageTitle": "Ranking de Modelos de IA",
+    "pageDescription": "Uso de modelos en VM0 clasificado por totales de tokens por hora — hoy, esta semana y este mes.",
+    "ogTitle": "Ranking de Modelos de IA — VM0",
+    "ogDescription": "Vea qué modelos de IA se usan más en VM0. Rankings por hora de hoy, esta semana y este mes.",
+    "breadcrumbHome": "Inicio",
+    "breadcrumbRankings": "Ranking",
+    "heading": "Ranking de Modelos de IA",
+    "subtitle": "Uso de modelos en VM0 clasificado por totales de tokens por hora en la ventana UTC seleccionada. Actualizado cada hora.",
+    "periodToday": "Hoy",
+    "periodWeek": "Esta semana",
+    "periodMonth": "Este mes",
+    "periodAriaLabel": "Período del ranking",
+    "statModels": "Modelos",
+    "statTokens": "Tokens totales",
+    "statWindow": "Ventana",
+    "tableRank": "Puesto",
+    "tableModel": "Modelo",
+    "tableTokens": "Tokens",
+    "tableShare": "Cuota",
+    "tableChange": "Cambio",
+    "inputOutput": "{inputCount} ent. / {outputCount} sal.",
+    "tableFooter": "Top 50 modelos por uso de tokens",
+    "tableFooterTokens": "{count} tokens en modelos clasificados",
+    "emptyTitle": "Aún no hay datos agregados",
+    "emptyMessage": "Aún no se ha agregado uso de modelos para este período. Vuelva pronto.",
+    "windowPending": "Esperando la primera hora UTC completada"
   }
 }

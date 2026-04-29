@@ -4917,5 +4917,33 @@
     "tierExplanationCore": "VM0 positioniert {name} als Core-Agent-Modell, empfohlen neben Claude Opus 4.7, Claude Opus 4.6 und Claude Sonnet 4.6 für die Schritte, die das tatsächliche Ergebnis eines Agent-Durchlaufs bestimmen. Das sind die Modelle, die wir für die Orchestrator-Rolle, für code-bearbeitende Agents und für jeden Schritt wählen, bei dem eine falsche Antwort teuer ist.",
     "tierExplanationCostSaving": "VM0 positioniert {name} als kostensparende Option statt als Core-Agent-Modell. Nutze es zur Optimierung der Stückkosten bei Nicht-Kernarbeit wie Massenklassifikation, Vorfiltern, latenzkritischen Kurzantworten oder fest zugewiesenen Legacy-Agents, während Claude Opus 4.7, Claude Opus 4.6 oder Claude Sonnet 4.6 die entscheidenden Schritte übernehmen.",
     "availableSince": "Verfügbar auf VM0 seit {date}."
+  },
+  "rankingsPage": {
+    "pageTitle": "KI-Modell-Rangliste",
+    "pageDescription": "VM0-Modellnutzung, sortiert nach stündlichen Token-Gesamtwerten — heute, diese Woche und diesen Monat.",
+    "ogTitle": "KI-Modell-Rangliste — VM0",
+    "ogDescription": "Sehen Sie, welche KI-Modelle auf VM0 am häufigsten genutzt werden. Stündliche Rangliste für heute, diese Woche und diesen Monat.",
+    "breadcrumbHome": "Startseite",
+    "breadcrumbRankings": "Rangliste",
+    "heading": "KI-Modell-Rangliste",
+    "subtitle": "VM0-Modellnutzung, sortiert nach stündlichen Token-Gesamtwerten im ausgewählten UTC-Fenster. Stündlich aktualisiert.",
+    "periodToday": "Heute",
+    "periodWeek": "Diese Woche",
+    "periodMonth": "Diesen Monat",
+    "periodAriaLabel": "Ranglisten-Zeitraum",
+    "statModels": "Modelle",
+    "statTokens": "Token gesamt",
+    "statWindow": "Fenster",
+    "tableRank": "Rang",
+    "tableModel": "Modell",
+    "tableTokens": "Token",
+    "tableShare": "Anteil",
+    "tableChange": "Änderung",
+    "inputOutput": "{inputCount} ein / {outputCount} aus",
+    "tableFooter": "Top-50-Modelle nach Token-Nutzung",
+    "tableFooterTokens": "{count} Token in gerankten Modellen",
+    "emptyTitle": "Noch keine Daten aggregiert",
+    "emptyMessage": "Für diesen Zeitraum wurden noch keine Modellnutzungsdaten aggregiert. Schauen Sie bald wieder vorbei.",
+    "windowPending": "Warte auf die erste abgeschlossene UTC-Stunde"
   }
 }

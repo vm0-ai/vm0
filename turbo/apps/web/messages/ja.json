@@ -4917,5 +4917,33 @@
     "tierExplanationCore": "VM0は{name}をコアエージェントモデルとして位置付けており、Claude Opus 4.7、Claude Opus 4.6、Claude Sonnet 4.6と並んで、エージェント実行の実際の成果を左右するステップに推奨されます。これらは、オーケストレーター役、コードを扱うエージェント、誤った回答のコストが高いステップに選ぶモデルです。",
     "tierExplanationCostSaving": "VM0は{name}をコアエージェントモデルではなく、コスト削減オプションとして位置付けています。一括分類、プレフィルター、レイテンシが重要な短い返信、固定のレガシーエージェントなど、非コア作業の単価最適化に使用し、実行を左右するステップにはClaude Opus 4.7、Claude Opus 4.6、またはClaude Sonnet 4.6を維持します。",
     "availableSince": "VM0で{date}から利用可能。"
+  },
+  "rankingsPage": {
+    "pageTitle": "AIモデルランキング",
+    "pageDescription": "VM0のモデル使用量を1時間ごとのトークン総数でランキング — 今日、今週、今月。",
+    "ogTitle": "AIモデルランキング — VM0",
+    "ogDescription": "VM0で最も使われているAIモデルをご覧ください。今日、今週、今月の時間別ランキング。",
+    "breadcrumbHome": "ホーム",
+    "breadcrumbRankings": "ランキング",
+    "heading": "AIモデルランキング",
+    "subtitle": "選択したUTC期間におけるVM0モデルの使用量を1時間ごとのトークン総数でランキング表示。毎時更新。",
+    "periodToday": "今日",
+    "periodWeek": "今週",
+    "periodMonth": "今月",
+    "periodAriaLabel": "ランキング期間",
+    "statModels": "モデル数",
+    "statTokens": "トークン総数",
+    "statWindow": "期間",
+    "tableRank": "順位",
+    "tableModel": "モデル",
+    "tableTokens": "トークン",
+    "tableShare": "シェア",
+    "tableChange": "変化",
+    "inputOutput": "{inputCount} 入力 / {outputCount} 出力",
+    "tableFooter": "トークン使用量トップ50モデル",
+    "tableFooterTokens": "ランクインモデルの総トークン数: {count}",
+    "emptyTitle": "まだデータが集計されていません",
+    "emptyMessage": "この期間のモデル使用量はまだ集計されていません。しばらくしてから再度ご確認ください。",
+    "windowPending": "最初のUTC時間が完了するのを待っています"
   }
 }

@@ -4917,5 +4917,33 @@
     "tierExplanationCore": "VM0 positions {name} as a core agent model, recommended alongside Claude Opus 4.7, Claude Opus 4.6, and Claude Sonnet 4.6 for the steps that drive the actual outcome of an agent run. These are the models we'd pick for the orchestrator role, for code-touching agents, and for any step where a wrong answer is expensive.",
     "tierExplanationCostSaving": "VM0 positions {name} as a cost-saving option rather than a core agent model. Use it to optimise unit cost on non-core work, such as bulk classification, pre-filters, latency-critical short replies, or pinned legacy agents, while keeping Claude Opus 4.7, Claude Opus 4.6, or Claude Sonnet 4.6 on the steps that decide the run.",
     "availableSince": "Available on VM0 since {date}."
+  },
+  "rankingsPage": {
+    "pageTitle": "AI Model Rankings",
+    "pageDescription": "VM0 model usage ranked by hourly token totals across today, this week, and this month.",
+    "ogTitle": "AI Model Rankings — VM0",
+    "ogDescription": "See which AI models are used most on VM0. Hourly rankings across today, this week, and this month.",
+    "breadcrumbHome": "Home",
+    "breadcrumbRankings": "Rankings",
+    "heading": "AI Model Rankings",
+    "subtitle": "VM0 model usage ranked by hourly token totals across the selected UTC window. Updated hourly.",
+    "periodToday": "Today",
+    "periodWeek": "This week",
+    "periodMonth": "This month",
+    "periodAriaLabel": "Ranking period",
+    "statModels": "Models",
+    "statTokens": "Ranked tokens",
+    "statWindow": "Window",
+    "tableRank": "Rank",
+    "tableModel": "Model",
+    "tableTokens": "Tokens",
+    "tableShare": "Share",
+    "tableChange": "Change",
+    "inputOutput": "{inputCount} in / {outputCount} out",
+    "tableFooter": "Top 50 models by token usage",
+    "tableFooterTokens": "{count} tokens in ranked models",
+    "emptyTitle": "No data aggregated yet",
+    "emptyMessage": "No model usage has been aggregated for this period yet. Check back soon.",
+    "windowPending": "Waiting for the first completed UTC hour"
   }
 }

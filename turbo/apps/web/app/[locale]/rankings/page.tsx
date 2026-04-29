@@ -1,109 +1,16 @@
 import type { Metadata } from "next";
-import { sql } from "drizzle-orm";
-import { modelStat } from "@vm0/db/schema/model-stat";
-import {
-  VM0_MODEL_ALIAS_TO_MODEL,
-  normalizeVm0ModelId,
-} from "@vm0/api-contracts/contracts/model-providers";
-
+import { getTranslations } from "next-intl/server";
+import Script from "next/script";
 import { type Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
-import { Footer } from "../../components/Footer";
-import { Particles } from "../../components/Particles";
-import { initServices } from "../../../src/lib/init-services";
-import { MODELS, vendorIconPath, type ModelEntry } from "../models/data";
+import { RankingsPage } from "./RankingsPage";
+import { getRankings, type PeriodKey, PERIODS } from "./data";
 
 const BASE_URL = "https://www.vm0.ai";
-const MAX_WIDTH = 1120;
-const PAGE_PADDING = 24;
-const HOUR_MS = 60 * 60_000;
-const PERIODS = [
-  { key: "today", label: "Today" },
-  { key: "week", label: "This week" },
-  { key: "month", label: "This month" },
-] as const;
-
-type PeriodKey = (typeof PERIODS)[number]["key"];
 
 interface PageProps {
   params: Promise<{ locale: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}
-
-interface RankingRow {
-  readonly rank: number;
-  readonly model: string;
-  readonly name: string;
-  readonly vendor: string;
-  readonly iconPath: string | null;
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-  readonly cacheTokens: number;
-  readonly totalTokens: number;
-  readonly previousTotalTokens: number;
-  readonly share: number;
-}
-
-interface RawRankingRow {
-  readonly model: unknown;
-  readonly input_tokens: unknown;
-  readonly output_tokens: unknown;
-  readonly cache_tokens: unknown;
-  readonly total_tokens: unknown;
-  readonly previous_total_tokens: unknown;
-}
-
-export const dynamic = "force-dynamic";
-
-const MODELS_BY_ID = new Map(
-  MODELS.flatMap((model) => {
-    return [
-      [model.modelId.toLowerCase(), model],
-      [model.slug.toLowerCase(), model],
-    ] as const;
-  }),
-);
-
-function getModelAliasEntries() {
-  return Object.entries(VM0_MODEL_ALIAS_TO_MODEL);
-}
-
-export async function generateMetadata({
-  params,
-}: PageProps): Promise<Metadata> {
-  const { locale } = await params;
-  const title = "AI Model Rankings";
-  const description =
-    "Hourly VM0 model usage rankings across today, this week, and this month.";
-  const url = `${BASE_URL}/${locale}/rankings`;
-
-  return {
-    title,
-    description,
-    alternates: buildLocaleAlternates("/rankings", locale as Locale),
-    openGraph: {
-      title,
-      description,
-      url,
-      type: "website",
-      images: [
-        {
-          url: "/og-image.png",
-          width: 1200,
-          height: 630,
-          alt: title,
-        },
-      ],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-      images: ["/og-image.png"],
-      creator: "@vm0_ai",
-      site: "@vm0_ai",
-    },
-  };
 }
 
 function parsePeriod(value: string | string[] | undefined): PeriodKey {
@@ -115,434 +22,106 @@ function parsePeriod(value: string | string[] | undefined): PeriodKey {
     : "week";
 }
 
-function startOfUtcDay(date: Date): Date {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-  );
-}
+export const dynamic = "force-dynamic";
 
-function startOfUtcWeek(date: Date): Date {
-  const day = startOfUtcDay(date);
-  const dayOfWeek = day.getUTCDay();
-  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  return new Date(day.getTime() - daysSinceMonday * 24 * HOUR_MS);
-}
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "rankingsPage" });
+  const url = `${BASE_URL}/${locale}/rankings`;
 
-function startOfUtcMonth(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
-
-function currentUtcHour(date: Date): Date {
-  return new Date(
-    Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate(),
-      date.getUTCHours(),
-    ),
-  );
-}
-
-function currentWindow(
-  period: PeriodKey,
-  now: Date,
-): { start: Date; end: Date } {
-  const end = currentUtcHour(now);
-  if (period === "today") {
-    return { start: startOfUtcDay(now), end };
-  }
-  if (period === "month") {
-    return { start: startOfUtcMonth(now), end };
-  }
-  return { start: startOfUtcWeek(now), end };
-}
-
-function toNumber(value: unknown): number {
-  if (typeof value === "number") return value;
-  if (typeof value === "bigint") return Number(value);
-  if (typeof value === "string") return Number(value);
-  return 0;
-}
-
-function formatTokens(value: number): string {
-  if (value >= 1_000_000_000_000) {
-    return `${(value / 1_000_000_000_000).toFixed(2)}T`;
-  }
-  if (value >= 1_000_000_000) {
-    return `${(value / 1_000_000_000).toFixed(1)}B`;
-  }
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`;
-  }
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(1)}K`;
-  }
-  return String(value);
-}
-
-function formatShare(value: number): string {
-  if (value === 0) return "0%";
-  if (value < 0.1) return "<0.1%";
-  return `${value.toFixed(1)}%`;
-}
-
-function formatChange(
-  current: number,
-  previous: number,
-): {
-  label: string;
-  tone: "up" | "down" | "flat" | "new";
-} {
-  if (previous === 0) {
-    return current > 0
-      ? { label: "new", tone: "new" }
-      : { label: "0%", tone: "flat" };
-  }
-
-  const change = ((current - previous) / previous) * 100;
-  if (Math.abs(change) < 0.5) {
-    return { label: "0%", tone: "flat" };
-  }
-
-  const rounded = Math.round(change);
   return {
-    label: `${rounded > 0 ? "+" : ""}${rounded}%`,
-    tone: rounded > 0 ? "up" : "down",
+    title: t("pageTitle"),
+    description: t("pageDescription"),
+    alternates: buildLocaleAlternates("/rankings", locale as Locale),
+    openGraph: {
+      title: t("ogTitle"),
+      description: t("ogDescription"),
+      url,
+      type: "website",
+      images: [
+        {
+          url: "/og-image.png",
+          width: 1200,
+          height: 630,
+          alt: t("ogTitle"),
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: t("ogTitle"),
+      description: t("ogDescription"),
+      images: ["/og-image.png"],
+      creator: "@vm0_ai",
+      site: "@vm0_ai",
+    },
   };
 }
 
-function resolveModel(modelId: string): ModelEntry | undefined {
-  const normalizedModelId = normalizeVm0ModelId(modelId);
-  const direct = MODELS_BY_ID.get(normalizedModelId.toLowerCase());
-  if (direct) return direct;
-
-  const [, suffix] = normalizedModelId.split("/");
-  if (!suffix) return undefined;
-
-  return MODELS_BY_ID.get(suffix.toLowerCase());
-}
-
-function modelStatModelExpression() {
-  const modelColumn = sql.raw('"model_stat"."model"');
-  return sql<string>`CASE ${sql.join(
-    getModelAliasEntries().map(([alias, model]) => {
-      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
-    }),
-    sql` `,
-  )} ELSE ${modelColumn} END`;
-}
-
-async function getRankings(period: PeriodKey): Promise<{
-  rows: RankingRow[];
-  totalTokens: number;
-  windowStart: Date;
-  windowEnd: Date;
-}> {
-  initServices();
-
-  const window = currentWindow(period, new Date());
-  const duration = Math.max(window.end.getTime() - window.start.getTime(), 0);
-  const previousEnd = window.start;
-  const previousStart = new Date(previousEnd.getTime() - duration);
-  const modelExpr = modelStatModelExpression();
-
-  const result = await globalThis.services.db.execute(sql`
-    WITH current_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.inputTokens}), 0)::bigint AS input_tokens,
-        COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
-        COALESCE(SUM(${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS cache_tokens,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
-      FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${window.start}
-        AND ${modelStat.hourStart} < ${window.end}
-      GROUP BY 1
-    ),
-    previous_period AS (
-      SELECT
-        ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS previous_total_tokens
-      FROM ${modelStat}
-      WHERE ${modelStat.hourStart} >= ${previousStart}
-        AND ${modelStat.hourStart} < ${previousEnd}
-      GROUP BY 1
-    )
-    SELECT
-      current_period.model,
-      current_period.input_tokens,
-      current_period.output_tokens,
-      current_period.cache_tokens,
-      current_period.total_tokens,
-      COALESCE(previous_period.previous_total_tokens, 0)::bigint AS previous_total_tokens
-    FROM current_period
-    LEFT JOIN previous_period ON previous_period.model = current_period.model
-    WHERE current_period.total_tokens > 0
-    ORDER BY current_period.total_tokens DESC
-    LIMIT 50
-  `);
-
-  const rawRows = result.rows as unknown as RawRankingRow[];
-  const knownRows: {
-    readonly row: RawRankingRow;
-    readonly model: string;
-    readonly modelEntry: ModelEntry;
-    readonly totalTokens: number;
-  }[] = [];
-
-  for (const row of rawRows) {
-    const model = String(row.model);
-    const modelEntry = resolveModel(model);
-    if (!modelEntry) continue;
-    knownRows.push({
-      row,
-      model,
-      modelEntry,
-      totalTokens: toNumber(row.total_tokens),
-    });
-  }
-
-  const totalTokens = knownRows.reduce((sum, row) => {
-    return sum + row.totalTokens;
-  }, 0);
-
-  return {
-    totalTokens,
-    windowStart: window.start,
-    windowEnd: window.end,
-    rows: knownRows.map((item, index) => {
-      return {
-        rank: index + 1,
-        model: item.model,
-        name: item.modelEntry.name,
-        vendor: item.modelEntry.vendor,
-        iconPath: vendorIconPath(item.modelEntry.vendor),
-        inputTokens: toNumber(item.row.input_tokens),
-        outputTokens: toNumber(item.row.output_tokens),
-        cacheTokens: toNumber(item.row.cache_tokens),
-        totalTokens: item.totalTokens,
-        previousTotalTokens: toNumber(item.row.previous_total_tokens),
-        share: totalTokens > 0 ? (item.totalTokens / totalTokens) * 100 : 0,
-      };
-    }),
-  };
-}
-
-function PeriodTabs({ active, locale }: { active: PeriodKey; locale: string }) {
-  return (
-    <div
-      className="inline-flex rounded-lg border border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-50))] p-1"
-      role="tablist"
-      aria-label="Ranking period"
-    >
-      {PERIODS.map((period) => {
-        const isActive = active === period.key;
-        return (
-          <a
-            key={period.key}
-            href={`/${locale}/rankings?view=${period.key}`}
-            role="tab"
-            aria-selected={isActive}
-            className={`rounded-md px-3 py-2 text-[14px] font-medium transition-colors ${
-              isActive
-                ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))]"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-            }`}
-          >
-            {period.label}
-          </a>
-        );
-      })}
-    </div>
-  );
-}
-
-function ChangeBadge({
-  current,
-  previous,
-}: {
-  current: number;
-  previous: number;
-}) {
-  const change = formatChange(current, previous);
-  const className =
-    change.tone === "up" || change.tone === "new"
-      ? "text-emerald-600"
-      : change.tone === "down"
-        ? "text-red-500"
-        : "text-[hsl(var(--muted-foreground))]";
-
-  return <span className={className}>{change.label}</span>;
-}
-
-function RankingTable({
-  rows,
-  totalTokens,
-}: {
-  rows: RankingRow[];
-  totalTokens: number;
-}) {
-  if (rows.length === 0) {
-    return (
-      <div className="border-y border-[hsl(var(--gray-200))] py-16 text-center">
-        <p className="text-[15px] text-[hsl(var(--muted-foreground))]">
-          No model usage has been aggregated for this period yet.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="overflow-x-auto border-y border-[hsl(var(--gray-200))]">
-      <table className="w-full min-w-[640px] border-collapse text-left">
-        <thead>
-          <tr className="border-b border-[hsl(var(--gray-200))] text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
-            <th className="w-[64px] px-3 py-3 font-medium">Rank</th>
-            <th className="px-3 py-3 font-medium">Model</th>
-            <th className="px-3 py-3 text-right font-medium">Tokens</th>
-            <th className="px-3 py-3 text-right font-medium">Share</th>
-            <th className="px-3 py-3 text-right font-medium">Change</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            return (
-              <tr
-                key={row.model}
-                className="border-b border-[hsl(var(--gray-100))] last:border-b-0"
-              >
-                <td className="px-3 py-4 text-[15px] text-[hsl(var(--muted-foreground))]">
-                  {row.rank}
-                </td>
-                <td className="px-3 py-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[hsl(var(--gray-200))] bg-white">
-                      {row.iconPath ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={row.iconPath}
-                          alt=""
-                          width={22}
-                          height={22}
-                          className="h-[22px] w-[22px]"
-                        />
-                      ) : (
-                        <span className="text-[13px] font-semibold text-[hsl(var(--foreground))]">
-                          {row.name.charAt(0)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-[15px] font-medium text-[hsl(var(--foreground))]">
-                        {row.name}
-                      </div>
-                      <div className="truncate text-[12px] text-[hsl(var(--muted-foreground))]">
-                        {row.vendor}
-                      </div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-3 py-4 text-right">
-                  <div className="text-[15px] font-medium text-[hsl(var(--foreground))]">
-                    {formatTokens(row.totalTokens)}
-                  </div>
-                  <div className="text-[12px] text-[hsl(var(--muted-foreground))]">
-                    {formatTokens(row.inputTokens)} in /{" "}
-                    {formatTokens(row.outputTokens)} out
-                  </div>
-                </td>
-                <td className="px-3 py-4 text-right text-[14px] text-[hsl(var(--foreground))]">
-                  {formatShare(row.share)}
-                </td>
-                <td className="px-3 py-4 text-right text-[14px] font-medium">
-                  <ChangeBadge
-                    current={row.totalTokens}
-                    previous={row.previousTotalTokens}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[hsl(var(--gray-100))] px-3 py-3 text-[13px] text-[hsl(var(--muted-foreground))]">
-        <span>Top 50 models by token usage</span>
-        <span>{formatTokens(totalTokens)} tokens in ranked models</span>
-      </div>
-    </div>
-  );
-}
-
-export default async function RankingsPage({
+export default async function RankingsPageServer({
   params,
   searchParams,
 }: PageProps) {
   const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "rankingsPage" });
   const resolvedSearchParams = (await searchParams) ?? {};
   const activePeriod = parsePeriod(resolvedSearchParams.view);
   const rankings = await getRankings(activePeriod);
-  const updatedThrough =
-    rankings.windowEnd <= rankings.windowStart
-      ? "waiting for the first completed UTC hour"
-      : `${rankings.windowStart.toISOString().slice(0, 10)} to ${rankings.windowEnd.toISOString().replace(".000Z", "Z")}`;
+
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: t("breadcrumbHome"),
+        item: `${BASE_URL}/${locale}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: t("breadcrumbRankings"),
+        item: `${BASE_URL}/${locale}/rankings`,
+      },
+    ],
+  };
+
+  const serialized = {
+    rows: rankings.rows.map((row) => {
+      return {
+        rank: row.rank,
+        model: row.model,
+        name: row.name,
+        vendor: row.vendor,
+        iconPath: row.iconPath,
+        inputTokens: row.inputTokens,
+        outputTokens: row.outputTokens,
+        cacheTokens: row.cacheTokens,
+        totalTokens: row.totalTokens,
+        previousTotalTokens: row.previousTotalTokens,
+        share: row.share,
+      };
+    }),
+    totalTokens: rankings.totalTokens,
+    windowStart: rankings.windowStart.toISOString(),
+    windowEnd: rankings.windowEnd.toISOString(),
+  };
 
   return (
-    <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
-      <Particles />
-      <main className="pb-20 pt-[calc(var(--total-header-height)+44px)] md:pb-28 md:pt-[calc(var(--total-header-height)+64px)]">
-        <section
-          className="mx-auto"
-          style={{ maxWidth: MAX_WIDTH, padding: `0 ${PAGE_PADDING}px` }}
-        >
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h1 className="text-[32px] font-semibold leading-tight tracking-normal sm:text-[40px]">
-                AI Model Rankings
-              </h1>
-              <p className="mt-3 max-w-[680px] text-[16px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                VM0 model usage ranked by hourly token totals across the
-                selected UTC window.
-              </p>
-            </div>
-            <PeriodTabs active={activePeriod} locale={locale} />
-          </div>
-
-          <div className="mt-8 grid grid-cols-1 gap-3 border-y border-[hsl(var(--gray-200))] py-4 sm:grid-cols-3">
-            <div>
-              <div className="text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
-                Models
-              </div>
-              <div className="mt-1 text-[24px] font-semibold">
-                {rankings.rows.length}
-              </div>
-            </div>
-            <div>
-              <div className="text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
-                Ranked tokens
-              </div>
-              <div className="mt-1 text-[24px] font-semibold">
-                {formatTokens(rankings.totalTokens)}
-              </div>
-            </div>
-            <div>
-              <div className="text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
-                Window
-              </div>
-              <div className="mt-1 text-[14px] leading-8 text-[hsl(var(--foreground))]">
-                {updatedThrough}
-              </div>
-            </div>
-          </div>
-
-          <section className="mt-8">
-            <RankingTable
-              rows={rankings.rows}
-              totalTokens={rankings.totalTokens}
-            />
-          </section>
-        </section>
-      </main>
-      <Footer />
-    </div>
+    <>
+      <Script
+        id="json-ld-breadcrumb"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+      <RankingsPage
+        locale={locale}
+        activePeriod={activePeriod}
+        rankings={serialized}
+      />
+    </>
   );
 }
