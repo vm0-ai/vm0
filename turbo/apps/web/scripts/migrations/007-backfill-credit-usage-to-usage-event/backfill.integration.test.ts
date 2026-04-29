@@ -231,4 +231,41 @@ describe("credit_usage to usage_event backfill script", () => {
       }),
     ).toEqual([null, null]);
   }, 20_000);
+
+  it("aborts before writing when an existing idempotency key has mismatched payload", async () => {
+    const user = await context.setupUser({ prefix: "backfill-conflict" });
+    const model = uniqueId("model-conflict");
+    const source = await seedProcessedCreditUsage({
+      orgId: user.orgId,
+      userId: user.userId,
+      model,
+      creditsCharged: 3,
+    });
+
+    await testDb()
+      .insert(usageEvent)
+      .values({
+        runId: source.runId,
+        idempotencyKey: deriveUsageEventIdempotencyKey(source, "tokens.input"),
+        orgId: user.orgId,
+        userId: user.userId,
+        kind: "model",
+        provider: model,
+        category: "tokens.input",
+        quantity: 999,
+        creditsCharged: 999,
+        status: "processed",
+        billingError: null,
+        createdAt: source.createdAt,
+        processedAt: source.processedAt,
+      });
+
+    await expect(
+      withScriptDb((db) => {
+        return runBackfillWithDb(db, backfillOptions(user.orgId, true));
+      }),
+    ).rejects.toThrow("Backfill validation failed with errors");
+
+    expect(await readUsageEvents(user.orgId)).toHaveLength(1);
+  }, 20_000);
 });
