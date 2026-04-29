@@ -8,17 +8,12 @@
 # inside the sandbox.
 #
 # OPENAI_API_KEY is mandatory — CI injects it via secrets.OPENAI_API_KEY and
-# local runs must export it. Missing the key is a hard failure, never a skip,
-# so we always exercise the real codex pipeline on every run.
+# local runs must export it. There is no skip path: if the key is missing,
+# the test fails naturally when the CLI tries to use it.
 
 load '../../helpers/setup'
 
 setup_file() {
-    if [ -z "$OPENAI_API_KEY" ]; then
-        echo "OPENAI_API_KEY is required for real codex tests — refusing to skip" >&2
-        return 1
-    fi
-
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
     export AGENT_NAME="e2e-real-codex-${UNIQUE_ID}"
