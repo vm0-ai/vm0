@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.320.2](https://github.com/vm0-ai/vm0/compare/web-v12.320.1...web-v12.320.2) (2026-04-29)
+
+
+### Bug Fixes
+
+* aggregate model rankings by model name ([#11518](https://github.com/vm0-ai/vm0/issues/11518)) ([a61863a](https://github.com/vm0-ai/vm0/commit/a61863a45b373cc92d78e5281c038594f580a22d))
+* estimate WAV duration from byte size instead of chunk-walk parsing ([#11514](https://github.com/vm0-ai/vm0/issues/11514)) ([cad1e89](https://github.com/vm0-ai/vm0/commit/cad1e890e75508f21fc389be11759c0e559bc688))
+
 ## [12.320.1](https://github.com/vm0-ai/vm0/compare/web-v12.320.0...web-v12.320.1) (2026-04-29)
 
 

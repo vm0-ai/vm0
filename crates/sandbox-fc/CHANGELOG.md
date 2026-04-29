@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.1...sandbox-fc-v0.27.2) (2026-04-29)
+
+
+### Documentation
+
+* **sandbox-fc:** document snapshot prewarm step ([#11513](https://github.com/vm0-ai/vm0/issues/11513)) ([2ae4231](https://github.com/vm0-ai/vm0/commit/2ae423120793b67bad9318253a10c200bd88de20))
+
 ## [0.27.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.0...sandbox-fc-v0.27.1) (2026-04-29)
 
 

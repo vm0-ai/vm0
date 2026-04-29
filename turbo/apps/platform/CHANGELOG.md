@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.312.0](https://github.com/vm0-ai/vm0/compare/app-v0.311.0...app-v0.312.0) (2026-04-29)
+
+
+### Features
+
+* **model-picker:** collapse VM0 dropdown to four primary models ([#11455](https://github.com/vm0-ai/vm0/issues/11455)) ([e71e535](https://github.com/vm0-ai/vm0/commit/e71e53581a1332bc7c412671ef4e0b44d4fed9e1))
+
+
+### Bug Fixes
+
+* aggregate model rankings by model name ([#11518](https://github.com/vm0-ai/vm0/issues/11518)) ([a61863a](https://github.com/vm0-ai/vm0/commit/a61863a45b373cc92d78e5281c038594f580a22d))
+
 ## [0.311.0](https://github.com/vm0-ai/vm0/compare/app-v0.310.0...app-v0.311.0) (2026-04-29)
 
 
