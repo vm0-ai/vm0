@@ -1369,7 +1369,7 @@ mod tests {
         LeakedResources {
             sandbox_id: sandbox_id.into(),
             cow_device: None,
-            network: Some(test_network()),
+            network: None,
             sock_dir: PathBuf::from("/nonexistent"),
             workspace: PathBuf::from("/nonexistent"),
         }
@@ -1602,7 +1602,9 @@ mod tests {
 
         assert_eq!(resources.sandbox_paths.workspace(), workspace.as_path());
         assert_eq!(resources.sock_paths.dir(), sock_dir.as_path());
-        assert_eq!(resources.network.name(), "test-ns");
+        let network = resources.network;
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
         assert!(workspace.exists());
         assert!(sock_dir.exists());
     }
@@ -1657,6 +1659,11 @@ mod tests {
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
 
+        assert!(!tx.send_async_leaked_resources());
+        let network = tx.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
+
         drop(tx);
 
         assert!(!workspace.exists());
@@ -1680,7 +1687,9 @@ mod tests {
 
         drop(tx);
 
-        assert_eq!(leak_rx.recv().await.unwrap().sandbox_id, "queued");
+        let queued = leak_rx.recv().await.unwrap();
+        assert_eq!(queued.sandbox_id, "queued");
+        assert!(queued.network.is_none());
         let mut leaked = leak_rx.recv().await.unwrap();
         assert_eq!(leaked.sandbox_id, "sandbox");
         let network = leaked.network.take().unwrap();
@@ -1763,9 +1772,12 @@ mod tests {
         })
         .unwrap();
 
-        let leaked = rx.recv().await.unwrap();
+        let mut leaked = rx.recv().await.unwrap();
         assert_eq!(leaked.sandbox_id, "test-sandbox");
         assert!(leaked.cow_device.is_none());
+        let network = leaked.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
     }
 
     #[test]
@@ -1781,8 +1793,11 @@ mod tests {
             workspace: PathBuf::from("/nonexistent"),
         };
 
-        // Should not panic — just returns Err.
-        assert!(tx.send(resources).is_err());
+        // Should not panic — just returns Err with the original payload.
+        let mut resources = tx.send(resources).unwrap_err().0;
+        let network = resources.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
     }
 
     #[test]

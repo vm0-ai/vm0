@@ -1141,6 +1141,11 @@ impl NetnsPool {
     ///
     /// When `proxy_port` is configured, the namespace is returned to
     /// the proxy queue so its REDIRECT rules are reused.
+    ///
+    /// The caller keeps the lease in `Some` while this future awaits. Release
+    /// only takes and disarms the lease at the final no-await commit point, so
+    /// cancelling this future before success leaves cleanup ownership with the
+    /// caller.
     pub async fn release(&mut self, lease: &mut Option<NetnsLease>) -> Result<()> {
         let Some(active_lease) = lease.as_ref() else {
             return Err(NetworkError::InvalidLease("missing netns lease".into()));
