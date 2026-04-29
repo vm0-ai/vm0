@@ -277,33 +277,12 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         tracing::info!("R2 cache disabled (R2_* env vars not set) — skipping download and upload");
     }
 
-    // Acquire the rootfs lock before any rootfs mutation. Full builds keep it
-    // through snapshot creation so GC cannot reap the rootfs while the snapshot
-    // provider is reading it.
-    let _rootfs_lock = lock::acquire(paths.rootfs_lock(&rootfs_hash)).await?;
-    let _snapshot_lock = if warm_rootfs_cache {
-        None
-    } else {
-        Some(lock::acquire(paths.snapshot_lock(&snapshot_hash)).await?)
-    };
-
-    // Re-check after acquiring lock — another process may have completed the build.
-    if !warm_rootfs_cache
-        && is_rootfs_present(&rootfs_paths).await?
-        && provider.is_complete(snapshot_dir).await.unwrap_or(false)
-    {
-        tracing::info!("[OK] image already built: rootfs={rootfs_hash}, snapshot={snapshot_hash}");
-        touch_mtime(rootfs_dir);
-        touch_mtime(snapshot_dir);
-        return Ok(());
-    }
-
     let policy = if warm_rootfs_cache {
         RootfsCachePolicy::StrictWarm
     } else {
         RootfsCachePolicy::BestEffort
     };
-    ensure_rootfs_under_lock(RootfsBuildInput {
+    let input = RootfsBuildInput {
         paths: &paths,
         rootfs_hash: &rootfs_hash,
         rootfs_paths: &rootfs_paths,
@@ -316,13 +295,49 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         guest_mock_claude: &guest_mock_claude,
         guest_mock_codex: &guest_mock_codex,
         guest_reseed: &guest_reseed,
-    })
-    .await?;
+    };
 
     if warm_rootfs_cache {
+        if upload_existing_rootfs_for_warm_if_present(&input, paths.rootfs_lock(&rootfs_hash))
+            .await?
+        {
+            tracing::info!("rootfs cache warm complete: rootfs={rootfs_hash}");
+            return Ok(());
+        }
+
+        let rootfs_lock_path = paths.rootfs_lock(&rootfs_hash);
+        tracing::info!(
+            "acquiring exclusive rootfs lock for warm build: {}",
+            rootfs_lock_path.display()
+        );
+        let _rootfs_lock = lock::acquire(rootfs_lock_path).await?;
+        ensure_rootfs_under_lock(input).await?;
         tracing::info!("rootfs cache warm complete: rootfs={rootfs_hash}");
         return Ok(());
     }
+
+    // Acquire the rootfs lock before any rootfs mutation. Full builds keep it
+    // through snapshot creation so GC cannot reap the rootfs while the snapshot
+    // provider is reading it.
+    let rootfs_lock_path = paths.rootfs_lock(&rootfs_hash);
+    tracing::info!(
+        "acquiring exclusive rootfs lock for image build: {}",
+        rootfs_lock_path.display()
+    );
+    let _rootfs_lock = lock::acquire(rootfs_lock_path).await?;
+    let _snapshot_lock = lock::acquire(paths.snapshot_lock(&snapshot_hash)).await?;
+
+    // Re-check after acquiring lock — another process may have completed the build.
+    if is_rootfs_present(&rootfs_paths).await?
+        && provider.is_complete(snapshot_dir).await.unwrap_or(false)
+    {
+        tracing::info!("[OK] image already built: rootfs={rootfs_hash}, snapshot={snapshot_hash}");
+        touch_mtime(rootfs_dir);
+        touch_mtime(snapshot_dir);
+        return Ok(());
+    }
+
+    ensure_rootfs_under_lock(input).await?;
 
     // --- Phase 2: Build snapshot ---
     //
@@ -479,6 +494,28 @@ async fn ensure_rootfs_under_lock(input: RootfsBuildInput<'_>) -> RunnerResult<(
     }
 
     Ok(())
+}
+
+async fn upload_existing_rootfs_for_warm_if_present(
+    input: &RootfsBuildInput<'_>,
+    rootfs_lock_path: PathBuf,
+) -> RunnerResult<bool> {
+    if !is_rootfs_present(input.rootfs_paths).await? {
+        return Ok(false);
+    }
+
+    tracing::info!(
+        "rootfs already present; acquiring shared rootfs lock for warm upload: {}",
+        rootfs_lock_path.display()
+    );
+    let _rootfs_lock = lock::acquire_shared(rootfs_lock_path).await?;
+    if !is_rootfs_present(input.rootfs_paths).await? {
+        tracing::info!("rootfs disappeared while waiting for shared lock; rebuilding for warm");
+        return Ok(false);
+    }
+
+    upload_rootfs_to_r2(input, false).await?;
+    Ok(true)
 }
 
 async fn work_dir_for_rootfs(work_dir: &mut Option<tempfile::TempDir>) -> RunnerResult<PathBuf> {
@@ -1017,6 +1054,33 @@ mod tests {
             rootfs.rootfs().exists(),
             "strict warm must not remove a valid local rootfs when R2 is missing"
         );
+    }
+
+    #[tokio::test]
+    async fn warm_existing_rootfs_upload_does_not_block_on_shared_rootfs_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "warm-shared-lock-hash");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"local-rootfs")
+            .await
+            .unwrap();
+        let guest = dir.path().join("guest");
+        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::StrictWarm, None);
+        let rootfs_lock_path = home.rootfs_lock("warm-shared-lock-hash");
+        let _existing_reader = lock::acquire_shared(rootfs_lock_path.clone())
+            .await
+            .unwrap();
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            upload_existing_rootfs_for_warm_if_present(&input, rootfs_lock_path),
+        )
+        .await
+        .expect("warm upload should share the rootfs lock with active runners");
+
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("--warm-rootfs-cache requires R2"));
     }
 
     #[tokio::test]
