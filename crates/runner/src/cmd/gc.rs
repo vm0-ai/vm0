@@ -476,17 +476,37 @@ enum LockProbe {
     Error(String),
 }
 
+fn lock_probe_inode_is_current(lock: &Flock<std::fs::File>, path: &Path) -> Result<bool, String> {
+    let lock_meta = lock
+        .metadata()
+        .map_err(|e| format!("stat locked fd for {}: {e}", path.display()))?;
+    let path_meta = match std::fs::metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("stat lock {}: {e}", path.display())),
+    };
+    Ok(lock_meta.ino() == path_meta.ino())
+}
+
 /// Try a nonblocking exclusive flock to check if a resource is in use.
 fn probe_lock(path: &Path) -> LockProbe {
-    let file = match lock::open_lock_file(path) {
-        Ok(f) => f,
-        Err(e) => return LockProbe::Error(e.to_string()),
-    };
-    match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
-        Ok(lock) => LockProbe::Free(lock),
-        Err((_, e)) if e == nix::errno::Errno::EWOULDBLOCK => LockProbe::Held,
-        Err((_, e)) => LockProbe::Error(e.to_string()),
+    const MAX_STALE_INODE_RETRIES: usize = 16;
+    for _ in 0..MAX_STALE_INODE_RETRIES {
+        let file = match lock::open_lock_file(path) {
+            Ok(f) => f,
+            Err(e) => return LockProbe::Error(e.to_string()),
+        };
+        match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+            Ok(lock) => match lock_probe_inode_is_current(&lock, path) {
+                Ok(true) => return LockProbe::Free(lock),
+                Ok(false) => continue,
+                Err(e) => return LockProbe::Error(e),
+            },
+            Err((_, e)) if e == nix::errno::Errno::EWOULDBLOCK => return LockProbe::Held,
+            Err((_, e)) => return LockProbe::Error(e.to_string()),
+        }
     }
+    LockProbe::Error(format!("lock path {} changed during probe", path.display()))
 }
 
 /// Like `next_entry()`, but logs a warning and returns `None` on I/O error
@@ -1640,6 +1660,26 @@ mod tests {
             LockProbe::Held => {}
             _ => panic!("expected Held"),
         }
+    }
+
+    #[test]
+    fn lock_probe_inode_check_detects_replaced_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+
+        let held_lock = match probe_lock(&path) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => panic!("new test lock must not be held"),
+            LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
+        };
+
+        std::fs::remove_file(&path).unwrap();
+        drop(lock::open_lock_file(&path).unwrap());
+
+        assert!(
+            !lock_probe_inode_is_current(&held_lock, &path).unwrap(),
+            "inode check must reject a lock fd whose path was recreated"
+        );
     }
 
     fn test_home(root: &Path) -> HomePaths {
