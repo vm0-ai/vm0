@@ -16,6 +16,12 @@
 load '../../helpers/setup'
 load '../../helpers/codex-zero'
 
+# Codex run via zero web layer involves: provider resolve → eager-pin →
+# guest-agent boot → codex exec. Cold path can exceed default 120s; bump
+# per-test to 300s. t-codex-real-smoke uses the same model but a different
+# dispatch path (direct CLI), so 120s is sufficient there.
+export BATS_TEST_TIMEOUT=300
+
 setup_file() {
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"

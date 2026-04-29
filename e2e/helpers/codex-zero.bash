@@ -85,6 +85,9 @@ wait_for_chat_assistant_done() {
         if [[ -n "$body" ]]; then
             status_value=$(printf '%s' "$body" \
                 | jq -r '[.messages[] | select(.role == "assistant")] | last | .status // ""' 2>/dev/null)
+            # Per-poll diagnostic: bats's BATS_TEST_TIMEOUT kills the test before
+            # the trailing "timed out" lines below run, so emit progress here.
+            echo "# poll t=$((SECONDS - start))s status=${status_value:-EMPTY}" >&2
             case "$status_value" in
                 completed|failed|timeout|cancelled)
                     run_id=$(printf '%s' "$body" \
