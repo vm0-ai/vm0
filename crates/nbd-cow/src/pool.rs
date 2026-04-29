@@ -34,11 +34,22 @@ struct CooldownSlot {
 /// to the pool must consume the lease, not copied diagnostic metadata.
 pub struct DeviceLease {
     index: u32,
+    return_to: Option<mpsc::UnboundedSender<DevicePoolCommand>>,
 }
 
 impl DeviceLease {
     fn new(index: u32) -> Self {
-        Self { index }
+        Self {
+            index,
+            return_to: None,
+        }
+    }
+
+    fn with_return(index: u32, return_to: mpsc::UnboundedSender<DevicePoolCommand>) -> Self {
+        Self {
+            index,
+            return_to: Some(return_to),
+        }
     }
 
     #[cfg(test)]
@@ -49,6 +60,32 @@ impl DeviceLease {
     /// NBD device index (N in `/dev/nbdN`).
     pub fn index(&self) -> u32 {
         self.index
+    }
+
+    fn into_index(mut self) -> u32 {
+        self.return_to.take();
+        self.index
+    }
+}
+
+impl Drop for DeviceLease {
+    fn drop(&mut self) {
+        let Some(return_to) = self.return_to.take() else {
+            return;
+        };
+        let (done, _done_rx) = oneshot::channel();
+        if return_to
+            .send(DevicePoolCommand::RetireUncertain {
+                index: self.index,
+                done,
+            })
+            .is_err()
+        {
+            tracing::warn!(
+                device_index = self.index,
+                "device pool actor stopped before dropped lease could be retired"
+            );
+        }
     }
 }
 
@@ -80,15 +117,15 @@ enum DevicePoolCommand {
         respond_to: oneshot::Sender<Result<DeviceLease>>,
     },
     ReleaseClean {
-        lease: DeviceLease,
+        index: u32,
         done: oneshot::Sender<()>,
     },
     Discard {
-        lease: DeviceLease,
+        index: u32,
         done: oneshot::Sender<()>,
     },
     RetireUncertain {
-        lease: DeviceLease,
+        index: u32,
         done: oneshot::Sender<()>,
     },
     Cleanup {
@@ -134,8 +171,9 @@ impl DevicePoolHandle {
         Self::from_pool(DevicePool::new(config))
     }
 
-    fn from_pool(pool: DevicePool) -> Self {
+    fn from_pool(mut pool: DevicePool) -> Self {
         let (commands, command_rx) = mpsc::unbounded_channel();
+        pool.set_lease_return(commands.clone());
         tokio::spawn(
             DevicePoolActor {
                 pool,
@@ -183,10 +221,11 @@ impl DevicePoolHandle {
     }
 
     pub(crate) async fn release_clean(&self, lease: DeviceLease) {
+        let index = lease.into_index();
         let (done, done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::ReleaseClean { lease, done })
+            .send(DevicePoolCommand::ReleaseClean { index, done })
             .is_err()
         {
             tracing::warn!("device pool actor stopped before clean release");
@@ -196,10 +235,11 @@ impl DevicePoolHandle {
     }
 
     pub(crate) async fn discard(&self, lease: DeviceLease) {
+        let index = lease.into_index();
         let (done, done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::Discard { lease, done })
+            .send(DevicePoolCommand::Discard { index, done })
             .is_err()
         {
             tracing::warn!("device pool actor stopped before discard");
@@ -209,10 +249,11 @@ impl DevicePoolHandle {
     }
 
     pub(crate) async fn retire_uncertain(&self, lease: DeviceLease) {
+        let index = lease.into_index();
         let (done, done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::RetireUncertain { lease, done })
+            .send(DevicePoolCommand::RetireUncertain { index, done })
             .is_err()
         {
             tracing::warn!("device pool actor stopped before uncertain retire");
@@ -222,10 +263,11 @@ impl DevicePoolHandle {
     }
 
     pub(crate) fn retire_uncertain_detached(&self, lease: DeviceLease) {
+        let index = lease.into_index();
         let (done, _done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::RetireUncertain { lease, done })
+            .send(DevicePoolCommand::RetireUncertain { index, done })
             .is_err()
         {
             tracing::warn!("device pool actor stopped before detached uncertain retire");
@@ -279,21 +321,21 @@ impl DevicePoolActor {
             DevicePoolCommand::Acquire { respond_to } => {
                 self.pool.handle_acquire(respond_to);
             }
-            DevicePoolCommand::ReleaseClean { lease, done } => {
-                self.pool.release(lease);
+            DevicePoolCommand::ReleaseClean { index, done } => {
+                self.pool.release_index(index);
                 self.pool.ensure_waiting_progress();
                 if self.pool.waiting_acquires.is_empty() {
                     self.pool.maybe_replenish();
                 }
                 let _ = done.send(());
             }
-            DevicePoolCommand::Discard { lease, done } => {
-                self.pool.discard(lease);
+            DevicePoolCommand::Discard { index, done } => {
+                self.pool.discard_index(index);
                 self.pool.ensure_waiting_progress();
                 let _ = done.send(());
             }
-            DevicePoolCommand::RetireUncertain { lease, done } => {
-                self.pool.retire_uncertain(lease);
+            DevicePoolCommand::RetireUncertain { index, done } => {
+                self.pool.retire_uncertain_index(index);
                 self.pool.ensure_waiting_progress();
                 if self.pool.waiting_acquires.is_empty() {
                     self.pool.maybe_replenish();
@@ -325,6 +367,8 @@ pub struct DevicePool {
     cooldown: VecDeque<CooldownSlot>,
     /// Background sysfs validation tasks.
     pending: tokio::task::JoinSet<ValidationResult>,
+    /// Sender embedded in assigned leases so dropping a lease still returns it.
+    lease_return: Option<mpsc::UnboundedSender<DevicePoolCommand>>,
     /// Acquire errors that raced with still-pending validation tasks.
     deferred_acquire_errors: VecDeque<NbdCowError>,
     /// Acquire requests waiting for validation or a released device.
@@ -351,11 +395,23 @@ impl DevicePool {
             ready: VecDeque::with_capacity(BUFFER_SIZE),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            lease_return: None,
             deferred_acquire_errors: VecDeque::new(),
             waiting_acquires: VecDeque::new(),
             max_devices,
             config,
             in_flight: HashSet::new(),
+        }
+    }
+
+    fn set_lease_return(&mut self, return_to: mpsc::UnboundedSender<DevicePoolCommand>) {
+        self.lease_return = Some(return_to);
+    }
+
+    fn lease_for(&self, index: u32) -> DeviceLease {
+        match &self.lease_return {
+            Some(return_to) => DeviceLease::with_return(index, return_to.clone()),
+            None => DeviceLease::new(index),
         }
     }
 
@@ -389,11 +445,17 @@ impl DevicePool {
 
         self.promote_cooled_down();
         if let Some(index) = self.ready.pop_front() {
-            if respond_to.send(Ok(DeviceLease::new(index))).is_ok() {
-                self.in_flight.insert(index);
-                self.maybe_replenish();
-            } else {
-                self.ready.push_front(index);
+            match respond_to.send(Ok(self.lease_for(index))) {
+                Ok(()) => {
+                    self.in_flight.insert(index);
+                    self.maybe_replenish();
+                }
+                Err(Ok(lease)) => {
+                    self.ready.push_front(lease.into_index());
+                }
+                Err(Err(_)) => {
+                    self.ready.push_front(index);
+                }
             }
             return;
         }
@@ -484,11 +546,17 @@ impl DevicePool {
                 break;
             };
 
-            if respond_to.send(Ok(DeviceLease::new(index))).is_ok() {
-                self.in_flight.insert(index);
-                assigned = true;
-            } else {
-                self.ready.push_front(index);
+            match respond_to.send(Ok(self.lease_for(index))) {
+                Ok(()) => {
+                    self.in_flight.insert(index);
+                    assigned = true;
+                }
+                Err(Ok(lease)) => {
+                    self.ready.push_front(lease.into_index());
+                }
+                Err(Err(_)) => {
+                    self.ready.push_front(index);
+                }
             }
         }
         assigned
@@ -499,10 +567,17 @@ impl DevicePool {
             return false;
         }
 
+        let mut index = index;
         while let Some(respond_to) = self.waiting_acquires.pop_front() {
-            if respond_to.send(Ok(DeviceLease::new(index))).is_ok() {
-                self.in_flight.insert(index);
-                return true;
+            match respond_to.send(Ok(self.lease_for(index))) {
+                Ok(()) => {
+                    self.in_flight.insert(index);
+                    return true;
+                }
+                Err(Ok(lease)) => {
+                    index = lease.into_index();
+                }
+                Err(Err(_)) => {}
             }
         }
 
@@ -516,7 +591,7 @@ impl DevicePool {
                 Ok(()) => return true,
                 Err(Err(e)) => error = e,
                 Err(Ok(lease)) => {
-                    self.ready.push_front(lease.index);
+                    self.ready.push_front(lease.into_index());
                     return false;
                 }
             }
@@ -553,8 +628,12 @@ impl DevicePool {
     ///
     /// The device enters a cooldown period before it can be reused,
     /// giving the kernel time to finish teardown.
-    pub(crate) fn release(&mut self, lease: DeviceLease) {
-        let index = lease.index;
+    #[cfg(test)]
+    fn release(&mut self, lease: DeviceLease) {
+        self.release_index(lease.into_index());
+    }
+
+    fn release_index(&mut self, index: u32) {
         if !self.active {
             return;
         }
@@ -576,8 +655,7 @@ impl DevicePool {
     /// Used when `connect_device` fails with EBUSY — the device belongs to
     /// another process and should not enter cooldown. Background scans will
     /// rediscover it later if it becomes free.
-    pub(crate) fn discard(&mut self, lease: DeviceLease) {
-        let index = lease.index;
+    fn discard_index(&mut self, index: u32) {
         self.in_flight.remove(&index);
     }
 
@@ -585,8 +663,13 @@ impl DevicePool {
     ///
     /// This is intentionally conservative: the index must still pass through
     /// cooldown and sysfs validation before it can become ready again.
-    pub(crate) fn retire_uncertain(&mut self, lease: DeviceLease) {
-        self.release(lease);
+    #[cfg(test)]
+    fn retire_uncertain(&mut self, lease: DeviceLease) {
+        self.retire_uncertain_index(lease.into_index());
+    }
+
+    fn retire_uncertain_index(&mut self, index: u32) {
+        self.release_index(index);
     }
 
     /// Clean up the pool: cancel pending tasks and clear queues.
@@ -778,6 +861,7 @@ mod tests {
             ready: VecDeque::from([0, 1, 2, 4]),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            lease_return: None,
             deferred_acquire_errors: VecDeque::new(),
             waiting_acquires: VecDeque::new(),
             max_devices: 8,
@@ -792,6 +876,7 @@ mod tests {
             ready: VecDeque::new(),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            lease_return: None,
             deferred_acquire_errors: VecDeque::new(),
             waiting_acquires: VecDeque::new(),
             max_devices: 0,
@@ -928,6 +1013,30 @@ mod tests {
         })
         .await
         .expect("detached retire did not reach actor");
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn dropped_assigned_lease_retires_to_cooldown() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.ready.push_back(3);
+        let handle = DevicePoolHandle::from_pool(pool);
+
+        let lease = handle.acquire().await.expect("acquire lease");
+        assert_eq!(lease.index(), 3);
+        drop(lease);
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let snapshot = handle.snapshot().await;
+                if snapshot.cooldown == vec![3] && !snapshot.in_flight.contains(&3) {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("dropped lease did not return to cooldown");
         handle.cleanup().await;
     }
 
