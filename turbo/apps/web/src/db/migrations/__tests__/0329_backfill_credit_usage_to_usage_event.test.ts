@@ -25,6 +25,7 @@ const MIGRATION_STATEMENTS = MIGRATION_SQL.split("--> statement-breakpoint")
     return statement.trim();
   })
   .filter(Boolean);
+const ROLLBACK_TEST_TRANSACTION = new Error("rollback test transaction");
 
 function encodeUuidName(parts: string[]): Buffer {
   const chunks: Buffer[] = [];
@@ -70,6 +71,14 @@ function testIdentity(): { orgId: string; userId: string } {
   };
 }
 
+async function runMigrationStatements(
+  tx: postgres.TransactionSql,
+): Promise<void> {
+  for (const statement of MIGRATION_STATEMENTS) {
+    await tx.unsafe(statement);
+  }
+}
+
 async function runMigrationForOrg(orgId: string): Promise<void> {
   const databaseUrl = env().DATABASE_URL;
   if (!databaseUrl) {
@@ -80,10 +89,36 @@ async function runMigrationForOrg(orgId: string): Promise<void> {
   try {
     await client.begin(async (tx) => {
       await tx`SELECT set_config('vm0.credit_usage_backfill_org_id', ${orgId}, true)`;
-      for (const statement of MIGRATION_STATEMENTS) {
-        await tx.unsafe(statement);
-      }
+      await runMigrationStatements(tx);
     });
+  } finally {
+    await client.end();
+  }
+}
+
+async function withCleanCreditUsageTransaction(
+  callback: (tx: postgres.TransactionSql) => Promise<void>,
+): Promise<void> {
+  const databaseUrl = env().DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required");
+  }
+
+  const client = postgres(databaseUrl, { max: 1 });
+  try {
+    try {
+      await client.begin(async (tx) => {
+        // Isolate unscoped migration tests from stale rows in the shared test DB.
+        await tx`DELETE FROM usage_event`;
+        await tx`DELETE FROM credit_usage`;
+        await callback(tx);
+        throw ROLLBACK_TEST_TRANSACTION;
+      });
+    } catch (error) {
+      if (error !== ROLLBACK_TEST_TRANSACTION) {
+        throw error;
+      }
+    }
   } finally {
     await client.end();
   }
@@ -335,6 +370,182 @@ describe("migration 0329 backfill credit_usage to usage_event", () => {
     expect(
       expectedIdempotencyKey(["run-123", "msg-456", "tokens.input"]),
     ).toBe("1f58e71b-bb06-5114-984c-64021c8a5626");
+  });
+
+  it("backfills all orgs when the org-id test override is unset", async () => {
+    await withCleanCreditUsageTransaction(async (tx) => {
+      const suffix = randomUUID().slice(0, 8);
+      const orgA = `unset-org-a-${suffix}`;
+      const orgB = `unset-org-b-${suffix}`;
+      const setting = await tx<{ value: string | null }[]>`
+        SELECT current_setting('vm0.credit_usage_backfill_org_id', true) AS value
+      `;
+      expect(setting[0]?.value).toBeNull();
+
+      await tx`
+        INSERT INTO credit_usage (
+          id,
+          run_id,
+          result_uuid,
+          message_id,
+          org_id,
+          user_id,
+          model,
+          model_provider,
+          input_tokens,
+          output_tokens,
+          cache_read_input_tokens,
+          cache_creation_input_tokens,
+          web_search_requests,
+          status,
+          credits_charged,
+          processed_at
+        )
+        VALUES
+          (
+            ${randomUUID()}::uuid,
+            NULL,
+            NULL,
+            NULL,
+            ${orgA},
+            ${`user-a-${suffix}`},
+            ${`unset-model-a-${suffix}`},
+            '',
+            2,
+            0,
+            0,
+            0,
+            0,
+            'processed',
+            2,
+            '2026-01-02T03:04:05.000Z'::timestamp
+          ),
+          (
+            ${randomUUID()}::uuid,
+            NULL,
+            NULL,
+            NULL,
+            ${orgB},
+            ${`user-b-${suffix}`},
+            ${`unset-model-b-${suffix}`},
+            '',
+            0,
+            3,
+            0,
+            0,
+            0,
+            'processed',
+            5,
+            '2026-01-02T03:04:05.000Z'::timestamp
+          )
+      `;
+
+      await runMigrationStatements(tx);
+
+      const rows = await tx<
+        {
+          orgId: string;
+          category: string;
+          quantity: number;
+          creditsCharged: number;
+        }[]
+      >`
+        SELECT
+          org_id AS "orgId",
+          category,
+          quantity::int AS quantity,
+          credits_charged::int AS "creditsCharged"
+        FROM usage_event
+        ORDER BY org_id, category
+      `;
+      expect(rows).toEqual([
+        {
+          orgId: orgA,
+          category: "tokens.input",
+          quantity: 2,
+          creditsCharged: 2,
+        },
+        {
+          orgId: orgB,
+          category: "tokens.output",
+          quantity: 3,
+          creditsCharged: 5,
+        },
+      ]);
+    });
+  });
+
+  it("treats an empty org-id test override as unset", async () => {
+    await withCleanCreditUsageTransaction(async (tx) => {
+      const suffix = randomUUID().slice(0, 8);
+      const orgId = `empty-org-${suffix}`;
+      await tx`
+        INSERT INTO credit_usage (
+          id,
+          run_id,
+          result_uuid,
+          message_id,
+          org_id,
+          user_id,
+          model,
+          model_provider,
+          input_tokens,
+          output_tokens,
+          cache_read_input_tokens,
+          cache_creation_input_tokens,
+          web_search_requests,
+          status,
+          credits_charged,
+          processed_at
+        )
+        VALUES (
+          ${randomUUID()}::uuid,
+          NULL,
+          NULL,
+          NULL,
+          ${orgId},
+          ${`user-${suffix}`},
+          ${`empty-model-${suffix}`},
+          '',
+          0,
+          0,
+          4,
+          0,
+          0,
+          'processed',
+          6,
+          '2026-01-02T03:04:05.000Z'::timestamp
+        )
+      `;
+
+      await tx`SELECT set_config('vm0.credit_usage_backfill_org_id', '', true)`;
+      await runMigrationStatements(tx);
+
+      const rows = await tx<
+        {
+          orgId: string;
+          category: string;
+          quantity: number;
+          creditsCharged: number;
+        }[]
+      >`
+        SELECT
+          org_id AS "orgId",
+          category,
+          quantity::int AS quantity,
+          credits_charged::int AS "creditsCharged"
+        FROM usage_event
+        ORDER BY org_id, category
+      `;
+      expect(rows).toEqual([
+        {
+          orgId,
+          category: "tokens.cache_read",
+          quantity: 4,
+          creditsCharged: 6,
+        },
+      ]);
+    });
   });
 
   it("backfills processed model rows with producer-compatible idempotency keys and matching pricing splits", async () => {
