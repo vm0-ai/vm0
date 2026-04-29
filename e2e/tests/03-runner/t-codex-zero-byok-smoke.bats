@@ -81,18 +81,22 @@ teardown_file() {
     # Trigger a real run by hitting the same unified chat endpoint the web
     # composer uses. This both creates the thread (with eager-pin) and
     # dispatches the codex run in one call. Sets LAST_RUN_ID + LAST_THREAD_ID.
-    run send_chat_run_message "$AGENT_ID" \
+    #
+    # Called directly (no `run`) because bats `run` executes in a subshell —
+    # `export` from the helper would not propagate back to this scope, and
+    # LAST_THREAD_ID / LAST_RUN_ID would arrive empty. The helper returns
+    # non-zero on failure, which fails the test naturally.
+    send_chat_run_message "$AGENT_ID" \
         "Compute 123+456 and reply with exactly: RESULT=<answer>"
-    assert_success
 
     THREAD_ID="$LAST_THREAD_ID"
     [[ -n "$THREAD_ID" ]] || fail "Could not extract thread id from chat/messages response"
     export THREAD_ID
 
     # Wait for the assistant message to terminate. Resets LAST_RUN_ID +
-    # LAST_MSG_CONTENT to the assistant row's runId/content.
-    run wait_for_chat_assistant_done "$THREAD_ID"
-    assert_success
+    # LAST_MSG_CONTENT to the assistant row's runId/content. Also called
+    # without `run` so its exports survive the subshell boundary.
+    wait_for_chat_assistant_done "$THREAD_ID"
 
     # Assert: real codex produced the expected sentinel.
     [[ "$LAST_MSG_CONTENT" == *"RESULT=579"* ]] \
