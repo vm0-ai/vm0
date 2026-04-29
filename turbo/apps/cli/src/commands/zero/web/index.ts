@@ -15,5 +15,5 @@ export const zeroWebCommand = new Command()
 Examples:
   Upload a file:    zero web upload-file -f /tmp/report.pdf
   Download a file:  zero web download-file <file-id> -o /tmp/out.pdf
-  Generate speech:  zero web voice --text "Hello" -o /tmp/speech.wav`,
+  Generate speech:  zero web voice --text "Hello"`,
   );
