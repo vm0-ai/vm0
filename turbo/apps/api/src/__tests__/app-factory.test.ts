@@ -168,6 +168,113 @@ describe("createApp", () => {
       expect(observedBody).toBe('{"hello":"world"}');
     });
 
+    it("proxies realtime token requests without stale forwarded host metadata", async () => {
+      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+      const captured: {
+        urls: string[];
+        authorization: string[];
+        origins: string[];
+        bodies: string[];
+        forwarded: (string | null)[];
+        forwardedHost: (string | null)[];
+        forwardedPort: (string | null)[];
+        forwardedProto: (string | null)[];
+      } = {
+        urls: [],
+        authorization: [],
+        origins: [],
+        bodies: [],
+        forwarded: [],
+        forwardedHost: [],
+        forwardedPort: [],
+        forwardedProto: [],
+      };
+      server.use(
+        http.post(
+          "https://www.vm0.ai/api/zero/realtime/token",
+          async ({ request }) => {
+            captured.urls.push(request.url);
+            captured.authorization.push(
+              request.headers.get("authorization") ?? "",
+            );
+            captured.origins.push(request.headers.get("origin") ?? "");
+            captured.bodies.push(await request.text());
+            captured.forwarded.push(request.headers.get("forwarded"));
+            captured.forwardedHost.push(
+              request.headers.get("x-forwarded-host"),
+            );
+            captured.forwardedPort.push(
+              request.headers.get("x-forwarded-port"),
+            );
+            captured.forwardedProto.push(
+              request.headers.get("x-forwarded-proto"),
+            );
+            return HttpResponse.json({ token: "proxied" });
+          },
+        ),
+      );
+
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/zero/realtime/token", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer clerk-session",
+          "content-type": "application/json",
+          forwarded: "host=api.vm0.ai;proto=https",
+          origin: "https://app.vm0.ai",
+          "x-forwarded-host": "api.vm0.ai",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+        },
+        body: "{}",
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toStrictEqual({
+        token: "proxied",
+      });
+      expect(captured.urls).toStrictEqual([
+        "https://www.vm0.ai/api/zero/realtime/token",
+      ]);
+      expect(captured.authorization).toStrictEqual(["Bearer clerk-session"]);
+      expect(captured.origins).toStrictEqual(["https://app.vm0.ai"]);
+      expect(captured.bodies).toStrictEqual(["{}"]);
+      expect(captured.forwarded).toStrictEqual([null]);
+      expect(captured.forwardedHost).toStrictEqual([null]);
+      expect(captured.forwardedPort).toStrictEqual([null]);
+      expect(captured.forwardedProto).toStrictEqual([null]);
+    });
+
+    it("preserves multiple set-cookie response headers", async () => {
+      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+      server.use(
+        http.get("https://www.vm0.ai/api/connectors/github/authorize", () => {
+          return new HttpResponse(null, {
+            status: 302,
+            headers: [
+              ["location", "https://github.com/login/oauth/authorize"],
+              ["set-cookie", "oauth_state=abc; Path=/; HttpOnly"],
+              ["set-cookie", "oauth_pkce=def; Path=/; HttpOnly"],
+            ],
+          });
+        }),
+      );
+
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/connectors/github/authorize", {
+        method: "GET",
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(
+        "https://github.com/login/oauth/authorize",
+      );
+      expect(response.headers.getSetCookie()).toStrictEqual([
+        "oauth_state=abc; Path=/; HttpOnly",
+        "oauth_pkce=def; Path=/; HttpOnly",
+      ]);
+    });
+
     it("returns 404 when VM0_WEB_URL is not configured", async () => {
       // No msw handler registered — if the proxy tried to fetch, msw would
       // throw on the unhandled request. The 404 path must short-circuit.

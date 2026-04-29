@@ -30,8 +30,19 @@ const HOP_BY_HOP_HEADERS: Readonly<Record<string, true>> = {
   upgrade: true,
 };
 
+const PROXY_REQUEST_HEADERS: Readonly<Record<string, true>> = {
+  forwarded: true,
+  "x-forwarded-host": true,
+  "x-forwarded-port": true,
+  "x-forwarded-proto": true,
+};
+
 function isHopByHop(name: string): boolean {
   return Object.hasOwn(HOP_BY_HOP_HEADERS, name.toLowerCase());
+}
+
+function isProxyRequestHeader(name: string): boolean {
+  return Object.hasOwn(PROXY_REQUEST_HEADERS, name.toLowerCase());
 }
 
 function buildProxyRequest(context: Context, webUrl: string): Request {
@@ -40,7 +51,7 @@ function buildProxyRequest(context: Context, webUrl: string): Request {
 
   const headers = new Headers();
   for (const [key, value] of context.req.raw.headers) {
-    if (!isHopByHop(key)) {
+    if (!isHopByHop(key) && !isProxyRequestHeader(key)) {
       headers.set(key, value);
     }
   }
@@ -69,9 +80,12 @@ async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
   // can set its own Content-Length / Transfer-Encoding for our reply.
   const headers = new Headers();
   for (const [key, value] of upstream.headers) {
-    if (!isHopByHop(key)) {
+    if (!isHopByHop(key) && key.toLowerCase() !== "set-cookie") {
       headers.set(key, value);
     }
+  }
+  for (const cookie of upstream.headers.getSetCookie()) {
+    headers.append("set-cookie", cookie);
   }
   return new Response(upstream.body, {
     status: upstream.status,

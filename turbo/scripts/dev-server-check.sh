@@ -20,3 +20,4 @@ check_port() {
 
 check_port "Web:      https://www.vm7.ai:8443"      "https://www.vm7.ai:8443/"
 check_port "App:      https://app.vm7.ai:8443"  "https://app.vm7.ai:8443/"
+check_port "API:      https://api.vm7.ai:8443"  "https://api.vm7.ai:8443/health"

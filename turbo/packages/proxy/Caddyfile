@@ -1,44 +1,56 @@
 {
-  http_port 8080
-  https_port 8443
-  storage file_system {
-    root /home/vscode/.local/certs/caddy
-  }
+	http_port 8080
+	https_port 8443
+	storage file_system {
+		root /home/vscode/.local/certs/caddy
+	}
 }
 
 # Main domain redirect to www
 vm7.ai:8443 {
-  tls {
-    dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
-  }
-  redir https://www.vm7.ai:8443{uri} permanent
+	tls {
+		dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
+	}
+	redir https://www.vm7.ai:8443{uri} permanent
 }
 
 # Web application
 www.vm7.ai:8443 {
-  tls {
-    dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
-  }
-  reverse_proxy localhost:3000
+	tls {
+		dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
+	}
+	reverse_proxy localhost:3000
 }
 
 # App application
 app.vm7.ai:8443 {
-  tls {
-    dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
-  }
-  reverse_proxy localhost:3002
+	tls {
+		dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
+	}
+	reverse_proxy localhost:3002
+}
+
+# API application
+api.vm7.ai:8443 {
+	tls {
+		dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
+	}
+	reverse_proxy localhost:3001
 }
 
 # HTTP redirects to HTTPS
 http://vm7.ai:8080 {
-  redir https://www.vm7.ai:8443{uri} permanent
+	redir https://www.vm7.ai:8443{uri} permanent
 }
 
 http://www.vm7.ai:8080 {
-  redir https://www.vm7.ai:8443{uri} permanent
+	redir https://www.vm7.ai:8443{uri} permanent
 }
 
 http://app.vm7.ai:8080 {
-  redir https://app.vm7.ai:8443{uri} permanent
+	redir https://app.vm7.ai:8443{uri} permanent
+}
+
+http://api.vm7.ai:8080 {
+	redir https://api.vm7.ai:8443{uri} permanent
 }

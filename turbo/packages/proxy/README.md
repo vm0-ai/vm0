@@ -9,7 +9,7 @@ This package provides a Caddy-based reverse proxy that enables HTTPS for local d
 ## Features
 
 - **Automatic HTTPS** via Let's Encrypt (no manual certificate management)
-- **Multiple domains**: www.vm7.ai, app.vm7.ai
+- **Multiple domains**: www.vm7.ai, app.vm7.ai, api.vm7.ai
 - **Automatic HTTP to HTTPS redirect**
 - **WebSocket support** for hot module replacement
 - **Shared certificate cache** across devcontainers via Docker volume
@@ -20,9 +20,9 @@ This package provides a Caddy-based reverse proxy that enables HTTPS for local d
 Browser
   ↓
 Caddy Proxy (HTTPS: 8443, HTTP: 8080)
-  ↓              ↓
-Web App        App
-(port 3000)    (port 3002)
+  ↓              ↓              ↓
+Web App        App            API
+(port 3000)    (port 3002)    (port 3001)
 ```
 
 ## Quick Start
@@ -57,11 +57,13 @@ On first start, Caddy will automatically obtain a Let's Encrypt certificate (~30
 
 - Web: https://www.vm7.ai:8443
 - App: https://app.vm7.ai:8443
+- API: https://api.vm7.ai:8443
 
 Direct access (HTTP only):
 
 - Web: http://localhost:3000
 - App: http://localhost:3002
+- API: http://localhost:3001
 
 ## Configuration
 
@@ -80,6 +82,7 @@ The `Caddyfile` defines:
 | --------------- | ---- | ---------------------------- |
 | www.vm7.ai:8443 | 8443 | localhost:3000 (Next.js web) |
 | app.vm7.ai:8443 | 8443 | localhost:3002 (Vite app)    |
+| api.vm7.ai:8443 | 8443 | localhost:3001 (Hono API)    |
 | vm7.ai:8443     | 8443 | Redirect to www.vm7.ai:8443  |
 
 ## Scripts
@@ -105,7 +108,7 @@ pkill -f caddy
 In DevContainer, this should be automatic. If not:
 
 ```bash
-echo "127.0.0.1 vm7.ai www.vm7.ai app.vm7.ai" | sudo tee -a /etc/hosts
+echo "127.0.0.1 vm7.ai www.vm7.ai app.vm7.ai api.vm7.ai" | sudo tee -a /etc/hosts
 ```
 
 ## File Structure
