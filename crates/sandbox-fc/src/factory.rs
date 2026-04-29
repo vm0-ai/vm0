@@ -660,7 +660,7 @@ impl InvariantConfig {
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
 /// snapshot output.
 ///
-/// Derived from [`InvariantConfig`] serialization — adding a field to that
+/// Derived from `InvariantConfig` serialization — adding a field to that
 /// struct automatically changes this hash.
 ///
 /// This is the backing implementation for [`SandboxFactory::config_hash`].

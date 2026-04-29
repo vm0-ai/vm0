@@ -191,8 +191,8 @@ pub trait Sandbox: Send + Sync + Any {
     /// supervision via [`wait_exit`](Self::wait_exit).
     ///
     /// `output` controls whether stdout is buffered into the final
-    /// [`ProcessExit`](crate::ProcessExit) or streamed in real time through
-    /// [`SpawnHandle::stdout_rx`](crate::SpawnHandle::stdout_rx), optionally
+    /// [`ProcessExit`] or streamed in real time through
+    /// [`SpawnHandle::stdout_rx`], optionally
     /// teeing streamed chunks into a guest-side file.
     async fn spawn_watch(
         &self,

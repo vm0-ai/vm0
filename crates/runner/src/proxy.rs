@@ -299,7 +299,7 @@ impl MitmProxy {
     /// clean slate and will detect real crashes.
     ///
     /// The caller should spawn the mitmdump process (potentially in a
-    /// background task) and then call [`complete_restart`] with the result.
+    /// background task) and then call `complete_restart` with the result.
     pub async fn begin_restart(&mut self) -> MitmRestartParams {
         // Silence the old monitor permanently: after this call, no one
         // else holds a handle that could reset its `Arc<AtomicBool>`

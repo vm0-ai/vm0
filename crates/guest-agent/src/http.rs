@@ -274,7 +274,7 @@ impl http_body::Body for SizedBody {
 /// PUT a file to a presigned S3 URL by streaming from disk.
 ///
 /// Unlike [`put_presigned`], this avoids loading the entire file into memory.
-/// A [`SizedBody`] streams bounded chunks and reports the file size via
+/// A `SizedBody` streams bounded chunks and reports the file size via
 /// `size_hint`, so hyper sets `Content-Length` automatically.
 /// On each retry the original file handle is cloned, producing a fresh body
 /// with stable file identity and length.

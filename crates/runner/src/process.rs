@@ -69,7 +69,7 @@ fn parse_runner_cmdline(argv: &[String]) -> Option<(PathBuf, String)> {
 
 /// Check if an argv belongs to a firecracker process.
 ///
-/// Looks at the binary name (argv[0]) — the run ID and base directory
+/// Looks at the binary name (`argv[0]`) — the run ID and base directory
 /// are resolved from `/proc/{pid}/cwd` instead of argument parsing,
 /// since our sandbox always sets `current_dir` to the workspace.
 fn is_firecracker_cmdline(argv: &[String]) -> bool {

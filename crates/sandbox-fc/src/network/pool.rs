@@ -97,7 +97,7 @@ pub struct PooledNetns {
 /// Configuration for creating a [`NetnsPool`].
 ///
 /// When `proxy_port` is set, the pool maintains **two** queues
-/// (plain + proxy), each buffering [`BUFFER_SIZE`] namespaces.
+/// (plain + proxy), each buffering `BUFFER_SIZE` namespaces.
 pub struct NetnsPoolConfig {
     /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
     pub proxy_port: Option<u16>,
@@ -663,7 +663,7 @@ fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
 
 /// Pre-warmed pool of network namespaces for Firecracker VMs.
 ///
-/// Maintains a buffer of [`BUFFER_SIZE`] ready namespaces per queue.
+/// Maintains a buffer of `BUFFER_SIZE` ready namespaces per queue.
 /// After each [`acquire`](Self::acquire), the pool spawns a background
 /// task to replenish the buffer. Namespaces returned via
 /// [`release`](Self::release) are recycled back into the queue.
@@ -687,7 +687,7 @@ pub struct NetnsPool {
 impl NetnsPool {
     /// Create a new pool with a small pre-warmed buffer.
     ///
-    /// Pre-warms [`BUFFER_SIZE`] namespaces per queue at startup.
+    /// Pre-warms `BUFFER_SIZE` namespaces per queue at startup.
     /// After each [`acquire`](Self::acquire), the pool replenishes to
     /// maintain the buffer level. Namespaces returned via
     /// [`release`](Self::release) are recycled back into the queue.
@@ -817,7 +817,7 @@ impl NetnsPool {
     /// 3. Create on-demand as fallback
     ///
     /// After acquisition, spawns a background replenishment task if the
-    /// buffer is below [`BUFFER_SIZE`].
+    /// buffer is below `BUFFER_SIZE`.
     ///
     /// When `proxy_port` is configured, acquires from the proxy queue
     /// (namespaces with iptables REDIRECT rules). Otherwise acquires from
@@ -1002,7 +1002,7 @@ impl NetnsPool {
     /// Return a namespace to the pool, or delete it if the pool is inactive.
     ///
     /// When `proxy_port` is configured, the namespace is returned to
-    /// [`Self::proxy_queue`] so its REDIRECT rules are reused.
+    /// the proxy queue so its REDIRECT rules are reused.
     pub async fn release(&mut self, ns: PooledNetns) -> Result<()> {
         if !self.active {
             delete_namespace_resources(&ns.name, &ns.host_device).await;
