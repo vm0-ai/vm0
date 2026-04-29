@@ -176,9 +176,7 @@ impl NbdCowDevice {
                 })();
                 if let Err(e) = setup_err {
                     shutdown.cancel();
-                    for handle in server_handles {
-                        handle.abort();
-                    }
+                    abort_server_handles(server_handles).await;
                     // Release device back — connect was never attempted, device
                     // is still free in kernel. No cooldown needed but release()
                     // adds one defensively.
@@ -201,9 +199,7 @@ impl NbdCowDevice {
                             "EBUSY on connect, trying next device"
                         );
                         shutdown.cancel();
-                        for handle in server_handles {
-                            handle.abort();
-                        }
+                        abort_server_handles(server_handles).await;
                         if ebusy_count > MAX_EBUSY_RETRIES {
                             device_pool.discard(lease).await;
                             return Err(error::NbdCowError::NoFreeDevice);
@@ -216,9 +212,7 @@ impl NbdCowDevice {
                     }
                     Err(e) => {
                         shutdown.cancel();
-                        for handle in server_handles {
-                            handle.abort();
-                        }
+                        abort_server_handles(server_handles).await;
                         // Connect failed with non-EBUSY error. Device may be in
                         // an unknown kernel state — retire with cooldown so it
                         // gets re-validated before reuse.
@@ -253,14 +247,12 @@ impl NbdCowDevice {
                 attempt = size_attempt + 1,
                 "device size 0 after connect, disconnecting and retrying"
             );
+            shutdown.cancel();
+            abort_server_handles(server_handles).await;
             if netlink::disconnect(device_index).is_ok() {
                 device_pool.release_clean(lease).await;
             } else {
                 device_pool.retire_uncertain(lease).await;
-            }
-            shutdown.cancel();
-            for handle in server_handles {
-                handle.abort();
             }
             last_err_idx = device_index;
 
@@ -444,9 +436,16 @@ impl pool::DevicePoolHandle {
         let (device, lease) = NbdCowDevice::create_inner(base_image, cow_file, size, self).await?;
         Ok(PooledNbdCowDevice {
             device,
-            lease: LeaseGuard::new(lease),
+            lease: LeaseGuard::new(lease, self.clone()),
             pool: self.clone(),
         })
+    }
+}
+
+async fn abort_server_handles(handles: Vec<JoinHandle<()>>) {
+    for handle in handles {
+        handle.abort();
+        let _ = handle.await;
     }
 }
 
@@ -459,11 +458,15 @@ pub struct PooledNbdCowDevice {
 
 struct LeaseGuard {
     lease: Option<pool::DeviceLease>,
+    pool: pool::DevicePoolHandle,
 }
 
 impl LeaseGuard {
-    fn new(lease: pool::DeviceLease) -> Self {
-        Self { lease: Some(lease) }
+    fn new(lease: pool::DeviceLease, pool: pool::DevicePoolHandle) -> Self {
+        Self {
+            lease: Some(lease),
+            pool,
+        }
     }
 
     fn take(&mut self) -> Option<pool::DeviceLease> {
@@ -473,11 +476,13 @@ impl LeaseGuard {
 
 impl Drop for LeaseGuard {
     fn drop(&mut self) {
-        if let Some(lease) = self.lease.as_ref() {
+        if let Some(lease) = self.lease.take() {
+            let device_index = lease.index();
             tracing::warn!(
-                device_index = lease.index(),
-                "pooled NBD COW device dropped without finalizer; pool lease will require cleanup"
+                device_index,
+                "pooled NBD COW device dropped without finalizer; retiring pool lease as uncertain"
             );
+            self.pool.retire_uncertain_detached(lease);
         }
     }
 }
@@ -723,6 +728,35 @@ mod tests {
         finish_tx.send(()).unwrap();
 
         tokio::time::timeout(std::time::Duration::from_secs(1), done_rx)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn abort_server_handles_waits_for_task_cleanup() {
+        struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
+
+        impl Drop for DropNotify {
+            fn drop(&mut self) {
+                if let Some(tx) = self.0.take() {
+                    let _ = tx.send(());
+                }
+            }
+        }
+
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(async move {
+            let _notify = DropNotify(Some(dropped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+
+        started_rx.await.unwrap();
+        abort_server_handles(vec![handle]).await;
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
             .await
             .unwrap()
             .unwrap();

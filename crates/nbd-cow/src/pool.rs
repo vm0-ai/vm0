@@ -216,6 +216,17 @@ impl DevicePoolHandle {
         let _ = done_rx.await;
     }
 
+    pub(crate) fn retire_uncertain_detached(&self, lease: DeviceLease) {
+        let (done, _done_rx) = oneshot::channel();
+        if self
+            .commands
+            .send(DevicePoolCommand::RetireUncertain { lease, done })
+            .is_err()
+        {
+            tracing::warn!("device pool actor stopped before detached uncertain retire");
+        }
+    }
+
     #[cfg(test)]
     async fn snapshot(&self) -> DevicePoolSnapshot {
         let (respond_to, response) = oneshot::channel();
@@ -886,6 +897,25 @@ mod tests {
         assert_eq!(pool.waiting_acquires.len(), 1);
         assert_eq!(pool.pending.len(), 1);
         pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn detached_retire_returns_in_flight_lease_to_cooldown() {
+        let handle = DevicePoolHandle::from_pool(test_pool_with_in_flight(3));
+
+        handle.retire_uncertain_detached(DeviceLease::new(3));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if handle.snapshot().await.cooldown == vec![3] {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("detached retire did not reach actor");
+        handle.cleanup().await;
     }
 
     #[tokio::test]
