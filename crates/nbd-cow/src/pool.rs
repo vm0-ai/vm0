@@ -309,6 +309,7 @@ impl DevicePoolActor {
             }
         }
 
+        self.pool.active = false;
         self.pool.abort_pending().await;
     }
 

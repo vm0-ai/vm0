@@ -748,6 +748,7 @@ impl PooledNbdCowDevice {
     ///
     /// Finalization starts immediately. Dropping the returned future does not
     /// cancel cleanup; it continues in the background and logs its result.
+    /// Must be called from a Tokio runtime.
     pub fn destroy_with_retries(
         self,
         policy: DestroyRetryPolicy,
@@ -797,6 +798,7 @@ impl PooledNbdCowDevice {
     ///
     /// Finalization starts immediately. Dropping the returned future does not
     /// cancel cleanup; it continues in the background and logs its result.
+    /// Must be called from a Tokio runtime.
     pub fn destroy_keep_cow_with_retries(
         self,
         policy: DestroyRetryPolicy,
@@ -850,6 +852,8 @@ impl PooledNbdCowDevice {
     }
 
     /// Mark the device as abandoned and retire the pool lease as uncertain.
+    ///
+    /// Must be called from a Tokio runtime.
     pub fn abandon(self) -> impl std::future::Future<Output = ()> + Send + 'static {
         let finalizer = Self::run_finalizer(async move {
             self.abandon_inner().await;
