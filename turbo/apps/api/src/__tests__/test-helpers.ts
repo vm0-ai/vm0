@@ -15,7 +15,7 @@ import { ROUTES, type RouteEntry } from "../signals/route";
 import { clearAllDetached } from "../signals/utils";
 import { getApiTestMocks, type ApiTestMocks } from "./mocks";
 
-interface TestContext {
+export interface TestContext {
   readonly signal: AbortSignal;
   readonly mocks: ApiTestMocks;
 }

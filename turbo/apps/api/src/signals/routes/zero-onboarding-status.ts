@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { computed } from "ccstate";
 import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboarding";
 
 import { authContext$ } from "../auth/auth-context";
@@ -10,7 +10,7 @@ import {
 import type { RouteEntry } from "../route";
 import { onboardingStatus } from "../services/onboarding.service";
 
-const getOnboardingStatusInner$ = command(async ({ get }): Promise<unknown> => {
+const getOnboardingStatusInner$ = computed(async (get): Promise<unknown> => {
   const auth = get(authContext$);
   const body = await get(onboardingStatus(auth));
   return {

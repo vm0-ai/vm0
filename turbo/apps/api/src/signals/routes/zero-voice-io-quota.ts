@@ -1,7 +1,7 @@
-import { command } from "ccstate";
+import { computed } from "ccstate";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 
-import { authContext$ } from "../auth/auth-context";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import {
   shadowCompareRoute,
@@ -10,22 +10,8 @@ import {
 import type { RouteEntry } from "../route";
 import { audioInputQuota } from "../services/voice-io.service";
 
-const MISSING_ORG_RESPONSE = Object.freeze({
-  status: 401 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Not authenticated",
-      code: "UNAUTHORIZED",
-    }),
-  }),
-});
-
-const getVoiceIoQuotaInner$ = command(async ({ get }): Promise<unknown> => {
-  const auth = get(authContext$);
-  if (!auth.orgId) {
-    return MISSING_ORG_RESPONSE;
-  }
-
+const getVoiceIoQuotaInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
   const body = await get(audioInputQuota(auth.orgId, auth.userId));
   return {
     status: 200 as const,
@@ -41,7 +27,10 @@ export function zeroVoiceIoQuotaRoutes(
       route: zeroVoiceIoQuotaContract.get,
       handler: shadowCompareRoute({
         routeName: "zero.voice-io.quota.get",
-        handler: authRoute({}, getVoiceIoQuotaInner$),
+        handler: authRoute(
+          { requireOrganization: true, missingOrganizationStatus: 401 },
+          getVoiceIoQuotaInner$,
+        ),
         source,
       }),
     },

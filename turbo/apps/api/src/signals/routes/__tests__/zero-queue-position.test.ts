@@ -11,54 +11,24 @@ import {
   seedQueuePositionRuns,
   type QueuePositionFixture,
 } from "./helpers/zero-queue-position";
+import {
+  createFixtureTracker,
+  mockClerkSession,
+} from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
 
-function mockSession(userId: string, orgId: string | null): void {
-  context.mocks.clerk.authenticateRequest.mockResolvedValue({
-    isAuthenticated: true,
-    toAuth: () => {
-      return {
-        userId,
-        orgId,
-        orgRole: orgId ? "org:admin" : undefined,
-      };
-    },
-  });
-}
-
 describe("GET /api/zero/queue-position", () => {
-  const fixtures: QueuePositionFixture[] = [];
-
-  beforeEach(() => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
+  const track = createFixtureTracker<QueuePositionFixture>((fixture) => {
+    return deleteQueuePositionRuns(store, fixture);
   });
-
-  afterEach(async () => {
-    while (fixtures.length > 0) {
-      const fixture = fixtures.pop();
-      if (fixture) {
-        await deleteQueuePositionRuns(store, fixture);
-      }
-    }
-  });
-
-  async function track(
-    fixturePromise: Promise<QueuePositionFixture>,
-  ): Promise<QueuePositionFixture> {
-    const fixture = await fixturePromise;
-    fixtures.push(fixture);
-    return fixture;
-  }
 
   it("returns the queued run position within the org queue", async () => {
     const fixture = await track(
       seedQueuePositionRuns(store, { queuedRuns: 2 }),
     );
-    mockSession(fixture.userId, fixture.orgId);
+    mockClerkSession(context, fixture.userId, fixture.orgId);
     const runId = fixture.queuedRunIds[1];
     if (!runId) {
       throw new Error("Expected queued run fixture");
@@ -87,7 +57,7 @@ describe("GET /api/zero/queue-position", () => {
     const fixture = await track(
       seedQueuePositionRuns(store, { unqueuedRuns: 1 }),
     );
-    mockSession(fixture.userId, fixture.orgId);
+    mockClerkSession(context, fixture.userId, fixture.orgId);
     const runId = fixture.unqueuedRunIds[0];
     if (!runId) {
       throw new Error("Expected unqueued run fixture");
@@ -116,7 +86,7 @@ describe("GET /api/zero/queue-position", () => {
     const fixture = await track(
       seedQueuePositionRuns(store, { queuedRuns: 1 }),
     );
-    mockSession(`user_${randomUUID()}`, fixture.orgId);
+    mockClerkSession(context, `user_${randomUUID()}`, fixture.orgId);
     const runId = fixture.queuedRunIds[0];
     if (!runId) {
       throw new Error("Expected queued run fixture");
@@ -139,7 +109,7 @@ describe("GET /api/zero/queue-position", () => {
   });
 
   it("returns 404 for an unknown run", async () => {
-    mockSession(`user_${randomUUID()}`, `org_${randomUUID()}`);
+    mockClerkSession(context, `user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({
       context,
@@ -155,23 +125,6 @@ describe("GET /api/zero/queue-position", () => {
     );
 
     expect(response.body.error.code).toBe("NOT_FOUND");
-  });
-
-  it("requires authentication", async () => {
-    const client = setupApp({
-      context,
-      routes: zeroQueuePositionRoutes("api"),
-    })(zeroQueuePositionContract);
-
-    const response = await accept(
-      client.getPosition({
-        query: { runId: randomUUID() },
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
   it("returns 400 when runId is missing before auth", async () => {

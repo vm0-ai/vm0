@@ -21,14 +21,18 @@ import { authorization$, cookie$ } from "../context/hono";
 export interface AuthOptions {
   readonly requiredCapability?: ZeroCapability;
   readonly acceptAnySandboxCapability?: boolean;
+  readonly requireOrganization?: boolean;
+  readonly missingOrganizationStatus?: 400 | 401;
 }
 
 export type AuthErrorResponse = {
-  readonly status: 401 | 403;
+  readonly status: 400 | 401 | 403;
   readonly body: {
     readonly error: { readonly message: string; readonly code: string };
   };
 };
+
+type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
 const innerAuthContext$ = state<AuthContext | null>(null);
 
@@ -39,6 +43,17 @@ export const authContext$: Computed<AuthContext> = computed((get) => {
   }
   return ctx;
 });
+
+export const organizationAuthContext$: Computed<OrganizationAuthContext> =
+  computed((get): OrganizationAuthContext => {
+    const ctx = get(authContext$);
+    if (!ctx.orgId) {
+      throw new Error(
+        "organizationAuthContext$ accessed without requireOrganization auth",
+      );
+    }
+    return { ...ctx, orgId: ctx.orgId };
+  });
 
 export const setAuthContext$ = command(({ set }, ctx: AuthContext): void => {
   set(innerAuthContext$, ctx);
@@ -239,6 +254,27 @@ function missingCapabilityError(capability: ZeroCapability): AuthErrorResponse {
   };
 }
 
+function missingOrganizationError(status: 400 | 401): AuthErrorResponse {
+  if (status === 401) {
+    return {
+      status: 401,
+      body: {
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      },
+    };
+  }
+
+  return {
+    status: 400,
+    body: {
+      error: {
+        message: "Explicit org context required — ensure active org in session",
+        code: "BAD_REQUEST",
+      },
+    },
+  };
+}
+
 function sandboxTokenAuthError(
   token: string,
   options: AuthOptions,
@@ -277,6 +313,11 @@ export const requiredAuthContext$ = command(
     const authHeader = get(authorization$);
     const authContext = await set(resolvedAuthContext$, options, signal);
     if (authContext) {
+      if (options.requireOrganization && !authContext.orgId) {
+        return missingOrganizationError(
+          options.missingOrganizationStatus ?? 400,
+        );
+      }
       return authContext;
     }
 

@@ -1,7 +1,7 @@
-import { command } from "ccstate";
+import { computed } from "ccstate";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 
-import { authContext$ } from "../auth/auth-context";
+import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import {
   shadowCompareRoute,
@@ -10,22 +10,8 @@ import {
 import type { RouteEntry } from "../route";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 
-const MISSING_ORG_RESPONSE = Object.freeze({
-  status: 401 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Not authenticated",
-      code: "UNAUTHORIZED",
-    }),
-  }),
-});
-
-const getFeatureSwitchesInner$ = command(async ({ get }): Promise<unknown> => {
-  const auth = get(authContext$);
-  if (!auth.orgId) {
-    return MISSING_ORG_RESPONSE;
-  }
-
+const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
+  const auth = get(organizationAuthContext$);
   const switches = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),
   );
@@ -43,7 +29,10 @@ export function zeroFeatureSwitchesRoutes(
       route: zeroFeatureSwitchesContract.get,
       handler: shadowCompareRoute({
         routeName: "zero.feature-switches.get",
-        handler: authRoute({}, getFeatureSwitchesInner$),
+        handler: authRoute(
+          { requireOrganization: true, missingOrganizationStatus: 401 },
+          getFeatureSwitchesInner$,
+        ),
         source,
       }),
     },

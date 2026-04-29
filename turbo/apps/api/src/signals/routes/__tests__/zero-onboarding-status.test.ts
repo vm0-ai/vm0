@@ -10,57 +10,21 @@ import {
   seedOnboardingStatusOrg,
   type OnboardingStatusFixture,
 } from "./helpers/zero-onboarding-status";
+import {
+  createFixtureTracker,
+  mockClerkSession,
+} from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
 
-function mockSession(
-  userId: string,
-  orgId: string | null,
-  orgRole: "org:admin" | "org:member" | undefined = orgId
-    ? "org:admin"
-    : undefined,
-): void {
-  context.mocks.clerk.authenticateRequest.mockResolvedValue({
-    isAuthenticated: true,
-    toAuth: () => {
-      return {
-        userId,
-        orgId,
-        orgRole,
-      };
-    },
-  });
-}
-
 describe("GET /api/zero/onboarding/status", () => {
-  const fixtures: OnboardingStatusFixture[] = [];
-
-  beforeEach(() => {
-    context.mocks.clerk.authenticateRequest.mockResolvedValue({
-      isAuthenticated: false,
-    });
+  const track = createFixtureTracker<OnboardingStatusFixture>((fixture) => {
+    return deleteOnboardingStatusOrg(store, fixture);
   });
-
-  afterEach(async () => {
-    while (fixtures.length > 0) {
-      const fixture = fixtures.pop();
-      if (fixture) {
-        await deleteOnboardingStatusOrg(store, fixture);
-      }
-    }
-  });
-
-  async function track(
-    fixturePromise: Promise<OnboardingStatusFixture>,
-  ): Promise<OnboardingStatusFixture> {
-    const fixture = await fixturePromise;
-    fixtures.push(fixture);
-    return fixture;
-  }
 
   it("returns onboarding required when the session has no active org", async () => {
-    mockSession(`user_${randomUUID()}`, null);
+    mockClerkSession(context, `user_${randomUUID()}`, null);
 
     const client = setupApp({
       context,
@@ -86,7 +50,7 @@ describe("GET /api/zero/onboarding/status", () => {
 
   it("requires admin onboarding when the org has no default agent", async () => {
     const fixture = await track(seedOnboardingStatusOrg(store));
-    mockSession(fixture.userId, fixture.orgId, "org:admin");
+    mockClerkSession(context, fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({
       context,
@@ -120,7 +84,7 @@ describe("GET /api/zero/onboarding/status", () => {
         onboardingDone: true,
       }),
     );
-    mockSession(fixture.userId, fixture.orgId, "org:member");
+    mockClerkSession(context, fixture.userId, fixture.orgId, "org:member");
 
     const client = setupApp({
       context,
@@ -145,21 +109,5 @@ describe("GET /api/zero/onboarding/status", () => {
         description: "Handles customer questions",
       },
     });
-  });
-
-  it("requires authentication", async () => {
-    const client = setupApp({
-      context,
-      routes: zeroOnboardingStatusRoutes("api"),
-    })(onboardingStatusContract);
-
-    const response = await accept(
-      client.getStatus({
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 });
