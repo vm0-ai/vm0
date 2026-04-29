@@ -6,6 +6,8 @@ import {
   createTestRequest,
   createTestCompose,
   insertOrgDefaultModelProvider,
+  deleteTestModelProvider,
+  setTestZeroAgentModelProvider,
   findTestCallbacksByRunId,
   getTestRun,
   getTestChatMessagesByThread,
@@ -995,6 +997,185 @@ describe("POST /api/zero/chat/messages", () => {
           }),
         );
         expect(response.status).toBe(400);
+      });
+    });
+
+    describe("eager-pin / orphan provider", () => {
+      it("eager-pins thread to agent's modelProvider on creation", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          providerId,
+          "claude-opus-4-7",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "kick off thread",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("keeps thread pinned to original provider after agent provider changes", async () => {
+        const originalProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          originalProviderId,
+          "claude-opus-4-7",
+        );
+
+        const create = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "first" }),
+          }),
+        );
+        expect(create.status).toBe(201);
+        const { threadId } = await create.json();
+
+        // Agent owner switches the agent's default provider after the
+        // thread is created — the thread must keep its original pin.
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+        const newProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+        await setTestZeroAgentModelProvider(agentId, newProviderId, "gpt-5");
+
+        const followUp = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "follow up", threadId }),
+          }),
+        );
+        expect(followUp.status).toBe(201);
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(originalProviderId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("returns 422 PROVIDER_DELETED when the eager-pinned provider is gone", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          providerId,
+          "claude-opus-4-7",
+        );
+
+        const create = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "first" }),
+          }),
+        );
+        expect(create.status).toBe(201);
+        const { threadId } = await create.json();
+
+        // Provider is deleted by the org admin between sends. The thread
+        // must surface PROVIDER_DELETED rather than silently fall back.
+        await deleteTestModelProvider(providerId);
+
+        const followUp = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "should fail", threadId }),
+          }),
+        );
+        expect(followUp.status).toBe(422);
+        const data = await followUp.json();
+        expect(data.error.code).toBe("PROVIDER_DELETED");
+
+        // The thread row keeps the now-stale UUID so the resolver can
+        // detect the orphan-pin state on later sends.
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("leaves thread NULL when agent has no provider configured", async () => {
+        // Default test agent has no modelProviderId / selectedModel.
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "default-claude-code" }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBeNull();
+        expect(override.selectedModel).toBeNull();
+      });
+
+      it("falls back to agent provider when legacy thread has NULL pin", async () => {
+        // Create the thread with no pin (mirrors a row from before
+        // the eager-pin migration).
+        const create = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "legacy" }),
+          }),
+        );
+        expect(create.status).toBe(201);
+        const { threadId } = await create.json();
+
+        const before = await getTestChatThreadModelOverride(threadId);
+        expect(before.modelProviderId).toBeNull();
+        expect(before.selectedModel).toBeNull();
+
+        // Now pin the agent and resend without a per-run modelSelection.
+        // The send must succeed using the agent's current provider; the
+        // thread itself stays NULL until the user explicitly picks.
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          providerId,
+          "claude-opus-4-7",
+        );
+
+        const followUp = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "follow up", threadId }),
+          }),
+        );
+        expect(followUp.status).toBe(201);
+
+        const after = await getTestChatThreadModelOverride(threadId);
+        expect(after.modelProviderId).toBeNull();
+        expect(after.selectedModel).toBeNull();
       });
     });
 

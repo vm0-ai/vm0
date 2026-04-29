@@ -25,12 +25,20 @@ import { buildFileUrl } from "../uploads/file-url";
 
 /**
  * Create a new chat thread.
+ *
+ * `pin`: when provided, eager-pins the thread to a specific model provider /
+ * selected-model combination at insert time so subsequent runs are immune to
+ * later agent-level provider changes. Callers that own the agent record
+ * should pass the agent's current `modelProviderId` and `selectedModel` here.
+ * Omitting `pin` (or passing both fields as null) leaves the row unpinned —
+ * the run resolver will fall back to the agent's then-current provider.
  */
 export async function createChatThread(
   userId: string,
   agentComposeId: string,
   title?: string | null,
   id?: string,
+  pin?: { modelProviderId: string | null; selectedModel: string | null },
 ): Promise<{ id: string; createdAt: Date }> {
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
@@ -39,6 +47,8 @@ export async function createChatThread(
       userId,
       agentComposeId,
       title: title ?? null,
+      modelProviderId: pin?.modelProviderId ?? null,
+      selectedModel: pin?.selectedModel ?? null,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
 

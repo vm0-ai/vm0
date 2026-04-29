@@ -2297,6 +2297,13 @@
       "when": 1777433975303,
       "tag": "0327_add_audio_tts_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 328,
+      "version": "7",
+      "when": 1777457068891,
+      "tag": "0328_drop_chat_threads_model_provider_fk",
+      "breakpoints": true
     }
   ]
 }

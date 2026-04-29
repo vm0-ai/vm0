@@ -9,7 +9,6 @@ import {
 } from "drizzle-orm/pg-core";
 import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
-import { modelProviders } from "./model-provider";
 
 /**
  * Chat Threads table
@@ -63,17 +62,17 @@ export const chatThreads = pgTable(
      */
     lastReadMessageId: uuid("last_read_message_id"),
     /**
-     * Per-thread model override. When both fields are non-null the send route
-     * uses this combination for the next run; otherwise it falls back to the
-     * agent's override and then the org default. Set/cleared on every message
-     * send from the composer's model picker.
+     * Per-thread model pin. Written at thread creation from the agent's
+     * configured provider/model so subsequent runs are immune to later
+     * agent-level provider changes. NULL only for legacy / default-claude-code
+     * agents that have no provider configured at create time.
+     *
+     * Intentionally **not** a foreign key: when the referenced provider is
+     * deleted, the column must retain the now-stale UUID so the run resolver
+     * can detect the orphan-pinned state and surface a clear `PROVIDER_DELETED`
+     * error rather than silently falling back to the agent's current provider.
      */
-    modelProviderId: uuid("model_provider_id").references(
-      () => {
-        return modelProviders.id;
-      },
-      { onDelete: "set null" },
-    ),
+    modelProviderId: uuid("model_provider_id"),
     selectedModel: varchar("selected_model", { length: 255 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

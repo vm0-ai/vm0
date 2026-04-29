@@ -24,6 +24,7 @@ export {
   deleteOrgCacheEntry,
   insertOrgMembersEntry,
   insertOrgDefaultModelProvider,
+  deleteTestModelProvider,
   setOrgCredits,
   lockOrgAndSetCredits,
   getOrgDefaultAgent,
@@ -41,6 +42,7 @@ export {
 export {
   createTestComposeVersion,
   ensureZeroAgentRow,
+  setTestZeroAgentModelProvider,
   createTestAgentSession,
   createTestSessionWithConversation,
   insertTestChatThread,

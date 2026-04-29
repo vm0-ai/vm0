@@ -1906,6 +1906,33 @@ function AssistantErrorContent({ error }: { error: string }) {
     );
   }
 
+  const deletedGuidance = RUN_ERROR_GUIDANCE.PROVIDER_DELETED;
+  const isProviderDeleted =
+    deletedGuidance !== undefined &&
+    (error.toLowerCase().includes(deletedGuidance.title.toLowerCase()) ||
+      error.toLowerCase().includes(deletedGuidance.guidance.toLowerCase()));
+
+  if (isProviderDeleted) {
+    return (
+      <div className="flex items-start gap-2 text-foreground">
+        <IconAlertCircle
+          size={16}
+          className="shrink-0 mt-[3px] text-amber-500"
+        />
+        <span>
+          The model provider used by this thread has been deleted.{" "}
+          <Link
+            pathname="/"
+            className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+          >
+            Start a new chat thread
+          </Link>{" "}
+          to continue.
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-start gap-2 text-destructive">
       <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />

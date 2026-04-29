@@ -20,6 +20,7 @@ import { ensureZeroAgentRow } from "../db-test-seeders/agents";
 export {
   createTestComposeVersion,
   ensureZeroAgentRow,
+  setTestZeroAgentModelProvider,
   createTestAgentSession,
   createTestSessionWithConversation,
   insertTestChatThread,

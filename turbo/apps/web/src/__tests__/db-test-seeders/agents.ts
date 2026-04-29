@@ -241,6 +241,26 @@ export async function deleteTestCompose(composeId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Pin a zero_agents row to a specific model provider + selected-model pair.
+ * Used by tests that need an agent whose default provider is explicitly set,
+ * so chat-thread eager-pin paths can be exercised.
+ *
+ * @why-db-direct The agent provider pin is normally set by compose creation /
+ * agent edit API routes; tests need a direct setter for isolated setup.
+ */
+export async function setTestZeroAgentModelProvider(
+  agentId: string,
+  modelProviderId: string | null,
+  selectedModel: string | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroAgents)
+    .set({ modelProviderId, selectedModel })
+    .where(eq(zeroAgents.id, agentId));
+}
+
+/**
  * Ensure a matching zero_agents row exists for a compose.
  * Extracted from createTestCompose — the compose API route doesn't create
  * the zero_agents row; this bridges the gap for tests.

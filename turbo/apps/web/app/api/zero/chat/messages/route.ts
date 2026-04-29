@@ -25,7 +25,8 @@ import {
   buildWebChatIncompleteContext,
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
-import { isApiError } from "@vm0/api-services/errors";
+import { isApiError, providerDeleted } from "@vm0/api-services/errors";
+import { getModelProviderByIdForOrg } from "../../../../../src/lib/zero/model-provider/model-provider-service";
 import {
   createChatThread,
   getChatThread,
@@ -93,8 +94,14 @@ interface ResolvedThread {
  * effective override to use for this run (precedence: per-run > thread > agent).
  * `undefined` for `modelSelection` means "leave thread row as-is" — older
  * clients that never saw the field still get the thread/agent fall-through.
+ *
+ * When the thread carries an eager-pinned provider but that provider has since
+ * been deleted, this throws `providerDeleted()` rather than silently falling
+ * back to the agent's current provider — the user must start a new thread to
+ * pick a different model.
  */
 async function resolveRunModelOverride(
+  orgId: string,
   threadId: string,
   agent: { modelProviderId: string | null; selectedModel: string | null },
   modelSelection:
@@ -125,6 +132,13 @@ async function resolveRunModelOverride(
       .where(eq(chatThreads.id, threadId))
       .limit(1);
     if (thread?.modelProviderId && thread.selectedModel) {
+      const provider = await getModelProviderByIdForOrg(
+        orgId,
+        thread.modelProviderId,
+      );
+      if (!provider) {
+        throw providerDeleted();
+      }
       return {
         providerId: thread.modelProviderId,
         selectedModel: thread.selectedModel,
@@ -185,6 +199,7 @@ async function resolveThread(
   agentId: string,
   existingThreadId: string | undefined,
   clientThreadId: string | undefined,
+  agentPin: { modelProviderId: string | null; selectedModel: string | null },
   dims?: ChatSpanDimensions,
 ): Promise<ResolvedThread> {
   const emit = (op: string, ms: number): void => {
@@ -193,7 +208,7 @@ async function resolveThread(
 
   if (!existingThreadId) {
     const createT = await timed(async () => {
-      return createChatThread(userId, agentId, null, clientThreadId);
+      return createChatThread(userId, agentId, null, clientThreadId, agentPin);
     });
     emit(CHAT_REQUEST_OPS.resolve_thread_create_thread, createT.ms);
     const thread = createT.result;
@@ -326,23 +341,29 @@ const router = tsr.router(chatMessagesContract, {
       };
     }
 
+    // resolveOrg already fetches org_metadata — capture the tier here so the
+    // service's Round 2 can skip its duplicate getOrgMetadata call. Resolved
+    // up front (rather than only inside the modelSelection branch) so the
+    // orphan-pin detection in resolveRunModelOverride can scope its provider
+    // lookup to the caller's org.
+    const { org: callerOrg } = await resolveOrg(authCtx);
+    const preloadedOrgTier: { orgId: string; tier: string } = {
+      orgId: callerOrg.orgId,
+      tier: callerOrg.tier,
+    };
+
     // Validate per-run model selection belongs to the caller's org before
     // we trust it to write onto the thread or override the agent's default.
-    // resolveOrg already fetches org_metadata — capture the tier here so the
-    // service's Round 2 can skip its duplicate getOrgMetadata call.
-    let preloadedOrgTier: { orgId: string; tier: string } | undefined;
     if (body.modelSelection) {
       const modelSelection = body.modelSelection;
       const validateT = await timed(async () => {
-        const { org } = await resolveOrg(authCtx);
-        preloadedOrgTier = { orgId: org.orgId, tier: org.tier };
         return globalThis.services.db
           .select({ id: modelProviders.id })
           .from(modelProviders)
           .where(
             and(
               eq(modelProviders.id, modelSelection.modelProviderId),
-              eq(modelProviders.orgId, org.orgId),
+              eq(modelProviders.orgId, callerOrg.orgId),
             ),
           )
           .limit(1);
@@ -389,11 +410,16 @@ const router = tsr.router(chatMessagesContract, {
           body.agentId,
           body.threadId,
           body.clientThreadId,
+          {
+            modelProviderId: agent.modelProviderId,
+            selectedModel: agent.selectedModel,
+          },
           dims,
         );
 
       const overrideT = await timed(async () => {
         return resolveRunModelOverride(
+          callerOrg.orgId,
           threadId,
           {
             modelProviderId: agent.modelProviderId,
@@ -564,7 +590,7 @@ const router = tsr.router(chatMessagesContract, {
         const message =
           error.code === "UNAUTHORIZED" ? "Resource not found" : error.message;
         return {
-          status: status as 400 | 401 | 403 | 404,
+          status: status as 400 | 401 | 403 | 404 | 422,
           body: { error: { message, code } },
         };
       }

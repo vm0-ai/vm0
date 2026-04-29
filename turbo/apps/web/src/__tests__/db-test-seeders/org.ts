@@ -217,6 +217,23 @@ export async function insertOrgDefaultModelProvider(
 }
 
 /**
+ * Delete a model provider row by id. Used by tests that need to simulate
+ * a provider deletion after rows referencing it (e.g. chat threads with an
+ * eager-pinned modelProviderId) have already been created.
+ *
+ * @why-db-direct The provider deletion API is type-scoped; tests need an
+ * id-scoped deleter to set up orphan-pin scenarios deterministically.
+ */
+export async function deleteTestModelProvider(
+  providerId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(modelProviders)
+    .where(eq(modelProviders.id, providerId));
+}
+
+/**
  * Set the credit balance for an org in the `org` table.
  * Ensures the org row exists first.
  *

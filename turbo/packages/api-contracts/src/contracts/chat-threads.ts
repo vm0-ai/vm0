@@ -320,6 +320,7 @@ export const chatMessagesContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      422: apiErrorSchema,
     },
     summary: "Send a chat message (create thread + run + association)",
   },

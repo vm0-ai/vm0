@@ -28,6 +28,10 @@ export const ApiError = {
     status: 503 as const,
     code: "PROVIDER_UNAVAILABLE",
   },
+  PROVIDER_DELETED: {
+    status: 422 as const,
+    code: "PROVIDER_DELETED",
+  },
   INTERNAL_SERVER_ERROR: {
     status: 500 as const,
     code: "INTERNAL_SERVER_ERROR",
@@ -91,6 +95,11 @@ export const RUN_ERROR_GUIDANCE: Record<
     title: "Provider temporarily unavailable",
     guidance:
       "The model provider is temporarily unavailable. Please try again later.",
+  },
+  PROVIDER_DELETED: {
+    title: "Model provider unavailable",
+    guidance:
+      "The model provider used by this thread has been deleted. Start a new chat thread to continue.",
   },
   TOO_MANY_REQUESTS: {
     title: "Concurrent run limit reached",
