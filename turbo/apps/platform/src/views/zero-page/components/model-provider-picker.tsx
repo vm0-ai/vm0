@@ -120,7 +120,11 @@ function MultiplierBadge({ multiplier }: { multiplier: number }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1.5 py-px text-[11px] font-medium tabular-nums text-muted-foreground">
+          {/* `bg-card` (instead of bg-muted/50) keeps the badge visible when
+              the row turns accent on hover/highlight; `min-w-[2.75rem]` and
+              `text-center` lock it into a fixed column so multipliers across
+              rows stay aligned regardless of model-name length. */}
+          <span className="shrink-0 inline-flex min-w-[2.75rem] justify-center rounded border border-border bg-card px-1.5 py-px text-[11px] font-medium tabular-nums text-muted-foreground">
             {formatMultiplier(multiplier)}
           </span>
         </TooltipTrigger>
@@ -554,8 +558,10 @@ function renderProviderGroup(
             value={`${group.provider.id}::${model}`}
             disabled={group.incompatible}
           >
-            <span className="flex items-center gap-3 w-full">
-              <span className="truncate">{getModelDisplayName(model)}</span>
+            <span className="flex items-center gap-2 w-full">
+              <span className="truncate flex-1">
+                {getModelDisplayName(model)}
+              </span>
               {multiplier !== undefined && (
                 <MultiplierBadge multiplier={multiplier} />
               )}
