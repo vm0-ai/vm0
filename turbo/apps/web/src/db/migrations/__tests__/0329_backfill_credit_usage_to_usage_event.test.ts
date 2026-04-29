@@ -1,4 +1,3 @@
-/* eslint-disable web/no-direct-db-in-tests -- Migration test executes and verifies the database transform directly. */
 import { readFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import postgres from "postgres";
@@ -98,7 +97,9 @@ async function insertCreditPricing(params: {
   cacheReadTokenPrice?: number;
   cacheCreationTokenPrice?: number;
 }): Promise<void> {
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised for direct DB setup
   initServices();
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: seeds pricing reference data
   await globalThis.services.db
     .insert(creditPricing)
     .values({
@@ -134,7 +135,9 @@ async function insertRunBoundCreditUsage(params: {
   status?: string;
   processedAt?: Date | null;
 }): Promise<string> {
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised for direct DB setup
   initServices();
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw FK dependency seeding
   const [compose] = await globalThis.services.db
     .insert(agentComposes)
     .values({
@@ -145,6 +148,7 @@ async function insertRunBoundCreditUsage(params: {
     .returning({ id: agentComposes.id });
 
   const versionId = createHash("sha256").update(randomUUID()).digest("hex");
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw FK dependency seeding
   await globalThis.services.db.insert(agentComposeVersions).values({
     id: versionId,
     composeId: compose!.id,
@@ -152,6 +156,7 @@ async function insertRunBoundCreditUsage(params: {
     createdBy: params.userId,
   });
 
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw FK dependency seeding
   const [session] = await globalThis.services.db
     .insert(agentSessions)
     .values({
@@ -161,6 +166,7 @@ async function insertRunBoundCreditUsage(params: {
     })
     .returning({ id: agentSessions.id });
 
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw FK dependency seeding
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
@@ -173,6 +179,7 @@ async function insertRunBoundCreditUsage(params: {
     })
     .returning({ id: agentRuns.id });
 
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: seeds legacy source row
   const [row] = await globalThis.services.db
     .insert(creditUsage)
     .values({
@@ -215,7 +222,9 @@ async function insertLegacyCreditUsage(params: {
   status?: string;
   processedAt?: Date | null;
 }) {
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised for direct DB setup
   initServices();
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: seeds legacy source row
   const [row] = await globalThis.services.db
     .insert(creditUsage)
     .values({
@@ -248,7 +257,9 @@ async function insertLegacyCreditUsage(params: {
 }
 
 async function readCreditUsageSource(id: string) {
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised for direct DB assertion
   initServices();
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion
   const [row] = await globalThis.services.db
     .select({
       id: creditUsage.id,
@@ -263,7 +274,9 @@ async function readCreditUsageSource(id: string) {
 }
 
 async function findUsageEventsForOrg(orgId: string) {
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised for direct DB assertion
   initServices();
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion
   return globalThis.services.db
     .select({
       idempotencyKey: usageEvent.idempotencyKey,
@@ -289,7 +302,9 @@ async function corruptUsageEventQuantity(params: {
   orgId: string;
   category: string;
 }): Promise<void> {
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised for direct DB setup
   initServices();
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: corrupts target row to exercise conflict guard
   await globalThis.services.db
     .update(usageEvent)
     .set({ quantity: 999 })
@@ -302,10 +317,13 @@ async function corruptUsageEventQuantity(params: {
 }
 
 async function deleteBackfillRowsForOrg(orgId: string): Promise<void> {
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised for direct DB cleanup
   initServices();
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: cleanup invalid fixture rows
   await globalThis.services.db
     .delete(usageEvent)
     .where(eq(usageEvent.orgId, orgId));
+  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: cleanup invalid fixture rows
   await globalThis.services.db
     .delete(creditUsage)
     .where(eq(creditUsage.orgId, orgId));
