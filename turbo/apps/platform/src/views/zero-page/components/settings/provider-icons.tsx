@@ -8,6 +8,7 @@ import claudeCodeIcon from "./icons/claude-code.svg";
 import deepseekIcon from "./icons/deepseek.svg";
 import kimiIcon from "./icons/kimi.svg";
 import minimaxIcon from "./icons/minimax.svg";
+import openaiIcon from "./icons/openai.svg";
 import openrouterIcon from "./icons/openrouter.svg";
 import vercelIcon from "./icons/vercel.svg";
 import vm0Icon from "./icons/vm0.svg";
@@ -22,6 +23,7 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "zai-api-key": chatglmIcon,
     "moonshot-api-key": kimiIcon,
     "vercel-ai-gateway": vercelIcon,
+    "openai-api-key": openaiIcon,
     "azure-foundry": azureIcon,
     "aws-bedrock": bedrockIcon,
     vm0: vm0Icon,

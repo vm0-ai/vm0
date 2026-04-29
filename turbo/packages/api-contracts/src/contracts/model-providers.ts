@@ -326,6 +326,25 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "anthropic/claude-sonnet-4.6",
   },
+  "openai-api-key": {
+    framework: "codex" as const,
+    secretName: "OPENAI_API_KEY",
+    label: "OpenAI",
+    secretLabel: "API key",
+    helpText: "Get your API key at: https://platform.openai.com/api-keys",
+    environmentMapping: {
+      OPENAI_API_KEY: "$secret",
+      OPENAI_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.3-codex",
+      "gpt-5.2",
+    ] as string[],
+    defaultModel: "gpt-5.5",
+  },
   "azure-foundry": {
     framework: "claude-code" as const,
     label: "Azure Foundry",
@@ -437,7 +456,7 @@ export const MODEL_PROVIDER_TYPES = {
 } as const;
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
-export type ModelProviderFramework = "claude-code";
+export type ModelProviderFramework = "claude-code" | "codex";
 
 /**
  * Provider types hidden from user-facing selection UI.
@@ -488,6 +507,12 @@ export function getSelectableProviderTypes(): ModelProviderType[] {
 const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 
 function getFirewallBaseUrl(type: ModelProviderType): string {
+  // Codex providers use OpenAI's Responses API — the only inference endpoint
+  // codex hits today. Scoping to /v1/responses keeps token replacement narrow
+  // (admin endpoints like /v1/files don't see the placeholder swap).
+  if (getFrameworkForType(type) === "codex") {
+    return "https://api.openai.com/v1/responses";
+  }
   const base = (
     getEnvironmentMapping(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE
   ).replace(/\/+$/, "");
@@ -595,6 +620,13 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     { name: "Authorization", valuePrefix: "Bearer" },
     "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
   ),
+  // Placeholder: sk-proj-{156 chars}T3BlbkFJ{156 chars} (typical project key shape)
+  // Source: matches turbo/packages/connectors/src/firewalls/openai.generated.ts
+  "openai-api-key": mpFirewall(
+    "openai-api-key",
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
+  ),
 };
 
 /**
@@ -624,12 +656,13 @@ export const modelProviderTypeSchema = z.enum([
   "deepseek-api-key",
   "zai-api-key",
   "vercel-ai-gateway",
+  "openai-api-key",
   "azure-foundry",
   "aws-bedrock",
   "vm0",
 ]);
 
-export const modelProviderFrameworkSchema = z.enum(["claude-code"]);
+export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
 /**
  * Get the concrete provider type for a VM0 managed model.
