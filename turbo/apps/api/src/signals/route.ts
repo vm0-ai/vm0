@@ -7,6 +7,7 @@ import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { deviceTokenRoutes } from "./routes/device-token";
 import { apiHealth$ } from "./routes/health";
 import { healthAuthProbeRoutes } from "./routes/health-auth-probe";
+import { modelStatsRoutes } from "./routes/model-stats";
 
 export type { SignalRouteHandler };
 
@@ -24,4 +25,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...deviceTokenRoutes,
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,
+  ...modelStatsRoutes,
 ];

@@ -72,7 +72,6 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "next-fast-dev": "npm:next@16.1.7",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^6.7.0",
     "@testing-library/react": "^16.1.0",
