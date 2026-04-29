@@ -1284,6 +1284,28 @@ mod tests {
         assert_eq!(s.parent(), d.parent());
     }
 
+    #[tokio::test]
+    async fn write_to_cache_rename_error_cleans_staging() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache_dir = temp.path().join("storages").join("name").join("version");
+        let parent = cache_dir.parent().unwrap();
+        fs::create_dir_all(parent).await.unwrap();
+        fs::write(&cache_dir, b"not-a-cache-dir").await.unwrap();
+
+        let staging = staging_dir(&cache_dir);
+
+        let err = write_to_cache(&cache_dir, b"archive bytes")
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("rename"), "got: {err}");
+        assert!(
+            !staging.exists(),
+            "failed cache write must not leave staging dir"
+        );
+        assert_eq!(fs::read(&cache_dir).await.unwrap(), b"not-a-cache-dir");
+    }
+
     #[test]
     fn limited_body_allows_exact_limit() {
         let mut bytes = Vec::new();
