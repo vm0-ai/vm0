@@ -115,6 +115,8 @@ struct ValidationResult {
 #[derive(Debug)]
 struct DevicePoolSnapshot {
     cooldown: Vec<u32>,
+    ready: Vec<u32>,
+    in_flight: HashSet<u32>,
     waiting_acquires: usize,
 }
 
@@ -127,11 +129,7 @@ impl DevicePoolHandle {
         Self::from_pool(DevicePool::new(config))
     }
 
-    /// Wrap an existing pool.
-    ///
-    /// Must be called from a Tokio runtime. Intended for tests and for sharing
-    /// a pre-built pool state through the actor-backed handle.
-    pub fn from_pool(pool: DevicePool) -> Self {
+    fn from_pool(pool: DevicePool) -> Self {
         let (commands, command_rx) = mpsc::unbounded_channel();
         tokio::spawn(
             DevicePoolActor {
@@ -364,54 +362,6 @@ impl DevicePool {
         );
     }
 
-    /// Acquire a pre-validated device index.
-    ///
-    /// Three-tier strategy:
-    /// 1. Pop from ready queue (instant)
-    /// 2. Await a pending background validation
-    /// 3. Synchronous on-demand scan (fallback)
-    #[cfg(test)]
-    pub(crate) async fn acquire(&mut self) -> Result<DeviceLease> {
-        loop {
-            if !self.active {
-                return Err(NbdCowError::NoFreeDevice);
-            }
-
-            self.promote_cooled_down();
-            if let Some(index) = self.ready.pop_front() {
-                self.in_flight.insert(index);
-                self.maybe_replenish();
-                return Ok(DeviceLease::new(index));
-            }
-
-            while let Some(validation) = self.pending.join_next().await {
-                match validation {
-                    Ok(ValidationResult {
-                        result: Ok(index), ..
-                    }) if !self.is_tracked(index) => {
-                        self.in_flight.insert(index);
-                        self.maybe_replenish();
-                        return Ok(DeviceLease::new(index));
-                    }
-                    Ok(_) | Err(_) => {}
-                }
-            }
-
-            let max = self.max_devices;
-            let exclude = self.tracked_indices();
-            let index = tokio::task::spawn_blocking(move || scan_free_device(max, &exclude))
-                .await
-                .map_err(|e| {
-                    NbdCowError::Io(std::io::Error::other(format!("scan task panicked: {e}")))
-                })??;
-            if !self.is_tracked(index) {
-                self.in_flight.insert(index);
-                self.maybe_replenish();
-                return Ok(DeviceLease::new(index));
-            }
-        }
-    }
-
     fn handle_acquire(&mut self, respond_to: oneshot::Sender<Result<DeviceLease>>) {
         if !self.active {
             let _ = respond_to.send(Err(NbdCowError::NoFreeDevice));
@@ -442,11 +392,18 @@ impl DevicePool {
         self.promote_cooled_down();
         let assigned = self.satisfy_waiters_from_ready();
         if !self.waiting_acquires.is_empty() {
-            if self.pending.is_empty() {
-                self.spawn_validation(ValidationPurpose::Demand);
-            }
+            self.spawn_demand_batch();
         } else if assigned {
             self.maybe_replenish();
+        }
+    }
+
+    fn spawn_demand_batch(&mut self) {
+        while self.active
+            && self.pending.len() < MAX_PENDING
+            && self.pending.len() < self.waiting_acquires.len()
+        {
+            self.spawn_validation(ValidationPurpose::Demand);
         }
     }
 
@@ -690,6 +647,8 @@ impl DevicePool {
     fn snapshot(&self) -> DevicePoolSnapshot {
         DevicePoolSnapshot {
             cooldown: self.cooldown.iter().map(|slot| slot.index).collect(),
+            ready: self.ready.iter().copied().collect(),
+            in_flight: self.in_flight.clone(),
             waiting_acquires: self.waiting_acquires.len(),
         }
     }
@@ -829,11 +788,11 @@ mod tests {
 
     #[tokio::test]
     async fn cleanup_rejects_acquire() {
-        let mut pool = test_pool_for_pending_scan();
+        let handle = DevicePoolHandle::from_pool(test_pool_for_pending_scan());
 
-        pool.cleanup().await;
+        handle.cleanup().await;
 
-        let result = pool.acquire().await;
+        let result = handle.acquire().await;
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
     }
 
@@ -854,12 +813,43 @@ mod tests {
         let mut pool = test_pool_for_pending_scan();
         pool.in_flight.insert(3);
         queue_validation_result(&mut pool, Ok(3));
+        let handle = DevicePoolHandle::from_pool(pool);
 
-        let result = pool.acquire().await;
+        let result = handle.acquire().await;
 
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
-        assert!(pool.in_flight.contains(&3));
-        assert!(pool.ready.is_empty());
+        let snapshot = handle.snapshot().await;
+        assert!(snapshot.in_flight.contains(&3));
+        assert!(snapshot.ready.is_empty());
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn waiting_acquires_spawn_demand_validations_up_to_limit() {
+        let mut pool = test_pool_for_pending_scan();
+        let mut responses = Vec::new();
+
+        for _ in 0..(MAX_PENDING + 2) {
+            let (respond_to, response) = oneshot::channel();
+            pool.handle_acquire(respond_to);
+            responses.push(response);
+        }
+
+        assert_eq!(pool.waiting_acquires.len(), MAX_PENDING + 2);
+        assert_eq!(pool.pending.len(), MAX_PENDING);
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn single_waiting_acquire_spawns_single_demand_validation() {
+        let mut pool = test_pool_for_pending_scan();
+        let (respond_to, _response) = oneshot::channel();
+
+        pool.handle_acquire(respond_to);
+
+        assert_eq!(pool.waiting_acquires.len(), 1);
+        assert_eq!(pool.pending.len(), 1);
+        pool.cleanup().await;
     }
 
     #[tokio::test]

@@ -33,6 +33,19 @@ fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
     }
 }
 
+async fn destroy_snapshot_cow_after_error(context: &'static str, cow_device: PooledNbdCowDevice) {
+    if let Err(e) = cow_device
+        .destroy_with_retries(cow_destroy_retry_policy())
+        .await
+    {
+        tracing::warn!(
+            error = %e,
+            context,
+            "failed to destroy COW device after snapshot setup error"
+        );
+    }
+}
+
 /// Errors that can occur during Firecracker snapshot creation.
 ///
 /// These are the backend-specific errors returned by direct calls to
@@ -358,21 +371,26 @@ async fn run_snapshot_workflow(
     // The empty bind target file is consumed by `mount --bind` inside
     // `unshare --mount` at spawn time; file content is irrelevant
     // because the bind overlay is what FC reads.
-    tokio::fs::create_dir_all(sock_paths.dir())
-        .await
-        .map_err(|e| SnapshotError::Setup(format!("mkdir sock dir: {e}")))?;
+    if let Err(e) = tokio::fs::create_dir_all(sock_paths.dir()).await {
+        destroy_snapshot_cow_after_error("mkdir sock dir", cow_device).await;
+        return Err(SnapshotError::Setup(format!("mkdir sock dir: {e}")));
+    }
     let api_sock = sock_paths.api_sock();
 
     let drive_bind = paths.cow_device_bind();
-    tokio::fs::write(&drive_bind, b"")
-        .await
-        .map_err(|e| SnapshotError::Setup(format!("create bind target: {e}")))?;
+    if let Err(e) = tokio::fs::write(&drive_bind, b"").await {
+        destroy_snapshot_cow_after_error("create bind target", cow_device).await;
+        return Err(SnapshotError::Setup(format!("create bind target: {e}")));
+    }
 
     // 4. Acquire the network namespace and spawn Firecracker into it.
-    let network = netns_pool
-        .acquire()
-        .await
-        .map_err(|e| SnapshotError::Setup(format!("acquire netns: {e}")))?;
+    let network = match netns_pool.acquire().await {
+        Ok(network) => network,
+        Err(e) => {
+            destroy_snapshot_cow_after_error("acquire netns", cow_device).await;
+            return Err(SnapshotError::Setup(format!("acquire netns: {e}")));
+        }
+    };
 
     info!(netns = %network.name, "namespace acquired");
 
@@ -413,6 +431,7 @@ async fn run_snapshot_workflow(
             if let Err(re) = netns_pool.release(network).await {
                 tracing::warn!(error = %re, "failed to release netns after spawn failure");
             }
+            destroy_snapshot_cow_after_error("spawn firecracker", cow_device).await;
             return Err(SnapshotError::Process(format!("spawn firecracker: {e}")));
         }
     };
