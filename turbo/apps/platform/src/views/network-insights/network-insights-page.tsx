@@ -765,7 +765,9 @@ function ServicesCard({
   const sorted = [...day.services].sort((a, b) => {
     return b.calls - a.calls;
   });
-  const top = sorted[0];
+  const totalCalls = day.services.reduce((s, x) => {
+    return s + x.calls;
+  }, 0);
   const { accent } = getCardPalette(colorIndex);
 
   return (
@@ -779,15 +781,10 @@ function ServicesCard({
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {day.services.length}
       </p>
-      {top && (
-        <p className="text-sm opacity-60 mt-2">
-          Most used:{" "}
-          <span className="font-semibold opacity-100">
-            {connectorLabel(top.domain)}
-          </span>{" "}
-          ({top.calls} calls)
-        </p>
-      )}
+      <p className="text-sm opacity-60 mt-2">
+        {day.services.length === 1 ? "service" : "services"} received{" "}
+        {totalCalls} {totalCalls === 1 ? "call" : "calls"}
+      </p>
       <div className="flex flex-col gap-2.5 mt-4">
         {sorted.map((s) => {
           const isActive =
@@ -1340,7 +1337,7 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
         <div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold">Insights</h1>
+              <h1 className="text-xl font-semibold">Insights &amp; Usage</h1>
               <p className="text-sm text-muted-foreground mt-1">
                 Monitor what your agents access, which permissions they use, and
                 spot anything unusual.

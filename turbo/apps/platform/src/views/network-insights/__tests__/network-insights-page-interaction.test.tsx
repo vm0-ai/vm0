@@ -137,13 +137,13 @@ describe("network insights page - empty state", () => {
 // ---------------------------------------------------------------------------
 
 describe("network insights page - data rendering", () => {
-  it("should render the Insights heading", async () => {
+  it("should render the Insights & Usage heading", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(screen.getByText("Insights")).toBeInTheDocument();
+      expect(screen.getByText("Insights & Usage")).toBeInTheDocument();
     });
   });
 
@@ -252,15 +252,18 @@ describe("network insights page - data rendering", () => {
     expect(abbreviated[0]).toHaveAttribute("title", "12,400");
   });
 
-  it("should display most-used service with proper connector label", async () => {
+  it("should render the Services subtitle in sentence form", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     detachedSetupPage({ context, path: "/insights" });
 
+    // sampleDay services: 10 + 5 = 15 calls
     await waitFor(() => {
-      expect(screen.getByText(/Most used:/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/services received 15 calls/),
+      ).toBeInTheDocument();
     });
-    // "slack" domain should render as "Slack" via CONNECTOR_TYPES label
+    // Connector label "Slack" still appears in the row list
     expect(screen.getAllByText("Slack").length).toBeGreaterThanOrEqual(1);
   });
 
