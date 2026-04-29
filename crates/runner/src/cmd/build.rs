@@ -1393,6 +1393,13 @@ mod tests {
             .await
             .unwrap();
 
+        // Create a stale directory that should also be removed
+        let stale_dir = rootfs.dir().join("stale-dir");
+        tokio::fs::create_dir_all(&stale_dir).await.unwrap();
+        tokio::fs::write(stale_dir.join("old.bin"), b"old")
+            .await
+            .unwrap();
+
         remove_all_except_rootfs(&rootfs).await;
 
         assert!(rootfs.rootfs().exists(), "rootfs.ext4 must survive");
@@ -1404,6 +1411,7 @@ mod tests {
             !rootfs.dir().join("stale.txt").exists(),
             "stale file must be removed"
         );
+        assert!(!stale_dir.exists(), "stale directory must be removed");
     }
 
     #[tokio::test]
