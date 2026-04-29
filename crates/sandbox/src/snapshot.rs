@@ -35,9 +35,9 @@ pub struct SnapshotOutput {
 /// Errors that can occur during snapshot operations.
 ///
 /// These variants describe provider-neutral failure categories returned by
-/// [`SnapshotProvider::create_snapshot`]. A failed snapshot attempt should be
-/// treated as incomplete: callers should not reuse output artifacts from the
-/// failed attempt unless the concrete provider documents a stronger guarantee.
+/// [`SnapshotProvider`] operations. A failed snapshot attempt should be treated
+/// as incomplete: callers should not reuse output artifacts from the failed
+/// attempt unless the concrete provider documents a stronger guarantee.
 #[derive(Debug, thiserror::Error)]
 pub enum SnapshotError {
     /// The provider could not prepare host resources, validate inputs, or
