@@ -685,6 +685,29 @@ pub struct NetnsPool {
 }
 
 impl NetnsPool {
+    #[cfg(test)]
+    pub(crate) fn inactive_for_test() -> Self {
+        let file = tempfile::tempfile().expect("create test netns pool lock file");
+        let lock = match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+            Ok(lock) => lock,
+            Err((_, errno)) => panic!("lock test netns pool file: {errno}"),
+        };
+
+        Self {
+            active: false,
+            plain_queue: VecDeque::new(),
+            proxy_queue: VecDeque::new(),
+            pending_plain: tokio::task::JoinSet::new(),
+            pending_proxy: tokio::task::JoinSet::new(),
+            next_ns_index: 0,
+            pool_index: 0,
+            proxy_port: None,
+            dns_port: None,
+            default_iface: "test0".into(),
+            _lock: lock,
+        }
+    }
+
     /// Create a new pool with a small pre-warmed buffer.
     ///
     /// Pre-warms `BUFFER_SIZE` namespaces per queue at startup.

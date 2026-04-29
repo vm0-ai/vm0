@@ -656,14 +656,6 @@ pub fn config_hash() -> String {
     hex::encode(Sha256::digest(json.as_bytes()))
 }
 
-fn take_owned_netns_pool<T>(netns_pool: &mut Option<T>, owns_netns_pool: bool) -> Option<T> {
-    if owns_netns_pool {
-        netns_pool.take()
-    } else {
-        None
-    }
-}
-
 pub struct FirecrackerFactory {
     config: FirecrackerConfig,
     factory_paths: FactoryPaths,
@@ -1005,7 +997,8 @@ impl SandboxFactory for FirecrackerFactory {
         // Direct factories own their netns pool and must clean it up even when
         // detached destroy tasks still hold Arc clones. Shared runtime pools are
         // cleaned up by FirecrackerRuntime::shutdown().
-        if let Some(netns_pool) = take_owned_netns_pool(&mut self.netns_pool, self.owns_netns_pool)
+        if self.owns_netns_pool
+            && let Some(netns_pool) = self.netns_pool.take()
         {
             let mut pool = netns_pool.lock().await;
             if let Err(e) = pool.cleanup().await {
@@ -1099,28 +1092,30 @@ mod tests {
         assert_eq!(h1.len(), 64); // SHA-256 hex
     }
 
-    #[test]
-    fn take_owned_netns_pool_takes_owned_pool_with_extra_arc_refs() {
-        let pool = Arc::new(());
+    #[tokio::test]
+    async fn shutdown_cleans_owned_netns_pool_with_extra_arc_refs() {
+        let pool = Arc::new(tokio::sync::Mutex::new(NetnsPool::inactive_for_test()));
         let _destroy_task_clone = Arc::clone(&pool);
-        let mut netns_pool = Some(pool);
+        let mut factory = test_factory(true);
+        factory.netns_pool = Some(pool);
+        factory.owns_netns_pool = true;
 
-        let taken = take_owned_netns_pool(&mut netns_pool, true).unwrap();
+        factory.shutdown().await;
 
-        assert!(netns_pool.is_none());
-        assert_eq!(Arc::strong_count(&taken), 2);
+        assert!(factory.netns_pool.is_none());
     }
 
-    #[test]
-    fn take_owned_netns_pool_keeps_shared_pool_for_runtime_shutdown() {
-        let pool = Arc::new(());
-        let mut netns_pool = Some(Arc::clone(&pool));
+    #[tokio::test]
+    async fn shutdown_keeps_shared_netns_pool_for_runtime_shutdown() {
+        let pool = Arc::new(tokio::sync::Mutex::new(NetnsPool::inactive_for_test()));
+        let mut factory = test_factory(true);
+        factory.netns_pool = Some(Arc::clone(&pool));
+        factory.owns_netns_pool = false;
 
-        let taken = take_owned_netns_pool(&mut netns_pool, false);
+        factory.shutdown().await;
 
-        assert!(taken.is_none());
-        assert!(netns_pool.is_some());
-        assert_eq!(Arc::strong_count(netns_pool.as_ref().unwrap()), 2);
+        assert!(factory.netns_pool.is_some());
+        assert_eq!(Arc::strong_count(factory.netns_pool.as_ref().unwrap()), 2);
     }
 
     /// Both supported framework CLIs must be warmed during snapshot creation.
