@@ -364,8 +364,8 @@ async fn run_snapshot_workflow(
 ) -> Result<SnapshotConfig, SnapshotError> {
     // Filesystem pre-requisites that don't require the netns: do these
     // *before* `netns_pool.acquire()` so that a transient fs error
-    // (mkdir, write) doesn't leak an acquired netns. `PooledNetns` has
-    // no Drop impl — release must be explicit, and `netns_pool.cleanup()`
+    // (mkdir, write) doesn't leak an acquired netns. A checked-out netns lease
+    // requires explicit release, and `netns_pool.cleanup()`
     // only drains queued (not acquired) entries.
     //
     // The empty bind target file is consumed by `mount --bind` inside
@@ -392,10 +392,12 @@ async fn run_snapshot_workflow(
         }
     };
 
-    info!(netns = %network.name, "namespace acquired");
+    let network_info = network.info().clone();
+
+    info!(netns = %network_info.name(), "namespace acquired");
 
     info!(
-        netns = %network.name,
+        netns = %network_info.name(),
         binary = %config.binary_path.display(),
         api_sock = %api_sock.display(),
         "spawning firecracker"
@@ -411,7 +413,7 @@ async fn run_snapshot_workflow(
         .args(["bash", "-c", SPAWN_INNER_CMD, "_"])
         .arg(&cow_device_path) // $1
         .arg(&drive_bind) // $2
-        .arg(&network.name) // $3
+        .arg(network_info.name()) // $3
         .arg(&config.binary_path) // $4
         .arg(&api_sock) // $5
         .current_dir(paths.workspace())
@@ -424,11 +426,11 @@ async fn run_snapshot_workflow(
     let mut child = match spawn_result {
         Ok(c) => c,
         Err(e) => {
-            // Release the netns before returning — `PooledNetns` has no
-            // Drop impl, and `netns_pool.cleanup()` (called by the outer
-            // `create_snapshot`) only drains queued entries, not
-            // already-acquired ones.
-            if let Err(re) = netns_pool.release(network).await {
+            // Release the checked-out netns before returning —
+            // `netns_pool.cleanup()` (called by the outer `create_snapshot`)
+            // only drains queued entries, not already-acquired ones.
+            let mut network = Some(network);
+            if let Err(re) = netns_pool.release(&mut network).await {
                 tracing::warn!(error = %re, "failed to release netns after spawn failure");
             }
             destroy_snapshot_cow_after_error("spawn firecracker", cow_device).await;
@@ -499,7 +501,8 @@ async fn run_snapshot_workflow(
     // Release network namespace back to the pool before teardown.
     // Without this, the namespace resources (veth, iptables) leak
     // because cleanup() only drains queued (unused) namespaces.
-    if let Err(e) = netns_pool.release(network).await {
+    let mut network = Some(network);
+    if let Err(e) = netns_pool.release(&mut network).await {
         tracing::warn!(error = %e, "failed to release netns");
     }
 

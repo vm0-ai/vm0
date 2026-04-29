@@ -11,7 +11,7 @@ use tracing::{info, warn};
 use nbd_cow::{DestroyRetryPolicy, PooledNbdCowDevice};
 
 use crate::config::FirecrackerConfig;
-use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, PooledNetns, generate_boot_args};
+use crate::network::{GUEST_NETWORK, NetnsLease, NetnsPool, NetnsPoolConfig, generate_boot_args};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
 use crate::sandbox::FirecrackerSandbox;
@@ -41,7 +41,7 @@ const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::
 pub(crate) struct LeakedResources {
     pub(crate) sandbox_id: String,
     pub(crate) cow_device: Option<PooledNbdCowDevice>,
-    pub(crate) network: Option<PooledNetns>,
+    pub(crate) network: Option<NetnsLease>,
     pub(crate) sock_dir: PathBuf,
     pub(crate) workspace: PathBuf,
 }
@@ -125,7 +125,7 @@ impl Drop for LeakCleaner {
 #[async_trait]
 trait CreateRollbackCleanup {
     async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> bool;
-    async fn release_network(&self, network: PooledNetns);
+    async fn release_network(&self, network: &mut Option<NetnsLease>);
     async fn remove_dir(&self, kind: &'static str, path: PathBuf);
     fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot);
 }
@@ -141,7 +141,7 @@ impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
         destroy_cow_device_with_retries(&self.id, cow_device).await
     }
 
-    async fn release_network(&self, network: PooledNetns) {
+    async fn release_network(&self, network: &mut Option<NetnsLease>) {
         let mut netns_pool = self.netns_pool.lock().await;
         if let Err(e) = netns_pool.release(network).await {
             warn!(id = %self.id, error = %e, "failed to release netns during rollback");
@@ -172,7 +172,7 @@ impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
 struct SandboxCreateResources {
     sandbox_paths: SandboxPaths,
     sock_paths: SockPaths,
-    network: PooledNetns,
+    network: NetnsLease,
     cow_device: PooledNbdCowDevice,
 }
 
@@ -180,7 +180,7 @@ struct SandboxCreateResources {
 struct SandboxCreateResourcesWithoutCow {
     sandbox_paths: SandboxPaths,
     sock_paths: SockPaths,
-    network: PooledNetns,
+    network: NetnsLease,
 }
 
 struct SandboxCreateTransaction {
@@ -188,7 +188,7 @@ struct SandboxCreateTransaction {
     slot: Option<crate::cow_pool::PrewarmedSlot>,
     workspace: Option<PathBuf>,
     sock_dir: Option<PathBuf>,
-    network: Option<PooledNetns>,
+    network: Option<NetnsLease>,
     cow_device: Option<PooledNbdCowDevice>,
     leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
 }
@@ -234,7 +234,7 @@ impl SandboxCreateTransaction {
         self.sock_dir = Some(sock_dir);
     }
 
-    fn track_network(&mut self, network: PooledNetns) {
+    fn track_network(&mut self, network: NetnsLease) {
         self.network = Some(network);
     }
 
@@ -299,7 +299,7 @@ impl SandboxCreateTransaction {
 
     fn take_base_resources_after_validation(
         &mut self,
-    ) -> sandbox::Result<(PathBuf, PathBuf, PooledNetns)> {
+    ) -> sandbox::Result<(PathBuf, PathBuf, NetnsLease)> {
         let workspace = self.workspace.take().ok_or_else(|| {
             create_transaction_invalid_state("missing workspace after validation")
         })?;
@@ -324,7 +324,15 @@ impl SandboxCreateTransaction {
             false
         };
         if let Some(network) = self.network.take() {
-            cleanup.release_network(network).await;
+            self.network = Some(network);
+            cleanup.release_network(&mut self.network).await;
+        }
+        if self.network.is_some() {
+            warn!(
+                id = %self.id,
+                "keeping create rollback directories so Drop can hand unreleased netns to leak cleaner"
+            );
+            return;
         }
         if let Some(sock_dir) = self.sock_dir.take() {
             cleanup.remove_dir("sock", sock_dir).await;
@@ -540,8 +548,9 @@ async fn cleanup_leaked_resource(
     }
 
     if let Some(network) = leaked.network {
+        let mut network = Some(network);
         let mut pool = netns_pool.lock().await;
-        if let Err(e) = pool.release(network).await {
+        if let Err(e) = pool.release(&mut network).await {
             warn!(id = %leaked.sandbox_id, error = %e, "failed to release leaked netns");
         }
     }
@@ -1022,7 +1031,6 @@ async fn destroy_firecracker_sandbox(
 
     // Clone lightweight handles before dropping sandbox.
     let sandbox_id = sandbox.id.clone();
-    let network = sandbox.network.clone();
     let sock_dir = sandbox.sock_paths.dir().to_owned();
     let workspace = sandbox.sandbox_paths.workspace().to_owned();
 
@@ -1043,7 +1051,7 @@ async fn destroy_firecracker_sandbox(
 
     // Return the network namespace to the pool.
     let mut pool = netns_pool.lock().await;
-    if let Err(e) = pool.release(network).await {
+    if let Err(e) = pool.release(sandbox.network.lease_mut()).await {
         warn!(id = %sandbox_id, error = %e, "failed to release netns");
     }
     drop(pool);
@@ -1063,7 +1071,9 @@ async fn destroy_firecracker_sandbox(
     // Mark as destroyed only after all explicit cleanup steps complete.
     // Until this point, `FirecrackerSandbox::Drop` remains armed as a
     // panic fallback and sends pool resources to the leak-cleanup task.
-    sandbox.destroyed = true;
+    if !sandbox.network.has_lease() {
+        sandbox.destroyed = true;
+    }
     drop(sandbox);
 
     info!(id = %sandbox_id, "sandbox destroyed");
@@ -1170,12 +1180,8 @@ mod tests {
         assert_eq!(trait_hash, direct_hash);
     }
 
-    fn test_network() -> PooledNetns {
-        PooledNetns {
-            name: "test-ns".into(),
-            host_device: "test-ve".into(),
-            peer_ip: "10.200.0.2".into(),
-        }
+    fn test_network() -> NetnsLease {
+        NetnsLease::new_for_test("test-ns")
     }
 
     #[derive(Default)]
@@ -1184,6 +1190,21 @@ mod tests {
     }
 
     impl RecordingCreateRollbackCleanup {
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+
+        fn record(&self, event: String) {
+            self.events.lock().unwrap().push(event);
+        }
+    }
+
+    #[derive(Default)]
+    struct FailingNetworkReleaseCleanup {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl FailingNetworkReleaseCleanup {
         fn events(&self) -> Vec<String> {
             self.events.lock().unwrap().clone()
         }
@@ -1255,8 +1276,10 @@ mod tests {
             panic!("test cleanup should not receive a real COW device");
         }
 
-        async fn release_network(&self, network: PooledNetns) {
-            self.record(format!("release_network:{}", network.name));
+        async fn release_network(&self, network: &mut Option<NetnsLease>) {
+            let network = network.take().expect("test network lease");
+            self.record(format!("release_network:{}", network.name()));
+            let _ = network.into_info_for_test();
         }
 
         async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
@@ -1282,13 +1305,42 @@ mod tests {
     }
 
     #[async_trait]
+    impl CreateRollbackCleanup for FailingNetworkReleaseCleanup {
+        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> bool {
+            panic!("test cleanup should not receive a real COW device");
+        }
+
+        async fn release_network(&self, network: &mut Option<NetnsLease>) {
+            self.record(format!(
+                "release_network:{}",
+                network.as_ref().expect("test network lease").name()
+            ));
+        }
+
+        async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("<unknown>");
+            self.record(format!("remove_dir:{kind}:{name}"));
+        }
+
+        fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+            self.record(format!("destroy_slot:{}", slot.id));
+            crate::cow_pool::destroy_slot(slot);
+        }
+    }
+
+    #[async_trait]
     impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
         async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> bool {
             panic!("test cleanup should not receive a real COW device");
         }
 
-        async fn release_network(&self, network: PooledNetns) {
-            self.record(format!("release_network:{}", network.name));
+        async fn release_network(&self, network: &mut Option<NetnsLease>) {
+            let network = network.take().expect("test network lease");
+            self.record(format!("release_network:{}", network.name()));
+            let _ = network.into_info_for_test();
         }
 
         async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
@@ -1503,6 +1555,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_transaction_rollback_keeps_dirs_when_network_release_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.track_network(test_network());
+        let cleanup = FailingNetworkReleaseCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(workspace.exists());
+        assert!(sock_dir.exists());
+        assert_eq!(cleanup.events(), vec!["release_network:test-ns"]);
+
+        drop(tx);
+        let mut leaked = leak_rx.recv().await.unwrap();
+        let network = leaked.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
+        assert_eq!(leaked.sock_dir, sock_dir);
+        assert_eq!(leaked.workspace, workspace);
+    }
+
+    #[tokio::test]
     async fn create_transaction_commit_disarms_rollback() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
@@ -1520,7 +1602,7 @@ mod tests {
 
         assert_eq!(resources.sandbox_paths.workspace(), workspace.as_path());
         assert_eq!(resources.sock_paths.dir(), sock_dir.as_path());
-        assert_eq!(resources.network.name, "test-ns");
+        assert_eq!(resources.network.name(), "test-ns");
         assert!(workspace.exists());
         assert!(sock_dir.exists());
     }
@@ -1599,9 +1681,11 @@ mod tests {
         drop(tx);
 
         assert_eq!(leak_rx.recv().await.unwrap().sandbox_id, "queued");
-        let leaked = leak_rx.recv().await.unwrap();
+        let mut leaked = leak_rx.recv().await.unwrap();
         assert_eq!(leaked.sandbox_id, "sandbox");
-        assert_eq!(leaked.network.unwrap().name, "test-ns");
+        let network = leaked.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
         assert_eq!(leaked.sock_dir, sock_dir);
         assert_eq!(leaked.workspace, workspace);
     }
@@ -1622,10 +1706,12 @@ mod tests {
 
         drop(tx);
 
-        let leaked = leak_rx.recv().await.unwrap();
+        let mut leaked = leak_rx.recv().await.unwrap();
         assert_eq!(leaked.sandbox_id, "sandbox");
         assert!(leaked.cow_device.is_none());
-        assert_eq!(leaked.network.unwrap().name, "test-ns");
+        let network = leaked.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
         assert_eq!(leaked.sock_dir, sock_dir);
         assert_eq!(leaked.workspace, workspace);
     }

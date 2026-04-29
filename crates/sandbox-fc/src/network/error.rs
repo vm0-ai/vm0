@@ -21,4 +21,7 @@ pub enum NetworkError {
 
     #[error("prerequisite check failed: {0}")]
     Prerequisite(String),
+
+    #[error("invalid namespace lease: {0}")]
+    InvalidLease(String),
 }

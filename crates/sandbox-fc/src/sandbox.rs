@@ -26,7 +26,7 @@ use crate::balloon;
 use crate::config::FirecrackerConfig;
 use crate::control;
 use crate::factory::InvariantConfig;
-use crate::network::PooledNetns;
+use crate::network::{NetnsInfo, NetnsLease};
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
 
@@ -265,8 +265,8 @@ pub struct FirecrackerSandbox {
     pub(crate) sandbox_paths: SandboxPaths,
     /// Runtime socket paths (api.sock, vsock).
     pub(crate) sock_paths: SockPaths,
-    /// Pooled network namespace (returned to pool on destroy).
-    pub(crate) network: PooledNetns,
+    /// Pooled network namespace metadata plus cleanup ownership.
+    pub(crate) network: SandboxNetwork,
     /// NBD COW device (torn down on destroy).
     pub(crate) cow_device: Option<PooledNbdCowDevice>,
     process_monitor: Option<ProcessMonitorHandle>,
@@ -307,13 +307,47 @@ pub struct FirecrackerSandbox {
     is_parked: bool,
 }
 
+pub(crate) struct SandboxNetwork {
+    info: NetnsInfo,
+    lease: Option<NetnsLease>,
+}
+
+impl SandboxNetwork {
+    fn from_lease(lease: NetnsLease) -> Self {
+        Self {
+            info: lease.info().clone(),
+            lease: Some(lease),
+        }
+    }
+
+    fn name(&self) -> &str {
+        self.info.name()
+    }
+
+    fn peer_ip(&self) -> &str {
+        self.info.peer_ip()
+    }
+
+    pub(crate) fn lease_mut(&mut self) -> &mut Option<NetnsLease> {
+        &mut self.lease
+    }
+
+    pub(crate) fn take_lease(&mut self) -> Option<NetnsLease> {
+        self.lease.take()
+    }
+
+    pub(crate) fn has_lease(&self) -> bool {
+        self.lease.is_some()
+    }
+}
+
 impl FirecrackerSandbox {
     pub(crate) fn new(
         config: SandboxConfig,
         factory_config: FirecrackerConfig,
         sandbox_paths: SandboxPaths,
         sock_paths: SockPaths,
-        network: PooledNetns,
+        network: NetnsLease,
         cow_device: PooledNbdCowDevice,
         leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
     ) -> Self {
@@ -324,7 +358,7 @@ impl FirecrackerSandbox {
             id,
             sandbox_paths,
             sock_paths,
-            network,
+            network: SandboxNetwork::from_lease(network),
             cow_device: Some(cow_device),
             process_monitor: None,
             process_group_pid: None,
@@ -494,7 +528,7 @@ impl FirecrackerSandbox {
 
         let child = tokio::process::Command::new("ip")
             .args(["netns", "exec"])
-            .arg(&self.network.name)
+            .arg(self.network.name())
             .arg(&self.factory_config.binary_path)
             .args(["--config-file"])
             .arg(self.sandbox_paths.config())
@@ -587,7 +621,7 @@ impl FirecrackerSandbox {
             api_sock = %api_sock.display(),
             sock_dir = %sock_dir.display(),
             cow_device = %cow_device_path.display(),
-            netns = %self.network.name,
+            netns = %self.network.name(),
             binary = %self.factory_config.binary_path.display(),
             "spawning firecracker (snapshot restore)"
         );
@@ -614,7 +648,7 @@ impl FirecrackerSandbox {
             .arg(&snapshot.vsock_bind_dir) // $2
             .arg(cow_device_path) // $3
             .arg(&snapshot.drive_bind_path) // $4
-            .arg(&self.network.name) // $5
+            .arg(self.network.name()) // $5
             .arg(&self.factory_config.binary_path) // $6
             .arg(&api_sock) // $7
             .current_dir(self.sandbox_paths.workspace())
@@ -729,7 +763,7 @@ impl Drop for FirecrackerSandbox {
             let resources = crate::factory::LeakedResources {
                 sandbox_id: self.id.clone(),
                 cow_device: self.cow_device.take(),
-                network: Some(self.network.clone()),
+                network: self.network.take_lease(),
                 sock_dir: self.sock_paths.dir().to_owned(),
                 workspace: self.sandbox_paths.workspace().to_owned(),
             };
@@ -917,7 +951,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     fn source_ip(&self) -> &str {
-        &self.network.peer_ip
+        self.network.peer_ip()
     }
 
     fn process_pid(&self) -> Option<u32> {
