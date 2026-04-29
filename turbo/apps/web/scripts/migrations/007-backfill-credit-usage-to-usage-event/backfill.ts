@@ -143,7 +143,7 @@ interface IssueCounter {
   samples: string[];
 }
 
-interface PlanningStats {
+export interface PlanningStats {
   processedSourceRows: number;
   eligibleSourceRows: number;
   pendingSourceRows: number;
@@ -664,7 +664,7 @@ async function fetchPricingMap(db: Db): Promise<Map<string, CreditPricingRow>> {
 async function fetchSourceBatch(
   db: Db,
   options: CliOptions,
-  cursor: { createdAt: Date; id: string } | undefined,
+  cursorId: string | undefined,
   remainingLimit: number | undefined,
 ): Promise<CreditUsageSourceRow[]> {
   const batchLimit =
@@ -675,23 +675,18 @@ async function fetchSourceBatch(
     ...sourceBaseConditions(options),
     positiveTokenCondition(),
   ];
-  if (cursor) {
-    conditions.push(
-      or(
-        gt(creditUsage.createdAt, cursor.createdAt),
-        and(
-          eq(creditUsage.createdAt, cursor.createdAt),
-          gt(creditUsage.id, cursor.id),
-        ),
-      )!,
-    );
+  if (cursorId) {
+    conditions.push(gt(creditUsage.id, cursorId));
   }
 
+  // Use the UUID primary key as the keyset cursor. The table's timestamp
+  // columns have microsecond precision, but JavaScript Date only preserves
+  // milliseconds; timestamp cursors can therefore re-read the final row.
   return await db
     .select()
     .from(creditUsage)
     .where(and(...conditions))
-    .orderBy(asc(creditUsage.createdAt), asc(creditUsage.id))
+    .orderBy(asc(creditUsage.id))
     .limit(batchLimit);
 }
 
@@ -909,18 +904,18 @@ async function runPlanningPass(
   await loadPreflightCounts(db, options, stats);
   const pricingByKey = await fetchPricingMap(db);
   const seenKeys = new Set<string>();
-  let cursor: { createdAt: Date; id: string } | undefined;
+  let cursorId: string | undefined;
   let remainingLimit = options.limit;
 
   for (;;) {
     if (remainingLimit !== undefined && remainingLimit <= 0) break;
-    const rows = await fetchSourceBatch(db, options, cursor, remainingLimit);
+    const rows = await fetchSourceBatch(db, options, cursorId, remainingLimit);
     if (rows.length === 0) break;
 
     await planBatch(db, rows, pricingByKey, stats, seenKeys);
 
     const last = rows[rows.length - 1]!;
-    cursor = { createdAt: last.createdAt, id: last.id };
+    cursorId = last.id;
     if (remainingLimit !== undefined) {
       remainingLimit -= rows.length;
     }
@@ -931,13 +926,13 @@ async function runPlanningPass(
 
 async function runWritePass(db: Db, options: CliOptions): Promise<number> {
   const pricingByKey = await fetchPricingMap(db);
-  let cursor: { createdAt: Date; id: string } | undefined;
+  let cursorId: string | undefined;
   let remainingLimit = options.limit;
   let inserted = 0;
 
   for (;;) {
     if (remainingLimit !== undefined && remainingLimit <= 0) break;
-    const rows = await fetchSourceBatch(db, options, cursor, remainingLimit);
+    const rows = await fetchSourceBatch(db, options, cursorId, remainingLimit);
     if (rows.length === 0) break;
 
     const planned: PlannedUsageEvent[] = [];
@@ -976,7 +971,7 @@ async function runWritePass(db: Db, options: CliOptions): Promise<number> {
     }
 
     const last = rows[rows.length - 1]!;
-    cursor = { createdAt: last.createdAt, id: last.id };
+    cursorId = last.id;
     if (remainingLimit !== undefined) {
       remainingLimit -= rows.length;
     }
@@ -1026,6 +1021,22 @@ function printStats(stats: PlanningStats, mode: "dry-run" | "migrate"): void {
   printIssueMap("Errors", stats.errors);
 }
 
+function validationErrorForStats(
+  stats: PlanningStats,
+  options: CliOptions,
+): string | undefined {
+  const warningTotal = issueCount(stats.warnings);
+  const errorTotal = issueCount(stats.errors);
+
+  if (errorTotal > 0) {
+    return "Backfill validation failed with errors";
+  }
+  if (options.failOnAnomaly && warningTotal > 0) {
+    return "Backfill validation failed because --fail-on-anomaly was set";
+  }
+  return undefined;
+}
+
 async function runBackfill(options: CliOptions): Promise<PlanningStats> {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -1037,16 +1048,10 @@ async function runBackfill(options: CliOptions): Promise<PlanningStats> {
 
   try {
     const stats = await runPlanningPass(db, options);
-    const warningTotal = issueCount(stats.warnings);
-    const errorTotal = issueCount(stats.errors);
-
-    if (errorTotal > 0 || (options.failOnAnomaly && warningTotal > 0)) {
+    const validationError = validationErrorForStats(stats, options);
+    if (validationError) {
       printStats(stats, options.migrate ? "migrate" : "dry-run");
-      throw new Error(
-        errorTotal > 0
-          ? "Backfill validation failed with errors"
-          : "Backfill validation failed because --fail-on-anomaly was set",
-      );
+      throw new Error(validationError);
     }
 
     if (options.migrate) {
@@ -1058,6 +1063,23 @@ async function runBackfill(options: CliOptions): Promise<PlanningStats> {
   } finally {
     await client.end();
   }
+}
+
+export async function runBackfillWithDb(
+  db: Db,
+  options: CliOptions,
+): Promise<PlanningStats> {
+  const stats = await runPlanningPass(db, options);
+  const validationError = validationErrorForStats(stats, options);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  if (options.migrate) {
+    stats.insertedUsageEvents = await runWritePass(db, options);
+  }
+
+  return stats;
 }
 
 async function main(): Promise<void> {
