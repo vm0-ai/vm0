@@ -4,9 +4,11 @@ use crate::artifact;
 use crate::constants;
 use crate::content_hash;
 use crate::env;
+use crate::env::Framework;
 use crate::error::AgentError;
 use crate::http;
 use crate::paths;
+use crate::session_history;
 use crate::urls;
 use bytes::Bytes;
 use guest_common::telemetry::record_sandbox_op;
@@ -245,42 +247,30 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     }
     record_sandbox_op("session_id_read", session_id_start.elapsed(), true, None);
 
-    // Read session history path file then the history file itself. Both
-    // steps record under `session_history_read` with a shared start instant
-    // so the duration covers the end-to-end read.
+    // Read session history. The history-path file's content is either a
+    // literal jsonl path (Claude) or a `CODEX_SEARCH:{dir}:{id}` marker
+    // (codex) — `session_history::read_session_history` abstracts the
+    // difference and decompresses zstd-compressed codex sessions.
     let history_read_start = std::time::Instant::now();
-    let session_history_path = match std::fs::read_to_string(paths::session_history_path_file()) {
-        Ok(s) => s.trim().to_string(),
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            return Err(fail(
-                "session_history_read",
-                history_read_start,
-                "No session history path found",
-            ));
-        }
-        Err(e) => {
-            return Err(fail(
-                "session_history_read",
-                history_read_start,
-                format!("Failed to read history path: {e}"),
-            ));
-        }
-    };
+    let history_bytes =
+        match session_history::read_session_history(paths::session_history_path_file()) {
+            Ok(b) => b,
+            Err(e) => {
+                return Err(fail(
+                    "session_history_read",
+                    history_read_start,
+                    e.to_string(),
+                ));
+            }
+        };
 
-    let session_history = match std::fs::read_to_string(&session_history_path) {
+    let session_history = match String::from_utf8(history_bytes) {
         Ok(s) => s,
-        Err(e) if e.kind() == ErrorKind::NotFound => {
-            return Err(fail(
-                "session_history_read",
-                history_read_start,
-                format!("Session history file not found at {session_history_path}"),
-            ));
-        }
         Err(e) => {
             return Err(fail(
                 "session_history_read",
                 history_read_start,
-                format!("Failed to read session history: {e}"),
+                format!("Session history is not valid UTF-8: {e}"),
             ));
         }
     };
@@ -322,9 +312,13 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
+    let cli_agent_type = match Framework::from_env() {
+        Framework::ClaudeCode => "claude-code",
+        Framework::Codex => "codex",
+    };
     let mut payload = json!({
         "runId": env::run_id(),
-        "cliAgentType": "claude-code",
+        "cliAgentType": cli_agent_type,
         "cliAgentSessionId": session_id,
         "cliAgentSessionHistoryHash": history_hash,
     });

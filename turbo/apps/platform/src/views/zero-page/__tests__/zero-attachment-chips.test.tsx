@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
@@ -203,6 +203,85 @@ describe("chat-i-059: image preview button opens lightbox", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+  });
+
+  it("shows loading state and supports zoom controls in the image lightbox", async () => {
+    const user = userEvent.setup();
+    const imageUrl = "https://example.com/photo.png";
+
+    server.use(
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 2048,
+        url: imageUrl,
+      }),
+    );
+    mockChatAPI();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(
+      fileInput!,
+      new File(["img"], "photo.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(`img[src="${imageUrl}"]`),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
+
+    const image = await screen.findByTestId("attachment-lightbox-image");
+    expect(
+      screen.getByTestId("attachment-lightbox-image-loading"),
+    ).toBeInTheDocument();
+
+    fireEvent.load(image);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox-image-loading"),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("125%")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Zoom out"));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("125%")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Reset zoom"));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: "=", metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByText("125%")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: "-", metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
     });
   });
 });
@@ -555,6 +634,51 @@ describe("chat-d-064: video attachment chip shows neither image thumbnail nor fi
     expect(
       chipDiv?.querySelector('img[aria-hidden="true"]'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("chat-d-064: audio attachment chip shows audio file icon", () => {
+  it("renders composer chip without image preview or file-type icon for an mp3 upload", async () => {
+    const user = userEvent.setup();
+    const audioUrl = "https://example.com/clip.mp3";
+
+    server.use(
+      ...mockUploadSuccess({
+        id: "upload-audio-1",
+        filename: "clip.mp3",
+        contentType: "audio/mpeg",
+        size: 2048,
+        url: audioUrl,
+      }),
+    );
+    mockChatAPI();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(
+      fileInput!,
+      new File(["a"], "clip.mp3", { type: "audio/mpeg" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove clip.mp3")).toBeInTheDocument();
+    });
+
+    const chipDiv = document.querySelector<HTMLElement>('[title="clip.mp3"]');
+    expect(chipDiv).toBeInTheDocument();
+    expect(
+      document.querySelector(`img[src="${audioUrl}"]`),
+    ).not.toBeInTheDocument();
+    expect(
+      chipDiv?.querySelector('img[aria-hidden="true"]'),
+    ).not.toBeInTheDocument();
+    expect(chipDiv?.querySelector("svg")).toBeInTheDocument();
   });
 });
 

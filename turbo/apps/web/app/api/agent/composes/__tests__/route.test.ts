@@ -715,8 +715,10 @@ describe("Agent Compose Upsert Behavior", () => {
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error.message).toContain("Unsupported framework");
-      expect(data.error.message).toContain(SUPPORTED_FRAMEWORKS.join(", "));
+      expect(data.error.message).toContain("Invalid option");
+      for (const framework of SUPPORTED_FRAMEWORKS) {
+        expect(data.error.message).toContain(framework);
+      }
     });
 
     it("should accept claude-code framework", async () => {

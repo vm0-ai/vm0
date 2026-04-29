@@ -10,9 +10,10 @@ import {
   IconPlus,
   IconChevronRight,
   IconTrash,
+  IconPencil,
+  IconLoader2,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -55,23 +56,59 @@ import {
   sessionListCollapsed$,
   setSessionListCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { Link } from "../router/link.tsx";
+
+type IndicatorState = "running" | "unread" | "draft";
+
+function SessionStateIndicator({ state }: { state: IndicatorState }) {
+  if (state === "running") {
+    return (
+      <IconLoader2
+        aria-label="Running"
+        size={16}
+        stroke={2}
+        className="animate-spin text-sky-600"
+      />
+    );
+  }
+  if (state === "unread") {
+    return (
+      <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
+    );
+  }
+  return (
+    <span
+      aria-label="Draft"
+      className="flex items-center justify-center text-sidebar-foreground/50"
+    >
+      <IconPencil size={16} stroke={2} />
+    </span>
+  );
+}
 
 function ChatThreadItem({
   session,
   isSelected,
   onSelect,
-  showReadIndicator,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
   onSelect?: () => void;
-  showReadIndicator: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
-  const isUnread = showReadIndicator && !session.isRead;
-  const isRunning = showReadIndicator && session.running;
+  const isRunning = session.running;
+  const isUnread = !session.isRead && !isSelected;
+  const hasDraft = (session.hasDraft ?? false) && !isSelected;
+
+  // Priority: running > unread > draft. Only one indicator occupies the
+  // right slot at a time; on hover the slot swaps to the delete button.
+  const indicatorState: IndicatorState | null = isRunning
+    ? "running"
+    : isUnread
+      ? "unread"
+      : hasDraft
+        ? "draft"
+        : null;
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
@@ -92,7 +129,7 @@ function ChatThreadItem({
           }
           onSelect?.();
         }}
-        className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+        className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
           isSelected
             ? "bg-gray-200 text-gray-900 font-medium"
             : isUnread
@@ -100,44 +137,43 @@ function ChatThreadItem({
               : "text-sidebar-foreground hover:bg-sidebar-accent"
         }`}
       >
-        {isRunning && (
-          <span
-            className="shrink-0 h-2 w-2 rounded-full bg-sky-600 animate-pulse"
-            aria-label="Running"
-          />
-        )}
-        {!isRunning && !isSelected && isUnread && (
-          <span
-            className="shrink-0 h-2 w-2 rounded-full bg-primary"
-            aria-label="Unread"
-          />
-        )}
         <span className="truncate min-w-0 flex-1">
           {session.title ?? "New chat"}
         </span>
       </Link>
-      <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleDeleteClick}
-                className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
-                  isSelected
-                    ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                    : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-                }`}
-                aria-label="Delete chat"
-              >
-                <IconTrash size={12} stroke={2} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">Delete chat</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+      <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+        {indicatorState !== null && (
+          <span
+            className={`flex items-center justify-center ${
+              indicatorState === "draft" ? "" : "group-hover:invisible"
+            }`}
+          >
+            <SessionStateIndicator state={indicatorState} />
+          </span>
+        )}
+        {indicatorState !== "draft" && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleDeleteClick}
+                  className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                    isSelected
+                      ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                      : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+                  }`}
+                  aria-label="Delete chat"
+                >
+                  <IconTrash size={16} stroke={2} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Delete chat</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </div>
   );
@@ -156,9 +192,6 @@ function ChatThreads() {
   const chatThreads = useLastResolved(chatThreads$) ?? [];
   const optimisticChatThreads =
     useLastResolved(pendingOptimisticChatThreads$) ?? [];
-  const features = useLastResolved(featureSwitch$);
-  const showReadIndicator =
-    features?.[FeatureSwitchKey.ChatThreadReadIndicator] ?? false;
   const searchTerm = useGet(sidebarSearchTerm$);
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredChatThreads = trimmedTerm
@@ -206,7 +239,6 @@ function ChatThreads() {
             session={session}
             isSelected={selectedThreadId === session.id}
             onSelect={onRecentSelect}
-            showReadIndicator={showReadIndicator}
           />
         );
       })}
@@ -217,7 +249,6 @@ function ChatThreads() {
             session={session}
             isSelected={selectedThreadId === session.id}
             onSelect={onRecentSelect}
-            showReadIndicator={showReadIndicator}
           />
         );
       })}

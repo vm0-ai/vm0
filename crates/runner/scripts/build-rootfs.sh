@@ -36,6 +36,7 @@
 #     --guest-download /path/to/guest-download \
 #     --guest-init /path/to/guest-init \
 #     --guest-mock-claude /path/to/guest-mock-claude \
+#     --guest-mock-codex /path/to/guest-mock-codex \
 #     [--mirror http://archive.ubuntu.com/ubuntu]
 
 set -euo pipefail
@@ -73,6 +74,7 @@ GUEST_AGENT=""
 GUEST_DOWNLOAD=""
 GUEST_INIT=""
 GUEST_MOCK_CLAUDE=""
+GUEST_MOCK_CODEX=""
 GUEST_RESEED=""
 DNS_NAMESERVER=""
 # Default mirror: archive.ubuntu.com only hosts amd64/i386;
@@ -94,6 +96,7 @@ while [[ $# -gt 0 ]]; do
     --guest-download)    GUEST_DOWNLOAD="$2";    shift 2 ;;
     --guest-init)        GUEST_INIT="$2";        shift 2 ;;
     --guest-mock-claude) GUEST_MOCK_CLAUDE="$2"; shift 2 ;;
+    --guest-mock-codex)  GUEST_MOCK_CODEX="$2";  shift 2 ;;
     --guest-reseed)      GUEST_RESEED="$2";      shift 2 ;;
     --dns-nameserver)    DNS_NAMESERVER="$2";    shift 2 ;;
     --mirror)            MIRROR="$2";            shift 2 ;;
@@ -101,7 +104,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for var in OUTPUT_DIR CA_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE GUEST_RESEED DNS_NAMESERVER; do
+for var in OUTPUT_DIR CA_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE GUEST_MOCK_CODEX GUEST_RESEED DNS_NAMESERVER; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -132,7 +135,8 @@ ROOTFS_DIR=""
 
 # Pinned versions (changes here invalidate the rootfs cache via script hash)
 GO_VERSION="1.26.2"
-CLAUDE_CODE_VERSION="2.1.119"
+CLAUDE_CODE_VERSION="2.1.121"
+CODEX_CLI_VERSION="0.125.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"
 AGENT_BROWSER_VERSION="0.26.0"
@@ -428,6 +432,7 @@ install_runtimes() {
     npm install -g \
       @googleworkspace/cli@${GWS_CLI_VERSION} \
       @xdevplatform/xurl@${XURL_VERSION} \
+      @openai/codex@${CODEX_CLI_VERSION} \
       agent-browser@${AGENT_BROWSER_VERSION}
     npm cache clean --force
   "
@@ -459,6 +464,7 @@ inject_files() {
     "${GUEST_DOWNLOAD}:/usr/local/bin/guest-download"
     "${GUEST_INIT}:/sbin/guest-init"
     "${GUEST_MOCK_CLAUDE}:/usr/local/bin/guest-mock-claude"
+    "${GUEST_MOCK_CODEX}:/usr/local/bin/guest-mock-codex"
     "${GUEST_RESEED}:/sbin/guest-reseed"
   )
   for entry in "${bins[@]}"; do

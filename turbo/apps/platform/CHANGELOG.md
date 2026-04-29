@@ -1,5 +1,154 @@
 # Changelog
 
+## [0.306.1](https://github.com/vm0-ai/vm0/compare/app-v0.306.0...app-v0.306.1) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.243.0
+
+## [0.306.0](https://github.com/vm0-ai/vm0/compare/app-v0.305.0...app-v0.306.0) (2026-04-28)
+
+
+### Features
+
+* enforce maximum 7 agents per organization ([#11406](https://github.com/vm0-ai/vm0/issues/11406)) ([8a323cb](https://github.com/vm0-ai/vm0/commit/8a323cb576b719ce31ba695d37b1ac817c5dc371))
+
+
+### Refactoring
+
+* remove fully-enabled feature switches (AudioInput, ChatArtifactsDrawer, TelegramIntegration) ([#11409](https://github.com/vm0-ai/vm0/issues/11409)) ([1e647d4](https://github.com/vm0-ai/vm0/commit/1e647d4086c02df77c0d3daf372fc53b8f45d14e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.242.1
+
+## [0.305.0](https://github.com/vm0-ai/vm0/compare/app-v0.304.2...app-v0.305.0) (2026-04-28)
+
+
+### Features
+
+* add telegram bot onboarding flow ([#11399](https://github.com/vm0-ai/vm0/issues/11399)) ([aba29b3](https://github.com/vm0-ai/vm0/commit/aba29b390e94f23f1b45a18c4a32fa5a7cd647aa))
+
+## [0.304.2](https://github.com/vm0-ai/vm0/compare/app-v0.304.1...app-v0.304.2) (2026-04-28)
+
+
+### Bug Fixes
+
+* **platform:** cap usage card tooltip width and emphasize click hint ([#11391](https://github.com/vm0-ai/vm0/issues/11391)) ([5a5cd77](https://github.com/vm0-ai/vm0/commit/5a5cd7744622168c5eee498e52b5330d14b602a0))
+* use telegram usernames in attribution footers ([#11396](https://github.com/vm0-ai/vm0/issues/11396)) ([e651c79](https://github.com/vm0-ai/vm0/commit/e651c793f1f60af02e325467f7101c90c7d6eeb9))
+
+## [0.304.1](https://github.com/vm0-ai/vm0/compare/app-v0.304.0...app-v0.304.1) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.242.0
+
+## [0.304.0](https://github.com/vm0-ai/vm0/compare/app-v0.303.0...app-v0.304.0) (2026-04-28)
+
+
+### Features
+
+* add bb0 device flow ([#11383](https://github.com/vm0-ai/vm0/issues/11383)) ([00871f5](https://github.com/vm0-ai/vm0/commit/00871f521741d5769c0f20e7da9e93de9fbaf91b))
+
+## [0.303.0](https://github.com/vm0-ai/vm0/compare/app-v0.302.0...app-v0.303.0) (2026-04-28)
+
+
+### Features
+
+* **sidebar:** unified chat session indicator with draft + hover-swap delete ([#11226](https://github.com/vm0-ai/vm0/issues/11226)) ([58008a6](https://github.com/vm0-ai/vm0/commit/58008a6ca50f8883906a5b472081dddc3e16f0d6))
+
+
+### Bug Fixes
+
+* remove telegram route label ([#11379](https://github.com/vm0-ai/vm0/issues/11379)) ([28b6b2b](https://github.com/vm0-ai/vm0/commit/28b6b2bff02951648af9014a368a7873dfce8d10))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.241.0
+
+## [0.302.0](https://github.com/vm0-ai/vm0/compare/app-v0.301.0...app-v0.302.0) (2026-04-28)
+
+
+### Features
+
+* add empty state illustration for artifacts drawer ([#11367](https://github.com/vm0-ai/vm0/issues/11367)) ([36493f7](https://github.com/vm0-ai/vm0/commit/36493f7fdd4f1da922b9e0a03080a9936f009db9))
+* add tooltip with full name on usage page schedule/chat rows ([#11362](https://github.com/vm0-ai/vm0/issues/11362)) ([fe8dd9f](https://github.com/vm0-ai/vm0/commit/fe8dd9f7341c694f628ee9fe16d48e223e1e6df5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.240.0
+
+## [0.301.0](https://github.com/vm0-ai/vm0/compare/app-v0.300.1...app-v0.301.0) (2026-04-28)
+
+
+### Features
+
+* add telegram bot setup dialog ([#11346](https://github.com/vm0-ai/vm0/issues/11346)) ([66286c7](https://github.com/vm0-ai/vm0/commit/66286c793bf6b104a23ee7839214bb4b119d635f))
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
+
+### Bug Fixes
+
+* improve chat image preview controls ([#11350](https://github.com/vm0-ai/vm0/issues/11350)) ([848e2a1](https://github.com/vm0-ai/vm0/commit/848e2a1dbc740075c9252971a167206f5bfe6723))
+
+## [0.300.1](https://github.com/vm0-ai/vm0/compare/app-v0.300.0...app-v0.300.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* refresh artifacts from realtime updates ([#11336](https://github.com/vm0-ai/vm0/issues/11336)) ([e513f7e](https://github.com/vm0-ai/vm0/commit/e513f7ee95c35329750dd7767b4b7ea35d1839fd))
+* show single usage breakdown category ([#11337](https://github.com/vm0-ai/vm0/issues/11337)) ([215cde7](https://github.com/vm0-ai/vm0/commit/215cde741538f9f226eef763278a791b63787e0e))
+
+## [0.300.0](https://github.com/vm0-ai/vm0/compare/app-v0.299.1...app-v0.300.0) (2026-04-28)
+
+
+### Features
+
+* show schedule description on usage insights widget ([#11305](https://github.com/vm0-ai/vm0/issues/11305)) ([87e765c](https://github.com/vm0-ai/vm0/commit/87e765cb8a0fc02a719bcc6995d987eb7b92ebc8))
+
+## [0.299.1](https://github.com/vm0-ai/vm0/compare/app-v0.299.0...app-v0.299.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* load complete activity events before polling ([#11316](https://github.com/vm0-ai/vm0/issues/11316)) ([f1ab00f](https://github.com/vm0-ai/vm0/commit/f1ab00facd27f393f69e62c55de21bfca930f1b0))
+
+## [0.299.0](https://github.com/vm0-ai/vm0/compare/app-v0.298.2...app-v0.299.0) (2026-04-28)
+
+
+### Features
+
+* support audio uploads in chat preview ([#11311](https://github.com/vm0-ai/vm0/issues/11311)) ([985bd28](https://github.com/vm0-ai/vm0/commit/985bd28d4637404b6217a73254af9d77e01fdd25))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.239.1
+
+## [0.298.2](https://github.com/vm0-ai/vm0/compare/app-v0.298.1...app-v0.298.2) (2026-04-28)
+
+
+### Bug Fixes
+
+* restore artifact previews and upload files migration ([#11287](https://github.com/vm0-ai/vm0/issues/11287)) ([d616d86](https://github.com/vm0-ai/vm0/commit/d616d86029dbf9612311d1e9dd22231b7ab215fd))
+
 ## [0.298.1](https://github.com/vm0-ai/vm0/compare/app-v0.298.0...app-v0.298.1) (2026-04-27)
 
 

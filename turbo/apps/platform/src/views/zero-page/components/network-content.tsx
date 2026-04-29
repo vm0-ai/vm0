@@ -186,6 +186,15 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
     entry.response_size,
     formatSize(entry.response_size),
   );
+  addField(out, "DNS Event", entry.dns_event, formatValue(entry.dns_event));
+  addField(
+    out,
+    "DNS Query Type",
+    entry.dns_query_type,
+    formatValue(entry.dns_query_type),
+  );
+  addField(out, "DNS Result", entry.dns_result, formatValue(entry.dns_result));
+  addField(out, "DNS Serial", entry.dns_serial, formatValue(entry.dns_serial));
   addField(
     out,
     "Firewall",

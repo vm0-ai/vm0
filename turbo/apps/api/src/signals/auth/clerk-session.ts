@@ -34,7 +34,7 @@ function mapClerkOrgRole(
   return orgRole === "org:admin" ? "admin" : "member";
 }
 
-const requestState$ = computed(async (get) => {
+const requestState$ = computed((get) => {
   const request = get(request$);
   const clerk = get(clerk$);
   return clerk.authenticateRequest(request.raw, {

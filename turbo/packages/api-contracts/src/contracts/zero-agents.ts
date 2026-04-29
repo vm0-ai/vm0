@@ -86,6 +86,7 @@ export const zeroAgentsMainContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      409: apiErrorSchema,
       422: apiErrorSchema,
     },
     summary: "Create zero agent",

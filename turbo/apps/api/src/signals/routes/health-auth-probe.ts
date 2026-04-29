@@ -1,11 +1,16 @@
 import { initContract } from "@ts-rest/core";
-import { computed } from "ccstate";
+import { command } from "ccstate";
 import { z } from "zod";
 
-import { authContext$ } from "../auth/auth-context";
-import { authRoute } from "../auth/auth-route";
-import type { AuthContext } from "../../types/auth";
+import {
+  requiredAuthContext$,
+  setAuthContext$,
+  type AuthErrorResponse,
+} from "../auth/auth-context";
+import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { AuthContext, AuthTokenType } from "../../types/auth";
 import type { RouteEntry } from "../route";
+import { rawQuery$ } from "../context/hono";
 
 const c = initContract();
 
@@ -27,15 +32,83 @@ const probeRoute = c.router({
   },
 });
 
-const returnAuthContext$ = computed(
-  (get): { readonly status: 200; readonly body: AuthContext } => {
-    return { status: 200 as const, body: get(authContext$) };
-  },
-);
+const probe$ = command(
+  async (
+    { get, set },
+    signal: AbortSignal,
+  ): Promise<
+    { readonly status: 200; readonly body: AuthContext } | AuthErrorResponse
+  > => {
+    const query = get(rawQuery$);
 
-const probe$ = authRoute(
-  { acceptAnySandboxCapability: true },
-  returnAuthContext$,
+    const options: {
+      requiredCapability?: ZeroCapability;
+      acceptAnySandboxCapability?: boolean;
+      accept?: readonly AuthTokenType[];
+    } = {};
+
+    if (query.acceptAnySandboxCapability === "true") {
+      options.acceptAnySandboxCapability = true;
+    }
+    if (query.requiredCapability) {
+      options.requiredCapability = query.requiredCapability as ZeroCapability;
+    }
+    if (query.accept) {
+      options.accept = query.accept.split(",") as AuthTokenType[];
+    }
+
+    // Backward-compat: no params defaults to the old permissive behaviour
+    if (
+      !options.acceptAnySandboxCapability &&
+      !options.requiredCapability &&
+      !options.accept
+    ) {
+      options.acceptAnySandboxCapability = true;
+    }
+
+    const result = await set(requiredAuthContext$, options, signal);
+    if ("status" in result) {
+      // PAT-only routes: rewrite 401 message to match requireApiKeyAuth phrasing
+      if (
+        options.accept?.length === 1 &&
+        options.accept[0] === "pat" &&
+        result.status === 401
+      ) {
+        return {
+          status: 401 as const,
+          body: {
+            error: { message: "API key required", code: "UNAUTHORIZED" },
+          },
+        };
+      }
+      return result;
+    }
+
+    // Post-filter: reject token types not in the accept list
+    if (options.accept && !options.accept.includes(result.tokenType)) {
+      if (options.accept.length === 1 && options.accept[0] === "pat") {
+        return {
+          status: 401 as const,
+          body: {
+            error: { message: "API key required", code: "UNAUTHORIZED" },
+          },
+        };
+      }
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message:
+              "This endpoint does not accept the provided credential type",
+            code: "FORBIDDEN",
+          },
+        },
+      };
+    }
+
+    set(setAuthContext$, result);
+    return { status: 200 as const, body: result };
+  },
 );
 
 export const healthAuthProbeRoutes: readonly RouteEntry[] = [

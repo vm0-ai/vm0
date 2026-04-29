@@ -1,5 +1,5 @@
 import { computed } from "ccstate";
-import { type HealthRouteResponse } from "@vm0/api-contracts/contracts";
+import type { HealthRouteResponse } from "@vm0/api-contracts/contracts";
 
 export const apiHealth$ = computed<Promise<HealthRouteResponse>>(async () => {
   await Promise.resolve();

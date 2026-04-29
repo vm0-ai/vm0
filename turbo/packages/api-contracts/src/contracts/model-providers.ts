@@ -83,8 +83,9 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "minimax",
   },
   "deepseek-v4-pro": {
-    concreteType: "deepseek-api-key",
-    vendor: "deepseek",
+    concreteType: "openrouter-api-key",
+    vendor: "openrouter",
+    apiModel: "deepseek/deepseek-v4-pro",
   },
   "deepseek-v4-flash": {
     concreteType: "deepseek-api-key",

@@ -260,6 +260,56 @@ describe("Zero Agents API", () => {
       const response = await postAgent({}, "no-token");
       expect(response.status).toBe(401);
     });
+
+    it("should return 409 when org has reached the agent limit", async () => {
+      // Create 7 agents (the maximum)
+      for (let i = 0; i < 7; i++) {
+        const response = await postAgent(
+          { displayName: `Agent ${i + 1}` },
+          testCliToken,
+        );
+        expect(response.status).toBe(201);
+      }
+
+      // 8th agent should be rejected
+      const response = await postAgent(
+        { displayName: "Over Limit" },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(409);
+      const data = await response.json();
+      expect(data.error.code).toBe("CONFLICT");
+      expect(data.error.message).toContain("maximum number of agents");
+    });
+
+    it("should allow creation after deleting an agent below the limit", async () => {
+      // Create 7 agents
+      const agents = [];
+      for (let i = 0; i < 7; i++) {
+        const response = await postAgent(
+          { displayName: `Agent ${i + 1}` },
+          testCliToken,
+        );
+        expect(response.status).toBe(201);
+        agents.push(await response.json());
+      }
+
+      // 8th should be rejected
+      const blocked = await postAgent({ displayName: "Blocked" }, testCliToken);
+      expect(blocked.status).toBe(409);
+
+      // Delete one agent
+      const deleteRes = await deleteAgent(agents[0].agentId, testCliToken);
+      expect(deleteRes.status).toBe(204);
+
+      // Now creation should succeed
+      const response = await postAgent(
+        { displayName: "After Delete" },
+        testCliToken,
+      );
+      expect(response.status).toBe(201);
+    });
   });
 
   describe("GET /api/zero/agents/:name", () => {

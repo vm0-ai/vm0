@@ -11,7 +11,6 @@ const baseCallback: TelegramCallbackPayload = {
   agentId: "compose-1",
   existingSessionId: null,
   isDM: false,
-  thinkingMessageId: null,
 };
 
 describe("adaptTelegramTrigger", () => {

@@ -1331,6 +1331,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
+          USE_MOCK_CODEX: "true"
           SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
           E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
           # Slack tests override BATS_TEST_TIMEOUT to 90s at file scope,
@@ -1419,7 +1420,7 @@ jobs:
         run: |
           cd crates
           cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
@@ -1428,6 +1429,7 @@ jobs:
           GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
           GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
+          GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
@@ -1708,7 +1710,8 @@ jobs:
               --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
-              --env USE_MOCK_CLAUDE=true"
+              --env USE_MOCK_CLAUDE=true \
+              --env USE_MOCK_CODEX=true"
 
             # Health check — wait for runner startup, then verify
             sleep 5
@@ -1908,6 +1911,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
+          USE_MOCK_CODEX: "true"
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}

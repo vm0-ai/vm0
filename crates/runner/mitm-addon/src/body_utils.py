@@ -249,7 +249,7 @@ def _redact_headers(headers) -> dict:
 def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Add request/response headers and bodies to a log entry.
 
-    # [NETWORK_LOG_FIELDS] — capture-only fields, not part of the core schema.
+    # [NETWORK_LOG_FIELDS] — capture-only fields in the shared network log schema.
     # Fields: request_headers, request_body, request_body_encoding,
     #         request_body_truncated, response_headers, response_body,
     #         response_body_encoding, response_body_truncated

@@ -4,6 +4,7 @@ import {
   markdownToTelegramHtml,
   splitMessage,
   buildTelegramResponse,
+  buildTelegramErrorResponse,
 } from "../format";
 
 describe("escapeHtml", () => {
@@ -38,6 +39,15 @@ describe("markdownToTelegramHtml", () => {
   it("should convert links", () => {
     expect(markdownToTelegramHtml("[click](https://example.com)")).toBe(
       '<a href="https://example.com">click</a>',
+    );
+  });
+
+  it("should convert connector authorization links", () => {
+    const input =
+      "[连接 Notion](https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c)";
+
+    expect(markdownToTelegramHtml(input)).toBe(
+      '<a href="https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c">连接 Notion</a>',
     );
   });
 
@@ -92,6 +102,48 @@ describe("buildTelegramResponse", () => {
     expect(result).toMatch(/^content\n\n/);
   });
 
+  it("should omit the audit footer without a logs URL", () => {
+    const result = buildTelegramResponse("content");
+
+    expect(result).toBe("content");
+    expect(result).not.toContain("Audit");
+  });
+
+  it("should include attribution footer without requiring an audit URL", () => {
+    const result = buildTelegramResponse(
+      "content",
+      undefined,
+      "Sent via My Assistant",
+    );
+
+    expect(result).toBe("content\n\n<i>Sent via My Assistant</i>");
+  });
+
+  it("should render audit footer with muted Telegram styling", () => {
+    const result = buildTelegramResponse("content", "https://example.com/logs");
+
+    expect(result).toContain(
+      '<i><a href="https://example.com/logs">📋 Audit</a></i>',
+    );
+  });
+
+  it("should keep audit before attribution footer", () => {
+    const result = buildTelegramResponse(
+      "content",
+      "https://example.com/logs",
+      "Sent via My Assistant · Claude Opus 4.7",
+    );
+
+    expect(result).toBe(
+      [
+        "content",
+        "",
+        '<i><a href="https://example.com/logs">📋 Audit</a></i>',
+        "<i>Sent via My Assistant · Claude Opus 4.7</i>",
+      ].join("\n"),
+    );
+  });
+
   it("should not render agent name HTML", () => {
     const result = buildTelegramResponse("hi", "https://example.com/logs");
 
@@ -105,6 +157,68 @@ describe("buildTelegramResponse", () => {
     );
 
     expect(result).toContain("<b>bold</b> and <code>code</code>");
+  });
+
+  it("should render connector authorization links", () => {
+    const result = buildTelegramResponse(
+      [
+        "Notion 还没有连接，需要先授权。",
+        "",
+        "请点击这个链接完成连接：",
+        "[连接 Notion](https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c)",
+      ].join("\n"),
+      "https://example.com/logs",
+    );
+
+    expect(result).toContain(
+      '<a href="https://tunnel-yuma-vm0-app.vm7.ai/connectors/notion/connect?agentId=b431c9a7-4f78-4977-aba1-dec4c04b212c">连接 Notion</a>',
+    );
+    expect(result).not.toContain("[连接 Notion](");
+  });
+});
+
+describe("buildTelegramErrorResponse", () => {
+  it("should use the Slack-aligned audit label for error footers", () => {
+    const result = buildTelegramErrorResponse(
+      "failed",
+      "https://example.com/logs",
+    );
+
+    expect(result).toContain(
+      '<i><a href="https://example.com/logs">📋 Audit</a></i>',
+    );
+    expect(result).not.toContain("View logs");
+  });
+
+  it("should keep error audit before attribution footer", () => {
+    const result = buildTelegramErrorResponse(
+      "failed",
+      "https://example.com/logs",
+      "Responded by Responder · Claude Opus 4.7",
+    );
+
+    expect(result).toBe(
+      [
+        "❌ <b>Agent Execution Error</b>",
+        "",
+        "failed",
+        "",
+        '<i><a href="https://example.com/logs">📋 Audit</a></i>',
+        "<i>Responded by Responder · Claude Opus 4.7</i>",
+      ].join("\n"),
+    );
+  });
+
+  it("should convert markdown links in error details", () => {
+    const result = buildTelegramErrorResponse(
+      "请先 [连接 Notion](https://example.com/connect?agentId=123)",
+      "https://example.com/logs",
+    );
+
+    expect(result).toContain(
+      '<a href="https://example.com/connect?agentId=123">连接 Notion</a>',
+    );
+    expect(result).not.toContain("[连接 Notion](");
   });
 });
 

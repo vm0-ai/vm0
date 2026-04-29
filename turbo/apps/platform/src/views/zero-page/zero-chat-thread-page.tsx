@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { Component, type CSSProperties } from "react";
 import {
   useGet,
   useSet,
@@ -21,7 +21,9 @@ import {
   IconDownload,
   IconEye,
   IconFile,
-  IconFiles,
+  IconFileMusic,
+  IconLoader2,
+  IconPackage,
   IconVideo,
 } from "@tabler/icons-react";
 import {
@@ -39,6 +41,7 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import emptyChatImg from "./assets/empty-chat.webp";
+import emptyArtifactImg from "./assets/empty-artifact.webp";
 import docCsvIcon from "./assets/doc-csv.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docHtmlIcon from "./assets/doc-html.svg";
@@ -205,13 +208,6 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
-  const features = useLastResolved(featureSwitch$);
-  const enabled = features?.[FeatureSwitchKey.ChatArtifactsDrawer] ?? false;
-
-  if (!enabled) {
-    return null;
-  }
-
   return <ArtifactsButtonInner thread={thread} />;
 }
 
@@ -237,7 +233,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
             aria-label="Open artifacts"
             aria-pressed={open}
           >
-            <IconFiles size={17} stroke={1.5} />
+            <IconPackage size={17} stroke={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="bottom">Open artifacts</TooltipContent>
@@ -334,7 +330,7 @@ type ChatArtifactItem = {
   file: ChatThreadArtifactFile;
 };
 
-type ArtifactPreviewKind = "image" | "video" | "document" | "file";
+type ArtifactPreviewKind = "image" | "video" | "audio" | "document" | "file";
 
 function artifactItemKey(item: ChatArtifactItem): string {
   return `${item.runId}:${item.file.id}:${item.file.url}`;
@@ -356,6 +352,9 @@ function getArtifactPreviewKind(
   }
   if (contentType.startsWith("video/") || isVideoFilename(filename)) {
     return "video";
+  }
+  if (contentType.startsWith("audio/") || isAudioFilename(filename)) {
+    return "audio";
   }
   if (
     contentType === "application/pdf" ||
@@ -433,7 +432,25 @@ function ArtifactFileIcon({
   if (previewKind === "video") {
     return <IconVideo size={18} stroke={1.5} />;
   }
+  if (previewKind === "audio") {
+    return <IconFileMusic size={18} stroke={1.5} />;
+  }
   return <IconFile size={18} stroke={1.5} />;
+}
+
+function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
+  if (getArtifactPreviewKind(file) === "image") {
+    return (
+      <img
+        src={file.url}
+        alt=""
+        aria-hidden="true"
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+
+  return <ArtifactFileIcon file={file} />;
 }
 
 function ArtifactDownloadAction({
@@ -463,31 +480,133 @@ function ArtifactDownloadAction({
   );
 }
 
+type ImageLoadStatus = "loading" | "loaded" | "error";
+
+type ChatImagePreviewButtonProps = {
+  alt: string;
+  ariaLabel: string;
+  buttonClassName: string;
+  imageClassName: string;
+  onPreview: () => void;
+  overlayIcon?: "eye" | "photo";
+  placeholderClassName: string;
+  url: string;
+};
+
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
+class ChatImagePreviewButton extends Component<
+  ChatImagePreviewButtonProps,
+  { imageStatus: ImageLoadStatus }
+> {
+  state: { imageStatus: ImageLoadStatus } = {
+    imageStatus: "loading",
+  };
+
+  componentDidUpdate(previousProps: Readonly<ChatImagePreviewButtonProps>) {
+    if (previousProps.url !== this.props.url) {
+      this.setState({ imageStatus: "loading" });
+    }
+  }
+
+  renderPlaceholder() {
+    const { placeholderClassName } = this.props;
+    const { imageStatus } = this.state;
+
+    if (imageStatus === "loaded") {
+      return null;
+    }
+
+    return (
+      <span
+        data-testid="chat-image-preview-loading"
+        className={cn(
+          "flex items-center justify-center bg-muted/70 text-muted-foreground",
+          placeholderClassName,
+        )}
+      >
+        {imageStatus === "loading" ? (
+          <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+        ) : (
+          <IconPhoto size={18} stroke={1.5} />
+        )}
+      </span>
+    );
+  }
+
+  renderOverlay() {
+    const { overlayIcon = "photo" } = this.props;
+
+    return (
+      <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100">
+        {overlayIcon === "eye" ? (
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
+            <IconEye size={18} stroke={1.8} />
+          </span>
+        ) : (
+          <IconPhoto
+            size={18}
+            className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
+          />
+        )}
+      </span>
+    );
+  }
+
+  render() {
+    const { alt, ariaLabel, buttonClassName, imageClassName, onPreview, url } =
+      this.props;
+    const showPlaceholder = this.state.imageStatus !== "loaded";
+
+    return (
+      <button
+        type="button"
+        onClick={onPreview}
+        className={cn(
+          "group/image-preview relative overflow-hidden",
+          buttonClassName,
+        )}
+        aria-label={ariaLabel}
+      >
+        {this.renderPlaceholder()}
+        <img
+          src={url}
+          alt={alt}
+          loading="lazy"
+          onLoad={() => {
+            this.setState({ imageStatus: "loaded" });
+          }}
+          onError={() => {
+            this.setState({ imageStatus: "error" });
+          }}
+          className={cn(
+            imageClassName,
+            showPlaceholder && "absolute inset-0 opacity-0",
+          )}
+        />
+        {this.renderOverlay()}
+      </button>
+    );
+  }
+}
+
 function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const previewKind = getArtifactPreviewKind(file);
 
   if (previewKind === "image") {
     return (
-      <button
-        type="button"
-        onClick={() => {
+      <ChatImagePreviewButton
+        alt={`Preview ${file.filename}`}
+        ariaLabel={`Preview ${file.filename}`}
+        buttonClassName="flex h-full w-full items-center justify-center bg-muted"
+        imageClassName="h-full w-full object-contain"
+        onPreview={() => {
           openImageLightbox(file.url);
         }}
-        className="group relative flex h-full w-full items-center justify-center overflow-hidden bg-muted"
-        aria-label={`Preview ${file.filename}`}
-      >
-        <img
-          src={file.url}
-          alt={`Preview ${file.filename}`}
-          className="h-full w-full object-contain"
-        />
-        <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover:bg-black/25 group-hover:opacity-100">
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
-            <IconEye size={18} stroke={1.8} />
-          </span>
-        </span>
-      </button>
+        overlayIcon="eye"
+        placeholderClassName="h-full w-full"
+        url={file.url}
+      />
     );
   }
 
@@ -499,6 +618,23 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
         preload="metadata"
         className="h-full w-full bg-black object-contain"
       />
+    );
+  }
+
+  if (previewKind === "audio") {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-muted/40 p-6">
+        <span className="flex h-14 w-14 items-center justify-center rounded-xl border border-border/70 bg-background text-muted-foreground shadow-sm">
+          <IconFileMusic size={30} stroke={1.5} />
+        </span>
+        <audio
+          src={file.url}
+          controls
+          preload="metadata"
+          className="w-full max-w-[320px]"
+          aria-label={`Audio preview for ${file.filename}`}
+        />
+      </div>
     );
   }
 
@@ -540,8 +676,8 @@ function ArtifactPreviewPanel({ item }: { item: ChatArtifactItem }) {
         <ArtifactPreviewFrame file={file} />
       </div>
       <div className="flex items-start gap-3 px-3 py-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <ArtifactFileIcon file={file} />
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
+          <ArtifactPreviewBadge file={file} />
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">
@@ -581,12 +717,7 @@ function ArtifactThumbnail({
       aria-hidden="true"
     >
       {previewKind === "image" ? (
-        <img
-          src={file.url}
-          alt=""
-          className="h-full w-full object-cover"
-          aria-hidden="true"
-        />
+        <ArtifactThumbnailImage url={file.url} />
       ) : (
         <span className="flex flex-col items-center gap-0.5 text-muted-foreground">
           <ArtifactFileIcon file={file} />
@@ -597,6 +728,58 @@ function ArtifactThumbnail({
       )}
     </div>
   );
+}
+
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
+class ArtifactThumbnailImage extends Component<
+  { url: string },
+  { imageStatus: ImageLoadStatus }
+> {
+  state: { imageStatus: ImageLoadStatus } = {
+    imageStatus: "loading",
+  };
+
+  componentDidUpdate(previousProps: Readonly<{ url: string }>) {
+    if (previousProps.url !== this.props.url) {
+      this.setState({ imageStatus: "loading" });
+    }
+  }
+
+  render() {
+    const { url } = this.props;
+    const { imageStatus } = this.state;
+    const showPlaceholder = imageStatus !== "loaded";
+
+    return (
+      <>
+        {showPlaceholder && (
+          <span className="flex h-full w-full items-center justify-center bg-muted/70 text-muted-foreground">
+            {imageStatus === "loading" ? (
+              <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
+            ) : (
+              <IconPhoto size={14} stroke={1.5} />
+            )}
+          </span>
+        )}
+        <img
+          src={url}
+          alt=""
+          loading="lazy"
+          onLoad={() => {
+            this.setState({ imageStatus: "loaded" });
+          }}
+          onError={() => {
+            this.setState({ imageStatus: "error" });
+          }}
+          className={cn(
+            "h-full w-full object-cover",
+            showPlaceholder && "absolute inset-0 opacity-0",
+          )}
+          aria-hidden="true"
+        />
+      </>
+    );
+  }
 }
 
 function ArtifactFileRow({
@@ -690,8 +873,17 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
 
   if (totalFiles === 0) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border/70 p-8 text-center text-sm text-muted-foreground">
-        No uploaded files in this chat yet.
+      <div className="flex h-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border/70 p-8 text-center">
+        <img
+          src={emptyArtifactImg}
+          alt=""
+          role="presentation"
+          loading="lazy"
+          className="h-24 w-24 object-contain opacity-80"
+        />
+        <p className="text-sm text-muted-foreground">
+          No uploaded files in this chat yet.
+        </p>
       </div>
     );
   }
@@ -728,6 +920,7 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
 function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
   const open = useGet(thread.artifactsDrawerOpen$);
   const setOpen = useSet(thread.setArtifactsDrawerOpen$);
+  const setArtifactsRealtimeRef = useSet(thread.setArtifactsRealtimeRef$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   return (
@@ -761,7 +954,11 @@ function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
           </SheetDescription>
         </SheetHeader>
         <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 -mb-6 pb-6">
-          {open && <ChatArtifactsDrawerContent thread={thread} />}
+          {open && (
+            <div ref={setArtifactsRealtimeRef}>
+              <ChatArtifactsDrawerContent thread={thread} />
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>
@@ -1212,16 +1409,170 @@ function parseInlineAttachments(content: string): {
 type BodyRenderBlock =
   | {
       type: "markdown";
+      id: string;
       content: string;
     }
   | {
       type: "preview";
+      id: string;
       preview: {
         filename: string;
         url: string;
-        kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
+        kind: BodyPreviewKind;
       };
     };
+
+type BodyPreviewKind =
+  | "image"
+  | "video"
+  | "audio"
+  | "markdown"
+  | "text"
+  | "json"
+  | "csv"
+  | "pdf"
+  | "html";
+
+function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
+  return (
+    kind === "image" ||
+    kind === "video" ||
+    kind === "audio" ||
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv" ||
+    kind === "pdf" ||
+    kind === "html"
+  );
+}
+
+function isPlatformFileUrl(url: string): boolean {
+  const baseUrl = "https://vm0.local";
+  if (!URL.canParse(url, baseUrl)) {
+    return false;
+  }
+  const parsed = new URL(url, baseUrl);
+  return /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
+}
+
+function stripMarkdownLineDecorations(value: string): string {
+  let candidate = value
+    .trim()
+    .replace(/^(?:>\s*)+/, "")
+    .replace(/^(?:[-*+]\s+|\d+[.)]\s+)/, "")
+    .trim();
+  const wrappers: [string, string][] = [
+    ["**", "**"],
+    ["__", "__"],
+    ["*", "*"],
+    ["_", "_"],
+    ["~~", "~~"],
+    ["`", "`"],
+    ["<", ">"],
+    ["(", ")"],
+    ["（", "）"],
+  ];
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [prefix, suffix] of wrappers) {
+      if (candidate.startsWith(prefix) && candidate.endsWith(suffix)) {
+        candidate = candidate
+          .slice(prefix.length, candidate.length - suffix.length)
+          .trim();
+        changed = true;
+        break;
+      }
+    }
+  }
+
+  return candidate;
+}
+
+function trimPreviewUrl(value: string): string {
+  let url = value.trim();
+  let previous = "";
+  while (url !== previous) {
+    previous = url;
+    url = url
+      .replace(/[*_~`]+$/g, "")
+      .replace(/[)\]}>.,，。；;:：!！?？]+$/g, "");
+  }
+  return url;
+}
+
+type ExtractedPreviewUrl = {
+  url: string;
+  source: "markdown-link" | "bare-url" | "platform-file-line";
+};
+
+function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
+  const candidate = stripMarkdownLineDecorations(line);
+  const markdownLinkMatch = candidate.match(
+    /^\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/f\/[^)\s]+)\)$/,
+  );
+  const bareUrlMatch = candidate.match(/^(https?:\/\/\S+|\/f\/\S+)$/);
+  if (markdownLinkMatch?.[2]) {
+    return {
+      url: trimPreviewUrl(markdownLinkMatch[2]),
+      source: "markdown-link",
+    };
+  }
+  if (bareUrlMatch?.[1]) {
+    return {
+      url: trimPreviewUrl(bareUrlMatch[1]),
+      source: "bare-url",
+    };
+  }
+
+  const urls = Array.from(
+    candidate.matchAll(/(?:https?:\/\/|\/f\/)[^\s<>"']+/g),
+    (match) => {
+      return trimPreviewUrl(match[0]);
+    },
+  ).filter((url, index, list) => {
+    return url.length > 0 && list.indexOf(url) === index;
+  });
+
+  if (urls.length === 1 && isPlatformFileUrl(urls[0]!)) {
+    return {
+      url: urls[0]!,
+      source: "platform-file-line",
+    };
+  }
+
+  return null;
+}
+
+function contentTypeForBodyPreviewKind(kind: BodyPreviewKind): string {
+  if (kind === "markdown") {
+    return "text/markdown";
+  }
+  if (kind === "text") {
+    return "text/plain";
+  }
+  if (kind === "json") {
+    return "application/json";
+  }
+  if (kind === "csv") {
+    return "text/csv";
+  }
+  if (kind === "pdf") {
+    return "application/pdf";
+  }
+  if (kind === "html") {
+    return "text/html";
+  }
+  if (kind === "image") {
+    return "image/*";
+  }
+  if (kind === "audio") {
+    return "audio/*";
+  }
+  return "video/*";
+}
 
 function parseBodyRenderBlocks(content: string): {
   cleanContent: string;
@@ -1231,15 +1582,24 @@ function parseBodyRenderBlocks(content: string): {
   const lines = content.split("\n");
   const keptLines: string[] = [];
   const markdownBuffer: string[] = [];
+  let blockSequence = 0;
   let openFence: {
     marker: "`" | "~";
     length: number;
   } | null = null;
+  const nextBlockId = (type: BodyRenderBlock["type"]) => {
+    blockSequence += 1;
+    return `${type}-${blockSequence}`;
+  };
 
   const flushMarkdownBuffer = () => {
     const joined = markdownBuffer.join("\n").trim();
     if (joined) {
-      blocks.push({ type: "markdown", content: joined });
+      blocks.push({
+        type: "markdown",
+        id: nextBlockId("markdown"),
+        content: joined,
+      });
     }
     markdownBuffer.length = 0;
   };
@@ -1270,46 +1630,31 @@ function parseBodyRenderBlocks(content: string): {
       continue;
     }
 
-    const wrappers: [string, string][] = [
-      ["**", "**"],
-      ["__", "__"],
-      ["*", "*"],
-      ["_", "_"],
-      ["~~", "~~"],
-    ];
-    let candidate = trimmedLine;
-
-    for (const [prefix, suffix] of wrappers) {
-      if (candidate.startsWith(prefix) && candidate.endsWith(suffix)) {
-        candidate = candidate
-          .slice(prefix.length, candidate.length - suffix.length)
-          .trim();
-        break;
-      }
-    }
-
-    const match = candidate.match(/^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/);
-    if (!match) {
+    const extracted = extractPreviewUrlFromLine(line);
+    if (!extracted) {
       markdownBuffer.push(line);
       keptLines.push(line);
       continue;
     }
 
-    const url = match[2];
+    const { url } = extracted;
     const filename = filenameFromUrl(url);
     const kind = classifyChatAttachment({ filename, url });
 
     if (
-      kind === "markdown" ||
-      kind === "text" ||
-      kind === "json" ||
-      kind === "csv" ||
-      kind === "pdf" ||
-      kind === "html"
+      extracted.source === "markdown-link" &&
+      (kind === "image" || kind === "video")
     ) {
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    if (isBodyPreviewKind(kind)) {
       flushMarkdownBuffer();
       blocks.push({
         type: "preview",
+        id: nextBlockId("preview"),
         preview: { filename, url, kind },
       });
       continue;
@@ -1344,7 +1689,7 @@ function BodyContentBlocks({
         if (block.type === "markdown") {
           return (
             <Markdown
-              key={`markdown-${block.content}`}
+              key={block.id}
               source={
                 hardBreaks
                   ? block.content.replace(/\n/g, "  \n")
@@ -1356,24 +1701,41 @@ function BodyContentBlocks({
           );
         }
 
+        if (block.preview.kind === "image") {
+          return (
+            <ChatImagePreviewButton
+              key={block.id}
+              alt={block.preview.filename}
+              ariaLabel={`Preview ${block.preview.filename}`}
+              buttonClassName="w-fit max-w-full rounded-lg border border-foreground/10"
+              imageClassName="max-h-48 max-w-full object-contain"
+              onPreview={() => {
+                openLightbox(block.preview.url);
+              }}
+              placeholderClassName="h-48 w-64 max-w-full"
+              url={block.preview.url}
+            />
+          );
+        }
+
+        if (block.preview.kind === "video") {
+          return (
+            <video
+              key={block.id}
+              src={block.preview.url}
+              controls
+              className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+            />
+          );
+        }
+
         return (
           <AttachmentPreview
-            key={`preview-${block.preview.url}`}
+            key={block.id}
             attachment={{
               filename: block.preview.filename,
               url: block.preview.url,
-              contentType:
-                block.preview.kind === "markdown"
-                  ? "text/markdown"
-                  : block.preview.kind === "text"
-                    ? "text/plain"
-                    : block.preview.kind === "json"
-                      ? "application/json"
-                      : block.preview.kind === "csv"
-                        ? "text/csv"
-                        : block.preview.kind === "pdf"
-                          ? "application/pdf"
-                          : "text/html",
+              contentType: contentTypeForBodyPreviewKind(block.preview.kind),
             }}
             signal={signal}
           />
@@ -1389,6 +1751,10 @@ function isImageFilename(filename: string): boolean {
 
 function isVideoFilename(filename: string): boolean {
   return /\.(mp4|webm|mov)$/i.test(filename);
+}
+
+function isAudioFilename(filename: string): boolean {
+  return /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|mpga)$/i.test(filename);
 }
 
 function AssistantErrorContent({ error }: { error: string }) {
@@ -1538,6 +1904,7 @@ function resolveAttachments(
       contentType,
       isImage: kind === "image" || isImageFilename(f.filename),
       isVideo: kind === "video" || isVideoFilename(f.filename),
+      isAudio: kind === "audio" || isAudioFilename(f.filename),
       kind,
     };
   });
@@ -1553,30 +1920,32 @@ function attachmentIdFromUrl(url: string): string | null {
 }
 
 function inferAttachmentContentType(filename: string, kind: string): string {
+  const contentTypesByExtension: Record<string, string> = {
+    png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    gif: "image/gif",
+    webp: "image/webp",
+    svg: "image/svg+xml",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    mp3: "audio/mpeg",
+    mpga: "audio/mpeg",
+    wav: "audio/wav",
+    m4a: "audio/mp4",
+    aac: "audio/aac",
+    ogg: "audio/ogg",
+    oga: "audio/ogg",
+    opus: "audio/opus",
+    flac: "audio/flac",
+  };
   const lower = filename.toLowerCase();
-  if (lower.endsWith(".png")) {
-    return "image/png";
-  }
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
-    return "image/jpeg";
-  }
-  if (lower.endsWith(".gif")) {
-    return "image/gif";
-  }
-  if (lower.endsWith(".webp")) {
-    return "image/webp";
-  }
-  if (lower.endsWith(".svg")) {
-    return "image/svg+xml";
-  }
-  if (lower.endsWith(".mp4")) {
-    return "video/mp4";
-  }
-  if (lower.endsWith(".webm")) {
-    return "video/webm";
-  }
-  if (lower.endsWith(".mov")) {
-    return "video/quicktime";
+  const extension = lower.includes(".") ? lower.split(".").pop() : undefined;
+  const contentType =
+    extension === undefined ? undefined : contentTypesByExtension[extension];
+  if (contentType !== undefined) {
+    return contentType;
   }
   switch (kind) {
     case "markdown": {
@@ -1650,26 +2019,18 @@ function UserMessageAttachments({
       {attachments.map((a) => {
         if (a.isImage) {
           return (
-            <button
+            <ChatImagePreviewButton
               key={a.url}
-              type="button"
-              onClick={() => {
+              alt={a.filename}
+              ariaLabel={`Preview ${a.filename}`}
+              buttonClassName="rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+              imageClassName="h-9 max-w-[72px] object-cover"
+              onPreview={() => {
                 onImageClick(a.url);
               }}
-              className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-            >
-              <img
-                src={a.url}
-                alt={a.filename}
-                className="h-9 max-w-[72px] object-cover"
-              />
-              <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                <IconPhoto
-                  size={18}
-                  className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                />
-              </span>
-            </button>
+              placeholderClassName="h-9 w-[72px]"
+              url={a.url}
+            />
           );
         }
         if (a.isVideo) {
@@ -1679,6 +2040,18 @@ function UserMessageAttachments({
               src={a.url}
               controls
               className="max-h-48 max-w-full rounded-lg border border-foreground/10"
+            />
+          );
+        }
+        if (a.isAudio) {
+          return (
+            <audio
+              key={a.url}
+              src={a.url}
+              controls
+              preload="metadata"
+              className="w-full max-w-md"
+              aria-label={`Audio preview for ${a.filename}`}
             />
           );
         }

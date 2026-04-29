@@ -11,7 +11,6 @@ import {
   createTelegramClient,
   sendMessage,
   sendChatAction,
-  editMessageText,
   deleteMessage,
 } from "../../../../../src/lib/zero/telegram/client";
 import {
@@ -19,13 +18,13 @@ import {
   buildTelegramResponse,
   buildTelegramErrorResponse,
 } from "../../../../../src/lib/zero/telegram/format";
+import { resolveTelegramAgentReplyFooterText } from "../../../../../src/lib/zero/telegram/footer";
 import { extractRunOutput } from "../../../../../src/lib/infra/run/extract-run-output";
 import {
   saveTelegramThreadSession,
   storeTelegramMessage,
-  buildLogsUrl,
+  resolveTelegramAuditLogsUrl,
   getAgentDisplayLabel,
-  formatTelegramThinkingMessage,
 } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { env } from "../../../../../src/env";
 import type { TelegramCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
@@ -131,12 +130,13 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
 
   const agent = await resolveAgentInfo(agentId);
 
-  // Delete thinking placeholder message
+  // Delete legacy thinking placeholder messages from runs created before
+  // Telegram switched to typing-only feedback.
   if (thinkingMessageId) {
     try {
       await deleteMessage(client, chatId, Number(thinkingMessageId));
     } catch (err) {
-      log.debug("Failed to delete thinking message", {
+      log.debug("Failed to delete legacy thinking placeholder", {
         thinkingMessageId,
         error: err,
       });
@@ -157,17 +157,44 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   }
   const runOutput = await extractRunOutput(runId, error);
 
+  const [run] = await globalThis.services.db
+    .select({
+      userId: agentRuns.userId,
+      orgId: agentRuns.orgId,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+
   // Build response text
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = run
+    ? await resolveTelegramAuditLogsUrl({
+        orgId: run.orgId,
+        userId: run.userId,
+        runId,
+      })
+    : undefined;
+  const footerText = run
+    ? await resolveTelegramAgentReplyFooterText({
+        orgId: run.orgId,
+        runId,
+        installationId,
+        chatId,
+        rootMessageId: isDM ? "dm" : payloadRootMessageId,
+        userLinkId,
+        agentId,
+      })
+    : undefined;
   let htmlOutput: string;
   let responseText: string | undefined;
   if (status === "completed") {
     responseText = buildOutputText(runOutput) ?? "Task completed successfully.";
-    htmlOutput = buildTelegramResponse(responseText, logsUrl);
+    htmlOutput = buildTelegramResponse(responseText, logsUrl, footerText);
   } else {
     const errorDetail =
       error ?? "The agent encountered an error during execution.";
-    htmlOutput = buildTelegramErrorResponse(errorDetail, logsUrl);
+    htmlOutput = buildTelegramErrorResponse(errorDetail, logsUrl, footerText);
   }
   const chunks = splitMessage(htmlOutput);
 
@@ -193,13 +220,6 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
       text: responseText,
     });
   }
-
-  // Get run to find userId for session lookup
-  const [run] = await globalThis.services.db
-    .select({ userId: agentRuns.userId, createdAt: agentRuns.createdAt })
-    .from(agentRuns)
-    .where(eq(agentRuns.id, runId))
-    .limit(1);
 
   // Save thread session mapping
   if (run && botReplyMessageId !== undefined) {
@@ -270,16 +290,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (status === "progress") {
     try {
       await sendChatAction(client, payload.chatId, "typing");
-      if (payload.thinkingMessageId) {
-        const agent = await resolveAgentInfo(payload.agentId);
-        const thinkingText = formatTelegramThinkingMessage(agent.label);
-        await editMessageText(
-          client,
-          payload.chatId,
-          Number(payload.thinkingMessageId),
-          thinkingText,
-        );
-      }
     } catch (err) {
       log.debug("Failed to refresh typing indicator", { runId, error: err });
     }

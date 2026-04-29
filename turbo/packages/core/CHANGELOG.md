@@ -1,5 +1,48 @@
 # Changelog
 
+## [8.243.0](https://github.com/vm0-ai/vm0/compare/core-v8.242.1...core-v8.243.0) (2026-04-28)
+
+
+### Features
+
+* **core:** register codex framework + tighten compose schema enum ([#11424](https://github.com/vm0-ai/vm0/issues/11424)) ([6e54c7f](https://github.com/vm0-ai/vm0/commit/6e54c7ff9e1f10ff26fb702d265a4dac735e0580))
+
+## [8.242.1](https://github.com/vm0-ai/vm0/compare/core-v8.242.0...core-v8.242.1) (2026-04-28)
+
+
+### Refactoring
+
+* remove fully-enabled feature switches (AudioInput, ChatArtifactsDrawer, TelegramIntegration) ([#11409](https://github.com/vm0-ai/vm0/issues/11409)) ([1e647d4](https://github.com/vm0-ai/vm0/commit/1e647d4086c02df77c0d3daf372fc53b8f45d14e))
+
+## [8.242.0](https://github.com/vm0-ai/vm0/compare/core-v8.241.0...core-v8.242.0) (2026-04-28)
+
+
+### Features
+
+* enable telegram integration for all users ([#11387](https://github.com/vm0-ai/vm0/issues/11387)) ([1d92124](https://github.com/vm0-ai/vm0/commit/1d92124d203c86464de407e62e308b602928b328))
+
+## [8.241.0](https://github.com/vm0-ai/vm0/compare/core-v8.240.0...core-v8.241.0) (2026-04-28)
+
+
+### Features
+
+* **sidebar:** unified chat session indicator with draft + hover-swap delete ([#11226](https://github.com/vm0-ai/vm0/issues/11226)) ([58008a6](https://github.com/vm0-ai/vm0/commit/58008a6ca50f8883906a5b472081dddc3e16f0d6))
+
+## [8.240.0](https://github.com/vm0-ai/vm0/compare/core-v8.239.1...core-v8.240.0) (2026-04-28)
+
+
+### Features
+
+* add voice transcription api ([#11365](https://github.com/vm0-ai/vm0/issues/11365)) ([4b15bf5](https://github.com/vm0-ai/vm0/commit/4b15bf5e4b75b97180a0c7e0044a7aa1b0f8975d))
+* enable chat artifacts drawer for everyone ([#11373](https://github.com/vm0-ai/vm0/issues/11373)) ([0ad31ea](https://github.com/vm0-ai/vm0/commit/0ad31ea4e317f1f2071d1c4805d3d5f18eb5e54f))
+
+## [8.239.1](https://github.com/vm0-ai/vm0/compare/core-v8.239.0...core-v8.239.1) (2026-04-28)
+
+
+### Bug Fixes
+
+* gate audit links behind feature switch ([#11296](https://github.com/vm0-ai/vm0/issues/11296)) ([b77853d](https://github.com/vm0-ai/vm0/commit/b77853d60d2c3f4c26244d616c16d7bde341fb6e))
+
 ## [8.239.0](https://github.com/vm0-ai/vm0/compare/core-v8.238.0...core-v8.239.0) (2026-04-27)
 
 

@@ -128,6 +128,8 @@ interface BuildZeroContextParams {
   continuedFromSessionId?: string;
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
+  // Debug flag to force real Codex in mock environments (internal use only)
+  debugNoMockCodex?: boolean;
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies?: boolean;
   // Model provider for automatic secret injection
@@ -180,6 +182,7 @@ async function resolveSecretsAndEnvironment(
   connectorPermissionConfigs: ExpandedFirewallConfig[];
   mergedVars: Record<string, string> | undefined;
   billableFirewalls: string[];
+  modelUsageProvider: string | undefined;
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
@@ -306,12 +309,14 @@ async function resolveSecretsAndEnvironment(
   // - Connector firewalls listed in BILLABLE_CONNECTORS: per-call priced APIs
   //   where the platform covers the upstream cost and bills the user.
   const billableFirewalls: string[] = [];
-  if (
-    modelProviderResult.resolvedModelProvider === "vm0" &&
-    modelProviderConfig
-  ) {
-    billableFirewalls.push(modelProviderConfig.name);
+  const vm0ManagedModelProviderConfig =
+    modelProviderResult.resolvedModelProvider === "vm0" && modelProviderConfig;
+  if (vm0ManagedModelProviderConfig) {
+    billableFirewalls.push(vm0ManagedModelProviderConfig.name);
   }
+  const modelUsageProvider = vm0ManagedModelProviderConfig
+    ? modelProviderResult.selectedModel
+    : undefined;
   const billableConnectorSet = new Set<string>(BILLABLE_CONNECTORS);
   for (const fw of connectorPermissionConfigs) {
     if (billableConnectorSet.has(fw.name)) {
@@ -329,6 +334,7 @@ async function resolveSecretsAndEnvironment(
     connectorPermissionConfigs,
     mergedVars,
     billableFirewalls,
+    modelUsageProvider,
   };
 }
 
@@ -400,6 +406,7 @@ interface ResolvedCliContext {
   selectedModel?: string;
 
   billableFirewalls: string[];
+  modelUsageProvider?: string;
 
   // Timings
   timings: {
@@ -546,6 +553,7 @@ export async function resolveCliRunContext(
     connectorPermissionConfigs,
     mergedVars,
     billableFirewalls,
+    modelUsageProvider,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
@@ -577,6 +585,7 @@ export async function resolveCliRunContext(
     resolvedModelProvider,
     selectedModel,
     billableFirewalls,
+    modelUsageProvider,
     timings: {
       resolveSource: resolveEnd - resolveStart,
       resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
@@ -714,6 +723,7 @@ export async function buildZeroExecutionContext(
     connectorPermissionConfigs,
     mergedVars,
     billableFirewalls,
+    modelUsageProvider,
   } = secretsResult;
   const userTimezone =
     params.preloadedUserTimezone ?? userPrefs?.timezone ?? undefined;
@@ -762,8 +772,10 @@ export async function buildZeroExecutionContext(
       continuedFromSessionId: params.continuedFromSessionId,
       // Debug flag
       debugNoMockClaude: params.debugNoMockClaude,
+      debugNoMockCodex: params.debugNoMockCodex,
       captureNetworkBodies: params.captureNetworkBodies,
       billableFirewalls,
+      modelUsageProvider,
       // API start time for E2E timing metrics
       apiStartTime: params.apiStartTime,
     },

@@ -200,6 +200,10 @@ export interface ChatThreadSignals {
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   artifactsDrawerOpen$: Computed<boolean>;
   setArtifactsDrawerOpen$: Command<void, [boolean]>;
+  setArtifactsRealtimeRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   artifactPreviewKey$: Computed<string | null>;
   setArtifactPreviewKey$: Command<void, [string | null]>;
 }
@@ -904,6 +908,23 @@ function createArtifacts(
     set(internalDrawerOpen$, open);
   });
 
+  const reloadArtifactsFromRealtime$ = command(({ set }) => {
+    set(internalArtifactsReload$, (version) => {
+      return version + 1;
+    });
+    return false;
+  });
+  const setArtifactsRealtimeRef$ = onRef(
+    command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+      await set(
+        setAblyLoop$,
+        `chatThreadArtifactsChanged:${threadId}`,
+        reloadArtifactsFromRealtime$,
+        signal,
+      );
+    }),
+  );
+
   const internalPreviewKey$ = state<string | null>(null);
   const artifactPreviewKey$ = computed((get) => {
     return get(internalPreviewKey$);
@@ -916,6 +937,7 @@ function createArtifacts(
     artifacts$,
     artifactsDrawerOpen$,
     setArtifactsDrawerOpen$,
+    setArtifactsRealtimeRef$,
     artifactPreviewKey$,
     setArtifactPreviewKey$,
   };
@@ -1416,6 +1438,7 @@ export function createChatThreadSignals(
     artifacts$,
     artifactsDrawerOpen$,
     setArtifactsDrawerOpen$,
+    setArtifactsRealtimeRef$,
     artifactPreviewKey$,
     setArtifactPreviewKey$,
   } = createArtifacts(threadId, groupedChatMessages$);
@@ -1471,6 +1494,7 @@ export function createChatThreadSignals(
     artifacts$,
     artifactsDrawerOpen$,
     setArtifactsDrawerOpen$,
+    setArtifactsRealtimeRef$,
     artifactPreviewKey$,
     setArtifactPreviewKey$,
   };

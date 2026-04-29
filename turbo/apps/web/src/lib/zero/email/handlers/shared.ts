@@ -1,10 +1,13 @@
 import crypto from "crypto";
 import { eq } from "drizzle-orm";
 import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { resolveDefaultAgentId } from "../../resolve-default-agent";
 import { env } from "../../../../env";
 import { getAppUrl } from "../../url";
 import { getApiUrl } from "../../../infra/callback/dispatcher";
+import { loadFeatureSwitchOverrides } from "../../user/feature-switches-service";
 
 // ============================================================================
 // Handler Result Type
@@ -223,8 +226,22 @@ export function buildFromAddress(localPart: string): string {
 /**
  * Build the logs URL for a run, linking to the agent detail logs page.
  */
-export function buildLogsUrl(runId: string): string {
+function buildLogsUrl(runId: string): string {
   return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
+}
+
+export async function resolveEmailAuditLogsUrl(opts: {
+  orgId: string;
+  userId: string;
+  runId: string;
+}): Promise<string | undefined> {
+  const overrides = await loadFeatureSwitchOverrides(opts.orgId, opts.userId);
+  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    userId: opts.userId,
+    orgId: opts.orgId,
+    overrides,
+  });
+  return enabled ? buildLogsUrl(opts.runId) : undefined;
 }
 
 // ============================================================================

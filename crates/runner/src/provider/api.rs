@@ -7,6 +7,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
+use api_contracts::generated::routes;
 use reqwest::StatusCode;
 
 use super::JobProvider;
@@ -524,7 +525,7 @@ impl ApiClient {
         }
         let resp = self
             .http
-            .request(reqwest::Method::POST, "/api/runners/poll", &self.token)
+            .request_route(routes::runners::poll::POLL, &self.token)
             .json(&body)
             .send()
             .await
@@ -549,7 +550,7 @@ impl ApiClient {
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
         let resp = self
             .http
-            .request(reqwest::Method::POST, "/api/runners/heartbeat", &self.token)
+            .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
             .timeout(Duration::from_secs(3))
             .json(state)
             .send()
@@ -571,10 +572,17 @@ impl ApiClient {
     /// Both outcomes are normal contention signals when multiple runners race
     /// for the same job.
     async fn claim(&self, run_id: RunId) -> RunnerResult<ExecutionContext> {
-        let path = format!("/api/runners/jobs/{run_id}/claim");
+        let run_id = run_id.to_string();
         let resp = self
             .http
-            .request(reqwest::Method::POST, &path, &self.token)
+            .request_resolved_route(
+                routes::runners::jobs::by_id::claim::route(
+                    routes::runners::jobs::by_id::claim::Params {
+                        id: run_id.as_str(),
+                    },
+                ),
+                &self.token,
+            )
             .json(&serde_json::json!({}))
             .send()
             .await
@@ -618,11 +626,7 @@ impl ApiClient {
 
         let resp = self
             .http
-            .request(
-                reqwest::Method::POST,
-                "/api/webhooks/agent/complete",
-                sandbox_token,
-            )
+            .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
             .json(&body)
             .send()
             .await
@@ -642,11 +646,7 @@ impl ApiClient {
     async fn realtime_token(&self, group: &str) -> RunnerResult<ably_subscriber::TokenRequest> {
         let resp = self
             .http
-            .request(
-                reqwest::Method::POST,
-                "/api/runners/realtime/token",
-                &self.token,
-            )
+            .request_route(routes::runners::realtime::token::CREATE, &self.token)
             .json(&serde_json::json!({ "group": group }))
             .send()
             .await

@@ -184,14 +184,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.AuditLink]: {
     maintainer: "ethan@vm0.ai",
-    description: "Show audit log links in Slack messages",
+    description: "Show audit log links in integration replies",
     enabled: false,
-  },
-  [FeatureSwitchKey.AudioInput]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
-    enabled: true,
   },
   [FeatureSwitchKey.AudioOutput]: {
     maintainer: "lancy@vm0.ai",
@@ -214,19 +208,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ChatArtifactsDrawer]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show an artifacts button in the chat header that opens a drawer listing uploaded files grouped by run",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatThreadReadIndicator]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the unread watermark dot and bold title for chat threads with unread messages in the sidebar",
     enabled: false,
   },
   [FeatureSwitchKey.ChatManualHistory]: {
@@ -279,13 +260,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "POST /api/zero/platform-connectors/:type). When off, only api-token " +
       "and OAuth methods surface in connectors list/search, and the enable " +
       "endpoint 404s. Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.TelegramIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Telegram integration settings UI. The backend Telegram routes do not consult this frontend rollout flag.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

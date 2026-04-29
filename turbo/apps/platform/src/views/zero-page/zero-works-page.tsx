@@ -30,13 +30,11 @@ import {
   showUninstallDialog$,
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
-import {
-  isTelegramIntegrationEnabled$,
-  telegramBots$,
-} from "../../signals/zero-page/zero-telegram.ts";
+import { telegramBots$ } from "../../signals/zero-page/zero-telegram.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { BetaBadge } from "./components/settings/beta-badge.tsx";
 import slackIconImg from "./components/settings/icons/slack.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
@@ -294,7 +292,12 @@ function TelegramCard() {
           <img src={telegramIconImg} alt="" className="h-7 w-7" />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="text-sm font-medium text-foreground">Telegram</div>
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="truncate text-sm font-medium text-foreground">
+              Telegram
+            </div>
+            <BetaBadge />
+          </div>
           <div className="truncate text-sm text-muted-foreground">
             {summary}
           </div>
@@ -306,18 +309,6 @@ function TelegramCard() {
       </div>
     </Link>
   );
-}
-
-function TelegramCardGate() {
-  const enabledLoadable = useLoadable(isTelegramIntegrationEnabled$);
-  const enabled =
-    enabledLoadable.state === "hasData" ? enabledLoadable.data : false;
-
-  if (!enabled) {
-    return null;
-  }
-
-  return <TelegramCard />;
 }
 
 export function ZeroWorksPage() {
@@ -343,7 +334,7 @@ export function ZeroWorksPage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
-          <TelegramCardGate />
+          <TelegramCard />
         </div>
       </main>
     </div>

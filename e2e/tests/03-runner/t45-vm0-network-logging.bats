@@ -83,9 +83,9 @@ EOF
         return 1
     }
 
-    # Verify network logs contain DNS entries.
-    # DNS entries render as: [timestamp] DNS   example.com:53
-    wait_for_log "$RUN_ID" --network -- "example.com" "DNS" ":53"
+    # Verify network logs contain DNS entries and at least one DNS result row.
+    # DNS result entries render as: [timestamp] DNS   example.com:53 -> <answer>
+    wait_for_log "$RUN_ID" --network -- "example.com" "DNS" ":53" "->"
 }
 
 @test "t45-2: non-dns udp appears in network logs" {

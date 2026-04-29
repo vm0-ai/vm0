@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render } from "@react-email/components";
+import type { CreateEmailOptions } from "resend";
 import { Resend } from "resend";
 import { POST } from "../route";
 import {
@@ -14,9 +16,11 @@ import {
   createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { createTestEmailThreadSession } from "../../../../../../../src/__tests__/db-test-seeders/email";
+import { seedUserFeatureSwitches } from "../../../../../../../src/__tests__/db-test-seeders/feature-switches";
 import { findTestEmailThreadSession } from "../../../../../../../src/__tests__/db-test-assertions/email";
 import { generateReplyToken } from "../../../../../../../src/lib/zero/email/handlers/shared";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);
@@ -28,6 +32,17 @@ interface ReplyCallbackPayload {
   inboundReferences?: string;
   replyRecipientTo?: string[];
   replyRecipientCc?: string[];
+}
+
+async function renderLastEmailHtml(): Promise<string> {
+  const sentCall = mockResend.emails.send.mock.calls.at(-1);
+  expect(sentCall).toBeDefined();
+  const payload = sentCall![0] as CreateEmailOptions;
+  expect(payload).toHaveProperty("react");
+  if (!("react" in payload) || payload.react == null) {
+    throw new Error("Expected react property on email payload");
+  }
+  return render(payload.react);
 }
 
 describe("POST /api/zero/email/callbacks/reply", () => {
@@ -145,6 +160,10 @@ describe("POST /api/zero/email/callbacks/reply", () => {
       expect(sendArgs.headers["References"]).toBe(
         "<orig-user-msg@mail.example.com> <original-msg-id@vm7.bot> <user-reply@mail.example.com>",
       );
+      const html = await renderLastEmailHtml();
+      expect(html).not.toContain("Audit");
+      expect(html).not.toContain(`/activities/${runId}`);
+      expect(html).toContain("Reply to continue");
 
       // Verify thread session was updated with new messageId
       const updatedSession = await findTestEmailThreadSession(replyToken);
@@ -152,6 +171,54 @@ describe("POST /api/zero/email/callbacks/reply", () => {
       expect(updatedSession!.lastEmailMessageId).toBe(
         "<mock-message-id@vm7.bot>",
       );
+    });
+
+    it("should include audit link when AuditLink switch is on", async () => {
+      const user = await context.setupUser({ prefix: "reply-audit-on" });
+      mockClerk({ userId: user.userId });
+      const { composeId, agentId } = await createTestCompose(
+        uniqueId("reply-agent"),
+      );
+      const agentSession = await createTestAgentSession(user.userId, composeId);
+      const replyToken = generateReplyToken(agentSession.id);
+      const emailSession = await createTestEmailThreadSession({
+        userId: user.userId,
+        agentId,
+        agentSessionId: agentSession.id,
+        replyToToken: replyToken,
+      });
+      const { runId } = await createTestRun(composeId, "Email reply task");
+      await completeTestRun(user.userId, runId);
+      await seedUserFeatureSwitches(user.orgId, user.userId, {
+        [FeatureSwitchKey.AuditLink]: true,
+      });
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        { eventData: { result: "Reply output" } },
+      ]);
+
+      const payload: ReplyCallbackPayload = {
+        emailThreadSessionId: emailSession.id,
+        inboundEmailId: "inbound-email-audit-on",
+      };
+      const { secret } = await createTestCallback({
+        runId,
+        url: "http://localhost/api/zero/email/callbacks/reply",
+        payload: { ...payload },
+      });
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/reply",
+        { runId, status: "completed", payload },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(mockResend.emails.send).toHaveBeenCalledTimes(1);
+      const html = await renderLastEmailHtml();
+      expect(html).toContain("Audit");
+      expect(html).toContain(`/activities/${runId}`);
     });
 
     it("should fall back to session.lastEmailMessageId when inbound headers are missing", async () => {

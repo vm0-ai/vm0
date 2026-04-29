@@ -965,7 +965,7 @@ async fn post_json_malformed_json_response() {
     });
 
     let url = format!("{}/test/malformed", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({}), 1).await;
+    let result = guest_agent::http::post_json(&url, &json!({}), 3).await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_err());

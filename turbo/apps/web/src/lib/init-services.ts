@@ -20,8 +20,8 @@ let _stripe: Stripe | undefined;
 let _services: Services | undefined;
 
 /**
- * Initialize global services
- * Call this at the entry point of serverless functions
+ * Initialize global services lazily on first call.
+ * Subsequent calls are no-ops — safe for repeated invocation.
  *
  * @example
  * // In API Route

@@ -88,6 +88,9 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
             <Link href="/use-cases" className="nav-link">
               {t("useCases")}
             </Link>
+            <Link href="/models" className="nav-link">
+              {t("models")}
+            </Link>
             {isBlogEnabled() && (
               <Link href="/blog" className="nav-link">
                 {t("blog")}
@@ -187,6 +190,15 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
               }}
             >
               {t("useCases")}
+            </Link>
+            <Link
+              href="/models"
+              className="mobile-menu-link"
+              onClick={() => {
+                return setMobileMenuOpen(false);
+              }}
+            >
+              {t("models")}
             </Link>
             {isBlogEnabled() && (
               <Link

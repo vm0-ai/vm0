@@ -1,10 +1,11 @@
 [package]
 name = "runner"
-version = "0.96.3"
+version = "0.98.0"
 edition.workspace = true
 
 [dependencies]
 ably-subscriber = { workspace = true }
+api-contracts.workspace = true
 sandbox = { workspace = true }
 nbd-cow = { workspace = true }
 sandbox-fc = { workspace = true }
@@ -51,6 +52,7 @@ guest-agent = { workspace = true }
 guest-download = { workspace = true }
 guest-init = { workspace = true }
 guest-mock-claude = { workspace = true }
+guest-mock-codex = { workspace = true }
 guest-reseed = { workspace = true }
 httpmock = { workspace = true }
 sandbox-mock = { workspace = true }

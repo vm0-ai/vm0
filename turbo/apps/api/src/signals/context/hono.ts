@@ -1,12 +1,17 @@
+import type { AppRoute } from "@ts-rest/core";
 import { command, computed, state } from "ccstate";
 import type { Context } from "hono";
 import { RedirectStatusCode } from "hono/utils/http-status";
 
 const innerHonoContext$ = state<Context>({} as Context);
+const innerRoute$ = state<AppRoute | null>(null);
 
-export const initHono$ = command(({ set }, context: Context) => {
-  set(innerHonoContext$, context);
-});
+export const initHono$ = command(
+  ({ set }, context: Context, route: AppRoute): void => {
+    set(innerHonoContext$, context);
+    set(innerRoute$, route);
+  },
+);
 
 // Request Headers
 function header(name: string) {
@@ -39,6 +44,24 @@ export const request$ = computed((get) => {
 export const requestSignal$ = computed((get) => {
   const context = get(innerHonoContext$);
   return context.req.raw.signal;
+});
+
+export const route$ = computed((get): AppRoute => {
+  const route = get(innerRoute$);
+  if (!route) {
+    throw new Error("route accessed outside a request scope");
+  }
+  return route;
+});
+
+export const rawPathParams$ = computed((get) => {
+  const context = get(innerHonoContext$);
+  return context.req.param();
+});
+
+export const rawQuery$ = computed((get) => {
+  const context = get(innerHonoContext$);
+  return context.req.query();
 });
 
 // Response

@@ -56,7 +56,7 @@ describe("honoSignalHandler", () => {
 
     const response = await accept(client.computed(), [200]);
 
-    expect(response.body).toEqual({ ok: true });
+    expect(response.body).toStrictEqual({ ok: true });
   });
 
   it("sets command handlers with the instance signal", async () => {
@@ -79,7 +79,7 @@ describe("honoSignalHandler", () => {
 
     const response = await accept(client.command(), [200]);
 
-    expect(response.body).toEqual({ aborted: false, sameSignal: true });
+    expect(response.body).toStrictEqual({ aborted: false, sameSignal: true });
   });
 
   it("registers non-GET handlers", async () => {
@@ -96,6 +96,6 @@ describe("honoSignalHandler", () => {
       [200],
     );
 
-    expect(response.body).toEqual({ ok: true });
+    expect(response.body).toStrictEqual({ ok: true });
   });
 });

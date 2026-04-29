@@ -14,7 +14,7 @@ export function membershipsByUserId(
   userId: string,
   limit = 100,
 ): Computed<Promise<OrganizationMembershipList>> {
-  return computed(async (get) => {
+  return computed((get) => {
     return get(clerk$).users.getOrganizationMembershipList({
       userId,
       limit,

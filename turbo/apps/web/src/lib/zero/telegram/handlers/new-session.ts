@@ -7,8 +7,11 @@ import { createTelegramClient, sendMessage } from "../client";
 import {
   resolveUserLink,
   buildConnectUrl,
+  buildTelegramConnectReplyMarkup,
   formatTelegramCommandSuccess,
   formatTelegramConnectPrompt,
+  formatTelegramUserDisplayName,
+  getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
@@ -50,15 +53,28 @@ export async function handleNewSessionCommand(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+    telegramDisplayName,
+  );
   if (!userLink) {
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
     const connectUrl = buildConnectUrl(
       installation.telegramBotId,
       fromUserId,
       botToken,
+      message.from?.username ?? null,
+      telegramDisplayName,
     );
-    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
+      replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+    });
     return;
   }
 

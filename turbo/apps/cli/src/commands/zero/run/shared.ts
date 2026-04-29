@@ -178,7 +178,7 @@ export async function pollZeroEvents(
     // 2. Parse and render each event
     for (const event of contiguousEvents) {
       const eventData = event.eventData as Record<string, unknown>;
-      const parsed = parseEvent(eventData);
+      const parsed = parseEvent(eventData, eventsResponse.framework);
       if (parsed) {
         renderer.render(parsed);
       }

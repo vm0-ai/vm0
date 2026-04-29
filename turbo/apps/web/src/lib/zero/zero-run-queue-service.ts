@@ -58,6 +58,7 @@ import {
 import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
 import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service";
+import { publishRunChangedForUserSafely } from "../infra/run/run-realtime";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { QueueResponse } from "@vm0/api-contracts/contracts/runs";
@@ -250,6 +251,11 @@ export async function drainOrgQueue(
           err,
         });
       });
+      publishRunChangedForUserSafely(dequeued.userId, dequeued.runId, {
+        status: "pending",
+      }).catch((err: unknown) => {
+        log.error("Failed to publish run changed after dequeue", { err });
+      });
 
       // Decrypt CreateRunParams (outside transaction — no lock held)
       const decryptedMap = decryptSecretsMap(
@@ -296,6 +302,7 @@ export async function drainOrgQueue(
 
 interface DequeuedEntry {
   runId: string;
+  userId: string;
   encryptedParams: string | null;
 }
 
@@ -423,6 +430,7 @@ async function dequeueNextAtomic(
         log.debug(`Dequeued run ${row.run_id} for org ${orgId}`);
         return {
           runId: row.run_id,
+          userId: row.user_id,
           encryptedParams: row.encrypted_params,
         };
       }

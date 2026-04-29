@@ -16,7 +16,9 @@ async function importInstrument(
 }
 
 describe("instrument", () => {
-  it("registers OpenTelemetry with api metadata", async () => {
+  it("registers OpenTelemetry with api metadata and an OTLP Axiom exporter", async () => {
+    const { OTLPTraceExporter } =
+      await import("@opentelemetry/exporter-trace-otlp-http");
     await importInstrument((envModule) => {
       envModule.mockEnv("VERCEL_GIT_COMMIT_SHA", "abc123");
     });
@@ -27,9 +29,15 @@ describe("instrument", () => {
           "service.version": "abc123",
         },
         serviceName: "vm0-api",
-        traceExporter: "auto",
+        traceExporter: expect.any(OTLPTraceExporter),
       }),
     );
+  });
+
+  it("does not initialize OpenTelemetry without VERCEL_GIT_COMMIT_SHA", async () => {
+    await importInstrument();
+
+    expect(context.mocks.otel.registerOTel).not.toHaveBeenCalled();
   });
 
   it("does not initialize Sentry without a DSN", async () => {

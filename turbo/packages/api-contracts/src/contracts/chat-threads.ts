@@ -74,10 +74,15 @@ const chatThreadListItemSchema = z.object({
   /**
    * True when the thread has at least one non-terminal run
    * (queued / pending / running). Drives the sidebar running indicator,
-   * which is mutually exclusive with the unread dot and shares the
-   * `ChatThreadReadIndicator` feature switch gate.
+   * which is mutually exclusive with the unread dot.
    */
   running: z.boolean(),
+  /**
+   * True when the thread has draft composer content the user hasn't sent yet
+   * (non-empty `draftContent` or one+ `draftAttachments`). Drives the sidebar
+   * draft indicator. Optional for back-compat with fixtures predating the field.
+   */
+  hasDraft: z.boolean().optional(),
 });
 
 const toolSummaryEntrySchema = z.object({

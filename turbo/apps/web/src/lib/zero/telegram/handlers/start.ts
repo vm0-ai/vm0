@@ -8,10 +8,13 @@ import {
   linkTelegramUserToVm0User,
   resolveUserLink,
   buildConnectUrl,
+  buildTelegramConnectReplyMarkup,
   formatTelegramAlreadyConnectedMessage,
   formatTelegramCommandError,
   formatTelegramCommandSuccess,
   formatTelegramConnectPrompt,
+  formatTelegramUserDisplayName,
+  getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
@@ -73,6 +76,7 @@ export async function handleStartCommand(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
   // Parse /start payload
   const text = message.text ?? "";
@@ -81,13 +85,24 @@ export async function handleStartCommand(
 
   if (!token || token === "connect") {
     // No token or deep link from group chat (/start connect) → prompt login
-    const userLink = await resolveUserLink(installationId, fromUserId);
+    const userLink = await resolveUserLink(
+      installationId,
+      fromUserId,
+      message.from?.username ?? null,
+      telegramDisplayName,
+    );
     if (userLink) {
+      const agentName = await getWorkspaceAgentDisplayLabel(
+        installation.defaultComposeId,
+      );
       await sendMessage(
         client,
         chatId,
         formatTelegramCommandSuccess(
-          formatTelegramAlreadyConnectedMessage(installation.botUsername),
+          formatTelegramAlreadyConnectedMessage(
+            installation.botUsername,
+            agentName,
+          ),
         ),
       );
       return;
@@ -96,8 +111,15 @@ export async function handleStartCommand(
       installation.telegramBotId,
       fromUserId,
       botToken,
+      message.from?.username ?? null,
+      telegramDisplayName,
     );
-    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
+      replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+    });
     return;
   }
 
@@ -127,6 +149,8 @@ export async function handleStartCommand(
 
   const linkResult = await linkTelegramUserToVm0User({
     telegramUserId: fromUserId,
+    telegramUsername: message.from?.username ?? null,
+    telegramDisplayName,
     installationId,
     vm0UserId: payload.vm0UserId,
   });
@@ -145,12 +169,15 @@ export async function handleStartCommand(
   // Auto-grant permission. The installation's orgId was snapshot at
   // registration and is the authoritative org for this bot.
   await ensureOrgAndArtifact(payload.vm0UserId, installation.orgId);
+  const agentName = await getWorkspaceAgentDisplayLabel(
+    installation.defaultComposeId,
+  );
 
   await sendMessage(
     client,
     chatId,
     formatTelegramCommandSuccess(
-      "Account linked.\nSend me a message to start chatting with your agent.",
+      `Account linked.\nSend me a message to start chatting with ${agentName}.`,
     ),
   );
 

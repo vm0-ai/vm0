@@ -1,28 +1,24 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import {
-  isTelegramIntegrationEnabled$,
+  reloadTelegramBots$,
   resetTelegramSettingsUi$,
+  startTelegramSettingsRealtime$,
 } from "./zero-telegram.ts";
 import { ZeroTelegramSettingsPage } from "../../views/zero-page/zero-telegram-settings-page.tsx";
-import { detachedNavigateTo$ } from "../route.ts";
-import { ROUTES } from "../route-paths.ts";
+
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { logger } from "../log.ts";
+
+const L = logger("TelegramSettingsPage");
 
 export const setupTelegramSettingsPage$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const enabled = await get(isTelegramIntegrationEnabled$);
-    signal.throwIfAborted();
-
-    if (!enabled) {
-      set(detachedNavigateTo$, ROUTES.works, { replace: true });
-      return;
-    }
-
+  async ({ set }, signal: AbortSignal) => {
     set(resetTelegramSettingsUi$);
+    set(reloadTelegramBots$);
     set(updatePage$, createElement(ZeroTelegramSettingsPage), "sidebar");
     set(updateDocumentTitle$, "Telegram");
     await set(hideAppSkeleton$, signal);
@@ -30,5 +26,12 @@ export const setupTelegramSettingsPage$ = command(
     if (await set(onboardGuard$, signal)) {
       return;
     }
+
+    set(startTelegramSettingsRealtime$, signal).catch((error: unknown) => {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+      L.error("Telegram settings realtime failed", error);
+    });
   },
 );

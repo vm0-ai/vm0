@@ -29,10 +29,10 @@ function pgLit(value: string): string {
 }
 
 function usageBucketExpr(p: UsageInsightSqlParams): string {
-  return `date_trunc(${p.truncLit}, ${USAGE_ROW_ALIAS}.usage_time::timestamptz AT TIME ZONE ${p.tzLit})`;
+  return `date_trunc(${p.truncLit}, ${USAGE_ROW_ALIAS}.activity_time::timestamptz AT TIME ZONE ${p.tzLit})`;
 }
 
-function createdAtWindowPredicate(
+function activityTimeWindowPredicate(
   alias: string,
   p: UsageInsightSqlParams,
 ): string {
@@ -45,12 +45,21 @@ function usageRowTokenExpr(): string {
   return `CASE WHEN ue.kind = ${pgLit(MODEL_USAGE_KIND)} AND ue.category IN (${tokenCategoryList}) THEN ue.quantity ELSE 0 END`;
 }
 
+/**
+ * Reporting time terms:
+ * - activityTime maps to ledger created_at, when usage activity was recorded.
+ * - billingTime maps to ledger processed_at, when credits were settled.
+ *
+ * Usage insight is an activity chart, so it filters and buckets by
+ * activityTime while still requiring processed rows. Delayed billing must not
+ * move usage into a later activity bucket.
+ */
 function usageRowsCte(p: UsageInsightSqlParams): string {
   return `
     usage_rows AS (
       SELECT
         'legacy' AS ledger,
-        cu.created_at AS usage_time,
+        cu.created_at AS activity_time,
         cu.run_id,
         cu.user_id,
         cu.org_id,
@@ -60,13 +69,13 @@ function usageRowsCte(p: UsageInsightSqlParams): string {
       WHERE cu.user_id = ${p.userIdLit}
         AND cu.org_id = ${p.orgIdLit}
         AND cu.status = 'processed'
-        AND ${createdAtWindowPredicate("cu", p)}
+        AND ${activityTimeWindowPredicate("cu", p)}
 
       UNION ALL
 
       SELECT
         'event' AS ledger,
-        ue.created_at AS usage_time,
+        ue.created_at AS activity_time,
         ue.run_id,
         ue.user_id,
         ue.org_id,
@@ -76,7 +85,7 @@ function usageRowsCte(p: UsageInsightSqlParams): string {
       WHERE ue.user_id = ${p.userIdLit}
         AND ue.org_id = ${p.orgIdLit}
         AND ue.status = 'processed'
-        AND ${createdAtWindowPredicate("ue", p)}
+        AND ${activityTimeWindowPredicate("ue", p)}
     )`;
 }
 
@@ -236,6 +245,7 @@ export async function queryUsageInsightTopSchedules(
   const rows = await db.execute<{
     schedule_id: string | null;
     schedule_name: string | null;
+    schedule_description: string | null;
     credits: string;
     tokens: string;
     rn: string;
@@ -246,6 +256,7 @@ export async function queryUsageInsightTopSchedules(
         SELECT
           zr.schedule_id,
           COALESCE(zas.name, 'Unnamed schedule') AS schedule_name,
+          zas.description AS schedule_description,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens,
           ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
@@ -253,13 +264,14 @@ export async function queryUsageInsightTopSchedules(
         INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
         LEFT JOIN zero_agent_schedules zas ON zas.id = zr.schedule_id
         WHERE zr.schedule_id IS NOT NULL
-        GROUP BY zr.schedule_id, zas.name
+        GROUP BY zr.schedule_id, zas.name, zas.description
       )
       SELECT * FROM agg WHERE rn <= 100
       UNION ALL
       SELECT
         NULL AS schedule_id,
         'others' AS schedule_name,
+        NULL AS schedule_description,
         COALESCE(SUM(credits), 0)::bigint AS credits,
         COALESCE(SUM(tokens), 0)::bigint AS tokens,
         101 AS rn
@@ -279,6 +291,7 @@ export async function queryUsageInsightTopSchedules(
       schedules.push({
         scheduleId: row.schedule_id,
         scheduleName: row.schedule_name ?? "Unnamed schedule",
+        scheduleDescription: row.schedule_description,
         credits: Number(row.credits),
         tokens: Number(row.tokens),
       });

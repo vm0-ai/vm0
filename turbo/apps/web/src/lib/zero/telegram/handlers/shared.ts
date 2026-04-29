@@ -4,24 +4,53 @@ import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { getAppUrl } from "../../url";
 import { resolveAgentId } from "../../zero-compose-service";
 import { validateAgentSession } from "../../zero-run-validation";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
+import { loadFeatureSwitchOverrides } from "../../user/feature-switches-service";
 import {
   sendMessage,
-  editMessageText,
+  sendChatAction,
   type TelegramClient,
-  type TelegramSentMessage,
+  type TelegramInlineKeyboardMarkup,
+  type TelegramSendMessageOptions,
 } from "../client";
 import { escapeHtml } from "../format";
 import { signConnectParams } from "../connect-token";
-import { pickBestPhoto, formatTelegramFileForContext } from "../images";
+import {
+  extractTelegramFileForContext,
+  formatTelegramFileForContext,
+  hasTelegramFileForContext,
+  type TelegramFileContext,
+} from "../images";
+import {
+  extractTelegramMessageEntities,
+  formatCurrentTelegramEntitiesForPrompt,
+} from "../entities";
+import { publishTelegramUserChangedSafely } from "../realtime";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 import type { UserInfoOptions } from "../../integration-prompt";
 
 const log = logger("telegram:shared");
+
+type TelegramContextMessageInput = Omit<
+  TelegramHandlerUpdate["message"],
+  "chat"
+> & {
+  chat?: TelegramHandlerUpdate["message"]["chat"];
+};
+
+type TelegramUserNameSource =
+  | {
+      first_name?: string | null;
+      last_name?: string | null;
+    }
+  | null
+  | undefined;
 
 /**
  * Sentinel value for a pending user link that hasn't been claimed yet.
@@ -138,25 +167,15 @@ export async function saveTelegramThreadSession(opts: {
 
 /**
  * Store an incoming Telegram message for context retrieval.
- * For photo messages, stores the caption as text and the best photo's file_id.
+ * Stores the text/caption, first supported attachment, and rich entities.
  */
 export async function storeTelegramMessage(
   installationId: string,
   chatId: string,
-  message: {
-    message_id: number;
-    from?: { id: number; username?: string; is_bot?: boolean };
-    text?: string;
-    caption?: string;
-    photo?: Array<{
-      file_id: string;
-      width: number;
-      height: number;
-      file_size?: number;
-    }>;
-  },
+  message: TelegramContextMessageInput,
 ): Promise<void> {
-  const bestPhoto = message.photo ? pickBestPhoto(message.photo) : undefined;
+  const file = extractTelegramFileForContext(message);
+  const entities = extractTelegramMessageEntities(message);
 
   await globalThis.services.db
     .insert(telegramMessages)
@@ -166,22 +185,87 @@ export async function storeTelegramMessage(
       messageId: String(message.message_id),
       fromUserId: String(message.from?.id ?? 0),
       fromUsername: message.from?.username ?? null,
+      fromDisplayName: formatTelegramUserDisplayName(message.from),
       text: message.text ?? message.caption ?? null,
-      fileId: bestPhoto?.file_id ?? null,
+      ...telegramFileDbValues(file),
+      entities: entities ?? null,
       isBot: message.from?.is_bot ?? false,
     })
     .onConflictDoNothing();
 }
 
+function telegramFileDbValues(file: TelegramFileContext | undefined): {
+  fileId: string | null;
+  fileType: string | null;
+  fileName: string | null;
+  fileMimeType: string | null;
+  fileSize: number | null;
+  fileWidth: number | null;
+  fileHeight: number | null;
+  fileDuration: number | null;
+} {
+  return {
+    fileId: file?.file_id ?? null,
+    fileType: file?.file_type ?? null,
+    fileName: file?.file_name ?? null,
+    fileMimeType: file?.mime_type ?? null,
+    fileSize: file?.file_size ?? null,
+    fileWidth: file?.width ?? null,
+    fileHeight: file?.height ?? null,
+    fileDuration: file?.duration ?? null,
+  };
+}
+
 async function touchTelegramUserLink(
   userLink: typeof telegramUserLinks.$inferSelect,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect> {
+  const nextTelegramUsername =
+    telegramUsername === undefined
+      ? userLink.telegramUsername
+      : normalizeTelegramUsername(telegramUsername);
+  const nextTelegramDisplayName =
+    telegramDisplayName === undefined
+      ? userLink.telegramDisplayName
+      : normalizeTelegramDisplayName(telegramDisplayName);
   const [updated] = await globalThis.services.db
     .update(telegramUserLinks)
-    .set({ updatedAt: new Date() })
+    .set({
+      telegramUsername: nextTelegramUsername,
+      telegramDisplayName: nextTelegramDisplayName,
+      updatedAt: new Date(),
+    })
     .where(eq(telegramUserLinks.id, userLink.id))
     .returning();
   return updated ?? userLink;
+}
+
+function normalizeTelegramUsername(
+  telegramUsername: string | null | undefined,
+): string | null {
+  const value = telegramUsername?.trim().replace(/^@+/, "");
+  return value ? value : null;
+}
+
+function normalizeTelegramDisplayName(
+  telegramDisplayName: string | null | undefined,
+): string | null {
+  const value = telegramDisplayName?.trim().replace(/\s+/g, " ");
+  return value ? value.slice(0, 255) : null;
+}
+
+export function formatTelegramUserDisplayName(
+  user: TelegramUserNameSource,
+): string | null {
+  return normalizeTelegramDisplayName(
+    [user?.first_name, user?.last_name]
+      .map((part) => {
+        return part?.trim();
+      })
+      .filter(Boolean)
+      .join(" "),
+  );
 }
 
 /**
@@ -195,6 +279,8 @@ async function touchTelegramUserLink(
 export async function linkTelegramUserToVm0User(params: {
   installationId: string;
   telegramUserId: string;
+  telegramUsername?: string | null;
+  telegramDisplayName?: string | null;
   vm0UserId: string;
 }): Promise<LinkTelegramUserResult> {
   const [existingTelegramLink] = await globalThis.services.db
@@ -210,9 +296,15 @@ export async function linkTelegramUserToVm0User(params: {
 
   if (existingTelegramLink) {
     if (existingTelegramLink.vm0UserId === params.vm0UserId) {
+      const userLink = await touchTelegramUserLink(
+        existingTelegramLink,
+        params.telegramUsername,
+        params.telegramDisplayName,
+      );
+      await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
-        userLink: await touchTelegramUserLink(existingTelegramLink),
+        userLink,
       };
     }
 
@@ -236,9 +328,15 @@ export async function linkTelegramUserToVm0User(params: {
 
   if (existingVm0Link) {
     if (existingVm0Link.telegramUserId === params.telegramUserId) {
+      const userLink = await touchTelegramUserLink(
+        existingVm0Link,
+        params.telegramUsername,
+        params.telegramDisplayName,
+      );
+      await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
-        userLink: await touchTelegramUserLink(existingVm0Link),
+        userLink,
       };
     }
 
@@ -250,14 +348,20 @@ export async function linkTelegramUserToVm0User(params: {
         .update(telegramUserLinks)
         .set({
           telegramUserId: params.telegramUserId,
+          telegramUsername: normalizeTelegramUsername(params.telegramUsername),
+          telegramDisplayName: normalizeTelegramDisplayName(
+            params.telegramDisplayName,
+          ),
           updatedAt: new Date(),
         })
         .where(eq(telegramUserLinks.id, existingVm0Link.id))
         .returning();
 
+      const userLink = updated ?? existingVm0Link;
+      await publishTelegramUserChangedSafely(params.vm0UserId);
       return {
         ok: true,
-        userLink: updated ?? existingVm0Link,
+        userLink,
       };
     }
 
@@ -272,6 +376,10 @@ export async function linkTelegramUserToVm0User(params: {
     .insert(telegramUserLinks)
     .values({
       telegramUserId: params.telegramUserId,
+      telegramUsername: normalizeTelegramUsername(params.telegramUsername),
+      telegramDisplayName: normalizeTelegramDisplayName(
+        params.telegramDisplayName,
+      ),
       installationId: params.installationId,
       vm0UserId: params.vm0UserId,
     })
@@ -279,6 +387,7 @@ export async function linkTelegramUserToVm0User(params: {
     .returning();
 
   if (inserted) {
+    await publishTelegramUserChangedSafely(params.vm0UserId);
     return { ok: true, userLink: inserted };
   }
 
@@ -288,15 +397,33 @@ export async function linkTelegramUserToVm0User(params: {
 /**
  * Build the logs URL for a run, linking to the agent detail logs page.
  */
-export function buildLogsUrl(runId: string): string {
+function buildLogsUrl(runId: string): string {
   return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
 }
 
 /**
  * Build the agent logs page URL (no specific run).
  */
-export function buildAgentLogsUrl(): string {
+function buildAgentLogsUrl(): string {
   return `${getAppUrl()}/activities`;
+}
+
+export async function resolveTelegramAuditLogsUrl(opts: {
+  orgId: string;
+  userId: string;
+  runId?: string | null;
+}): Promise<string | undefined> {
+  const overrides = await loadFeatureSwitchOverrides(opts.orgId, opts.userId);
+  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    userId: opts.userId,
+    orgId: opts.orgId,
+    overrides,
+  });
+  if (!enabled) {
+    return undefined;
+  }
+
+  return opts.runId ? buildLogsUrl(opts.runId) : buildAgentLogsUrl();
 }
 
 /**
@@ -307,6 +434,8 @@ export function buildAgentLogsUrl(): string {
 export async function resolveUserLink(
   installationId: string,
   telegramUserId: string,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect | null> {
   const [userLink] = await globalThis.services.db
     .select()
@@ -320,10 +449,30 @@ export async function resolveUserLink(
     .limit(1);
 
   if (userLink) {
-    return userLink;
+    if (telegramUsername === undefined && telegramDisplayName === undefined) {
+      return userLink;
+    }
+
+    const nextTelegramUsername =
+      telegramUsername === undefined
+        ? userLink.telegramUsername
+        : normalizeTelegramUsername(telegramUsername);
+    const nextTelegramDisplayName =
+      telegramDisplayName === undefined
+        ? userLink.telegramDisplayName
+        : normalizeTelegramDisplayName(telegramDisplayName);
+    return nextTelegramUsername === userLink.telegramUsername &&
+      nextTelegramDisplayName === userLink.telegramDisplayName
+      ? userLink
+      : touchTelegramUserLink(userLink, telegramUsername, telegramDisplayName);
   }
 
-  const completed = await completePendingLink(installationId, telegramUserId);
+  const completed = await completePendingLink(
+    installationId,
+    telegramUserId,
+    telegramUsername,
+    telegramDisplayName,
+  );
   if (completed) {
     log.info("Auto-completed pending link", {
       installationId,
@@ -342,6 +491,8 @@ export async function resolveUserLink(
 async function completePendingLink(
   installationId: string,
   realTelegramUserId: string,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): Promise<typeof telegramUserLinks.$inferSelect | null> {
   const [pending] = await globalThis.services.db
     .select()
@@ -361,6 +512,8 @@ async function completePendingLink(
   const result = await linkTelegramUserToVm0User({
     installationId,
     telegramUserId: realTelegramUserId,
+    telegramUsername,
+    telegramDisplayName,
     vm0UserId: pending.vm0UserId,
   });
 
@@ -442,33 +595,65 @@ export function getAgentDisplayLabel(agent: {
   return name || "zero";
 }
 
+export async function getWorkspaceAgentDisplayLabel(
+  composeId: string,
+): Promise<string> {
+  const agent = await getWorkspaceAgent(composeId);
+  return agent ? getAgentDisplayLabel(agent) : "Zero";
+}
+
 function normalizedBotUsername(botUsername: string | null | undefined): string {
   return botUsername?.replace(/^@/, "").trim() ?? "";
 }
 
-export function formatTelegramConnectPrompt(connectUrl: string): string {
-  return `To use Zero in Telegram, please connect your account first.\n\n<a href="${escapeHtml(connectUrl)}">Connect</a>`;
+export function formatTelegramConnectPrompt(
+  agentName: string = "Zero",
+): string {
+  return `To use ${escapeHtml(agentName)} in Telegram, please connect your account first.`;
+}
+
+export function buildTelegramConnectReplyMarkup(
+  connectUrl: string,
+): TelegramInlineKeyboardMarkup {
+  return {
+    inline_keyboard: [[{ text: "Connect", url: connectUrl }]],
+  };
 }
 
 export function formatTelegramPrivateConnectPrompt(
   botUsername: string | null | undefined,
+  agentName: string = "Zero",
 ): string {
   const username = normalizedBotUsername(botUsername);
   if (!username) {
-    return "To use Zero in Telegram, please connect your account first.\n\nSend me /connect in a private message.";
+    return `${formatTelegramConnectPrompt(agentName)}\n\nSend me /connect in a private message.`;
   }
 
-  return `To use Zero in Telegram, please connect your account first.\n\n<a href="https://t.me/${escapeHtml(username)}?start=connect">Connect</a>`;
+  return formatTelegramConnectPrompt(agentName);
+}
+
+export function buildTelegramPrivateConnectReplyMarkup(
+  botUsername: string | null | undefined,
+): TelegramInlineKeyboardMarkup | undefined {
+  const username = normalizedBotUsername(botUsername);
+  if (!username) {
+    return undefined;
+  }
+
+  return buildTelegramConnectReplyMarkup(
+    `https://t.me/${encodeURIComponent(username)}?start=connect`,
+  );
 }
 
 export function formatTelegramAlreadyConnectedMessage(
   botUsername: string | null | undefined,
+  agentName: string = "Zero",
 ): string {
   const username = normalizedBotUsername(botUsername);
   const target = username
     ? `Mention @${username} in a group or send a DM`
     : "Send a DM";
-  return `You are already connected.\n${target} to start chatting with your agent.`;
+  return `You are already connected.\n${target} to start chatting with ${agentName}.`;
 }
 
 export function formatTelegramCommandSuccess(message: string): string {
@@ -479,28 +664,26 @@ export function formatTelegramCommandError(message: string): string {
   return `❌ <b>Error</b>\n${escapeHtml(message)}`;
 }
 
-export function formatTelegramThinkingMessage(agentName: string): string {
-  return `<i>${escapeHtml(agentName)} is thinking...</i>`;
-}
-
 export function formatTelegramHelpMessage(
   botUsername: string | null | undefined,
+  agentName: string = "Zero",
 ): string {
   const username = normalizedBotUsername(botUsername);
+  const label = escapeHtml(agentName);
   const groupUsage = username
-    ? `• <code>@${escapeHtml(username)} &lt;message&gt;</code> - Send a message to your agent\n`
+    ? `• <code>@${escapeHtml(username)} &lt;message&gt;</code> - Send a message to ${label}\n`
     : "";
 
   return [
-    "<b>Zero Telegram Bot Help</b>",
+    `<b>${label} Telegram Bot Help</b>`,
     "",
     "<b>Commands</b>",
-    "• <code>/connect</code> - Connect to Zero",
+    `• <code>/connect</code> - Connect to ${label}`,
     "• <code>/new_session</code> - Start a new conversation",
-    "• <code>/disconnect</code> - Disconnect from Zero",
+    `• <code>/disconnect</code> - Disconnect from ${label}`,
     "",
     "<b>Usage</b>",
-    `${groupUsage}• Send a DM to chat with your agent`,
+    `${groupUsage}• Send a DM to chat with ${label}`,
   ].join("\n");
 }
 
@@ -531,29 +714,46 @@ export function buildConnectUrl(
   telegramBotId: string,
   telegramUserId: string,
   botToken: string,
+  telegramUsername?: string | null,
+  telegramDisplayName?: string | null,
 ): string {
   const appUrl = getAppUrl();
   const ts = Math.floor(Date.now() / 1000);
-  const sig = signConnectParams(telegramBotId, telegramUserId, ts, botToken);
-  return `${appUrl}/telegram/connect?bot=${telegramBotId}&tgUser=${telegramUserId}&ts=${ts}&sig=${sig}`;
+  const normalizedTelegramUsername =
+    normalizeTelegramUsername(telegramUsername);
+  const normalizedTelegramDisplayName =
+    normalizeTelegramDisplayName(telegramDisplayName);
+  const sig = signConnectParams(
+    telegramBotId,
+    telegramUserId,
+    ts,
+    botToken,
+    normalizedTelegramUsername,
+    normalizedTelegramDisplayName,
+  );
+  const params = new URLSearchParams({
+    bot: telegramBotId,
+    tgUser: telegramUserId,
+    ts: String(ts),
+    sig,
+  });
+  if (normalizedTelegramUsername) {
+    params.set("tgUserName", normalizedTelegramUsername);
+  }
+  if (normalizedTelegramDisplayName) {
+    params.set("tgDisplayName", normalizedTelegramDisplayName);
+  }
+  return `${appUrl}/telegram/connect?${params.toString()}`;
 }
 
-/**
- * Send a thinking placeholder message that persists until the agent responds.
- * Returns the sent message so its ID can be passed to the callback for deletion.
- */
-export async function sendThinkingMessage(
+export async function sendTypingAction(
   client: TelegramClient,
   chatId: string | number,
-  agentName: string,
-  options?: { replyToMessageId?: number },
-): Promise<TelegramSentMessage | undefined> {
-  const text = formatTelegramThinkingMessage(agentName);
+): Promise<void> {
   try {
-    return await sendMessage(client, chatId, text, options);
+    await sendChatAction(client, chatId, "typing");
   } catch (err) {
-    log.warn("Failed to send thinking message", { chatId, error: err });
-    return undefined;
+    log.debug("Failed to send typing action", { chatId, error: err });
   }
 }
 
@@ -561,25 +761,14 @@ const QUEUED_MESSAGE =
   "⏳ Run queued — concurrency limit reached. Will start automatically when a slot is available.";
 
 /**
- * Update the thinking message to show queued status, or send a new message if
- * no thinking message exists.
+ * Send a queued status message when the run could not start immediately.
  */
 export async function sendQueuedNotification(
   client: TelegramClient,
   chatId: string | number,
-  thinkingMessage: TelegramSentMessage | undefined,
-  options?: { replyToMessageId?: number },
+  options?: TelegramSendMessageOptions,
 ): Promise<void> {
-  if (thinkingMessage) {
-    await editMessageText(
-      client,
-      chatId,
-      thinkingMessage.message_id,
-      QUEUED_MESSAGE,
-    );
-  } else {
-    await sendMessage(client, chatId, QUEUED_MESSAGE, options);
-  }
+  await sendMessage(client, chatId, QUEUED_MESSAGE, options);
 }
 
 /**
@@ -606,22 +795,42 @@ export function formatReplyQuote(
 }
 
 /**
- * Append an on-demand Telegram file reference if the message contains a photo.
+ * Return true when a Telegram message has content worth storing or sending to
+ * the agent. Telegram Bot API has no history API, so unsupported messages are
+ * intentionally ignored instead of creating empty context rows.
  */
-export function appendPhotoContext(
+export function hasTelegramMessageContextContent(
+  message: TelegramContextMessageInput,
+): boolean {
+  return Boolean(
+    message.text ||
+    message.caption ||
+    hasTelegramFileForContext(message) ||
+    extractTelegramMessageEntities(message),
+  );
+}
+
+/**
+ * Append on-demand Telegram file and entity references from the current message.
+ */
+export function appendTelegramMessageContext(
   prompt: string,
   message: TelegramHandlerUpdate["message"],
   botId: string,
 ): string {
-  if (!message.photo) {
-    return prompt;
+  const parts: string[] = [];
+  const file = extractTelegramFileForContext(message);
+  if (file) {
+    parts.push(formatTelegramFileForContext(file, { botId }));
   }
-  const bestPhoto = pickBestPhoto(message.photo);
-  if (!bestPhoto) {
-    return prompt;
+
+  const entities = formatCurrentTelegramEntitiesForPrompt(message);
+  if (entities) {
+    parts.push(entities);
   }
-  const fileContext = formatTelegramFileForContext(bestPhoto, { botId });
-  return prompt ? `${prompt}\n\n${fileContext}` : fileContext;
+
+  if (parts.length === 0) return prompt;
+  return prompt ? `${prompt}\n\n${parts.join("\n\n")}` : parts.join("\n\n");
 }
 
 /**
@@ -638,14 +847,10 @@ export function enrichTelegramPrompt(
     return { prompt, userInfoExtras: {} };
   }
 
-  const displayName = [from.first_name, from.last_name]
-    .filter(Boolean)
-    .join(" ");
-
   return {
     prompt,
     userInfoExtras: {
-      telegramDisplayName: displayName || undefined,
+      telegramDisplayName: formatTelegramUserDisplayName(from) ?? undefined,
       telegramUsername: from.username ? `@${from.username}` : undefined,
       telegramUserId: String(from.id),
       telegramLanguage: from.language_code,

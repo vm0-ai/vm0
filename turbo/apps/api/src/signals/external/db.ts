@@ -2,7 +2,7 @@ import { command, computed } from "ccstate";
 
 import { db } from "../../lib/db";
 
-type Db = ReturnType<typeof db>;
+export type Db = ReturnType<typeof db>;
 
 type DbWriteMethod =
   | "insert"

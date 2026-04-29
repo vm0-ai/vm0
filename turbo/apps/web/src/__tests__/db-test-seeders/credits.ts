@@ -258,6 +258,9 @@ export async function insertTestUsageEvent(
     creditsCharged?: number;
     runId?: string | null;
     idempotencyKey?: string;
+    /** activityTime for reporting tests: maps to usage_event.created_at. */
+    createdAt?: Date;
+    /** billingTime for reporting tests: maps to usage_event.processed_at. */
     processedAt?: Date | null;
   },
 ): Promise<string> {
@@ -282,6 +285,7 @@ export async function insertTestUsageEvent(
       status: options.status ?? "pending",
       creditsCharged: options.creditsCharged ?? null,
       idempotencyKey: options.idempotencyKey ?? randomUUID(),
+      ...(options.createdAt ? { createdAt: options.createdAt } : {}),
       processedAt,
     })
     .returning({ id: usageEvent.id });
@@ -460,9 +464,9 @@ export async function setTestCreditUsageCreatedAt(
 /**
  * Seed a credit_usage record for testing insights aggregation.
  *
- * @why-db-direct Seeds credit usage with specific createdAt for insights
- * aggregation tests. Normally created by agent webhooks, but tests need
- * controlled timestamps.
+ * @why-db-direct Seeds credit usage with specific createdAt/processedAt
+ * timestamps for insights aggregation tests. Normally created by agent
+ * webhooks, but tests need controlled timestamps.
  */
 export async function seedCreditUsageRecord(options: {
   runId: string;
@@ -470,6 +474,7 @@ export async function seedCreditUsageRecord(options: {
   userId: string;
   creditsCharged: number;
   createdAt: Date;
+  processedAt?: Date;
 }): Promise<void> {
   initServices();
   await globalThis.services.db.insert(creditUsage).values({
@@ -483,6 +488,7 @@ export async function seedCreditUsageRecord(options: {
     creditsCharged: options.creditsCharged,
     status: "processed",
     createdAt: options.createdAt,
+    processedAt: options.processedAt ?? options.createdAt,
   });
 }
 
@@ -498,14 +504,22 @@ export async function seedInsightsDaily(
   date: string,
   data: Record<string, unknown>,
   userId?: string,
+  options: { updatedAt?: Date } = {},
 ): Promise<void> {
   initServices();
+  const values = {
+    orgId,
+    userId: userId ?? "user_test_default",
+    date,
+    data,
+    ...(options.updatedAt ? { updatedAt: options.updatedAt } : {}),
+  };
   await globalThis.services.db
     .insert(insightsDaily)
-    .values({ orgId, userId: userId ?? "user_test_default", date, data })
+    .values(values)
     .onConflictDoUpdate({
       target: [insightsDaily.orgId, insightsDaily.userId, insightsDaily.date],
-      set: { data, updatedAt: new Date() },
+      set: { data, updatedAt: options.updatedAt ?? new Date() },
     });
 }
 

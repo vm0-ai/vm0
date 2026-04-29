@@ -11,6 +11,7 @@ import type { NextRequest } from "next/server";
 import { POST } from "../route";
 import { POST as axiomConsumerPOST } from "../../../../internal/event-consumers/axiom/route";
 import { POST as chatAssistantConsumerPOST } from "../../../../internal/event-consumers/chat-assistant/route";
+import { POST as telegramTypingConsumerPOST } from "../../../../internal/event-consumers/telegram-typing/route";
 import {
   createTestRequest,
   createTestCompose,
@@ -27,6 +28,7 @@ import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { randomUUID } from "crypto";
 import * as axiomModule from "../../../../../../src/lib/shared/axiom";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 /**
  * Forward an MSW-intercepted fetch to the matching Next.js route handler so
@@ -84,6 +86,7 @@ describe("POST /api/webhooks/agent/events", () => {
     ingestToAxiomSpy = vi
       .spyOn(axiomModule, "ingestToAxiom")
       .mockReturnValue(true);
+    mockAblyPublish.mockClear();
 
     // Reset auth mock for webhook tests (which use token auth)
     mockClerk({ userId: null });
@@ -101,6 +104,12 @@ describe("POST /api/webhooks/agent/events", () => {
         "http://localhost:3000/api/internal/event-consumers/chat-assistant",
         ({ request }) => {
           return forwardToConsumer(request, chatAssistantConsumerPOST);
+        },
+      ),
+      http.post(
+        "http://localhost:3000/api/internal/event-consumers/telegram-typing",
+        ({ request }) => {
+          return forwardToConsumer(request, telegramTypingConsumerPOST);
         },
       ),
     );
@@ -403,6 +412,10 @@ describe("POST /api/webhooks/agent/events", () => {
           }),
         ]),
       );
+      expect(mockAblyPublish).toHaveBeenCalledWith(`run:changed:${testRunId}`, {
+        firstSequence: 0,
+        lastSequence: 1,
+      });
     });
   });
 

@@ -10,7 +10,8 @@ import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { serverSideCompose } from "../../../../src/lib/infra/compose/server-side-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, count } from "drizzle-orm";
+import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { buildComposeContent } from "../../../../src/lib/zero/build-compose-content";
 import { validateCustomSkills } from "../../../../src/lib/zero/validate-custom-skills";
 import { logger } from "../../../../src/lib/shared/logger";
@@ -74,23 +75,54 @@ const router = tsr.router(zeroAgentsMainContract, {
       selectedModel: body.selectedModel ?? null,
     };
 
-    // Write metadata to zero_agents (PK = composeId)
-    await globalThis.services.db
-      .insert(zeroAgents)
-      .values({
-        id: result.composeId,
-        orgId: org.orgId,
-        name: result.composeName,
-        owner: userId,
-        ...metadata,
-      })
-      .onConflictDoUpdate({
-        target: [zeroAgents.orgId, zeroAgents.name],
-        set: {
+    // Enforce maximum 7 agents per organization.
+    // Lock existing agent rows with FOR UPDATE so concurrent creates for
+    // the same org serialize. Then count — PostgreSQL forbids FOR UPDATE
+    // on aggregate queries, so we lock and count in two steps.
+    const txResult = await globalThis.services.db.transaction(async (tx) => {
+      await tx
+        .select()
+        .from(zeroAgents)
+        .where(eq(zeroAgents.orgId, org.orgId))
+        .for("update");
+
+      const [row] = await tx
+        .select({ value: count() })
+        .from(zeroAgents)
+        .where(eq(zeroAgents.orgId, org.orgId));
+      const agentCount = row?.value ?? 0;
+
+      if (agentCount >= 7) {
+        return { blocked: true as const };
+      }
+
+      // Write metadata to zero_agents (PK = composeId)
+      await tx
+        .insert(zeroAgents)
+        .values({
+          id: result.composeId,
+          orgId: org.orgId,
+          name: result.composeName,
+          owner: userId,
           ...metadata,
-          updatedAt: new Date(),
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: [zeroAgents.orgId, zeroAgents.name],
+          set: {
+            ...metadata,
+            updatedAt: new Date(),
+          },
+        });
+
+      return { blocked: false as const };
+    });
+
+    if (txResult.blocked) {
+      return createErrorResponse(
+        "CONFLICT",
+        "This organization has reached the maximum number of agents (7). Delete an existing agent before creating a new one.",
+      );
+    }
 
     log.info(`Created zero agent: ${result.composeName}`);
 

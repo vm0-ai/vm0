@@ -52,6 +52,7 @@ export {
   setTestChatMessageContent,
   setTestChatThreadLastReadAt,
   setTestChatThreadLastReadMessageId,
+  setTestChatThreadDraft,
   getTestAgentSessionWithConversation,
   getTestAgentComposeName,
   getTestChatThreadLastReadAt,

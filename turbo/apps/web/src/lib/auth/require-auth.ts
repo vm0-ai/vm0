@@ -20,10 +20,19 @@ function scheduleShadowCheck(
   result: AuthContext | AuthErrorResponse,
   authHeader: string | undefined,
   cookieHeader?: string,
+  authOptions?: {
+    requiredCapability?: string;
+    acceptAnySandboxCapability?: boolean;
+    accept?: string;
+  },
 ): void {
   try {
     after(async () => {
-      await shadowCompareAuth(result, { authHeader, cookieHeader });
+      await shadowCompareAuth(result, {
+        authHeader,
+        cookieHeader,
+        ...authOptions,
+      });
     });
   } catch {
     // Outside a Next.js request scope (e.g. unit tests) — skip silently.
@@ -45,10 +54,14 @@ export async function requireAuth(
   },
 ): Promise<AuthContext | AuthErrorResponse> {
   const cookieHeader = options?.cookieHeader;
+  const shadowOpts = {
+    requiredCapability: options?.requiredCapability,
+    acceptAnySandboxCapability: options?.acceptAnySandboxCapability,
+  };
   const authCtx = await getAuthContext(authHeader, options);
 
   if (authCtx) {
-    scheduleShadowCheck(authCtx, authHeader, cookieHeader);
+    scheduleShadowCheck(authCtx, authHeader, cookieHeader, shadowOpts);
     return authCtx;
   }
 
@@ -76,7 +89,12 @@ export async function requireAuth(
                 },
               },
             };
-        scheduleShadowCheck(capabilityErr, authHeader, cookieHeader);
+        scheduleShadowCheck(
+          capabilityErr,
+          authHeader,
+          cookieHeader,
+          shadowOpts,
+        );
         return capabilityErr;
       }
     }
@@ -89,7 +107,7 @@ export async function requireAuth(
       error: { message: "Not authenticated", code: "UNAUTHORIZED" },
     },
   };
-  scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
+  scheduleShadowCheck(unauthorized, authHeader, cookieHeader, shadowOpts);
   return unauthorized;
 }
 
@@ -121,6 +139,7 @@ export async function requireApiKeyAuth(
   authHeader: string | undefined,
   cookieHeader?: string,
 ): Promise<AuthContext | AuthErrorResponse> {
+  const shadowOpts = { accept: "pat" as const };
   const unauthorized: AuthErrorResponse = {
     status: 401 as const,
     body: {
@@ -128,19 +147,19 @@ export async function requireApiKeyAuth(
     },
   };
   if (!authHeader?.startsWith("Bearer ")) {
-    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader, shadowOpts);
     return unauthorized;
   }
   const token = authHeader.substring(7);
   if (!isPatToken(token)) {
-    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader, shadowOpts);
     return unauthorized;
   }
   const authCtx = await getAuthContext(authHeader);
   if (!authCtx || authCtx.tokenType !== "pat" || !authCtx.orgId) {
-    scheduleShadowCheck(unauthorized, authHeader, cookieHeader);
+    scheduleShadowCheck(unauthorized, authHeader, cookieHeader, shadowOpts);
     return unauthorized;
   }
-  scheduleShadowCheck(authCtx, authHeader, cookieHeader);
+  scheduleShadowCheck(authCtx, authHeader, cookieHeader, shadowOpts);
   return authCtx;
 }

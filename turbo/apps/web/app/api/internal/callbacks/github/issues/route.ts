@@ -7,6 +7,8 @@ import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { getInstallationAccessToken } from "../../../../../../src/lib/zero/github/github-app";
 import {
   postIssueComment,
@@ -14,6 +16,7 @@ import {
 } from "../../../../../../src/lib/zero/github/api";
 import { extractRunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 import { getAppUrl } from "../../../../../../src/lib/zero/url";
+import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { env } from "../../../../../../src/env";
 import type { GitHubIssuesCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/shared/logger";
@@ -132,14 +135,13 @@ async function saveIssueSession(opts: {
 function formatGitHubComment(opts: {
   status: "completed" | "failed";
   agentName: string;
-  runId: string;
+  logsUrl?: string;
   output?: string;
   error?: string;
   triggerCommentBody?: string;
 }): string {
-  const { status, agentName, runId, output, error, triggerCommentBody } = opts;
-  const appUrl = getAppUrl();
-  const logsUrl = `${appUrl}/activities/${encodeURIComponent(runId)}`;
+  const { status, agentName, logsUrl, output, error, triggerCommentBody } =
+    opts;
   const content =
     status === "completed"
       ? (output ?? "Task completed successfully.")
@@ -158,10 +160,38 @@ function formatGitHubComment(opts: {
     parts.push(quoted, "");
   }
 
-  parts.push(`<sub>🤖 **${agentName}**</sub>`, "", content, "");
-  parts.push(`<sub>📋 [Audit](${logsUrl})</sub>`);
+  parts.push(`<sub>🤖 **${agentName}**</sub>`, "", content);
+  if (logsUrl) {
+    parts.push("");
+    parts.push(`<sub>📋 [Audit](${logsUrl})</sub>`);
+  }
 
   return parts.join("\n");
+}
+
+async function resolveGitHubAuditLogsUrl(
+  runId: string,
+): Promise<string | undefined> {
+  const [run] = await globalThis.services.db
+    .select({ userId: agentRuns.userId, orgId: agentRuns.orgId })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  if (!run) {
+    return undefined;
+  }
+
+  const overrides = await loadFeatureSwitchOverrides(run.orgId, run.userId);
+  const enabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    userId: run.userId,
+    orgId: run.orgId,
+    overrides,
+  });
+  if (!enabled) {
+    return undefined;
+  }
+
+  return `${getAppUrl()}/activities/${encodeURIComponent(runId)}`;
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -237,7 +267,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const commentBody = formatGitHubComment({
     status,
     agentName: agent.label,
-    runId,
+    logsUrl: await resolveGitHubAuditLogsUrl(runId),
     output: resultData.result ?? undefined,
     error,
     triggerCommentBody: payload.triggerCommentBody,

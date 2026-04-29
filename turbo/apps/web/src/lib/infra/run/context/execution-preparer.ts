@@ -256,9 +256,11 @@ function buildPreparedContext(
 
     // Debug flag
     debugNoMockClaude: context.debugNoMockClaude || false,
+    debugNoMockCodex: context.debugNoMockCodex || false,
     captureNetworkBodies: context.captureNetworkBodies || false,
 
     billableFirewalls: context.billableFirewalls,
+    modelUsageProvider: context.modelUsageProvider ?? null,
 
     wasQueued: context.wasQueued ?? false,
   };

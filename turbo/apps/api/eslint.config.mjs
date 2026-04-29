@@ -63,6 +63,7 @@ export default [
       "api/no-fn-dollar-suffix": "error",
       "api/no-getter-setter-params": "error",
       "api/no-logger-info": "error",
+      "api/signal-check-await": "error",
     },
   },
   {

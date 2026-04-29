@@ -11,7 +11,7 @@ import { enqueueEmail } from "../../../../../../src/lib/zero/email/outbox-servic
 import {
   buildReplyToAddress,
   buildFromAddress,
-  buildLogsUrl,
+  resolveEmailAuditLogsUrl,
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/zero/email/handlers/shared";
@@ -147,7 +147,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // Get run output
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = await resolveEmailAuditLogsUrl({
+    orgId,
+    userId: session.userId,
+    runId,
+  });
   const rawOutput =
     status === "completed" ? ((await getRunOutputText(runId)) ?? null) : null;
   const output = formatOutput(status, rawOutput, error);

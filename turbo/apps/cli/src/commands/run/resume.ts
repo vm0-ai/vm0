@@ -75,6 +75,7 @@ export const resumeCommand = new Command()
   )
   .option("--verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
+  .addOption(new Option("--debug-no-mock-codex").hideHelp())
   .action(
     withErrorHandler(
       async (
@@ -96,6 +97,7 @@ export const resumeCommand = new Command()
           permissionPolicies?: string;
           verbose?: boolean;
           debugNoMockClaude?: boolean;
+          debugNoMockCodex?: boolean;
         },
         command: { optsWithGlobals: () => Record<string, unknown> },
       ) => {
@@ -119,6 +121,7 @@ export const resumeCommand = new Command()
           permissionPolicies?: string;
           verbose?: boolean;
           debugNoMockClaude?: boolean;
+          debugNoMockCodex?: boolean;
         };
 
         // Merge vars and secrets from command options
@@ -178,6 +181,8 @@ export const resumeCommand = new Command()
           ),
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude,
+          debugNoMockCodex:
+            options.debugNoMockCodex || allOpts.debugNoMockCodex,
         });
 
         // 4. Check for immediate failure (e.g., missing secrets)

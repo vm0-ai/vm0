@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse, after } from "next/server";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -46,50 +46,99 @@ interface ContentBlock {
   text?: string;
 }
 
-interface AxiomAssistantEvent {
+interface AxiomChatOutputEvent {
+  eventType?: string;
   sequenceNumber?: number;
   eventData?: {
     message?: { content?: ContentBlock[] };
+    result?: string;
     sequenceNumber?: number;
   };
 }
 
+interface AssistantEventItem {
+  sequenceNumber: number;
+  content: string;
+}
+
+interface ResultEventItem {
+  sequenceNumber: number;
+  content: string;
+}
+
 /**
- * Query Axiom for every assistant event for this run and flatten them into
- * `(sequenceNumber, content)` pairs. Used as the final sweep to backfill any
- * events the live consumer dropped.
+ * Query Axiom for terminal chat output. Assistant events remain the primary
+ * source; a result event is kept only as a fallback for result-only CLI
+ * outputs such as Claude Code slash-command messages.
  */
-async function queryAssistantEvents(
-  runId: string,
-): Promise<{ sequenceNumber: number; content: string }[]> {
+async function queryChatOutputEvents(runId: string): Promise<{
+  assistantItems: AssistantEventItem[];
+  resultFallback: ResultEventItem | null;
+}> {
   const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
   const apl = `['${dataset}']
 | where runId == "${runId}"
-| where eventType == "assistant"
+| where eventType == "assistant" or eventType == "result"
 | order by sequenceNumber asc
 | limit 200`;
 
-  const events = await queryAxiom<AxiomAssistantEvent>(apl);
+  const events = await queryAxiom<AxiomChatOutputEvent>(apl);
 
-  const items: { sequenceNumber: number; content: string }[] = [];
+  const assistantItems: AssistantEventItem[] = [];
+  let resultFallback: ResultEventItem | null = null;
   for (const e of events) {
     const seq = e.sequenceNumber ?? e.eventData?.sequenceNumber;
     if (typeof seq !== "number") continue;
+
     const content = e.eventData?.message?.content;
-    if (!content) continue;
-    const parts: string[] = [];
-    for (const block of content) {
-      if (block.type === "text" && typeof block.text === "string") {
-        parts.push(block.text);
+    if (content) {
+      const parts: string[] = [];
+      for (const block of content) {
+        if (block.type === "text" && typeof block.text === "string") {
+          parts.push(block.text);
+        }
       }
+      if (parts.length > 0) {
+        assistantItems.push({
+          sequenceNumber: seq,
+          content: parts.length === 1 ? parts[0]! : parts.join("\n\n"),
+        });
+      }
+      continue;
     }
-    if (parts.length === 0) continue;
-    items.push({
+
+    const result = e.eventData?.result;
+    if (typeof result !== "string") continue;
+    const trimmed = result.trim();
+    if (!trimmed) continue;
+    resultFallback = {
       sequenceNumber: seq,
-      content: parts.length === 1 ? parts[0]! : parts.join("\n\n"),
-    });
+      content: result,
+    };
   }
-  return items;
+  return { assistantItems, resultFallback };
+}
+
+async function latestEventBackedAssistantMessage(
+  runId: string,
+): Promise<{ content: string } | null> {
+  const [message] = await globalThis.services.db
+    .select({ content: chatMessages.content })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.runId, runId),
+        eq(chatMessages.role, "assistant"),
+        isNotNull(chatMessages.sequenceNumber),
+      ),
+    )
+    .orderBy(desc(chatMessages.sequenceNumber))
+    .limit(1);
+
+  if (!message || message.content === null) {
+    return null;
+  }
+  return { content: message.content };
 }
 
 /**
@@ -170,13 +219,30 @@ async function handleCompleted(
   threadId: string,
   userId: string,
 ): Promise<void> {
-  // Final sweep: re-query Axiom and insert any events the live consumer
-  // missed. Inserts are idempotent via the `(run_id, sequence_number)`
-  // unique index, so concurrent writes from the consumer and this sweep
-  // cannot produce duplicates.
-  const items = await queryAssistantEvents(runId);
-  if (items.length > 0) {
-    await insertAssistantEventMessages(runId, threadId, userId, items);
+  // Final sweep: re-query Axiom and insert any assistant output the live
+  // consumer missed. Result-only CLI output is inserted only when no assistant
+  // output exists for the run. Inserts are idempotent via the
+  // `(run_id, sequence_number)` unique index, so concurrent writes from the
+  // consumer and this sweep cannot produce duplicates.
+  const { assistantItems, resultFallback } = await queryChatOutputEvents(runId);
+  if (assistantItems.length > 0) {
+    await insertAssistantEventMessages(runId, threadId, userId, assistantItems);
+  }
+
+  let lastResultText =
+    assistantItems.length > 0
+      ? assistantItems[assistantItems.length - 1]!.content
+      : null;
+  if (lastResultText === null) {
+    const existingAssistant = await latestEventBackedAssistantMessage(runId);
+    if (existingAssistant) {
+      lastResultText = existingAssistant.content;
+    } else if (resultFallback) {
+      await insertAssistantEventMessages(runId, threadId, userId, [
+        resultFallback,
+      ]);
+      lastResultText = resultFallback.content;
+    }
   }
 
   // Wrap-up latency: gap from last assistant event row to run terminal
@@ -186,10 +252,6 @@ async function handleCompleted(
   after(() => {
     return recordLastEventToComplete(runId);
   });
-
-  // Use last assistant text for downstream (title, summary, notification)
-  const lastResultText =
-    items.length > 0 ? items[items.length - 1]!.content : null;
 
   // Generate run summary (best-effort — errors handled internally)
   await saveRunSummary(runId, "chat", prompt, lastResultText ?? "");
@@ -264,9 +326,9 @@ async function handleFailed(
  * POST /api/internal/callbacks/chat
  *
  * Chat callback handler for agent run completion.
- * Final sweep: inserts any assistant events not yet written by the
- * chat-assistant consumer (via `ON CONFLICT DO NOTHING`), then generates
- * title and sends push notification.
+ * Final sweep: inserts any assistant output not yet written by the
+ * chat-assistant consumer, or terminal result-only output when there is no
+ * assistant output, then generates title and sends push notification.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();

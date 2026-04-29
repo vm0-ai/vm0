@@ -107,6 +107,7 @@ dests=(
   "/usr/local/bin/guest-download"
   "/sbin/guest-init"
   "/usr/local/bin/guest-mock-claude"
+  "/usr/local/bin/guest-mock-codex"
   "/sbin/guest-reseed"
 )
 for dest in "${dests[@]}"; do
@@ -123,6 +124,13 @@ if [[ -f "${MOUNT_DIR}/usr/bin/gh" ]]; then
   echo "  gh CLI: found"
 else
   errors+=("gh CLI not found at /usr/bin/gh")
+fi
+
+# npm-global bins land in /usr/bin (NodeSource Node 24 sets npm prefix to /usr).
+if [[ -f "${MOUNT_DIR}/usr/bin/codex" ]]; then
+  echo "  codex CLI: found"
+else
+  errors+=("codex CLI not found at /usr/bin/codex")
 fi
 
 # Check language runtimes

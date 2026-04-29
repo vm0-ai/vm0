@@ -47,6 +47,7 @@ import * as Sentry from "@sentry/nextjs";
 import { after } from "next/server";
 import { flushLogs, logger } from "./shared/logger";
 import { ingestRequestLog, flushAxiom } from "./shared/axiom";
+import { shadowCompareResponse } from "./shadow/response-shadow";
 import { isApiError } from "@vm0/api-services/errors";
 
 // Re-export tsr and TsRestResponse for convenience
@@ -227,6 +228,13 @@ interface CreateHandlerOptions {
   routeName: string;
   /** Custom error handler for validation and other errors */
   errorHandler?: (err: unknown) => TsRestResponse | void;
+  /**
+   * Replay this request against the api app post-response and warn on
+   * divergence. Opt-in per route — only enable for endpoints that have a
+   * matching handler registered in `apps/api`. Runs inside `after()` so it
+   * cannot delay the user-facing response.
+   */
+  shadowCompareApi?: boolean;
 }
 
 // WeakMap to store request start times
@@ -316,6 +324,16 @@ export function createHandler<T extends AppRouter>(
             request_time_ms: Date.now() - startTime,
           });
           requestStartTimes.delete(request);
+        }
+
+        if (options.shadowCompareApi) {
+          after(() => {
+            return shadowCompareResponse({
+              request,
+              response,
+              route: options.routeName,
+            });
+          });
         }
 
         // Callback form preserves the Next.js request context for work

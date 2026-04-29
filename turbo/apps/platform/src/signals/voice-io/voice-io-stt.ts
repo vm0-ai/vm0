@@ -3,8 +3,6 @@ import {
   zeroVoiceIoQuotaContract,
   type AudioInputQuotaResponse,
 } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { fetch$ } from "../fetch.ts";
 import { zeroClient$ } from "../api-client.ts";
 import {
@@ -43,12 +41,10 @@ export const sttTranscribing$ = computed((get) => {
   return get(internalTranscribing$);
 });
 
-export const audioInputAvailable$ = computed(async (get) => {
-  const features = await get(featureSwitch$);
-  const featureEnabled = features[FeatureSwitchKey.AudioInput] ?? false;
+export const audioInputAvailable$ = computed(() => {
   const hasMic =
     typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
-  return featureEnabled && hasMic;
+  return hasMic;
 });
 
 /**

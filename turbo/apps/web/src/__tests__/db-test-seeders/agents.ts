@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { RawPermissionPolicies } from "@vm0/connectors/firewall-types";
 import { initServices } from "../../lib/init-services";
 import {
@@ -406,6 +406,31 @@ export async function setTestChatThreadLastReadMessageId(
 }
 
 /**
+ * Set draft_content / draft_attachments on a chat thread directly.
+ *
+ * @why-db-direct The draft PATCH route is exercised in its own route test;
+ * list-route tests need to seed an arbitrary draft state to verify the
+ * `hasDraft` projection without round-tripping the auth/clerk-mocked PATCH.
+ */
+export async function setTestChatThreadDraft(
+  threadId: string,
+  draftContent: string | null,
+  draftAttachments: Array<{
+    id: string;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }> | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ draftContent, draftAttachments })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
  * Insert a chat thread directly in the database.
  * Returns the thread ID.
  *
@@ -418,11 +443,16 @@ export async function insertTestChatThread(
   title: string,
 ): Promise<string> {
   initServices();
-  const [thread] = await globalThis.services.db
-    .insert(chatThreads)
-    .values({ userId, agentComposeId, title })
-    .returning({ id: chatThreads.id });
-  return thread!.id;
+  const result = await globalThis.services.db.execute<{ id: string }>(sql`
+    INSERT INTO ${chatThreads} (user_id, agent_compose_id, title)
+    VALUES (${userId}, ${agentComposeId}::uuid, ${title})
+    RETURNING id
+  `);
+  const threadId = result.rows[0]?.id;
+  if (!threadId) {
+    throw new Error("Failed to seed chat thread");
+  }
+  return threadId;
 }
 
 // ---------------------------------------------------------------------------

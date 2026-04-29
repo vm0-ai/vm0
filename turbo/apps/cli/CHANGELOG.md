@@ -1,5 +1,84 @@
 # Changelog
 
+## [9.138.0](https://github.com/vm0-ai/vm0/compare/cli-v9.137.3...cli-v9.138.0) (2026-04-28)
+
+
+### Features
+
+* **cli:** codex JSONL event parser + factory dispatch ([#11432](https://github.com/vm0-ai/vm0/issues/11432)) ([035808d](https://github.com/vm0-ai/vm0/commit/035808d9afa72888ff1c2662c847dad794544fca))
+* **core:** register codex framework + tighten compose schema enum ([#11424](https://github.com/vm0-ai/vm0/issues/11424)) ([6e54c7f](https://github.com/vm0-ai/vm0/commit/6e54c7ff9e1f10ff26fb702d265a4dac735e0580))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.243.0
+
+## [9.137.3](https://github.com/vm0-ai/vm0/compare/cli-v9.137.2...cli-v9.137.3) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.242.1
+
+## [9.137.2](https://github.com/vm0-ai/vm0/compare/cli-v9.137.1...cli-v9.137.2) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.242.0
+
+## [9.137.1](https://github.com/vm0-ai/vm0/compare/cli-v9.137.0...cli-v9.137.1) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.241.0
+
+## [9.137.0](https://github.com/vm0-ai/vm0/compare/cli-v9.136.0...cli-v9.137.0) (2026-04-28)
+
+
+### Features
+
+* add telegram message send ([#11359](https://github.com/vm0-ai/vm0/issues/11359)) ([6d397e6](https://github.com/vm0-ai/vm0/commit/6d397e6b555e447c376f1f3c71963d079ea7357f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.240.0
+
+## [9.136.0](https://github.com/vm0-ai/vm0/compare/cli-v9.135.0...cli-v9.136.0) (2026-04-28)
+
+
+### Features
+
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
+## [9.135.0](https://github.com/vm0-ai/vm0/compare/cli-v9.134.1...cli-v9.135.0) (2026-04-28)
+
+
+### Features
+
+* add telegram file upload command ([#11298](https://github.com/vm0-ai/vm0/issues/11298)) ([2a6ff07](https://github.com/vm0-ai/vm0/commit/2a6ff077f99ec0890bb0214594d4c942ebe8f9ab))
+
+## [9.134.1](https://github.com/vm0-ai/vm0/compare/cli-v9.134.0...cli-v9.134.1) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.239.1
+
 ## [9.134.0](https://github.com/vm0-ai/vm0/compare/cli-v9.133.0...cli-v9.134.0) (2026-04-27)
 
 

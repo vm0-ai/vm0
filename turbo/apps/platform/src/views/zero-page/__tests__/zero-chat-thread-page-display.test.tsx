@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { http, HttpResponse } from "msw";
@@ -8,6 +8,8 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
+import { hasSubscription } from "../../../mocks/ably.ts";
+import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   mockChatLifecycle,
@@ -71,9 +73,52 @@ describe("zero chat thread page display - attachment image preview", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
-    await waitFor(() => {
-      expect(screen.getByAltText("photo.png")).toBeInTheDocument();
+    const previewButton = await waitFor(() => {
+      return screen.getByLabelText("Preview photo.png");
     });
+    const previewImage = within(previewButton).getByAltText("photo.png");
+    expect(previewImage).toBeInTheDocument();
+    expect(
+      within(previewButton).getByTestId("chat-image-preview-loading"),
+    ).toBeInTheDocument();
+
+    fireEvent.load(previewImage);
+    await waitFor(() => {
+      expect(
+        within(previewButton).queryByTestId("chat-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero chat thread page display - attachment audio preview", () => {
+  it("renders audio attachment preview with controls", async () => {
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Please listen",
+          createdAt: "2026-03-10T00:00:00Z",
+          attachFiles: [
+            {
+              id: "audio-file-1",
+              filename: "clip.mp3",
+              contentType: "audio/mpeg",
+              size: 4096,
+              url: "https://example.com/clip.mp3",
+            },
+          ],
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const audio = await waitFor(() => {
+      return screen.getByLabelText("Audio preview for clip.mp3");
+    });
+    expect(audio).toHaveAttribute("src", "https://example.com/clip.mp3");
+    expect(audio).toHaveAttribute("controls");
   });
 });
 
@@ -229,6 +274,101 @@ describe("zero chat thread page display - body link document preview", () => {
 
     await waitFor(() => {
       expect(screen.getByTitle("cute_kitten.html preview")).toBeInTheDocument();
+    });
+  });
+
+  it("renders bold bare html urls as preview cards and preserves surrounding text", async () => {
+    const htmlUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/diabetes.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>diabetes preview</body></html>");
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `已上传，直接访问即可：\n\n**${htmlUrl}**\n\n页面包含了血糖换算器、诊断标准表、饮食建议。`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByText("已上传，直接访问即可：")).toBeInTheDocument();
+      expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Open html preview for diabetes.html"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("页面包含了血糖换算器、诊断标准表、饮食建议。"),
+      ).toBeInTheDocument();
+    });
+
+    await userEvent.click(
+      screen.getByLabelText("Open html preview for diabetes.html"),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle("diabetes.html preview")).toBeInTheDocument();
+    });
+  });
+
+  it("renders platform file urls inside markdown list and quote symbols as preview cards", async () => {
+    const htmlUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/symbol-report.html";
+    server.use(
+      http.get(htmlUrl, () => {
+        return HttpResponse.html("<html><body>symbol preview</body></html>");
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `文件已生成：\n\n> 👉 **<${htmlUrl}>**\n\n- **[查看报告](${htmlUrl})**`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("attachment-preview-html")).toHaveLength(2);
+      expect(
+        screen.getAllByLabelText("Open html preview for symbol-report.html"),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("renders bare platform image file urls as image previews", async () => {
+    const imageUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/chart.png";
+    server.use(
+      http.get(imageUrl, () => {
+        return new HttpResponse("png", {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `生成完成：\n\n${imageUrl}`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByAltText("chart.png")).toBeInTheDocument();
     });
   });
 
@@ -681,7 +821,6 @@ describe("zero chat thread page display - artifacts drawer", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatArtifactsDrawer]: true },
     });
 
     const button = await waitFor(() => {
@@ -695,6 +834,10 @@ describe("zero chat thread page display - artifacts drawer", () => {
     });
     expect(artifactsRequests).toBeGreaterThan(0);
     expect(screen.getByLabelText("Preview chart.png")).toBeInTheDocument();
+    expect(
+      document.querySelectorAll('img[src="https://example.com/chart.png"]')
+        .length,
+    ).toBeGreaterThanOrEqual(3);
     const downloadButtons = screen.getAllByLabelText("Download chart.png");
     expect(downloadButtons[0]!.tagName).toBe("BUTTON");
     await user.click(downloadButtons[0]!);
@@ -721,21 +864,72 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(screen.getByTitle("Preview data.csv")).toBeInTheDocument();
   });
 
-  it("hides the artifacts button when the feature switch is off", async () => {
-    mockChatLifecycle();
+  it("refreshes uploaded files from the artifacts Ably signal while the drawer is open", async () => {
+    const threadId = "thread-test-1";
+    let artifactsRequests = 0;
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Upload from a run",
+          runId: "run-artifacts-ably",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        artifactsRequests += 1;
+        return respond(200, {
+          runs:
+            artifactsRequests === 1
+              ? []
+              : [
+                  {
+                    runId: "run-artifacts-ably",
+                    files: [
+                      {
+                        id: "file-ably",
+                        filename: "artifact.zip",
+                        contentType: "application/zip",
+                        size: 8192,
+                        url: "https://example.com/artifact.zip",
+                        createdAt: "2026-03-10T00:00:00Z",
+                      },
+                    ],
+                  },
+                ],
+        });
+      }),
+    );
 
     detachedSetupPage({
       context,
-      path: "/chats/thread-test-1",
-      featureSwitches: { [FeatureSwitchKey.ChatArtifactsDrawer]: false },
+      path: `/chats/${threadId}`,
     });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open artifacts");
+    });
+    click(button);
 
     await waitFor(() => {
       expect(
-        screen.getByText("Send a message to start the conversation"),
+        screen.getByText("No uploaded files in this chat yet."),
       ).toBeInTheDocument();
     });
-    expect(screen.queryByLabelText("Open artifacts")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        hasSubscription(`chatThreadArtifactsChanged:${threadId}`),
+      ).toBeTruthy();
+    });
+
+    updateChatArtifacts(threadId);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("artifact.zip").length).toBeGreaterThan(0);
+    });
+    expect(artifactsRequests).toBeGreaterThanOrEqual(2);
   });
 });
 

@@ -137,9 +137,11 @@ export async function insertChatMessage(params: {
 }
 
 /**
- * Idempotently insert one assistant row per agent "assistant" event.
+ * Idempotently insert assistant-visible rows keyed by agent event sequence.
+ * Normal callers pass agent "assistant" events; the chat callback can also
+ * pass terminal "result" content for result-only CLI outputs.
  *
- * Keyed by `(run_id, sequence_number)` with a partial unique index, so
+ * Keyed by `(run_id, sequence_number)` with a unique index, so
  * duplicate deliveries (from retries, the event consumer racing the
  * callback's final sweep, or multiple consumers re-processing the same
  * batch) collapse to a single row — no advisory lock, no Axiom re-query.

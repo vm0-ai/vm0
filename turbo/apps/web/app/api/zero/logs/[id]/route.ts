@@ -27,6 +27,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { isNotFound, isForbidden } from "@vm0/api-services/errors";
+import { extractFrameworkFromCompose } from "../../../../../src/lib/infra/framework/framework-config";
 import { eq, and } from "drizzle-orm";
 
 /** Alias for the zero_agents table to resolve the triggering agent's display name. */
@@ -40,40 +41,7 @@ interface RunResult {
   volumes?: Record<string, string>;
 }
 
-interface ComposeContent {
-  agent?: {
-    framework?: string;
-  };
-  agents?: Record<
-    string,
-    {
-      framework?: string;
-    }
-  >;
-}
-
-/**
- * Extract framework from compose content.
- * Returns null if no framework is found.
- */
-function extractFramework(content: ComposeContent | null): string | null {
-  if (!content) {
-    return null;
-  }
-
-  if (content.agent?.framework) {
-    return content.agent.framework;
-  }
-
-  if (content.agents) {
-    const firstAgentKey = Object.keys(content.agents)[0];
-    if (firstAgentKey) {
-      return content.agents[firstAgentKey]?.framework ?? null;
-    }
-  }
-
-  return null;
-}
+type ComposeContent = Parameters<typeof extractFrameworkFromCompose>[0];
 
 /**
  * Extract artifact name and version from run result.
@@ -137,7 +105,7 @@ function buildLogDetailBody(result: {
     sessionId: runResult?.agentSessionId ?? null,
     agentId: compose?.id ?? null,
     displayName: agentDisplayName ?? null,
-    framework: extractFramework(composeContent),
+    framework: extractFrameworkFromCompose(composeContent),
     modelProvider: modelProvider ?? null,
     selectedModel: selectedModel ?? null,
     triggerSource: (triggerSource ?? "cli") as TriggerSource,

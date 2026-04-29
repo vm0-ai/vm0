@@ -97,25 +97,39 @@ async fn write_frame(stream: &mut UnixStream, data: &[u8]) -> io::Result<()> {
 // Server
 // -----------------------------------------------------------------------
 
-/// Spawn the control socket server for a running sandbox.
-///
-/// The server accepts connections on `sock_path`, reads an [`ExecRequest`],
-/// executes it via the shared `VsockHost`, and writes back an [`ExecResponse`].
-///
-/// Returns a `JoinHandle` that the caller should abort on shutdown.
-pub fn spawn_server(
+/// A control socket server whose listener has already been bound.
+pub(crate) struct BoundControlServer {
+    sock_path: PathBuf,
+    listener: UnixListener,
+    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+}
+
+impl BoundControlServer {
+    /// Spawn the accept loop for this pre-bound control socket.
+    pub(crate) fn spawn(self) -> JoinHandle<()> {
+        spawn_bound_server(self.listener, self.sock_path, self.guest)
+    }
+}
+
+/// Bind the control socket before spawning the accept loop.
+pub(crate) fn bind_server(
+    sock_path: PathBuf,
+    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+) -> io::Result<BoundControlServer> {
+    let listener = UnixListener::bind(&sock_path)?;
+    Ok(BoundControlServer {
+        sock_path,
+        listener,
+        guest,
+    })
+}
+
+fn spawn_bound_server(
+    listener: UnixListener,
     sock_path: PathBuf,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        let listener = match UnixListener::bind(&sock_path) {
-            Ok(l) => l,
-            Err(e) => {
-                warn!(path = %sock_path.display(), error = %e, "failed to bind control socket");
-                return;
-            }
-        };
-
         info!(path = %sock_path.display(), "control socket listening");
 
         loop {
@@ -443,10 +457,7 @@ mod tests {
 
         // Server with no guest connected.
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
-        let handle = spawn_server(sock_path.clone(), guest);
-
-        // Give the server a moment to bind.
-        tokio::time::sleep(Duration::from_millis(50)).await;
+        let handle = bind_server(sock_path.clone(), guest).unwrap().spawn();
 
         let request = ExecRequest {
             command: "ps aux".into(),
@@ -466,6 +477,22 @@ mod tests {
         }
 
         handle.abort();
+        let _ = handle.await;
+    }
+
+    #[tokio::test]
+    async fn bind_server_reports_bind_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+        let _existing = UnixListener::bind(&sock_path).unwrap();
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+
+        let result = bind_server(sock_path, guest);
+
+        let Err(err) = result else {
+            panic!("binding an occupied control socket should fail");
+        };
+        assert_eq!(err.kind(), std::io::ErrorKind::AddrInUse);
     }
 
     #[test]

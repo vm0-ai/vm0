@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.27.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.14...sandbox-fc-v0.27.0) (2026-04-28)
+
+
+### Features
+
+* **rootfs:** install codex cli binary in sandbox image ([#11425](https://github.com/vm0-ai/vm0/issues/11425)) ([00914b9](https://github.com/vm0-ai/vm0/commit/00914b9c1d98027f8ca2901df58ce4e0653cfba6)), closes [#11416](https://github.com/vm0-ai/vm0/issues/11416)
+
+## [0.26.14](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.13...sandbox-fc-v0.26.14) (2026-04-28)
+
+
+### Bug Fixes
+
+* bind control socket before sandbox running ([#11394](https://github.com/vm0-ai/vm0/issues/11394)) ([aa1f515](https://github.com/vm0-ai/vm0/commit/aa1f5154a1bf22e1ef46037c9f02b2ffe2c6a1a0))
+
+## [0.26.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.12...sandbox-fc-v0.26.13) (2026-04-28)
+
+
+### Refactoring
+
+* **sandbox-fc:** centralize snapshot error adapter ([#11267](https://github.com/vm0-ai/vm0/issues/11267)) ([c62afd1](https://github.com/vm0-ai/vm0/commit/c62afd1ef028c3e56434469b29f4306dcd03497e))
+
 ## [0.26.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.11...sandbox-fc-v0.26.12) (2026-04-27)
 
 ## [0.26.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.10...sandbox-fc-v0.26.11) (2026-04-27)

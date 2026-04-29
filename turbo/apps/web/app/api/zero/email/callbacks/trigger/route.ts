@@ -9,7 +9,7 @@ import { enqueueEmail } from "../../../../../../src/lib/zero/email/outbox-servic
 import {
   buildReplyToAddress,
   buildFromAddress,
-  buildLogsUrl,
+  resolveEmailAuditLogsUrl,
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/zero/email/handlers/shared";
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const org = await getOrgNameAndSlug(orgId);
 
   // Get run output and session ID
-  const logsUrl = buildLogsUrl(runId);
+  const logsUrl = await resolveEmailAuditLogsUrl({ orgId, userId, runId });
   const rawOutput =
     status === "completed" ? await getRunOutputText(runId) : null;
   const output = formatOutput(status, rawOutput, error);

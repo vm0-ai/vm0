@@ -1,4 +1,4 @@
-//! CLI command building and execution for Claude Code.
+//! CLI command building and execution for Claude Code / Codex.
 
 use crate::constants;
 use crate::env;
@@ -7,6 +7,7 @@ use crate::events;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
+use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use std::collections::HashMap;
 use std::process::Stdio;
@@ -54,9 +55,12 @@ impl ReapState {
     }
 }
 
-/// Build the CLI command + args.
+/// Build the CLI command + args based on `CLI_AGENT_TYPE`.
 pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
-    Ok(build_claude_command(env::use_mock_claude()))
+    match env::Framework::from_env() {
+        env::Framework::ClaudeCode => Ok(build_claude_command(env::use_mock_claude())),
+        env::Framework::Codex => Ok(build_codex_command(env::use_mock_codex())),
+    }
 }
 
 /// Build the argument list from explicit parameters (testable).
@@ -145,6 +149,107 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
     cmd
 }
 
+/// Build the codex argument list (testable).
+///
+/// Resume is a positional sub-subcommand (`codex exec resume <id> <prompt>`),
+/// not a `--resume <id>` flag. No `--` separator before the prompt: codex
+/// has no variadic flags here, so `--` would propagate as a literal arg.
+fn build_codex_args(working_dir: &str, model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
+    let mut args = vec![
+        "exec".to_string(),
+        "--json".to_string(),
+        "--sandbox".to_string(),
+        "danger-full-access".to_string(),
+        "--skip-git-repo-check".to_string(),
+        "-C".to_string(),
+        working_dir.to_string(),
+    ];
+
+    if !model.is_empty() {
+        args.push("-m".to_string());
+        args.push(model.to_string());
+    }
+
+    if !resume_id.is_empty() {
+        log_info!(LOG_TAG, "Resuming codex session: {resume_id}");
+        args.push("resume".to_string());
+        args.push(resume_id.to_string());
+        args.push(prompt.to_string());
+    } else {
+        log_info!(LOG_TAG, "Starting new codex session");
+        args.push(prompt.to_string());
+    }
+
+    args
+}
+
+fn build_codex_command(use_mock: bool) -> Vec<String> {
+    let bin = if use_mock {
+        log_info!(LOG_TAG, "Using mock-codex for testing");
+        env::mock_codex_path()
+    } else {
+        "codex".to_string()
+    };
+
+    let mut cmd = vec![bin];
+    cmd.extend(build_codex_args(
+        env::working_dir(),
+        env::openai_model(),
+        env::resume_session_id(),
+        env::prompt(),
+    ));
+    cmd
+}
+
+/// Best-effort codex setup: create `$HOME/.codex` and pipe `OPENAI_API_KEY`
+/// into `codex login --with-api-key`. Login failure is non-fatal — `codex
+/// exec` reads `OPENAI_API_KEY` directly from the process env, so the env
+/// path covers authn even when the login subcommand isn't available.
+pub fn setup_codex() -> Result<(), AgentError> {
+    use std::io::Write as _;
+
+    let codex_home = format!("{}/.codex", env::home_dir());
+    std::fs::create_dir_all(&codex_home)?;
+    log_info!(LOG_TAG, "Codex home directory: {codex_home}");
+
+    let api_key = env::openai_api_key();
+    if api_key.is_empty() {
+        log_info!(LOG_TAG, "OPENAI_API_KEY not set, skipping codex login");
+        return Ok(());
+    }
+
+    let login_start = Instant::now();
+    let result = std::process::Command::new("codex")
+        .args(["login", "--with-api-key"])
+        .env("CODEX_HOME", &codex_home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(api_key.as_bytes());
+            }
+            child.wait_with_output()
+        });
+    let success = matches!(&result, Ok(o) if o.status.success());
+    if success {
+        log_info!(LOG_TAG, "Codex authenticated with API key");
+    } else {
+        match &result {
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                log_warn!(LOG_TAG, "codex login failed (non-fatal): {stderr}");
+            }
+            Err(e) => {
+                log_warn!(LOG_TAG, "codex login spawn failed (non-fatal): {e}");
+            }
+        }
+    }
+    record_sandbox_op("codex_login", login_start.elapsed(), success, None);
+    Ok(())
+}
+
 struct PreparedEvent {
     sequence: u32,
     payload: serde_json::Value,
@@ -207,17 +312,27 @@ pub async fn execute_cli(
         .stderr(Stdio::piped())
         .process_group(0);
 
-    // Suppress Claude CLI features that are unnecessary or harmful in a
-    // sandbox: startup network calls (statsig, Datadog, Segment, GCS
-    // update check, GitHub) add ~2s latency, telemetry has no receiver,
-    // and the CLI version is baked into the rootfs image.
-    cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
-    cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
-    cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
-    cmd.env("DISABLE_AUTOUPDATER", "1");
-    cmd.env("DISABLE_ERROR_REPORTING", "1");
-    cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
-    cmd.env("DISABLE_TELEMETRY", "1");
+    match env::Framework::from_env() {
+        env::Framework::ClaudeCode => {
+            // Suppress Claude CLI features that are unnecessary or harmful in a
+            // sandbox: startup network calls (statsig, Datadog, Segment, GCS
+            // update check, GitHub) add ~2s latency, telemetry has no receiver,
+            // and the CLI version is baked into the rootfs image.
+            cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+            cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
+            cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
+            cmd.env("DISABLE_AUTOUPDATER", "1");
+            cmd.env("DISABLE_ERROR_REPORTING", "1");
+            cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
+            cmd.env("DISABLE_TELEMETRY", "1");
+        }
+        env::Framework::Codex => {
+            // `codex login` and `codex exec` both honor CODEX_HOME; pin
+            // it to $HOME/.codex so the login state from setup_codex
+            // is visible to exec.
+            cmd.env("CODEX_HOME", format!("{}/.codex", env::home_dir()));
+        }
+    }
 
     let mut child = cmd.spawn()?;
 
@@ -670,6 +785,98 @@ mod tests {
         // accessor against itself and was tautological.
         let cmd = build_claude_command_for_test(true);
         assert_eq!(cmd[0], env::DEFAULT_MOCK_CLAUDE_PATH);
+    }
+
+    // -----------------------------------------------------------------
+    // build_codex_args / build_codex_command
+    // -----------------------------------------------------------------
+
+    fn build_codex_args_for_test(
+        working_dir: &str,
+        model: &str,
+        resume_id: &str,
+        prompt: &str,
+    ) -> Vec<String> {
+        disable_system_log();
+        build_codex_args(working_dir, model, resume_id, prompt)
+    }
+
+    fn build_codex_command_for_test(use_mock: bool) -> Vec<String> {
+        disable_system_log();
+        build_codex_command(use_mock)
+    }
+
+    #[test]
+    fn build_codex_args_basic_shape() {
+        let args = build_codex_args_for_test("/workspace", "", "", "hello");
+        assert_eq!(args[0], "exec");
+        assert_eq!(args[1], "--json");
+        let s_idx = args.iter().position(|a| a == "--sandbox").unwrap();
+        assert_eq!(args[s_idx + 1], "danger-full-access");
+        assert!(args.contains(&"--skip-git-repo-check".to_string()));
+        let c_idx = args.iter().position(|a| a == "-C").unwrap();
+        assert_eq!(args[c_idx + 1], "/workspace");
+        assert_eq!(args.last().unwrap(), "hello");
+    }
+
+    #[test]
+    fn build_codex_args_omits_model_when_empty() {
+        let args = build_codex_args_for_test("/wd", "", "", "p");
+        assert!(!args.contains(&"-m".to_string()));
+    }
+
+    #[test]
+    fn build_codex_args_with_model() {
+        let args = build_codex_args_for_test("/wd", "gpt-5", "", "p");
+        let m_idx = args.iter().position(|a| a == "-m").unwrap();
+        assert_eq!(args[m_idx + 1], "gpt-5");
+    }
+
+    #[test]
+    fn build_codex_args_resume_uses_positional_subcommand() {
+        let args = build_codex_args_for_test("/wd", "", "thread-abc", "follow up");
+        let r_idx = args.iter().position(|a| a == "resume").unwrap();
+        assert_eq!(args[r_idx + 1], "thread-abc");
+        assert_eq!(args[r_idx + 2], "follow up");
+        // resume is a positional sub-subcommand, NOT a --resume flag
+        assert!(!args.contains(&"--resume".to_string()));
+    }
+
+    #[test]
+    fn build_codex_args_resume_layout_is_resume_id_prompt() {
+        let args = build_codex_args_for_test("/wd", "", "id1", "p1");
+        let r_idx = args.iter().position(|a| a == "resume").unwrap();
+        assert_eq!(args.len(), r_idx + 3);
+        assert_eq!(args[r_idx + 1], "id1");
+        assert_eq!(args[r_idx + 2], "p1");
+    }
+
+    #[test]
+    fn build_codex_args_no_double_dash_separator() {
+        // Codex has no variadic flags here; a bare `--` separator would
+        // propagate as a literal arg to the codex CLI.
+        let args = build_codex_args_for_test("/wd", "gpt-5", "id", "hello");
+        assert!(!args.contains(&"--".to_string()));
+    }
+
+    #[test]
+    fn build_codex_args_prompt_last_in_no_resume_path() {
+        let args = build_codex_args_for_test("/wd", "gpt-5", "", "the prompt");
+        assert_eq!(args.last().unwrap(), "the prompt");
+    }
+
+    #[test]
+    fn build_codex_command_uses_codex_binary() {
+        let cmd = build_codex_command_for_test(false);
+        assert_eq!(cmd[0], "codex");
+    }
+
+    #[test]
+    fn build_codex_command_uses_mock_binary() {
+        // Mirrors `build_claude_command_uses_mock_binary`: assert against
+        // the default const so regressions in the install path surface.
+        let cmd = build_codex_command_for_test(true);
+        assert_eq!(cmd[0], env::DEFAULT_MOCK_CODEX_PATH);
     }
 
     #[test]

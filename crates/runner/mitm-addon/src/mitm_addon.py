@@ -513,8 +513,9 @@ def response(flow: http.HTTPFlow) -> None:
         host = flow.request.pretty_host
         port = flow.request.port
 
-    # Log network entry for this run (always MITM mode with full HTTP details)
-    # [NETWORK_LOG_FIELDS] — source of truth for network log fields
+    # Log HTTP network entry for this run. DNS/kmsg rows are produced by the
+    # Rust runner; api-contracts is the shared network-log schema boundary.
+    # [NETWORK_LOG_FIELDS]
     network_log_path = flow.metadata.get("vm_network_log_path", "")
     proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
     if network_log_path:
@@ -620,7 +621,7 @@ def error(flow: http.HTTPFlow) -> None:
     request_size = len(flow.request.raw_content or b"")
     error_msg = flow.error.msg if flow.error else "unknown error"
 
-    # [NETWORK_LOG_FIELDS] — keep in sync with response() and runs.ts schema
+    # [NETWORK_LOG_FIELDS] — HTTP error fields; api-contracts is the shared schema boundary.
     log_entry: dict = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
         "type": "http",
@@ -727,7 +728,7 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
     host = server_addr[0] if server_addr else "unknown"
     port = server_addr[1] if server_addr else 0
 
-    # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
+    # [NETWORK_LOG_FIELDS] — TCP fields; api-contracts is the shared schema boundary.
     log_entry = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
         "type": "tcp",

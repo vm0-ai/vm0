@@ -582,5 +582,37 @@ describe("POST /api/runners/jobs/:id/claim", () => {
       expect(data.secretConnectorMap).toEqual(secretConnectorMap);
       expect(data.encryptedSecrets).toBe(encryptedSecrets);
     });
+
+    it("should forward modelUsageProvider to the runner", async () => {
+      const { versionId } = await createTestCompose(
+        "test-model-usage-provider",
+      );
+
+      const { runId } = await createTestRunnerJob(
+        user.userId,
+        versionId,
+        "vm0/default",
+        { modelUsageProvider: "claude-opus-4-6" },
+      );
+
+      const token = await createTestCliToken(user.userId);
+      const request = createTestRequest(
+        `http://localhost:3000/api/runners/jobs/${runId}/claim`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({}),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const data = await response.json();
+      expect(data.modelUsageProvider).toBe("claude-opus-4-6");
+    });
   });
 });

@@ -6,7 +6,7 @@ use tracing::error;
 ///
 /// Tracks running vcpu, memory, and job count against effective limits.
 /// Uses a mutex for correctness — hold times are negligible (no I/O),
-/// and `try_reserve` is called from a single async task (main loop).
+/// and lease reservation is called from a single async task (main loop).
 ///
 /// Three conditions must hold for admission:
 /// 1. `running_vcpu + vcpu <= effective_vcpu`
@@ -113,11 +113,11 @@ impl ResourceBudget {
         }
     }
 
-    /// Try to reserve resources for a job. Returns `true` if reserved.
+    /// Try to reserve resources for a job without creating a lease.
     ///
     /// If nothing is currently running, the first job is always admitted
     /// regardless of resource limits.
-    pub fn try_reserve(&self, vcpu: u32, memory_mb: u32) -> bool {
+    fn try_reserve_inner(&self, vcpu: u32, memory_mb: u32) -> bool {
         let mut state = self.lock();
 
         // First-job guarantee: always admit when idle.
@@ -146,7 +146,7 @@ impl ResourceBudget {
 
     /// Try to reserve resources and return an owned lease on success.
     pub fn try_reserve_lease(budget: &Arc<Self>, vcpu: u32, memory_mb: u32) -> Option<BudgetLease> {
-        if budget.try_reserve(vcpu, memory_mb) {
+        if budget.try_reserve_inner(vcpu, memory_mb) {
             Some(BudgetLease::new(Arc::clone(budget), vcpu, memory_mb))
         } else {
             None
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn reserve_within_budget() {
         let budget = ResourceBudget::new(8, 16384, 1.0, 0);
-        assert!(budget.try_reserve(2, 2048));
+        assert!(budget.try_reserve_inner(2, 2048));
         let state = budget.lock();
         assert_eq!(state.running_vcpu, 2);
         assert_eq!(state.running_memory_mb, 2048);
@@ -246,18 +246,18 @@ mod tests {
     #[test]
     fn reserve_fails_on_vcpu_exhaustion() {
         let budget = ResourceBudget::new(4, 16384, 1.0, 0);
-        assert!(budget.try_reserve(2, 2048));
-        assert!(budget.try_reserve(2, 2048));
-        assert!(!budget.try_reserve(2, 2048)); // 6 > 4
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(!budget.try_reserve_inner(2, 2048)); // 6 > 4
         assert_eq!(budget.lock().running_count, 2);
     }
 
     #[test]
     fn reserve_fails_on_memory_exhaustion() {
         let budget = ResourceBudget::new(16, 4096, 1.0, 0);
-        assert!(budget.try_reserve(2, 2048));
-        assert!(budget.try_reserve(2, 2048));
-        assert!(!budget.try_reserve(2, 2048)); // 6144 > 4096
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(!budget.try_reserve_inner(2, 2048)); // 6144 > 4096
         // vcpu should not be consumed on memory failure
         assert_eq!(budget.lock().running_vcpu, 4);
     }
@@ -265,9 +265,9 @@ mod tests {
     #[test]
     fn reserve_fails_on_max_concurrent() {
         let budget = ResourceBudget::new(16, 32768, 1.0, 2);
-        assert!(budget.try_reserve(2, 2048));
-        assert!(budget.try_reserve(2, 2048));
-        assert!(!budget.try_reserve(2, 2048)); // count 2 >= max 2
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(!budget.try_reserve_inner(2, 2048)); // count 2 >= max 2
         let state = budget.lock();
         assert_eq!(state.running_vcpu, 4);
         assert_eq!(state.running_memory_mb, 4096);
@@ -276,11 +276,11 @@ mod tests {
     #[test]
     fn release_frees_resources() {
         let budget = ResourceBudget::new(4, 4096, 1.0, 0);
-        assert!(budget.try_reserve(2, 2048));
-        assert!(budget.try_reserve(2, 2048));
-        assert!(!budget.try_reserve(2, 2048));
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(!budget.try_reserve_inner(2, 2048));
         budget.release(2, 2048);
-        assert!(budget.try_reserve(2, 2048)); // works after release
+        assert!(budget.try_reserve_inner(2, 2048)); // works after release
     }
 
     #[test]
@@ -291,6 +291,18 @@ mod tests {
 
         drop(lease);
 
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[test]
+    fn lease_reservation_failure_does_not_consume_budget() {
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 2048).unwrap();
+
+        assert!(ResourceBudget::try_reserve_lease(&budget, 2, 2048).is_none());
+        assert_eq!(budget.allocated(), (2, 2048, 1));
+
+        drop(lease);
         assert_eq!(budget.allocated(), (0, 0, 0));
     }
 
@@ -309,9 +321,9 @@ mod tests {
     fn can_afford_matches_reserve() {
         let budget = ResourceBudget::new(4, 4096, 1.0, 0);
         assert!(budget.can_afford(2, 2048));
-        assert!(budget.try_reserve(2, 2048));
+        assert!(budget.try_reserve_inner(2, 2048));
         assert!(budget.can_afford(2, 2048));
-        assert!(budget.try_reserve(2, 2048));
+        assert!(budget.try_reserve_inner(2, 2048));
         assert!(!budget.can_afford(2, 2048));
     }
 
@@ -322,16 +334,16 @@ mod tests {
         assert_eq!(budget.effective_vcpu(), 8);
         assert_eq!(budget.effective_memory_mb(), 16384);
         for _ in 0..4 {
-            assert!(budget.try_reserve(2, 2048));
+            assert!(budget.try_reserve_inner(2, 2048));
         }
-        assert!(!budget.try_reserve(2, 2048)); // vcpu: 10 > 8
+        assert!(!budget.try_reserve_inner(2, 2048)); // vcpu: 10 > 8
     }
 
     #[test]
     fn max_concurrent_zero_means_no_cap() {
         let budget = ResourceBudget::new(16, 65536, 1.0, 0);
         for _ in 0..8 {
-            assert!(budget.try_reserve(2, 2048));
+            assert!(budget.try_reserve_inner(2, 2048));
         }
         assert_eq!(budget.lock().running_count, 8);
     }
@@ -340,35 +352,35 @@ mod tests {
     fn mixed_resource_jobs() {
         // 8 vcpu, 8GB — can fit 1 browser (4vcpu/4GB) + 2 default (2vcpu/2GB)
         let budget = ResourceBudget::new(8, 8192, 1.0, 0);
-        assert!(budget.try_reserve(4, 4096)); // browser
-        assert!(budget.try_reserve(2, 2048)); // default
-        assert!(budget.try_reserve(2, 2048)); // default — exactly 8/8
-        assert!(!budget.try_reserve(2, 2048)); // no room
+        assert!(budget.try_reserve_inner(4, 4096)); // browser
+        assert!(budget.try_reserve_inner(2, 2048)); // default
+        assert!(budget.try_reserve_inner(2, 2048)); // default — exactly 8/8
+        assert!(!budget.try_reserve_inner(2, 2048)); // no room
     }
 
     #[test]
     fn first_job_admitted_even_if_exceeds_budget() {
         // 1 CPU, 1GB — job needs 2 vcpu / 2GB, exceeds both limits
         let budget = ResourceBudget::new(1, 1024, 1.0, 0);
-        assert!(budget.try_reserve(2, 2048)); // first job always admitted
-        assert!(!budget.try_reserve(2, 2048)); // second blocked
+        assert!(budget.try_reserve_inner(2, 2048)); // first job always admitted
+        assert!(!budget.try_reserve_inner(2, 2048)); // second blocked
         budget.release(2, 2048);
-        assert!(budget.try_reserve(2, 2048)); // first again after release
+        assert!(budget.try_reserve_inner(2, 2048)); // first again after release
     }
 
     #[test]
     fn first_job_bypass_respects_max_concurrent() {
         // max_concurrent=1 still limits to 1 job, but first job can exceed resource budget
         let budget = ResourceBudget::new(1, 512, 1.0, 1);
-        assert!(budget.try_reserve(2, 2048)); // first job: exceeds budget but admitted
-        assert!(!budget.try_reserve(2, 2048)); // blocked by max_concurrent
+        assert!(budget.try_reserve_inner(2, 2048)); // first job: exceeds budget but admitted
+        assert!(!budget.try_reserve_inner(2, 2048)); // blocked by max_concurrent
     }
 
     #[test]
     fn release_returns_to_zero() {
         let budget = ResourceBudget::new(8, 16384, 1.0, 0);
-        assert!(budget.try_reserve(2, 2048));
-        assert!(budget.try_reserve(4, 4096));
+        assert!(budget.try_reserve_inner(2, 2048));
+        assert!(budget.try_reserve_inner(4, 4096));
         budget.release(2, 2048);
         budget.release(4, 4096);
         let state = budget.lock();
@@ -389,7 +401,7 @@ mod tests {
         // help the second thread because count > 0 after the first).
         for _ in 0..10 {
             let b = Arc::clone(&budget);
-            handles.push(std::thread::spawn(move || b.try_reserve(2, 2048)));
+            handles.push(std::thread::spawn(move || b.try_reserve_inner(2, 2048)));
         }
 
         let successes: usize = handles
@@ -416,8 +428,8 @@ mod tests {
     #[test]
     fn allocated_partially_used() {
         let budget = ResourceBudget::new(16, 32768, 1.0, 8);
-        budget.try_reserve(4, 8192);
-        budget.try_reserve(2, 4096);
+        budget.try_reserve_inner(4, 8192);
+        budget.try_reserve_inner(2, 4096);
         let (vcpu, mem, count) = budget.allocated();
         assert_eq!(vcpu, 6);
         assert_eq!(mem, 12288);
@@ -427,8 +439,8 @@ mod tests {
     #[test]
     fn allocated_fully_used() {
         let budget = ResourceBudget::new(4, 4096, 1.0, 2);
-        budget.try_reserve(2, 2048);
-        budget.try_reserve(2, 2048);
+        budget.try_reserve_inner(2, 2048);
+        budget.try_reserve_inner(2, 2048);
         let (vcpu, mem, count) = budget.allocated();
         assert_eq!(vcpu, 4);
         assert_eq!(mem, 4096);
@@ -439,7 +451,7 @@ mod tests {
     fn allocated_overcommitted() {
         // First-job bypass allows exceeding budget
         let budget = ResourceBudget::new(1, 1024, 1.0, 0);
-        budget.try_reserve(2, 2048);
+        budget.try_reserve_inner(2, 2048);
         let (vcpu, mem, count) = budget.allocated();
         assert_eq!(vcpu, 2);
         assert_eq!(mem, 2048);

@@ -11,6 +11,36 @@ fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
 }
 
+/// CLI framework dispatched by the runner via `CLI_AGENT_TYPE`. Unknown
+/// values fall back to `ClaudeCode` so a misconfigured runner can't
+/// crash the guest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Framework {
+    ClaudeCode,
+    Codex,
+}
+
+impl Framework {
+    /// Resolve the framework once and cache it. Subsequent calls are a
+    /// `LazyLock` deref — no repeat env reads, no repeat warning logs,
+    /// and a single source of truth if a third framework is added later.
+    pub fn from_env() -> Self {
+        *FRAMEWORK
+    }
+}
+
+static FRAMEWORK: LazyLock<Framework> = LazyLock::new(|| match cli_agent_type() {
+    "codex" => Framework::Codex,
+    "" | "claude-code" => Framework::ClaudeCode,
+    other => {
+        log_warn!(
+            LOG_TAG,
+            "Unknown CLI_AGENT_TYPE={other:?}, defaulting to claude-code"
+        );
+        Framework::ClaudeCode
+    }
+});
+
 // ---------------------------------------------------------------------------
 // Core
 // ---------------------------------------------------------------------------
@@ -49,6 +79,48 @@ pub const DEFAULT_MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
 static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
     std::env::var("VM0_MOCK_CLAUDE_PATH").unwrap_or_else(|_| DEFAULT_MOCK_CLAUDE_PATH.to_string())
 });
+
+// ---------------------------------------------------------------------------
+// Codex framework env vars
+// ---------------------------------------------------------------------------
+
+static CLI_AGENT_TYPE: LazyLock<String> = LazyLock::new(|| env_or_empty("CLI_AGENT_TYPE"));
+static OPENAI_API_KEY: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_API_KEY"));
+static OPENAI_MODEL: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_MODEL"));
+
+/// `USE_MOCK_CODEX` accepts both `"true"` and `"1"` (matches the Codex
+/// epic's documented invocation shape `USE_MOCK_CODEX=1`). The
+/// claude-side `USE_MOCK_CLAUDE` historically only accepts `"true"`;
+/// the asymmetry is intentional.
+static USE_MOCK_CODEX: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("USE_MOCK_CODEX")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+});
+
+/// Production install location for the mock-codex binary, mirroring
+/// `DEFAULT_MOCK_CLAUDE_PATH`.
+pub const DEFAULT_MOCK_CODEX_PATH: &str = "/usr/local/bin/guest-mock-codex";
+
+static MOCK_CODEX_PATH: LazyLock<String> = LazyLock::new(|| {
+    std::env::var("VM0_MOCK_CODEX_PATH").unwrap_or_else(|_| DEFAULT_MOCK_CODEX_PATH.to_string())
+});
+
+/// `$HOME` is always set in the guest sandbox (rootfs init guarantees it).
+/// If it isn't, the rootfs is misconfigured and we want a loud, visible
+/// failure rather than papering over it with a magic path that would
+/// silently land codex auth state in the wrong directory.
+///
+/// # Panics
+/// Panics if `HOME` is unset. This indicates a rootfs/runner contract
+/// violation and is not user-recoverable; the same fail-fast policy as
+/// `load_artifacts` (`VM0_ARTIFACTS`).
+#[allow(clippy::expect_used)]
+fn load_home_dir() -> String {
+    std::env::var("HOME").expect("HOME must be set in guest sandbox (rootfs init contract)")
+}
+
+static HOME_DIR: LazyLock<String> = LazyLock::new(load_home_dir);
 /// Read an optional `u64` env var, falling back to `default` when it's
 /// unset or unparseable. Emits a stderr warning on the unparseable case so
 /// the mistake is visible in runner logs rather than silently absorbed.
@@ -184,6 +256,24 @@ pub fn use_mock_claude() -> bool {
 }
 pub fn mock_claude_path() -> String {
     MOCK_CLAUDE_PATH.clone()
+}
+pub fn cli_agent_type() -> &'static str {
+    &CLI_AGENT_TYPE
+}
+pub fn openai_api_key() -> &'static str {
+    &OPENAI_API_KEY
+}
+pub fn openai_model() -> &'static str {
+    &OPENAI_MODEL
+}
+pub fn use_mock_codex() -> bool {
+    *USE_MOCK_CODEX
+}
+pub fn mock_codex_path() -> String {
+    MOCK_CODEX_PATH.clone()
+}
+pub fn home_dir() -> &'static str {
+    &HOME_DIR
 }
 pub fn artifacts() -> &'static [ArtifactEnv] {
     &ARTIFACTS

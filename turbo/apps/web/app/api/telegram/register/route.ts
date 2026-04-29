@@ -18,6 +18,8 @@ import { logger } from "../../../../src/lib/shared/logger";
 import { buildTelegramWebhookUrl } from "../../../../src/lib/zero/telegram/webhook-url";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { buildTelegramBotStatus } from "../../integrations/telegram/telegram-status";
+import { getWorkspaceAgentDisplayLabel } from "../../../../src/lib/zero/telegram/handlers/shared";
+import { publishTelegramOrgChangedSafely } from "../../../../src/lib/zero/telegram/realtime";
 
 const registerBodySchema = z.object({
   botToken: z.string().min(1),
@@ -104,6 +106,7 @@ async function configureTelegramBot(params: {
   telegramBotId: string;
   webhookSecret: string;
   requestUrl: string;
+  agentName: string;
 }): Promise<NextResponse | undefined> {
   const baseUrl = getWebhookBaseUrl(params.requestUrl);
   const webhookUrl = buildTelegramWebhookUrl(baseUrl, params.telegramBotId);
@@ -125,8 +128,11 @@ async function configureTelegramBot(params: {
 
   await setMyCommands(params.botToken, [
     { command: "new_session", description: "Start a new conversation" },
-    { command: "connect", description: "Connect to Zero" },
-    { command: "disconnect", description: "Disconnect from Zero" },
+    { command: "connect", description: `Connect to ${params.agentName}` },
+    {
+      command: "disconnect",
+      description: `Disconnect from ${params.agentName}`,
+    },
     { command: "help", description: "Show available commands" },
   ]).catch((error) => {
     log.warn("Failed to register bot commands", { error });
@@ -197,11 +203,13 @@ async function handleExistingInstallation(params: {
   }
 
   const webhookSecret = generateCallbackSecret();
+  const agentName = await getWorkspaceAgentDisplayLabel(resolvedAgentId);
   const configureError = await configureTelegramBot({
     botToken: body.botToken,
     telegramBotId: existing.telegramBotId,
     webhookSecret,
     requestUrl,
+    agentName,
   });
   if (configureError) {
     return configureError;
@@ -222,6 +230,8 @@ async function handleExistingInstallation(params: {
     })
     .where(eq(telegramInstallations.telegramBotId, existing.telegramBotId))
     .returning();
+
+  await publishTelegramOrgChangedSafely(orgId);
 
   return NextResponse.json(
     await buildTelegramBotStatus(updated ?? existing, userId, "valid"),
@@ -346,11 +356,13 @@ export async function POST(request: Request) {
   }
 
   // 6. Set webhook and commands with Telegram
+  const agentName = await getWorkspaceAgentDisplayLabel(resolvedAgentId);
   const configureError = await configureTelegramBot({
     botToken: body.botToken,
     telegramBotId: installation.telegramBotId,
     webhookSecret,
     requestUrl: request.url,
+    agentName,
   });
   if (configureError) {
     // Rollback: delete the installation
@@ -362,6 +374,8 @@ export async function POST(request: Request) {
 
     return configureError;
   }
+
+  await publishTelegramOrgChangedSafely(org.orgId);
 
   return NextResponse.json(
     await buildTelegramBotStatus(installation, userId, "valid"),

@@ -82,6 +82,21 @@ describe("chat-d-015: attachment chips in composer", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("allows audio files in the file picker", async () => {
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Attach")).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).toHaveAttribute(
+      "accept",
+      expect.stringContaining("audio/*"),
+    );
+  });
 });
 
 describe("chat-d-016: connected connector icons in composer trigger", () => {

@@ -38,6 +38,7 @@ mod embedded {
     pub const GUEST_DOWNLOAD: &[u8] = include_bytes!(env!("BUNDLED_GUEST_DOWNLOAD"));
     pub const GUEST_AGENT: &[u8] = include_bytes!(env!("BUNDLED_GUEST_AGENT"));
     pub const GUEST_MOCK_CLAUDE: &[u8] = include_bytes!(env!("BUNDLED_GUEST_MOCK_CLAUDE"));
+    pub const GUEST_MOCK_CODEX: &[u8] = include_bytes!(env!("BUNDLED_GUEST_MOCK_CODEX"));
     pub const GUEST_RESEED: &[u8] = include_bytes!(env!("BUNDLED_GUEST_RESEED"));
 }
 
@@ -48,6 +49,7 @@ fn bundled_guest(name: &str) -> Option<&'static [u8]> {
         "guest-download" => Some(embedded::GUEST_DOWNLOAD),
         "guest-init" => Some(embedded::GUEST_INIT),
         "guest-mock-claude" => Some(embedded::GUEST_MOCK_CLAUDE),
+        "guest-mock-codex" => Some(embedded::GUEST_MOCK_CODEX),
         "guest-reseed" => Some(embedded::GUEST_RESEED),
         _ => None,
     }
@@ -96,6 +98,15 @@ pub struct BuildArgs {
         arg(long, help = "Path to guest-mock-claude binary (required)")
     )]
     guest_mock_claude: Option<PathBuf>,
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-mock-codex binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-mock-codex binary (required)")
+    )]
+    guest_mock_codex: Option<PathBuf>,
     #[cfg_attr(
         bundled_guests,
         arg(long, help = "Path to guest-reseed binary [default: bundled]")
@@ -160,10 +171,12 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     let guest_init = resolve_guest(args.guest_init, "guest-init", tmp_dir.path()).await?;
     let guest_mock_claude =
         resolve_guest(args.guest_mock_claude, "guest-mock-claude", tmp_dir.path()).await?;
+    let guest_mock_codex =
+        resolve_guest(args.guest_mock_codex, "guest-mock-codex", tmp_dir.path()).await?;
     let guest_reseed = resolve_guest(args.guest_reseed, "guest-reseed", tmp_dir.path()).await?;
 
     // Fixed order for deterministic hashing — do NOT reorder.
-    let bins: [(&Path, &str); 5] = [
+    let bins: [(&Path, &str); 6] = [
         (guest_agent.as_path(), "/usr/local/bin/guest-agent"),
         (guest_download.as_path(), "/usr/local/bin/guest-download"),
         (guest_init.as_path(), "/sbin/guest-init"),
@@ -171,6 +184,10 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         (
             guest_mock_claude.as_path(),
             "/usr/local/bin/guest-mock-claude",
+        ),
+        (
+            guest_mock_codex.as_path(),
+            "/usr/local/bin/guest-mock-codex",
         ),
     ];
 
@@ -330,6 +347,7 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
             let guest_download_str = guest_download.to_string_lossy();
             let guest_init_str = guest_init.to_string_lossy();
             let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
+            let guest_mock_codex_str = guest_mock_codex.to_string_lossy();
             let guest_reseed_str = guest_reseed.to_string_lossy();
             let ca_dir_str = ca_dir.to_string_lossy();
             let debootstrap_dir = paths.debootstrap_dir();
@@ -362,6 +380,8 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
                     &guest_init_str,
                     "--guest-mock-claude",
                     &guest_mock_claude_str,
+                    "--guest-mock-codex",
+                    &guest_mock_codex_str,
                     "--guest-reseed",
                     &guest_reseed_str,
                     "--dns-nameserver",

@@ -137,6 +137,13 @@ runs:
         fi
 
         add_env VM0_API_URL "$api_url"
+        if [[ "$INPUT_APP" == "api" ]]; then
+          add_env VM0_WEB_URL "$web_url"
+        fi
+        # Vercel CLI prebuilt deploys do not reliably populate VERCEL_GIT_*
+        # system vars. Inject the workflow head commit explicitly so OTel
+        # / Sentry can tag service.version and release on every deploy.
+        add_env VERCEL_GIT_COMMIT_SHA "${GITHUB_SHA:-}"
         add_env BLOG_BASE_URL "$web_url"
         add_env STRAPI_URL "$strapi_url"
         add_var CLERK_PUBLISHABLE_KEY CLERK_PUBLISHABLE_KEY
@@ -172,6 +179,7 @@ runs:
         add_env SLACK_REDIRECT_BASE_URL "$slack_redirect_base_url"
         if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
           add_env E2E_SLACK_MOCK_ENABLED "1"
+          add_env E2E_TELEGRAM_MOCK_ENABLED "1"
         fi
         add_env PLAUSIBLE_SCRIPT_URL "$plausible_script_url"
         add_secret SENTRY_DSN_WEB SENTRY_DSN_WEB

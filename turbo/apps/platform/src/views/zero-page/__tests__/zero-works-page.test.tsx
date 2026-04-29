@@ -14,7 +14,6 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroIntegrationsSlackContract,
   type SlackOrgStatus,
@@ -52,14 +51,6 @@ function mockSlackAPI(overrides: Partial<SlackOrgStatus> = {}) {
 
 function renderWorksPage() {
   detachedSetupPage({ context, path: "/works" });
-}
-
-function renderWorksPageWithTelegram(enabled: boolean) {
-  detachedSetupPage({
-    context,
-    path: "/works",
-    featureSwitches: { [FeatureSwitchKey.TelegramIntegration]: enabled },
-  });
 }
 
 describe("works page - slack integration status display", () => {
@@ -102,29 +93,22 @@ describe("works page - slack integration status display", () => {
 });
 
 describe("works page - telegram integration card", () => {
-  it("renders Telegram below Slack when the Telegram feature is enabled", async () => {
+  it("renders Telegram below Slack", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    renderWorksPageWithTelegram(true);
+    renderWorksPage();
 
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByText("Telegram")).toBeInTheDocument();
+      expect(screen.getByTestId("telegram-beta-badge")).toHaveTextContent(
+        "Beta",
+      );
     });
-  });
-
-  it("hides Telegram when the Telegram feature is disabled", async () => {
-    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    renderWorksPageWithTelegram(false);
-
-    await waitFor(() => {
-      expect(screen.getByText("Slack")).toBeInTheDocument();
-    });
-    expect(screen.queryByText("Telegram")).not.toBeInTheDocument();
   });
 
   it("opens Telegram settings from the Telegram card", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
-    renderWorksPageWithTelegram(true);
+    renderWorksPage();
 
     await waitFor(() => {
       expect(

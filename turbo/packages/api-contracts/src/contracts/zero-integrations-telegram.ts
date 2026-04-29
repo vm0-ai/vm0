@@ -16,6 +16,7 @@ const telegramTokenStatusSchema = z.enum(["valid", "invalid", "unknown"]);
 const telegramBotSchema = z.object({
   id: z.string(),
   username: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
   agent: z.object({ id: z.string(), name: z.string() }).nullable(),
   isOwner: z.boolean(),
   isConnected: z.boolean(),
@@ -55,6 +56,8 @@ const telegramLinkStatusResponseSchema = z.discriminatedUnion("linked", [
 
 const telegramConnectSignatureSchema = z.object({
   telegramUserId: z.string().min(1),
+  telegramUsername: z.string().max(255).optional(),
+  telegramDisplayName: z.string().max(255).optional(),
   timestamp: z.number(),
   signature: z.string().min(1),
 });
@@ -84,6 +87,18 @@ const telegramRegisterBodySchema = z.object({
   botToken: z.string().min(1),
   defaultAgentId: z.string().trim().min(1).optional(),
   reinstallBotId: z.string().min(1).optional(),
+});
+
+const telegramSetupStatusBodySchema = z.object({
+  botToken: z.string().min(1),
+  origin: z.string().optional(),
+});
+
+const telegramSetupStatusSchema = z.object({
+  id: z.string(),
+  username: z.string().nullable(),
+  domainConfigured: z.boolean(),
+  privacyDisabled: z.boolean(),
 });
 
 /**
@@ -206,6 +221,19 @@ export const zeroIntegrationsTelegramContract = c.router({
     },
     summary: "Register a Telegram bot with VM0",
   },
+  setupStatus: {
+    method: "POST",
+    path: "/api/telegram/setup-status",
+    headers: authHeadersSchema,
+    body: telegramSetupStatusBodySchema,
+    responses: {
+      200: telegramSetupStatusSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Check Telegram bot setup state before registration",
+  },
 });
 
 export type ZeroIntegrationsTelegramContract =
@@ -216,3 +244,4 @@ export type TelegramListResponse = z.infer<typeof telegramListResponseSchema>;
 export type TelegramLinkStatusResponse = z.infer<
   typeof telegramLinkStatusResponseSchema
 >;
+export type TelegramSetupStatus = z.infer<typeof telegramSetupStatusSchema>;

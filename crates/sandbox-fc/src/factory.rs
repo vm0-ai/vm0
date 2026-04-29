@@ -592,8 +592,15 @@ async fn cleanup_leaked_resource(
 ///   "Invalid API key" but still loads the complete module graph. The claude
 ///   binary is a Bun-compiled executable (not Node.js), so
 ///   `NODE_COMPILE_CACHE` has no effect.
+/// - `codex --help`: codex ships as a Node.js CLI (npm `@openai/codex`); the
+///   `--help` path exits cleanly without credentials yet `require`s the full
+///   module graph and triggers V8 JIT compilation, so the resolved-and-parsed
+///   bytecode is captured in the snapshot. Each warmup is wrapped in its own
+///   `(... || true)` sub-shell so a failure on one framework does not block
+///   the other from warming.
 pub const PREWARM_SCRIPT: &str = "\
-    (claude --print --verbose --output-format stream-json hi 2>/dev/null || true)";
+    (claude --print --verbose --output-format stream-json hi 2>/dev/null || true); \
+    (codex --help >/dev/null 2>&1 || true)";
 
 /// Balloon device configuration (invariant across all sandboxes).
 #[derive(serde::Serialize)]
@@ -1089,6 +1096,21 @@ mod tests {
         let h2 = config_hash();
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64); // SHA-256 hex
+    }
+
+    /// Both supported framework CLIs must be warmed during snapshot creation.
+    /// Dropping either one would silently regress cold-start latency for that
+    /// framework's agents — see #11416 / epic #11386.
+    #[test]
+    fn prewarm_script_warms_both_frameworks() {
+        assert!(
+            PREWARM_SCRIPT.contains("claude"),
+            "PREWARM_SCRIPT must warm the claude CLI"
+        );
+        assert!(
+            PREWARM_SCRIPT.contains("codex"),
+            "PREWARM_SCRIPT must warm the codex CLI"
+        );
     }
 
     #[test]

@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.98.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.3...runner-rs-v0.98.0) (2026-04-28)
+
+
+### Features
+
+* **rootfs:** install codex cli binary in sandbox image ([#11425](https://github.com/vm0-ai/vm0/issues/11425)) ([00914b9](https://github.com/vm0-ai/vm0/commit/00914b9c1d98027f8ca2901df58ce4e0653cfba6)), closes [#11416](https://github.com/vm0-ai/vm0/issues/11416)
+* **runner:** framework-aware restore_session for codex ([#11429](https://github.com/vm0-ai/vm0/issues/11429)) ([6e10fcd](https://github.com/vm0-ai/vm0/commit/6e10fcdee3ab50f02f3771cd32aacc7d59dd184b))
+
+## [0.97.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.2...runner-rs-v0.97.3) (2026-04-28)
+
+## [0.97.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.1...runner-rs-v0.97.2) (2026-04-28)
+
+## [0.97.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.0...runner-rs-v0.97.1) (2026-04-28)
+
+
+### Refactoring
+
+* **runner:** model spawn job lifecycle ownership ([#11354](https://github.com/vm0-ai/vm0/issues/11354)) ([3d6c156](https://github.com/vm0-ai/vm0/commit/3d6c156304b24e7967137e8411f38baaafa52ef7))
+
+## [0.97.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.6...runner-rs-v0.97.0) (2026-04-28)
+
+
+### Features
+
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
+## [0.96.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.5...runner-rs-v0.96.6) (2026-04-28)
+
+
+### Bug Fixes
+
+* align telegram typing and markdown responses ([#11312](https://github.com/vm0-ai/vm0/issues/11312)) ([eb4b88e](https://github.com/vm0-ai/vm0/commit/eb4b88eca4db66fedd20eead881a1691408688f4))
+
+## [0.96.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.4...runner-rs-v0.96.5) (2026-04-28)
+
+
+### Bug Fixes
+
+* **runner:** isolate axiom tracing filter ([#11300](https://github.com/vm0-ai/vm0/issues/11300)) ([d999241](https://github.com/vm0-ai/vm0/commit/d9992419e3c93628ee6ed15aefa60c889ee40f0c))
+
+
+### Refactoring
+
+* **runner:** require leases for budget reservations ([#11301](https://github.com/vm0-ai/vm0/issues/11301)) ([d48d3d3](https://github.com/vm0-ai/vm0/commit/d48d3d3e4106f97531b41049fe30956289bb8738))
+
+## [0.96.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.3...runner-rs-v0.96.4) (2026-04-28)
+
+
+### Bug Fixes
+
+* **runner:** cap storage cache downloads ([#11254](https://github.com/vm0-ai/vm0/issues/11254)) ([8c0764f](https://github.com/vm0-ai/vm0/commit/8c0764f7454d22f4afd891854833e6ee15735840))
+* **runner:** gate parking during soft drain transitions ([#11272](https://github.com/vm0-ai/vm0/issues/11272)) ([ccfe41b](https://github.com/vm0-ai/vm0/commit/ccfe41b4c9aa7334623119b679807592588cd703))
+
 ## [0.96.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.2...runner-rs-v0.96.3) (2026-04-27)
 
 

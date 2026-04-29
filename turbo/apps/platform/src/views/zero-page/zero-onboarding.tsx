@@ -8,6 +8,7 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import slackIcon from "./components/settings/icons/slack.svg";
+import telegramIcon from "./components/settings/icons/telegram.svg";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
@@ -31,6 +32,7 @@ import {
   onboardingDisplayName$,
   onboardingAddToSlack$,
   onboardingContinueWeb$,
+  onboardingContinueTelegram$,
   onboardingEffectiveStep$,
   onboardingEffectiveConnectors$,
   onboardingVisibleSteps$,
@@ -42,6 +44,7 @@ import {
   onboardingStepBack$,
   onboardingStepNext$,
   onboardingIsAdmin$,
+  onboardingShowTelegram$,
 } from "../../signals/zero-page/zero-onboarding-actions.ts";
 import {
   allConnectorTypes$,
@@ -364,20 +367,28 @@ function ConnectStepContent() {
 
 function WhereToWorkContent() {
   const name = useLastResolved(onboardingDisplayName$) ?? "Zero";
+  const showTelegram = useLastResolved(onboardingShowTelegram$) ?? false;
 
   const [slackLoadable, addToSlack] = useLoadableSet(onboardingAddToSlack$);
   const [webLoadable, continueWeb] = useLoadableSet(onboardingContinueWeb$);
+  const [telegramLoadable, continueTelegram] = useLoadableSet(
+    onboardingContinueTelegram$,
+  );
 
   const pageSignal = useGet(pageSignal$);
 
   const saving =
-    slackLoadable.state === "loading" || webLoadable.state === "loading";
+    slackLoadable.state === "loading" ||
+    webLoadable.state === "loading" ||
+    telegramLoadable.state === "loading";
   const error =
     slackLoadable.state === "hasError"
       ? String(slackLoadable.error)
       : webLoadable.state === "hasError"
         ? String(webLoadable.error)
-        : null;
+        : telegramLoadable.state === "hasError"
+          ? String(telegramLoadable.error)
+          : null;
 
   return (
     <>
@@ -417,6 +428,29 @@ function WhereToWorkContent() {
             </p>
           </div>
         </button>
+        {showTelegram && (
+          <button
+            type="button"
+            onClick={() => {
+              detach(continueTelegram(pageSignal), Reason.DomCallback);
+            }}
+            disabled={saving}
+            className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+              <img src={telegramIcon} alt="" className="h-7 w-7" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-foreground">
+                Add {name || "Zero"} to Telegram
+              </span>
+              <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
+                Work with {name || "Zero"} in Telegram where your team already
+                collaborates.
+              </p>
+            </div>
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {

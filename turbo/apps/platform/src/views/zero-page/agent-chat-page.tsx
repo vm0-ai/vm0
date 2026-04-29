@@ -111,6 +111,7 @@ function getTagline(
   return taglines[index % taglines.length];
 }
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 class TypewriterText extends Component<
   { text: string; speed?: number },
   { displayed: string }

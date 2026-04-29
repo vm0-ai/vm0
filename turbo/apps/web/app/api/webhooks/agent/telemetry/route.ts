@@ -106,6 +106,8 @@ const router = tsr.router(webhookTelemetryContract, {
 
     if (body.networkLogs && body.networkLogs.length > 0) {
       const axiomDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
+      // [NETWORK_LOG_FIELDS] — preserve producer fields, convert timestamp to
+      // Axiom _time, and attach run/user attribution for queries.
       const axiomEvents = body.networkLogs.map(
         ({ timestamp, ...rest }: Record<string, unknown>) => {
           return {

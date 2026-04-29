@@ -1,10 +1,11 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 
 export async function recordBehavior(
   orgId: string,
   userId: string,
   behaviorKey: string,
+  increment = 1,
 ): Promise<number> {
   const db = globalThis.services.db;
   const [row] = await db
@@ -13,7 +14,7 @@ export async function recordBehavior(
       orgId,
       userId,
       behaviorKey,
-      count: 1,
+      count: increment,
     })
     .onConflictDoUpdate({
       target: [
@@ -22,7 +23,7 @@ export async function recordBehavior(
         userBehaviorCount.behaviorKey,
       ],
       set: {
-        count: sql`${userBehaviorCount.count} + 1`,
+        count: sql`${userBehaviorCount.count} + ${increment}`,
         lastAt: sql`now()`,
       },
     })
@@ -51,6 +52,37 @@ export async function getCount(
     )
     .limit(1);
   return row?.count ?? 0;
+}
+
+/** Batch-read counts for multiple behavior keys in a single query. */
+export async function getCounts(
+  orgId: string,
+  userId: string,
+  behaviorKeys: string[],
+): Promise<Record<string, number>> {
+  if (behaviorKeys.length === 0) return {};
+  const db = globalThis.services.db;
+  const rows = await db
+    .select({
+      key: userBehaviorCount.behaviorKey,
+      count: userBehaviorCount.count,
+    })
+    .from(userBehaviorCount)
+    .where(
+      and(
+        eq(userBehaviorCount.orgId, orgId),
+        eq(userBehaviorCount.userId, userId),
+        inArray(userBehaviorCount.behaviorKey, behaviorKeys),
+      ),
+    );
+  const map: Record<string, number> = {};
+  for (const key of behaviorKeys) {
+    map[key] = 0;
+  }
+  for (const row of rows) {
+    map[row.key] = row.count;
+  }
+  return map;
 }
 
 export async function hasDone(

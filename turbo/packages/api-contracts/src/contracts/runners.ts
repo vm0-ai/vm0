@@ -116,6 +116,8 @@ export const storedExecutionContextSchema = z.object({
   cliAgentType: z.string(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
+  // Debug flag to force real Codex in mock environments (internal use only)
+  debugNoMockCodex: z.boolean().optional(),
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics
@@ -137,6 +139,7 @@ export const storedExecutionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  modelUsageProvider: z.string().optional(),
 });
 
 /**
@@ -165,6 +168,8 @@ export const executionContextSchema = z.object({
   cliAgentType: z.string(),
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
+  // Debug flag to force real Codex in mock environments (internal use only)
+  debugNoMockCodex: z.boolean().optional(),
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies: z.boolean().optional(),
   // Dispatch timestamp for E2E timing metrics
@@ -186,6 +191,7 @@ export const executionContextSchema = z.object({
   // Feature flags evaluated at job creation time (all switch states for user/org)
   featureFlags: z.record(z.string(), z.boolean()).optional(),
   billableFirewalls: z.array(z.string()).optional(),
+  modelUsageProvider: z.string().optional(),
 });
 
 /**

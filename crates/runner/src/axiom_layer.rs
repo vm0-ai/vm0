@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tracing::field::{Field, Visit};
 use tracing::{Event, Metadata, Subscriber};
+use tracing_subscriber::filter::{self, FilterFn};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -60,10 +61,10 @@ const _: () = assert!(
 const DEBUG_FIELD_MAX_BYTES: usize = 4 * 1024;
 const DEFAULT_AXIOM_URL: &str = "https://api.axiom.co";
 const SERVICE_NAME: &str = "runner";
-/// Target used for this layer's own diagnostics (channel-full warnings,
-/// non-success ingest responses, HTTP errors). Filtered out in `enabled()`
-/// so diagnostics reach stderr + the rolling log file via the fmt layer
-/// without looping back into this layer and re-flooding the dispatcher.
+/// Target used for this layer's own diagnostics. Dispatcher diagnostics
+/// (non-success ingest responses, HTTP errors) remain visible to local
+/// logging, while the Axiom per-layer filter keeps any observed diagnostics
+/// from looping back into this layer and re-flooding the dispatcher.
 const INTERNAL_TARGET: &str = "runner::axiom_layer::internal";
 
 /// Holds the dispatcher task. `shutdown().await` drains the queue; dropping
@@ -155,6 +156,24 @@ pub(crate) struct AxiomLayer {
     dropped: AtomicU64,
 }
 
+fn should_ingest(metadata: &Metadata<'_>) -> bool {
+    // Fixed WARN+ threshold. Errors and warnings only; INFO/DEBUG stay out
+    // of Axiom to keep ingest volume predictable. INTERNAL_TARGET is for
+    // this layer's own diagnostics, which should remain local-only.
+    *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
+}
+
+fn ingest_filter() -> FilterFn<fn(&Metadata<'_>) -> bool> {
+    filter::filter_fn(should_ingest as fn(&Metadata<'_>) -> bool)
+}
+
+pub(crate) fn with_ingest_filter<S>(layer: AxiomLayer) -> impl Layer<S> + Send + Sync + 'static
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    layer.with_filter(ingest_filter())
+}
+
 enum Msg {
     Event(Value),
     Close,
@@ -164,20 +183,13 @@ impl<S> Layer<S> for AxiomLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    fn enabled(&self, metadata: &Metadata<'_>, _: Context<'_, S>) -> bool {
-        // Fixed WARN+ threshold. Errors and warnings only; INFO/DEBUG stay out
-        // of Axiom to keep ingest volume predictable. The internal-target
-        // check prevents our own diagnostics from feeding back into the
-        // layer (and re-hammering the full channel).
-        *metadata.level() <= tracing::Level::WARN && metadata.target() != INTERNAL_TARGET
-    }
-
     fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
         let value = serialize_event(event);
         if self.tx.try_send(Msg::Event(value)).is_err() {
-            // Bounded-channel full or dispatcher gone. Surface periodically
-            // under `INTERNAL_TARGET` so the message hits stderr + rolling
-            // file via the fmt layer but `enabled()` filters it out here.
+            // Bounded-channel full or dispatcher gone. Emit a periodic
+            // best-effort diagnostic under `INTERNAL_TARGET`; if tracing
+            // observes it, the Axiom per-layer filter keeps it out of remote
+            // ingest.
             let prev = self.dropped.fetch_add(1, Ordering::Relaxed);
             if prev.is_multiple_of(1000) {
                 tracing::warn!(

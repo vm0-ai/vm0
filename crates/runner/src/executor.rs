@@ -21,7 +21,7 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::idle_pool::ReusableIdleSandbox;
-use crate::kmsg_log;
+use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
@@ -36,7 +36,7 @@ pub struct ExecutorConfig {
     pub registry: ProxyRegistryHandle,
     pub http: HttpClient,
     pub log_paths: LogPaths,
-    pub ip_log_map: kmsg_log::IpLogMap,
+    pub network_log_manager: NetworkLogManager,
     pub home: HomePaths,
 }
 
@@ -128,9 +128,10 @@ pub async fn execute_job_reuse(
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
-    let source_ip = idle_sandbox.source_ip;
-    let prev_storage = idle_sandbox.storage_fingerprints;
-    let sandbox = idle_sandbox.sandbox;
+    let idle_parts = idle_sandbox.into_parts();
+    let source_ip = idle_parts.source_ip;
+    let prev_storage = idle_parts.storage_fingerprints;
+    let sandbox = idle_parts.sandbox;
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
@@ -180,10 +181,9 @@ fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: 
     }
 }
 
-/// Dispatch inputs for the fresh-create path — the counterpart to
-/// [`IdleEntry`] on the reuse path. Holds the UUID for the new VM and the
-/// categorized reason no idle VM was reused. Both originate in
-/// `cmd/start.rs`; the id becomes the sandbox's identity, the reuse result
+/// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM
+/// and the categorized reason no idle VM was reused. Both originate in
+/// `cmd/start.rs`; the id becomes the sandbox's identity, and the reuse result
 /// is forwarded to the guest for /complete metadata.
 #[derive(Clone, Copy)]
 pub struct NewSandboxDispatch {
@@ -357,7 +357,7 @@ async fn execute_reused_sandbox(
     }
 }
 
-/// Register a VM in the proxy registry and IP log map.
+/// Register a VM in the proxy registry and network log manager.
 async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
     let network_log_path = config.log_paths.network_log(context.run_id);
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
@@ -374,32 +374,35 @@ async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, sou
         vars: context.vars.as_ref(),
         capture_network_bodies: context.capture_network_bodies.unwrap_or(false),
         billable_firewalls: &context.billable_firewalls,
+        model_usage_provider: context.model_usage_provider.as_deref(),
     };
     if let Err(e) = config.registry.register_vm(source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
     }
     config
-        .ip_log_map
-        .lock()
+        .network_log_manager
+        .register_source_ip(source_ip, network_log_path)
         .await
-        .insert(source_ip.to_string(), network_log_path);
 }
 
-/// Unregister a VM from the proxy registry and IP log map.
+/// Unregister a VM from the proxy registry and network log manager.
 async fn unregister_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
     if let Err(e) = config.registry.unregister_vm(source_ip).await {
         warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
     }
-    config.ip_log_map.lock().await.remove(source_ip);
+    config
+        .network_log_manager
+        .unregister_source_ip(source_ip)
+        .await;
 }
 
 /// Post-job cleanup: copy logs, unregister proxy.
 ///
 /// Called after `run_in_sandbox` completes, whether the sandbox will be
-/// parked (keep-alive) or destroyed. The mitmproxy network-log upload is
-/// deliberately **not** done here — `spawn_job` (in `cmd/start.rs`) runs
-/// it after `provider.complete` so the user-visible run-complete signal
-/// isn't blocked on the best-effort upload (~1.6 s saved per job).
+/// parked (keep-alive) or destroyed. The network-log upload is deliberately
+/// **not** done here — `spawn_job` (in `cmd/start.rs`) runs it after
+/// `provider.complete` so the user-visible run-complete signal isn't blocked
+/// on the best-effort upload (~1.6 s saved per job).
 async fn post_job_cleanup(
     sandbox: &dyn Sandbox,
     config: &ExecutorConfig,
@@ -1106,31 +1109,52 @@ async fn download_storages(
     Ok(())
 }
 
-/// Write Claude Code session history into the guest filesystem.
+/// Write CLI agent session history into the guest filesystem.
 ///
-/// Only Claude Code uses `.jsonl` session files; other agent types are skipped.
+/// Dispatches on `cli_agent_type`:
+/// - `claude-code` (or empty, the default) → plain `.jsonl` under `~/.claude/projects/-{project}/`.
+/// - `codex` → zstd-compressed `.jsonl.zst` under `~/.codex/sessions/YYYY/MM/DD/`.
+/// - anything else → skipped with a warning (forward-compatible with future agents).
 async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    if !(context.cli_agent_type.is_empty() || context.cli_agent_type == "claude-code") {
-        return Ok(());
-    }
-
-    let project_name = context
-        .working_dir
-        .trim_start_matches('/')
-        .replace('/', "-");
-    let session_dir = format!("/home/user/.claude/projects/-{project_name}");
-
-    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore)
+    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore).
+    // Applied up-front so unknown frameworks still reject malformed IDs in case the
+    // skip branch is ever upgraded to a write.
     if !is_valid_session_id(&session.session_id) {
         return Err(RunnerError::Internal(format!(
             "invalid session_id: {}",
             session.session_id
         )));
     }
+
+    match context.cli_agent_type.as_str() {
+        "" | "claude-code" => restore_claude_session(sandbox, context, session).await,
+        "codex" => restore_codex_session(sandbox, context, session).await,
+        other => {
+            warn!(
+                run_id = %context.run_id,
+                framework = %other,
+                "skipping session restore for unknown framework"
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Write a Claude Code session history file at `~/.claude/projects/-{project}/{id}.jsonl`.
+async fn restore_claude_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &ResumeSession,
+) -> RunnerResult<()> {
+    let project_name = context
+        .working_dir
+        .trim_start_matches('/')
+        .replace('/', "-");
+    let session_dir = format!("/home/user/.claude/projects/-{project_name}");
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
     let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
@@ -1145,7 +1169,54 @@ async fn restore_session(
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
         .await?;
-    info!(run_id = %context.run_id, path = %session_path, "restored session history");
+    info!(run_id = %context.run_id, path = %session_path, "restored claude session history");
+    Ok(())
+}
+
+/// Write a Codex session history file as zstd-compressed JSONL at
+/// `~/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
+///
+/// The date partition uses today's UTC date — `codex exec resume` walks the
+/// `sessions/` tree and resolves files by thread_id, so the partition is a
+/// hint, not a lookup key. Compression level 3 matches `guest-mock-codex`
+/// fixtures so round-trips are byte-stable across host and guest.
+async fn restore_codex_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &ResumeSession,
+) -> RunnerResult<()> {
+    // Layout matches the real codex CLI (and `guest-mock-codex`):
+    // `/home/user/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
+    let today = chrono::Utc::now().date_naive();
+    let session_dir = format!(
+        "/home/user/.codex/sessions/{}/{}/{}",
+        today.format("%Y"),
+        today.format("%m"),
+        today.format("%d"),
+    );
+    let session_path = format!("{session_dir}/{}.jsonl.zst", session.session_id);
+
+    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
+    sandbox
+        .exec(&ExecRequest {
+            cmd: &mkdir_cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: false,
+        })
+        .await?;
+
+    let compressed = zstd::encode_all(session.session_history.as_bytes(), 3)
+        .map_err(|e| RunnerError::Internal(format!("zstd encode failed: {e}")))?;
+    sandbox.write_file(&session_path, &compressed).await?;
+
+    info!(
+        run_id = %context.run_id,
+        path = %session_path,
+        bytes_in = session.session_history.len(),
+        bytes_out = compressed.len(),
+        "restored codex session history",
+    );
     Ok(())
 }
 
@@ -1235,6 +1306,15 @@ fn build_env_json(
         && !context.debug_no_mock_claude.unwrap_or(false)
     {
         env.insert("USE_MOCK_CLAUDE".into(), val);
+    }
+
+    // Pass USE_MOCK_CODEX from host environment for testing
+    // (skip if debugNoMockCodex is set in execution context).
+    // Mirrors the USE_MOCK_CLAUDE path above.
+    if let Ok(val) = std::env::var("USE_MOCK_CODEX")
+        && !context.debug_no_mock_codex.unwrap_or(false)
+    {
+        env.insert("USE_MOCK_CODEX".into(), val);
     }
 
     // Artifacts config (multi-mount).
@@ -1394,6 +1474,7 @@ mod tests {
             secret_connector_map: None,
             cli_agent_type: String::new(),
             debug_no_mock_claude: None,
+            debug_no_mock_codex: None,
             api_start_time: None,
             user_timezone: None,
             capture_network_bodies: None,
@@ -1405,6 +1486,7 @@ mod tests {
             experimental_profile: None,
             feature_flags: None,
             billable_firewalls: vec![],
+            model_usage_provider: None,
         }
     }
 
@@ -1744,6 +1826,39 @@ mod tests {
         match saved {
             Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
             None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_with_mock_codex() {
+        let saved = std::env::var("USE_MOCK_CODEX").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CODEX.
+        unsafe { std::env::set_var("USE_MOCK_CODEX", "1") };
+
+        let ctx = minimal_context();
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert_eq!(env.get("USE_MOCK_CODEX").unwrap(), "1");
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CODEX", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CODEX") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_mock_codex_suppressed_by_debug_flag() {
+        let saved = std::env::var("USE_MOCK_CODEX").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CODEX.
+        unsafe { std::env::set_var("USE_MOCK_CODEX", "1") };
+
+        let mut ctx = minimal_context();
+        ctx.debug_no_mock_codex = Some(true);
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert!(!env.contains_key("USE_MOCK_CODEX"));
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CODEX", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CODEX") },
         }
     }
 
@@ -2269,7 +2384,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_session_skips_non_claude_agent() {
+    async fn restore_session_skips_unknown_framework() {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "custom-agent".into();
@@ -2277,8 +2392,9 @@ mod tests {
             session_id: "sess-1".into(),
             session_history: "data".into(),
         };
-        // Should return Ok without calling exec or write_file.
-        // Push an error to detect unexpected calls.
+        // Unknown frameworks must no-op silently (warn-and-skip) so a typo in
+        // CLI_AGENT_TYPE does not block the run. Pushing an exec error detects
+        // any accidental fallthrough into either framework's restore path.
         sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         restore_session(&sandbox, &ctx, &session).await.unwrap();
     }
@@ -2294,6 +2410,46 @@ mod tests {
         };
         // Should proceed (empty agent type treated as claude-code).
         restore_session(&sandbox, &ctx, &session).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_session_writes_codex_session() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let session = ResumeSession {
+            session_id: "01jzm-thread-id".into(),
+            session_history: "{\"type\":\"thread.started\"}\n".into(),
+        };
+        // mkdir exec + write_file — both succeed by default. The codex branch
+        // performs an additional zstd::encode_all call before write_file; this
+        // test fails fast if that path errors out.
+        restore_session(&sandbox, &ctx, &session).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_session_rejects_invalid_codex_session_id() {
+        // Path-traversal validation runs before framework dispatch, so codex
+        // shares the same allow-list as claude-code.
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let session = ResumeSession {
+            session_id: "../../etc/passwd".into(),
+            session_history: "{}".into(),
+        };
+        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+        assert!(err.to_string().contains("invalid session_id"));
+    }
+
+    #[test]
+    fn codex_session_zstd_round_trip_recovers_bytes() {
+        // The runner compresses session bytes before write; the guest decompresses
+        // on read. This guards against a level/header drift between the two ends.
+        let input = "{\"type\":\"thread.started\",\"thread_id\":\"x\"}\n";
+        let compressed = zstd::encode_all(input.as_bytes(), 3).unwrap();
+        let decoded = zstd::decode_all(compressed.as_slice()).unwrap();
+        assert_eq!(decoded, input.as_bytes());
     }
 
     #[tokio::test]
@@ -2518,7 +2674,7 @@ mod tests {
             registry: proxy::ProxyRegistryHandle::new(registry_path, lock_path),
             http: crate::http::HttpClient::new("http://localhost:9999".into()).unwrap(),
             log_paths: LogPaths::new(log_dir),
-            ip_log_map: kmsg_log::new_ip_log_map(),
+            network_log_manager: NetworkLogManager::new(),
             home: HomePaths::with_root(dir.to_path_buf()),
         }
     }
@@ -2534,6 +2690,45 @@ mod tests {
     fn test_budget_lease() -> crate::resource_budget::BudgetLease {
         let budget = Arc::new(crate::resource_budget::ResourceBudget::new(1, 1, 1.0, 0));
         crate::resource_budget::ResourceBudget::try_reserve_lease(&budget, 2, 2048).unwrap()
+    }
+
+    async fn make_reusable_idle_sandbox(
+        sandbox: Box<dyn Sandbox>,
+        source_ip: String,
+        session_id: &str,
+    ) -> (ReusableIdleSandbox, crate::resource_budget::BudgetLease) {
+        use crate::idle_pool::{
+            IdlePool, IdlePoolConfig, IdleUnparkResult, ParkCandidate, ParkCandidateParts,
+            ParkResult,
+        };
+
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: std::time::Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
+            sandbox,
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: session_id.into(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: "vm0/default".into(),
+            budget_lease: test_budget_lease(),
+            source_ip,
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let entry = pool.take(session_id).expect("idle entry should exist");
+        match entry.try_unpark().await {
+            IdleUnparkResult::Reused {
+                sandbox,
+                budget_lease,
+            } => (sandbox, budget_lease),
+            IdleUnparkResult::Failed { error, .. } => {
+                panic!("test idle entry should unpark: {error}");
+            }
+        }
     }
 
     fn test_telemetry(config: &ExecutorConfig, ctx: &ExecutionContext) -> JobTelemetry {
@@ -2815,24 +3010,9 @@ mod tests {
         assert_eq!(outcome.exit_code, 0);
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
-        // Build an idle entry from the outcome
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox,
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "test-session".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: outcome.source_ip,
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         // Reuse the sandbox for a second turn
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
@@ -2872,22 +3052,6 @@ mod tests {
         assert_eq!(outcome.exit_code, 0);
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
-        // Build idle entry
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox,
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "test-session".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: outcome.source_ip,
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         // Second turn: reuse with new session history
         let mut ctx2 = minimal_context();
         ctx2.resume_session = Some(ResumeSession {
@@ -2899,7 +3063,8 @@ mod tests {
         });
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, ctx2, &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
@@ -2908,7 +3073,9 @@ mod tests {
 
     #[tokio::test]
     async fn idle_pool_park_and_reuse_cycle() {
-        use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult};
+        use crate::idle_pool::{
+            IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult,
+        };
 
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
@@ -2938,7 +3105,7 @@ mod tests {
             max_idle: 0,
         });
 
-        let entry = crate::idle_pool::IdleEntry {
+        let entry = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox,
             factory: std::sync::Arc::new(
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
@@ -2948,23 +3115,29 @@ mod tests {
             profile_name: "vm0/default".into(),
             budget_lease: test_budget_lease(),
             source_ip: outcome.source_ip,
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
+        });
 
-        let result = pool.park("session-1".into(), entry);
+        let result = pool.park(entry);
         assert!(matches!(result, ParkResult::Parked));
         assert_eq!(pool.len(), 1);
 
         // Take from pool for reuse
-        let reuse_entry = pool.take("session-1").expect("should find session");
+        let reuse_entry = pool.take("test-session").expect("should find session");
         assert_eq!(pool.len(), 0);
-        assert_eq!(reuse_entry.profile_name, "vm0/default");
+        assert_eq!(reuse_entry.profile_name(), "vm0/default");
 
         // Execute reuse
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = reuse_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) = match reuse_entry.try_unpark().await {
+            crate::idle_pool::IdleUnparkResult::Reused {
+                sandbox,
+                budget_lease,
+            } => (sandbox, budget_lease),
+            crate::idle_pool::IdleUnparkResult::Failed { error, .. } => {
+                panic!("test idle entry should unpark: {error}");
+            }
+        };
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
@@ -2973,7 +3146,7 @@ mod tests {
 
     #[tokio::test]
     async fn idle_pool_profile_mismatch_returns_none() {
-        use crate::idle_pool::{IdlePool, IdlePoolConfig};
+        use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts};
 
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: std::time::Duration::from_secs(300),
@@ -2981,7 +3154,7 @@ mod tests {
         });
 
         // Park with profile "vm0/default"
-        let entry = crate::idle_pool::IdleEntry {
+        let entry = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox: Box::new(sandbox_mock::MockSandbox::new("test")),
             factory: std::sync::Arc::new(
                 Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>
@@ -2991,18 +3164,16 @@ mod tests {
             profile_name: "vm0/default".into(),
             budget_lease: test_budget_lease(),
             source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-        let _ = pool.park("session-1".into(), entry);
+        });
+        let _ = pool.park(entry);
 
         // Take and verify profile
-        let taken = pool.take("session-1").expect("should find");
-        assert_eq!(taken.profile_name, "vm0/default");
+        let taken = pool.take("test-session").expect("should find");
+        assert_eq!(taken.profile_name(), "vm0/default");
 
         // Simulate caller checking profile mismatch
-        let matches_browser = taken.profile_name == "vm0/browser";
+        let matches_browser = taken.profile_name() == "vm0/browser";
         assert!(!matches_browser, "should not match different profile");
     }
 
@@ -3015,23 +3186,9 @@ mod tests {
         let sandbox = MockSandbox::new("reuse-clock-fail");
         sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox: Box::new(sandbox),
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "sess-1".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
         let (outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
@@ -3058,23 +3215,9 @@ mod tests {
         }));
         sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox: Box::new(sandbox),
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "sess-1".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
         let (outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
@@ -3103,23 +3246,9 @@ mod tests {
             session_history: r#"{"type":"init"}"#.into(),
         });
 
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox: Box::new(sandbox),
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "sess-abc".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-abc").await;
         let (outcome, _telemetry) = execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
@@ -3607,23 +3736,9 @@ mod tests {
         .await;
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox,
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "test-session".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: outcome.source_ip,
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let (_outcome, telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 

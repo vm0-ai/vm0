@@ -10,7 +10,13 @@ import {
   TOKEN_CATEGORY_OUTPUT,
 } from "./model-usage-categories";
 
-interface UsagePeriod {
+/**
+ * Reporting time terms:
+ * - activityTime maps to ledger created_at, when usage activity was recorded.
+ * - billingTime maps to ledger processed_at, when credits were settled.
+ */
+interface BillingWindow {
+  /** Half-open [start, end) window over billingTime. */
   start: Date;
   end: Date;
 }
@@ -38,16 +44,16 @@ interface UsageRunTotalsRow {
 
 /**
  * Reporting aggregate for member usage across the legacy and usage_event
- * ledgers. Uses processed_at so reporting follows the posted ledger time.
+ * ledgers. Member totals are billing-period data, so they use billingTime.
  */
 export async function getMemberUsageTotals(
   db: Database,
   orgId: string,
-  period: UsagePeriod,
+  billingWindow: BillingWindow,
 ): Promise<UsageMemberTotalsRow[]> {
   const [creditRows, eventRows] = await Promise.all([
-    getLegacyMemberUsageTotals(db, orgId, period),
-    getUsageEventMemberUsageTotals(db, orgId, period),
+    getLegacyMemberUsageTotals(db, orgId, billingWindow),
+    getUsageEventMemberUsageTotals(db, orgId, billingWindow),
   ]);
 
   return mergeMemberTotals([...creditRows, ...eventRows]);
@@ -56,7 +62,7 @@ export async function getMemberUsageTotals(
 function getLegacyMemberUsageTotals(
   db: Database,
   orgId: string,
-  period: UsagePeriod,
+  billingWindow: BillingWindow,
 ): Promise<UsageMemberTotalsRow[]> {
   const totalsSelect = {
     userId: creditUsage.userId,
@@ -89,8 +95,8 @@ function getLegacyMemberUsageTotals(
       and(
         eq(creditUsage.orgId, orgId),
         eq(creditUsage.status, "processed"),
-        gte(creditUsage.processedAt, period.start),
-        lt(creditUsage.processedAt, period.end),
+        gte(creditUsage.processedAt, billingWindow.start),
+        lt(creditUsage.processedAt, billingWindow.end),
       ),
     )
     .groupBy(creditUsage.userId);
@@ -99,7 +105,7 @@ function getLegacyMemberUsageTotals(
 function getUsageEventMemberUsageTotals(
   db: Database,
   orgId: string,
-  period: UsagePeriod,
+  billingWindow: BillingWindow,
 ): Promise<UsageMemberTotalsRow[]> {
   const totalsSelect = {
     userId: usageEvent.userId,
@@ -126,8 +132,8 @@ function getUsageEventMemberUsageTotals(
       and(
         eq(usageEvent.orgId, orgId),
         eq(usageEvent.status, "processed"),
-        gte(usageEvent.processedAt, period.start),
-        lt(usageEvent.processedAt, period.end),
+        gte(usageEvent.processedAt, billingWindow.start),
+        lt(usageEvent.processedAt, billingWindow.end),
       ),
     )
     .groupBy(usageEvent.userId);

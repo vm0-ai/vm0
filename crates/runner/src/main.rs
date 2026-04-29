@@ -14,6 +14,7 @@ mod ids;
 mod image_hash;
 mod kmsg_log;
 mod lock;
+mod network_log_manager;
 mod network_logs;
 mod paths;
 mod prefetch;
@@ -153,6 +154,7 @@ fn init_tracing_with_file(
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(writer)
         .with_ansi(false);
+    let axiom_layer = axiom_layer.map(axiom_layer::with_ingest_filter);
     tracing_subscriber::registry()
         .with(fmt_layer)
         .with(axiom_layer)
@@ -170,6 +172,7 @@ fn init_tracing_with_file(
 /// stdout, which is the wrong sink for a CLI tool.
 fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
     let fmt_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+    let axiom_layer = axiom_layer.map(axiom_layer::with_ingest_filter);
     tracing_subscriber::registry()
         .with(fmt_layer)
         .with(axiom_layer)

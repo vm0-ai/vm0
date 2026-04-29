@@ -17,7 +17,6 @@ import {
 } from "@vm0/api-contracts/contracts/onboarding";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
-
 const context = testContext();
 const mockApi = createMockApi(context);
 
@@ -281,6 +280,34 @@ describe("onboarding add to Slack → works page", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe("/works");
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Continue in Telegram
+// ---------------------------------------------------------------------------
+
+describe("onboarding set up Telegram → settings page", () => {
+  it("should navigate to /settings/telegram after saving the agent", async () => {
+    mockAdminOnboarding();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+    });
+    await walkAdminToWhereStep();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Add .+ to Telegram/)).toBeInTheDocument();
+    });
+
+    switchToAdminComplete();
+
+    click(screen.getByText(/Add .+ to Telegram/));
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/settings/telegram");
     });
   });
 });

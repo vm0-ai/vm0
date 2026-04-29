@@ -3,7 +3,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -156,29 +155,12 @@ describe("chat-d-032: mic button visibility with feature switch", () => {
     clearMediaDevices();
   });
 
-  it("should not render mic button when VoiceIO feature switch is off", async () => {
+  it("should render mic button when VoiceIO is enabled and browser supports getUserMedia", async () => {
     mockChatLifecycle();
 
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: false },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("Send")).toBeInTheDocument();
-    });
-
-    expect(screen.queryByLabelText("Voice input")).not.toBeInTheDocument();
-  });
-
-  it("should render mic button when VoiceIO feature switch is on and browser supports getUserMedia", async () => {
-    mockChatLifecycle();
-
-    detachedSetupPage({
-      context,
-      path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     await waitFor(() => {
@@ -193,7 +175,6 @@ describe("chat-d-032: mic button visibility with feature switch", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     await waitFor(() => {
@@ -221,7 +202,6 @@ describe("chat-i-033: mic button recording interaction", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const micButton = await waitFor(() => {
@@ -255,7 +235,6 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const textarea = await waitFor(() => {
@@ -293,7 +272,6 @@ describe("chat-i-034: mic button transcription appends to draft", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const textarea = await waitFor(() => {
@@ -338,7 +316,6 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const micButton = await waitFor(() => {
@@ -370,7 +347,6 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const micButton = await waitFor(() => {
@@ -395,7 +371,6 @@ describe("chat-i-035: mic button gates on audio input quota", () => {
     detachedSetupPage({
       context,
       path: CHAT_PATH,
-      featureSwitches: { [FeatureSwitchKey.AudioInput]: true },
     });
 
     const micButton = await waitFor(() => {

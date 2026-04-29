@@ -2,13 +2,13 @@ import { eq } from "drizzle-orm";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
-import { createTelegramClient, sendMessage, deleteMessage } from "../client";
+import { createTelegramClient, sendMessage } from "../client";
 import {
-  sendThinkingMessage,
+  sendTypingAction,
   sendQueuedNotification,
   enrichTelegramPrompt,
   formatReplyQuote,
-  appendPhotoContext,
+  appendTelegramMessageContext,
   lookupTelegramThreadSession,
   storeTelegramMessage,
   getWorkspaceAgent,
@@ -16,9 +16,11 @@ import {
   resolveSessionCompose,
   resolveUserLink,
   buildConnectUrl,
-  buildAgentLogsUrl,
-  buildLogsUrl,
+  resolveTelegramAuditLogsUrl,
+  buildTelegramConnectReplyMarkup,
   formatTelegramConnectPrompt,
+  formatTelegramUserDisplayName,
+  getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { fetchTelegramContext } from "../context";
 import { runAgentForTelegram } from "./run-agent";
@@ -62,17 +64,30 @@ export async function handleTelegramDirectMessage(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
   // 2. Check user link (auto-completes pending link if needed)
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+    telegramDisplayName,
+  );
 
   if (!userLink) {
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
     const connectUrl = buildConnectUrl(
       installation.telegramBotId,
       fromUserId,
       botToken,
+      message.from?.username ?? null,
+      telegramDisplayName,
     );
-    await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
+    await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
+      replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+    });
     return;
   }
 
@@ -89,8 +104,8 @@ export async function handleTelegramDirectMessage(
   }
   const agentName = getAgentDisplayLabel(defaultAgent);
 
-  // 4. Send thinking placeholder message
-  const thinkingMessage = await sendThinkingMessage(client, chatId, agentName);
+  // 4. Send typing indicator
+  await sendTypingAction(client, chatId);
 
   // 5. Store incoming message
   await storeTelegramMessage(installationId, chatId, message);
@@ -136,7 +151,7 @@ export async function handleTelegramDirectMessage(
     message.text ?? message.caption ?? "",
     message.from,
   );
-  let enrichedPrompt = appendPhotoContext(
+  let enrichedPrompt = appendTelegramMessageContext(
     messageContent,
     message,
     installation.telegramBotId,
@@ -174,14 +189,11 @@ export async function handleTelegramDirectMessage(
       agentId: composeId,
       existingSessionId: existingSessionId ?? null,
       isDM: true,
-      thinkingMessageId: thinkingMessage
-        ? String(thinkingMessage.message_id)
-        : null,
     },
   });
 
   if (status === "queued") {
-    await sendQueuedNotification(client, chatId, thinkingMessage);
+    await sendQueuedNotification(client, chatId);
   } else if (status === "failed") {
     log.error("Failed to dispatch agent run (DM)", {
       chatId,
@@ -190,12 +202,13 @@ export async function handleTelegramDirectMessage(
       runId,
       response,
     });
-    if (thinkingMessage) {
-      await deleteMessage(client, chatId, thinkingMessage.message_id);
-    }
     const errorDetail =
       response ?? "An unexpected error occurred. Please try again later.";
-    const linkUrl = runId ? buildLogsUrl(runId) : buildAgentLogsUrl();
+    const linkUrl = await resolveTelegramAuditLogsUrl({
+      orgId: installation.orgId,
+      userId: userLink.vm0UserId,
+      runId,
+    });
     await sendMessage(
       client,
       chatId,

@@ -9,11 +9,15 @@ const SCHEMA = {
   CLERK_PUBLISHABLE_KEY: z.string().min(1),
   SECRETS_ENCRYPTION_KEY: z.string().length(64),
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
+  OPENAI_API_KEY: z.string().min(1),
   SENTRY_DSN: z.url().optional(),
   VERCEL_GIT_COMMIT_SHA: z.string().optional(),
   VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
   VITEST: z.enum(["true", "false"]).optional(),
   VM0_DEBUG: z.string().optional(),
+  VM0_WEB_URL: z.url().optional(),
+  AXIOM_TOKEN_TELEMETRY: z.string().min(1),
+  AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({

@@ -1,15 +1,20 @@
 import { NextResponse } from "next/server";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
-import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 import { getOrgTierSafe } from "../../../../../src/lib/zero/org/org-metadata-service";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { recordBehavior } from "../../../../../src/lib/zero/behavior/user-behavior-count-service";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
   checkAudioInputQuota,
+  MAX_REQUEST_DURATION_SECONDS,
+  DAILY_RATE_LIMITS,
+  DAILY_DURATION_LIMITS,
+  dailyRateKey,
+  dailyDurationKey,
+  getDailyCounts,
 } from "../../../../../src/lib/zero/voice-io/audio-input-policy";
+import { getAudioDuration } from "../../../../../src/lib/zero/voice-io/audio-duration";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -30,6 +35,51 @@ const ALLOWED_MIME_TYPES = new Set([
   "audio/mpga",
 ]);
 
+async function checkDailyLimits(
+  orgId: string,
+  userId: string,
+  orgTier: OrgTier,
+  durationSeconds: number | null,
+): Promise<NextResponse | null> {
+  const { rateCount, durationSeconds: dailyDurationSeconds } =
+    await getDailyCounts(orgId, userId);
+
+  const rateLimit = DAILY_RATE_LIMITS[orgTier];
+  if (rateLimit !== null && rateLimit !== undefined && rateCount >= rateLimit) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Daily request rate limit exceeded",
+          code: "DAILY_RATE_LIMIT_EXCEEDED",
+        },
+        quota: { count: rateCount, limit: rateLimit },
+      },
+      { status: 429 },
+    );
+  }
+
+  const durationLimit = DAILY_DURATION_LIMITS[orgTier];
+  const safeDuration = durationSeconds ?? 0;
+  if (
+    durationLimit !== null &&
+    durationLimit !== undefined &&
+    dailyDurationSeconds + safeDuration > durationLimit
+  ) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Daily audio duration limit exceeded",
+          code: "DAILY_DURATION_LIMIT_EXCEEDED",
+        },
+        quota: { count: dailyDurationSeconds, limit: durationLimit },
+      },
+      { status: 429 },
+    );
+  }
+
+  return null;
+}
+
 export async function POST(request: Request): Promise<Response> {
   initServices();
 
@@ -44,24 +94,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   const orgId = authCtx.orgId;
 
-  // 2. Feature switch check
-  const overrides = await loadFeatureSwitchOverrides(
-    authCtx.orgId,
-    authCtx.userId,
-  );
-  const enabled = isFeatureEnabled(FeatureSwitchKey.AudioInput, {
-    orgId: authCtx.orgId,
-    userId: authCtx.userId,
-    overrides,
-  });
-  if (!enabled) {
-    return NextResponse.json(
-      { error: { message: "Audio input is not enabled", code: "FORBIDDEN" } },
-      { status: 403 },
-    );
-  }
-
-  // 3. Quota check (free tier has a per-user limit; pro/team are unlimited)
+  // 2. Quota check (free tier has a per-user limit; pro/team are unlimited)
   const orgTier = await getOrgTierSafe(orgId);
   const quota = await checkAudioInputQuota(orgId, authCtx.userId, orgTier);
   if (!quota.allowed) {
@@ -118,7 +151,35 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 7. Call OpenAI STT API
+  // 7. Parse audio duration and enforce per-request + daily limits.
+  // All checks happen BEFORE the OpenAI proxy so abuse costs are zero.
+  const durationSeconds = await getAudioDuration(file);
+  if (
+    durationSeconds !== null &&
+    durationSeconds > MAX_REQUEST_DURATION_SECONDS
+  ) {
+    return NextResponse.json(
+      {
+        error: {
+          message: `Audio duration (${durationSeconds}s) exceeds maximum (${MAX_REQUEST_DURATION_SECONDS}s)`,
+          code: "AUDIO_DURATION_TOO_LONG",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const dailyLimits = await checkDailyLimits(
+    orgId,
+    authCtx.userId,
+    orgTier,
+    durationSeconds,
+  );
+  if (dailyLimits) return dailyLimits;
+
+  const safeDuration = durationSeconds ?? 0;
+
+  // 8. Call OpenAI STT API
   const openaiForm = new FormData();
   openaiForm.append("file", file, file.name || "audio.webm");
   openaiForm.append("model", "gpt-4o-mini-transcribe");
@@ -157,11 +218,15 @@ export async function POST(request: Request): Promise<Response> {
 
   const result = (await openaiResponse.json()) as { text: string };
 
-  // 8. Record the successful audio input for free-tier quota accounting.
-  // Skipped on failure so infra errors don't burn the user's free quota.
-  if (orgTier === "free") {
-    await recordBehavior(orgId, authCtx.userId, AUDIO_INPUT_BEHAVIOR_KEY);
-  }
+  // 9. Record daily rate + duration, and legacy free-tier quota.
+  // Parallel writes — different behavior keys, no conflict.
+  await Promise.all([
+    recordBehavior(orgId, authCtx.userId, dailyRateKey()),
+    recordBehavior(orgId, authCtx.userId, dailyDurationKey(), safeDuration),
+    orgTier === "free"
+      ? recordBehavior(orgId, authCtx.userId, AUDIO_INPUT_BEHAVIOR_KEY)
+      : Promise.resolve(0),
+  ]);
 
   return NextResponse.json({ text: result.text });
 }

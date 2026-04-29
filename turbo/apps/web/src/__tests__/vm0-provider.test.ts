@@ -154,13 +154,17 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("kimi-k2.6")).toBe("kimi-k2.6");
     });
 
-    it("should resolve DeepSeek V4 models to deepseek-api-key", () => {
+    it("should resolve deepseek-v4-pro to openrouter-api-key with upstream id", () => {
       expect(getVm0ConcreteProviderType("deepseek-v4-pro")).toBe(
-        "deepseek-api-key",
+        "openrouter-api-key",
       );
-      expect(getVm0Vendor("deepseek-v4-pro")).toBe("deepseek");
-      expect(getVm0ApiModel("deepseek-v4-pro")).toBe("deepseek-v4-pro");
+      expect(getVm0Vendor("deepseek-v4-pro")).toBe("openrouter");
+      expect(getVm0ApiModel("deepseek-v4-pro")).toBe(
+        "deepseek/deepseek-v4-pro",
+      );
+    });
 
+    it("should resolve deepseek-v4-flash to deepseek-api-key", () => {
       expect(getVm0ConcreteProviderType("deepseek-v4-flash")).toBe(
         "deepseek-api-key",
       );
@@ -231,7 +235,7 @@ describe("VM0 managed model provider", () => {
   });
 
   describe("deepseek v4 routing integration", () => {
-    it("should inject deepseek-v4-pro as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-pro provider", async () => {
+    it("should inject deepseek/deepseek-v4-pro as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-pro provider", async () => {
       const userId = uniqueId("ds-v4-pro-route");
       const { orgId } = await setupOrg(
         userId,
@@ -242,9 +246,9 @@ describe("VM0 managed model provider", () => {
       await insertOrgDefaultModelProvider(orgId, "vm0", "deepseek-v4-pro");
       await insertVm0ApiKeys([
         {
-          vendor: "deepseek",
-          model: "deepseek-v4-pro",
-          apiKey: "sk-dstestkey-pro",
+          vendor: "openrouter",
+          model: "deepseek/deepseek-v4-pro",
+          apiKey: "sk-or-v1-dstestkey-pro",
           label: "deepseek-v4-pro test key",
         },
       ]);
@@ -256,15 +260,12 @@ describe("VM0 managed model provider", () => {
       );
 
       expect(result.resolvedModelProvider).toBe("vm0");
-      expect(result.concreteProviderType).toBe("deepseek-api-key");
+      expect(result.concreteProviderType).toBe("openrouter-api-key");
       expect(result.selectedModel).toBe("deepseek-v4-pro");
       expect(result.injectedEnvironment?.ANTHROPIC_MODEL).toBe(
-        "deepseek-v4-pro",
+        "deepseek/deepseek-v4-pro",
       );
-      expect(result.injectedEnvironment?.ANTHROPIC_BASE_URL).toBe(
-        "https://api.deepseek.com/anthropic",
-      );
-      expect(result.secrets?.DEEPSEEK_API_KEY).toBeDefined();
+      expect(result.secrets?.OPENROUTER_API_KEY).toBeDefined();
     });
 
     it("should inject deepseek-v4-flash as ANTHROPIC_MODEL when resolving vm0 deepseek-v4-flash provider", async () => {

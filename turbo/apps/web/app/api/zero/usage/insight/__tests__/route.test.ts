@@ -533,6 +533,71 @@ describe("GET /api/zero/usage/insight", () => {
     });
   });
 
+  it("returns scheduleDescription alongside scheduleName for scheduled runs", async () => {
+    const { userId, orgId } = await context.user;
+    // Two separate agents, both with a "default" schedule — the unique
+    // constraint is (agent_id, name, org_id, user_id), so duplicate names
+    // can only collide across agents. This mirrors the real-world dashboard
+    // case where multiple "default" schedules need to be told apart.
+    const { composeId: agentA } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose-a"),
+      orgId,
+    });
+    const { composeId: agentB } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose-b"),
+      orgId,
+    });
+
+    const describedScheduleId = await seedTestSchedule({
+      agentId: agentA,
+      userId,
+      orgId,
+      name: "default",
+      description: "Daily morning brief",
+    });
+    const undescribedScheduleId = await seedTestSchedule({
+      agentId: agentB,
+      userId,
+      orgId,
+      name: "default",
+    });
+
+    for (const [agentId, scheduleId] of [
+      [agentA, describedScheduleId],
+      [agentB, undescribedScheduleId],
+    ] as const) {
+      const { runId } = await seedTestRun(userId, agentId, {
+        triggerSource: "schedule",
+        scheduleId,
+        status: "completed",
+      });
+      await insertTestCreditUsageForRun({
+        runId,
+        orgId,
+        userId,
+        creditsCharged: 50,
+        status: "processed",
+      });
+    }
+
+    const response = await GET(
+      makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+
+    const described = data.schedules.find((s) => {
+      return s.scheduleId === describedScheduleId;
+    });
+    const undescribed = data.schedules.find((s) => {
+      return s.scheduleId === undescribedScheduleId;
+    });
+    expect(described?.scheduleDescription).toBe("Daily morning brief");
+    expect(undescribed?.scheduleDescription).toBeNull();
+  });
+
   it("scope isolation — other user's activity in same org is invisible", async () => {
     const { userId, orgId } = await context.user;
     const otherUserId = uniqueId("other-user");
@@ -689,6 +754,42 @@ describe("GET /api/zero/usage/insight", () => {
     expect(data.grandTotalTokens).toBe(215);
     expect(totals["chat"]).toEqual({ credits: 20, tokens: 215 });
     expect(totals["others"]).toEqual({ credits: 7, tokens: 0 });
+  });
+
+  it("buckets usage_event rows by activity time, not billing time", async () => {
+    context.mocks.date.setSystemTime(new Date("2026-04-23T15:00:00Z"));
+
+    const { userId, orgId } = await context.user;
+    await insertTestUsageEvent(orgId, {
+      userId,
+      kind: "connector",
+      provider: "x",
+      category: "tweet.read",
+      quantity: 1,
+      creditsCharged: 33,
+      status: "processed",
+      createdAt: new Date("2026-04-22T12:00:00Z"),
+      processedAt: new Date("2026-04-23T12:00:00Z"),
+    });
+
+    const yesterdayResponse = await GET(
+      makeRequest({ range: "yesterday", groupBy: "source", tz: "UTC" }),
+    );
+    expect(yesterdayResponse.status).toBe(200);
+    const yesterdayData =
+      (await yesterdayResponse.json()) as UsageInsightResponse;
+    const yesterdayTotals = sumBucketSeries(yesterdayData.buckets);
+
+    expect(yesterdayData.grandTotalCredits).toBe(33);
+    expect(yesterdayTotals["others"]).toEqual({ credits: 33, tokens: 0 });
+
+    const todayResponse = await GET(
+      makeRequest({ range: "today", groupBy: "source", tz: "UTC" }),
+    );
+    expect(todayResponse.status).toBe(200);
+    const todayData = (await todayResponse.json()) as UsageInsightResponse;
+
+    expect(todayData.grandTotalCredits).toBe(0);
   });
 
   it("includes run-linked usage_event rows in agent buckets and channel totals", async () => {

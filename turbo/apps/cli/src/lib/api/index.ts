@@ -127,7 +127,13 @@ export {
 } from "./domains/integrations-slack";
 
 // Domain modules - Integrations Telegram
-export { downloadTelegramFile } from "./domains/integrations-telegram";
+export {
+  listTelegramBots,
+  sendTelegramMessage,
+  downloadTelegramFile,
+  initTelegramFileUpload,
+  completeTelegramFileUpload,
+} from "./domains/integrations-telegram";
 
 // Domain modules - Integrations Chat
 export { sendChatMessage } from "./domains/integrations-chat";

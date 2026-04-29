@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { pickBestPhoto, formatTelegramFileForContext } from "../images";
+import {
+  extractTelegramFileForContext,
+  pickBestPhoto,
+  formatTelegramFileForContext,
+} from "../images";
 
 describe("pickBestPhoto", () => {
   it("should return undefined for empty array", () => {
@@ -100,9 +104,10 @@ describe("formatTelegramFileForContext", () => {
     expect(result).toContain("[ID] file_1");
     expect(result).toContain("[Bot ID] bot_1");
     expect(result).not.toContain("curl -sS");
+    expect(result).not.toContain("[Download]");
   });
 
-  it("should include file size when available", () => {
+  it("should omit file size like Slack file context", () => {
     const result = formatTelegramFileForContext({
       file_id: "my_file_id",
       width: 100,
@@ -110,7 +115,7 @@ describe("formatTelegramFileForContext", () => {
       file_size: 1234,
     });
 
-    expect(result).toContain("[Size] 1234 bytes");
+    expect(result).not.toContain("[Size]");
   });
 
   it("should skip dimensions when width or height is 0", () => {
@@ -121,5 +126,78 @@ describe("formatTelegramFileForContext", () => {
     });
 
     expect(result).not.toContain("Dimensions");
+  });
+
+  it("should render document metadata", () => {
+    const result = formatTelegramFileForContext(
+      {
+        file_id: "doc_1",
+        file_type: "document",
+        file_name: "report.pdf",
+        mime_type: "application/pdf",
+        file_size: 2048,
+      },
+      { botId: "bot_1" },
+    );
+
+    expect(result).toContain("[Telegram file] report.pdf (application/pdf)");
+    expect(result).not.toContain("[Name] report.pdf");
+    expect(result).not.toContain("[Size] 2048 bytes");
+    expect(result).toContain("[ID] doc_1");
+    expect(result).toContain("[Bot ID] bot_1");
+  });
+
+  it("should render video metadata in Slack-style shape", () => {
+    const result = formatTelegramFileForContext({
+      file_id: "video_1",
+      file_type: "video",
+      file_name: "demo.mov",
+      mime_type: "video/mp4",
+      width: 1920,
+      height: 1080,
+      duration: 30,
+    });
+
+    expect(result).toContain("[Telegram file] demo.mov (video/mp4)");
+    expect(result).toContain("[Dimensions] 1920x1080");
+    expect(result).not.toContain("[Duration] 30s");
+  });
+});
+
+describe("extractTelegramFileForContext", () => {
+  it("should extract document attachments", () => {
+    const result = extractTelegramFileForContext({
+      document: {
+        file_id: "doc_1",
+        file_name: "brief.txt",
+        mime_type: "text/plain",
+        file_size: 100,
+      },
+    });
+
+    expect(result).toEqual({
+      file_id: "doc_1",
+      file_type: "document",
+      file_name: "brief.txt",
+      mime_type: "text/plain",
+      file_size: 100,
+    });
+  });
+
+  it("should extract voice attachments", () => {
+    const result = extractTelegramFileForContext({
+      voice: {
+        file_id: "voice_1",
+        duration: 12,
+        mime_type: "audio/ogg",
+      },
+    });
+
+    expect(result).toMatchObject({
+      file_id: "voice_1",
+      file_type: "voice",
+      duration: 12,
+      mime_type: "audio/ogg",
+    });
   });
 });
