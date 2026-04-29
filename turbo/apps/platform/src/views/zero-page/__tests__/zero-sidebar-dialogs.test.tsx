@@ -22,9 +22,18 @@ import {
 const context = testContext();
 const mockApi = createMockApi(context);
 
+function expectCreatedThreadRoute(getCreatedThreadId: () => string | null) {
+  const createdThreadId = getCreatedThreadId();
+  if (createdThreadId === null) {
+    throw new Error("expected a thread to be created");
+  }
+  expect(pathname()).toBe(`/chats/${createdThreadId}`);
+}
+
 function mockAPIsWithSubagents({
   pinnedAgentIds = ["pinned-agent-id"],
 }: { pinnedAgentIds?: string[] } = {}) {
+  let createdThreadId: string | null = null;
   setMockTeam([
     {
       id: "c0000000-0000-4000-a000-000000000001",
@@ -59,9 +68,9 @@ function mockAPIsWithSubagents({
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: [] });
     }),
-    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
       return respond(200, {
-        id: "new-thread-from-dialog",
+        id: params.id,
         title: null,
         agentId: "c0000000-0000-4000-a000-000000000001",
         chatMessages: [],
@@ -73,14 +82,21 @@ function mockAPIsWithSubagents({
         updatedAt: "2026-03-10T00:00:00Z",
       });
     }),
-    mockApi(chatThreadsContract.create, ({ respond }) => {
+    mockApi(chatThreadsContract.create, ({ body, respond }) => {
+      createdThreadId = body.clientThreadId ?? "new-thread-from-dialog";
       return respond(201, {
-        id: "new-thread-from-dialog",
+        id: createdThreadId,
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
       });
     }),
   );
+
+  return {
+    getCreatedThreadId: () => {
+      return createdThreadId;
+    },
+  };
 }
 
 async function openChatListDialog() {
@@ -100,7 +116,7 @@ function openManagePinnedDialog() {
 
 describe("chatListDialog", () => {
   it("should navigate to chat when clicking a pinned agent", async () => {
-    mockAPIsWithSubagents();
+    const { getCreatedThreadId } = mockAPIsWithSubagents();
     detachedSetupPage({ context, path: "/agents" });
 
     await openChatListDialog();
@@ -118,14 +134,13 @@ describe("chatListDialog", () => {
 
     click(pinnedAgentButton);
 
-    // Should navigate to /chat/:threadId
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-from-dialog");
+      expectCreatedThreadRoute(getCreatedThreadId);
     });
   });
 
   it("should navigate to chat when clicking an unpinned agent", async () => {
-    mockAPIsWithSubagents();
+    const { getCreatedThreadId } = mockAPIsWithSubagents();
     detachedSetupPage({ context, path: "/agents" });
 
     await openChatListDialog();
@@ -145,7 +160,7 @@ describe("chatListDialog", () => {
     click(unpinnedAgentButton);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-from-dialog");
+      expectCreatedThreadRoute(getCreatedThreadId);
     });
   });
 
@@ -169,7 +184,7 @@ describe("chatListDialog", () => {
   });
 
   it("should navigate to chat when clicking the lead agent", async () => {
-    mockAPIsWithSubagents();
+    const { getCreatedThreadId } = mockAPIsWithSubagents();
     detachedSetupPage({ context, path: "/agents" });
 
     await openChatListDialog();
@@ -184,7 +199,7 @@ describe("chatListDialog", () => {
     click(leadButton);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-from-dialog");
+      expectCreatedThreadRoute(getCreatedThreadId);
     });
   });
 });
@@ -404,7 +419,7 @@ describe("managePinnedAgentsDialog - pin button adds agent to pinned (SIDEBAR-D-
 
 describe("chatListDialog - agent list item opens chat on click (SIDEBAR-D-036)", () => {
   it("opens a chat session when a pinned agent is clicked in the dialog", async () => {
-    mockAPIsWithSubagents();
+    const { getCreatedThreadId } = mockAPIsWithSubagents();
     detachedSetupPage({ context, path: "/agents" });
     await openChatListDialog();
 
@@ -420,7 +435,7 @@ describe("chatListDialog - agent list item opens chat on click (SIDEBAR-D-036)",
     click(pinnedAgentBtn);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-from-dialog");
+      expectCreatedThreadRoute(getCreatedThreadId);
     });
   });
 });
