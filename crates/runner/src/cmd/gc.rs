@@ -2904,6 +2904,28 @@ mod tests {
             .sum()
     }
 
+    async fn storage_candidate_for(path: PathBuf) -> StorageCandidate {
+        let name = path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            .unwrap()
+            .to_owned();
+        let version = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap()
+            .to_owned();
+        let (size, mtime) = dir_stats(&path).await;
+        StorageCandidate {
+            path,
+            name,
+            version,
+            size,
+            mtime,
+        }
+    }
+
     #[tokio::test]
     async fn gc_storage_cache_missing_dir_returns_zero() {
         let dir = tempfile::tempdir().unwrap();
@@ -3126,6 +3148,55 @@ mod tests {
         assert!(
             tmp.exists(),
             "dry-run must not delete stale .tmp staging dir"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_skips_candidate_locked_after_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+        let candidate = storage_candidate_for(entry.clone()).await;
+
+        let lock_file = lock::open_lock_file(&home.storage_lock("foo", "v1")).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockShared).unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, None);
+        assert!(
+            entry.exists(),
+            "candidate locked after scan must survive delete recheck"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_keeps_candidate_that_became_recent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+        let candidate = storage_candidate_for(entry.clone()).await;
+
+        std::fs::File::open(&entry)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(SystemTime::now()))
+            .unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+        let (fresh_size, _) = dir_stats(&entry).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, Some(fresh_size));
+        assert!(
+            entry.exists(),
+            "candidate that became recent after scan must survive delete recheck"
         );
     }
 
