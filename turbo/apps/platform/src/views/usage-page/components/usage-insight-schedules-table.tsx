@@ -28,12 +28,12 @@ export function UsageInsightSchedulesTable({
 }: {
   data: UsageInsightResponse;
 }) {
-  const { schedules } = data;
+  const { schedules, scheduleOtherCount, scheduleOtherCredits } = data;
   const { accent } = getCardPalette(2);
   const hoveredId = useGet(hoveredScheduleId$);
   const setHoveredId = useSet(setHoveredScheduleId$);
 
-  if (schedules.length === 0) {
+  if (schedules.length === 0 && scheduleOtherCount === 0) {
     return (
       <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
         <p
@@ -49,10 +49,10 @@ export function UsageInsightSchedulesTable({
     );
   }
 
-  const totalCount = schedules.length;
+  const totalCount = schedules.length + scheduleOtherCount;
   const totalCredits = schedules.reduce((s, r) => {
     return s + r.credits;
-  }, 0);
+  }, scheduleOtherCredits);
   const maxValue = Math.max(
     1,
     ...schedules.map((s) => {
@@ -130,6 +130,21 @@ export function UsageInsightSchedulesTable({
               </li>
             );
           })}
+          {scheduleOtherCount > 0 && (
+            <li
+              className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
+                hoveredId === null ? "opacity-100" : "opacity-30"
+              }`}
+            >
+              <span className="text-sm text-muted-foreground truncate col-span-2">
+                +{scheduleOtherCount} more{" "}
+                {scheduleOtherCount === 1 ? "schedule" : "schedules"}
+              </span>
+              <span className="text-xs tabular-nums text-muted-foreground text-right">
+                {formatValue(scheduleOtherCredits)}
+              </span>
+            </li>
+          )}
         </ul>
       </TooltipProvider>
     </section>

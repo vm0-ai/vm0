@@ -54,12 +54,19 @@ export async function GET(request: Request) {
   interface DayData {
     agents?: { runs?: number }[];
     creditsUsed?: number;
+    schedules?: unknown;
+    chats?: unknown;
     [key: string]: unknown;
   }
 
   const daysData = rows.map((row) => {
     const data = row.data as DayData;
-    return { date: row.date, ...data };
+    return {
+      date: row.date,
+      ...data,
+      schedules: Array.isArray(data.schedules) ? data.schedules : [],
+      chats: Array.isArray(data.chats) ? data.chats : [],
+    };
   });
 
   const totalCredits = rows.reduce((sum, row) => {

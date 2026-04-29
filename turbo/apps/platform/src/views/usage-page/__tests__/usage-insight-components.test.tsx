@@ -503,7 +503,7 @@ describe("usage insight chats table - rendering and interactions", () => {
     expect(screen.getByText("(untitled)")).toBeInTheDocument();
   });
 
-  it("does not show a '+N more chats' overflow row even when chatOtherCount > 0", async () => {
+  it("includes '+N more chats' overflow row when chatOtherCount > 0", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
         return respond(
@@ -534,7 +534,8 @@ describe("usage insight chats table - rendering and interactions", () => {
       expect(screen.getByText("Visible Chat")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText(/more chats/)).not.toBeInTheDocument();
+    expect(screen.getByText("+7 more chats")).toBeInTheDocument();
+    expect(screen.getByText(/chats used 400 credits/)).toBeInTheDocument();
   });
 
   it("formats large credit values with K suffix", async () => {
@@ -707,7 +708,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
     expect(screen.getByText("200")).toBeInTheDocument();
   });
 
-  it("does not show a '+N more schedules' overflow row even when scheduleOtherCount > 0", async () => {
+  it("includes '+N more schedules' overflow row when scheduleOtherCount > 0", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
         return respond(
@@ -741,7 +742,8 @@ describe("usage insight schedules table - rendering and interactions", () => {
       expect(screen.getByText("Visible Schedule")).toBeInTheDocument();
     });
 
-    expect(screen.queryByText(/more schedules/)).not.toBeInTheDocument();
+    expect(screen.getByText("+4 more schedules")).toBeInTheDocument();
+    expect(screen.getByText(/schedules used 200 credits/)).toBeInTheDocument();
   });
 
   it("prefers scheduleDescription over scheduleName when both are present", async () => {
@@ -837,6 +839,9 @@ describe("usage insight selectors - date range dropdown", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: "Last 28 days" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Last 30 days" }),
     ).toBeInTheDocument();
   });
 });

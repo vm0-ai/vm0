@@ -865,6 +865,102 @@ describe("network insights page - embedded usage panels", () => {
       screen.queryByRole("region", { name: "Credits totals" }),
     ).not.toBeInTheDocument();
   });
+
+  it("renders the Time range tab even when the daily filter excludes all days", async () => {
+    mockInsightsAPI([sampleDay(day20Ago)]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Daily breakdown")).toBeInTheDocument();
+    });
+    click(screen.getByText("Daily breakdown"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("No activity in this time range."),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Time range"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "Credits totals" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("requests 30d usage when Last 30 Days is selected", async () => {
+    let capturedRange: string | null = null;
+    mockInsightsAPI([
+      sampleDay(day1Ago),
+      sampleDay(day25Ago, {
+        agents: [
+          { agentName: "OldBot", agentId: "a-old", runs: 1, credits: 5 },
+        ],
+      }),
+    ]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ query, respond }) => {
+        capturedRange = query.range;
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Last 7 Days")).toBeInTheDocument();
+    });
+    click(screen.getByText("Last 7 Days"));
+    await waitFor(() => {
+      expect(screen.getByText("Last 30 Days")).toBeInTheDocument();
+    });
+    click(screen.getByText("Last 30 Days"));
+    click(screen.getByText("Time range"));
+
+    await waitFor(() => {
+      expect(screen.getByText("My Schedule")).toBeInTheDocument();
+    });
+    expect(capturedRange).toBe("30d");
+  });
+
+  it("requests a single-day usage window for a selected day", async () => {
+    let capturedQuery: { range: string; date?: string } | null = null;
+    mockInsightsAPI([sampleDay(day1Ago)]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ query, respond }) => {
+        capturedQuery = { range: query.range, date: query.date };
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Last 7 Days")).toBeInTheDocument();
+    });
+    click(screen.getByText("Last 7 Days"));
+    const findYesterdayItem = () => {
+      return screen.getAllByRole("menuitem").find((item) => {
+        return item.textContent === "Yesterday";
+      });
+    };
+    await waitFor(() => {
+      expect(findYesterdayItem()).toBeDefined();
+    });
+    click(findYesterdayItem()!);
+    click(screen.getByText("Time range"));
+
+    await waitFor(() => {
+      expect(screen.getByText("My Schedule")).toBeInTheDocument();
+    });
+    expect(capturedQuery).toStrictEqual({ range: "day", date: day1Ago });
+  });
 });
 
 // ---------------------------------------------------------------------------

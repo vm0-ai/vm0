@@ -37,10 +37,11 @@ export const setChartWidth$ = command(({ set }, width: number) => {
   set(internalChartWidth$, width);
 });
 
-export type InsightRange = "today" | "yesterday" | "7d" | "28d";
+export type InsightRange = "today" | "yesterday" | "day" | "7d" | "28d" | "30d";
 export type InsightGroupBy = "source" | "agent";
 
 const internalRange$ = state<InsightRange>("today");
+const internalRangeDate$ = state<string | null>(null);
 const internalGroupBy$ = state<InsightGroupBy>("source");
 
 export const range$ = computed((get) => {
@@ -53,7 +54,15 @@ export const groupBy$ = computed((get) => {
 
 export const setRange$ = command(({ set }, range: InsightRange) => {
   set(internalRange$, range);
+  set(internalRangeDate$, null);
 });
+
+export const setRangeWithDate$ = command(
+  ({ set }, range: InsightRange, date: string | null) => {
+    set(internalRange$, range);
+    set(internalRangeDate$, date);
+  },
+);
 
 export const setGroupBy$ = command(({ set }, groupBy: InsightGroupBy) => {
   set(internalGroupBy$, groupBy);
@@ -96,18 +105,26 @@ const tz$ = computed(async (get) => {
 
 export const usageInsightAsync$ = computed(async (get) => {
   const range = get(range$);
+  const date = get(internalRangeDate$);
   const groupBy = get(groupBy$);
   const tz = await get(tz$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroUsageInsightContract);
   const result = await accept(
-    client.get({ query: { range, groupBy, tz } }),
+    client.get({
+      query: {
+        range,
+        ...(range === "day" && date ? { date } : {}),
+        groupBy,
+        tz,
+      },
+    }),
     [200],
     { toast: false },
   );
   return {
     ...result.body,
-    buckets: densifyBuckets(result.body.buckets, range, tz),
+    buckets: densifyBuckets(result.body.buckets, range, tz, date),
   };
 });
 
@@ -213,9 +230,11 @@ function densifyBuckets(
   buckets: UsageInsightResponse["buckets"],
   range: InsightRange,
   tz: string,
+  date: string | null,
 ): UsageInsightResponse["buckets"] {
-  const isHourly = range === "today" || range === "yesterday";
-  const count = isHourly ? 24 : range === "7d" ? 7 : 28;
+  const isHourly =
+    range === "today" || range === "yesterday" || range === "day";
+  const count = isHourly ? 24 : range === "7d" ? 7 : range === "28d" ? 28 : 30;
   const stepMs = isHourly ? HOUR_MS : DAY_MS;
   const nowParts = bucketPartsInTz(Date.now(), tz);
   const todayStartMs = Date.UTC(
@@ -224,11 +243,13 @@ function densifyBuckets(
     nowParts.day,
   );
   const startMs =
-    range === "today"
-      ? todayStartMs
-      : range === "yesterday"
-        ? todayStartMs - DAY_MS
-        : todayStartMs - (count - 1) * DAY_MS;
+    range === "day" && date
+      ? Date.parse(`${date}T00:00:00.000Z`)
+      : range === "today"
+        ? todayStartMs
+        : range === "yesterday"
+          ? todayStartMs - DAY_MS
+          : todayStartMs - (count - 1) * DAY_MS;
 
   const byTs = new Map<string, UsageInsightResponse["buckets"][number]>();
   for (const b of buckets) {

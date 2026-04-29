@@ -28,12 +28,12 @@ export function UsageInsightChatsTable({
 }: {
   data: UsageInsightResponse;
 }) {
-  const { chats } = data;
+  const { chats, chatOtherCount, chatOtherCredits } = data;
   const { accent } = getCardPalette(5);
   const hoveredId = useGet(hoveredChatId$);
   const setHoveredId = useSet(setHoveredChatId$);
 
-  if (chats.length === 0) {
+  if (chats.length === 0 && chatOtherCount === 0) {
     return (
       <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid">
         <p
@@ -47,10 +47,10 @@ export function UsageInsightChatsTable({
     );
   }
 
-  const totalCount = chats.length;
+  const totalCount = chats.length + chatOtherCount;
   const totalCredits = chats.reduce((s, r) => {
     return s + r.credits;
-  }, 0);
+  }, chatOtherCredits);
   const maxValue = Math.max(
     1,
     ...chats.map((c) => {
@@ -127,6 +127,20 @@ export function UsageInsightChatsTable({
               </li>
             );
           })}
+          {chatOtherCount > 0 && (
+            <li
+              className={`grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 transition-opacity duration-150 ${
+                hoveredId === null ? "opacity-100" : "opacity-30"
+              }`}
+            >
+              <span className="text-sm text-muted-foreground truncate col-span-2">
+                +{chatOtherCount} more {chatOtherCount === 1 ? "chat" : "chats"}
+              </span>
+              <span className="text-xs tabular-nums text-muted-foreground text-right">
+                {formatValue(chatOtherCredits)}
+              </span>
+            </li>
+          )}
         </ul>
       </TooltipProvider>
     </section>

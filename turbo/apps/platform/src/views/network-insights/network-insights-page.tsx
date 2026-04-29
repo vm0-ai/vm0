@@ -1378,7 +1378,9 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
           </Tabs>
         )}
 
-        {filtered.length === 0 ? (
+        {activeTab === "time-range" && data.days.length > 0 ? (
+          <UsageInsightView />
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
             <img
               src={emptyInsightsImg}
@@ -1391,8 +1393,6 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
                 : "No activity in this time range."}
             </p>
           </div>
-        ) : activeTab === "time-range" ? (
-          <UsageInsightView />
         ) : (
           filtered.map((day) => {
             return (

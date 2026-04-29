@@ -35,6 +35,7 @@ export function UsageInsightSelectors() {
           <SelectItem value="yesterday">Yesterday</SelectItem>
           <SelectItem value="7d">Last 7 days</SelectItem>
           <SelectItem value="28d">Last 28 days</SelectItem>
+          <SelectItem value="30d">Last 30 days</SelectItem>
         </SelectContent>
       </Select>
     </div>

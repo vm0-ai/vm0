@@ -3,6 +3,7 @@ import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights
 import { zeroClient$ } from "../api-client.ts";
 import {
   setRange$,
+  setRangeWithDate$,
   type InsightRange,
 } from "../usage-page/usage-insight-signals.ts";
 
@@ -95,20 +96,33 @@ export const insightsDateRange$ = computed((get) => {
 
 /**
  * Map the page-level Insights date range to the bucket range understood by
- * the embedded Usage chart. The Usage panel only knows 7d / 28d windows,
- * so multi-day Insights ranges and specific-date selections all collapse
- * onto the closest bucket window.
+ * the embedded Usage chart. Presets stay aligned, while a specific Insights
+ * date becomes an explicit single-day Usage window.
  */
-function toUsageRange(insightsRange: string): InsightRange {
+function toUsageRange(insightsRange: string): {
+  range: InsightRange;
+  date: string | null;
+} {
   if (insightsRange === "last7") {
-    return "7d";
+    return { range: "7d", date: null };
   }
-  return "28d";
+  if (insightsRange === "last28") {
+    return { range: "28d", date: null };
+  }
+  if (insightsRange === "last30") {
+    return { range: "30d", date: null };
+  }
+  return { range: "day", date: insightsRange };
 }
 
 export const setInsightsDateRange$ = command(({ set }, range: string) => {
   set(internalDateRange$, range);
-  set(setRange$, toUsageRange(range));
+  const usageRange = toUsageRange(range);
+  if (usageRange.range === "day") {
+    set(setRangeWithDate$, usageRange.range, usageRange.date);
+  } else {
+    set(setRange$, usageRange.range);
+  }
 });
 
 /**
@@ -117,7 +131,12 @@ export const setInsightsDateRange$ = command(({ set }, range: string) => {
  * window on first paint instead of the global default ("today").
  */
 export const syncUsageRangeFromInsights$ = command(({ get, set }) => {
-  set(setRange$, toUsageRange(get(internalDateRange$)));
+  const usageRange = toUsageRange(get(internalDateRange$));
+  if (usageRange.range === "day") {
+    set(setRangeWithDate$, usageRange.range, usageRange.date);
+  } else {
+    set(setRange$, usageRange.range);
+  }
 });
 
 /** Calendar popover state */

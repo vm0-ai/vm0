@@ -69,6 +69,13 @@ describe("GET /api/zero/usage/insight", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 when range=day is missing a date", async () => {
+    const response = await GET(
+      makeRequest({ range: "day", groupBy: "source", tz: "UTC" }),
+    );
+    expect(response.status).toBe(400);
+  });
+
   it("happy path — shape and totals add up for range=7d groupBy=source tz=UTC", async () => {
     const { userId, orgId } = await context.user;
     const { composeId } = await seedTestCompose({
@@ -382,6 +389,68 @@ describe("GET /api/zero/usage/insight", () => {
     });
     expect(bucket).toBeDefined();
     expect(bucket!.ts).toContain(sixDaysAgo.toISOString().split("T")[0]);
+  });
+
+  it("day window includes only the selected calendar day", async () => {
+    const { userId, orgId } = await context.user;
+    const { composeId } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose"),
+      orgId,
+    });
+
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const selectedStart = new Date(todayStart.getTime() - 5 * 86400000);
+    const selectedDate = selectedStart.toISOString().split("T")[0]!;
+
+    const { runId: selectedRunId } = await seedTestRun(userId, composeId, {
+      triggerSource: "cli",
+      status: "completed",
+    });
+    const { id: selectedUsageId } = await insertTestCreditUsageForRun({
+      runId: selectedRunId,
+      orgId,
+      userId,
+      creditsCharged: 42,
+      status: "processed",
+    });
+    await setTestCreditUsageCreatedAt(
+      selectedUsageId,
+      new Date(selectedStart.getTime() + 3600000),
+    );
+
+    const { runId: outsideRunId } = await seedTestRun(userId, composeId, {
+      triggerSource: "cli",
+      status: "completed",
+    });
+    const { id: outsideUsageId } = await insertTestCreditUsageForRun({
+      runId: outsideRunId,
+      orgId,
+      userId,
+      creditsCharged: 99,
+      status: "processed",
+    });
+    await setTestCreditUsageCreatedAt(
+      outsideUsageId,
+      new Date(selectedStart.getTime() + 86400000 + 3600000),
+    );
+
+    const response = await GET(
+      makeRequest({
+        range: "day",
+        date: selectedDate,
+        groupBy: "source",
+        tz: "UTC",
+      }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+
+    expect(data.grandTotalCredits).toBe(42);
+    expect(data.buckets[0]?.ts).toContain(selectedDate);
   });
 
   it("TZ shift — same row appears in different date buckets by timezone", async () => {
