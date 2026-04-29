@@ -4,9 +4,10 @@
 #
 # Validates the chain added by epic #11520:
 #   feature-switch on  →  zero org model-provider setup --type openai-api-key
-#   →  vm0 compose  →  zero chat message send  →  thread inherits provider via
-#   #11528 eager-pin  →  real codex CLI runs with $OPENAI_API_KEY  →  response
-#   contains the expected sentinel.
+#   →  vm0 compose  →  POST /api/zero/chat/messages (the same unified
+#   create-thread + run endpoint the web composer uses) → thread inherits
+#   provider via #11528 eager-pin  →  real codex CLI runs with
+#   $OPENAI_API_KEY  →  response contains the expected sentinel.
 #
 # OPENAI_API_KEY is mandatory — CI injects it via secrets.OPENAI_API_KEY and
 # local runs must export it. There is no skip path: if the key is missing, the
@@ -58,18 +59,19 @@ teardown_file() {
 }
 
 @test "t-codex-zero-byok-smoke: full BYOK codex via zero web layer" {
-    # Send a deterministic prompt; this also creates the thread.
-    run $ZERO_CLI chat message send \
-        --agent "$AGENT_ID" \
-        --text "Compute 123+456 and reply with exactly: RESULT=<answer>"
+    # Trigger a real run by hitting the same unified chat endpoint the web
+    # composer uses. This both creates the thread (with eager-pin) and
+    # dispatches the codex run in one call. Sets LAST_RUN_ID + LAST_THREAD_ID.
+    run send_chat_run_message "$AGENT_ID" \
+        "Compute 123+456 and reply with exactly: RESULT=<answer>"
     assert_success
 
-    # Output: "✓ Message sent (id: <msg-id>, thread: <thread-id>)"
-    THREAD_ID=$(echo "$output" | grep -oP 'thread:\s*\K[a-f0-9-]+' | head -1)
-    [[ -n "$THREAD_ID" ]] || fail "Could not parse thread id from: $output"
+    THREAD_ID="$LAST_THREAD_ID"
+    [[ -n "$THREAD_ID" ]] || fail "Could not extract thread id from chat/messages response"
     export THREAD_ID
 
-    # Wait for the assistant message to terminate. Sets LAST_RUN_ID + LAST_MSG_CONTENT.
+    # Wait for the assistant message to terminate. Resets LAST_RUN_ID +
+    # LAST_MSG_CONTENT to the assistant row's runId/content.
     run wait_for_chat_assistant_done "$THREAD_ID"
     assert_success
 
@@ -77,13 +79,10 @@ teardown_file() {
     [[ "$LAST_MSG_CONTENT" == *"RESULT=579"* ]] \
         || fail "Expected 'RESULT=579' in assistant content, got: $LAST_MSG_CONTENT"
 
-    # Assert: thread is eager-pinned (#11528) to the openai-api-key BYOK
-    # provider. This proves the compose's missing model_provider was
-    # filled in by the org default and that the openai-api-key → codex
-    # routing chain resolved end-to-end. (We can't read the runtime
-    # framework directly because it isn't projected on /runs/:id and the
-    # telemetry route derives it from compose.agents.*.framework which
-    # this compose intentionally omits.)
+    # Assert: the run that just completed used the openai-api-key BYOK
+    # provider (latestSessionProviderType reads zero_runs.modelProvider of
+    # the most recent run on the thread). Proves the BYOK provider routing
+    # chain (provider -> codex framework dispatch) resolved end-to-end.
     provider_type=$(get_thread_provider_type "$THREAD_ID")
     [[ "$provider_type" == "openai-api-key" ]] \
         || fail "Expected latestSessionProviderType=openai-api-key, got: $provider_type (thread=$THREAD_ID)"

@@ -105,21 +105,61 @@ wait_for_chat_assistant_done() {
     return 1
 }
 
+# Send a message that triggers a real run + eager-pin via the same path the
+# web chat composer uses. POST /api/zero/chat/messages is the unified
+# "create thread (if needed) + run + association" endpoint
+# (chatMessagesContract in
+# turbo/packages/api-contracts/src/contracts/chat-threads.ts:281-327).
+#
+# We can't use `zero chat message send` here: that CLI hits
+# /api/zero/integrations/chat/message, whose handler only inserts an
+# assistant message with runId=null and creates the thread WITHOUT the
+# pin parameter — no run is dispatched, so the codex CLI never executes
+# and latestSessionProviderType stays null
+# (turbo/apps/web/app/api/zero/integrations/chat/message/route.ts:17-77).
+#
+# Exports on success:
+#   LAST_RUN_ID    — runId returned by the route
+#   LAST_THREAD_ID — threadId returned by the route (newly created)
+# Usage: send_chat_run_message <agent_id> <prompt>
+send_chat_run_message() {
+    local agent_id="$1"
+    local prompt="$2"
+    local payload body
+    payload=$(jq -nc \
+        --arg agentId "$agent_id" \
+        --arg prompt "$prompt" \
+        '{agentId: $agentId, prompt: $prompt, hasTextContent: true}')
+    body=$(_codex_zero_curl "/api/zero/chat/messages" \
+        -X POST \
+        -d "$payload")
+    LAST_RUN_ID=$(printf '%s' "$body" | jq -r '.runId // ""')
+    LAST_THREAD_ID=$(printf '%s' "$body" | jq -r '.threadId // ""')
+    export LAST_RUN_ID LAST_THREAD_ID
+    [[ -n "$LAST_RUN_ID" && -n "$LAST_THREAD_ID" ]] || {
+        echo "# send_chat_run_message: bad response: $body" >&2
+        return 1
+    }
+}
+
 # Print the latestSessionProviderType of a chat thread.
 #
-# This is the eager-pinned provider type written by createChatThread (#11528).
-# When the test compose declares no `model_provider`, eager-pin selects the
-# org default — for this BYOK smoke test the only available provider is
-# `openai-api-key`, which is the framework=codex routing signal.
+# `latestSessionProviderType` is derived server-side as the
+# `zero_runs.modelProvider` of the most recent run on the thread (see
+# `getLatestRunProviderTypeForThread` in
+# turbo/apps/web/src/lib/zero/chat-thread/chat-message-service.ts and
+# turbo/apps/web/app/api/zero/chat-threads/[id]/route.ts:62). For this
+# BYOK smoke test the org's only provider is openai-api-key, so once the
+# run completes the field MUST be "openai-api-key" — proving the BYOK
+# provider routing chain (provider -> codex framework dispatch) resolved
+# end-to-end.
 #
-# We assert against this rather than `framework` because (a)
-# `/api/zero/runs/:id` does not project `framework`
-# (`getRunResponseSchema`), and (b) `/api/zero/runs/:id/telemetry/agent`
-# derives `framework` from `compose.agents.<name>.framework`
-# (`extractFrameworkFromCompose`) — which is intentionally absent from the
-# test compose, so it would fall back to "claude-code" and false-negative.
-# `latestSessionProviderType` reads directly from `chat_threads.modelProviderId`
-# joined to the providers table, reflecting the post-eager-pin reality.
+# We assert on this rather than the run's `framework` because (a)
+# /api/zero/runs/:id does not project framework (`getRunResponseSchema`),
+# and (b) /api/zero/runs/:id/telemetry/agent derives framework from
+# `compose.agents.<name>.framework` via `extractFrameworkFromCompose` —
+# intentionally absent from the test compose, so it would fall back to
+# "claude-code" and produce a structural false-negative.
 get_thread_provider_type() {
     local thread_id="$1"
     _codex_zero_curl "/api/zero/chat-threads/$thread_id" 2>/dev/null \
