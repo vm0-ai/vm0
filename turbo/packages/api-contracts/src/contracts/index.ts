@@ -883,6 +883,14 @@ export {
   type UsageInsightChatRow,
 } from "./zero-usage-insight";
 export {
+  zeroModelUsageRankingContract,
+  modelUsageRankingRangeSchema,
+  type ZeroModelUsageRankingContract,
+  type ModelUsageRankingRange,
+  type ModelUsageRankingItem,
+  type ModelUsageRankingResponse,
+} from "./zero-model-usage-ranking";
+export {
   zeroTeamContract,
   teamComposeItemSchema,
   type ZeroTeamContract,

@@ -175,6 +175,7 @@ export {
   insertTestUsagePricing,
   deleteTestUsagePricing,
   insertTestUsageEvent,
+  deleteTestUsageEventsByProvider,
   setTestCreditUsageCreatedAt,
   seedCreditUsageRecord,
   seedInsightsDaily,
@@ -227,3 +228,4 @@ export {
   findTestRunnerJobEntry,
 } from "./runner";
 export { insertTestExportJob, findTestExportJobById } from "./export";
+export { seedUserFeatureSwitches } from "../db-test-seeders/feature-switches";

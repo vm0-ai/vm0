@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -315,6 +315,22 @@ export async function insertTestUsageEvent(
     })
     .returning({ id: usageEvent.id });
   return record!.id;
+}
+
+/**
+ * Delete usage_event records by provider for tests that use platform-wide
+ * queries and cannot rely on org/user scoping for isolation.
+ */
+export async function deleteTestUsageEventsByProvider(
+  providers: string[],
+): Promise<void> {
+  if (providers.length === 0) {
+    return;
+  }
+  initServices();
+  await globalThis.services.db
+    .delete(usageEvent)
+    .where(inArray(usageEvent.provider, providers));
 }
 
 /**

@@ -18,6 +18,7 @@ export {
   insertTestUsagePricing,
   deleteTestUsagePricing,
   insertTestUsageEvent,
+  deleteTestUsageEventsByProvider,
   setTestCreditUsageCreatedAt,
   seedCreditUsageRecord,
   seedInsightsDaily,

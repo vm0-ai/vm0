@@ -1,4 +1,5 @@
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { initServices } from "../../lib/init-services";
 
 /**
  * Seed user feature switch overrides for testing.
@@ -10,6 +11,7 @@ export async function seedUserFeatureSwitches(
   userId: string,
   switches: Record<string, boolean>,
 ): Promise<void> {
+  initServices();
   await globalThis.services.db
     .insert(userFeatureSwitches)
     .values({ orgId, userId, switches, updatedAt: new Date() })
