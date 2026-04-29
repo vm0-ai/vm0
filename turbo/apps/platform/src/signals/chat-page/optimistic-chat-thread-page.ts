@@ -16,7 +16,6 @@ import {
 } from "../agent-chat.ts";
 import {
   detachedNavigateTo$,
-  replaceSearchParams$,
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
@@ -33,10 +32,6 @@ const SIDEBAR_PARAM = "sidebar";
 
 export type OptimisticChatPane = "main" | "sidebar";
 
-interface SettledChatThread {
-  threadId: string;
-}
-
 interface PendingChatThread {
   pane: OptimisticChatPane;
   threadId: string;
@@ -44,7 +39,7 @@ interface PendingChatThread {
   createdAt: string;
   running: boolean;
   pendingThread: ReturnType<typeof createChatThreadSignals>;
-  settleResult: Promise<SettledChatThread>;
+  settleResult: Promise<void>;
 }
 
 interface SendNewThreadMessageRequest {
@@ -91,13 +86,6 @@ export const clearMatchingOptimisticChatThread$ = command(
   },
 );
 
-function settledThreadId(
-  pending: PendingChatThread,
-  settled: SettledChatThread,
-): string {
-  return settled.threadId || pending.threadId;
-}
-
 const routeMainOptimisticChatThread$ = command(
   ({ get, set }, pending: PendingChatThread) => {
     const next = new URLSearchParams(get(searchParams$));
@@ -120,38 +108,6 @@ const routeSidebarOptimisticChatThread$ = command(
     const next = new URLSearchParams(get(searchParams$));
     next.set(SIDEBAR_PARAM, pending.threadId);
     set(updateSearchParams$, next);
-  },
-);
-
-const rerouteSettledOptimisticChatThread$ = command(
-  ({ get, set }, pending: PendingChatThread, settled: SettledChatThread) => {
-    const nextThreadId = settledThreadId(pending, settled);
-    if (nextThreadId === pending.threadId) {
-      return;
-    }
-
-    if (pending.pane === "main") {
-      if (get(currentChatThreadId$) !== pending.threadId) {
-        return;
-      }
-      set(detachedNavigateTo$, "/chats/:threadId", {
-        pathParams: { threadId: nextThreadId },
-        searchParams: new URLSearchParams(get(searchParams$)),
-        replace: true,
-      });
-      return;
-    }
-
-    const next = new URLSearchParams(get(searchParams$));
-    if (next.get(SIDEBAR_PARAM) !== pending.threadId) {
-      return;
-    }
-    if (get(currentChatThreadId$) === nextThreadId) {
-      next.delete(SIDEBAR_PARAM);
-    } else {
-      next.set(SIDEBAR_PARAM, nextThreadId);
-    }
-    set(replaceSearchParams$, next);
   },
 );
 
@@ -187,18 +143,14 @@ const routeOptimisticChatThread$ = command(
       set(routeSidebarOptimisticChatThread$, pending);
     }
 
-    const settled = await pending.settleResult.catch((error: unknown) => {
+    await pending.settleResult.catch((error: unknown) => {
       set(clearMatchingOptimisticChatThread$, pending);
       throw error;
     });
     signal.throwIfAborted();
 
-    set(rerouteSettledOptimisticChatThread$, pending, settled);
-    const nextThreadId = settledThreadId(pending, settled);
-
     if (
       pending.pane === "sidebar" ||
-      nextThreadId !== pending.threadId ||
       get(currentChatThreadId$) !== pending.threadId
     ) {
       set(clearMatchingOptimisticChatThread$, pending);
@@ -212,9 +164,9 @@ async function createChatThread(
   signal: AbortSignal,
   title: string | undefined,
   clientThreadId: string,
-): Promise<{ id: string; title: string | null }> {
+): Promise<void> {
   const client = createClient(chatThreadsContract);
-  const result = await accept(
+  await accept(
     client.create({
       body: {
         agentId,
@@ -225,7 +177,6 @@ async function createChatThread(
     }),
     [201],
   );
-  return { id: result.body.id, title: result.body.title };
 }
 
 const createNewChatThread$ = command(
@@ -273,8 +224,8 @@ const createNewChatThread$ = command(
     set(localThread.hideSkeleton$);
 
     const createClient = get(zeroClient$);
-    const settleResult = (async (): Promise<SettledChatThread> => {
-      const thread = await createChatThread(
+    const settleResult = (async (): Promise<void> => {
+      await createChatThread(
         createClient,
         resolvedComposeId,
         signal,
@@ -282,7 +233,6 @@ const createNewChatThread$ = command(
         threadId,
       );
       signal.throwIfAborted();
-      return { threadId: thread.id };
     })();
 
     return {
@@ -458,9 +408,7 @@ const sendNewThreadMessage$ = command(
       running: true,
       pendingThread: localThread,
       sendResult,
-      settleResult: sendResult.then((result) => {
-        return { threadId: result.threadId };
-      }),
+      settleResult: sendResult.then(() => {}),
     };
   },
 );
