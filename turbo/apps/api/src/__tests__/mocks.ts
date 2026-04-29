@@ -4,8 +4,16 @@ type AsyncMock = Mock<(...args: unknown[]) => Promise<unknown>>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 
 export interface ApiTestMocks {
+  readonly axiom: {
+    readonly query: AsyncMock;
+  };
   readonly clerk: {
     readonly authenticateRequest: AsyncMock;
+    readonly organizations: {
+      readonly getOrganization: AsyncMock;
+      readonly getOrganizationDomainList: AsyncMock;
+      readonly getOrganizationInvitationList: AsyncMock;
+    };
     readonly users: {
       readonly getUserList: AsyncMock;
       readonly getOrganizationMembershipList: AsyncMock;
@@ -13,6 +21,25 @@ export interface ApiTestMocks {
   };
   readonly s3: {
     readonly send: AsyncMock;
+  };
+  readonly slack: {
+    readonly conversations: {
+      readonly list: AsyncMock;
+    };
+    readonly files: {
+      readonly info: AsyncMock;
+    };
+    readonly fetchFile: AsyncMock;
+  };
+  readonly stripe: {
+    readonly invoices: {
+      readonly list: AsyncMock;
+    };
+  };
+  readonly telegram: {
+    readonly fetchFile: AsyncMock;
+    readonly getMe: AsyncMock;
+    readonly getFile: AsyncMock;
   };
   readonly otel: {
     readonly registerOTel: SyncMock;
@@ -26,8 +53,19 @@ export interface ApiTestMocks {
 }
 
 const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
+  const axiom = {
+    query: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  };
+
   const clerk = {
     authenticateRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    organizations: {
+      getOrganization: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      getOrganizationDomainList:
+        vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      getOrganizationInvitationList:
+        vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
     users: {
       getUserList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       getOrganizationMembershipList:
@@ -35,11 +73,37 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
   };
 
+  const slack = {
+    conversations: {
+      list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    files: {
+      info: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    fetchFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  };
+
+  const stripe = {
+    invoices: {
+      list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+  };
+
+  const telegram = {
+    fetchFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    getMe: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    getFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  };
+
   return {
+    axiom,
     clerk,
     s3: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
+    slack,
+    stripe,
+    telegram,
     otel: {
       registerOTel: vi.fn<(...args: unknown[]) => void>(),
     },
@@ -59,6 +123,14 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
 });
 
 vi.mock("@aws-sdk/client-s3", () => {
+  class GetObjectCommand {
+    readonly input: unknown;
+
+    constructor(input: unknown) {
+      this.input = input;
+    }
+  }
+
   class ListObjectsV2Command {
     readonly input: unknown;
 
@@ -74,6 +146,7 @@ vi.mock("@aws-sdk/client-s3", () => {
   }
 
   return {
+    GetObjectCommand,
     ListObjectsV2Command,
     S3Client,
   };
@@ -95,15 +168,78 @@ vi.mock("@vercel/otel", () => {
   return apiTestMocks.otel;
 });
 
+vi.mock("stripe", () => {
+  return {
+    default: vi.fn(() => {
+      return {
+        invoices: {
+          list: apiTestMocks.stripe.invoices.list,
+        },
+      };
+    }),
+  };
+});
+
+vi.mock("@slack/web-api", () => {
+  return {
+    WebClient: vi.fn(() => {
+      return {
+        conversations: {
+          list: apiTestMocks.slack.conversations.list,
+        },
+        files: {
+          info: apiTestMocks.slack.files.info,
+        },
+      };
+    }),
+  };
+});
+
+vi.mock("../signals/external/slack-file-fetcher", () => {
+  return {
+    fetchSlackFile: apiTestMocks.slack.fetchFile,
+  };
+});
+
+vi.mock("../signals/external/telegram-file-fetcher", () => {
+  return {
+    fetchTelegramFile: apiTestMocks.telegram.fetchFile,
+  };
+});
+
+vi.mock("../signals/external/telegram-client", () => {
+  return {
+    getMe: apiTestMocks.telegram.getMe,
+    getFile: apiTestMocks.telegram.getFile,
+  };
+});
+
+vi.mock("../signals/external/axiom", () => {
+  return {
+    queryAxiom: apiTestMocks.axiom.query,
+  };
+});
+
 export function getApiTestMocks(): ApiTestMocks {
   return apiTestMocks;
 }
 
 export function resetApiTestMocks(): void {
+  apiTestMocks.axiom.query.mockReset();
   apiTestMocks.clerk.authenticateRequest.mockReset();
+  apiTestMocks.clerk.organizations.getOrganization.mockReset();
+  apiTestMocks.clerk.organizations.getOrganizationDomainList.mockReset();
+  apiTestMocks.clerk.organizations.getOrganizationInvitationList.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.s3.send.mockReset();
+  apiTestMocks.slack.conversations.list.mockReset();
+  apiTestMocks.slack.files.info.mockReset();
+  apiTestMocks.slack.fetchFile.mockReset();
+  apiTestMocks.stripe.invoices.list.mockReset();
+  apiTestMocks.telegram.fetchFile.mockReset();
+  apiTestMocks.telegram.getMe.mockReset();
+  apiTestMocks.telegram.getFile.mockReset();
   apiTestMocks.otel.registerOTel.mockReset();
   apiTestMocks.sentry.captureException.mockReset();
   apiTestMocks.sentry.httpIntegration.mockClear();

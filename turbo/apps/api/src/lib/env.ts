@@ -25,8 +25,11 @@ const SCHEMA = {
   S3_ENDPOINT: z.url().optional(),
   S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional(),
   S3_REGION: z.string().min(1).optional(),
-  AXIOM_TOKEN_TELEMETRY: z.string().min(1),
-  AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
+  AXIOM_TOKEN_SESSIONS: z.string().min(1).optional(),
+  AXIOM_TOKEN_TELEMETRY: z.string().min(1).optional(),
+  AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(),
+  STRIPE_SECRET_KEY: z.string().min(1).optional(),
+  TELEGRAM_FORWARD_BOT_TOKEN: z.string().min(1).optional(),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({

@@ -57,6 +57,7 @@ import * as zeroSkillSchema from "./schema/zero-skill";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as voiceChatSchema from "./schema/voice-chat";
+import * as voiceChatCandidateSchema from "./schema/voice-chat-candidate";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatMessageSchema from "./schema/chat-message";
@@ -123,6 +124,7 @@ export const schema = {
   ...computerUseHostSchema,
   ...insightsDailySchema,
   ...voiceChatSchema,
+  ...voiceChatCandidateSchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
   ...chatMessageSchema,
