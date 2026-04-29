@@ -516,25 +516,45 @@ async fn write_to_cache(cache_dir: &Path, bytes: &[u8]) -> RunnerResult<()> {
         .map_err(|e| RunnerError::Internal(format!("create staging {}: {e}", staging.display())))?;
 
     let archive_staging = staging.join("archive.tar.gz");
-    fs::write(&archive_staging, bytes)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write {}: {e}", archive_staging.display())))?;
+    if let Err(e) = fs::write(&archive_staging, bytes).await {
+        let _ = fs::remove_dir_all(&staging).await;
+        return Err(RunnerError::Internal(format!(
+            "write {}: {e}",
+            archive_staging.display()
+        )));
+    }
 
     // fsync the archive so a crash between rename and next sync cannot
     // leave a zero-byte or torn file visible at the final path.
-    let f = fs::File::open(&archive_staging).await.map_err(|e| {
-        RunnerError::Internal(format!("open for fsync {}: {e}", archive_staging.display()))
-    })?;
-    f.sync_all()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("fsync {}: {e}", archive_staging.display())))?;
+    let f = match fs::File::open(&archive_staging).await {
+        Ok(f) => f,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&staging).await;
+            return Err(RunnerError::Internal(format!(
+                "open for fsync {}: {e}",
+                archive_staging.display()
+            )));
+        }
+    };
+    if let Err(e) = f.sync_all().await {
+        drop(f);
+        let _ = fs::remove_dir_all(&staging).await;
+        return Err(RunnerError::Internal(format!(
+            "fsync {}: {e}",
+            archive_staging.display()
+        )));
+    }
     drop(f);
 
     // Ensure the `<name>/` parent exists so the rename below has a target.
-    if let Some(parent) = cache_dir.parent() {
-        fs::create_dir_all(parent).await.map_err(|e| {
-            RunnerError::Internal(format!("create cache parent {}: {e}", parent.display()))
-        })?;
+    if let Some(parent) = cache_dir.parent()
+        && let Err(e) = fs::create_dir_all(parent).await
+    {
+        let _ = fs::remove_dir_all(&staging).await;
+        return Err(RunnerError::Internal(format!(
+            "create cache parent {}: {e}",
+            parent.display()
+        )));
     }
 
     if let Err(e) = fs::rename(&staging, cache_dir).await {
