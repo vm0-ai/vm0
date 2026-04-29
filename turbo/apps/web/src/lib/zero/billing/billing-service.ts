@@ -859,13 +859,55 @@ export async function getOrgInvoices(orgId: string): Promise<{
 }
 
 type CreditBreakdownCategory = "plan" | "free" | "promotional" | "payAsYouGo";
+type PlanCreditTier = "pro" | "team";
 
 interface CreditBreakdownSegment {
   category: CreditBreakdownCategory;
   label: string;
   credits: number;
   /** Only set on `plan` segments. */
-  tier?: "pro" | "team";
+  tier?: PlanCreditTier;
+}
+
+interface ActiveCreditRecord {
+  id: string;
+  source: string;
+  amount: number;
+  remaining: number;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+interface CreditGrant {
+  id: string;
+  source: string;
+  label: string;
+  amount: number;
+  remaining: number;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+// Returns `null` when the amount doesn't match any known tier.
+function planTierFromAmount(amount: number): PlanCreditTier | null {
+  if (amount === TIER_MONTHLY_CREDITS.team) return "team";
+  if (amount === TIER_MONTHLY_CREDITS.pro) return "pro";
+  return null;
+}
+
+function labelForCreditRecord(
+  record: Pick<ActiveCreditRecord, "source" | "amount">,
+): string {
+  if (record.source === "subscription_renewal") {
+    const planTier = planTierFromAmount(record.amount);
+    if (planTier === "team") return "Team plan";
+    if (planTier === "pro") return "Pro plan";
+    return "Plan credits";
+  }
+  if (record.source === "starter_grant") return "Free plan";
+  if (record.source === "one_time_purchase") return "Promotional";
+  if (record.source === "auto_recharge") return "Pay as you go";
+  return "Credits";
 }
 
 /**
@@ -889,17 +931,9 @@ function buildCreditBreakdown(args: {
   orgId: string;
   tier: string;
   displayedCredits: number;
-  records: Array<{ source: string; amount: number; remaining: number }>;
+  records: ActiveCreditRecord[];
 }): CreditBreakdownSegment[] {
   const { orgId, tier, displayedCredits, records } = args;
-
-  // Returns `null` when the amount doesn't match any known tier — caller will
-  // skip emitting a plan segment for such a record, avoiding a fabricated tier.
-  const planTierFromAmount = (amount: number): "pro" | "team" | null => {
-    if (amount === TIER_MONTHLY_CREDITS.team) return "team";
-    if (amount === TIER_MONTHLY_CREDITS.pro) return "pro";
-    return null;
-  };
 
   const segmentKey = (category: CreditBreakdownCategory, tierKey?: string) => {
     return tierKey ? `${category}:${tierKey}` : category;
@@ -990,13 +1024,37 @@ function buildCreditBreakdown(args: {
     "promotional",
     "payAsYouGo",
   ];
+  const planTierOrder: Record<PlanCreditTier, number> = {
+    pro: 0,
+    team: 1,
+  };
   const segments = Array.from(byKey.values());
   segments.sort((a, b) => {
-    return (
-      categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category)
-    );
+    const categoryDelta =
+      categoryOrder.indexOf(a.category) - categoryOrder.indexOf(b.category);
+    if (categoryDelta !== 0) {
+      return categoryDelta;
+    }
+    if (a.category === "plan" && b.category === "plan") {
+      return planTierOrder[a.tier ?? "team"] - planTierOrder[b.tier ?? "team"];
+    }
+    return 0;
   });
   return segments;
+}
+
+function buildCreditGrants(records: ActiveCreditRecord[]): CreditGrant[] {
+  return records.map((record) => {
+    return {
+      id: record.id,
+      source: record.source,
+      label: labelForCreditRecord(record),
+      amount: record.amount,
+      remaining: record.remaining,
+      expiresAt: record.expiresAt,
+      createdAt: record.createdAt,
+    };
+  });
 }
 
 /**
@@ -1019,6 +1077,7 @@ export async function getBillingStatus(orgId: string): Promise<{
     nextExpiryDate: Date | null;
   };
   creditBreakdown: CreditBreakdownSegment[];
+  creditGrants: CreditGrant[];
 }> {
   const db = globalThis.services.db;
   const [org] = await db
@@ -1068,5 +1127,6 @@ export async function getBillingStatus(orgId: string): Promise<{
     },
     creditExpiry: expirySummary,
     creditBreakdown: breakdown,
+    creditGrants: buildCreditGrants(records),
   };
 }

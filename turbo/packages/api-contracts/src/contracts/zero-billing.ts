@@ -29,6 +29,16 @@ const creditBreakdownSegmentSchema = z.object({
   tier: z.enum(["pro", "team"]).optional(),
 });
 
+const creditGrantSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  label: z.string(),
+  amount: z.number(),
+  remaining: z.number(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+});
+
 const billingStatusResponseSchema = z.object({
   tier: z.string(),
   credits: z.number(),
@@ -39,6 +49,7 @@ const billingStatusResponseSchema = z.object({
   autoRecharge: autoRechargeSchema,
   creditExpiry: creditExpirySchema,
   creditBreakdown: z.array(creditBreakdownSegmentSchema),
+  creditGrants: z.array(creditGrantSchema),
 });
 
 const checkoutResponseSchema = z.object({
