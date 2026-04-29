@@ -295,7 +295,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       # Needed for the classifier↔firewall consistency check in
       # tests/test_x_billing.py: the check reads
@@ -308,7 +308,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: "pnpm"
           cache-dependency-path: turbo/pnpm-lock.yaml
       - name: Install turbo deps (triggers firewalls-generator postinstall)
         run: cd turbo && pnpm install --frozen-lockfile
@@ -516,8 +516,8 @@ jobs:
             R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
             R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
             ${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
-          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
-          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
+          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | tail -n1 | cut -d= -f2 || true)
+          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | tail -n1 | cut -d= -f2 || true)
           rm -f "$BUILD_LOG_DEFAULT"
 
           if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
