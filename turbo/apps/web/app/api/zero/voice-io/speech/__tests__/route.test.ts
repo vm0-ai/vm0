@@ -92,6 +92,44 @@ function createWavBytes(durationSeconds: number): Uint8Array {
   return bytes;
 }
 
+function createWavBytesWithJunkAndOversizedDataChunk(
+  durationSeconds: number,
+): Uint8Array {
+  const sampleRate = 16000;
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const bytesPerSample = (numChannels * bitsPerSample) / 8;
+  const dataSize = durationSeconds * sampleRate * bytesPerSample;
+  const junkSize = 4;
+  const dataOffset = 56;
+  const bytes = new Uint8Array(dataOffset + dataSize);
+  const view = new DataView(bytes.buffer);
+
+  const writeStr = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+
+  writeStr(0, "RIFF");
+  view.setUint32(4, bytes.byteLength - 8, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeStr(36, "JUNK");
+  view.setUint32(40, junkSize, true);
+  writeStr(48, "data");
+  view.setUint32(52, dataSize + 10_000, true);
+
+  return bytes;
+}
+
 async function seedSpeechPricing() {
   await insertTestUsagePricing({
     kind: "audio",
@@ -245,6 +283,38 @@ describe("POST /api/zero/voice-io/speech", () => {
     expect(uploadedBytes.equals(Buffer.from(wavBytes))).toBe(true);
     expect(contentType).toBe("audio/wav");
 
+    expect(await getOrgCredits(orgId)).toBe(996);
+    expect(await findTestUsageEventsByRunId(runId)).toEqual([]);
+  });
+
+  it("estimates WAV duration from actual data bytes when data chunk size is oversized", async () => {
+    const userId = uniqueId("speech-oversized-data");
+    const { orgId } = await setupOrg(userId);
+    const runId = randomUUID();
+    const token = await generateZeroToken(userId, runId, orgId);
+    await setOrgCredits(orgId, 1000);
+    await seedSpeechPricing();
+    const wavBytes = createWavBytesWithJunkAndOversizedDataChunk(10);
+
+    server.use(
+      http.post(OPENAI_SPEECH_URL, () => {
+        return new HttpResponse(wavBytes, {
+          headers: { "Content-Type": "audio/wav" },
+        });
+      }),
+    );
+
+    const response = await POST(
+      speechRequest(
+        { text: "hello world", voice: "nova" },
+        { Authorization: `Bearer ${token}` },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as SpeechResponse;
+    expect(body.durationSeconds).toBe(10);
+    expect(body.creditsCharged).toBe(4);
     expect(await getOrgCredits(orgId)).toBe(996);
     expect(await findTestUsageEventsByRunId(runId)).toEqual([]);
   });

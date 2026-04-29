@@ -60,16 +60,49 @@ function readAscii(bytes: Uint8Array, offset: number, length: number): string {
   return text;
 }
 
+function isRiffWav(bytes: Uint8Array): boolean {
+  return readAscii(bytes, 0, 4) === "RIFF" && readAscii(bytes, 8, 4) === "WAVE";
+}
+
+type WavFormat = {
+  channels: number;
+  sampleRate: number;
+  bitsPerSample: number;
+};
+
+function readWavFormat(
+  view: DataView,
+  chunkStart: number,
+  byteLength: number,
+): WavFormat | null {
+  if (chunkStart + 16 > byteLength) return null;
+  return {
+    channels: view.getUint16(chunkStart + 2, true),
+    sampleRate: view.getUint32(chunkStart + 4, true),
+    bitsPerSample: view.getUint16(chunkStart + 14, true),
+  };
+}
+
+function readStandardWavFormat(view: DataView): WavFormat {
+  return {
+    channels: view.getUint16(22, true),
+    sampleRate: view.getUint32(24, true),
+    bitsPerSample: view.getUint16(34, true),
+  };
+}
+
+function hasUsableWavFormat(format: WavFormat): boolean {
+  return (
+    format.channels > 0 && format.sampleRate > 0 && format.bitsPerSample > 0
+  );
+}
+
 function parseWavDurationSeconds(bytes: Uint8Array): number | null {
   if (bytes.byteLength < 44) return null;
-  if (readAscii(bytes, 0, 4) !== "RIFF" || readAscii(bytes, 8, 4) !== "WAVE") {
-    return null;
-  }
+  if (!isRiffWav(bytes)) return null;
 
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  let channels: number | null = null;
-  let sampleRate: number | null = null;
-  let bitsPerSample: number | null = null;
+  let format: WavFormat | null = null;
   let dataOffset: number | null = null;
 
   // Walk chunks to find fmt info and the start of the data chunk
@@ -78,29 +111,23 @@ function parseWavDurationSeconds(bytes: Uint8Array): number | null {
     const chunkId = readAscii(bytes, offset, 4);
     const chunkSize = view.getUint32(offset + 4, true);
     const chunkStart = offset + 8;
-
-    if (chunkStart + chunkSize > bytes.byteLength) break;
+    const chunkEnd = chunkStart + chunkSize;
 
     if (chunkId === "fmt " && chunkSize >= 16) {
-      channels = view.getUint16(chunkStart + 2, true);
-      sampleRate = view.getUint32(chunkStart + 4, true);
-      bitsPerSample = view.getUint16(chunkStart + 14, true);
+      format = readWavFormat(view, chunkStart, bytes.byteLength) ?? format;
     } else if (chunkId === "data") {
       dataOffset = chunkStart;
     }
 
-    offset = chunkStart + chunkSize + (chunkSize % 2);
+    if (chunkEnd > bytes.byteLength) break;
+
+    offset = chunkEnd + (chunkSize % 2);
   }
 
   // If we couldn't find fmt chunk via walking, try standard WAV header position
   // (24 kHz, 16-bit, mono is what gpt-4o-mini-tts outputs)
-  if (!channels || !sampleRate || !bitsPerSample) {
-    channels = channels ?? view.getUint16(22, true);
-    sampleRate = sampleRate ?? view.getUint32(24, true);
-    bitsPerSample = bitsPerSample ?? view.getUint16(34, true);
-  }
-
-  if (!channels || !sampleRate || !bitsPerSample) return null;
+  format = format ?? readStandardWavFormat(view);
+  if (!hasUsableWavFormat(format)) return null;
 
   // Estimate audio data size from total bytes rather than trusting the data chunk header.
   // If we found the data chunk, use bytes after it; otherwise subtract the standard 44-byte header.
@@ -109,7 +136,8 @@ function parseWavDurationSeconds(bytes: Uint8Array): number | null {
 
   if (audioBytes <= 0) return null;
 
-  const bytesPerSecond = sampleRate * channels * (bitsPerSample / 8);
+  const bytesPerSecond =
+    format.sampleRate * format.channels * (format.bitsPerSample / 8);
   if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) return null;
   return Math.max(1, Math.ceil(audioBytes / bytesPerSecond));
 }
