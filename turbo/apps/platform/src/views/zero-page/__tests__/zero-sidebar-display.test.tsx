@@ -398,10 +398,10 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
 
     mockBaseAPIs();
     server.use(
-      mockApi(chatThreadsContract.create, async ({ respond }) => {
+      mockApi(chatThreadsContract.create, async ({ body, respond }) => {
         await deferred.promise;
         return respond(201, {
-          id: "new-thread",
+          id: body.clientThreadId ?? "new-thread",
           title: null,
           createdAt: "2026-03-10T00:00:00Z",
         });

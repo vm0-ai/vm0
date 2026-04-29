@@ -131,9 +131,9 @@ export const apiAgentsHandlers = [
   }),
 
   // POST /api/zero/chat-threads (create new thread)
-  mockApi(chatThreadsContract.create, ({ respond }) => {
+  mockApi(chatThreadsContract.create, ({ body, respond }) => {
     return respond(201, {
-      id: "b0000000-0000-4000-a000-000000000001",
+      id: body.clientThreadId ?? "b0000000-0000-4000-a000-000000000001",
       title: null,
       createdAt: "2026-03-10T00:00:00Z",
     });
