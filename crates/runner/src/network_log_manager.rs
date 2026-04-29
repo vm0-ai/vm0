@@ -79,6 +79,12 @@ struct WriteGate {
     release: Arc<Semaphore>,
 }
 
+/// Owns a source-IP network-log attribution for one runner job.
+///
+/// Keep this value alive until the sandbox is parked or stopped, then call
+/// [`NetworkLogSession::close_for_upload`] before reading/uploading the job's
+/// network log. Dropping it is only a best-effort cleanup fallback.
+#[must_use = "dropping a NetworkLogSession immediately closes network-log attribution"]
 pub struct NetworkLogSession {
     manager: NetworkLogManager,
     source_ip: String,
