@@ -74,32 +74,58 @@ The script uses deterministic UUIDv5 idempotency keys.
 
 ## Usage
 
-Run from `turbo/apps/web`.
+Run from `turbo/apps/web`:
+
+```bash
+cd turbo/apps/web
+```
+
+Required environment:
+
+| Name           | Required | Purpose                                      |
+| -------------- | -------- | -------------------------------------------- |
+| `DATABASE_URL` | yes      | Target Postgres database to read and update. |
+
+The script does not read Clerk, Stripe, Axiom, or billing service credentials.
+Use `dotenv -e .env.local --` when `DATABASE_URL` lives in `.env.local`. If
+`DATABASE_URL` is already exported in the shell, omit the dotenv wrapper and run
+`pnpm exec tsx ...` directly.
 
 Dry-run:
 
 ```bash
-dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts
+pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts
 ```
+
+Dry-run is the default mode. It prints counts, planned rows, warnings, and
+errors without writing to the database.
 
 Write:
 
 ```bash
-dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --migrate
+pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --migrate
 ```
 
-Useful scoped runs:
+`--migrate` runs the same validation pass first. It inserts rows only if there
+are no errors, and uses `ON CONFLICT DO NOTHING` so reruns are idempotent.
+
+Optional flags:
 
 ```bash
-dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --org-id=org_xxx
-dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --limit=100
-dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --batch-size=250
+# Scope to one org. Omit this flag to scan all orgs.
+pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --org-id=org_xxx
+
+# Scan at most 100 eligible source rows.
+pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --limit=100
+
+# Override the default 500 row batch size.
+pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --batch-size=250
 ```
 
 Treat warnings as fatal:
 
 ```bash
-dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --fail-on-anomaly
+pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --fail-on-anomaly
 ```
 
 ## Preflight SQL

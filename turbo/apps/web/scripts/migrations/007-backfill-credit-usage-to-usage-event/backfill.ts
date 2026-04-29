@@ -3,9 +3,27 @@
 /**
  * Backfill processed legacy credit_usage model-token rows into usage_event.
  *
- * Usage (from turbo/apps/web):
- *   dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts
- *   dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --migrate
+ * Required environment:
+ *   DATABASE_URL - target Postgres database. No other service credentials are
+ *   read by this script.
+ *
+ * Usage:
+ *   cd turbo/apps/web
+ *
+ *   # Dry-run only. Prints source counts, planned usage_event rows, warnings,
+ *   # and errors. This is the default mode and does not write to the database.
+ *   pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts
+ *
+ *   # Write rows after the same validation pass succeeds.
+ *   pnpm exec dotenv -e .env.local -- tsx scripts/migrations/007-backfill-credit-usage-to-usage-event/backfill.ts --migrate
+ *
+ * Optional flags:
+ *   --org-id=org_xxx       scope to one org; omitted means all orgs
+ *   --limit=100            scan at most 100 source rows
+ *   --batch-size=250       override the default 500 row batch size
+ *   --fail-on-anomaly      treat warnings as fatal
+ *
+ * If DATABASE_URL is already exported in the shell, omit the dotenv wrapper.
  */
 
 import { createHash } from "node:crypto";
