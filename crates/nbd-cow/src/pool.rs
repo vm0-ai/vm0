@@ -535,6 +535,28 @@ mod tests {
             .send_modify(|version| *version = version.wrapping_add(1));
     }
 
+    fn complete_validation(
+        validation_tx: &mpsc::UnboundedSender<Result<u32>>,
+        validation_watch_tx: &watch::Sender<u64>,
+        result: Result<u32>,
+    ) {
+        validation_tx.send(result).unwrap();
+        validation_watch_tx.send_modify(|version| *version = version.wrapping_add(1));
+    }
+
+    async fn wait_for_validation_waiter(validation_watch_tx: &watch::Sender<u64>) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if validation_watch_tx.receiver_count() > 1 {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("acquire did not wait for validation");
+    }
+
     fn test_pool_with_in_flight(index: u32) -> DevicePool {
         let (validation_tx, validation_rx) = validation_channel();
         let (validation_watch_tx, validation_watch_rx) = watch::channel(0);
@@ -628,6 +650,65 @@ mod tests {
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
         assert!(pool.in_flight.contains(&3));
         assert!(pool.ready.is_empty());
+    }
+
+    #[tokio::test]
+    async fn handle_acquire_waiting_for_validation_does_not_block_release() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.pending_count = 1;
+        pool.in_flight.insert(3);
+        let validation_tx = pool.validation_tx.clone();
+        let validation_watch_tx = pool.validation_watch_tx.clone();
+        let handle = DevicePoolHandle::from_pool(pool);
+        let acquire_task = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+
+        wait_for_validation_waiter(&validation_watch_tx).await;
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            handle.release_clean(DeviceLease::new(3)),
+        )
+        .await
+        .expect("release blocked behind pending acquire");
+        {
+            let pool = handle.inner.lock().await;
+            assert_eq!(pool.cooldown.front().map(|slot| slot.index), Some(3));
+        }
+
+        complete_validation(&validation_tx, &validation_watch_tx, Ok(4));
+        let lease = tokio::time::timeout(Duration::from_secs(1), acquire_task)
+            .await
+            .expect("acquire did not finish after validation")
+            .expect("acquire task panicked")
+            .expect("acquire failed");
+        assert_eq!(lease.index(), 4);
+        handle.discard(lease).await;
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn cleanup_wakes_handle_acquire_waiting_for_validation() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.pending_count = 1;
+        let validation_watch_tx = pool.validation_watch_tx.clone();
+        let handle = DevicePoolHandle::from_pool(pool);
+        let acquire_task = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+
+        wait_for_validation_waiter(&validation_watch_tx).await;
+        tokio::time::timeout(Duration::from_secs(1), handle.cleanup())
+            .await
+            .expect("cleanup blocked behind pending acquire");
+
+        let result = tokio::time::timeout(Duration::from_secs(1), acquire_task)
+            .await
+            .expect("acquire did not finish after cleanup")
+            .expect("acquire task panicked");
+        assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
     }
 
     #[tokio::test]
