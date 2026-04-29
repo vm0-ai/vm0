@@ -1384,7 +1384,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     needs: [prepare]
-    timeout-minutes: 40
+    timeout-minutes: 20
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-musl
     if: |
