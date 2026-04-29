@@ -1530,6 +1530,8 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
         run: |
+          set -euo pipefail
+
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
 
           prepare_host() {
@@ -1545,7 +1547,7 @@ jobs:
               return 1
             fi
             # shellcheck disable=SC2029
-            if ! < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"; then
+            if ! ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner" < "${TARGET_DIR}/runner"; then
               return 1
             fi
 
