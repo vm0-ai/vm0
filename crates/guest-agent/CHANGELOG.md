@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.0...guest-agent-v0.26.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* **guest-agent:** disable claude background tasks ([#11533](https://github.com/vm0-ai/vm0/issues/11533)) ([1d85fa1](https://github.com/vm0-ai/vm0/commit/1d85fa121e26773eb1cf44b8d3f57cbf7e62c687))
+
 ## [0.26.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.25.0...guest-agent-v0.26.0) (2026-04-29)
 
 

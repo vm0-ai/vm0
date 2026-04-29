@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.313.0](https://github.com/vm0-ai/vm0/compare/app-v0.312.0...app-v0.313.0) (2026-04-29)
+
+
+### Features
+
+* **api-contracts:** add openai-api-key provider type with codex model passthrough ([#11541](https://github.com/vm0-ai/vm0/issues/11541)) ([545980d](https://github.com/vm0-ai/vm0/commit/545980d9fc45f042c870484086d15742a068e35b))
+* **zero:** eager-pin chat thread to model provider at creation ([#11542](https://github.com/vm0-ai/vm0/issues/11542)) ([2d64e03](https://github.com/vm0-ai/vm0/commit/2d64e03c38388960e7897956631a256641265555)), closes [#11528](https://github.com/vm0-ai/vm0/issues/11528)
+
+
+### Bug Fixes
+
+* restore nano-banana connector registration lost during connectors package extraction ([#11512](https://github.com/vm0-ai/vm0/issues/11512)) ([9f3a82c](https://github.com/vm0-ai/vm0/commit/9f3a82cc265ce6b57e8b7cb4d3230b85a3e854c4))
+* soften chat thread running indicator ([#11523](https://github.com/vm0-ai/vm0/issues/11523)) ([87547e0](https://github.com/vm0-ai/vm0/commit/87547e0cca3a6e3abe61623783f271a94063799d))
+
 ## [0.312.0](https://github.com/vm0-ai/vm0/compare/app-v0.311.0...app-v0.312.0) (2026-04-29)
 
 

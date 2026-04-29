@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.9](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.8...sandbox-v0.12.9) (2026-04-29)
+
+
+### Documentation
+
+* **sandbox-fc:** document snapshot error variants ([#11535](https://github.com/vm0-ai/vm0/issues/11535)) ([f9d5625](https://github.com/vm0-ai/vm0/commit/f9d5625227abb29245b0048e4052d9a6f7592157))
+
 ## [0.12.8](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.7...sandbox-v0.12.8) (2026-04-29)
 
 

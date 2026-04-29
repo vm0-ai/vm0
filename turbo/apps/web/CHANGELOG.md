@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.321.0](https://github.com/vm0-ai/vm0/compare/web-v12.320.2...web-v12.321.0) (2026-04-29)
+
+
+### Features
+
+* **zero:** eager-pin chat thread to model provider at creation ([#11542](https://github.com/vm0-ai/vm0/issues/11542)) ([2d64e03](https://github.com/vm0-ai/vm0/commit/2d64e03c38388960e7897956631a256641265555)), closes [#11528](https://github.com/vm0-ai/vm0/issues/11528)
+
+
+### Bug Fixes
+
+* restore nano-banana connector registration lost during connectors package extraction ([#11512](https://github.com/vm0-ai/vm0/issues/11512)) ([9f3a82c](https://github.com/vm0-ai/vm0/commit/9f3a82cc265ce6b57e8b7cb4d3230b85a3e854c4))
+
 ## [12.320.2](https://github.com/vm0-ai/vm0/compare/web-v12.320.1...web-v12.320.2) (2026-04-29)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.27.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.2...sandbox-fc-v0.27.3) (2026-04-29)
+
+
+### Documentation
+
+* **sandbox-fc:** document public path helpers ([#11516](https://github.com/vm0-ai/vm0/issues/11516)) ([9af94e5](https://github.com/vm0-ai/vm0/commit/9af94e5365869b35109b79fa4aaebc491a0414f3))
+* **sandbox-fc:** document snapshot error variants ([#11535](https://github.com/vm0-ai/vm0/issues/11535)) ([f9d5625](https://github.com/vm0-ai/vm0/commit/f9d5625227abb29245b0048e4052d9a6f7592157))
+
 ## [0.27.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.1...sandbox-fc-v0.27.2) (2026-04-29)
 
 

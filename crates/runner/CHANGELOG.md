@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.98.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.6...runner-rs-v0.98.7) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** compare axiom timeouts precisely ([#11536](https://github.com/vm0-ai/vm0/issues/11536)) ([6c751d4](https://github.com/vm0-ai/vm0/commit/6c751d47dc24fe7277beafbd475cb229001d74b9))
+
 ## [0.98.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.5...runner-rs-v0.98.6) (2026-04-29)
 
 ## [0.98.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.4...runner-rs-v0.98.5) (2026-04-29)
