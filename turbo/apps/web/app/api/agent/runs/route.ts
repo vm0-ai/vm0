@@ -318,9 +318,12 @@ const router = tsr.router(runsMainContract, {
       authorizeCompose(userId, org.orgId, compose);
       const authorizeTime = Date.now();
 
-      // 4. Validate compose requirements (new runs only)
+      // 4. Validate compose requirements (new runs only).
+      // CLI requests carry no modelProvider/modelProviderId, so pass null —
+      // the validator's existing behavior (compose env required for non-
+      // claude-code frameworks) is preserved on this path.
       if (!body.checkpointId && !body.sessionId) {
-        await validateComposeRequirements(composeContent);
+        await validateComposeRequirements(composeContent, null);
       }
 
       // 5. Validate mutual exclusivity

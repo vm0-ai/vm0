@@ -6,12 +6,20 @@ import {
   forbidden,
   noModelProvider,
 } from "@vm0/api-services/errors";
+import {
+  MODEL_PROVIDER_TYPES,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { validateFrameworkApiKey } from "../infra/run/utils";
 import { logger } from "../shared/logger";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 import { checkOrgCredits } from "./credit/check-org-credits";
-import { getOrgDefaultModelProviderType } from "./model-provider/model-provider-service";
+import {
+  getOrgDefaultModelProvider,
+  getOrgDefaultModelProviderType,
+  getModelProviderByIdForOrg,
+} from "./model-provider/model-provider-service";
 import type { Database } from "../../types/global";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
@@ -114,14 +122,48 @@ export function authorizeCompose(
  * Validate compose requirements for new runs.
  *
  * Skipped when resuming from checkpoint or continuing a session.
+ *
+ * `providerType`, when supplied, lets the API-key validator accept a
+ * provider-supplied secret in lieu of a compose-level declaration.
  */
 export async function validateComposeRequirements(
   composeContent: AgentComposeYaml,
+  providerType?: ModelProviderType | null,
 ): Promise<void> {
   if (!composeContent?.agents) {
     return;
   }
-  validateFrameworkApiKey(composeContent);
+  validateFrameworkApiKey(composeContent, providerType);
+}
+
+/**
+ * Resolve the provider type that admission checks should treat as the
+ * effective key source for this run. Precedence:
+ *   explicit override → explicit modelProviderId → org default for framework.
+ * Returns null when nothing is configured (admission decides whether that
+ * is fatal).
+ */
+export async function resolveProviderTypeForAdmission(params: {
+  orgId: string;
+  modelProvider?: string | null;
+  modelProviderId?: string | null;
+  composeFramework: string;
+}): Promise<ModelProviderType | null> {
+  if (params.modelProvider && params.modelProvider in MODEL_PROVIDER_TYPES) {
+    return params.modelProvider as ModelProviderType;
+  }
+  if (params.modelProviderId) {
+    const row = await getModelProviderByIdForOrg(
+      params.orgId,
+      params.modelProviderId,
+    );
+    return row?.type ?? null;
+  }
+  const def = await getOrgDefaultModelProvider(
+    params.orgId,
+    params.composeFramework,
+  );
+  return def?.type ?? null;
 }
 
 /**
@@ -147,7 +189,14 @@ export async function checkOrgCreditsForRun(
 
   let isVm0 = modelProvider === "vm0";
   if (!isVm0) {
-    const defaultProviderType = await getOrgDefaultModelProviderType(orgId, db);
+    // vm0 is the only credit-triggering provider, and it lives under
+    // claude-code, so the "is the org's default vm0?" check is intrinsically
+    // claude-code-scoped regardless of the run's framework.
+    const defaultProviderType = await getOrgDefaultModelProviderType(
+      orgId,
+      "claude-code",
+      db,
+    );
     isVm0 = defaultProviderType === "vm0";
   }
 
@@ -173,14 +222,15 @@ export async function checkModelProviderConfigured(
     : undefined;
   const framework = firstAgent?.framework || "claude-code";
 
-  if (framework !== "claude-code") return;
-
   const hasExplicitConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
     return firstAgent?.environment?.[v] !== undefined;
   });
   if (hasExplicitConfig) return;
 
-  const defaultProviderType = await getOrgDefaultModelProviderType(orgId);
+  const defaultProviderType = await getOrgDefaultModelProviderType(
+    orgId,
+    framework,
+  );
 
   if (!defaultProviderType) {
     throw noModelProvider();
