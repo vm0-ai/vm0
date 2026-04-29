@@ -22,6 +22,8 @@ ABLY_API_KEY=op://Development/ably/ABLY_API_KEY
 AXIOM_TOKEN_SESSIONS=op://Development/axiom/AXIOM_TOKEN_SESSIONS
 AXIOM_TOKEN_TELEMETRY=op://Development/axiom/AXIOM_TOKEN_TELEMETRY
 AXIOM_DATASET_SUFFIX=dev
+# api/instrument.ts gates OTel on this — set any non-empty value so local dev emits spans
+VERCEL_GIT_COMMIT_SHA=local-dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0/SECRETS_ENCRYPTION_KEY
 

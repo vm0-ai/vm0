@@ -2,7 +2,11 @@ import { propagation } from "@opentelemetry/api";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { PgInstrumentation } from "@opentelemetry/instrumentation-pg";
 import { ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions";
-import { init } from "@sentry/node";
+import {
+  httpIntegration,
+  init,
+  nativeNodeFetchIntegration,
+} from "@sentry/node";
 import { registerOTel } from "@vercel/otel";
 
 import { env } from "./lib/env";
@@ -85,6 +89,23 @@ function setupSentry() {
     return;
   }
 
+  // We run our own OTel pipeline (@vercel/otel + @hono/otel + PgInstrumentation
+  // exporting to Axiom). @sentry/node v10 layers Sentry's own instrumentations
+  // on top of whatever tracer it sees, so without these opt-outs every request
+  // got a duplicate SERVER span and every outgoing request received both
+  // Sentry's `sentry-trace`/`baggage` and OTel's `traceparent` headers. The
+  // configuration below matches Sentry's "Using Your Existing OpenTelemetry
+  // Setup" guide:
+  //   - `skipOpenTelemetrySetup: true` — don't let Sentry init its own OTel
+  //     SDK; @vercel/otel already provides the tracer/exporter.
+  //   - `httpIntegration({ spans: false, tracePropagation: false })` — keep
+  //     Sentry's request isolation but stop it from creating SERVER spans or
+  //     injecting Sentry trace headers on incoming requests.
+  //   - `nativeNodeFetchIntegration({ tracePropagation: false })` — stop
+  //     Sentry from injecting trace headers on outgoing fetch; span emission
+  //     is already off because skipOpenTelemetrySetup flips its default.
+  // Sentry error capture (`captureException`) is unaffected by any of these.
+  // Reference: https://docs.sentry.io/platforms/javascript/guides/hono/opentelemetry/custom-setup/
   init({
     dsn,
     environment: env("VERCEL_ENV"),
@@ -93,9 +114,14 @@ function setupSentry() {
         app: "api",
       },
     },
+    integrations: [
+      httpIntegration({ spans: false, tracePropagation: false }),
+      nativeNodeFetchIntegration({ tracePropagation: false }),
+    ],
     release,
     sendDefaultPii: false,
     shutdownTimeout: 500,
+    skipOpenTelemetrySetup: true,
     tracesSampleRate: 0,
   });
 }
