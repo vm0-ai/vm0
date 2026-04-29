@@ -65,7 +65,7 @@ function ScreenshotCarousel({
     <div className="uc-carousel">
       <div className="uc-screenshot-frame">
         <Image
-          src={screenshots[activeIndex]}
+          src={screenshots[activeIndex]!}
           alt={`${alt} — screenshot ${activeIndex + 1}`}
           width={800}
           height={450}
@@ -77,11 +77,11 @@ function ScreenshotCarousel({
         <>
           <button
             className="uc-carousel-btn uc-carousel-btn--left"
-            onClick={() =>
+            onClick={() => {
               setActiveIndex(
                 (activeIndex - 1 + screenshots.length) % screenshots.length,
-              )
-            }
+              );
+            }}
             aria-label="Previous screenshot"
           >
             <svg
@@ -102,9 +102,9 @@ function ScreenshotCarousel({
           </button>
           <button
             className="uc-carousel-btn uc-carousel-btn--right"
-            onClick={() =>
-              setActiveIndex((activeIndex + 1) % screenshots.length)
-            }
+            onClick={() => {
+              setActiveIndex((activeIndex + 1) % screenshots.length);
+            }}
             aria-label="Next screenshot"
           >
             <svg
@@ -124,14 +124,18 @@ function ScreenshotCarousel({
             </svg>
           </button>
           <div className="uc-carousel-dots">
-            {screenshots.map((_, i) => (
-              <button
-                key={i}
-                className={`uc-carousel-dot${i === activeIndex ? " uc-carousel-dot--active" : ""}`}
-                onClick={() => setActiveIndex(i)}
-                aria-label={`Go to screenshot ${i + 1}`}
-              />
-            ))}
+            {screenshots.map((_, i) => {
+              return (
+                <button
+                  key={i}
+                  className={`uc-carousel-dot${i === activeIndex ? " uc-carousel-dot--active" : ""}`}
+                  onClick={() => {
+                    setActiveIndex(i);
+                  }}
+                  aria-label={`Go to screenshot ${i + 1}`}
+                />
+              );
+            })}
           </div>
         </>
       )}
