@@ -4,6 +4,8 @@ use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use api_contracts::generated::types::runners::storage::StorageManifest;
+
 use crate::ids::RunId;
 
 // ---------------------------------------------------------------------------
@@ -157,42 +159,6 @@ pub struct NetworkPolicy {
     /// Policy for requests not matching any known permission rule.
     /// Values: "allow", "deny", "ask"
     pub unknown_policy: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StorageManifest {
-    pub storages: Vec<StorageEntry>,
-    #[serde(default)]
-    pub artifacts: Vec<ArtifactEntry>,
-}
-
-/// API/wire storage entry from the web claim response.
-///
-/// Runner-derived guest-download state such as `cached` does not belong here.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StorageEntry {
-    pub name: String,
-    pub mount_path: String,
-    pub archive_url: String,
-    pub vas_storage_name: String,
-    pub vas_version_id: String,
-}
-
-/// API/wire artifact entry from the web claim response.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ArtifactEntry {
-    pub mount_path: String,
-    pub archive_url: String,
-    pub vas_storage_name: String,
-    /// Storage UUID, used guest-side to locally recompute the content hash
-    /// and skip VAS calls when an artifact is unchanged since mount.
-    pub vas_storage_id: String,
-    pub vas_version_id: String,
-    #[serde(default)]
-    pub manifest_url: Option<String>,
 }
 
 /// Runner-derived manifest written to `guest-download`.
@@ -391,6 +357,7 @@ impl SandboxReuseResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use api_contracts::generated::types::runners::storage::{ArtifactEntry, StorageEntry};
     use serde_json::json;
 
     #[test]
@@ -750,12 +717,11 @@ mod tests {
     }
 
     #[test]
-    fn storage_manifest_empty_artifacts_defaults() {
+    fn storage_manifest_requires_artifacts_field() {
         let json = json!({
             "storages": []
         });
-        let manifest: StorageManifest = serde_json::from_value(json).unwrap();
-        assert!(manifest.artifacts.is_empty());
+        assert!(serde_json::from_value::<StorageManifest>(json).is_err());
     }
 
     #[test]

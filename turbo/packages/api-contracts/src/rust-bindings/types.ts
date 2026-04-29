@@ -1,5 +1,10 @@
 import type { z } from "zod";
 import {
+  artifactEntrySchema,
+  storageEntrySchema,
+  storageManifestSchema,
+} from "../contracts/runners";
+import {
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
@@ -13,6 +18,28 @@ export interface RustTypeBinding {
 }
 
 export const rustTypeBindings = [
+  {
+    schema: artifactEntrySchema,
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "ArtifactEntry",
+    direction: "response",
+  },
+  {
+    schema: storageEntrySchema,
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageEntry",
+    direction: "response",
+  },
+  {
+    schema: storageManifestSchema,
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageManifest",
+    direction: "response",
+    fieldTypeOverrides: {
+      storages: "Vec<StorageEntry>",
+      artifacts: "Vec<ArtifactEntry>",
+    },
+  },
   {
     schema: webhookStoragesPrepareContract.prepare.body,
     rustModulePath: ["webhooks", "agent", "storages", "prepare"],

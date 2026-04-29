@@ -1411,8 +1411,10 @@ mod tests {
     use super::*;
     use crate::ids::RunId;
     use crate::types::{
-        ArtifactEntry, GuestDownloadArtifactEntry, GuestDownloadManifest,
-        GuestDownloadStorageEntry, ResumeSession, StorageEntry, StorageManifest,
+        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry, ResumeSession,
+    };
+    use api_contracts::generated::types::runners::storage::{
+        ArtifactEntry, StorageEntry, StorageManifest,
     };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;

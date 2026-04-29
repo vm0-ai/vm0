@@ -6,12 +6,12 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::types::runners::storage::StorageManifest;
 use futures_util::FutureExt;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 
 use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
-use crate::types::StorageManifest;
 
 /// Default idle timeout for kept-alive VMs (30 minutes).
 ///
