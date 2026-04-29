@@ -650,14 +650,8 @@ impl DevicePool {
     fn spawn_validation(&mut self, purpose: ValidationPurpose) {
         let max = self.max_devices;
         let exclude = self.tracked_indices();
-        self.pending.spawn(async move {
-            let result =
-                match tokio::task::spawn_blocking(move || scan_free_device(max, &exclude)).await {
-                    Ok(result) => result,
-                    Err(e) => Err(NbdCowError::Io(std::io::Error::other(format!(
-                        "scan task panicked: {e}"
-                    )))),
-                };
+        self.pending.spawn_blocking(move || {
+            let result = scan_free_device(max, &exclude);
             ValidationResult { purpose, result }
         });
     }
