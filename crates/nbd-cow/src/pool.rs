@@ -472,23 +472,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn acquire_skips_duplicate_pending_validation_result() {
+    async fn acquire_rejects_duplicate_pending_validation_result() {
         let mut pool = test_pool_for_pending_scan();
         pool.in_flight.insert(3);
         pool.pending.spawn(async { Ok(3) });
-        pool.pending.spawn(async {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            Ok(5)
-        });
 
-        let lease = pool.acquire().await.expect("acquire non-duplicate index");
+        let result = pool.acquire().await;
 
-        assert_eq!(lease.index(), 5);
+        assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
         assert!(pool.in_flight.contains(&3));
-        assert!(pool.in_flight.contains(&5));
-
-        pool.release(lease);
-        pool.cleanup().await;
+        assert!(pool.ready.is_empty());
     }
 
     #[tokio::test]
