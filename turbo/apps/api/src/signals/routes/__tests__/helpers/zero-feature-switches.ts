@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Store } from "ccstate";
+import { command } from "ccstate";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { and, eq } from "drizzle-orm";
 
@@ -11,34 +11,42 @@ export interface FeatureSwitchesFixture {
   readonly userId: string;
 }
 
-export async function seedFeatureSwitches(
-  store: Store,
-  switches: Record<string, boolean>,
-): Promise<FeatureSwitchesFixture> {
-  const orgId = `org_${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
-  const writeDb = store.set(writeDb$);
+export const seedFeatureSwitches$ = command(
+  async (
+    { set },
+    switches: Record<string, boolean>,
+    signal: AbortSignal,
+  ): Promise<FeatureSwitchesFixture> => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const writeDb = set(writeDb$);
 
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId,
-    userId,
-    switches,
-  });
+    await writeDb.insert(userFeatureSwitches).values({
+      orgId,
+      userId,
+      switches,
+    });
+    signal.throwIfAborted();
 
-  return { orgId, userId };
-}
+    return { orgId, userId };
+  },
+);
 
-export async function deleteFeatureSwitches(
-  store: Store,
-  fixture: FeatureSwitchesFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, fixture.orgId),
-        eq(userFeatureSwitches.userId, fixture.userId),
-      ),
-    );
-}
+export const deleteFeatureSwitches$ = command(
+  async (
+    { set },
+    fixture: FeatureSwitchesFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .delete(userFeatureSwitches)
+      .where(
+        and(
+          eq(userFeatureSwitches.orgId, fixture.orgId),
+          eq(userFeatureSwitches.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+  },
+);

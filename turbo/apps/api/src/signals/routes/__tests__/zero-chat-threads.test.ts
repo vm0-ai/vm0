@@ -7,9 +7,9 @@ import {
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
-  deleteZeroChatThread,
-  seedZeroChatMessage,
-  seedZeroChatThread,
+  deleteZeroChatThread$,
+  seedZeroChatMessage$,
+  seedZeroChatThread$,
   type ZeroChatThreadFixture,
 } from "./helpers/zero-chat-threads";
 import {
@@ -23,19 +23,24 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/chat-threads/:id", () => {
   const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-    return deleteZeroChatThread(store, fixture);
+    return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
 
   it("returns thread detail with S3-backed attachment metadata", async () => {
     const fixture = await track(
-      seedZeroChatThread(store, { title: "Uploads" }),
+      store.set(seedZeroChatThread$, { title: "Uploads" }, context.signal),
     );
-    await seedZeroChatMessage(store, fixture, {
-      role: "user",
-      content: "see attached file",
-      attachFiles: ["file_123"],
-      createdAt: new Date("2025-01-01T00:00:00.000Z"),
-    });
+    await store.set(
+      seedZeroChatMessage$,
+      fixture,
+      {
+        role: "user",
+        content: "see attached file",
+        attachFiles: ["file_123"],
+        createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      },
+      context.signal,
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mocks.s3.listObjects([
       {
@@ -90,17 +95,24 @@ describe("GET /api/zero/chat-threads/:id", () => {
 
 describe("GET /api/zero/chat-threads/:threadId/messages", () => {
   const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
-    return deleteZeroChatThread(store, fixture);
+    return store.set(deleteZeroChatThread$, fixture, context.signal);
   });
 
   it("returns paged messages with S3-backed attachment metadata", async () => {
-    const fixture = await track(seedZeroChatThread(store));
-    await seedZeroChatMessage(store, fixture, {
-      role: "assistant",
-      content: "uploaded",
-      attachFiles: ["image_file"],
-      createdAt: new Date("2025-01-01T00:00:00.000Z"),
-    });
+    const fixture = await track(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    await store.set(
+      seedZeroChatMessage$,
+      fixture,
+      {
+        role: "assistant",
+        content: "uploaded",
+        attachFiles: ["image_file"],
+        createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      },
+      context.signal,
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mocks.s3.listObjects([
       {

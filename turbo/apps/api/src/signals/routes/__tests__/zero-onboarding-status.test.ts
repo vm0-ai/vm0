@@ -6,8 +6,8 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
-  deleteOnboardingStatusOrg,
-  seedOnboardingStatusOrg,
+  deleteOnboardingStatusOrg$,
+  seedOnboardingStatusOrg$,
   type OnboardingStatusFixture,
 } from "./helpers/zero-onboarding-status";
 import {
@@ -21,7 +21,7 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/onboarding/status", () => {
   const track = createFixtureTracker<OnboardingStatusFixture>((fixture) => {
-    return deleteOnboardingStatusOrg(store, fixture);
+    return store.set(deleteOnboardingStatusOrg$, fixture, context.signal);
   });
 
   it("returns onboarding required when the session has no active org", async () => {
@@ -48,7 +48,9 @@ describe("GET /api/zero/onboarding/status", () => {
   });
 
   it("requires admin onboarding when the org has no default agent", async () => {
-    const fixture = await track(seedOnboardingStatusOrg(store));
+    const fixture = await track(
+      store.set(seedOnboardingStatusOrg$, {}, context.signal),
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     mockApiShadowCompareRoutes([onboardingStatusContract.getStatus]);
 
@@ -73,13 +75,17 @@ describe("GET /api/zero/onboarding/status", () => {
 
   it("returns completed onboarding with default agent metadata", async () => {
     const fixture = await track(
-      seedOnboardingStatusOrg(store, {
-        defaultAgent: {
-          displayName: "Support",
-          description: "Handles customer questions",
+      store.set(
+        seedOnboardingStatusOrg$,
+        {
+          defaultAgent: {
+            displayName: "Support",
+            description: "Handles customer questions",
+          },
+          onboardingDone: true,
         },
-        onboardingDone: true,
-      }),
+        context.signal,
+      ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     mockApiShadowCompareRoutes([onboardingStatusContract.getStatus]);

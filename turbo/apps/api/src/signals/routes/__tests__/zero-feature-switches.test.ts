@@ -6,8 +6,8 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
-  deleteFeatureSwitches,
-  seedFeatureSwitches,
+  deleteFeatureSwitches$,
+  seedFeatureSwitches$,
   type FeatureSwitchesFixture,
 } from "./helpers/zero-feature-switches";
 import {
@@ -21,15 +21,19 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/feature-switches", () => {
   const track = createFixtureTracker<FeatureSwitchesFixture>((fixture) => {
-    return deleteFeatureSwitches(store, fixture);
+    return store.set(deleteFeatureSwitches$, fixture, context.signal);
   });
 
   it("returns persisted feature switch overrides", async () => {
     const fixture = await track(
-      seedFeatureSwitches(store, {
-        apiBackend: true,
-        audioInput: false,
-      }),
+      store.set(
+        seedFeatureSwitches$,
+        {
+          apiBackend: true,
+          audioInput: false,
+        },
+        context.signal,
+      ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroFeatureSwitchesContract.get]);

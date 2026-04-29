@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Store } from "ccstate";
+import { command } from "ccstate";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
@@ -23,109 +23,135 @@ interface QueuePositionSeedValues {
   readonly unqueuedRuns?: number;
 }
 
-async function seedRun(
-  store: Store,
-  values: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly composeId: string;
-    readonly status: string;
+const seedRun$ = command(
+  async (
+    { set },
+    values: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly composeId: string;
+      readonly status: string;
+    },
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const writeDb = set(writeDb$);
+    const runId = randomUUID();
+    const sessionId = randomUUID();
+
+    await writeDb.insert(agentSessions).values({
+      id: sessionId,
+      userId: values.userId,
+      orgId: values.orgId,
+      agentComposeId: values.composeId,
+    });
+    signal.throwIfAborted();
+    await writeDb.insert(agentRuns).values({
+      id: runId,
+      userId: values.userId,
+      orgId: values.orgId,
+      sessionId,
+      status: values.status,
+      prompt: "test prompt",
+    });
+    signal.throwIfAborted();
+
+    return runId;
   },
-): Promise<string> {
-  const writeDb = store.set(writeDb$);
-  const runId = randomUUID();
-  const sessionId = randomUUID();
+);
 
-  await writeDb.insert(agentSessions).values({
-    id: sessionId,
-    userId: values.userId,
-    orgId: values.orgId,
-    agentComposeId: values.composeId,
-  });
-  await writeDb.insert(agentRuns).values({
-    id: runId,
-    userId: values.userId,
-    orgId: values.orgId,
-    sessionId,
-    status: values.status,
-    prompt: "test prompt",
-  });
+export const seedQueuePositionRuns$ = command(
+  async (
+    { set },
+    values: QueuePositionSeedValues,
+    signal: AbortSignal,
+  ): Promise<QueuePositionFixture> => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const composeId = randomUUID();
+    const queuedRuns = values.queuedRuns ?? 0;
+    const unqueuedRuns = values.unqueuedRuns ?? 0;
+    const queuedRunIds: string[] = [];
+    const unqueuedRunIds: string[] = [];
+    const writeDb = set(writeDb$);
 
-  return runId;
-}
+    await writeDb.insert(agentComposes).values({
+      id: composeId,
+      userId,
+      orgId,
+      name: `agent-${composeId.slice(0, 8)}`,
+    });
+    signal.throwIfAborted();
 
-export async function seedQueuePositionRuns(
-  store: Store,
-  values: QueuePositionSeedValues = {},
-): Promise<QueuePositionFixture> {
-  const orgId = `org_${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
-  const composeId = randomUUID();
-  const queuedRuns = values.queuedRuns ?? 0;
-  const unqueuedRuns = values.unqueuedRuns ?? 0;
-  const queuedRunIds: string[] = [];
-  const unqueuedRunIds: string[] = [];
-  const writeDb = store.set(writeDb$);
+    const baseTime = now();
+    for (let index = 0; index < queuedRuns; index++) {
+      const runId = await set(
+        seedRun$,
+        {
+          orgId,
+          userId,
+          composeId,
+          status: "queued",
+        },
+        signal,
+      );
+      const createdAt = new Date(baseTime + index * 1000);
+      await writeDb.insert(agentRunQueue).values({
+        runId,
+        userId,
+        orgId,
+        createdAt,
+        expiresAt: new Date(createdAt.getTime() + 60 * 60 * 1000),
+      });
+      signal.throwIfAborted();
 
-  await writeDb.insert(agentComposes).values({
-    id: composeId,
-    userId,
-    orgId,
-    name: `agent-${composeId.slice(0, 8)}`,
-  });
+      queuedRunIds.push(runId);
+    }
 
-  const baseTime = now();
-  for (let index = 0; index < queuedRuns; index++) {
-    const runId = await seedRun(store, {
+    for (let index = 0; index < unqueuedRuns; index++) {
+      const runId = await set(
+        seedRun$,
+        {
+          orgId,
+          userId,
+          composeId,
+          status: "running",
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      unqueuedRunIds.push(runId);
+    }
+
+    return {
       orgId,
       userId,
       composeId,
-      status: "queued",
-    });
-    const createdAt = new Date(baseTime + index * 1000);
-    await writeDb.insert(agentRunQueue).values({
-      runId,
-      userId,
-      orgId,
-      createdAt,
-      expiresAt: new Date(createdAt.getTime() + 60 * 60 * 1000),
-    });
+      queuedRunIds,
+      unqueuedRunIds,
+    };
+  },
+);
 
-    queuedRunIds.push(runId);
-  }
-
-  for (let index = 0; index < unqueuedRuns; index++) {
-    const runId = await seedRun(store, {
-      orgId,
-      userId,
-      composeId,
-      status: "running",
-    });
-    unqueuedRunIds.push(runId);
-  }
-
-  return {
-    orgId,
-    userId,
-    composeId,
-    queuedRunIds,
-    unqueuedRunIds,
-  };
-}
-
-export async function deleteQueuePositionRuns(
-  store: Store,
-  fixture: QueuePositionFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(agentRunQueue)
-    .where(eq(agentRunQueue.orgId, fixture.orgId));
-  await writeDb.delete(agentRuns).where(eq(agentRuns.orgId, fixture.orgId));
-  await writeDb
-    .delete(agentSessions)
-    .where(eq(agentSessions.orgId, fixture.orgId));
-  await writeDb
-    .delete(agentComposes)
-    .where(eq(agentComposes.id, fixture.composeId));
-}
+export const deleteQueuePositionRuns$ = command(
+  async (
+    { set },
+    fixture: QueuePositionFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .delete(agentRunQueue)
+      .where(eq(agentRunQueue.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb.delete(agentRuns).where(eq(agentRuns.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(agentSessions)
+      .where(eq(agentSessions.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(agentComposes)
+      .where(eq(agentComposes.id, fixture.composeId));
+    signal.throwIfAborted();
+  },
+);

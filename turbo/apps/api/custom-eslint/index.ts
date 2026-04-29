@@ -3,6 +3,7 @@ import { noFnDollarSuffix } from "./rules/no-fn-dollar-suffix.ts";
 import { noGetterSetterParams } from "./rules/no-getter-setter-params.ts";
 import { noLoggerInfo } from "./rules/no-logger-info.ts";
 import { noPackageVariable } from "./rules/no-package-variable.ts";
+import { noStoreInParams } from "./rules/no-store-in-params.ts";
 import { noTestViMocks } from "./rules/no-test-vi-mocks.ts";
 import { signalCheckAwait } from "./rules/signal-check-await.ts";
 
@@ -17,6 +18,7 @@ export const apiLintPlugin = {
     "no-getter-setter-params": noGetterSetterParams,
     "no-logger-info": noLoggerInfo,
     "no-package-variable": noPackageVariable,
+    "no-store-in-params": noStoreInParams,
     "no-test-vi-mocks": noTestViMocks,
     "signal-check-await": signalCheckAwait,
   },

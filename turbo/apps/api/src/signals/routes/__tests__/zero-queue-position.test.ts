@@ -7,8 +7,8 @@ import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
-  deleteQueuePositionRuns,
-  seedQueuePositionRuns,
+  deleteQueuePositionRuns$,
+  seedQueuePositionRuns$,
   type QueuePositionFixture,
 } from "./helpers/zero-queue-position";
 import {
@@ -22,12 +22,12 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/queue-position", () => {
   const track = createFixtureTracker<QueuePositionFixture>((fixture) => {
-    return deleteQueuePositionRuns(store, fixture);
+    return store.set(deleteQueuePositionRuns$, fixture, context.signal);
   });
 
   it("returns the queued run position within the org queue", async () => {
     const fixture = await track(
-      seedQueuePositionRuns(store, { queuedRuns: 2 }),
+      store.set(seedQueuePositionRuns$, { queuedRuns: 2 }, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const runId = fixture.queuedRunIds[1];
@@ -54,7 +54,7 @@ describe("GET /api/zero/queue-position", () => {
 
   it("returns zero position for an owned run that is not queued", async () => {
     const fixture = await track(
-      seedQueuePositionRuns(store, { unqueuedRuns: 1 }),
+      store.set(seedQueuePositionRuns$, { unqueuedRuns: 1 }, context.signal),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const runId = fixture.unqueuedRunIds[0];
@@ -81,7 +81,7 @@ describe("GET /api/zero/queue-position", () => {
 
   it("returns 404 for a run owned by another user", async () => {
     const fixture = await track(
-      seedQueuePositionRuns(store, { queuedRuns: 1 }),
+      store.set(seedQueuePositionRuns$, { queuedRuns: 1 }, context.signal),
     );
     mocks.clerk.session(`user_${randomUUID()}`, fixture.orgId);
     const runId = fixture.queuedRunIds[0];

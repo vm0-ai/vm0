@@ -6,8 +6,8 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
-  deleteAutoRechargeOrg,
-  seedAutoRechargeOrg,
+  deleteAutoRechargeOrg$,
+  seedAutoRechargeOrg$,
   type AutoRechargeOrgFixture,
 } from "./helpers/zero-billing-auto-recharge";
 import {
@@ -21,16 +21,20 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/billing/auto-recharge", () => {
   const track = createFixtureTracker<AutoRechargeOrgFixture>((fixture) => {
-    return deleteAutoRechargeOrg(store, fixture);
+    return store.set(deleteAutoRechargeOrg$, fixture, context.signal);
   });
 
   it("returns the org auto-recharge config from the api implementation", async () => {
     const fixture = await track(
-      seedAutoRechargeOrg(store, {
-        enabled: true,
-        threshold: 500,
-        amount: 5000,
-      }),
+      store.set(
+        seedAutoRechargeOrg$,
+        {
+          enabled: true,
+          threshold: 500,
+          amount: 5000,
+        },
+        context.signal,
+      ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroBillingAutoRechargeContract.get]);

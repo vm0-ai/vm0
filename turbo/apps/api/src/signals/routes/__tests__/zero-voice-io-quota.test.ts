@@ -4,8 +4,8 @@ import { createStore } from "ccstate";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
 import {
-  deleteVoiceIoQuotaOrg,
-  seedVoiceIoQuotaOrg,
+  deleteVoiceIoQuotaOrg$,
+  seedVoiceIoQuotaOrg$,
   type VoiceIoQuotaFixture,
 } from "./helpers/zero-voice-io-quota";
 import {
@@ -19,11 +19,13 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/voice-io/quota", () => {
   const track = createFixtureTracker<VoiceIoQuotaFixture>((fixture) => {
-    return deleteVoiceIoQuotaOrg(store, fixture);
+    return store.set(deleteVoiceIoQuotaOrg$, fixture, context.signal);
   });
 
   it("defaults a missing org metadata row to the free quota", async () => {
-    const fixture = await track(seedVoiceIoQuotaOrg(store));
+    const fixture = await track(
+      store.set(seedVoiceIoQuotaOrg$, {}, context.signal),
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroVoiceIoQuotaContract.get]);
 
@@ -44,7 +46,9 @@ describe("GET /api/zero/voice-io/quota", () => {
   });
 
   it("blocks free tier users at the lifetime audio input quota", async () => {
-    const fixture = await track(seedVoiceIoQuotaOrg(store, { count: 10 }));
+    const fixture = await track(
+      store.set(seedVoiceIoQuotaOrg$, { count: 10 }, context.signal),
+    );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroVoiceIoQuotaContract.get]);
 
@@ -66,10 +70,14 @@ describe("GET /api/zero/voice-io/quota", () => {
 
   it("does not apply the free quota to paid tiers", async () => {
     const fixture = await track(
-      seedVoiceIoQuotaOrg(store, {
-        tier: "pro",
-        count: 10,
-      }),
+      store.set(
+        seedVoiceIoQuotaOrg$,
+        {
+          tier: "pro",
+          count: 10,
+        },
+        context.signal,
+      ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroVoiceIoQuotaContract.get]);

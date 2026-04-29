@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Store } from "ccstate";
+import { command } from "ccstate";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -26,70 +26,86 @@ export interface OnboardingStatusFixture {
   readonly composeId: string | null;
 }
 
-export async function seedOnboardingStatusOrg(
-  store: Store,
-  values: OnboardingSeedValues = {},
-): Promise<OnboardingStatusFixture> {
-  const orgId = `org_${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
-  const writeDb = store.set(writeDb$);
-  const composeId = values.defaultAgent ? randomUUID() : null;
+export const seedOnboardingStatusOrg$ = command(
+  async (
+    { set },
+    values: OnboardingSeedValues,
+    signal: AbortSignal,
+  ): Promise<OnboardingStatusFixture> => {
+    const orgId = `org_${randomUUID()}`;
+    const userId = `user_${randomUUID()}`;
+    const writeDb = set(writeDb$);
+    const composeId = values.defaultAgent ? randomUUID() : null;
 
-  if (composeId) {
-    await writeDb.insert(agentComposes).values({
-      id: composeId,
-      userId,
+    if (composeId) {
+      await writeDb.insert(agentComposes).values({
+        id: composeId,
+        userId,
+        orgId,
+        name: `agent-${composeId.slice(0, 8)}`,
+      });
+      signal.throwIfAborted();
+      await writeDb.insert(zeroAgents).values({
+        id: composeId,
+        orgId,
+        owner: userId,
+        name: `agent-${composeId.slice(0, 8)}`,
+        displayName: values.defaultAgent?.displayName ?? null,
+        description: values.defaultAgent?.description ?? null,
+        sound: values.defaultAgent?.sound ?? null,
+      });
+      signal.throwIfAborted();
+    }
+
+    await writeDb.insert(orgMetadata).values({
       orgId,
-      name: `agent-${composeId.slice(0, 8)}`,
+      defaultAgentId: composeId,
     });
-    await writeDb.insert(zeroAgents).values({
-      id: composeId,
-      orgId,
-      owner: userId,
-      name: `agent-${composeId.slice(0, 8)}`,
-      displayName: values.defaultAgent?.displayName ?? null,
-      description: values.defaultAgent?.description ?? null,
-      sound: values.defaultAgent?.sound ?? null,
-    });
-  }
+    signal.throwIfAborted();
 
-  await writeDb.insert(orgMetadata).values({
-    orgId,
-    defaultAgentId: composeId,
-  });
+    if (values.onboardingDone !== undefined) {
+      await writeDb.insert(orgMembersMetadata).values({
+        orgId,
+        userId,
+        onboardingDone: values.onboardingDone,
+      });
+      signal.throwIfAborted();
+    }
 
-  if (values.onboardingDone !== undefined) {
-    await writeDb.insert(orgMembersMetadata).values({
-      orgId,
-      userId,
-      onboardingDone: values.onboardingDone,
-    });
-  }
+    return { orgId, userId, composeId };
+  },
+);
 
-  return { orgId, userId, composeId };
-}
-
-export async function deleteOnboardingStatusOrg(
-  store: Store,
-  fixture: OnboardingStatusFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, fixture.orgId),
-        eq(orgMembersMetadata.userId, fixture.userId),
-      ),
-    );
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-
-  if (fixture.composeId) {
+export const deleteOnboardingStatusOrg$ = command(
+  async (
+    { set },
+    fixture: OnboardingStatusFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
     await writeDb
-      .delete(zeroAgents)
-      .where(eq(zeroAgents.id, fixture.composeId));
+      .delete(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
     await writeDb
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, fixture.composeId));
-  }
-}
+      .delete(orgMetadata)
+      .where(eq(orgMetadata.orgId, fixture.orgId));
+    signal.throwIfAborted();
+
+    if (fixture.composeId) {
+      await writeDb
+        .delete(zeroAgents)
+        .where(eq(zeroAgents.id, fixture.composeId));
+      signal.throwIfAborted();
+      await writeDb
+        .delete(agentComposes)
+        .where(eq(agentComposes.id, fixture.composeId));
+      signal.throwIfAborted();
+    }
+  },
+);
