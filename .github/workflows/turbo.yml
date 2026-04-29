@@ -1384,7 +1384,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260419
     needs: [prepare]
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       TARGET_TRIPLE: aarch64-unknown-linux-musl
     if: |
@@ -1625,13 +1625,11 @@ jobs:
 
           WARM_HOST="${HOSTS[0]}"
           WARM_LOG="${LOG_DIR}/warm-rootfs-cache.log"
-          if ! warm_rootfs_cache "$WARM_HOST" > "$WARM_LOG" 2>&1; then
+          if ! warm_rootfs_cache "$WARM_HOST" 2>&1 | tee "$WARM_LOG"; then
             echo "::error::Shared rootfs cache warm failed on ${WARM_HOST}"
-            cat "$WARM_LOG"
             rm -rf "$LOG_DIR"
             exit 1
           fi
-          cat "$WARM_LOG"
 
           PIDS=()
           for HOST in "${HOSTS[@]}"; do
