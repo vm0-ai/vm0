@@ -173,7 +173,7 @@ impl DevicePoolHandle {
 
     fn from_pool(mut pool: DevicePool) -> Self {
         let (commands, command_rx) = mpsc::unbounded_channel();
-        pool.set_lease_return(commands.clone());
+        pool.set_lease_return(commands.downgrade());
         tokio::spawn(
             DevicePoolActor {
                 pool,
@@ -367,8 +367,8 @@ pub struct DevicePool {
     cooldown: VecDeque<CooldownSlot>,
     /// Background sysfs validation tasks.
     pending: tokio::task::JoinSet<ValidationResult>,
-    /// Sender embedded in assigned leases so dropping a lease still returns it.
-    lease_return: Option<mpsc::UnboundedSender<DevicePoolCommand>>,
+    /// Weak sender used to embed a strong return path in assigned leases.
+    lease_return: Option<mpsc::WeakUnboundedSender<DevicePoolCommand>>,
     /// Acquire errors that raced with still-pending validation tasks.
     deferred_acquire_errors: VecDeque<NbdCowError>,
     /// Acquire requests waiting for validation or a released device.
@@ -404,13 +404,17 @@ impl DevicePool {
         }
     }
 
-    fn set_lease_return(&mut self, return_to: mpsc::UnboundedSender<DevicePoolCommand>) {
+    fn set_lease_return(&mut self, return_to: mpsc::WeakUnboundedSender<DevicePoolCommand>) {
         self.lease_return = Some(return_to);
     }
 
     fn lease_for(&self, index: u32) -> DeviceLease {
-        match &self.lease_return {
-            Some(return_to) => DeviceLease::with_return(index, return_to.clone()),
+        match self
+            .lease_return
+            .as_ref()
+            .and_then(|return_to| return_to.upgrade())
+        {
+            Some(return_to) => DeviceLease::with_return(index, return_to),
             None => DeviceLease::new(index),
         }
     }
@@ -925,6 +929,33 @@ mod tests {
 
         let result = handle.acquire().await;
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
+    }
+
+    #[tokio::test]
+    async fn dropping_last_handle_closes_actor_command_channel() {
+        let handle = DevicePoolHandle::from_pool(test_pool_for_pending_scan());
+        let weak_commands = handle.commands.downgrade();
+
+        assert!(weak_commands.upgrade().is_some());
+        drop(handle);
+        tokio::task::yield_now().await;
+
+        assert!(weak_commands.upgrade().is_none());
+    }
+
+    #[tokio::test]
+    async fn checked_out_lease_keeps_return_channel_until_dropped() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.ready.push_back(3);
+        let handle = DevicePoolHandle::from_pool(pool);
+        let weak_commands = handle.commands.downgrade();
+
+        let lease = handle.acquire().await.expect("acquire lease");
+        drop(handle);
+        assert!(weak_commands.upgrade().is_some());
+
+        drop(lease);
+        assert!(weak_commands.upgrade().is_none());
     }
 
     #[test]
