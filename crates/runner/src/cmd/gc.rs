@@ -3121,6 +3121,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_storage_cache_ignores_non_directory_entries_for_entry_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 32], old);
+        let root_file = home.storages_dir().join("root-file");
+        let version_file = entry.parent().unwrap().join("not-a-version");
+        std::fs::write(&root_file, b"noise").unwrap();
+        std::fs::write(&version_file, b"noise").unwrap();
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(entry.exists(), "only real version directories should count");
+        assert!(
+            root_file.exists(),
+            "GC should ignore non-directory root entries"
+        );
+        assert!(
+            version_file.exists(),
+            "GC should ignore non-directory version entries"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_storage_cache_over_cap_evicts_oldest_first() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
@@ -3176,6 +3205,31 @@ mod tests {
         assert!(newest.exists(), "newest entry must survive");
         assert_eq!(freed, oldest_size);
         assert_eq!(count_storage_cache_versions(&home), 2);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_tmp_entries_do_not_count_toward_entry_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let real = make_storage_entry(&home, "foo", "v1", &[0u8; 32], old);
+        let tmp = make_storage_staging_entry(&home, "foo", "v2", &[0u8; 32], SystemTime::now());
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            real.exists(),
+            ".tmp staging dirs must not consume entry cap"
+        );
+        assert!(
+            tmp.exists(),
+            "recent .tmp staging dir must remain protected"
+        );
     }
 
     #[tokio::test]
@@ -3504,6 +3558,26 @@ mod tests {
             entry.exists(),
             "candidate locked after scan must survive delete recheck"
         );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_treats_missing_candidate_as_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+        let candidate = storage_candidate_for(entry.clone()).await;
+
+        std::fs::remove_dir_all(&entry).unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, None);
+        assert!(!result.remaining_entry);
+        assert!(!result.evicted);
     }
 
     #[tokio::test]
