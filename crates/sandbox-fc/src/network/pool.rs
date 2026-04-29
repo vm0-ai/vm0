@@ -30,8 +30,10 @@
 //! Design:
 //! - Pool lazily pre-warms a small number of namespaces at init, then
 //!   replenishes in the background on each [`NetnsPool::acquire`]
-//! - [`NetnsPool::acquire`] returns a namespace from pool, or creates on-demand as fallback
-//! - [`NetnsPool::release`] returns the namespace to the pool
+//! - [`NetnsPool::acquire`] returns a non-cloneable [`NetnsLease`] from the
+//!   pool, or creates one on-demand as fallback
+//! - [`NetnsPool::release`] takes `&mut Option<NetnsLease>` so cancellation
+//!   before the final commit point leaves cleanup ownership with the caller
 //! - Pool index (0–63) is auto-allocated via flock on `/var/lock`
 //! - Orphans from abnormally-exited prior runners (SIGKILL, panic, OOM,
 //!   power loss, aborted in-flight creation tasks) are reconciled at
@@ -195,14 +197,26 @@ impl Drop for NetnsLease {
     }
 }
 
+/// Backward-compatible name for a checked-out namespace lease.
+///
+/// The old `PooledNetns` metadata struct was cloneable, which made namespace
+/// release authority ambiguous. New code should keep the lease in an
+/// `Option<NetnsLease>` and pass it to [`NetnsPool::release`].
+#[deprecated(
+    since = "0.28.0",
+    note = "use NetnsLease and release it with NetnsPool::release(&mut Option<NetnsLease>)"
+)]
+pub type PooledNetns = NetnsLease;
+
 /// Configuration for creating a [`NetnsPool`].
 ///
-/// When `proxy_port` is set, the pool maintains **two** queues
-/// (plain + proxy), each buffering `BUFFER_SIZE` namespaces.
+/// When `proxy_port` is set, the pool pre-warms and acquires from the proxy
+/// queue only. Without `proxy_port`, it pre-warms and acquires from the plain
+/// queue. This avoids keeping an unreachable plain queue alive in proxy mode.
 pub struct NetnsPoolConfig {
     /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
     pub proxy_port: Option<u16>,
-    /// DNS proxy port for DNS query redirect (only adds redirect rules when set).
+    /// DNS proxy port for DNS query redirect. Only meaningful with `proxy_port`.
     pub dns_port: Option<u16>,
 }
 

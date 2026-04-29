@@ -17,7 +17,8 @@ pub use api::{ApiClient, ApiError, BalloonStatistics};
 pub use config::{FirecrackerConfig, SnapshotConfig};
 pub use control::FirecrackerControl;
 pub use factory::{FirecrackerFactory, PREWARM_SCRIPT, config_hash};
-pub use network::{NetnsInfo, NetnsLease, NetnsPool, NetnsPoolConfig};
+#[allow(deprecated)]
+pub use network::{NetnsInfo, NetnsLease, NetnsPool, NetnsPoolConfig, PooledNetns};
 pub use paths::{
     FactoryPaths, LockPaths, RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths,
 };
