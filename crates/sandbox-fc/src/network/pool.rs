@@ -128,6 +128,9 @@ impl NetnsInfo {
 }
 
 /// Non-cloneable release authority for a checked-out namespace.
+///
+/// Dropping a live lease only emits a warning. Call [`NetnsPool::release`] so
+/// the namespace is either recycled into the pool or deleted during shutdown.
 #[derive(Debug)]
 #[must_use]
 pub struct NetnsLease {
@@ -973,16 +976,18 @@ impl NetnsPool {
                 remaining = self.plain_queue.len(),
                 "acquired namespace"
             );
+            let lease = self.checkout_or_requeue(pooled, false)?;
             self.maybe_replenish_plain();
-            return self.checkout_or_requeue(pooled, false);
+            return Ok(lease);
         }
         // Tier 2: await in-flight background task.
         while let Some(result) = self.pending_plain.join_next().await {
             match result {
                 Ok(Ok(ns)) => {
                     info!(name = %ns.name, "acquired namespace from pending");
+                    let lease = self.checkout_or_requeue(ns, false)?;
                     self.maybe_replenish_plain();
-                    return self.checkout_or_requeue(ns, false);
+                    return Ok(lease);
                 }
                 Ok(Err(e)) => error!(error = %e, "pending namespace creation failed"),
                 Err(e) => error!(error = %e, "pending namespace task panicked"),
@@ -991,8 +996,9 @@ impl NetnsPool {
         // Tier 3: on-demand.
         info!("pool exhausted, creating namespace on-demand");
         let ns = self.create_on_demand(None, None).await?;
+        let lease = self.checkout_or_requeue(ns, false)?;
         self.maybe_replenish_plain();
-        self.checkout_or_requeue(ns, false)
+        Ok(lease)
     }
 
     /// Acquire from the proxy queue.
@@ -1007,16 +1013,18 @@ impl NetnsPool {
                 remaining = self.proxy_queue.len(),
                 "acquired namespace (proxy)"
             );
+            let lease = self.checkout_or_requeue(pooled, true)?;
             self.maybe_replenish_proxy();
-            return self.checkout_or_requeue(pooled, true);
+            return Ok(lease);
         }
         // Tier 2: await in-flight background task.
         while let Some(result) = self.pending_proxy.join_next().await {
             match result {
                 Ok(Ok(ns)) => {
                     info!(name = %ns.name, "acquired namespace (proxy) from pending");
+                    let lease = self.checkout_or_requeue(ns, true)?;
                     self.maybe_replenish_proxy();
-                    return self.checkout_or_requeue(ns, true);
+                    return Ok(lease);
                 }
                 Ok(Err(e)) => error!(error = %e, "pending proxy namespace creation failed"),
                 Err(e) => error!(error = %e, "pending proxy namespace task panicked"),
@@ -1027,8 +1035,9 @@ impl NetnsPool {
         let ns = self
             .create_on_demand(self.proxy_port, self.dns_port)
             .await?;
+        let lease = self.checkout_or_requeue(ns, true)?;
         self.maybe_replenish_proxy();
-        self.checkout_or_requeue(ns, true)
+        Ok(lease)
     }
 
     /// Create a new namespace on-demand, allocating the next index.
@@ -1760,6 +1769,8 @@ mod tests {
         assert!(matches!(err, NetworkError::InvalidLease(_)));
         assert_eq!(pool.plain_queue.len(), 1);
         assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+        assert!(pool.pending_plain.is_empty());
+        assert_eq!(pool.next_ns_index, 0);
 
         pool.in_flight.clear();
         pool.cleanup().await.unwrap();
@@ -1770,7 +1781,6 @@ mod tests {
         let mut pool = NetnsPool::inactive_for_test();
         pool.active = true;
         pool.proxy_port = Some(8080);
-        pool.next_ns_index = MAX_NAMESPACES;
         pool.in_flight.insert("test-ns".into());
         pool.proxy_queue.push_back(test_info("test-ns"));
 
@@ -1780,6 +1790,8 @@ mod tests {
         assert!(pool.plain_queue.is_empty());
         assert_eq!(pool.proxy_queue.len(), 1);
         assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
+        assert!(pool.pending_proxy.is_empty());
+        assert_eq!(pool.next_ns_index, 0);
 
         pool.in_flight.clear();
         pool.proxy_queue.clear();
