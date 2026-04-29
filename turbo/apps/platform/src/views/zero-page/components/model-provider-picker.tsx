@@ -1,5 +1,5 @@
-import type { MouseEvent, ReactNode } from "react";
-import { IconCpu } from "@tabler/icons-react";
+import { useState, type MouseEvent, type ReactNode } from "react";
+import { IconChevronDown, IconChevronUp, IconCpu } from "@tabler/icons-react";
 import {
   Select,
   SelectContent,
@@ -29,6 +29,7 @@ import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   getUILabel,
   getVm0ModelMultiplier,
+  isVm0PrimaryModel,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
 
@@ -468,11 +469,61 @@ function buildProviderGroups(
     });
 }
 
+function ShowMoreToggleRow({
+  expanded,
+  hiddenCount,
+  onToggle,
+}: {
+  expanded: boolean;
+  hiddenCount: number;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
+      className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-accent transition-colors"
+      onClick={(e) => {
+        e.preventDefault();
+        onToggle();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+    >
+      <span className="text-muted-foreground">
+        {expanded ? "Show fewer models" : `Show all models (+${hiddenCount})`}
+      </span>
+      {expanded ? (
+        <IconChevronUp size={14} className="text-muted-foreground" />
+      ) : (
+        <IconChevronDown size={14} className="text-muted-foreground" />
+      )}
+    </div>
+  );
+}
+
 function renderProviderGroup(
   group: ProviderGroup,
   idx: number,
   last: number,
+  selectedModel: string | null,
+  showAll: boolean,
+  onToggleShowAll: () => void,
 ): ReactNode[] {
+  // Only the VM0 group is collapsible — BYOK groups list a handful of models.
+  const collapsible = group.isVm0;
+  const visibleModels =
+    collapsible && !showAll
+      ? group.models.filter((m) => {
+          return isVm0PrimaryModel(m) || m === selectedModel;
+        })
+      : group.models;
+  const hiddenCount = group.models.length - visibleModels.length;
   const rendered: ReactNode[] = [
     <SelectGroup key={group.provider.id}>
       <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
@@ -483,7 +534,7 @@ function renderProviderGroup(
           </span>
         )}
       </SelectLabel>
-      {group.models.map((model) => {
+      {visibleModels.map((model) => {
         const multiplier = group.isVm0
           ? getVm0ModelMultiplier(model)
           : undefined;
@@ -502,6 +553,13 @@ function renderProviderGroup(
           </SelectItem>
         );
       })}
+      {collapsible && (showAll || hiddenCount > 0) && (
+        <ShowMoreToggleRow
+          expanded={showAll}
+          hiddenCount={hiddenCount}
+          onToggle={onToggleShowAll}
+        />
+      )}
     </SelectGroup>,
   ];
   if (idx < last) {
@@ -544,6 +602,7 @@ function ModelSelectDropdown({
     ? getModelDisplayName(resolved.selectedModel)
     : placeholder;
   const lastGroupIdx = groups.length - 1;
+  const [showAll, setShowAll] = useState(false);
   return (
     <Select
       value={encodeValue(value)}
@@ -594,7 +653,18 @@ function ModelSelectDropdown({
         )}
         {(!showUseDefault || value !== null) &&
           groups.flatMap((group, idx) => {
-            return renderProviderGroup(group, idx, lastGroupIdx);
+            return renderProviderGroup(
+              group,
+              idx,
+              lastGroupIdx,
+              resolved?.selectedModel ?? null,
+              showAll,
+              () => {
+                setShowAll((s) => {
+                  return !s;
+                });
+              },
+            );
           })}
       </SelectContent>
     </Select>
