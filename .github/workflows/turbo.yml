@@ -1541,24 +1541,32 @@ jobs:
 
             # Clean previous run artifacts and upload runner (guests are embedded)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} ${RUNNER_DIR} && sudo mkdir -p ${BIN_DIR}"
+            if ! ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} ${RUNNER_DIR} && sudo mkdir -p ${BIN_DIR}"; then
+              return 1
+            fi
             # shellcheck disable=SC2029
-            < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
+            if ! < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"; then
+              return 1
+            fi
 
             # Clean up old rootfs/snapshots, keep the 6 most recent (3 deploys × 2 profiles).
             # R2_* env vars are inlined so `runner gc` can also sweep stale R2 image
             # objects — without them, R2-side cleanup is silently skipped.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo \
+            if ! ssh "$REMOTE" "sudo \
               R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
               R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
               R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
               R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-              ${BIN_DIR}/runner gc --keep-latest 6"
+              ${BIN_DIR}/runner gc --keep-latest 6"; then
+              return 1
+            fi
 
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
+            if ! ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"; then
+              return 1
+            fi
             echo "=== Done preparing ${HOST} ==="
           }
 
@@ -1571,12 +1579,14 @@ jobs:
             # prevents every metal host from racing into the slow local rootfs
             # build path when a PR introduces a new rootfs_hash.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo \
+            if ! ssh "$REMOTE" "sudo \
               R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
               R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
               R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
               R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-              ${BIN_DIR}/runner build --profile vm0/default --warm-rootfs-cache"
+              ${BIN_DIR}/runner build --profile vm0/default --warm-rootfs-cache"; then
+              return 1
+            fi
             echo "=== Done warming shared rootfs cache on ${HOST} ==="
           }
 
@@ -1589,12 +1599,14 @@ jobs:
             # R2_* env vars are inlined after `sudo` so they reach the runner
             # process — sudo's default `env_reset` would otherwise strip them.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo \
+            if ! ssh "$REMOTE" "sudo \
               R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
               R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
               R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
               R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-              ${BIN_DIR}/runner build --profile vm0/default"
+              ${BIN_DIR}/runner build --profile vm0/default"; then
+              return 1
+            fi
             echo "=== Done building rootfs/snapshot on ${HOST} ==="
           }
 
