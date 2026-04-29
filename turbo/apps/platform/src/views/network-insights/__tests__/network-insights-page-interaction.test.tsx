@@ -1061,7 +1061,7 @@ describe("network insights page - per-day schedules and chats", () => {
     expect(link!.getAttribute("href")).toBe("/chats/thread-link");
   });
 
-  it("shows count as the big number, total credits in subtitle, and a credits column header", async () => {
+  it("matches AgentsCard subtitle style: '{noun} used {N} credits' with inline credit unit per row", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago, {
         schedules: [
@@ -1093,13 +1093,14 @@ describe("network insights page - per-day schedules and chats", () => {
 
     detachedSetupPage({ context, path: "/insights" });
 
-    // Schedules: subtitle "100 credits" = 60 + 40
+    // Schedules: subtitle in sentence form, total = 60 + 40 = 100
     await waitFor(() => {
-      expect(screen.getByText("100 credits")).toBeInTheDocument();
+      expect(screen.getByText(/schedules used 100 credits/)).toBeInTheDocument();
     });
-    // Chats: subtitle "30 credits"
-    expect(screen.getByText("30 credits")).toBeInTheDocument();
-    // Both cards show a standalone "credits" column header
-    expect(screen.getAllByText("credits").length).toBeGreaterThanOrEqual(2);
+    // Chats: singular "chat used" and "30 credits"
+    expect(screen.getByText(/chat used 30 credits/)).toBeInTheDocument();
+    // Per-row values include the credits unit inline
+    expect(screen.getByText("60 credits")).toBeInTheDocument();
+    expect(screen.getByText("40 credits")).toBeInTheDocument();
   });
 });

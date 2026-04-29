@@ -1040,26 +1040,23 @@ function DaySchedulesCard({
   return (
     <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid mb-3">
       <p
-        className="text-xs font-semibold uppercase tracking-widest mb-1"
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
         Schedules
       </p>
-      <p className="text-5xl font-black leading-none tabular-nums font-serif">
-        {schedules.length}
-      </p>
-      <p className="text-xs text-muted-foreground mt-1">
-        {formatCardValue(totalCredits)} credits
-      </p>
-      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 mt-4 -mx-1.5 px-1.5">
-        <span aria-hidden />
-        <span aria-hidden />
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/70 text-right">
-          credits
+      <div className="flex items-center mb-3">
+        <span className="text-3xl font-black tabular-nums font-serif">
+          {schedules.length}
         </span>
       </div>
+      <p className="text-sm opacity-60">
+        {schedules.length === 1 ? "schedule" : "schedules"} used{" "}
+        {formatCardValue(totalCredits)}{" "}
+        {totalCredits === 1 ? "credit" : "credits"}
+      </p>
       <TooltipProvider delayDuration={300}>
-        <ul className="flex flex-col gap-2.5 mt-1">
+        <ul className="flex flex-col gap-2 mt-3">
           {visible.map((row) => {
             const fullName =
               row.scheduleDescription?.trim() || row.scheduleName;
@@ -1069,11 +1066,11 @@ function DaySchedulesCard({
                 <Link
                   pathname="/schedules/:scheduleId"
                   options={{ pathParams: { scheduleId: row.scheduleId } }}
-                  className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5 transition-colors"
+                  className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
                 >
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                      <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
                         {fullName}
                       </span>
                     </TooltipTrigger>
@@ -1090,14 +1087,15 @@ function DaySchedulesCard({
                       </p>
                     </TooltipContent>
                   </Tooltip>
-                  <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                  <div className="w-16 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
                     <div
                       className="h-full rounded-full"
                       style={{ width: `${pct}%`, backgroundColor: accent }}
                     />
                   </div>
-                  <span className="text-xs tabular-nums opacity-70 text-right">
-                    {formatCardValue(row.credits)}
+                  <span className="text-xs opacity-60 tabular-nums shrink-0">
+                    {formatCardValue(row.credits)}{" "}
+                    {row.credits === 1 ? "credit" : "credits"}
                   </span>
                 </Link>
               </li>
@@ -1159,26 +1157,23 @@ function DayChatsCard({
   return (
     <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid mb-3">
       <p
-        className="text-xs font-semibold uppercase tracking-widest mb-1"
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
         Chats
       </p>
-      <p className="text-5xl font-black leading-none tabular-nums font-serif">
-        {chats.length}
-      </p>
-      <p className="text-xs text-muted-foreground mt-1">
-        {formatCardValue(totalCredits)} credits
-      </p>
-      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 mt-4 -mx-1.5 px-1.5">
-        <span aria-hidden />
-        <span aria-hidden />
-        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/70 text-right">
-          credits
+      <div className="flex items-center mb-3">
+        <span className="text-3xl font-black tabular-nums font-serif">
+          {chats.length}
         </span>
       </div>
+      <p className="text-sm opacity-60">
+        {chats.length === 1 ? "chat" : "chats"} used{" "}
+        {formatCardValue(totalCredits)}{" "}
+        {totalCredits === 1 ? "credit" : "credits"}
+      </p>
       <TooltipProvider delayDuration={300}>
-        <ul className="flex flex-col gap-2.5 mt-1">
+        <ul className="flex flex-col gap-2 mt-3">
           {visible.map((row) => {
             const fullTitle = row.threadTitle ?? "(untitled)";
             const pct = (row.credits / maxValue) * 100;
@@ -1187,11 +1182,11 @@ function DayChatsCard({
                 <Link
                   pathname="/chats/:threadId"
                   options={{ pathParams: { threadId: row.threadId } }}
-                  className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5 transition-colors"
+                  className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
                 >
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                      <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
                         {fullTitle}
                       </span>
                     </TooltipTrigger>
@@ -1208,14 +1203,15 @@ function DayChatsCard({
                       </p>
                     </TooltipContent>
                   </Tooltip>
-                  <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                  <div className="w-16 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
                     <div
                       className="h-full rounded-full"
                       style={{ width: `${pct}%`, backgroundColor: accent }}
                     />
                   </div>
-                  <span className="text-xs tabular-nums opacity-70 text-right">
-                    {formatCardValue(row.credits)}
+                  <span className="text-xs opacity-60 tabular-nums shrink-0">
+                    {formatCardValue(row.credits)}{" "}
+                    {row.credits === 1 ? "credit" : "credits"}
                   </span>
                 </Link>
               </li>
