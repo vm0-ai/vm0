@@ -89,11 +89,11 @@
 //! dedup-skips → the bad object stays, forever.
 //!
 //! `cmd::build::run_build` defends by passing `force = true` to `upload`
-//! whenever it observes "download Ok(true) but rootfs missing". That
-//! bypasses the dedup check and atomically overwrites the bad object in
-//! a single PUT — robust against `s3:DeleteObject` permission being
-//! revoked or transiently failing (which a `delete + retry-upload`
-//! sequence would not be).
+//! whenever it observes "download Ok(true) but rootfs missing" or a
+//! successfully-fetched object that cannot be unpacked. That bypasses the
+//! dedup check and atomically overwrites the bad object in a single PUT —
+//! robust against `s3:DeleteObject` permission being revoked or transiently
+//! failing (which a `delete + retry-upload` sequence would not be).
 //!
 //! ## Tar entry security
 //!
@@ -117,10 +117,10 @@
 //!    regular file.)
 //!
 //! **Maintenance note**: the caller (`cmd::build::run_build`) checks
-//! rootfs presence after download and sets `force_reupload = true` if it
-//! is missing. If you add a new file to the R2 archive, you MUST extend
-//! that check accordingly — otherwise an attacker-controlled tar that
-//! omits the new file would go undetected.
+//! rootfs presence after a structurally-valid download and sets
+//! `force_reupload = true` if it is missing. If you add a new file to the
+//! R2 archive, you MUST extend that check accordingly — otherwise an
+//! attacker-controlled tar that omits the new file would go undetected.
 
 use std::path::{Path, PathBuf};
 
@@ -158,6 +158,22 @@ pub enum R2Error {
     S3(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum R2DownloadError {
+    #[error("request failed: {0}")]
+    Request(#[source] R2Error),
+    #[error("invalid cache object: {0}")]
+    InvalidObject(#[source] R2Error),
+    #[error("local filesystem failed: {0}")]
+    Local(#[source] R2Error),
+}
+
+impl R2DownloadError {
+    pub fn is_invalid_object(&self) -> bool {
+        matches!(self, Self::InvalidObject(_))
+    }
 }
 
 impl<E, R> From<SdkError<E, R>> for R2Error
@@ -263,7 +279,11 @@ impl R2ImageCache {
     ///
     /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
     /// outer call sites (CI/systemd) bound total wall time.
-    pub async fn try_download(&self, hash: &str, final_dir: &Path) -> Result<bool, R2Error> {
+    pub async fn try_download(
+        &self,
+        hash: &str,
+        final_dir: &Path,
+    ) -> Result<bool, R2DownloadError> {
         let key = key_for_hash(hash);
         let resp = match self
             .client
@@ -282,7 +302,11 @@ impl R2ImageCache {
             {
                 return Ok(false);
             }
-            Err(e) => return Err(R2Error::S3(format!("get_object: {e:?}"))),
+            Err(e) => {
+                return Err(R2DownloadError::Request(R2Error::S3(format!(
+                    "get_object: {e:?}"
+                ))));
+            }
         };
 
         // Atomic via staging dir + rename. Cleanup-on-error covers the entire
@@ -291,17 +315,23 @@ impl R2ImageCache {
         // followed by a local build could fill the disk before GC catches up.
         let staging = staging_dir(final_dir);
         let body_reader = resp.body.into_async_read();
-        let outcome = async {
+
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+        if let Err(e) = tokio::fs::create_dir_all(&staging).await {
             let _ = tokio::fs::remove_dir_all(&staging).await;
-            tokio::fs::create_dir_all(&staging).await?;
-            unpack_into_staging(body_reader, &staging).await?;
-            finalize_staging(&staging, final_dir).await
+            return Err(R2DownloadError::Local(R2Error::Io(e)));
         }
-        .await;
-        if outcome.is_err() {
+
+        if let Err(e) = unpack_into_staging(body_reader, &staging).await {
             let _ = tokio::fs::remove_dir_all(&staging).await;
+            return Err(R2DownloadError::InvalidObject(e));
         }
-        outcome?;
+
+        if let Err(e) = finalize_staging(&staging, final_dir).await {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            return Err(R2DownloadError::Local(e));
+        }
+
         Ok(true)
     }
 
@@ -1791,11 +1821,54 @@ mod tests {
         let final_dir = dst.path().join("hash");
         let result = cache.try_download("hash", &final_dir).await;
 
-        assert!(result.is_err(), "bad body → Err");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, R2DownloadError::InvalidObject(_)),
+            "bad body must be classified as invalid cache object, got {err:?}"
+        );
         assert!(!final_dir.exists(), "final_dir MUST remain absent");
         assert!(
             !staging_dir(&final_dir).exists(),
             "staging MUST be wiped — this is the disk-leak guard"
+        );
+    }
+
+    /// Local filesystem failures after a valid download must not be
+    /// classified as invalid R2 objects. The caller should not force-overwrite
+    /// a healthy cache key when the local target path is the problem.
+    #[tokio::test]
+    async fn try_download_classifies_finalize_failure_as_local() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_test_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let final_dir = dst.path().join("hash");
+        tokio::fs::write(&final_dir, b"not a directory")
+            .await
+            .unwrap();
+
+        let err = cache.try_download("hash", &final_dir).await.unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::Local(_)),
+            "target path failure must be local, got {err:?}"
+        );
+        assert!(final_dir.is_file(), "local target file should remain");
+        assert!(
+            !staging_dir(&final_dir).exists(),
+            "staging MUST be wiped after finalize failure"
         );
     }
 

@@ -429,12 +429,20 @@ async fn ensure_rootfs_under_lock(input: RootfsBuildInput<'_>) -> RunnerResult<(
                     tracing::info!("R2 cache miss for {} — building locally", input.rootfs_hash)
                 }
                 Err(e) => {
-                    if input.policy.is_strict() {
+                    if e.is_invalid_object() {
+                        tracing::warn!(
+                            "R2 object for {} is invalid ({e}) — \
+                             rebuilding locally and force-overwriting the bad object",
+                            input.rootfs_hash
+                        );
+                        force_reupload = true;
+                    } else if input.policy.is_strict() {
                         return Err(RunnerError::Internal(format!(
                             "R2 download failed while warming rootfs cache: {e}"
                         )));
+                    } else {
+                        tracing::warn!("R2 download failed: {e} — falling back to local build");
                     }
-                    tracing::warn!("R2 download failed: {e} — falling back to local build");
                 }
             }
         }
