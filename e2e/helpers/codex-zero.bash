@@ -105,6 +105,14 @@ wait_for_chat_assistant_done() {
     done
     echo "# wait_for_chat_assistant_done: timed out after $((SECONDS - start))s for thread $thread_id" >&2
     echo "# last body: $body" >&2
+    # Fallback diagnostic: when the assistant message never reaches a terminal
+    # status, the failure is in the run, not the chat-thread query. Dump the
+    # run record so we can see whether it completed/failed, what its provider
+    # resolved to, and whether the runner ever produced output.
+    if [[ -n "${LAST_RUN_ID:-}" ]]; then
+        echo "# fallback: GET /api/zero/runs/$LAST_RUN_ID" >&2
+        _codex_zero_curl "/api/zero/runs/$LAST_RUN_ID" 2>&1 | head -100 >&2
+    fi
     return 1
 }
 
