@@ -26,10 +26,10 @@
  * If DATABASE_URL is already exported in the shell, omit the dotenv wrapper.
  */
 
-import { createHash } from "node:crypto";
 import { parseArgs } from "node:util";
 import { pathToFileURL } from "node:url";
 import process from "node:process";
+import { v5 as uuidV5Impl } from "uuid";
 import {
   and,
   asc,
@@ -312,28 +312,7 @@ export function encodeUuidName(parts: readonly string[]): string {
 }
 
 export function uuidV5(namespaceUuid: string, name: string): string {
-  const namespace = Buffer.from(namespaceUuid.replaceAll("-", ""), "hex");
-  if (namespace.length !== 16) {
-    throw new Error(`Invalid UUID namespace: ${namespaceUuid}`);
-  }
-
-  const hash = createHash("sha1")
-    .update(namespace)
-    .update(Buffer.from(name, "utf8"))
-    .digest();
-
-  const bytes = Buffer.from(hash.subarray(0, 16));
-  bytes[6] = (bytes[6]! & 0x0f) | 0x50;
-  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
-
-  const hex = bytes.toString("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    hex.slice(12, 16),
-    hex.slice(16, 20),
-    hex.slice(20),
-  ].join("-");
+  return uuidV5Impl(name, namespaceUuid);
 }
 
 export function deriveUsageEventIdempotencyKey(
