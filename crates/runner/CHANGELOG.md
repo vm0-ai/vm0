@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.98.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.4...runner-rs-v0.98.5) (2026-04-29)
+
+
+### Documentation
+
+* **runner:** document resource budget accessors ([#11505](https://github.com/vm0-ai/vm0/issues/11505)) ([7d7ded9](https://github.com/vm0-ai/vm0/commit/7d7ded9f5b3268bc8d4a221381d58120ba890e7e))
+
 ## [0.98.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.3...runner-rs-v0.98.4) (2026-04-29)
 
 

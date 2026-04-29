@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.311.0](https://github.com/vm0-ai/vm0/compare/app-v0.310.0...app-v0.311.0) (2026-04-29)
+
+
+### Features
+
+* add api backend shadow migration and migrate read routes ([#11454](https://github.com/vm0-ai/vm0/issues/11454)) ([d45cbef](https://github.com/vm0-ai/vm0/commit/d45cbef58410bf5e7ea8f2c1debbce52ca3f4cb8))
+* add split chat thread sidebar ([#11506](https://github.com/vm0-ai/vm0/issues/11506)) ([7054142](https://github.com/vm0-ai/vm0/commit/7054142e772e835328ff36c5307daa3117797003))
+
+
+### Bug Fixes
+
+* reset chat composer model selection ([#11493](https://github.com/vm0-ai/vm0/issues/11493)) ([e9b30f8](https://github.com/vm0-ai/vm0/commit/e9b30f887c92e5616bd1bf8962945be82b08cdaf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.247.0
+
 ## [0.310.0](https://github.com/vm0-ai/vm0/compare/app-v0.309.0...app-v0.310.0) (2026-04-29)
 
 

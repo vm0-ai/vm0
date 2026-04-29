@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.320.1](https://github.com/vm0-ai/vm0/compare/web-v12.320.0...web-v12.320.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* harden model rankings cron aggregation ([#11485](https://github.com/vm0-ai/vm0/issues/11485)) ([39bc094](https://github.com/vm0-ai/vm0/commit/39bc0948c813a3250a8c3e8990c9ceb665a5f848))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.247.0
+
 ## [12.320.0](https://github.com/vm0-ai/vm0/compare/web-v12.319.0...web-v12.320.0) (2026-04-29)
 
 

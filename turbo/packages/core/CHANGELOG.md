@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.247.0](https://github.com/vm0-ai/vm0/compare/core-v8.246.0...core-v8.247.0) (2026-04-29)
+
+
+### Features
+
+* add api backend shadow migration and migrate read routes ([#11454](https://github.com/vm0-ai/vm0/issues/11454)) ([d45cbef](https://github.com/vm0-ai/vm0/commit/d45cbef58410bf5e7ea8f2c1debbce52ca3f4cb8))
+
 ## [8.246.0](https://github.com/vm0-ai/vm0/compare/core-v8.245.0...core-v8.246.0) (2026-04-29)
 
 
