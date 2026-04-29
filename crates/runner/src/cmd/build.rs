@@ -686,11 +686,11 @@ async fn is_rootfs_present(rootfs: &RootfsPaths) -> RunnerResult<bool> {
 
 /// Delete any `rootfs.ext4.staging` left behind by a previous build.
 ///
-/// Called under the rootfs flock, after the re-check has confirmed there
-/// is no committed `rootfs.ext4` we could reuse. Because holding the
-/// flock implies the previous writer has exited (the kernel releases
-/// flocks on process death), any staging file we see here is guaranteed
-/// to be crash residue — not a live writer's in-progress file.
+/// Called under the rootfs flock before rootfs work continues. Because
+/// holding the flock implies the previous writer has exited (the kernel
+/// releases flocks on process death), any staging file we see here is
+/// guaranteed to be crash residue — not a live writer's in-progress file.
+/// A committed `rootfs.ext4`, if present, is left untouched.
 ///
 /// Non-existence is the common case and not logged. Removal is best
 /// effort: an error here just means the next step (writing new staging)

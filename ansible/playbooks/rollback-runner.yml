@@ -355,8 +355,9 @@
 
     # Always runs on install path. Content-addressed by hash of embedded
     # guests + recipe; if target's rootfs/snapshot are already on disk at
-    # the matching hash path, this returns in ~1s. If R2 creds are passed,
-    # remote cache can satisfy a local miss in seconds instead of rebuilding.
+    # the matching hash path, this returns in ~1s. The warm step above
+    # ensures remote cache can satisfy a local rootfs miss in seconds
+    # instead of rebuilding.
     - name: Rebuild default rootfs and snapshot
       when: not (skip_install | default(false))
       command: >

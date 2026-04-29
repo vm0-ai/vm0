@@ -84,12 +84,11 @@
         {{ bin_dir }}/runner build
         --profile vm0/default
       environment:
-        # R2 credentials so `runner build` can pull the rootfs.ext4 from the
-        # shared image cache instead of rebuilding it from scratch (~3-5 min
-        # saved per deploy).  Only rootfs is cached; the snapshot is always
-        # created locally because it contains host-specific state.  Host CA
-        # is swapped in via inject-ca.sh after download.  Without these, R2
-        # download is skipped and the local build path runs unchanged.
+        # R2 credentials so `runner build` can pull the rootfs.ext4 warmed
+        # above instead of rebuilding it from scratch. Only rootfs is cached;
+        # the snapshot is always created locally because it contains
+        # host-specific state. Host CA is swapped in via inject-ca.sh after
+        # download.
         R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
         R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
         R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
