@@ -159,9 +159,7 @@ impl DevicePool {
         while let Some(result) = self.pending.join_next().await {
             match result {
                 Ok(Ok(index)) => {
-                    if !self.ready.contains(&index) {
-                        self.ready.push_back(index);
-                    }
+                    self.push_ready_if_untracked(index);
                 }
                 Ok(Err(e)) => tracing::debug!("warmup validation failed: {e}"),
                 Err(e) => tracing::debug!("warmup task panicked: {e}"),
@@ -205,6 +203,13 @@ impl DevicePool {
         while let Some(result) = self.pending.join_next().await {
             match result {
                 Ok(Ok(index)) => {
+                    if self.is_tracked(index) {
+                        tracing::debug!(
+                            device_index = index,
+                            "ignoring duplicate pending device validation result"
+                        );
+                        continue;
+                    }
                     self.in_flight.insert(index);
                     self.maybe_replenish();
                     return Ok(DeviceLease::new(index));
@@ -295,7 +300,7 @@ impl DevicePool {
                 };
                 // Re-validate via sysfs before promoting
                 if netlink::device_appears_free(slot.index) {
-                    self.ready.push_back(slot.index);
+                    self.push_ready_if_untracked(slot.index);
                 }
                 // If not free (recycled by another process), just drop it
             } else {
@@ -313,9 +318,7 @@ impl DevicePool {
         while let Some(Ok(result)) = self.pending.try_join_next() {
             match result {
                 Ok(index) => {
-                    if !self.ready.contains(&index) && !self.in_flight.contains(&index) {
-                        self.ready.push_back(index);
-                    }
+                    self.push_ready_if_untracked(index);
                 }
                 Err(e) => tracing::debug!("background validation failed: {e}"),
             }
@@ -354,6 +357,24 @@ impl DevicePool {
             .chain(self.cooldown.iter().map(|s| s.index))
             .chain(self.in_flight.iter().copied())
             .collect()
+    }
+
+    fn is_tracked(&self, index: u32) -> bool {
+        self.ready.contains(&index)
+            || self.in_flight.contains(&index)
+            || self.cooldown.iter().any(|slot| slot.index == index)
+    }
+
+    fn push_ready_if_untracked(&mut self, index: u32) -> bool {
+        if self.is_tracked(index) {
+            tracing::debug!(
+                device_index = index,
+                "ignoring duplicate ready device candidate"
+            );
+            return false;
+        }
+        self.ready.push_back(index);
+        true
     }
 }
 
@@ -406,6 +427,18 @@ mod tests {
         }
     }
 
+    fn test_pool_for_pending_scan() -> DevicePool {
+        DevicePool {
+            active: true,
+            ready: VecDeque::new(),
+            cooldown: VecDeque::new(),
+            pending: tokio::task::JoinSet::new(),
+            max_devices: 0,
+            config: DevicePoolConfig::default(),
+            in_flight: HashSet::new(),
+        }
+    }
+
     #[test]
     fn release_consumes_lease_and_enters_cooldown() {
         let mut pool = test_pool_with_in_flight(3);
@@ -436,5 +469,47 @@ mod tests {
 
         assert!(!pool.active);
         assert!(pool.in_flight.is_empty());
+    }
+
+    #[tokio::test]
+    async fn acquire_skips_duplicate_pending_validation_result() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.in_flight.insert(3);
+        pool.pending.spawn(async { Ok(3) });
+        pool.pending.spawn(async {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            Ok(5)
+        });
+
+        let lease = pool.acquire().await.expect("acquire non-duplicate index");
+
+        assert_eq!(lease.index(), 5);
+        assert!(pool.in_flight.contains(&3));
+        assert!(pool.in_flight.contains(&5));
+
+        pool.release(lease);
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn warmup_skips_already_tracked_validation_results() {
+        let mut pool = test_pool_for_pending_scan();
+        pool.ready.push_back(4);
+        pool.cooldown.push_back(CooldownSlot {
+            index: 5,
+            released_at: Instant::now(),
+        });
+        pool.in_flight.insert(3);
+        pool.pending.spawn(async { Ok(3) });
+        pool.pending.spawn(async { Ok(4) });
+        pool.pending.spawn(async { Ok(5) });
+        pool.pending.spawn(async { Ok(6) });
+
+        pool.warmup().await;
+
+        let ready: Vec<u32> = pool.ready.iter().copied().collect();
+        assert_eq!(ready, vec![4, 6]);
+        assert_eq!(pool.cooldown.front().map(|slot| slot.index), Some(5));
+        assert!(pool.in_flight.contains(&3));
     }
 }
