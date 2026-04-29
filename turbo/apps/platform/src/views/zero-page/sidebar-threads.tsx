@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import {
   useGet,
   useSet,
@@ -66,8 +65,8 @@ import { Link } from "../router/link.tsx";
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
 const RUNNING_INDICATOR_ANIMATION_MS = 2400;
-let runningIndicatorConsumers = 0;
-let runningIndicatorFrame: number | null = null;
+const RUNNING_INDICATOR_CONSUMERS_KEY = "zeroRunningIndicatorConsumers";
+const RUNNING_INDICATOR_FRAME_KEY = "zeroRunningIndicatorFrame";
 
 function setRunningIndicatorFrame(now: number): void {
   const phase =
@@ -108,33 +107,94 @@ function setRunningIndicatorFrame(now: number): void {
 
 function tickRunningIndicator(now: number): void {
   setRunningIndicatorFrame(now);
-  runningIndicatorFrame = window.requestAnimationFrame(tickRunningIndicator);
+  setRunningIndicatorFrameId(
+    window.requestAnimationFrame(tickRunningIndicator),
+  );
 }
 
-function useSyncedRunningIndicator(enabled: boolean): void {
-  useEffect(() => {
-    if (!enabled || typeof window === "undefined") {
+function getRunningIndicatorRoot(): HTMLElement {
+  return document.documentElement;
+}
+
+function getRunningIndicatorConsumerCount(): number {
+  const value =
+    getRunningIndicatorRoot().dataset[RUNNING_INDICATOR_CONSUMERS_KEY];
+  const count = value ? Number(value) : 0;
+  return Number.isFinite(count) && count > 0 ? count : 0;
+}
+
+function setRunningIndicatorConsumerCount(count: number): void {
+  const root = getRunningIndicatorRoot();
+  if (count > 0) {
+    root.dataset[RUNNING_INDICATOR_CONSUMERS_KEY] = String(count);
+    return;
+  }
+  delete root.dataset[RUNNING_INDICATOR_CONSUMERS_KEY];
+}
+
+function getRunningIndicatorFrameId(): number | null {
+  const value = getRunningIndicatorRoot().dataset[RUNNING_INDICATOR_FRAME_KEY];
+  if (!value) {
+    return null;
+  }
+  const frame = Number(value);
+  return Number.isFinite(frame) ? frame : null;
+}
+
+function setRunningIndicatorFrameId(frame: number | null): void {
+  const root = getRunningIndicatorRoot();
+  if (frame !== null) {
+    root.dataset[RUNNING_INDICATOR_FRAME_KEY] = String(frame);
+    return;
+  }
+  delete root.dataset[RUNNING_INDICATOR_FRAME_KEY];
+}
+
+function registerRunningIndicator(): void {
+  const consumerCount = getRunningIndicatorConsumerCount();
+  setRunningIndicatorConsumerCount(consumerCount + 1);
+  if (consumerCount === 0 && getRunningIndicatorFrameId() === null) {
+    tickRunningIndicator(window.performance.now());
+  }
+}
+
+function unregisterRunningIndicator(): void {
+  const consumerCount = Math.max(0, getRunningIndicatorConsumerCount() - 1);
+  setRunningIndicatorConsumerCount(consumerCount);
+  if (consumerCount === 0) {
+    const frame = getRunningIndicatorFrameId();
+    if (frame !== null) {
+      window.cancelAnimationFrame(frame);
+      setRunningIndicatorFrameId(null);
+    }
+  }
+}
+
+function createRunningIndicatorRef(): (node: HTMLSpanElement | null) => void {
+  let currentNode: HTMLSpanElement | null = null;
+  return (node) => {
+    if (currentNode === node) {
       return;
     }
-    runningIndicatorConsumers += 1;
-    if (runningIndicatorConsumers === 1) {
-      tickRunningIndicator(window.performance.now());
+    if (currentNode !== null && currentNode !== node) {
+      unregisterRunningIndicator();
     }
-    return () => {
-      runningIndicatorConsumers -= 1;
-      if (runningIndicatorConsumers === 0 && runningIndicatorFrame !== null) {
-        window.cancelAnimationFrame(runningIndicatorFrame);
-        runningIndicatorFrame = null;
-      }
-    };
-  }, [enabled]);
+    currentNode = node;
+    if (node !== null) {
+      registerRunningIndicator();
+    }
+  };
 }
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
-  useSyncedRunningIndicator(state === "running");
-
   if (state === "running") {
-    return <span aria-label="Running" className="zero-running-indicator" />;
+    return (
+      <span
+        ref={createRunningIndicatorRef()}
+        aria-label="Running"
+        className="zero-running-indicator"
+      />
+    );
   }
   if (state === "unread") {
     return (
