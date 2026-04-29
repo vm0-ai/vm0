@@ -10,8 +10,8 @@ import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
  * - On a non-localhost host (e.g. app.vm7.ai): derive from current origin
  *   (e.g. www.vm7.ai) so we never open a localhost URL when the user is remote.
  */
-export const apiBaseForNavigation$ = computed((get) => {
-  return get(apiBackendEnabled$).then(resolveApiBaseForNavigation);
+export const apiBaseForNavigation$ = computed(async (get) => {
+  return resolveApiBaseForNavigation(await get(apiBackendEnabled$));
 });
 
 /**
