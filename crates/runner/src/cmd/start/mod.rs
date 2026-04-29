@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Args;
 use futures_util::FutureExt;
@@ -61,6 +61,55 @@ use signals::{EarlySignals, SignalController};
 /// at the interval construction in `run()`.
 const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
 const ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE: u8 = 2;
+
+struct TeardownTimer {
+    start: Instant,
+}
+
+impl TeardownTimer {
+    fn start() -> Self {
+        let timer = Self {
+            start: Instant::now(),
+        };
+        info!("teardown started");
+        timer
+    }
+
+    fn duration_ms(duration: Duration) -> u64 {
+        duration.as_millis().min(u128::from(u64::MAX)) as u64
+    }
+
+    fn elapsed_ms(&self) -> u64 {
+        Self::duration_ms(self.start.elapsed())
+    }
+
+    fn phase_start(&self, phase: &'static str) -> Instant {
+        let phase_start = Instant::now();
+        info!(
+            phase,
+            elapsed_ms = self.elapsed_ms(),
+            "teardown phase started"
+        );
+        phase_start
+    }
+
+    fn phase_complete(&self, phase: &'static str, phase_start: Instant) {
+        info!(
+            phase,
+            phase_ms = Self::duration_ms(phase_start.elapsed()),
+            elapsed_ms = self.elapsed_ms(),
+            "teardown phase complete"
+        );
+    }
+
+    fn event(&self, phase: &'static str) {
+        info!(
+            phase,
+            elapsed_ms = self.elapsed_ms(),
+            "teardown phase event"
+        );
+    }
+}
 
 #[derive(Args)]
 pub struct StartArgs {
@@ -594,7 +643,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let factory = match factory_result {
             Ok(f) => f,
             Err(e) => {
-                shutdown_factories(&mut factories, runtime.as_mut()).await;
+                shutdown_factories(&mut factories, runtime.as_mut(), None).await;
                 return Err(e.into());
             }
         };
@@ -900,22 +949,29 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
+    let teardown = TeardownTimer::start();
 
     // Drop the pinned discover future so it releases the discovery Mutex.
     // Without this, provider.shutdown() deadlocks trying to acquire the
     // same Mutex that the still-alive discover_fut holds.
     drop(discover_fut);
+    teardown.event("drop_discover_fut");
 
     // Drain idle pool first — these VMs hold budget reservations. This
     // also clears `idle_vms` in status.json so the final snapshot is
     // consistent with the empty pool.
     lifecycle.close_parking();
+    let phase = teardown.phase_start("drain_idle_pool");
     drain_idle_pool(&idle_pool, &status, "shutdown").await;
+    teardown.phase_complete("drain_idle_pool", phase);
 
+    let phase = teardown.phase_start("provider_shutdown");
     provider.shutdown().await;
+    teardown.phase_complete("provider_shutdown", phase);
 
     // Send final heartbeat with Stopping so the server stops routing jobs
     // to this runner immediately, without waiting for TTL expiry.
+    let phase = teardown.phase_start("final_heartbeat");
     {
         let pool = idle_pool.lock().await;
         let state = collect_heartbeat_state(
@@ -930,8 +986,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         drop(pool);
         provider.heartbeat(&state).await;
     }
+    teardown.phase_complete("final_heartbeat", phase);
 
     let remaining = jobs.len();
+    let phase = teardown.phase_start("running_jobs_drain");
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
         while !jobs.is_empty() {
@@ -966,7 +1024,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
         }
     }
+    teardown.phase_complete("running_jobs_drain", phase);
     if !orphaned_active_runs.is_empty() {
+        let phase = teardown.phase_start("orphan_reap_shutdown_final");
         reap_orphaned_active_runs(
             &orphaned_active_runs,
             &idle_pool,
@@ -975,27 +1035,36 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             orphan_reap_process_discovery.as_ref(),
         )
         .await;
+        teardown.phase_complete("orphan_reap_shutdown_final", phase);
     }
     // Wait for any in-flight destroy tasks (from cleanup tick, profile
     // mismatch eviction, etc.) so their factory Arcs are dropped before
     // shutdown_factories calls Arc::try_unwrap.
+    let phase = teardown.phase_start("destroy_tasks_drain");
     while let Some(result) = destroy_tasks.join_next().await {
         if let Err(e) = result {
             warn!(error = %e, "destroy task panicked during shutdown");
         }
     }
+    teardown.phase_complete("destroy_tasks_drain", phase);
+    let phase = teardown.phase_start("finish_mitm_restart");
     finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await;
+    teardown.phase_complete("finish_mitm_restart", phase);
     if let Some(abort) = signal_handler_abort {
         abort.abort();
+        teardown.event("signal_handler_aborted");
     }
 
     info!("shutting down factories");
-    shutdown_factories(&mut factories, runtime.as_mut()).await;
+    let phase = teardown.phase_start("shutdown_factories");
+    shutdown_factories(&mut factories, runtime.as_mut(), Some(&teardown)).await;
+    teardown.phase_complete("shutdown_factories", phase);
 
     // Wait for pending usage reports to flush before stopping the proxy.
     // The addon writes the current mitmdump identity plus in-flight flow
     // and pending report counts; this remains bounded best-effort and
     // falls back to stopping the proxy on timeout.
+    let phase = teardown.phase_start("wait_usage_flush");
     if let Some(usage_flush_target) = mitm.usage_flush_target() {
         info!("waiting for proxy usage reports to flush");
         let flushed = proxy::wait_usage_flush(
@@ -1012,19 +1081,28 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     } else {
         info!("proxy is not running; skipping usage flush wait");
     }
+    teardown.phase_complete("wait_usage_flush", phase);
 
     // Stop proxy after all jobs have drained and factory is shut down.
+    let phase = teardown.phase_start("mitm_stop");
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, "proxy stop failed");
     }
+    teardown.phase_complete("mitm_stop", phase);
 
     // Stop the kmsg monitor and wait for the `dmesg -w` child process
     // to be killed and reaped.
+    let phase = teardown.phase_start("kmsg_stop");
     kmsg_handle.stop().await;
+    teardown.phase_complete("kmsg_stop", phase);
+    let phase = teardown.phase_start("dns_stop");
     dns_handle.stop().await;
+    teardown.phase_complete("dns_stop", phase);
 
+    let phase = teardown.phase_start("status_stopped");
     status.set_mode(RunnerMode::Stopped).await;
-    info!("runner stopped");
+    teardown.phase_complete("status_stopped", phase);
+    info!(total_teardown_ms = teardown.elapsed_ms(), "runner stopped");
 
     Ok(())
 }
@@ -1246,15 +1324,41 @@ struct JobProfile {
 async fn shutdown_factories(
     factories: &mut BTreeMap<String, (SharedFactory, bool)>,
     runtime: &mut dyn SandboxRuntime,
+    teardown: Option<&TeardownTimer>,
 ) {
     for (name, (factory, _)) in std::mem::take(factories) {
         match Arc::try_unwrap(factory) {
-            Ok(mut f) => f.shutdown().await,
+            Ok(mut f) => {
+                let phase = teardown.map(|timer| {
+                    let phase_start = Instant::now();
+                    info!(
+                        phase = "factory_shutdown",
+                        profile = %name,
+                        elapsed_ms = timer.elapsed_ms(),
+                        "teardown phase started"
+                    );
+                    phase_start
+                });
+                f.shutdown().await;
+                if let (Some(timer), Some(phase)) = (teardown, phase) {
+                    info!(
+                        phase = "factory_shutdown",
+                        profile = %name,
+                        phase_ms = TeardownTimer::duration_ms(phase.elapsed()),
+                        elapsed_ms = timer.elapsed_ms(),
+                        "teardown phase complete"
+                    );
+                }
+            }
             Err(_) => warn!(profile = %name, "factory still referenced at shutdown"),
         }
     }
     // Clean up shared resources (netns pool, base loop cache).
+    let phase = teardown.map(|timer| timer.phase_start("runtime_shutdown"));
     runtime.shutdown().await;
+    if let (Some(timer), Some(phase)) = (teardown, phase) {
+        timer.phase_complete("runtime_shutdown", phase);
+    }
 }
 
 type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
@@ -2348,7 +2452,13 @@ mod tests {
         LifecycleController, handle_drain_signal, handle_resume_signal, handle_stopping_signal,
     };
     use super::*;
+    use std::fmt;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use tracing::field::{Field, Visit};
+    use tracing::{Event, Subscriber};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
 
     // -----------------------------------------------------------------------
     // collect_heartbeat_state: running_count excludes idle VMs
@@ -2357,6 +2467,115 @@ mod tests {
     use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult, ParkingState};
     use async_trait::async_trait;
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
+
+    #[derive(Clone, Default)]
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<CapturedEvent>>>,
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturedEvent {
+        fields: BTreeMap<String, String>,
+        field_kinds: BTreeMap<String, &'static str>,
+    }
+
+    impl CapturedEvents {
+        fn entries(&self) -> Vec<CapturedEvent> {
+            self.events.lock().unwrap().clone()
+        }
+    }
+
+    impl<S> Layer<S> for CapturedEvents
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = CapturedEvent::default();
+            event.record(&mut visitor);
+            self.events.lock().unwrap().push(visitor);
+        }
+    }
+
+    impl Visit for CapturedEvent {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+            self.field_kinds.insert(field.name().to_string(), "str");
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+            self.field_kinds.insert(field.name().to_string(), "u64");
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+            self.fields
+                .insert(field.name().to_string(), format!("{value:?}"));
+            self.field_kinds.insert(field.name().to_string(), "debug");
+        }
+    }
+
+    fn event_with_message<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|value| value == message)
+            })
+            .unwrap_or_else(|| panic!("missing event message {message:?}"))
+    }
+
+    #[test]
+    fn teardown_timer_emits_structured_timing_fields() {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let timer = TeardownTimer::start();
+        let phase = timer.phase_start("test_phase");
+        timer.phase_complete("test_phase", phase);
+        timer.event("drop_discover_fut");
+        info!(total_teardown_ms = timer.elapsed_ms(), "runner stopped");
+
+        let events = captured.entries();
+        event_with_message(&events, "teardown started");
+
+        let started = event_with_message(&events, "teardown phase started");
+        assert_eq!(
+            started.fields.get("phase").map(String::as_str),
+            Some("test_phase")
+        );
+        assert!(started.fields.contains_key("elapsed_ms"));
+        assert_eq!(started.field_kinds.get("elapsed_ms").copied(), Some("u64"));
+
+        let complete = event_with_message(&events, "teardown phase complete");
+        assert_eq!(
+            complete.fields.get("phase").map(String::as_str),
+            Some("test_phase")
+        );
+        assert!(complete.fields.contains_key("phase_ms"));
+        assert_eq!(complete.field_kinds.get("phase_ms").copied(), Some("u64"));
+        assert!(complete.fields.contains_key("elapsed_ms"));
+        assert_eq!(complete.field_kinds.get("elapsed_ms").copied(), Some("u64"));
+
+        let event = event_with_message(&events, "teardown phase event");
+        assert_eq!(
+            event.fields.get("phase").map(String::as_str),
+            Some("drop_discover_fut")
+        );
+        assert!(event.fields.contains_key("elapsed_ms"));
+        assert_eq!(event.field_kinds.get("elapsed_ms").copied(), Some("u64"));
+
+        let stopped = event_with_message(&events, "runner stopped");
+        assert!(stopped.fields.contains_key("total_teardown_ms"));
+        assert_eq!(
+            stopped.field_kinds.get("total_teardown_ms").copied(),
+            Some("u64")
+        );
+    }
 
     fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
         let mut m = BTreeMap::new();
