@@ -974,7 +974,7 @@ impl NetnsPool {
                 "acquired namespace"
             );
             self.maybe_replenish_plain();
-            return self.checkout(pooled);
+            return self.checkout_or_requeue(pooled, false);
         }
         // Tier 2: await in-flight background task.
         while let Some(result) = self.pending_plain.join_next().await {
@@ -982,7 +982,7 @@ impl NetnsPool {
                 Ok(Ok(ns)) => {
                     info!(name = %ns.name, "acquired namespace from pending");
                     self.maybe_replenish_plain();
-                    return self.checkout(ns);
+                    return self.checkout_or_requeue(ns, false);
                 }
                 Ok(Err(e)) => error!(error = %e, "pending namespace creation failed"),
                 Err(e) => error!(error = %e, "pending namespace task panicked"),
@@ -992,7 +992,7 @@ impl NetnsPool {
         info!("pool exhausted, creating namespace on-demand");
         let ns = self.create_on_demand(None, None).await?;
         self.maybe_replenish_plain();
-        self.checkout(ns)
+        self.checkout_or_requeue(ns, false)
     }
 
     /// Acquire from the proxy queue.
@@ -1008,7 +1008,7 @@ impl NetnsPool {
                 "acquired namespace (proxy)"
             );
             self.maybe_replenish_proxy();
-            return self.checkout(pooled);
+            return self.checkout_or_requeue(pooled, true);
         }
         // Tier 2: await in-flight background task.
         while let Some(result) = self.pending_proxy.join_next().await {
@@ -1016,7 +1016,7 @@ impl NetnsPool {
                 Ok(Ok(ns)) => {
                     info!(name = %ns.name, "acquired namespace (proxy) from pending");
                     self.maybe_replenish_proxy();
-                    return self.checkout(ns);
+                    return self.checkout_or_requeue(ns, true);
                 }
                 Ok(Err(e)) => error!(error = %e, "pending proxy namespace creation failed"),
                 Err(e) => error!(error = %e, "pending proxy namespace task panicked"),
@@ -1028,7 +1028,7 @@ impl NetnsPool {
             .create_on_demand(self.proxy_port, self.dns_port)
             .await?;
         self.maybe_replenish_proxy();
-        self.checkout(ns)
+        self.checkout_or_requeue(ns, true)
     }
 
     /// Create a new namespace on-demand, allocating the next index.
@@ -1054,12 +1054,27 @@ impl NetnsPool {
         .await
     }
 
-    fn checkout(&mut self, info: NetnsInfo) -> Result<NetnsLease> {
+    fn checkout_or_requeue(&mut self, info: NetnsInfo, has_proxy: bool) -> Result<NetnsLease> {
+        let name = info.name.clone();
+        match self.checkout(info) {
+            Ok(lease) => Ok(lease),
+            Err(info) => {
+                warn!(
+                    name = %name,
+                    has_proxy,
+                    "namespace is already checked out; returning metadata to queue"
+                );
+                self.target_queue_mut(has_proxy).push_front(info);
+                Err(NetworkError::InvalidLease(format!(
+                    "namespace {name} is already checked out"
+                )))
+            }
+        }
+    }
+
+    fn checkout(&mut self, info: NetnsInfo) -> std::result::Result<NetnsLease, NetnsInfo> {
         if !self.in_flight.insert(info.name.clone()) {
-            return Err(NetworkError::InvalidLease(format!(
-                "namespace {} is already checked out",
-                info.name
-            )));
+            return Err(info);
         }
         Ok(NetnsLease::new(info, self.instance_id))
     }
@@ -1238,6 +1253,14 @@ impl NetnsPool {
             &self.proxy_queue
         } else {
             &self.plain_queue
+        }
+    }
+
+    fn target_queue_mut(&mut self, has_proxy: bool) -> &mut VecDeque<NetnsInfo> {
+        if has_proxy {
+            &mut self.proxy_queue
+        } else {
+            &mut self.plain_queue
         }
     }
 
@@ -1722,6 +1745,23 @@ mod tests {
         assert_eq!(pool.plain_queue.len(), 1);
         assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
 
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn acquire_requeues_namespace_when_checkout_detects_in_flight_duplicate() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        pool.in_flight.insert("test-ns".into());
+        pool.plain_queue.push_back(test_info("test-ns"));
+
+        let err = pool.acquire().await.unwrap_err();
+
+        assert!(matches!(err, NetworkError::InvalidLease(_)));
+        assert_eq!(pool.plain_queue.len(), 1);
+        assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+
+        pool.in_flight.clear();
         pool.cleanup().await.unwrap();
     }
 
