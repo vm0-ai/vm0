@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.10](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.9...nbd-cow-v0.4.10) (2026-04-29)
+
+
+### Refactoring
+
+* **nbd-cow:** tie device pool leases to COW lifecycle ([#11480](https://github.com/vm0-ai/vm0/issues/11480)) ([b99a732](https://github.com/vm0-ai/vm0/commit/b99a732e7732af47b5837dc3937eeb3acdf71b2e))
+
 ## [0.4.9](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.8...nbd-cow-v0.4.9) (2026-04-27)
 
 

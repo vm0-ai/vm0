@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.99.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.7...runner-rs-v0.99.0) (2026-04-29)
+
+
+### Features
+
+* **runner:** log teardown phase timings ([#11548](https://github.com/vm0-ai/vm0/issues/11548)) ([0cc9974](https://github.com/vm0-ai/vm0/commit/0cc9974742bf745c53476c662dc8f663943a4a6b))
+
 ## [0.98.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.6...runner-rs-v0.98.7) (2026-04-29)
 
 

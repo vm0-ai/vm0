@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.314.0](https://github.com/vm0-ai/vm0/compare/app-v0.313.0...app-v0.314.0) (2026-04-29)
+
+
+### Features
+
+* **zero:** codex-beta feature switch with provider-create gate and picker filter ([#11546](https://github.com/vm0-ai/vm0/issues/11546)) ([1b30292](https://github.com/vm0-ai/vm0/commit/1b30292f2eb55bd2864006da51b8ee2da7f22a48)), closes [#11529](https://github.com/vm0-ai/vm0/issues/11529) [#11520](https://github.com/vm0-ai/vm0/issues/11520)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.248.0
+
 ## [0.313.0](https://github.com/vm0-ai/vm0/compare/app-v0.312.0...app-v0.313.0) (2026-04-29)
 
 
