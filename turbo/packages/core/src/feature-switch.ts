@@ -292,7 +292,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Enable the Gumroad creator commerce connector (api-token + OAuth).",
-    enabled: false,
+    enabled: true,
   },
 };
 
