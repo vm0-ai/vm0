@@ -1766,6 +1766,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn proxy_acquire_requeues_namespace_when_checkout_detects_in_flight_duplicate() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        pool.proxy_port = Some(8080);
+        pool.next_ns_index = MAX_NAMESPACES;
+        pool.in_flight.insert("test-ns".into());
+        pool.proxy_queue.push_back(test_info("test-ns"));
+
+        let err = pool.acquire().await.unwrap_err();
+
+        assert!(matches!(err, NetworkError::InvalidLease(_)));
+        assert!(pool.plain_queue.is_empty());
+        assert_eq!(pool.proxy_queue.len(), 1);
+        assert_eq!(pool.proxy_queue.front().unwrap().name(), "test-ns");
+
+        pool.in_flight.clear();
+        pool.proxy_queue.clear();
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn release_keeps_lease_when_namespace_already_queued() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let info = test_info("test-ns");
+        let mut lease = Some(pool.checkout(info.clone()).unwrap());
+        pool.plain_queue.push_back(info);
+
+        let err = pool.release(&mut lease).await.unwrap_err();
+
+        assert!(matches!(err, NetworkError::InvalidLease(_)));
+        assert!(lease.is_some());
+        assert_eq!(pool.plain_queue.len(), 1);
+        assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+
+        let _ = lease.take().unwrap().into_info_for_test();
+        pool.in_flight.clear();
+        pool.plain_queue.clear();
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn release_keeps_lease_on_wrong_pool_instance() {
         let mut pool = NetnsPool::inactive_for_test();
         pool.active = true;
