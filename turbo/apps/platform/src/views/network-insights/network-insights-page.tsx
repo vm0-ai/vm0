@@ -33,6 +33,7 @@ import {
   type DayInsight,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
+import { UsageInsightView } from "../usage-page/components/usage-insight-view.tsx";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -1103,6 +1104,8 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
             </div>
           )}
         </div>
+
+        {data.days.length > 0 && <UsageInsightView />}
 
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">

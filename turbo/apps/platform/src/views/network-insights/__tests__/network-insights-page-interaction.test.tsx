@@ -5,7 +5,7 @@
  * and agent hover interactions.
  */
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -15,6 +15,8 @@ import {
   zeroInsightsContract,
   type InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
+import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
+import { usageInsightFixture } from "../../usage-page/__tests__/test-fixtures.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -638,8 +640,10 @@ describe("network insights page - your credit usage card", () => {
     await waitFor(() => {
       expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
     });
-    // No match for current user → 0
-    expect(screen.getByText("0")).toBeInTheDocument();
+    // No match for current user → 0 (scoped to the Your Credit Usage card)
+    const yourUsageHeading = screen.getByText("Your Credit Usage");
+    const yourUsageCard = yourUsageHeading.closest("div") as HTMLElement;
+    expect(within(yourUsageCard).getByText("0")).toBeInTheDocument();
   });
 });
 
@@ -798,5 +802,50 @@ describe("network insights page - allowed card layout", () => {
     expect(
       screen.getByText(/calls made within 1 granted permission/),
     ).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Embedded usage panels (chart + schedules + chats)
+// ---------------------------------------------------------------------------
+
+describe("network insights page - embedded usage panels", () => {
+  it("renders the Usage chart and tables alongside the per-day cards", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(
+        within(
+          screen.getByRole("region", { name: "Credits totals" }),
+        ).getByText("credits"),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("My Schedule")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
+  });
+
+  it("does not render the Usage panels when there is no insights data", async () => {
+    mockInsightsAPI([]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Run an agent to see insights here."),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("region", { name: "Credits totals" }),
+    ).not.toBeInTheDocument();
   });
 });

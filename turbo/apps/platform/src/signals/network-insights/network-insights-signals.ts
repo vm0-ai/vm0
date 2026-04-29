@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroClient$ } from "../api-client.ts";
+import {
+  setRange$,
+  type InsightRange,
+} from "../usage-page/usage-insight-signals.ts";
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -72,8 +76,31 @@ export const insightsDateRange$ = computed((get) => {
   return get(internalDateRange$);
 });
 
+/**
+ * Map the page-level Insights date range to the bucket range understood by
+ * the embedded Usage chart. The Usage panel only knows 7d / 28d windows,
+ * so multi-day Insights ranges and specific-date selections all collapse
+ * onto the closest bucket window.
+ */
+function toUsageRange(insightsRange: string): InsightRange {
+  if (insightsRange === "last7") {
+    return "7d";
+  }
+  return "28d";
+}
+
 export const setInsightsDateRange$ = command(({ set }, range: string) => {
   set(internalDateRange$, range);
+  set(setRange$, toUsageRange(range));
+});
+
+/**
+ * Mirror the current Insights range into the Usage chart's range. Called
+ * during page setup so the embedded chart fetches the correct bucket
+ * window on first paint instead of the global default ("today").
+ */
+export const syncUsageRangeFromInsights$ = command(({ get, set }) => {
+  set(setRange$, toUsageRange(get(internalDateRange$)));
 });
 
 /** Calendar popover state */
