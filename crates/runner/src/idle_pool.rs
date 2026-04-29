@@ -37,9 +37,10 @@ impl StorageFingerprints {
     pub fn from_manifest(manifest: &StorageManifest) -> Self {
         let mut storages = HashMap::new();
         for s in &manifest.storages {
-            if let (Some(name), Some(ver)) = (&s.vas_storage_name, &s.vas_version_id) {
-                storages.insert(s.mount_path.clone(), (name.clone(), ver.clone()));
-            }
+            storages.insert(
+                s.mount_path.clone(),
+                (s.vas_storage_name.clone(), s.vas_version_id.clone()),
+            );
         }
         let mut artifacts = HashMap::new();
         for a in &manifest.artifacts {

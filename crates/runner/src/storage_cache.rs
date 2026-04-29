@@ -39,7 +39,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, short_digest, touch_mtime};
 use crate::telemetry::JobTelemetry;
-use crate::types::StorageManifest;
+use crate::types::GuestDownloadManifest;
 
 /// Archive sizes strictly larger than this are passthrough.
 const CACHE_MAX_SIZE: u64 = 8 * 1024 * 1024;
@@ -116,7 +116,7 @@ enum DownloadBody {
 /// `filter_unchanged_storages` marked as reuse-in-place (`archive_url = None`)
 /// are left untouched.
 pub async fn populate_cache(
-    manifest: &mut StorageManifest,
+    manifest: &mut GuestDownloadManifest,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
@@ -159,7 +159,7 @@ pub async fn populate_cache(
     Ok(())
 }
 
-fn collect_targets(manifest: &StorageManifest) -> Vec<CacheTarget> {
+fn collect_targets(manifest: &GuestDownloadManifest) -> Vec<CacheTarget> {
     let mut out = Vec::new();
     for (i, s) in manifest.storages.iter().enumerate() {
         if s.cached {
@@ -168,12 +168,8 @@ fn collect_targets(manifest: &StorageManifest) -> Vec<CacheTarget> {
         let Some(url) = s.archive_url.as_deref() else {
             continue;
         };
-        let Some(name) = s.vas_storage_name.as_deref() else {
-            continue;
-        };
-        let Some(version) = s.vas_version_id.as_deref() else {
-            continue;
-        };
+        let name = s.vas_storage_name.as_str();
+        let version = s.vas_version_id.as_str();
         // Empty components would hash to the same fixed digest as every
         // other empty component, collapsing distinct manifest entries into
         // a shared cache slot. Treat them like missing keys: passthrough.
@@ -586,7 +582,7 @@ fn staging_dir(final_dir: &Path) -> PathBuf {
 }
 
 fn apply_outcome(
-    manifest: &mut StorageManifest,
+    manifest: &mut GuestDownloadManifest,
     target: &CacheTarget,
     outcome: &TargetOutcome,
     telemetry: &mut JobTelemetry,
@@ -627,7 +623,7 @@ fn apply_outcome(
 /// any future parallel mutation at this pipeline stage. A mismatch is not
 /// a hard error (the caller made the right conservative choice) but is
 /// logged so a regression that breaks the invariant is visible.
-fn rewrite_url(manifest: &mut StorageManifest, target: &CacheTarget) {
+fn rewrite_url(manifest: &mut GuestDownloadManifest, target: &CacheTarget) {
     let new_url = format!(
         "file://{}",
         guest_archive_path(&target.name, &target.version)
@@ -636,8 +632,8 @@ fn rewrite_url(manifest: &mut StorageManifest, target: &CacheTarget) {
     match target.kind {
         TargetKind::Storage => {
             if let Some(entry) = manifest.storages.get_mut(target.index)
-                && entry.vas_storage_name.as_deref() == Some(target.name.as_str())
-                && entry.vas_version_id.as_deref() == Some(target.version.as_str())
+                && entry.vas_storage_name == target.name
+                && entry.vas_version_id == target.version
             {
                 entry.archive_url = Some(new_url);
                 applied = true;
@@ -676,7 +672,9 @@ mod tests {
 
     use crate::http::HttpClient;
     use crate::ids::RunId;
-    use crate::types::{ArtifactEntry, StorageEntry};
+    use crate::types::{
+        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+    };
 
     fn new_telemetry() -> JobTelemetry {
         let http = HttpClient::new("http://localhost:0".to_string()).unwrap();
@@ -687,14 +685,14 @@ mod tests {
         HomePaths::with_root(temp.path().to_path_buf())
     }
 
-    fn manifest_single_storage(url: String, name: &str, version: &str) -> StorageManifest {
-        StorageManifest {
-            storages: vec![StorageEntry {
+    fn manifest_single_storage(url: String, name: &str, version: &str) -> GuestDownloadManifest {
+        GuestDownloadManifest {
+            storages: vec![GuestDownloadStorageEntry {
                 mount_path: format!("/mnt/{name}"),
                 archive_url: Some(url),
                 cached: false,
-                vas_storage_name: Some(name.to_string()),
-                vas_version_id: Some(version.to_string()),
+                vas_storage_name: name.to_string(),
+                vas_version_id: version.to_string(),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -940,13 +938,13 @@ mod tests {
         let mut telemetry = new_telemetry();
 
         // Entry the filter has already marked reuse-in-place: archive_url = None, cached = true.
-        let mut manifest = StorageManifest {
-            storages: vec![StorageEntry {
+        let mut manifest = GuestDownloadManifest {
+            storages: vec![GuestDownloadStorageEntry {
                 mount_path: "/mnt/foo".into(),
                 archive_url: None,
                 cached: true,
-                vas_storage_name: Some("foo".into()),
-                vas_version_id: Some("v1".into()),
+                vas_storage_name: "foo".into(),
+                vas_version_id: "v1".into(),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -970,14 +968,14 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
 
-        // Entry without vas_storage_name / vas_version_id — pre-epic schema.
-        let mut manifest = StorageManifest {
-            storages: vec![StorageEntry {
+        // Entry without usable vas_storage_name / vas_version_id passes through.
+        let mut manifest = GuestDownloadManifest {
+            storages: vec![GuestDownloadStorageEntry {
                 mount_path: "/mnt/legacy".into(),
                 archive_url: Some("https://r2.example.com/legacy.tar.gz".into()),
                 cached: false,
-                vas_storage_name: None,
-                vas_version_id: None,
+                vas_storage_name: String::new(),
+                vas_version_id: String::new(),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -1108,9 +1106,9 @@ mod tests {
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
 
-        let mut manifest = StorageManifest {
+        let mut manifest = GuestDownloadManifest {
             storages: Vec::new(),
-            artifacts: vec![ArtifactEntry {
+            artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/artifact".into(),
                 archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                 cached: false,
@@ -1387,21 +1385,21 @@ mod tests {
             std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
         }
 
-        let mut manifest = StorageManifest {
+        let mut manifest = GuestDownloadManifest {
             storages: vec![
-                StorageEntry {
+                GuestDownloadStorageEntry {
                     mount_path: format!("/mnt/{name_a}"),
                     archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                     cached: false,
-                    vas_storage_name: Some(name_a.to_string()),
-                    vas_version_id: Some(version.to_string()),
+                    vas_storage_name: name_a.to_string(),
+                    vas_version_id: version.to_string(),
                 },
-                StorageEntry {
+                GuestDownloadStorageEntry {
                     mount_path: format!("/mnt/{name_b}"),
                     archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                     cached: false,
-                    vas_storage_name: Some(name_b.to_string()),
-                    vas_version_id: Some(version.to_string()),
+                    vas_storage_name: name_b.to_string(),
+                    vas_version_id: version.to_string(),
                 },
             ],
             artifacts: Vec::new(),
@@ -1441,9 +1439,9 @@ mod tests {
         let mut telemetry = new_telemetry();
 
         let original = "https://r2.example.com/nameless.tar.gz".to_string();
-        let mut manifest = StorageManifest {
+        let mut manifest = GuestDownloadManifest {
             storages: Vec::new(),
-            artifacts: vec![ArtifactEntry {
+            artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/nameless".into(),
                 archive_url: Some(original.clone()),
                 cached: false,

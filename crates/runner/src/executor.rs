@@ -26,8 +26,8 @@ use crate::paths::{HomePaths, LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::{
-    ArtifactEntry, ExecutionContext, ResumeSession, SandboxReuseResult, StorageEntry,
-    StorageManifest,
+    ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+    ResumeSession, SandboxReuseResult,
 };
 
 /// Shared configuration for all executions (profile-independent).
@@ -443,9 +443,10 @@ async fn run_in_sandbox(
 
     // 3. Download storages (skipping entries unchanged since the previous turn)
     if let Some(manifest) = &context.storage_manifest {
-        let mut effective: StorageManifest = match start.prev_storage {
-            Some(prev) => filter_unchanged_storages(manifest, prev),
-            None => manifest.clone(),
+        let guest_manifest = GuestDownloadManifest::from(manifest);
+        let mut effective: GuestDownloadManifest = match start.prev_storage {
+            Some(prev) => filter_unchanged_storages(&guest_manifest, prev),
+            None => guest_manifest,
         };
         // Short-circuit: skip the vsock exec if every entry was filtered out
         // and there are no paths to clean up.
@@ -962,38 +963,33 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
 /// version matches the previous turn's fingerprints. `guest-download`
 /// skips entries without a valid URL, so unchanged storages stay on disk.
 fn filter_unchanged_storages(
-    manifest: &StorageManifest,
+    manifest: &GuestDownloadManifest,
     prev: &crate::idle_pool::StorageFingerprints,
-) -> StorageManifest {
+) -> GuestDownloadManifest {
     let mut skipped: usize = 0;
     let mut cleanup_paths: Vec<String> = Vec::new();
 
-    let storages: Vec<StorageEntry> = manifest
+    let storages: Vec<GuestDownloadStorageEntry> = manifest
         .storages
         .iter()
         .map(|s| {
-            let unchanged = match (&s.vas_storage_name, &s.vas_version_id) {
-                (Some(name), Some(ver)) => prev
-                    .storages
-                    .get(&s.mount_path)
-                    .is_some_and(|(pn, pv)| pn == name && pv == ver),
-                _ => false, // no version info → always download
-            };
+            let unchanged = prev
+                .storages
+                .get(&s.mount_path)
+                .is_some_and(|(pn, pv)| pn == &s.vas_storage_name && pv == &s.vas_version_id);
             if unchanged {
                 skipped += 1;
             } else {
                 cleanup_paths.push(s.mount_path.clone());
             }
-            StorageEntry {
-                mount_path: s.mount_path.clone(),
+            GuestDownloadStorageEntry {
                 archive_url: if unchanged {
                     None
                 } else {
                     s.archive_url.clone()
                 },
                 cached: unchanged,
-                vas_storage_name: s.vas_storage_name.clone(),
-                vas_version_id: s.vas_version_id.clone(),
+                ..s.clone()
             }
         })
         .collect();
@@ -1010,7 +1006,7 @@ fn filter_unchanged_storages(
         }
     }
 
-    let filter_artifact = |a: &ArtifactEntry,
+    let filter_artifact = |a: &GuestDownloadArtifactEntry,
                            prev_ver: &Option<(String, String)>,
                            skipped: &mut usize,
                            cleanup: &mut Vec<String>| {
@@ -1022,14 +1018,14 @@ fn filter_unchanged_storages(
         } else {
             cleanup.push(a.mount_path.clone());
         }
-        ArtifactEntry {
+        GuestDownloadArtifactEntry {
             archive_url: if same { None } else { a.archive_url.clone() },
             cached: same,
             ..a.clone()
         }
     };
 
-    let artifacts: Vec<ArtifactEntry> = manifest
+    let artifacts: Vec<GuestDownloadArtifactEntry> = manifest
         .artifacts
         .iter()
         .map(|a| {
@@ -1060,7 +1056,7 @@ fn filter_unchanged_storages(
         );
     }
 
-    StorageManifest {
+    GuestDownloadManifest {
         storages,
         artifacts,
         cleanup_paths,
@@ -1079,7 +1075,7 @@ fn guest_download_env(run_id: &str) -> [(&'static str, &str); 1] {
 async fn download_storages(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    manifest: &StorageManifest,
+    manifest: &GuestDownloadManifest,
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
         .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
@@ -1414,10 +1410,40 @@ fn build_env_json(
 mod tests {
     use super::*;
     use crate::ids::RunId;
-    use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
+    use crate::types::{
+        ArtifactEntry, GuestDownloadArtifactEntry, GuestDownloadManifest,
+        GuestDownloadStorageEntry, ResumeSession, StorageEntry, StorageManifest,
+    };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
     use std::sync::Arc;
+
+    fn api_storage(name: &str, mount_path: &str, version: &str, archive_url: &str) -> StorageEntry {
+        StorageEntry {
+            name: name.into(),
+            mount_path: mount_path.into(),
+            archive_url: archive_url.into(),
+            vas_storage_name: name.into(),
+            vas_version_id: version.into(),
+        }
+    }
+
+    fn api_artifact(
+        name: &str,
+        mount_path: &str,
+        storage_id: &str,
+        version: &str,
+        archive_url: &str,
+    ) -> ArtifactEntry {
+        ArtifactEntry {
+            mount_path: mount_path.into(),
+            archive_url: archive_url.into(),
+            vas_storage_name: name.into(),
+            vas_storage_id: storage_id.into(),
+            vas_version_id: version.into(),
+            manifest_url: None,
+        }
+    }
 
     struct DestroyPanicFactory {
         inner: MockSandboxFactory,
@@ -1546,22 +1572,19 @@ mod tests {
     fn build_env_json_with_single_artifact() {
         let mut ctx = minimal_context();
         ctx.storage_manifest = Some(StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: None,
-                cached: false,
-                vas_storage_name: None,
-                vas_version_id: None,
-            }],
-            artifacts: vec![ArtifactEntry {
-                mount_path: "/artifacts".into(),
-                archive_url: None,
-                cached: false,
-                vas_storage_name: "my-vol".into(),
-                vas_storage_id: "sid-1".into(),
-                vas_version_id: "v1".into(),
-            }],
-            cleanup_paths: vec![],
+            storages: vec![api_storage(
+                "data",
+                "/data",
+                "v1",
+                "https://example.com/data.tar.gz",
+            )],
+            artifacts: vec![api_artifact(
+                "my-vol",
+                "/artifacts",
+                "sid-1",
+                "v1",
+                "https://example.com/artifacts.tar.gz",
+            )],
         });
 
         let env = build_env_for_test(&ctx, "http://localhost");
@@ -1585,24 +1608,21 @@ mod tests {
         ctx.storage_manifest = Some(StorageManifest {
             storages: vec![],
             artifacts: vec![
-                ArtifactEntry {
-                    mount_path: "/workspace".into(),
-                    archive_url: None,
-                    cached: false,
-                    vas_storage_name: "art-a".into(),
-                    vas_storage_id: "sid-a".into(),
-                    vas_version_id: "v1".into(),
-                },
-                ArtifactEntry {
-                    mount_path: "/data".into(),
-                    archive_url: None,
-                    cached: false,
-                    vas_storage_name: "art-b".into(),
-                    vas_storage_id: "sid-b".into(),
-                    vas_version_id: "v2".into(),
-                },
+                api_artifact(
+                    "art-a",
+                    "/workspace",
+                    "sid-a",
+                    "v1",
+                    "https://example.com/art-a.tar.gz",
+                ),
+                api_artifact(
+                    "art-b",
+                    "/data",
+                    "sid-b",
+                    "v2",
+                    "https://example.com/art-b.tar.gz",
+                ),
             ],
-            cleanup_paths: vec![],
         });
 
         let env = build_env_for_test(&ctx, "http://localhost");
@@ -1623,7 +1643,6 @@ mod tests {
         ctx.storage_manifest = Some(StorageManifest {
             storages: vec![],
             artifacts: vec![],
-            cleanup_paths: vec![],
         });
 
         let env = build_env_for_test(&ctx, "http://localhost");
@@ -2300,14 +2319,13 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         // write_file succeeds by default, exec returns exit 0 by default.
         let ctx = minimal_context();
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/archive.tar.gz".into()),
-                cached: false,
-                vas_storage_name: None,
-                vas_version_id: None,
-            }],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/data",
+                "data",
+                "v1",
+                Some("https://s3/archive.tar.gz"),
+            )],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
@@ -2347,7 +2365,7 @@ mod tests {
             stderr: b"download failed".to_vec(),
         }));
         let ctx = minimal_context();
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![],
             cleanup_paths: vec![],
@@ -2458,15 +2476,13 @@ mod tests {
         let mut ctx = minimal_context();
         ctx.storage_manifest = Some(StorageManifest {
             storages: vec![],
-            artifacts: vec![ArtifactEntry {
-                mount_path: "/memory".into(),
-                archive_url: None,
-                cached: false,
-                vas_storage_name: "memory".into(),
-                vas_storage_id: String::new(),
-                vas_version_id: "v2".into(),
-            }],
-            cleanup_paths: vec![],
+            artifacts: vec![api_artifact(
+                "memory",
+                "/memory",
+                "",
+                "v2",
+                "https://example.com/memory.tar.gz",
+            )],
         });
         let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_MEMORY_DRIVER"));
@@ -2616,7 +2632,7 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
         let ctx = minimal_context();
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![],
             cleanup_paths: vec![],
@@ -2825,15 +2841,13 @@ mod tests {
 
         let mut ctx = minimal_context();
         ctx.storage_manifest = Some(StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://example.com/data.tar.gz".into()),
-                cached: false,
-                vas_storage_name: None,
-                vas_version_id: None,
-            }],
+            storages: vec![api_storage(
+                "data",
+                "/data",
+                "v1",
+                "https://example.com/data.tar.gz",
+            )],
             artifacts: vec![],
-            cleanup_paths: vec![],
         });
         let (exit_code, _) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -3291,13 +3305,28 @@ mod tests {
     // filter_unchanged_storages tests
     // -----------------------------------------------------------------------
 
-    fn art(name: &str, ver: &str, url: &str) -> ArtifactEntry {
-        ArtifactEntry {
+    fn guest_art(name: &str, ver: &str, url: Option<&str>) -> GuestDownloadArtifactEntry {
+        GuestDownloadArtifactEntry {
             mount_path: "/workspace".into(),
-            archive_url: Some(url.into()),
+            archive_url: url.map(str::to_string),
             cached: false,
             vas_storage_name: name.into(),
             vas_storage_id: String::new(),
+            vas_version_id: ver.into(),
+        }
+    }
+
+    fn guest_storage(
+        mount_path: &str,
+        name: &str,
+        ver: &str,
+        url: Option<&str>,
+    ) -> GuestDownloadStorageEntry {
+        GuestDownloadStorageEntry {
+            mount_path: mount_path.into(),
+            archive_url: url.map(str::to_string),
+            cached: false,
+            vas_storage_name: name.into(),
             vas_version_id: ver.into(),
         }
     }
@@ -3310,9 +3339,9 @@ mod tests {
 
     #[test]
     fn filter_same_artifact_version_nulls_url() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("my-art", "v1", "https://s3/v1")],
+            artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3325,9 +3354,9 @@ mod tests {
 
     #[test]
     fn filter_different_artifact_version_keeps_url() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("my-art", "v2", "https://s3/v2")],
+            artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3343,9 +3372,9 @@ mod tests {
 
     #[test]
     fn filter_different_artifact_name_keeps_url() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("other-art", "v1", "https://s3/v1")],
+            artifacts: vec![guest_art("other-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3358,9 +3387,9 @@ mod tests {
 
     #[test]
     fn filter_new_artifact_not_in_prev_keeps_url() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("my-art", "v1", "https://s3/v1")],
+            artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
@@ -3370,15 +3399,14 @@ mod tests {
 
     #[test]
     fn filter_empty_prev_downloads_everything() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/data".into()),
-                cached: false,
-                vas_storage_name: Some("vol-1".into()),
-                vas_version_id: Some("v1".into()),
-            }],
-            artifacts: vec![art("my-art", "v1", "https://s3/v1")],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/data",
+                "vol-1",
+                "v1",
+                Some("https://s3/data"),
+            )],
+            artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
@@ -3389,15 +3417,14 @@ mod tests {
 
     #[test]
     fn filter_all_unchanged_nulls_all_urls() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/same-url".into()),
-                cached: false,
-                vas_storage_name: Some("vol-1".into()),
-                vas_version_id: Some("v1".into()),
-            }],
-            artifacts: vec![art("my-art", "v1", "https://s3/v1")],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/data",
+                "vol-1",
+                "v1",
+                Some("https://s3/same-url"),
+            )],
+            artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let mut storages = HashMap::new();
@@ -3415,7 +3442,7 @@ mod tests {
 
     #[test]
     fn filter_two_artifacts_at_different_mount_paths() {
-        let art_a = ArtifactEntry {
+        let art_a = GuestDownloadArtifactEntry {
             mount_path: "/workspace".into(),
             archive_url: Some("https://s3/a-v2".into()),
             cached: false,
@@ -3423,7 +3450,7 @@ mod tests {
             vas_storage_id: String::new(),
             vas_version_id: "v2".into(),
         };
-        let art_b = ArtifactEntry {
+        let art_b = GuestDownloadArtifactEntry {
             mount_path: "/data".into(),
             archive_url: Some("https://s3/b-v1".into()),
             cached: false,
@@ -3431,7 +3458,7 @@ mod tests {
             vas_storage_id: String::new(),
             vas_version_id: "v1".into(),
         };
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![art_a, art_b],
             cleanup_paths: vec![],
@@ -3458,9 +3485,9 @@ mod tests {
     #[test]
     fn filter_detects_removed_artifacts() {
         // Current manifest has only one artifact; previous had two.
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("kept", "v1", "https://s3/kept")],
+            artifacts: vec![guest_art("kept", "v1", Some("https://s3/kept"))],
             cleanup_paths: vec![],
         };
         let mut artifacts = HashMap::new();
@@ -3477,22 +3504,20 @@ mod tests {
 
     #[test]
     fn filter_computes_cleanup_for_changed_storages() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![
-                StorageEntry {
-                    mount_path: "/home/user/.claude".into(),
-                    archive_url: Some("https://s3/instructions".into()),
-                    cached: false,
-                    vas_storage_name: Some("instructions".into()),
-                    vas_version_id: Some("v2".into()),
-                },
-                StorageEntry {
-                    mount_path: "/home/user/.claude/skills/foo".into(),
-                    archive_url: Some("https://s3/foo".into()),
-                    cached: false,
-                    vas_storage_name: Some("skill-foo".into()),
-                    vas_version_id: Some("v1".into()),
-                },
+                guest_storage(
+                    "/home/user/.claude",
+                    "instructions",
+                    "v2",
+                    Some("https://s3/instructions"),
+                ),
+                guest_storage(
+                    "/home/user/.claude/skills/foo",
+                    "skill-foo",
+                    "v1",
+                    Some("https://s3/foo"),
+                ),
             ],
             artifacts: vec![],
             cleanup_paths: vec![],
@@ -3522,14 +3547,13 @@ mod tests {
 
     #[test]
     fn filter_detects_removed_storages() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/home/user/.claude".into(),
-                archive_url: Some("https://s3/instructions".into()),
-                cached: false,
-                vas_storage_name: Some("instructions".into()),
-                vas_version_id: Some("v1".into()),
-            }],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/home/user/.claude",
+                "instructions",
+                "v1",
+                Some("https://s3/instructions"),
+            )],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
@@ -3558,9 +3582,9 @@ mod tests {
 
     #[test]
     fn filter_changed_artifact_adds_cleanup_path() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("my-art", "v2", "https://s3/v2")],
+            artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3578,16 +3602,9 @@ mod tests {
 
     #[test]
     fn filter_changed_artifact_with_null_url_adds_cleanup_path() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![ArtifactEntry {
-                mount_path: "/workspace".into(),
-                archive_url: None, // API returned null
-                cached: false,
-                vas_storage_name: "my-art".into(),
-                vas_storage_id: String::new(),
-                vas_version_id: "v2".into(),
-            }],
+            artifacts: vec![guest_art("my-art", "v2", None)],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3595,21 +3612,15 @@ mod tests {
             artifacts: art_fp("/workspace", "my-art", "v1"),
         };
         let result = filter_unchanged_storages(&manifest, &prev);
-        // Version changed → must be in cleanup_paths even though URL is null.
+        // Version changed → must be in cleanup_paths even though URL is absent.
         assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
         assert!(!result.artifacts[0].cached);
     }
 
     #[test]
     fn filter_changed_storage_with_null_url_adds_cleanup_path() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: None, // API returned null
-                cached: false,
-                vas_storage_name: Some("vol-1".into()),
-                vas_version_id: Some("v2".into()),
-            }],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage("/data", "vol-1", "v2", None)],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
@@ -3620,21 +3631,20 @@ mod tests {
             artifacts: HashMap::new(),
         };
         let result = filter_unchanged_storages(&manifest, &prev);
-        // Version changed → must be in cleanup_paths even though URL is null.
+        // Version changed → must be in cleanup_paths even though URL is absent.
         assert!(result.cleanup_paths.contains(&"/data".to_string()));
         assert!(!result.storages[0].cached);
     }
 
     #[test]
     fn filter_unchanged_storage_sets_cached_true() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/data".into()),
-                cached: false,
-                vas_storage_name: Some("vol-1".into()),
-                vas_version_id: Some("v1".into()),
-            }],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/data",
+                "vol-1",
+                "v1",
+                Some("https://s3/data"),
+            )],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
