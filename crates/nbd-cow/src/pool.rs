@@ -950,6 +950,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn deferred_error_starts_new_demand_scan_for_remaining_waiter() {
+        let mut pool = test_pool_for_pending_scan();
+        let (first_tx, first_rx) = oneshot::channel();
+        let (second_tx, mut second_rx) = oneshot::channel();
+        pool.waiting_acquires.push_back(first_tx);
+        pool.waiting_acquires.push_back(second_tx);
+
+        pool.handle_validation_join(Ok(ValidationResult {
+            purpose: ValidationPurpose::Demand,
+            result: Err(NbdCowError::NoFreeDevice),
+        }));
+
+        assert!(matches!(
+            first_rx.await.unwrap(),
+            Err(NbdCowError::NoFreeDevice)
+        ));
+        assert!(matches!(
+            second_rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+        assert_eq!(pool.waiting_acquires.len(), 1);
+        assert_eq!(pool.pending.len(), 1);
+        pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn deferred_error_skips_cancelled_waiter() {
+        let mut pool = test_pool_for_pending_scan();
+        let (cancelled_tx, cancelled_rx) = oneshot::channel();
+        let (active_tx, active_rx) = oneshot::channel();
+        drop(cancelled_rx);
+        pool.waiting_acquires.push_back(cancelled_tx);
+        pool.waiting_acquires.push_back(active_tx);
+
+        pool.handle_validation_join(Ok(ValidationResult {
+            purpose: ValidationPurpose::Demand,
+            result: Err(NbdCowError::NoFreeDevice),
+        }));
+
+        assert!(matches!(
+            active_rx.await.unwrap(),
+            Err(NbdCowError::NoFreeDevice)
+        ));
+        assert!(pool.waiting_acquires.is_empty());
+        assert!(pool.deferred_acquire_errors.is_empty());
+    }
+
+    #[tokio::test]
     async fn handle_acquire_waiting_for_validation_does_not_block_release() {
         let mut pool = test_pool_for_pending_scan();
         pool.in_flight.insert(3);
