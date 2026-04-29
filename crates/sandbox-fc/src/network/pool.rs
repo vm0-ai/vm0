@@ -995,7 +995,10 @@ impl NetnsPool {
         }
         // Tier 3: on-demand.
         info!("pool exhausted, creating namespace on-demand");
-        let ns = self.create_on_demand(None, None).await?;
+        // Spawn into the pool-owned JoinSet before awaiting so cancellation
+        // leaves the creation task reachable for later acquire/cleanup.
+        self.spawn_plain_creation()?;
+        let ns = self.await_on_demand_plain().await?;
         let lease = self.checkout_or_requeue(ns, false)?;
         self.maybe_replenish_plain();
         Ok(lease)
@@ -1032,20 +1035,16 @@ impl NetnsPool {
         }
         // Tier 3: on-demand.
         info!("proxy pool exhausted, creating namespace on-demand");
-        let ns = self
-            .create_on_demand(self.proxy_port, self.dns_port)
-            .await?;
+        // Spawn into the pool-owned JoinSet before awaiting so cancellation
+        // leaves the creation task reachable for later acquire/cleanup.
+        self.spawn_proxy_creation()?;
+        let ns = self.await_on_demand_proxy().await?;
         let lease = self.checkout_or_requeue(ns, true)?;
         self.maybe_replenish_proxy();
         Ok(lease)
     }
 
-    /// Create a new namespace on-demand, allocating the next index.
-    async fn create_on_demand(
-        &mut self,
-        proxy_port: Option<u16>,
-        dns_port: Option<u16>,
-    ) -> Result<NetnsInfo> {
+    fn reserve_ns_index(&mut self) -> Result<u32> {
         let ns_index = self.next_ns_index;
         if ns_index >= MAX_NAMESPACES {
             return Err(NetworkError::NamespaceLimitReached {
@@ -1053,14 +1052,76 @@ impl NetnsPool {
             });
         }
         self.next_ns_index += 1;
-        create_single_namespace(
-            self.pool_index,
+        Ok(ns_index)
+    }
+
+    fn spawn_plain_creation(&mut self) -> Result<()> {
+        let ns_index = self.reserve_ns_index()?;
+        let pool_index = self.pool_index;
+        let default_iface = self.default_iface.clone();
+        self.pending_plain.spawn(create_single_namespace(
+            pool_index,
             ns_index,
-            self.default_iface.clone(),
-            proxy_port,
+            default_iface,
+            None,
+            None,
+        ));
+        Ok(())
+    }
+
+    fn spawn_proxy_creation(&mut self) -> Result<()> {
+        let Some(proxy_port) = self.proxy_port else {
+            return Err(NetworkError::Prerequisite(
+                "proxy namespace requested without proxy port".into(),
+            ));
+        };
+        let ns_index = self.reserve_ns_index()?;
+        let pool_index = self.pool_index;
+        let default_iface = self.default_iface.clone();
+        let dns_port = self.dns_port;
+        self.pending_proxy.spawn(create_single_namespace(
+            pool_index,
+            ns_index,
+            default_iface,
+            Some(proxy_port),
             dns_port,
-        )
-        .await
+        ));
+        Ok(())
+    }
+
+    async fn await_on_demand_plain(&mut self) -> Result<NetnsInfo> {
+        match self.pending_plain.join_next().await {
+            Some(Ok(Ok(ns))) => Ok(ns),
+            Some(Ok(Err(e))) => Err(e),
+            Some(Err(e)) => Err(Self::join_error_to_network_error(
+                e,
+                "on-demand namespace creation task",
+            )),
+            None => Err(NetworkError::Prerequisite(
+                "on-demand namespace creation task disappeared".into(),
+            )),
+        }
+    }
+
+    async fn await_on_demand_proxy(&mut self) -> Result<NetnsInfo> {
+        match self.pending_proxy.join_next().await {
+            Some(Ok(Ok(ns))) => Ok(ns),
+            Some(Ok(Err(e))) => Err(e),
+            Some(Err(e)) => Err(Self::join_error_to_network_error(
+                e,
+                "on-demand proxy namespace creation task",
+            )),
+            None => Err(NetworkError::Prerequisite(
+                "on-demand proxy namespace creation task disappeared".into(),
+            )),
+        }
+    }
+
+    fn join_error_to_network_error(e: tokio::task::JoinError, context: &str) -> NetworkError {
+        if e.is_panic() {
+            std::panic::resume_unwind(e.into_panic());
+        }
+        NetworkError::Prerequisite(format!("{context} cancelled: {e}"))
     }
 
     fn checkout_or_requeue(&mut self, info: NetnsInfo, has_proxy: bool) -> Result<NetnsLease> {
@@ -1120,17 +1181,7 @@ impl NetnsPool {
         {
             return;
         }
-        let ns_index = self.next_ns_index;
-        self.next_ns_index += 1;
-        let pool_index = self.pool_index;
-        let default_iface = self.default_iface.clone();
-        self.pending_plain.spawn(create_single_namespace(
-            pool_index,
-            ns_index,
-            default_iface,
-            None,
-            None,
-        ));
+        let _ = self.spawn_plain_creation();
     }
 
     /// Spawn a background proxy namespace creation task if needed.
@@ -1138,27 +1189,16 @@ impl NetnsPool {
     /// Skips if: no proxy port configured, buffer is full, a task is
     /// already in-flight, or namespace index limit reached.
     fn maybe_replenish_proxy(&mut self) {
-        let Some(proxy_port) = self.proxy_port else {
+        if self.proxy_port.is_none() {
             return;
-        };
+        }
         if self.proxy_queue.len() + self.pending_proxy.len() >= BUFFER_SIZE
             || !self.pending_proxy.is_empty()
             || self.next_ns_index >= MAX_NAMESPACES
         {
             return;
         }
-        let ns_index = self.next_ns_index;
-        self.next_ns_index += 1;
-        let pool_index = self.pool_index;
-        let default_iface = self.default_iface.clone();
-        let dns_port = self.dns_port;
-        self.pending_proxy.spawn(create_single_namespace(
-            pool_index,
-            ns_index,
-            default_iface,
-            Some(proxy_port),
-            dns_port,
-        ));
+        let _ = self.spawn_proxy_creation();
     }
 
     /// Return a namespace to the pool, or delete it if the pool is inactive.
@@ -1789,6 +1829,40 @@ mod tests {
         }
 
         assert!(!pool.active);
+        assert_eq!(pool.pending_plain.len(), 1);
+
+        release.notify_one();
+        pool.cleanup().await.unwrap();
+
+        assert!(!pool.active);
+        assert!(pool.pending_plain.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn acquire_cancellation_keeps_pending_creation_for_cleanup() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let entered = std::sync::Arc::new(tokio::sync::Notify::new());
+        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+        let entered_task = std::sync::Arc::clone(&entered);
+        let release_task = std::sync::Arc::clone(&release);
+        pool.pending_plain.spawn(async move {
+            entered_task.notify_one();
+            release_task.notified().await;
+            Ok(test_info("test-ns"))
+        });
+
+        {
+            let acquire = pool.acquire();
+            tokio::pin!(acquire);
+            tokio::select! {
+                result = &mut acquire => panic!("acquire completed before pending task was released: {result:?}"),
+                _ = entered.notified() => {}
+            }
+        }
+
+        assert!(pool.in_flight.is_empty());
         assert_eq!(pool.pending_plain.len(), 1);
 
         release.notify_one();
