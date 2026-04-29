@@ -8,9 +8,9 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
-  deleteUserData,
-  seedOtherSecret,
-  seedSecrets,
+  deleteUserData$,
+  seedOtherSecret$,
+  seedSecrets$,
   type UserDataFixture,
 } from "./helpers/zero-user-data";
 
@@ -20,31 +20,35 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/secrets", () => {
   const track = createFixtureTracker<UserDataFixture>((fixture) => {
-    return deleteUserData(store, fixture);
+    return store.set(deleteUserData$, fixture, context.signal);
   });
 
   it("returns current user secret metadata sorted by name", async () => {
     const createdAt = new Date("2026-01-02T03:04:05.000Z");
     const updatedAt = new Date("2026-01-03T03:04:05.000Z");
     const fixture = await track(
-      seedSecrets(store, [
-        {
-          name: "Z_TOKEN",
-          description: null,
-          type: "connector",
-          createdAt,
-          updatedAt,
-        },
-        {
-          name: "A_TOKEN",
-          description: "alpha",
-          type: "user",
-          createdAt,
-          updatedAt,
-        },
-      ]),
+      store.set(
+        seedSecrets$,
+        [
+          {
+            name: "Z_TOKEN",
+            description: null,
+            type: "connector",
+            createdAt,
+            updatedAt,
+          },
+          {
+            name: "A_TOKEN",
+            description: "alpha",
+            type: "user",
+            createdAt,
+            updatedAt,
+          },
+        ],
+        context.signal,
+      ),
     );
-    await seedOtherSecret(store, fixture);
+    await store.set(seedOtherSecret$, fixture, context.signal);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroSecretsContract.list]);
 
@@ -77,7 +81,7 @@ describe("GET /api/zero/secrets", () => {
   });
 
   it("returns an empty list when the user has no secrets", async () => {
-    const fixture = await track(seedSecrets(store, []));
+    const fixture = await track(store.set(seedSecrets$, [], context.signal));
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroSecretsContract.list]);
 

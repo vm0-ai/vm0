@@ -10,8 +10,8 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
-  deleteUserData,
-  seedUserPreferences,
+  deleteUserData$,
+  seedUserPreferences$,
   type UserDataFixture,
 } from "./helpers/zero-user-data";
 
@@ -21,17 +21,21 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/user-preferences", () => {
   const track = createFixtureTracker<UserDataFixture>((fixture) => {
-    return deleteUserData(store, fixture);
+    return store.set(deleteUserData$, fixture, context.signal);
   });
 
   it("returns the persisted preferences for the current org member", async () => {
     const fixture = await track(
-      seedUserPreferences(store, {
-        timezone: "America/Los_Angeles",
-        pinnedAgentIds: ["agent_b", "agent_a"],
-        sendMode: "cmd-enter",
-        captureNetworkBodiesRemaining: 3,
-      }),
+      store.set(
+        seedUserPreferences$,
+        {
+          timezone: "America/Los_Angeles",
+          pinnedAgentIds: ["agent_b", "agent_a"],
+          sendMode: "cmd-enter",
+          captureNetworkBodiesRemaining: 3,
+        },
+        context.signal,
+      ),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroUserPreferencesContract.get]);

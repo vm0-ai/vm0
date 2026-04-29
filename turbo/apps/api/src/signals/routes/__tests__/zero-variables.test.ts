@@ -8,9 +8,9 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
-  deleteUserData,
-  seedOtherVariable,
-  seedVariables,
+  deleteUserData$,
+  seedOtherVariable$,
+  seedVariables$,
   type UserDataFixture,
 } from "./helpers/zero-user-data";
 
@@ -20,31 +20,35 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/variables", () => {
   const track = createFixtureTracker<UserDataFixture>((fixture) => {
-    return deleteUserData(store, fixture);
+    return store.set(deleteUserData$, fixture, context.signal);
   });
 
   it("returns current user variables sorted by name", async () => {
     const createdAt = new Date("2026-02-02T03:04:05.000Z");
     const updatedAt = new Date("2026-02-03T03:04:05.000Z");
     const fixture = await track(
-      seedVariables(store, [
-        {
-          name: "Z_REGION",
-          value: "us-west-2",
-          description: null,
-          createdAt,
-          updatedAt,
-        },
-        {
-          name: "A_ENDPOINT",
-          value: "https://api.example.test",
-          description: "endpoint",
-          createdAt,
-          updatedAt,
-        },
-      ]),
+      store.set(
+        seedVariables$,
+        [
+          {
+            name: "Z_REGION",
+            value: "us-west-2",
+            description: null,
+            createdAt,
+            updatedAt,
+          },
+          {
+            name: "A_ENDPOINT",
+            value: "https://api.example.test",
+            description: "endpoint",
+            createdAt,
+            updatedAt,
+          },
+        ],
+        context.signal,
+      ),
     );
-    await seedOtherVariable(store, fixture);
+    await store.set(seedOtherVariable$, fixture, context.signal);
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroVariablesContract.list]);
 
@@ -77,7 +81,7 @@ describe("GET /api/zero/variables", () => {
   });
 
   it("returns an empty list when the user has no variables", async () => {
-    const fixture = await track(seedVariables(store, []));
+    const fixture = await track(store.set(seedVariables$, [], context.signal));
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockApiShadowCompareRoutes([zeroVariablesContract.list]);
 

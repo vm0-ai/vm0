@@ -8,8 +8,8 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import {
-  deleteApiKeys,
-  seedApiKeys,
+  deleteApiKeys$,
+  seedApiKeys$,
   type ApiKeysFixture,
 } from "./helpers/zero-api-keys";
 
@@ -19,36 +19,44 @@ const mocks = createZeroRouteMocks(context);
 
 describe("GET /api/zero/api-keys", () => {
   const track = createFixtureTracker<ApiKeysFixture>((fixture) => {
-    return deleteApiKeys(store, fixture);
+    return store.set(deleteApiKeys$, fixture, context.signal);
   });
 
   it("returns the current user's API keys sorted by creation time", async () => {
     const fixture = await track(
-      seedApiKeys(store, [
-        {
-          name: "Older",
-          token: "vm0_pat_older_token",
-          createdAt: new Date("2026-03-01T00:00:00.000Z"),
-          expiresAt: new Date("2026-04-01T00:00:00.000Z"),
-        },
-        {
-          name: "Newer",
-          token: "vm0_pat_newer_token",
-          createdAt: new Date("2026-03-02T00:00:00.000Z"),
-          expiresAt: new Date("2026-04-02T00:00:00.000Z"),
-          lastUsedAt: new Date("2026-03-03T00:00:00.000Z"),
-        },
-      ]),
+      store.set(
+        seedApiKeys$,
+        [
+          {
+            name: "Older",
+            token: "vm0_pat_older_token",
+            createdAt: new Date("2026-03-01T00:00:00.000Z"),
+            expiresAt: new Date("2026-04-01T00:00:00.000Z"),
+          },
+          {
+            name: "Newer",
+            token: "vm0_pat_newer_token",
+            createdAt: new Date("2026-03-02T00:00:00.000Z"),
+            expiresAt: new Date("2026-04-02T00:00:00.000Z"),
+            lastUsedAt: new Date("2026-03-03T00:00:00.000Z"),
+          },
+        ],
+        context.signal,
+      ),
     );
     await track(
-      seedApiKeys(store, [
-        {
-          name: "Other user",
-          token: "vm0_pat_other_token",
-          createdAt: new Date("2026-03-03T00:00:00.000Z"),
-          expiresAt: new Date("2026-04-03T00:00:00.000Z"),
-        },
-      ]),
+      store.set(
+        seedApiKeys$,
+        [
+          {
+            name: "Other user",
+            token: "vm0_pat_other_token",
+            createdAt: new Date("2026-03-03T00:00:00.000Z"),
+            expiresAt: new Date("2026-04-03T00:00:00.000Z"),
+          },
+        ],
+        context.signal,
+      ),
     );
     mocks.clerk.session(fixture.userId, null);
     mockApiShadowCompareRoutes([apiKeysContract.list]);
@@ -82,7 +90,7 @@ describe("GET /api/zero/api-keys", () => {
   });
 
   it("returns an empty list when the user has no API keys", async () => {
-    const fixture = await track(seedApiKeys(store, []));
+    const fixture = await track(store.set(seedApiKeys$, [], context.signal));
     mocks.clerk.session(fixture.userId, null);
     mockApiShadowCompareRoutes([apiKeysContract.list]);
 

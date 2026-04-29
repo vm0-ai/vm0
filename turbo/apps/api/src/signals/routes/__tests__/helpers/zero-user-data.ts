@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 
-import type { Store } from "ccstate";
 import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import type { SecretType } from "@vm0/api-contracts/contracts/secrets";
+import { command } from "ccstate";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -45,117 +45,143 @@ function createUserDataFixture(): UserDataFixture {
   };
 }
 
-export async function seedUserPreferences(
-  store: Store,
-  values: UserPreferencesSeedValues = {},
-): Promise<UserDataFixture> {
-  const fixture = createUserDataFixture();
-  const writeDb = store.set(writeDb$);
+export const seedUserPreferences$ = command(
+  async (
+    { set },
+    values: UserPreferencesSeedValues,
+    signal: AbortSignal,
+  ): Promise<UserDataFixture> => {
+    const fixture = createUserDataFixture();
+    const writeDb = set(writeDb$);
 
-  await writeDb.insert(orgMembersMetadata).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    timezone: values.timezone ?? null,
-    pinnedAgentIds: [...(values.pinnedAgentIds ?? [])],
-    sendMode: values.sendMode ?? "enter",
-    captureNetworkBodiesRemaining: values.captureNetworkBodiesRemaining ?? 0,
-  });
+    await writeDb.insert(orgMembersMetadata).values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      timezone: values.timezone ?? null,
+      pinnedAgentIds: [...(values.pinnedAgentIds ?? [])],
+      sendMode: values.sendMode ?? "enter",
+      captureNetworkBodiesRemaining: values.captureNetworkBodiesRemaining ?? 0,
+    });
+    signal.throwIfAborted();
 
-  return fixture;
-}
+    return fixture;
+  },
+);
 
-export async function seedVariables(
-  store: Store,
-  rows: readonly VariableSeedValues[],
-): Promise<UserDataFixture> {
-  const fixture = createUserDataFixture();
-  const writeDb = store.set(writeDb$);
+export const seedVariables$ = command(
+  async (
+    { set },
+    rows: readonly VariableSeedValues[],
+    signal: AbortSignal,
+  ): Promise<UserDataFixture> => {
+    const fixture = createUserDataFixture();
+    const writeDb = set(writeDb$);
 
-  if (rows.length > 0) {
-    await writeDb.insert(variables).values(
-      rows.map((row) => {
-        return {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          name: row.name,
-          value: row.value,
-          description: row.description ?? null,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-        };
-      }),
-    );
-  }
+    if (rows.length > 0) {
+      await writeDb.insert(variables).values(
+        rows.map((row) => {
+          return {
+            orgId: fixture.orgId,
+            userId: fixture.userId,
+            name: row.name,
+            value: row.value,
+            description: row.description ?? null,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          };
+        }),
+      );
+      signal.throwIfAborted();
+    }
 
-  return fixture;
-}
+    return fixture;
+  },
+);
 
-export async function seedSecrets(
-  store: Store,
-  rows: readonly SecretSeedValues[],
-): Promise<UserDataFixture> {
-  const fixture = createUserDataFixture();
-  const writeDb = store.set(writeDb$);
+export const seedSecrets$ = command(
+  async (
+    { set },
+    rows: readonly SecretSeedValues[],
+    signal: AbortSignal,
+  ): Promise<UserDataFixture> => {
+    const fixture = createUserDataFixture();
+    const writeDb = set(writeDb$);
 
-  if (rows.length > 0) {
-    await writeDb.insert(secrets).values(
-      rows.map((row) => {
-        return {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          name: row.name,
-          encryptedValue: `encrypted_${row.name}`,
-          description: row.description ?? null,
-          type: row.type ?? "user",
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-        };
-      }),
-    );
-  }
+    if (rows.length > 0) {
+      await writeDb.insert(secrets).values(
+        rows.map((row) => {
+          return {
+            orgId: fixture.orgId,
+            userId: fixture.userId,
+            name: row.name,
+            encryptedValue: `encrypted_${row.name}`,
+            description: row.description ?? null,
+            type: row.type ?? "user",
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          };
+        }),
+      );
+      signal.throwIfAborted();
+    }
 
-  return fixture;
-}
+    return fixture;
+  },
+);
 
-export async function seedOtherVariable(
-  store: Store,
-  fixture: UserDataFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(variables).values({
-    orgId: fixture.orgId,
-    userId: `user_${randomUUID()}`,
-    name: "OTHER_USER_VAR",
-    value: "other-user",
-  });
-}
+export const seedOtherVariable$ = command(
+  async (
+    { set },
+    fixture: UserDataFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb.insert(variables).values({
+      orgId: fixture.orgId,
+      userId: `user_${randomUUID()}`,
+      name: "OTHER_USER_VAR",
+      value: "other-user",
+    });
+    signal.throwIfAborted();
+  },
+);
 
-export async function seedOtherSecret(
-  store: Store,
-  fixture: UserDataFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(secrets).values({
-    orgId: fixture.orgId,
-    userId: `user_${randomUUID()}`,
-    name: "OTHER_USER_SECRET",
-    encryptedValue: "encrypted_other_user",
-  });
-}
+export const seedOtherSecret$ = command(
+  async (
+    { set },
+    fixture: UserDataFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb.insert(secrets).values({
+      orgId: fixture.orgId,
+      userId: `user_${randomUUID()}`,
+      name: "OTHER_USER_SECRET",
+      encryptedValue: "encrypted_other_user",
+    });
+    signal.throwIfAborted();
+  },
+);
 
-export async function deleteUserData(
-  store: Store,
-  fixture: UserDataFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, fixture.orgId),
-        eq(orgMembersMetadata.userId, fixture.userId),
-      ),
-    );
-  await writeDb.delete(variables).where(eq(variables.orgId, fixture.orgId));
-  await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
-}
+export const deleteUserData$ = command(
+  async (
+    { set },
+    fixture: UserDataFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb
+      .delete(orgMembersMetadata)
+      .where(
+        and(
+          eq(orgMembersMetadata.orgId, fixture.orgId),
+          eq(orgMembersMetadata.userId, fixture.userId),
+        ),
+      );
+    signal.throwIfAborted();
+    await writeDb.delete(variables).where(eq(variables.orgId, fixture.orgId));
+    signal.throwIfAborted();
+    await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
+    signal.throwIfAborted();
+  },
+);

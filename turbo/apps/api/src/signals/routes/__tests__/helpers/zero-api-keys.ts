@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { Store } from "ccstate";
+import { command } from "ccstate";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
 import { eq } from "drizzle-orm";
 
@@ -18,36 +18,44 @@ interface ApiKeySeedValues {
   readonly lastUsedAt?: Date | null;
 }
 
-export async function seedApiKeys(
-  store: Store,
-  rows: readonly ApiKeySeedValues[],
-): Promise<ApiKeysFixture> {
-  const fixture = { userId: `user_${randomUUID()}` };
-  const writeDb = store.set(writeDb$);
+export const seedApiKeys$ = command(
+  async (
+    { set },
+    rows: readonly ApiKeySeedValues[],
+    signal: AbortSignal,
+  ): Promise<ApiKeysFixture> => {
+    const fixture = { userId: `user_${randomUUID()}` };
+    const writeDb = set(writeDb$);
 
-  if (rows.length > 0) {
-    await writeDb.insert(cliTokens).values(
-      rows.map((row) => {
-        return {
-          id: randomUUID(),
-          userId: fixture.userId,
-          name: row.name,
-          token: row.token,
-          createdAt: row.createdAt,
-          expiresAt: row.expiresAt,
-          lastUsedAt: row.lastUsedAt ?? null,
-        };
-      }),
-    );
-  }
+    if (rows.length > 0) {
+      await writeDb.insert(cliTokens).values(
+        rows.map((row) => {
+          return {
+            id: randomUUID(),
+            userId: fixture.userId,
+            name: row.name,
+            token: row.token,
+            createdAt: row.createdAt,
+            expiresAt: row.expiresAt,
+            lastUsedAt: row.lastUsedAt ?? null,
+          };
+        }),
+      );
+      signal.throwIfAborted();
+    }
 
-  return fixture;
-}
+    return fixture;
+  },
+);
 
-export async function deleteApiKeys(
-  store: Store,
-  fixture: ApiKeysFixture,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.delete(cliTokens).where(eq(cliTokens.userId, fixture.userId));
-}
+export const deleteApiKeys$ = command(
+  async (
+    { set },
+    fixture: ApiKeysFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const writeDb = set(writeDb$);
+    await writeDb.delete(cliTokens).where(eq(cliTokens.userId, fixture.userId));
+    signal.throwIfAborted();
+  },
+);
