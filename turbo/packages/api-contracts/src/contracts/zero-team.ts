@@ -6,6 +6,7 @@ const c = initContract();
 
 const teamComposeItemSchema = z.object({
   id: z.string(),
+  ownerId: z.string().optional(),
   displayName: z.string().nullable(),
   description: z.string().nullable(),
   sound: z.string().nullable(),

@@ -1,17 +1,24 @@
 import { computed } from "ccstate";
 import {
+  chatSearchContract,
   chatThreadByIdContract,
+  chatThreadArtifactsContract,
   chatThreadMessagesContract,
+  chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { z } from "zod";
 
-import { authContext$ } from "../auth/auth-context";
+import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { shadowCompareRoute } from "../context/shadow-compare";
 import { notFound } from "../../lib/error";
+import { zeroComposeExists } from "../services/zero-compose-data.service";
 import {
+  zeroChatSearch,
+  zeroChatThreadArtifacts,
   zeroChatThreadDetail,
+  zeroChatThreadList,
   zeroChatThreadMessagesPage,
 } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route";
@@ -71,7 +78,76 @@ const listChatThreadMessagesInner$ = computed(async (get) => {
   };
 });
 
+const listChatThreadsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const query = get(queryOf(chatThreadsContract.list));
+
+  if (query.agentId) {
+    const exists = await get(
+      zeroComposeExists({ orgId: auth.orgId, composeId: query.agentId }),
+    );
+    if (!exists) {
+      return notFound("Agent not found");
+    }
+  }
+
+  const threads = await get(
+    zeroChatThreadList({
+      userId: auth.userId,
+      orgId: auth.orgId,
+      agentComposeId: query.agentId,
+    }),
+  );
+
+  return { status: 200 as const, body: { threads: [...threads] } };
+});
+
+const listChatThreadArtifactsInner$ = computed(async (get) => {
+  const auth = get(authContext$);
+  const params = get(pathParamsOf(chatThreadArtifactsContract.list));
+  const runs = await get(
+    zeroChatThreadArtifacts({ threadId: params.threadId, userId: auth.userId }),
+  );
+  if (!runs) {
+    return chatThreadNotFound();
+  }
+
+  return { status: 200 as const, body: { runs: [...runs] } };
+});
+
+const searchChatInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const query = get(queryOf(chatSearchContract.search));
+  const result = await get(
+    zeroChatSearch({
+      userId: auth.userId,
+      orgId: auth.orgId,
+      keyword: query.keyword,
+      agent: query.agent,
+      since: query.since,
+      limit: query.limit,
+      before: query.before,
+      after: query.after,
+    }),
+  );
+
+  return {
+    status: 200 as const,
+    body: { results: [...result.results], hasMore: result.hasMore },
+  };
+});
+
 export const zeroChatThreadRoutes: readonly RouteEntry[] = [
+  {
+    route: chatThreadsContract.list,
+    handler: shadowCompareRoute({
+      route: chatThreadsContract.list,
+      handler: authRoute(
+        { requireOrganization: true, missingOrganizationStatus: 401 },
+        listChatThreadsInner$,
+      ),
+    }),
+  },
   {
     route: chatThreadByIdContract.get,
     handler: shadowCompareRoute({
@@ -80,10 +156,31 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     }),
   },
   {
+    route: chatThreadArtifactsContract.list,
+    handler: shadowCompareRoute({
+      route: chatThreadArtifactsContract.list,
+      handler: authRoute({}, listChatThreadArtifactsInner$),
+    }),
+  },
+  {
     route: chatThreadMessagesContract.list,
     handler: shadowCompareRoute({
       route: chatThreadMessagesContract.list,
       handler: authRoute({}, listChatThreadMessagesInner$),
+    }),
+  },
+  {
+    route: chatSearchContract.search,
+    handler: shadowCompareRoute({
+      route: chatSearchContract.search,
+      handler: authRoute(
+        {
+          requireOrganization: true,
+          missingOrganizationStatus: 401,
+          requiredCapability: "chat-message:read",
+        },
+        searchChatInner$,
+      ),
     }),
   },
 ];

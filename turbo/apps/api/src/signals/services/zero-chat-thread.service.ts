@@ -1,6 +1,10 @@
 import { computed, type Computed } from "ccstate";
 import {
+  type ChatSearchMessage,
+  type ChatSearchResult,
+  type ChatThreadArtifactRun,
   type ChatThreadDetail,
+  type ChatThreadListItem,
   type PagedChatMessage,
   type PersistedAttachment,
   type ResolvedAttachFile,
@@ -8,11 +12,28 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -78,6 +99,16 @@ type ChatMessageRow = {
   readonly attachFiles: readonly string[] | null;
 };
 
+type ChatSearchMessageRow = {
+  readonly messageId: string;
+  readonly chatThreadId: string;
+  readonly role: string;
+  readonly content: string | null;
+  readonly createdAt: Date;
+  readonly sequenceNumber: number | null;
+  readonly runId: string | null;
+};
+
 type ChatThreadRow = {
   readonly id: string;
   readonly title: string | null;
@@ -103,6 +134,23 @@ const messageColumns = {
   runError: agentRuns.error,
   attachFiles: chatMessages.attachFiles,
 } as const;
+
+const searchMessageColumns = {
+  messageId: chatMessages.id,
+  chatThreadId: chatMessages.chatThreadId,
+  role: chatMessages.role,
+  content: chatMessages.content,
+  createdAt: chatMessages.createdAt,
+  sequenceNumber: chatMessages.sequenceNumber,
+  runId: chatMessages.runId,
+} as const;
+
+function escapeLikePattern(value: string): string {
+  return value
+    .replace(/\\/g, String.raw`\\`)
+    .replace(/%/g, String.raw`\%`)
+    .replace(/_/g, String.raw`\_`);
+}
 
 function inferMimetype(filename: string): string {
   const ext = filename.split(".").pop()?.toLowerCase();
@@ -483,6 +531,287 @@ export function zeroChatThreadDetail(args: {
       modelProviderId: thread.modelProviderId,
       selectedModel: thread.selectedModel,
     };
+  });
+}
+
+export function zeroChatThreadList(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentComposeId?: string;
+}): Computed<Promise<readonly ChatThreadListItem[]>> {
+  return computed(async (get): Promise<readonly ChatThreadListItem[]> => {
+    const db = get(db$);
+    const lastMessage = db
+      .select({
+        id: chatMessages.id,
+        chatThreadId: chatMessages.chatThreadId,
+        createdAt: chatMessages.createdAt,
+        archivedAt: chatMessages.archivedAt,
+        rn: sql<number>`ROW_NUMBER() OVER (PARTITION BY ${chatMessages.chatThreadId} ORDER BY ${chatMessages.createdAt} DESC, ${chatMessages.id} DESC)`.as(
+          "rn",
+        ),
+      })
+      .from(chatMessages)
+      .as("last_message");
+
+    const filters = [
+      eq(chatThreads.userId, args.userId),
+      eq(zeroAgents.orgId, args.orgId),
+      isNull(lastMessage.archivedAt),
+    ];
+    if (args.agentComposeId) {
+      filters.push(eq(chatThreads.agentComposeId, args.agentComposeId));
+    }
+
+    const threads = await db
+      .select({
+        id: chatThreads.id,
+        title: chatThreads.title,
+        agentId: chatThreads.agentComposeId,
+        agentAvatarUrl: zeroAgents.avatarUrl,
+        createdAt: chatThreads.createdAt,
+        updatedAt: chatThreads.updatedAt,
+        isRead: sql<boolean>`CASE
+          WHEN ${lastMessage.id} IS NULL THEN true
+          ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
+        END`,
+        lastMessageArchivedAt: lastMessage.archivedAt,
+        running: sql<boolean>`EXISTS (
+          SELECT 1
+          FROM ${zeroRuns}
+          INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+          WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
+            AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        )`,
+        hasDraft: sql<boolean>`(
+          COALESCE(${chatThreads.draftContent}, '') <> ''
+          OR (
+            ${chatThreads.draftAttachments} IS NOT NULL
+            AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
+          )
+        )`,
+      })
+      .from(chatThreads)
+      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .leftJoin(
+        lastMessage,
+        and(
+          eq(lastMessage.chatThreadId, chatThreads.id),
+          eq(lastMessage.rn, 1),
+        ),
+      )
+      .where(and(...filters))
+      .orderBy(
+        desc(sql`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`),
+      );
+
+    return threads.map((thread) => {
+      return {
+        id: thread.id,
+        title: thread.title,
+        agent: {
+          id: thread.agentId,
+          avatarUrl: thread.agentAvatarUrl,
+        },
+        createdAt: thread.createdAt.toISOString(),
+        updatedAt: thread.updatedAt.toISOString(),
+        isRead: thread.isRead,
+        isArchived: thread.lastMessageArchivedAt !== null,
+        running: thread.running,
+        hasDraft: thread.hasDraft,
+      };
+    });
+  });
+}
+
+export function zeroChatThreadArtifacts(args: {
+  readonly threadId: string;
+  readonly userId: string;
+}): Computed<Promise<readonly ChatThreadArtifactRun[] | null>> {
+  return computed(
+    async (get): Promise<readonly ChatThreadArtifactRun[] | null> => {
+      const thread = await get(ownedChatThread(args.threadId, args.userId));
+      if (!thread) {
+        return null;
+      }
+
+      const rows = await get(db$)
+        .select({
+          runId: runUploadedFiles.runId,
+          externalId: runUploadedFiles.externalId,
+          filename: runUploadedFiles.filename,
+          contentType: runUploadedFiles.contentType,
+          sizeBytes: runUploadedFiles.sizeBytes,
+          url: runUploadedFiles.url,
+          createdAt: runUploadedFiles.createdAt,
+        })
+        .from(runUploadedFiles)
+        .innerJoin(zeroRuns, eq(zeroRuns.id, runUploadedFiles.runId))
+        .innerJoin(agentRuns, eq(agentRuns.id, runUploadedFiles.runId))
+        .where(
+          and(
+            eq(runUploadedFiles.userId, args.userId),
+            or(
+              eq(zeroRuns.chatThreadId, args.threadId),
+              sql`EXISTS (
+                SELECT 1
+                FROM ${chatMessages}
+                WHERE ${chatMessages.runId} = ${runUploadedFiles.runId}
+                  AND ${chatMessages.chatThreadId} = ${args.threadId}
+              )`,
+            ),
+          ),
+        )
+        .orderBy(asc(agentRuns.createdAt), asc(runUploadedFiles.createdAt));
+
+      const byRun = new Map<string, ChatThreadArtifactRun>();
+      for (const row of rows) {
+        if (!row.url) {
+          continue;
+        }
+
+        const filename = row.filename ?? row.externalId;
+        const existing = byRun.get(row.runId) ?? {
+          runId: row.runId,
+          files: [],
+        };
+        existing.files.push({
+          id: row.externalId,
+          filename,
+          contentType: row.contentType ?? inferMimetype(filename),
+          size: row.sizeBytes ?? 0,
+          url: row.url,
+          createdAt: row.createdAt.toISOString(),
+        });
+        byRun.set(row.runId, existing);
+      }
+
+      return Array.from(byRun.values()).filter((run) => {
+        return run.files.length > 0;
+      });
+    },
+  );
+}
+
+function toChatSearchMessage(row: ChatSearchMessageRow): ChatSearchMessage {
+  if (row.content === null) {
+    throw new Error(
+      "chat search invariant violated: message content is null despite isNotNull filter",
+    );
+  }
+
+  return {
+    messageId: row.messageId,
+    chatThreadId: row.chatThreadId,
+    role: messageRoleSchema.parse(row.role),
+    content: row.content,
+    createdAt: row.createdAt.toISOString(),
+    sequenceNumber: row.sequenceNumber,
+    runId: row.runId,
+  };
+}
+
+export function zeroChatSearch(args: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly keyword: string;
+  readonly agent?: string;
+  readonly since?: number;
+  readonly limit: number;
+  readonly before: number;
+  readonly after: number;
+}): Computed<
+  Promise<{
+    readonly results: readonly ChatSearchResult[];
+    readonly hasMore: boolean;
+  }>
+> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const pattern = `%${escapeLikePattern(args.keyword)}%`;
+    const sinceDate = args.since ? new Date(args.since) : undefined;
+
+    const matchConditions = [
+      eq(chatThreads.userId, args.userId),
+      eq(agentComposes.orgId, args.orgId),
+      isNotNull(chatMessages.content),
+      isNull(chatMessages.archivedAt),
+      ilike(chatMessages.content, pattern),
+    ];
+    if (sinceDate) {
+      matchConditions.push(gte(chatMessages.createdAt, sinceDate));
+    }
+    if (args.agent) {
+      matchConditions.push(eq(agentComposes.name, args.agent));
+    }
+
+    const matches = await db
+      .select({
+        ...searchMessageColumns,
+        agentName: agentComposes.name,
+      })
+      .from(chatMessages)
+      .innerJoin(chatThreads, eq(chatMessages.chatThreadId, chatThreads.id))
+      .innerJoin(
+        agentComposes,
+        eq(chatThreads.agentComposeId, agentComposes.id),
+      )
+      .where(and(...matchConditions))
+      .orderBy(desc(chatMessages.createdAt))
+      .limit(args.limit + 1);
+
+    const hasMore = matches.length > args.limit;
+    const truncated = hasMore ? matches.slice(0, args.limit) : matches;
+
+    const results = await Promise.all(
+      truncated.map(async (match): Promise<ChatSearchResult> => {
+        const [contextBeforeRows, contextAfterRows] = await Promise.all([
+          args.before > 0
+            ? db
+                .select(searchMessageColumns)
+                .from(chatMessages)
+                .where(
+                  and(
+                    eq(chatMessages.chatThreadId, match.chatThreadId),
+                    lt(chatMessages.createdAt, match.createdAt),
+                    isNotNull(chatMessages.content),
+                    isNull(chatMessages.archivedAt),
+                  ),
+                )
+                .orderBy(desc(chatMessages.createdAt))
+                .limit(args.before)
+            : Promise.resolve([] as ChatSearchMessageRow[]),
+          args.after > 0
+            ? db
+                .select(searchMessageColumns)
+                .from(chatMessages)
+                .where(
+                  and(
+                    eq(chatMessages.chatThreadId, match.chatThreadId),
+                    gt(chatMessages.createdAt, match.createdAt),
+                    isNotNull(chatMessages.content),
+                    isNull(chatMessages.archivedAt),
+                  ),
+                )
+                .orderBy(asc(chatMessages.createdAt))
+                .limit(args.after)
+            : Promise.resolve([] as ChatSearchMessageRow[]),
+        ]);
+
+        return {
+          chatThreadId: match.chatThreadId,
+          agentName: match.agentName,
+          matchedMessage: toChatSearchMessage(match),
+          contextBefore: contextBeforeRows
+            .slice()
+            .reverse()
+            .map(toChatSearchMessage),
+          contextAfter: contextAfterRows.map(toChatSearchMessage),
+        };
+      }),
+    );
+
+    return { results, hasMore };
   });
 }
 

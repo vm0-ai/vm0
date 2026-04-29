@@ -22,6 +22,7 @@ export const zeroComposesMainContract = c.router({
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
+      404: apiErrorSchema,
     },
     summary: "Get agent compose by name (zero proxy)",
   },
