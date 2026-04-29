@@ -23,8 +23,6 @@ pub const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
 /// Used to skip re-downloading unchanged storages on VM reuse.
 ///
 /// All comparisons use `(vas_storage_name, vas_version_id)` tuples.
-/// For regular storages without version fields, the entry is omitted
-/// from the map and will always be re-downloaded.
 #[derive(Clone, Debug, Default)]
 pub struct StorageFingerprints {
     /// mount_path → (vas_storage_name, vas_version_id) for regular storages.

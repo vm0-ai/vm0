@@ -68,7 +68,8 @@ fn ancestors_within_target(path: &Path, target: &Path) -> bool {
 
 const LOG_TAG: &str = "sandbox:download";
 
-/// Storage manifest format (matches TypeScript StorageManifest).
+/// Guest-download manifest format written by the runner after reuse/cache
+/// decisions have been applied.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Manifest {

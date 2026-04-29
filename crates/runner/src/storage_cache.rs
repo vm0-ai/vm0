@@ -112,7 +112,7 @@ enum DownloadBody {
 /// pushed into the guest over vsock.
 ///
 /// Invariant: only touches entries where `cached == false`, `archive_url.is_some()`,
-/// and both `vas_storage_name` and `vas_version_id` are set. Entries that
+/// and both `vas_storage_name` and `vas_version_id` are non-empty. Entries that
 /// `filter_unchanged_storages` marked as reuse-in-place (`archive_url = None`)
 /// are left untouched.
 pub async fn populate_cache(
