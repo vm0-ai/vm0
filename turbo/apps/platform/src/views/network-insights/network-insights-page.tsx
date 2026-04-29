@@ -38,6 +38,10 @@ import {
   setInsightsHoveredAgent$,
   expandedAllowedDays$,
   toggleExpandedAllowed$,
+  expandedScheduleDays$,
+  toggleExpandedScheduleDay$,
+  expandedChatDays$,
+  toggleExpandedChatDay$,
   insightsActiveTab$,
   setInsightsActiveTab$,
   type DayInsight,
@@ -1005,8 +1009,17 @@ function formatCardValue(n: number): string {
   return n.toLocaleString();
 }
 
-function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
+function DaySchedulesCard({
+  dayDate,
+  schedules,
+}: {
+  dayDate: string;
+  schedules: DaySchedule[];
+}) {
   const { accent } = getCardPalette(2);
+  const expandedDays = useGet(expandedScheduleDays$);
+  const toggleExpanded = useSet(toggleExpandedScheduleDay$);
+  const showAll = expandedDays.has(dayDate);
 
   if (schedules.length === 0) {
     return null;
@@ -1015,6 +1028,8 @@ function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
   const totalCredits = schedules.reduce((s, r) => {
     return s + r.credits;
   }, 0);
+  const visible = showAll ? schedules : schedules.slice(0, 4);
+  const overflow = schedules.length - visible.length;
   const maxValue = Math.max(
     1,
     ...schedules.map((s) => {
@@ -1031,15 +1046,21 @@ function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
         Schedules
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
-        {formatCardValue(totalCredits)}
+        {schedules.length}
       </p>
       <p className="text-xs text-muted-foreground mt-1">
-        credits across {schedules.length}{" "}
-        {schedules.length === 1 ? "schedule" : "schedules"}
+        {formatCardValue(totalCredits)} credits
       </p>
+      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 mt-4 -mx-1.5 px-1.5">
+        <span aria-hidden />
+        <span aria-hidden />
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/70 text-right">
+          credits
+        </span>
+      </div>
       <TooltipProvider delayDuration={300}>
-        <ul className="flex flex-col gap-2.5 mt-4">
-          {schedules.map((row) => {
+        <ul className="flex flex-col gap-2.5 mt-1">
+          {visible.map((row) => {
             const fullName =
               row.scheduleDescription?.trim() || row.scheduleName;
             const pct = (row.credits / maxValue) * 100;
@@ -1082,6 +1103,21 @@ function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
               </li>
             );
           })}
+          {(overflow > 0 || showAll) && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleExpanded(dayDate);
+                }}
+                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
+              >
+                {showAll
+                  ? "Show less"
+                  : `+${overflow} more ${overflow === 1 ? "schedule" : "schedules"}`}
+              </button>
+            </li>
+          )}
         </ul>
       </TooltipProvider>
     </section>
@@ -1092,8 +1128,17 @@ function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
 // Per-day Chats card
 // ---------------------------------------------------------------------------
 
-function DayChatsCard({ chats }: { chats: DayChat[] }) {
+function DayChatsCard({
+  dayDate,
+  chats,
+}: {
+  dayDate: string;
+  chats: DayChat[];
+}) {
   const { accent } = getCardPalette(5);
+  const expandedDays = useGet(expandedChatDays$);
+  const toggleExpanded = useSet(toggleExpandedChatDay$);
+  const showAll = expandedDays.has(dayDate);
 
   if (chats.length === 0) {
     return null;
@@ -1102,6 +1147,8 @@ function DayChatsCard({ chats }: { chats: DayChat[] }) {
   const totalCredits = chats.reduce((s, r) => {
     return s + r.credits;
   }, 0);
+  const visible = showAll ? chats : chats.slice(0, 4);
+  const overflow = chats.length - visible.length;
   const maxValue = Math.max(
     1,
     ...chats.map((c) => {
@@ -1118,14 +1165,21 @@ function DayChatsCard({ chats }: { chats: DayChat[] }) {
         Chats
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
-        {formatCardValue(totalCredits)}
+        {chats.length}
       </p>
       <p className="text-xs text-muted-foreground mt-1">
-        credits across {chats.length} {chats.length === 1 ? "chat" : "chats"}
+        {formatCardValue(totalCredits)} credits
       </p>
+      <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 mt-4 -mx-1.5 px-1.5">
+        <span aria-hidden />
+        <span aria-hidden />
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground/70 text-right">
+          credits
+        </span>
+      </div>
       <TooltipProvider delayDuration={300}>
-        <ul className="flex flex-col gap-2.5 mt-4">
-          {chats.map((row) => {
+        <ul className="flex flex-col gap-2.5 mt-1">
+          {visible.map((row) => {
             const fullTitle = row.threadTitle ?? "(untitled)";
             const pct = (row.credits / maxValue) * 100;
             return (
@@ -1167,6 +1221,21 @@ function DayChatsCard({ chats }: { chats: DayChat[] }) {
               </li>
             );
           })}
+          {(overflow > 0 || showAll) && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleExpanded(dayDate);
+                }}
+                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
+              >
+                {showAll
+                  ? "Show less"
+                  : `+${overflow} more ${overflow === 1 ? "chat" : "chats"}`}
+              </button>
+            </li>
+          )}
         </ul>
       </TooltipProvider>
     </section>
@@ -1220,8 +1289,8 @@ function DaySection({
           onHoverAgent={handleHoverAgent}
         />
         <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
-        <DaySchedulesCard schedules={day.schedules} />
-        <DayChatsCard chats={day.chats} />
+        <DaySchedulesCard dayDate={day.date} schedules={day.schedules} />
+        <DayChatsCard dayDate={day.date} chats={day.chats} />
         <PermissionsAllowedCard
           day={day}
           colorIndex={5}

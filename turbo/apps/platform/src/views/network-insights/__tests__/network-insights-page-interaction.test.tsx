@@ -984,7 +984,7 @@ describe("network insights page - per-day schedules and chats", () => {
     expect(screen.queryByText("Chats")).not.toBeInTheDocument();
   });
 
-  it("renders all schedules without a +N more / Show less toggle", async () => {
+  it("folds extra schedules behind a +N more toggle and reveals them on click", async () => {
     const many = Array.from({ length: 7 }, (_, i) => {
       return {
         scheduleId: `sch-${i}`,
@@ -998,13 +998,18 @@ describe("network insights page - per-day schedules and chats", () => {
 
     detachedSetupPage({ context, path: "/insights" });
 
-    // All 7 schedules visible, no overflow row
+    // First 4 visible, schedule-6 hidden behind the toggle
+    await waitFor(() => {
+      expect(screen.getByText("+3 more schedules")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("schedule-6")).not.toBeInTheDocument();
+
+    click(screen.getByText("+3 more schedules"));
+
     await waitFor(() => {
       expect(screen.getByText("schedule-6")).toBeInTheDocument();
     });
-    expect(screen.getByText("schedule-0")).toBeInTheDocument();
-    expect(screen.queryByText(/more schedules/)).not.toBeInTheDocument();
-    expect(screen.queryByText("Show less")).not.toBeInTheDocument();
+    expect(screen.getByText("Show less")).toBeInTheDocument();
   });
 
   it("renders schedule rows as links to the schedule detail page", async () => {
@@ -1056,7 +1061,7 @@ describe("network insights page - per-day schedules and chats", () => {
     expect(link!.getAttribute("href")).toBe("/chats/thread-link");
   });
 
-  it("shows total credits as the big number with a credit-clarifying subtitle", async () => {
+  it("shows count as the big number, total credits in subtitle, and a credits column header", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago, {
         schedules: [
@@ -1088,12 +1093,13 @@ describe("network insights page - per-day schedules and chats", () => {
 
     detachedSetupPage({ context, path: "/insights" });
 
-    // Schedules: 60 + 40 = 100 credits across 2 schedules
+    // Schedules: subtitle "100 credits" = 60 + 40
     await waitFor(() => {
-      expect(screen.getByText("100")).toBeInTheDocument();
+      expect(screen.getByText("100 credits")).toBeInTheDocument();
     });
-    expect(screen.getByText("credits across 2 schedules")).toBeInTheDocument();
-    // Chats: 30 credits across 1 chat (singular)
-    expect(screen.getByText("credits across 1 chat")).toBeInTheDocument();
+    // Chats: subtitle "30 credits"
+    expect(screen.getByText("30 credits")).toBeInTheDocument();
+    // Both cards show a standalone "credits" column header
+    expect(screen.getAllByText("credits").length).toBeGreaterThanOrEqual(2);
   });
 });
