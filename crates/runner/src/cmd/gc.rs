@@ -1433,6 +1433,7 @@ async fn evict_storage_candidate(
                 &candidate.version,
             )
             .await;
+            remove_empty_storage_name_dir_after_eviction(&candidate.path, &candidate.name).await;
             StorageEvictionResult {
                 freed: size,
                 remaining_size: None,
@@ -1457,6 +1458,27 @@ async fn evict_storage_candidate(
                 remaining_entry: true,
                 evicted: false,
             }
+        }
+    }
+}
+
+async fn remove_empty_storage_name_dir_after_eviction(version_path: &Path, name_hash: &str) {
+    let Some(name_path) = version_path.parent() else {
+        return;
+    };
+
+    match tokio::fs::remove_dir(name_path).await {
+        Ok(()) => {}
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) => {}
+        Err(e) => {
+            warn!(
+                "storages/{name_hash}: failed to remove empty storage directory {}: {e}",
+                name_path.display()
+            );
         }
     }
 }
@@ -3147,6 +3169,10 @@ mod tests {
 
         assert!(!oldest.exists(), "oldest entry must be evicted");
         assert!(middle.exists(), "middle entry must survive");
+        assert!(
+            middle.parent().unwrap().exists(),
+            "storage name dir must remain while another version exists"
+        );
         assert!(newest.exists(), "newest entry must survive");
         assert_eq!(freed, oldest_size);
         assert_eq!(count_storage_cache_versions(&home), 2);
@@ -3321,6 +3347,28 @@ mod tests {
         assert!(
             !lock_path.exists(),
             "matching storage lock should be removed with the evicted entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_removes_empty_name_dir_after_eviction() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_old);
+        let name_dir = entry.parent().unwrap().to_path_buf();
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 0, false)
+            .await
+            .unwrap();
+
+        assert!(freed > 0);
+        assert!(!entry.exists(), "entry should be evicted");
+        assert!(
+            !name_dir.exists(),
+            "empty storage name dir should be removed with its last version"
         );
     }
 
