@@ -1280,7 +1280,12 @@ impl NetnsPool {
     /// cleaned up here — they will be caught by orphan cleanup on the next
     /// [`NetnsPool::create`] call with the same index.
     pub async fn cleanup(&mut self) -> Result<()> {
-        if !self.active {
+        if !self.active
+            && self.plain_queue.is_empty()
+            && self.proxy_queue.is_empty()
+            && self.pending_plain.is_empty()
+            && self.pending_proxy.is_empty()
+        {
             return Ok(());
         }
         self.active = false;
@@ -1291,11 +1296,8 @@ impl NetnsPool {
             );
         }
 
-        // Cancel in-flight background creation tasks.
-        self.pending_plain.abort_all();
-        self.pending_proxy.abort_all();
-
-        // Drain any tasks that completed before abort into queues for cleanup.
+        // Let in-flight creation finish instead of aborting it. Aborting can
+        // leave partially-created kernel resources with no NetnsInfo to retry.
         while let Some(result) = self.pending_plain.join_next().await {
             if let Ok(Ok(ns)) = result {
                 self.plain_queue.push_back(ns);
@@ -1310,27 +1312,29 @@ impl NetnsPool {
         let count = self.plain_queue.len() + self.proxy_queue.len();
         info!(count, "cleaning up namespace pool");
 
-        let to_delete: Vec<NetnsInfo> = self
-            .plain_queue
-            .drain(..)
-            .chain(self.proxy_queue.drain(..))
-            .collect();
-
-        // Delete namespaces in parallel
-        let mut set = tokio::task::JoinSet::new();
-        for ns in to_delete {
-            set.spawn(async move {
-                delete_namespace_resources(&ns.name, &ns.host_device).await;
-            });
-        }
-        while let Some(result) = set.join_next().await {
-            if let Err(e) = result {
-                error!(error = %e, "namespace deletion task panicked");
-            }
-        }
+        Self::delete_queued_namespaces(&mut self.plain_queue).await;
+        Self::delete_queued_namespaces(&mut self.proxy_queue).await;
 
         info!("namespace pool cleanup complete");
         Ok(())
+    }
+
+    async fn delete_queued_namespaces(queue: &mut VecDeque<NetnsInfo>) {
+        Self::delete_queued_namespaces_with(queue, |ns| async move {
+            delete_namespace_resources(&ns.name, &ns.host_device).await;
+        })
+        .await;
+    }
+
+    async fn delete_queued_namespaces_with<F, Fut>(queue: &mut VecDeque<NetnsInfo>, mut delete: F)
+    where
+        F: FnMut(NetnsInfo) -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        while let Some(ns) = queue.front().cloned() {
+            delete(ns).await;
+            queue.pop_front();
+        }
     }
 }
 
@@ -1755,6 +1759,76 @@ mod tests {
         assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
 
         pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn cleanup_retry_drains_pending_creation_after_cancel() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let entered = std::sync::Arc::new(tokio::sync::Notify::new());
+        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+        let entered_task = std::sync::Arc::clone(&entered);
+        let release_task = std::sync::Arc::clone(&release);
+        pool.pending_plain.spawn(async move {
+            entered_task.notify_one();
+            release_task.notified().await;
+            Ok(test_info("test-ns"))
+        });
+
+        {
+            let cleanup = pool.cleanup();
+            tokio::pin!(cleanup);
+            tokio::select! {
+                result = &mut cleanup => panic!("cleanup completed before pending task was released: {result:?}"),
+                _ = entered.notified() => {}
+            }
+        }
+
+        assert!(!pool.active);
+        assert_eq!(pool.pending_plain.len(), 1);
+
+        release.notify_one();
+        pool.cleanup().await.unwrap();
+
+        assert!(!pool.active);
+        assert!(pool.pending_plain.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn delete_queued_namespaces_keeps_front_entry_when_cancelled() {
+        let mut queue = VecDeque::from([test_info("test-ns")]);
+        let entered = std::sync::Arc::new(tokio::sync::Notify::new());
+        let release = std::sync::Arc::new(tokio::sync::Notify::new());
+
+        let delete = {
+            let entered = std::sync::Arc::clone(&entered);
+            let release = std::sync::Arc::clone(&release);
+            move |ns: NetnsInfo| {
+                assert_eq!(ns.name(), "test-ns");
+                let entered = std::sync::Arc::clone(&entered);
+                let release = std::sync::Arc::clone(&release);
+                async move {
+                    entered.notify_one();
+                    release.notified().await;
+                }
+            }
+        };
+        {
+            let deletion = NetnsPool::delete_queued_namespaces_with(&mut queue, delete);
+            tokio::pin!(deletion);
+            tokio::select! {
+                _ = &mut deletion => panic!("delete completed before test released it"),
+                _ = entered.notified() => {}
+            }
+        }
+
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue.front().unwrap().name(), "test-ns");
+
+        release.notify_one();
+        NetnsPool::delete_queued_namespaces_with(&mut queue, |_| async {}).await;
+        assert!(queue.is_empty());
     }
 
     #[tokio::test]
