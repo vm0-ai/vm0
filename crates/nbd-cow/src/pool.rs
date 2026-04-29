@@ -309,6 +309,8 @@ pub struct DevicePool {
     cooldown: VecDeque<CooldownSlot>,
     /// Background sysfs validation tasks.
     pending: tokio::task::JoinSet<ValidationResult>,
+    /// Acquire errors that raced with still-pending validation tasks.
+    deferred_acquire_errors: VecDeque<NbdCowError>,
     /// Acquire requests waiting for validation or a released device.
     waiting_acquires: VecDeque<oneshot::Sender<Result<DeviceLease>>>,
     /// Total number of NBD devices (from sysfs nbds_max).
@@ -333,6 +335,7 @@ impl DevicePool {
             ready: VecDeque::with_capacity(BUFFER_SIZE),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            deferred_acquire_errors: VecDeque::new(),
             waiting_acquires: VecDeque::new(),
             max_devices,
             config,
@@ -391,9 +394,20 @@ impl DevicePool {
 
         self.promote_cooled_down();
         let assigned = self.satisfy_waiters_from_ready();
-        if !self.waiting_acquires.is_empty() {
+        if self.waiting_acquires.is_empty() {
+            self.deferred_acquire_errors.clear();
+            if assigned {
+                self.maybe_replenish();
+            }
+            return;
+        }
+
+        if self.pending.is_empty() {
+            self.fail_deferred_acquire_errors();
+        }
+        if !self.waiting_acquires.is_empty() && self.deferred_acquire_errors.is_empty() {
             self.spawn_demand_batch();
-        } else if assigned {
+        } else if self.waiting_acquires.is_empty() && assigned {
             self.maybe_replenish();
         }
     }
@@ -426,7 +440,7 @@ impl DevicePool {
                 purpose: ValidationPurpose::Demand,
                 result: Err(e),
             }) => {
-                self.fail_one_waiter(e);
+                self.defer_acquire_error(e);
                 self.ensure_waiting_progress();
             }
             Ok(ValidationResult {
@@ -437,7 +451,7 @@ impl DevicePool {
             }
             Err(e) => {
                 if !self.waiting_acquires.is_empty() {
-                    self.fail_one_waiter(NbdCowError::Io(std::io::Error::other(format!(
+                    self.defer_acquire_error(NbdCowError::Io(std::io::Error::other(format!(
                         "device validation task failed: {e}"
                     ))));
                 }
@@ -492,6 +506,25 @@ impl DevicePool {
             }
         }
         false
+    }
+
+    fn defer_acquire_error(&mut self, error: NbdCowError) {
+        if self.waiting_acquires.is_empty() {
+            return;
+        }
+        self.deferred_acquire_errors.push_back(error);
+    }
+
+    fn fail_deferred_acquire_errors(&mut self) {
+        while !self.waiting_acquires.is_empty() {
+            let Some(error) = self.deferred_acquire_errors.pop_front() else {
+                break;
+            };
+            self.fail_one_waiter(error);
+        }
+        if self.waiting_acquires.is_empty() {
+            self.deferred_acquire_errors.clear();
+        }
     }
 
     fn fail_all_waiters(&mut self) {
@@ -550,6 +583,7 @@ impl DevicePool {
             );
         }
         self.fail_all_waiters();
+        self.deferred_acquire_errors.clear();
         self.abort_pending().await;
         self.ready.clear();
         self.cooldown.clear();
@@ -734,6 +768,7 @@ mod tests {
             ready: VecDeque::from([0, 1, 2, 4]),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            deferred_acquire_errors: VecDeque::new(),
             waiting_acquires: VecDeque::new(),
             max_devices: 8,
             config: DevicePoolConfig::default(),
@@ -747,6 +782,7 @@ mod tests {
             ready: VecDeque::new(),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            deferred_acquire_errors: VecDeque::new(),
             waiting_acquires: VecDeque::new(),
             max_devices: 0,
             config: DevicePoolConfig::default(),
@@ -850,6 +886,37 @@ mod tests {
         assert_eq!(pool.waiting_acquires.len(), 1);
         assert_eq!(pool.pending.len(), 1);
         pool.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn demand_error_waits_for_pending_success_before_failing_waiter() {
+        let mut pool = test_pool_for_pending_scan();
+        let complete_validation = queue_controlled_validation(&mut pool);
+        let (first_tx, mut first_rx) = oneshot::channel();
+        let (second_tx, second_rx) = oneshot::channel();
+        pool.waiting_acquires.push_back(first_tx);
+        pool.waiting_acquires.push_back(second_tx);
+
+        pool.handle_validation_join(Ok(ValidationResult {
+            purpose: ValidationPurpose::Demand,
+            result: Err(NbdCowError::NoFreeDevice),
+        }));
+
+        assert!(matches!(
+            first_rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+
+        complete_validation.send(Ok(4)).unwrap();
+        let validation = pool.pending.join_next().await.unwrap();
+        pool.handle_validation_join(validation);
+
+        let first_lease = first_rx.await.unwrap().unwrap();
+        assert_eq!(first_lease.index(), 4);
+        assert!(matches!(
+            second_rx.await.unwrap(),
+            Err(NbdCowError::NoFreeDevice)
+        ));
     }
 
     #[tokio::test]
