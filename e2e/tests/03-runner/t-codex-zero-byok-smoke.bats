@@ -27,14 +27,20 @@ setup_file() {
     # 2. Org-level openai-api-key provider — picked up as default by eager-pin
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
 
-    # 3. Minimal compose: NO framework / model_provider declared. Eager-pin
-    # (#11528) inherits the org-default openai-api-key → codex framework.
-    # This is the precise behavior validated end-to-end.
+    # 3. Compose declares framework: claude-code. The compose schema
+    # (agentDefinitionSchema in composes.ts) requires `framework` — there
+    # is no path today where vm0 compose accepts a missing field. Declaring
+    # claude-code here is the *opposite* of what the run will use: the
+    # org's only provider is openai-api-key (codex), and #11526 makes the
+    # provider's framework win over compose. So this test asserts the
+    # "provider overrides compose" routing: compose says claude-code,
+    # provider says codex, and the run must observably use codex.
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "BYOK codex zero web smoke test"
+    framework: claude-code
     working_dir: /home/user/workspace
 EOF
 
