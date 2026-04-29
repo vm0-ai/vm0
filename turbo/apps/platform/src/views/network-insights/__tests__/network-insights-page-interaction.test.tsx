@@ -162,9 +162,8 @@ describe("network insights page - data rendering", () => {
 
     detachedSetupPage({ context, path: "/insights" });
 
-    // Top agent appears in both the digest line and the masonry → multiple matches
     await waitFor(() => {
-      expect(screen.getAllByText("Alpha Bot").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Alpha Bot")).toBeInTheDocument();
     });
     expect(screen.getByText("Beta Bot")).toBeInTheDocument();
   });
@@ -464,9 +463,9 @@ describe("network insights page - date range filter", () => {
       })!;
     click(collapsedDigest);
 
-    // OldBot now appears in both the digest line and the masonry
+    // After expand, OldBot is rendered in the masonry's AgentsCard
     await waitFor(() => {
-      expect(screen.getAllByText("OldBot").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText("OldBot")).toBeInTheDocument();
     });
   });
 });
@@ -556,12 +555,9 @@ describe("network insights page - data refetch", () => {
     detachedSetupPage({ context, path: "/insights" });
 
     // The page setup calls reloadInsights$ which triggers a second fetch,
-    // so the UI should eventually show the refreshed data. RefreshedBot is
-    // the top agent → appears in both the digest line and the masonry.
+    // so the UI should eventually show the refreshed data in the masonry.
     await waitFor(() => {
-      expect(
-        screen.getAllByText("RefreshedBot").length,
-      ).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("RefreshedBot")).toBeInTheDocument();
     });
     expect(callCount).toBeGreaterThanOrEqual(2);
   });
@@ -939,8 +935,8 @@ describe("network insights page - daily diary", () => {
     await waitFor(() => {
       expect(screen.getByText("Yesterday")).toBeInTheDocument();
     });
-    // Before expand: Older Bot only in collapsed digest (1 occurrence)
-    expect(screen.getAllByText("Older Bot")).toHaveLength(1);
+    // Before expand: Older Bot's day is collapsed, masonry not rendered
+    expect(screen.queryByText("Older Bot")).not.toBeInTheDocument();
 
     const collapsedDigest = screen
       .getAllByRole("button", { expanded: false })
@@ -949,9 +945,9 @@ describe("network insights page - daily diary", () => {
       })!;
     click(collapsedDigest);
 
-    // After expand: Older Bot appears in both digest line and masonry
+    // After expand: masonry renders Older Bot inside AgentsCard
     await waitFor(() => {
-      expect(screen.getAllByText("Older Bot").length).toBeGreaterThanOrEqual(2);
+      expect(screen.getByText("Older Bot")).toBeInTheDocument();
     });
   });
 
@@ -978,26 +974,7 @@ describe("network insights page - daily diary", () => {
     });
   });
 
-  it("should display credits and runs in the digest line", async () => {
-    mockInsightsAPI([sampleDay(day1Ago)]);
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    // sampleDay totals: 200 credits, 5+3=8 runs
-    await waitFor(() => {
-      expect(screen.getByText("Yesterday")).toBeInTheDocument();
-    });
-    // Credits and runs appear in the digest header
-    const digestRow = screen
-      .getAllByRole("button", { expanded: true })
-      .find((b) => {
-        return b.querySelector("h2") !== null;
-      })!;
-    expect(digestRow.textContent).toContain("200");
-    expect(digestRow.textContent).toContain("8 runs");
-  });
-
-  it("should show top agent in the digest line", async () => {
+  it("should show only the date in the digest line", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     detachedSetupPage({ context, path: "/insights" });
@@ -1005,57 +982,13 @@ describe("network insights page - daily diary", () => {
     await waitFor(() => {
       expect(screen.getByText("Yesterday")).toBeInTheDocument();
     });
-    // Alpha Bot has 120 credits vs Beta Bot's 80 → Alpha Bot is top
     const digestRow = screen
       .getAllByRole("button", { expanded: true })
       .find((b) => {
         return b.querySelector("h2") !== null;
       })!;
-    expect(digestRow.textContent).toContain("Alpha Bot");
-  });
-
-  it("should show blocked badge in digest line when denials exist", async () => {
-    mockInsightsAPI([
-      sampleDay(day1Ago, {
-        permissions: [
-          {
-            label: "stripe:charge",
-            connectorType: "stripe",
-            allowed: 0,
-            denied: 4,
-            agentNames: ["Alpha Bot"],
-          },
-        ],
-      }),
-    ]);
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    await waitFor(() => {
-      expect(screen.getByText("4 blocked")).toBeInTheDocument();
-    });
-  });
-
-  it("should not show blocked badge when no denials", async () => {
-    mockInsightsAPI([
-      sampleDay(day1Ago, {
-        permissions: [
-          {
-            label: "chat:write",
-            allowed: 10,
-            denied: 0,
-            agentNames: ["Alpha Bot"],
-          },
-        ],
-      }),
-    ]);
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Yesterday")).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/\d+ blocked$/)).not.toBeInTheDocument();
+    // Digest is just the chevron + date — no credits/runs/top agent/blocked tail
+    expect(digestRow.textContent?.trim()).toBe("Yesterday");
   });
 });
 
@@ -1196,5 +1129,129 @@ describe("network insights page - per-day schedules and chats", () => {
     await waitFor(() => {
       expect(screen.getByText("+3 more schedules")).toBeInTheDocument();
     });
+  });
+
+  it("expands hidden schedules on +N more click and collapses on Show less", async () => {
+    const many = Array.from({ length: 7 }, (_, i) => {
+      return {
+        scheduleId: `sch-${i}`,
+        scheduleName: `schedule-${i}`,
+        scheduleDescription: null,
+        credits: 10 * (i + 1),
+        tokens: 1000 * (i + 1),
+      };
+    });
+    mockInsightsAPI([sampleDay(day1Ago, { schedules: many })]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("+3 more schedules")).toBeInTheDocument();
+    });
+    // schedule-6 (the 7th) is hidden behind the +N row
+    expect(screen.queryByText("schedule-6")).not.toBeInTheDocument();
+
+    click(screen.getByText("+3 more schedules"));
+
+    await waitFor(() => {
+      expect(screen.getByText("schedule-6")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Show less")).toBeInTheDocument();
+
+    click(screen.getByText("Show less"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("schedule-6")).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders schedule rows as links to the schedule detail page", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        schedules: [
+          {
+            scheduleId: "sch-link",
+            scheduleName: "linked-schedule",
+            scheduleDescription: null,
+            credits: 50,
+            tokens: 5000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("linked-schedule")).toBeInTheDocument();
+    });
+    const link = screen.getByText("linked-schedule").closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe("/schedules/sch-link");
+  });
+
+  it("renders chat rows as links to the chat thread", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        chats: [
+          {
+            threadId: "thread-link",
+            threadTitle: "Linked thread",
+            credits: 50,
+            tokens: 5000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Linked thread")).toBeInTheDocument();
+    });
+    const link = screen.getByText("Linked thread").closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe("/chats/thread-link");
+  });
+
+  it("shows total credits as the big number with a credit-clarifying subtitle", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        schedules: [
+          {
+            scheduleId: "s1",
+            scheduleName: "a",
+            scheduleDescription: null,
+            credits: 60,
+            tokens: 6000,
+          },
+          {
+            scheduleId: "s2",
+            scheduleName: "b",
+            scheduleDescription: null,
+            credits: 40,
+            tokens: 4000,
+          },
+        ],
+        chats: [
+          {
+            threadId: "t1",
+            threadTitle: "x",
+            credits: 30,
+            tokens: 3000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    // Schedules: 60 + 40 = 100 credits across 2 schedules
+    await waitFor(() => {
+      expect(screen.getByText("100")).toBeInTheDocument();
+    });
+    expect(screen.getByText("credits across 2 schedules")).toBeInTheDocument();
+    // Chats: 30 credits across 1 chat (singular)
+    expect(screen.getByText("credits across 1 chat")).toBeInTheDocument();
   });
 });

@@ -18,7 +18,12 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
+import { Link } from "../router/link.tsx";
 import {
   networkInsightsData$,
   insightsDateRange$,
@@ -33,6 +38,10 @@ import {
   setInsightsHoveredAgent$,
   expandedAllowedDays$,
   toggleExpandedAllowed$,
+  expandedScheduleDays$,
+  toggleExpandedScheduleDay$,
+  expandedChatDays$,
+  toggleExpandedChatDay$,
   dayExpansion$,
   setDayExpansion$,
   insightsActiveTab$,
@@ -1002,18 +1011,27 @@ function formatCardValue(n: number): string {
   return n.toLocaleString();
 }
 
-function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
+function DaySchedulesCard({
+  dayDate,
+  schedules,
+}: {
+  dayDate: string;
+  schedules: DaySchedule[];
+}) {
   const { accent } = getCardPalette(2);
+  const expandedDays = useGet(expandedScheduleDays$);
+  const toggleExpanded = useSet(toggleExpandedScheduleDay$);
+  const showAll = expandedDays.has(dayDate);
 
   if (schedules.length === 0) {
     return null;
   }
 
-  const visible = schedules.slice(0, 4);
-  const overflow = schedules.slice(4);
-  const overflowCredits = overflow.reduce((s, r) => {
+  const totalCredits = schedules.reduce((s, r) => {
     return s + r.credits;
   }, 0);
+  const visible = showAll ? schedules : schedules.slice(0, 4);
+  const overflow = schedules.length - visible.length;
   const maxValue = Math.max(
     1,
     ...schedules.map((s) => {
@@ -1024,48 +1042,80 @@ function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
   return (
     <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid mb-3">
       <p
-        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        className="text-xs font-semibold uppercase tracking-widest mb-1"
         style={{ color: accent }}
       >
         Schedules
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
-        {schedules.length}
+        {formatCardValue(totalCredits)}
       </p>
-      <ul className="flex flex-col gap-2.5 mt-4">
-        {visible.map((row) => {
-          const fullName = row.scheduleDescription?.trim() || row.scheduleName;
-          const pct = (row.credits / maxValue) * 100;
-          return (
-            <li
-              key={row.scheduleId}
-              className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3"
-            >
-              <span className="text-sm font-medium truncate">{fullName}</span>
-              <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${pct}%`, backgroundColor: accent }}
-                />
-              </div>
-              <span className="text-xs tabular-nums opacity-70 text-right">
-                {formatCardValue(row.credits)}
-              </span>
+      <p className="text-xs text-muted-foreground mt-1">
+        credits across {schedules.length}{" "}
+        {schedules.length === 1 ? "schedule" : "schedules"}
+      </p>
+      <TooltipProvider delayDuration={300}>
+        <ul className="flex flex-col gap-2.5 mt-4">
+          {visible.map((row) => {
+            const fullName =
+              row.scheduleDescription?.trim() || row.scheduleName;
+            const pct = (row.credits / maxValue) * 100;
+            return (
+              <li key={row.scheduleId}>
+                <Link
+                  pathname="/schedules/:scheduleId"
+                  options={{ pathParams: { scheduleId: row.scheduleId } }}
+                  className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5 transition-colors"
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                        {fullName}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      sideOffset={4}
+                      className="max-w-xs"
+                    >
+                      <p className="text-xs whitespace-normal break-words">
+                        {fullName}
+                      </p>
+                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
+                        Click to open →
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${pct}%`, backgroundColor: accent }}
+                    />
+                  </div>
+                  <span className="text-xs tabular-nums opacity-70 text-right">
+                    {formatCardValue(row.credits)}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          {(overflow > 0 || showAll) && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleExpanded(dayDate);
+                }}
+                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
+              >
+                {showAll
+                  ? "Show less"
+                  : `+${overflow} more ${overflow === 1 ? "schedule" : "schedules"}`}
+              </button>
             </li>
-          );
-        })}
-        {overflow.length > 0 && (
-          <li className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3">
-            <span className="text-sm text-muted-foreground truncate col-span-2">
-              +{overflow.length} more{" "}
-              {overflow.length === 1 ? "schedule" : "schedules"}
-            </span>
-            <span className="text-xs tabular-nums text-muted-foreground text-right">
-              {formatCardValue(overflowCredits)}
-            </span>
-          </li>
-        )}
-      </ul>
+          )}
+        </ul>
+      </TooltipProvider>
     </section>
   );
 }
@@ -1074,18 +1124,27 @@ function DaySchedulesCard({ schedules }: { schedules: DaySchedule[] }) {
 // Per-day Chats card
 // ---------------------------------------------------------------------------
 
-function DayChatsCard({ chats }: { chats: DayChat[] }) {
+function DayChatsCard({
+  dayDate,
+  chats,
+}: {
+  dayDate: string;
+  chats: DayChat[];
+}) {
   const { accent } = getCardPalette(5);
+  const expandedDays = useGet(expandedChatDays$);
+  const toggleExpanded = useSet(toggleExpandedChatDay$);
+  const showAll = expandedDays.has(dayDate);
 
   if (chats.length === 0) {
     return null;
   }
 
-  const visible = chats.slice(0, 4);
-  const overflow = chats.slice(4);
-  const overflowCredits = overflow.reduce((s, r) => {
+  const totalCredits = chats.reduce((s, r) => {
     return s + r.credits;
   }, 0);
+  const visible = showAll ? chats : chats.slice(0, 4);
+  const overflow = chats.length - visible.length;
   const maxValue = Math.max(
     1,
     ...chats.map((c) => {
@@ -1096,47 +1155,78 @@ function DayChatsCard({ chats }: { chats: DayChat[] }) {
   return (
     <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid mb-3">
       <p
-        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        className="text-xs font-semibold uppercase tracking-widest mb-1"
         style={{ color: accent }}
       >
         Chats
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
-        {chats.length}
+        {formatCardValue(totalCredits)}
       </p>
-      <ul className="flex flex-col gap-2.5 mt-4">
-        {visible.map((row) => {
-          const fullTitle = row.threadTitle ?? "(untitled)";
-          const pct = (row.credits / maxValue) * 100;
-          return (
-            <li
-              key={row.threadId}
-              className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3"
-            >
-              <span className="text-sm font-medium truncate">{fullTitle}</span>
-              <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${pct}%`, backgroundColor: accent }}
-                />
-              </div>
-              <span className="text-xs tabular-nums opacity-70 text-right">
-                {formatCardValue(row.credits)}
-              </span>
+      <p className="text-xs text-muted-foreground mt-1">
+        credits across {chats.length} {chats.length === 1 ? "chat" : "chats"}
+      </p>
+      <TooltipProvider delayDuration={300}>
+        <ul className="flex flex-col gap-2.5 mt-4">
+          {visible.map((row) => {
+            const fullTitle = row.threadTitle ?? "(untitled)";
+            const pct = (row.credits / maxValue) * 100;
+            return (
+              <li key={row.threadId}>
+                <Link
+                  pathname="/chats/:threadId"
+                  options={{ pathParams: { threadId: row.threadId } }}
+                  className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3 -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5 transition-colors"
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                        {fullTitle}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      sideOffset={4}
+                      className="max-w-xs"
+                    >
+                      <p className="text-xs whitespace-normal break-words">
+                        {fullTitle}
+                      </p>
+                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
+                        Click to open →
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${pct}%`, backgroundColor: accent }}
+                    />
+                  </div>
+                  <span className="text-xs tabular-nums opacity-70 text-right">
+                    {formatCardValue(row.credits)}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          {(overflow > 0 || showAll) && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleExpanded(dayDate);
+                }}
+                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
+              >
+                {showAll
+                  ? "Show less"
+                  : `+${overflow} more ${overflow === 1 ? "chat" : "chats"}`}
+              </button>
             </li>
-          );
-        })}
-        {overflow.length > 0 && (
-          <li className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_3rem] items-center gap-3">
-            <span className="text-sm text-muted-foreground truncate col-span-2">
-              +{overflow.length} more {overflow.length === 1 ? "chat" : "chats"}
-            </span>
-            <span className="text-xs tabular-nums text-muted-foreground text-right">
-              {formatCardValue(overflowCredits)}
-            </span>
-          </li>
-        )}
-      </ul>
+          )}
+        </ul>
+      </TooltipProvider>
     </section>
   );
 }
@@ -1184,8 +1274,8 @@ function DaySection({
         onHoverAgent={handleHoverAgent}
       />
       <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
-      <DaySchedulesCard schedules={day.schedules} />
-      <DayChatsCard chats={day.chats} />
+      <DaySchedulesCard dayDate={day.date} schedules={day.schedules} />
+      <DayChatsCard dayDate={day.date} chats={day.chats} />
       <PermissionsAllowedCard
         day={day}
         colorIndex={5}
@@ -1216,16 +1306,6 @@ function DayDigestRow({
   const userChoice = expansion.get(day.date);
   const isExpanded = userChoice ?? defaultExpanded;
 
-  const totalRuns = day.agents.reduce((s, a) => {
-    return s + a.runs;
-  }, 0);
-  const topAgent = [...day.agents].sort((a, b) => {
-    return b.credits - a.credits;
-  })[0];
-  const blocked = day.permissions.reduce((s, p) => {
-    return s + p.denied;
-  }, 0);
-
   return (
     <section className="flex flex-col gap-3">
       <button
@@ -1245,36 +1325,6 @@ function DayDigestRow({
         <h2 className="text-base font-semibold text-foreground">
           {formatDate(day.date)}
         </h2>
-        <span className="text-xs text-muted-foreground">·</span>
-        <span
-          className="text-sm font-medium text-foreground"
-          title={day.creditsUsed.toLocaleString()}
-        >
-          {formatCredits(day.creditsUsed)}
-        </span>
-        <span className="text-xs text-muted-foreground">credits</span>
-        {totalRuns > 0 && (
-          <>
-            <span className="text-xs text-muted-foreground">·</span>
-            <span className="text-sm text-foreground">
-              {totalRuns} {totalRuns === 1 ? "run" : "runs"}
-            </span>
-          </>
-        )}
-        {topAgent && (
-          <>
-            <span className="text-xs text-muted-foreground">·</span>
-            <span className="text-xs text-muted-foreground">top:</span>
-            <span className="text-sm text-foreground truncate max-w-[180px]">
-              {topAgent.agentName}
-            </span>
-          </>
-        )}
-        {blocked > 0 && (
-          <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
-            {blocked} blocked
-          </span>
-        )}
       </button>
       {isExpanded && (
         <DaySection day={day} isAdmin={isAdmin} userId={userId} />
