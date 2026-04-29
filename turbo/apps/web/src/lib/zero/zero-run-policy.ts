@@ -9,10 +9,9 @@ import {
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { validateFrameworkApiKey } from "../infra/run/utils";
 import { logger } from "../shared/logger";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 import { checkOrgCredits } from "./credit/check-org-credits";
+import { getOrgDefaultModelProviderType } from "./model-provider/model-provider-service";
 import type { Database } from "../../types/global";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
@@ -148,18 +147,8 @@ export async function checkOrgCreditsForRun(
 
   let isVm0 = modelProvider === "vm0";
   if (!isVm0) {
-    const [defaultProvider] = await db
-      .select({ type: modelProviders.type })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.isDefault, true),
-        ),
-      )
-      .limit(1);
-    isVm0 = defaultProvider?.type === "vm0";
+    const defaultProviderType = await getOrgDefaultModelProviderType(orgId, db);
+    isVm0 = defaultProviderType === "vm0";
   }
 
   if (!isVm0) return;
@@ -191,19 +180,9 @@ export async function checkModelProviderConfigured(
   });
   if (hasExplicitConfig) return;
 
-  const [defaultProvider] = await globalThis.services.db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    )
-    .limit(1);
+  const defaultProviderType = await getOrgDefaultModelProviderType(orgId);
 
-  if (!defaultProvider) {
+  if (!defaultProviderType) {
     throw noModelProvider();
   }
 }
