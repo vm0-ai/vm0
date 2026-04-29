@@ -1623,19 +1623,15 @@ jobs:
             exit 1
           fi
 
-          if [ -n "${R2_ACCOUNT_ID}" ] && [ -n "${R2_ACCESS_KEY_ID}" ] && [ -n "${R2_SECRET_ACCESS_KEY}" ] && [ -n "${R2_USER_STORAGES_BUCKET_NAME}" ]; then
-            WARM_HOST="${HOSTS[0]}"
-            WARM_LOG="${LOG_DIR}/warm-rootfs-cache.log"
-            if ! warm_rootfs_cache "$WARM_HOST" > "$WARM_LOG" 2>&1; then
-              echo "::error::Shared rootfs cache warm failed on ${WARM_HOST}"
-              cat "$WARM_LOG"
-              rm -rf "$LOG_DIR"
-              exit 1
-            fi
+          WARM_HOST="${HOSTS[0]}"
+          WARM_LOG="${LOG_DIR}/warm-rootfs-cache.log"
+          if ! warm_rootfs_cache "$WARM_HOST" > "$WARM_LOG" 2>&1; then
+            echo "::error::Shared rootfs cache warm failed on ${WARM_HOST}"
             cat "$WARM_LOG"
-          else
-            echo "::warning::Skipping shared rootfs cache warm because R2 image cache credentials are incomplete"
+            rm -rf "$LOG_DIR"
+            exit 1
           fi
+          cat "$WARM_LOG"
 
           PIDS=()
           for HOST in "${HOSTS[@]}"; do
