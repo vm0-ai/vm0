@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
@@ -15,6 +16,13 @@ const TOKEN_CATEGORY_INPUT = "tokens.input";
 const TOKEN_CATEGORY_OUTPUT = "tokens.output";
 const TOKEN_CATEGORY_CACHE_READ = "tokens.cache_read";
 const TOKEN_CATEGORY_CACHE_CREATION = "tokens.cache_creation";
+const MODEL_STATS_MODEL_IDS = Object.keys(VM0_MODEL_TO_PROVIDER);
+const MODEL_STATS_MODEL_ID_SQL = sql.join(
+  MODEL_STATS_MODEL_IDS.map((model) => {
+    return sql`${model}`;
+  }),
+  sql`, `,
+);
 
 interface ModelStatsAggregationResult {
   readonly windowStart: Date;
@@ -61,7 +69,7 @@ export const aggregateModelStats$ = command(
         FROM ${creditUsage}
         WHERE ${creditUsage.createdAt} >= ${windowStart}
           AND ${creditUsage.createdAt} < ${windowEnd}
-          AND ${creditUsage.model} <> ''
+          AND ${creditUsage.model} IN (${MODEL_STATS_MODEL_ID_SQL})
 
         UNION ALL
 
@@ -85,6 +93,7 @@ export const aggregateModelStats$ = command(
         WHERE ${usageEvent.createdAt} >= ${windowStart}
           AND ${usageEvent.createdAt} < ${windowEnd}
           AND ${usageEvent.kind} = ${MODEL_USAGE_KIND}
+          AND ${usageEvent.provider} IN (${MODEL_STATS_MODEL_ID_SQL})
       ),
       aggregated AS (
         SELECT

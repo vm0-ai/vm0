@@ -226,18 +226,6 @@ function resolveModel(modelId: string): ModelEntry | undefined {
   return MODELS_BY_ID.get(suffix.toLowerCase());
 }
 
-function titleizeModelId(modelId: string): string {
-  const suffix = modelId.split("/").at(-1) ?? modelId;
-  return suffix
-    .split(/[-_.]/)
-    .filter(Boolean)
-    .map((part) => {
-      if (/^\d+$/.test(part)) return part;
-      return `${part.charAt(0).toUpperCase()}${part.slice(1)}`;
-    })
-    .join(" ");
-}
-
 async function getRankings(period: PeriodKey): Promise<{
   rows: RankingRow[];
   totalTokens: number;
@@ -294,33 +282,49 @@ async function getRankings(period: PeriodKey): Promise<{
   `);
 
   const rawRows = result.rows as unknown as RawRankingRow[];
-  const totalTokens = rawRows.reduce((sum, row) => {
-    return sum + toNumber(row.total_tokens);
+  const knownRows: {
+    readonly row: RawRankingRow;
+    readonly model: string;
+    readonly modelEntry: ModelEntry;
+    readonly totalTokens: number;
+  }[] = [];
+
+  for (const row of rawRows) {
+    const model = String(row.model);
+    const modelEntry = resolveModel(model);
+    if (!modelEntry) continue;
+    knownRows.push({
+      row,
+      model,
+      modelEntry,
+      totalTokens: toNumber(row.total_tokens),
+    });
+  }
+
+  const totalTokens = knownRows.reduce((sum, row) => {
+    return sum + row.totalTokens;
   }, 0);
 
   return {
     totalTokens,
     windowStart: window.start,
     windowEnd: window.end,
-    rows: rawRows.map((row, index) => {
-      const model = String(row.model);
-      const modelEntry = resolveModel(model);
-      const rowTotalTokens = toNumber(row.total_tokens);
+    rows: knownRows.map((item, index) => {
       return {
         rank: index + 1,
-        model,
-        name: modelEntry?.name ?? titleizeModelId(model),
-        vendor: modelEntry?.vendor ?? "External",
-        iconPath: modelEntry ? vendorIconPath(modelEntry.vendor) : null,
-        providers: String(row.providers ?? ""),
-        requestCount: toNumber(row.request_count),
-        inputTokens: toNumber(row.input_tokens),
-        outputTokens: toNumber(row.output_tokens),
-        cacheTokens: toNumber(row.cache_tokens),
-        totalTokens: rowTotalTokens,
-        creditsCharged: toNumber(row.credits_charged),
-        previousTotalTokens: toNumber(row.previous_total_tokens),
-        share: totalTokens > 0 ? (rowTotalTokens / totalTokens) * 100 : 0,
+        model: item.model,
+        name: item.modelEntry.name,
+        vendor: item.modelEntry.vendor,
+        iconPath: vendorIconPath(item.modelEntry.vendor),
+        providers: String(item.row.providers ?? ""),
+        requestCount: toNumber(item.row.request_count),
+        inputTokens: toNumber(item.row.input_tokens),
+        outputTokens: toNumber(item.row.output_tokens),
+        cacheTokens: toNumber(item.row.cache_tokens),
+        totalTokens: item.totalTokens,
+        creditsCharged: toNumber(item.row.credits_charged),
+        previousTotalTokens: toNumber(item.row.previous_total_tokens),
+        share: totalTokens > 0 ? (item.totalTokens / totalTokens) * 100 : 0,
       };
     }),
   };

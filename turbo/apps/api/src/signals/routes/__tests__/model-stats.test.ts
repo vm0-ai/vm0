@@ -14,6 +14,7 @@ import { modelStatsContract } from "../model-stats";
 
 const store = createStore();
 const context = testContext();
+const HOUR_MS = 60 * 60_000;
 
 function client() {
   return setupApp({ context })(modelStatsContract);
@@ -22,7 +23,7 @@ function client() {
 describe("GET /api/internal/cron/aggregate-model-stats", () => {
   beforeEach(() => {
     mockEnv("CRON_SECRET", "test-cron-secret");
-    mockNow(new Date("2026-04-29T15:30:00.000Z"));
+    mockNow(new Date("2099-01-01T15:30:00.000Z"));
   });
 
   it("requires the cron secret", async () => {
@@ -40,28 +41,54 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
 
   it("aggregates hourly model usage and excludes connector usage", async () => {
     const db = store.set(writeDb$);
-    const model = `test-model-${randomUUID()}`;
+    const model = "claude-sonnet-4-6";
+    const unknownModel = `unknown-model-${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     const connectorProvider = `x-${randomUUID()}`;
-    const createdAt = new Date("2026-04-29T14:10:00.000Z");
+    const hourSeed = Number.parseInt(randomUUID().slice(0, 8), 16);
+    const expectedHourStart = new Date(
+      Date.UTC(2100, 0, 1) + (hourSeed % (24 * 365)) * HOUR_MS,
+    );
+    const expectedWindowEnd = new Date(expectedHourStart.getTime() + HOUR_MS);
+    const expectedWindowStart = new Date(
+      expectedWindowEnd.getTime() - 24 * HOUR_MS,
+    );
+    const createdAt = new Date(expectedHourStart.getTime() + 10 * 60_000);
+    mockNow(new Date(expectedWindowEnd.getTime() + 30 * 60_000));
     const connectorEventId = randomUUID();
     const outputEventId = randomUUID();
 
-    await db.insert(creditUsage).values({
-      orgId,
-      userId,
-      model,
-      modelProvider: "",
-      inputTokens: 100,
-      outputTokens: 40,
-      cacheReadInputTokens: 10,
-      cacheCreationInputTokens: 5,
-      creditsCharged: 12,
-      status: "processed",
-      createdAt,
-      processedAt: createdAt,
-    });
+    await db.insert(creditUsage).values([
+      {
+        orgId,
+        userId,
+        model,
+        modelProvider: "",
+        inputTokens: 100,
+        outputTokens: 40,
+        cacheReadInputTokens: 10,
+        cacheCreationInputTokens: 5,
+        creditsCharged: 12,
+        status: "processed",
+        createdAt,
+        processedAt: createdAt,
+      },
+      {
+        orgId,
+        userId,
+        model: unknownModel,
+        modelProvider: "",
+        inputTokens: 100_000,
+        outputTokens: 40_000,
+        cacheReadInputTokens: 10_000,
+        cacheCreationInputTokens: 5000,
+        creditsCharged: 12_000,
+        status: "processed",
+        createdAt,
+        processedAt: createdAt,
+      },
+    ]);
 
     await db.insert(usageEvent).values([
       {
@@ -103,6 +130,19 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
         createdAt,
         processedAt: createdAt,
       },
+      {
+        idempotencyKey: randomUUID(),
+        orgId,
+        userId,
+        kind: "model",
+        provider: unknownModel,
+        category: "tokens.input",
+        quantity: 300_000,
+        creditsCharged: 3000,
+        status: "processed",
+        createdAt,
+        processedAt: createdAt,
+      },
     ]);
 
     const response = await accept(
@@ -112,17 +152,22 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       [200],
     );
 
-    expect(response.body.windowStart).toBe("2026-04-28T15:00:00.000Z");
-    expect(response.body.windowEnd).toBe("2026-04-29T15:00:00.000Z");
+    expect(response.body.windowStart).toBe(expectedWindowStart.toISOString());
+    expect(response.body.windowEnd).toBe(expectedWindowEnd.toISOString());
 
     const [row] = await db
       .select()
       .from(modelStat)
-      .where(eq(modelStat.model, model))
+      .where(
+        and(
+          eq(modelStat.model, model),
+          eq(modelStat.hourStart, expectedHourStart),
+        ),
+      )
       .limit(1);
 
     expect(row).toMatchObject({
-      hourStart: new Date("2026-04-29T14:00:00.000Z"),
+      hourStart: expectedHourStart,
       inputTokens: 400,
       outputTokens: 240,
       cacheReadInputTokens: 10,
@@ -154,7 +199,12 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     const [updatedRow] = await db
       .select()
       .from(modelStat)
-      .where(eq(modelStat.model, model))
+      .where(
+        and(
+          eq(modelStat.model, model),
+          eq(modelStat.hourStart, expectedHourStart),
+        ),
+      )
       .limit(1);
 
     expect(updatedRow?.creditsCharged).toBe(23);
@@ -162,9 +212,27 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     const [connectorRow] = await db
       .select()
       .from(modelStat)
-      .where(eq(modelStat.model, connectorProvider))
+      .where(
+        and(
+          eq(modelStat.model, connectorProvider),
+          eq(modelStat.hourStart, expectedHourStart),
+        ),
+      )
       .limit(1);
 
     expect(connectorRow).toBeUndefined();
+
+    const [unknownModelRow] = await db
+      .select()
+      .from(modelStat)
+      .where(
+        and(
+          eq(modelStat.model, unknownModel),
+          eq(modelStat.hourStart, expectedHourStart),
+        ),
+      )
+      .limit(1);
+
+    expect(unknownModelRow).toBeUndefined();
   });
 });

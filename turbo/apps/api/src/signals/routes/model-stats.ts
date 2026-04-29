@@ -64,7 +64,7 @@ function unauthorized() {
 const aggregateModelStatsRoute$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const cronSecret = env("CRON_SECRET");
-    if (!cronSecret || get(authorization$) !== `Bearer ${cronSecret}`) {
+    if (get(authorization$) !== `Bearer ${cronSecret}`) {
       return unauthorized();
     }
 
