@@ -661,6 +661,7 @@ pub struct FirecrackerFactory {
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
     netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
+    owns_netns_pool: bool,
     /// Shared NBD device pool for pre-validated device indices.
     device_pool: nbd_cow::pool::DevicePoolHandle,
     /// Base image path and size (bytes), populated during startup.
@@ -703,12 +704,14 @@ impl FirecrackerFactory {
 
         let factory_paths = FactoryPaths::new(config.base_dir.clone());
         let runtime_paths = RuntimePaths::new();
+        let owns_netns_pool = netns_pool.is_none();
 
         Ok(Self {
             config,
             factory_paths,
             runtime_paths,
             netns_pool,
+            owns_netns_pool,
             device_pool,
             base_image_path: None,
             base_image_size: 0,
@@ -759,6 +762,7 @@ impl SandboxFactory for FirecrackerFactory {
 
         // Create netns pool only if not provided externally (shared pool case).
         if self.netns_pool.is_none() {
+            self.owns_netns_pool = true;
             let t = std::time::Instant::now();
             let netns_config = NetnsPoolConfig {
                 proxy_port: self.config.proxy_port,
@@ -990,12 +994,15 @@ impl SandboxFactory for FirecrackerFactory {
 
         self.base_image_path = None;
 
-        // Clean up netns pool only if we hold the last reference.
-        // When shared across multiple factories, the caller manages cleanup.
-        if let Some(Ok(mutex)) = self.netns_pool.take().map(std::sync::Arc::try_unwrap) {
-            let mut pool = mutex.into_inner();
+        // Direct factories own their netns pool and must clean it up even when
+        // detached destroy tasks still hold Arc clones. Shared runtime pools are
+        // cleaned up by FirecrackerRuntime::shutdown().
+        if self.owns_netns_pool
+            && let Some(netns_pool) = self.netns_pool.take()
+        {
+            let mut pool = netns_pool.lock().await;
             if let Err(e) = pool.cleanup().await {
-                warn!(error = %e, "failed to cleanup netns pool");
+                warn!(error = %e, "failed to cleanup owned netns pool");
             }
         }
 
@@ -1309,6 +1316,7 @@ mod tests {
             factory_paths: FactoryPaths::new(PathBuf::from("/tmp/factory-test")),
             runtime_paths: RuntimePaths::new(),
             netns_pool: None,
+            owns_netns_pool: true,
             device_pool: nbd_cow::pool::DevicePoolHandle::new(
                 nbd_cow::pool::DevicePoolConfig::default(),
             ),
