@@ -21,7 +21,9 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::idle_pool::ReusableIdleSandbox;
+use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
+use crate::network_log_manager::NetworkLogSession;
 use crate::paths::{HomePaths, LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
@@ -37,6 +39,7 @@ pub struct ExecutorConfig {
     pub http: HttpClient,
     pub log_paths: LogPaths,
     pub network_log_manager: NetworkLogManager,
+    pub network_log_drain: NetworkLogDrainCoordinator,
     pub home: HomePaths,
 }
 
@@ -56,6 +59,7 @@ pub struct ExecuteOutcome {
     /// during create/start (sandbox was destroyed inline).
     pub sandbox: Option<Box<dyn Sandbox>>,
     pub source_ip: String,
+    pub network_log_session: Option<NetworkLogSession>,
     /// CLI-generated session ID read from the guest after execution.
     /// Used for first-run VM parking when `resume_session` is absent.
     pub guest_session_id: Option<String>,
@@ -101,6 +105,7 @@ pub async fn execute_job(
             error: Some(e.to_string()),
             sandbox: None,
             source_ip: String::new(),
+            network_log_session: None,
             guest_session_id: None,
         },
     };
@@ -229,11 +234,14 @@ async fn execute_new_sandbox(
     let source_ip = sandbox.source_ip().to_string();
 
     // Register VM in proxy registry BEFORE starting the sandbox.
-    register_proxy(config, context, &source_ip).await;
+    let network_log_session = register_proxy(config, context, &source_ip).await;
 
     if let Err(e) = sandbox.start().await {
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-        unregister_proxy(config, context, &source_ip).await;
+        unregister_proxy_registry(config, context, &source_ip).await;
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
         destroy_sandbox_panic_safe(factory, sandbox).await;
         return Err(e.into());
     }
@@ -254,7 +262,7 @@ async fn execute_new_sandbox(
     )
     .await;
 
-    // Post-job: copy logs + unregister proxy (sandbox stays alive for possible reuse)
+    // Post-job: copy logs + unregister proxy registry (sandbox stays alive for possible reuse)
     post_job_cleanup(sandbox.as_ref(), config, context, &source_ip).await;
 
     let (exit_code, error) = match result {
@@ -279,6 +287,7 @@ async fn execute_new_sandbox(
         error,
         sandbox: Some(sandbox),
         source_ip,
+        network_log_session: Some(network_log_session),
         guest_session_id,
     })
 }
@@ -312,7 +321,7 @@ async fn execute_reused_sandbox(
     );
 
     // Re-register proxy with new run credentials
-    register_proxy(config, context, source_ip).await;
+    let network_log_session = register_proxy(config, context, source_ip).await;
 
     // Run job — clock/entropy fixed inside run_in_sandbox (always needed after idle).
     let result = run_in_sandbox(
@@ -329,7 +338,7 @@ async fn execute_reused_sandbox(
     )
     .await;
 
-    // Post-job cleanup (copy logs to host, unregister proxy, upload network logs)
+    // Post-job cleanup (copy logs to host, unregister proxy registry)
     post_job_cleanup(sandbox.as_ref(), config, context, source_ip).await;
 
     let (exit_code, error) = match result {
@@ -353,12 +362,17 @@ async fn execute_reused_sandbox(
         error,
         sandbox: Some(sandbox),
         source_ip: source_ip.to_string(),
+        network_log_session: Some(network_log_session),
         guest_session_id,
     }
 }
 
 /// Register a VM in the proxy registry and network log manager.
-async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
+async fn register_proxy(
+    config: &ExecutorConfig,
+    context: &ExecutionContext,
+    source_ip: &str,
+) -> NetworkLogSession {
     let network_log_path = config.log_paths.network_log(context.run_id);
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
@@ -385,24 +399,24 @@ async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, sou
         .await
 }
 
-/// Unregister a VM from the proxy registry and network log manager.
-async fn unregister_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
+/// Unregister a VM from the proxy registry.
+async fn unregister_proxy_registry(
+    config: &ExecutorConfig,
+    context: &ExecutionContext,
+    source_ip: &str,
+) {
     if let Err(e) = config.registry.unregister_vm(source_ip).await {
         warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
     }
-    config
-        .network_log_manager
-        .unregister_source_ip(source_ip)
-        .await;
 }
 
-/// Post-job cleanup: copy logs, unregister proxy.
+/// Post-job cleanup: copy logs, unregister proxy registry.
 ///
 /// Called after `run_in_sandbox` completes, whether the sandbox will be
-/// parked (keep-alive) or destroyed. The network-log upload is deliberately
-/// **not** done here — `spawn_job` (in `cmd/start.rs`) runs it after
-/// `provider.complete` so the user-visible run-complete signal isn't blocked
-/// on the best-effort upload (~1.6 s saved per job).
+/// parked (keep-alive) or destroyed. Rust-side network-log attribution stays
+/// open until `cmd/start.rs` quiesces the sandbox and closes the returned
+/// `NetworkLogSession`; the HTTP upload remains deferred after
+/// `provider.complete`.
 async fn post_job_cleanup(
     sandbox: &dyn Sandbox,
     config: &ExecutorConfig,
@@ -410,7 +424,7 @@ async fn post_job_cleanup(
     source_ip: &str,
 ) {
     copy_guest_logs(sandbox, context, &config.log_paths).await;
-    unregister_proxy(config, context, source_ip).await;
+    unregister_proxy_registry(config, context, source_ip).await;
 }
 
 /// How this run is entering its sandbox. Each field feeds a distinct step:
@@ -2693,6 +2707,7 @@ mod tests {
             http: crate::http::HttpClient::new("http://localhost:9999".into()).unwrap(),
             log_paths: LogPaths::new(log_dir),
             network_log_manager: NetworkLogManager::new(),
+            network_log_drain: NetworkLogDrainCoordinator::noop(),
             home: HomePaths::with_root(dir.to_path_buf()),
         }
     }

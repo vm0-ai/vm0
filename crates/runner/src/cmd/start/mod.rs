@@ -27,7 +27,8 @@ use crate::idle_pool::{
 };
 use crate::kmsg_log;
 use crate::lock;
-use crate::network_log_manager::NetworkLogManager;
+use crate::network_log_drain::NetworkLogDrainCoordinator;
+use crate::network_log_manager::{NetworkLogManager, NetworkLogSession};
 use crate::network_logs;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
@@ -239,6 +240,10 @@ pub async fn run_start(
     let dns_handle = dns::start(network_log_manager.clone())
         .await
         .map_err(|e| RunnerError::Internal(format!("dns proxy: {e}")))?;
+    let network_log_drain = NetworkLogDrainCoordinator::new(vec![
+        kmsg_handle.drain_producer(),
+        dns_handle.drain_producer(),
+    ]);
 
     // Resource budget from host resources + config.
     let config::SandboxConfig {
@@ -345,6 +350,7 @@ pub async fn run_start(
         http,
         log_paths,
         network_log_manager,
+        network_log_drain,
         home: home.clone(),
     });
 
@@ -1286,12 +1292,14 @@ struct FinalizeContext {
     session_id: Option<String>,
     guest_session_id: Option<String>,
     source_ip: String,
+    network_log_session: Option<NetworkLogSession>,
     storage_fingerprints: StorageFingerprints,
     factory: Arc<Box<dyn SandboxFactory>>,
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
     park_notify: Arc<tokio::sync::Notify>,
     parking_gate: ParkingGate,
+    network_log_drain: NetworkLogDrainCoordinator,
     exit_code: i32,
     cancel: CancellationToken,
     cleanup_state: RunCleanupState,
@@ -1316,12 +1324,14 @@ async fn finalize_sandbox_for_completion(
         session_id,
         guest_session_id,
         source_ip,
+        mut network_log_session,
         storage_fingerprints,
         factory,
         idle_pool,
         status,
         park_notify,
         parking_gate,
+        network_log_drain,
         exit_code,
         cancel,
         cleanup_state,
@@ -1361,6 +1371,8 @@ async fn finalize_sandbox_for_completion(
                     profile_name: &profile_name,
                     session_id: Some(&session_id),
                     reason: "park_failed",
+                    network_log_session: network_log_session.take(),
+                    network_log_drain: network_log_drain.clone(),
                 },
             )
             .await;
@@ -1375,6 +1387,7 @@ async fn finalize_sandbox_for_completion(
             );
             BudgetOwnership::active(active_lease)
         } else if cancel.is_cancelled() {
+            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
                 session_id,
@@ -1389,6 +1402,8 @@ async fn finalize_sandbox_for_completion(
                     profile_name: &profile_name,
                     session_id: Some(&session_id),
                     reason: "cancelled",
+                    network_log_session: None,
+                    network_log_drain: network_log_drain.clone(),
                 },
             )
             .await;
@@ -1403,6 +1418,7 @@ async fn finalize_sandbox_for_completion(
             );
             BudgetOwnership::active(active_lease)
         } else {
+            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             let mut pool = idle_pool.lock().await;
             if cancel.is_cancelled() {
                 info!(
@@ -1420,6 +1436,8 @@ async fn finalize_sandbox_for_completion(
                         profile_name: &profile_name,
                         session_id: Some(&session_id),
                         reason: "cancelled",
+                        network_log_session: None,
+                        network_log_drain: network_log_drain.clone(),
                     },
                 )
                 .await;
@@ -1532,6 +1550,8 @@ async fn finalize_sandbox_for_completion(
                     session_id.as_deref(),
                     guest_session_id.as_deref(),
                 ),
+                network_log_session: network_log_session.take(),
+                network_log_drain: network_log_drain.clone(),
             },
         )
         .await;
@@ -1548,6 +1568,16 @@ async fn finalize_sandbox_for_completion(
     };
 
     CompletionReady::new(completion_payload, budget)
+}
+
+async fn close_network_log_session(
+    run_id: RunId,
+    session: Option<NetworkLogSession>,
+    drain: &NetworkLogDrainCoordinator,
+) {
+    if let Some(session) = session {
+        session.close_for_upload(run_id, drain).await;
+    }
 }
 
 /// Spawn a job executor task.
@@ -1645,42 +1675,51 @@ fn spawn_job(
                 }
             });
 
-            let (exit_code, err, sandbox, source_ip, guest_session_id, telemetry) =
-                match inner.await {
-                    Ok((outcome, telemetry)) => {
-                        let err = if job_cancel.is_cancelled() {
-                            Some("cancelled by user".to_string())
-                        } else {
-                            outcome.error
-                        };
-                        (
-                            outcome.exit_code,
-                            err,
-                            outcome.sandbox,
-                            outcome.source_ip,
-                            outcome.guest_session_id,
-                            telemetry,
-                        )
-                    }
-                    Err(e) => {
-                        // Panic lost the in-flight telemetry buffer; substitute an
-                        // empty collector so the post-complete flush path stays
-                        // unconditional. `flush` early-returns on empty pending_ops.
-                        let empty_telemetry = JobTelemetry::new(
-                            exec_config_for_deferred.http.clone(),
-                            run_id,
-                            sandbox_token.clone(),
-                        );
-                        (
-                            1,
-                            Some(format!("executor task panicked: {e}")),
-                            None,
-                            String::new(),
-                            None,
-                            empty_telemetry,
-                        )
-                    }
-                };
+            let (
+                exit_code,
+                err,
+                sandbox,
+                source_ip,
+                network_log_session,
+                guest_session_id,
+                telemetry,
+            ) = match inner.await {
+                Ok((outcome, telemetry)) => {
+                    let err = if job_cancel.is_cancelled() {
+                        Some("cancelled by user".to_string())
+                    } else {
+                        outcome.error
+                    };
+                    (
+                        outcome.exit_code,
+                        err,
+                        outcome.sandbox,
+                        outcome.source_ip,
+                        outcome.network_log_session,
+                        outcome.guest_session_id,
+                        telemetry,
+                    )
+                }
+                Err(e) => {
+                    // Panic lost the in-flight telemetry buffer; substitute an
+                    // empty collector so the post-complete flush path stays
+                    // unconditional. `flush` early-returns on empty pending_ops.
+                    let empty_telemetry = JobTelemetry::new(
+                        exec_config_for_deferred.http.clone(),
+                        run_id,
+                        sandbox_token.clone(),
+                    );
+                    (
+                        1,
+                        Some(format!("executor task panicked: {e}")),
+                        None,
+                        String::new(),
+                        None,
+                        None,
+                        empty_telemetry,
+                    )
+                }
+            };
 
             // Single sink for any claimed job's terminal state. Cancellation gets
             // its own info marker; everything else with `err` set is a failure
@@ -1711,12 +1750,14 @@ fn spawn_job(
                     session_id,
                     guest_session_id,
                     source_ip,
+                    network_log_session,
                     storage_fingerprints,
                     factory: factory_for_cleanup,
                     idle_pool,
                     status: Arc::clone(&status),
                     park_notify,
                     parking_gate,
+                    network_log_drain: exec_config_for_deferred.network_log_drain.clone(),
                     exit_code,
                     cancel: job_cancel,
                     cleanup_state: cleanup_state_for_body.clone(),
@@ -1735,9 +1776,10 @@ fn spawn_job(
             // user-visible run-complete signal isn't blocked on these uploads.
             // They're still awaited (not spawned) so the surrounding `jobs`
             // JoinSet drains them on graceful shutdown — no data loss on SIGTERM.
-            // Telemetry flush runs concurrently with network-log drain + upload.
-            // Network-log upload must wait for accepted Rust-side DNS/kmsg writes
-            // before reading the per-run JSONL snapshot.
+            // Telemetry flush runs concurrently with best-effort network-log upload.
+            // The job finalizer already closed the local Rust-side DNS/kmsg
+            // session before sandbox reuse/release. Keep this flush as a
+            // defensive no-op for any accepted writes still finishing.
             let network_log_path = exec_config_for_deferred.log_paths.network_log(run_id);
             let network_log_upload = async {
                 exec_config_for_deferred
@@ -2179,20 +2221,21 @@ async fn destroy_idle_payload_and_wait(
     }
 }
 
-#[derive(Clone, Copy)]
 struct ActiveCleanupContext<'a> {
     run_id: RunId,
     sandbox_id: SandboxId,
     profile_name: &'a str,
     session_id: Option<&'a str>,
     reason: &'static str,
+    network_log_session: Option<NetworkLogSession>,
+    network_log_drain: NetworkLogDrainCoordinator,
 }
 
 /// Stop a sandbox and destroy it via its factory.
 async fn stop_and_destroy_sandbox(
     mut sandbox: Box<dyn Sandbox>,
     factory: &dyn SandboxFactory,
-    context: ActiveCleanupContext<'_>,
+    mut context: ActiveCleanupContext<'_>,
 ) -> DestroyOutcome {
     let mut uncertain = false;
     match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
@@ -2218,6 +2261,12 @@ async fn stop_and_destroy_sandbox(
             uncertain = true;
         }
     }
+    close_network_log_session(
+        context.run_id,
+        context.network_log_session.take(),
+        &context.network_log_drain,
+    )
+    .await;
     if AssertUnwindSafe(factory.destroy(sandbox))
         .catch_unwind()
         .await
@@ -3729,6 +3778,7 @@ mod tests {
                 http: crate::http::HttpClient::new(api_url.to_string()).unwrap(),
                 log_paths: crate::paths::LogPaths::new(log_dir),
                 network_log_manager: NetworkLogManager::new(),
+                network_log_drain: NetworkLogDrainCoordinator::noop(),
                 home,
             }),
             firecracker: config::FirecrackerConfig {
@@ -3938,7 +3988,7 @@ mod tests {
             ),
         )
         .unwrap();
-        network_log_manager
+        let _network_log_session = network_log_manager
             .register_source_ip("10.200.0.200", network_log_path.clone())
             .await;
         assert!(
@@ -3959,12 +4009,16 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
+        // The finalizer now closes Rust-side network-log attribution before
+        // completing the job, so release the accepted write before waiting for
+        // completion. The upload itself is still deferred until after the
+        // completion request below.
+        release_write.add_permits(1);
         let completion = env
             .handle
             .wait_completion(run_id, Duration::from_secs(5))
             .await;
         assert!(completion.is_some(), "job should complete");
-        release_write.add_permits(1);
 
         // Drain shutdown — must block on each `spawn_job` closure's deferred
         // `tokio::join!(flush, upload)` via the outer `jobs` JoinSet.
