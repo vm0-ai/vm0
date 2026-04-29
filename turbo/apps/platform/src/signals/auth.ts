@@ -173,6 +173,26 @@ export const user$ = computed(async (get) => {
   return clerk.user ?? undefined;
 });
 
+export const currentUserInfo$ = computed(async (get) => {
+  get(clerkVersion$);
+  const clerk = await get(clerk$);
+  const user = clerk.user;
+  if (!user) {
+    return undefined;
+  }
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    firstName: user.firstName,
+    imageUrl: user.imageUrl,
+    primaryEmailAddress: user.primaryEmailAddress
+      ? {
+          emailAddress: user.primaryEmailAddress.emailAddress,
+        }
+      : null,
+  };
+});
+
 /**
  * Snapshot of the Clerk active organization, re-emitted on every clerk
  * event (via clerkVersion$). Read this instead of `clerk.organization.*`

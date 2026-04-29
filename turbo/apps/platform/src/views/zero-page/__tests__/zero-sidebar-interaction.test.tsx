@@ -20,7 +20,11 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import {
+  fireClerkListeners,
+  mockedClerk,
+  mockUser,
+} from "../../../__tests__/mock-auth.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -181,6 +185,33 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
     await waitFor(() => {
       expect(screen.getByText("Sign out")).toBeInTheDocument();
     });
+  });
+});
+
+describe("zero sidebar - account profile refresh", () => {
+  it("updates the account trigger after Clerk profile changes", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Test User")).toBeInTheDocument();
+    });
+
+    mockUser(
+      {
+        id: "test-user-123",
+        fullName: "Renamed User",
+        email: "renamed@example.com",
+      },
+      { token: "test-token" },
+    );
+    fireClerkListeners();
+
+    await waitFor(() => {
+      expect(screen.getByText("Renamed User")).toBeInTheDocument();
+      expect(screen.getByText("renamed@example.com")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Test User")).not.toBeInTheDocument();
   });
 });
 

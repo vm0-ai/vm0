@@ -23,7 +23,11 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@vm0/ui";
-import { clerk$, user$, resolveWebOrigin } from "../../signals/auth.ts";
+import {
+  clerk$,
+  currentUserInfo$,
+  resolveWebOrigin,
+} from "../../signals/auth.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { ZeroAccountAction } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -69,8 +73,6 @@ function AccountAvatar({
 
 function useAccountSessions() {
   const clerkLoadable = useLoadable(clerk$);
-  const userLoadable = useLoadable(user$);
-  const user = userLoadable.state === "hasData" ? userLoadable.data : null;
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
 
   const currentSessionId = clerk?.session?.id;
@@ -91,7 +93,284 @@ function useAccountSessions() {
       };
     });
 
-  return { user, clerk, accounts };
+  return { clerk, accounts };
+}
+
+interface AccountDisplay {
+  name: string;
+  email: string;
+  initial: string;
+  imageUrl: string | undefined;
+}
+
+function accountDisplayFrom(
+  user:
+    | {
+        fullName: string | null;
+        imageUrl: string | undefined;
+        primaryEmailAddress: { emailAddress: string } | null;
+      }
+    | undefined,
+  fallback: SessionAccount | undefined,
+): AccountDisplay {
+  const name = user?.fullName ?? fallback?.name ?? "User";
+  return {
+    name,
+    email: user?.primaryEmailAddress?.emailAddress ?? fallback?.email ?? "",
+    initial: name.charAt(0).toUpperCase(),
+    imageUrl: user?.imageUrl ?? fallback?.imageUrl,
+  };
+}
+
+function renderAccountTrigger(display: AccountDisplay, collapsed: boolean) {
+  return (
+    <button
+      type="button"
+      className={`rounded-lg transition-colors duration-200 ${
+        collapsed
+          ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-sidebar-accent"
+          : "flex w-full items-center gap-2 p-2 text-left hover:bg-sidebar-accent"
+      }`}
+    >
+      <AccountAvatar
+        imageUrl={display.imageUrl}
+        name={display.name}
+        initial={display.initial}
+      />
+      {!collapsed && (
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium leading-tight truncate text-sidebar-foreground">
+            {display.name}
+          </p>
+          <p className="text-xs leading-tight truncate mt-px text-sidebar-foreground opacity-70">
+            {display.email}
+          </p>
+        </div>
+      )}
+    </button>
+  );
+}
+
+function CurrentAccountHeader({
+  display,
+  visible,
+}: {
+  display: AccountDisplay;
+  visible: boolean;
+}) {
+  if (!visible) {
+    return null;
+  }
+  return (
+    <>
+      <div className="px-3 py-3">
+        <div className="flex items-center gap-3">
+          <AccountAvatar
+            imageUrl={display.imageUrl}
+            name={display.name}
+            initial={display.initial}
+            size="md"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-foreground truncate">
+              {display.name}
+            </div>
+            <div className="text-xs text-muted-foreground truncate">
+              {display.email}
+            </div>
+          </div>
+        </div>
+      </div>
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function PreferencesGroup({
+  hidePreferences,
+  onAccountAction,
+}: {
+  hidePreferences: boolean;
+  onAccountAction: (action: ZeroAccountAction) => void;
+}) {
+  if (hidePreferences) {
+    return null;
+  }
+  return (
+    <>
+      <DropdownMenuItem
+        onClick={() => {
+          return onAccountAction("preferences");
+        }}
+        className="gap-3 px-3 py-2.5 rounded-lg"
+      >
+        <IconAdjustmentsHorizontal
+          size={18}
+          stroke={1.5}
+          className="text-muted-foreground"
+        />
+        <span>Preferences</span>
+      </DropdownMenuItem>
+      <DropdownMenuItem
+        onClick={() => {
+          return onAccountAction("usage");
+        }}
+        className="gap-3 px-3 py-2.5 rounded-lg"
+      >
+        <IconChartBar
+          size={18}
+          stroke={1.5}
+          className="text-muted-foreground"
+        />
+        <span>Usage</span>
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function AccountManagementGroup({
+  others,
+  onSwitchSession,
+  onAddAccount,
+}: {
+  others: SessionAccount[];
+  onSwitchSession: (sessionId: string) => void;
+  onAddAccount: () => void;
+}) {
+  if (others.length === 0) {
+    return (
+      <DropdownMenuItem
+        onClick={onAddAccount}
+        className="gap-3 px-3 py-2.5 rounded-lg"
+      >
+        <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
+        <span>Add account</span>
+      </DropdownMenuItem>
+    );
+  }
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
+        <IconSwitchHorizontal
+          size={18}
+          stroke={1.5}
+          className="text-muted-foreground"
+        />
+        <span className="flex-1">Switch account</span>
+        <IconChevronRight
+          size={14}
+          stroke={1.5}
+          className="text-muted-foreground"
+        />
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-[220px]">
+        {others.map((account) => {
+          return (
+            <DropdownMenuItem
+              key={account.sessionId}
+              onClick={() => {
+                return onSwitchSession(account.sessionId);
+              }}
+              className="gap-3 px-3 py-2.5 rounded-lg"
+            >
+              <AccountAvatar
+                imageUrl={account.imageUrl}
+                name={account.name}
+                initial={account.initial}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-foreground truncate">
+                  {account.name}
+                </div>
+                <div className="text-xs text-muted-foreground truncate">
+                  {account.email}
+                </div>
+              </div>
+            </DropdownMenuItem>
+          );
+        })}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={onAddAccount}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
+          <span>Add account</span>
+        </DropdownMenuItem>
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
+function ExtraAccountActions({
+  apiKeysEnabled,
+  showExportData,
+  apiBase,
+  onAccountAction,
+}: {
+  apiKeysEnabled: boolean;
+  showExportData: boolean;
+  apiBase: string;
+  onAccountAction: (action: ZeroAccountAction) => void;
+}) {
+  return (
+    <>
+      <DropdownMenuItem
+        onClick={() => {
+          return onAccountAction("manage");
+        }}
+        className="gap-3 px-3 py-2.5 rounded-lg"
+      >
+        <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
+        <span>Manage account</span>
+      </DropdownMenuItem>
+      {apiKeysEnabled && (
+        <DropdownMenuItem
+          onClick={() => {
+            return onAccountAction("apiKeys");
+          }}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconKey size={18} stroke={1.5} className="text-muted-foreground" />
+          <span>API Keys</span>
+        </DropdownMenuItem>
+      )}
+      {showExportData && (
+        <DropdownMenuItem
+          onClick={() => {
+            return window.open(`${apiBase}/export`, "_blank");
+          }}
+          className="gap-3 px-3 py-2.5 rounded-lg"
+        >
+          <IconDatabaseExport
+            size={18}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+          <span>Export data</span>
+        </DropdownMenuItem>
+      )}
+    </>
+  );
+}
+
+function SignOutItem({
+  onAccountAction,
+}: {
+  onAccountAction: (action: ZeroAccountAction) => void;
+}) {
+  return (
+    <DropdownMenuItem
+      onClick={() => {
+        return onAccountAction("signout");
+      }}
+      className="gap-3 px-3 py-2.5 rounded-lg"
+    >
+      <IconLogout size={18} stroke={1.5} className="text-muted-foreground" />
+      <span>Sign out</span>
+    </DropdownMenuItem>
+  );
 }
 
 export function AccountDropdown({
@@ -103,22 +382,22 @@ export function AccountDropdown({
   collapsed?: boolean;
   hidePreferences?: boolean;
 }) {
-  const { user, clerk, accounts } = useAccountSessions();
+  const { clerk, accounts } = useAccountSessions();
+  const userInfoLoadable = useLoadable(currentUserInfo$);
+  const user =
+    userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
   const apiBase = useGet(apiBaseForNavigation$);
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const apiKeysEnabled = features?.[FeatureSwitchKey.ApiKeys] ?? false;
-  const accountName = user?.fullName ?? "User";
-  const accountEmail = user?.primaryEmailAddress?.emailAddress ?? "";
-  const accountInitial = accountName.charAt(0).toUpperCase();
 
   const current = accounts.find((a) => {
     return a.isActive;
   });
+  const accountDisplay = accountDisplayFrom(user, current);
   const others = accounts.filter((a) => {
     return !a.isActive;
   });
-  const hasOthers = others.length > 0;
 
   const handleAccountAction = (action: ZeroAccountAction) => {
     if (action === "signout") {
@@ -156,30 +435,7 @@ export function AccountDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={`rounded-lg transition-colors duration-200 ${
-            collapsed
-              ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-sidebar-accent"
-              : "flex w-full items-center gap-2 p-2 text-left hover:bg-sidebar-accent"
-          }`}
-        >
-          <AccountAvatar
-            imageUrl={user?.imageUrl}
-            name={accountName}
-            initial={accountInitial}
-          />
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium leading-tight truncate text-sidebar-foreground">
-                {accountName}
-              </p>
-              <p className="text-xs leading-tight truncate mt-px text-sidebar-foreground opacity-70">
-                {accountEmail}
-              </p>
-            </div>
-          )}
-        </button>
+        {renderAccountTrigger(accountDisplay, collapsed)}
       </DropdownMenuTrigger>
 
       <DropdownMenuContent
@@ -188,182 +444,27 @@ export function AccountDropdown({
         sideOffset={8}
         className="w-[240px]"
       >
-        {/* Current account header */}
-        {current && (
-          <>
-            <div className="px-3 py-3">
-              <div className="flex items-center gap-3">
-                <AccountAvatar
-                  imageUrl={current.imageUrl}
-                  name={current.name}
-                  initial={current.initial}
-                  size="md"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-foreground truncate">
-                    {current.name}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    {current.email}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <DropdownMenuSeparator />
-          </>
-        )}
-
-        {/* Preferences + Usage group */}
-        {!hidePreferences && (
-          <>
-            <DropdownMenuItem
-              onClick={() => {
-                return handleAccountAction("preferences");
-              }}
-              className="gap-3 px-3 py-2.5 rounded-lg"
-            >
-              <IconAdjustmentsHorizontal
-                size={18}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-              <span>Preferences</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => {
-                return handleAccountAction("usage");
-              }}
-              className="gap-3 px-3 py-2.5 rounded-lg"
-            >
-              <IconChartBar
-                size={18}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-              <span>Usage</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-          </>
-        )}
-
-        {/* Account management group */}
-        {hasOthers ? (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="gap-3 px-3 py-2.5 rounded-lg">
-              <IconSwitchHorizontal
-                size={18}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-              <span className="flex-1">Switch account</span>
-              <IconChevronRight
-                size={14}
-                stroke={1.5}
-                className="text-muted-foreground"
-              />
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent className="w-[220px]">
-              {others.map((account) => {
-                return (
-                  <DropdownMenuItem
-                    key={account.sessionId}
-                    onClick={() => {
-                      return handleSwitchSession(account.sessionId);
-                    }}
-                    className="gap-3 px-3 py-2.5 rounded-lg"
-                  >
-                    <AccountAvatar
-                      imageUrl={account.imageUrl}
-                      name={account.name}
-                      initial={account.initial}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium text-foreground truncate">
-                        {account.name}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {account.email}
-                      </div>
-                    </div>
-                  </DropdownMenuItem>
-                );
-              })}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={handleAddAccount}
-                className="gap-3 px-3 py-2.5 rounded-lg"
-              >
-                <IconPlus
-                  size={18}
-                  stroke={1.5}
-                  className="text-muted-foreground"
-                />
-                <span>Add account</span>
-              </DropdownMenuItem>
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        ) : (
-          <DropdownMenuItem
-            onClick={handleAddAccount}
-            className="gap-3 px-3 py-2.5 rounded-lg"
-          >
-            <IconPlus
-              size={18}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-            <span>Add account</span>
-          </DropdownMenuItem>
-        )}
-        <DropdownMenuItem
-          onClick={() => {
-            return handleAccountAction("manage");
-          }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconUser size={18} stroke={1.5} className="text-muted-foreground" />
-          <span>Manage account</span>
-        </DropdownMenuItem>
-        {apiKeysEnabled && (
-          <DropdownMenuItem
-            onClick={() => {
-              return handleAccountAction("apiKeys");
-            }}
-            className="gap-3 px-3 py-2.5 rounded-lg"
-          >
-            <IconKey size={18} stroke={1.5} className="text-muted-foreground" />
-            <span>API Keys</span>
-          </DropdownMenuItem>
-        )}
-        {showExportData && (
-          <DropdownMenuItem
-            onClick={() => {
-              return window.open(`${apiBase}/export`, "_blank");
-            }}
-            className="gap-3 px-3 py-2.5 rounded-lg"
-          >
-            <IconDatabaseExport
-              size={18}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-            <span>Export data</span>
-          </DropdownMenuItem>
-        )}
+        <CurrentAccountHeader
+          display={accountDisplay}
+          visible={current !== undefined || user !== undefined}
+        />
+        <PreferencesGroup
+          hidePreferences={hidePreferences}
+          onAccountAction={handleAccountAction}
+        />
+        <AccountManagementGroup
+          others={others}
+          onSwitchSession={handleSwitchSession}
+          onAddAccount={handleAddAccount}
+        />
+        <ExtraAccountActions
+          apiKeysEnabled={apiKeysEnabled}
+          showExportData={showExportData}
+          apiBase={apiBase}
+          onAccountAction={handleAccountAction}
+        />
         <DropdownMenuSeparator />
-        <DropdownMenuItem
-          onClick={() => {
-            return handleAccountAction("signout");
-          }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconLogout
-            size={18}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
-          <span>Sign out</span>
-        </DropdownMenuItem>
+        <SignOutItem onAccountAction={handleAccountAction} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
