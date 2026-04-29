@@ -21,20 +21,21 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# Usage/body_utils/response_streaming are imported by module (not selective `from X import ...`)
+# Usage/body_utils/registry/response_streaming are imported by module
+# (not selective `from X import ...`)
 # so that:
 #   1. Cross-module calls read as ``usage.X(...)`` / ``body_utils.X(...)`` /
-#      ``response_streaming.X(...)``,
+#      ``registry.X(...)`` / ``response_streaming.X(...)``,
 #      making the module boundary visible at call sites.
 #   2. Tests can patch names on the owning module object and affect all
 #      callers — no mock-placement pitfalls from copied function bindings.
 import body_utils
+import registry
 import response_streaming
 import usage
 import vendor_check
 from auth import (
     _firewall_header_cache,
-    evict_stale_cache_keys,
     handle_firewall_request,
     request_force_refresh,
 )
@@ -104,66 +105,8 @@ def get_registry_path() -> str:
     return ctx.options.vm0_proxy_registry_path
 
 
-# ============================================================================
-# Registry & VM Lookup
-# ============================================================================
-
-# Cache for proxy registry (invalidated by file stat change)
-_registry_cache: dict = {}
-_registry_cache_key: tuple[int, int] = (0, 0)
-# One-shot guard for stat-path failures: no cache key is available in that
-# branch, so we fall back to a flag (mirrors counters.py:_pending_write_error_logged).
-# Parse-path failures use the cache key itself — recording the bad file's
-# (mtime_ns, size) as already-processed prevents re-parsing the same bytes
-# on every request and re-warning about them.
-_registry_load_error_logged = False
-
 # Track request start times for latency calculation
 _request_start_times: dict = {}
-
-
-def load_registry() -> dict:
-    """Load the proxy registry from file, with stat-based cache invalidation."""
-    global _registry_cache, _registry_cache_key, _registry_load_error_logged
-
-    try:
-        registry_path = Path(get_registry_path())
-        st = registry_path.stat()
-    except OSError as e:
-        if not _registry_load_error_logged:
-            _registry_load_error_logged = True
-            ctx.log.warn(f"Failed to stat proxy registry: {e}")
-        return _registry_cache
-
-    key = (st.st_mtime_ns, st.st_size)
-    if key == _registry_cache_key:
-        return _registry_cache
-
-    try:
-        with registry_path.open() as f:
-            new_registry = json.load(f).get("vms", {})
-
-        # Evict cache entries for runs no longer in the registry
-        active_run_ids = {vm.get("runId") for vm in new_registry.values()}
-        evict_stale_cache_keys(active_run_ids)
-
-        _registry_cache = new_registry
-        _registry_load_error_logged = False
-    except Exception as e:
-        if not _registry_load_error_logged:
-            _registry_load_error_logged = True
-            ctx.log.warn(f"Failed to parse proxy registry: {e}")
-
-    # Record this file state as already processed — success or parse failure —
-    # so subsequent requests on the same bytes short-circuit at the key check.
-    _registry_cache_key = key
-    return _registry_cache
-
-
-def get_vm_info(client_ip: str) -> dict | None:
-    """Look up VM info by client IP address."""
-    registry = load_registry()
-    return registry.get(client_ip)
 
 
 # ============================================================================
@@ -181,7 +124,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     if not client_ip:
         return
 
-    vm_info = get_vm_info(client_ip)
+    vm_info = registry.get_vm_info(client_ip, get_registry_path())
     if not vm_info:
         # Not a registered VM - pass through without MITM interception
         # This is critical for CIDR-based rules where all VM traffic is redirected
@@ -212,7 +155,7 @@ async def request(flow: http.HTTPFlow) -> None:
         return
 
     # Look up VM info from registry
-    vm_info = get_vm_info(client_ip)
+    vm_info = registry.get_vm_info(client_ip, get_registry_path())
 
     if not vm_info:
         # Not a registered VM, pass through without proxying
@@ -603,7 +546,7 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
     if not client_ip:
         return
 
-    vm_info = get_vm_info(client_ip)
+    vm_info = registry.get_vm_info(client_ip, get_registry_path())
     if not vm_info:
         return
 

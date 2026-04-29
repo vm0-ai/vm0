@@ -18,6 +18,7 @@ from mitmproxy.test import tutils
 import auth
 import body_utils
 import mitm_addon
+import registry as registry_cache
 import usage
 from usage import create_sse_usage_extractor
 from usage.namespaces import USAGE_EVENT_NAMESPACE_MODEL
@@ -4770,8 +4771,8 @@ class TestFirewallHeaderCache:
         with (
             mitm_ctx(registry_path=str(reg_path)),
         ):
-            mitm_addon._registry_cache_key = (0, 0)
-            mitm_addon.load_registry()
+            registry_cache.reset_cache_for_tests()
+            registry_cache.load_registry(str(reg_path))
 
         assert ("run-old", "api-1") not in auth._firewall_header_cache
         assert ("run-old", "api-1") not in auth._cache_locks
