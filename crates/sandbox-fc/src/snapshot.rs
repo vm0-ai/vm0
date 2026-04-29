@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use tokio::io::AsyncBufReadExt;
 use tracing::info;
 
-use nbd_cow::NbdCowDevice;
+use nbd_cow::{DestroyRetryPolicy, PooledNbdCowDevice};
 use sandbox::{SnapshotCreateConfig, SnapshotOutput, SnapshotProvider};
 
 use crate::api::{ApiClient, ApiError};
@@ -25,6 +25,13 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 use crate::factory::{DESTROY_RETRIES, DESTROY_RETRY_DELAY};
+
+fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
+    DestroyRetryPolicy {
+        attempts: DESTROY_RETRIES,
+        delay: DESTROY_RETRY_DELAY,
+    }
+}
 
 /// Errors that can occur during Firecracker snapshot creation.
 ///
@@ -189,26 +196,30 @@ pub async fn create_snapshot(
             .map_err(|e| SnapshotError::Setup(format!("set COW file size: {e}")))?;
     }
 
-    let device_pool = tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
-        nbd_cow::pool::DevicePoolConfig::default(),
-    ));
-    device_pool.lock().await.warmup().await;
-    let cow_device = NbdCowDevice::create(&config.rootfs_path, &cow_file, base_size, &device_pool)
+    let device_pool =
+        nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
+    device_pool.warmup().await;
+    let cow_device = device_pool
+        .create_cow_device(&config.rootfs_path, &cow_file, base_size)
         .await
         .map_err(|e| SnapshotError::Setup(format!("create NBD COW device: {e}")))?;
 
-    let device_index = cow_device.device_index();
     info!(device = %cow_device.device_path().display(), "NBD COW device created");
 
     // 3. Create network namespace (pool of 1, index auto-allocated via flock).
     let mut netns_pool = match NetnsPool::create_checked(netns_config).await {
         Ok(pool) => pool,
         Err(e) => {
-            drop(cow_device);
-            let mut pool = device_pool.lock().await;
-            pool.release(device_index);
-            pool.cleanup().await;
-            drop(pool);
+            if let Err(cleanup_err) = cow_device
+                .destroy_with_retries(cow_destroy_retry_policy())
+                .await
+            {
+                tracing::warn!(
+                    error = %cleanup_err,
+                    "failed to destroy COW device after netns pool failure"
+                );
+            }
+            device_pool.cleanup().await;
             if let Err(cleanup_err) = tokio::fs::remove_dir_all(&sock_dir).await {
                 tracing::warn!(
                     error = %cleanup_err,
@@ -230,11 +241,7 @@ pub async fn create_snapshot(
     )
     .await;
 
-    // Release device index back to pool before cleanup.
-    let mut pool = device_pool.lock().await;
-    pool.release(device_index);
-    pool.cleanup().await;
-    drop(pool);
+    device_pool.cleanup().await;
     if let Err(e) = netns_pool.cleanup().await {
         tracing::warn!(error = %e, "failed to cleanup netns pool");
     }
@@ -340,7 +347,7 @@ async fn run_snapshot_workflow(
     sock_paths: &SockPaths,
     output: &SnapshotOutputPaths,
     netns_pool: &mut NetnsPool,
-    mut cow_device: NbdCowDevice,
+    cow_device: PooledNbdCowDevice,
 ) -> Result<SnapshotConfig, SnapshotError> {
     // Filesystem pre-requisites that don't require the netns: do these
     // *before* `netns_pool.acquire()` so that a transient fs error
@@ -484,46 +491,20 @@ async fn run_snapshot_workflow(
     // released. The COW-device bind mount lived inside the FC process's
     // private mount namespace and was auto-cleaned when the process exited.
     if result.is_ok() {
-        let mut last_err = None;
-        for attempt in 0..DESTROY_RETRIES {
-            match cow_device.destroy_keep_cow().await {
-                Ok(()) => {
-                    last_err = None;
-                    break;
-                }
-                Err(e) => {
-                    last_err = Some(e);
-                    if attempt + 1 < DESTROY_RETRIES {
-                        tokio::time::sleep(DESTROY_RETRY_DELAY).await;
-                    }
-                }
-            }
-        }
-        if let Some(e) = last_err {
-            // Last resort: abandon the device so Drop is a no-op. It persists
-            // in the kernel until `runner gc` cleans it up; the COW file is
-            // left in the work dir and will be cleaned up by the next
-            // `create_snapshot` run.
-            //
-            // Fail the snapshot instead of finalizing it: without a successful
-            // `destroy_keep_cow` we cannot rely on `save_bitmap` having
-            // persisted the dirty bitmap, and renaming the COW file into the
-            // output dir without a matching bitmap would produce a snapshot
-            // that `is_complete()` reports as valid but silently corrupts
-            // restore reads (dirty blocks shadowed by base image). See #9843.
-            cow_device.abandon();
-            return Err(SnapshotError::Teardown(format!(
-                "destroy_keep_cow exhausted retries; device abandoned, snapshot aborted (last error: {e})"
-            )));
-        }
+        let kept_cow = cow_device
+            .destroy_keep_cow_with_retries(cow_destroy_retry_policy())
+            .await
+            .map_err(|e| {
+                SnapshotError::Teardown(format!(
+                    "destroy_keep_cow exhausted retries; device abandoned, snapshot aborted (last error: {e})"
+                ))
+            })?;
         // destroy_keep_cow succeeded, so save_bitmap succeeded — the bitmap
         // sidecar is on disk. Rename is unconditional: if the sidecar is
         // missing we want to fail loudly, not silently produce a
         // bitmap-less snapshot.
-        let cow_file = cow_device.cow_file();
-        let bitmap_src = nbd_cow::cow::bitmap_path_for(cow_file);
-        tokio::fs::rename(&bitmap_src, &output.cow_bitmap()).await?;
-        tokio::fs::rename(cow_file, &output.cow()).await?;
+        tokio::fs::rename(&kept_cow.bitmap_file, &output.cow_bitmap()).await?;
+        tokio::fs::rename(&kept_cow.cow_file, &output.cow()).await?;
         // Persist the output directory so all four final dir entries
         // (snapshot.bin and memory.bin written by Firecracker via the API,
         // cow.img and cow.img.bitmap just renamed in) are durable. Without
@@ -536,8 +517,12 @@ async fn run_snapshot_workflow(
         // (same failure class as #9794, one layer up).
         let dir = tokio::fs::File::open(output.dir()).await?;
         dir.sync_all().await?;
+    } else if let Err(e) = cow_device
+        .destroy_with_retries(cow_destroy_retry_policy())
+        .await
+    {
+        tracing::warn!(error = %e, "failed to destroy COW device after snapshot error");
     }
-    // On error, cow_device is dropped → Drop calls destroy() (best-effort).
 
     result
 }

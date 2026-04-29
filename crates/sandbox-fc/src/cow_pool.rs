@@ -1,7 +1,7 @@
 //! COW Device Pool for Firecracker VMs
 //!
 //! Pre-warms COW files in the background to reduce sandbox creation latency.
-//! On acquire, only `NbdCowDevice::create()` remains on the hot path (~15ms,
+//! On acquire, only `DevicePoolHandle::create_cow_device()` remains on the hot path (~15ms,
 //! netlink connect — no subprocess calls).
 //!
 //! Follows the [`NetnsPool`](crate::network::NetnsPool) pattern:
@@ -41,7 +41,7 @@ pub(crate) struct CowPoolConfig {
 /// A pre-warmed slot: workspace directory + COW file created.
 ///
 /// The caller must create the NBD device on acquire via
-/// [`NbdCowDevice::create()`](nbd_cow::NbdCowDevice::create).
+/// `DevicePoolHandle::create_cow_device()`.
 pub(crate) struct PrewarmedSlot {
     /// Unique slot ID (UUID). Used as workspace directory name.
     pub id: String,
@@ -85,7 +85,7 @@ pub(crate) enum CowPoolError {
 ///
 /// Maintains a buffer of pre-created COW files. On [`acquire`](Self::acquire),
 /// pops a slot and the caller creates the NBD device with
-/// [`NbdCowDevice::create()`](nbd_cow::NbdCowDevice::create).
+/// `DevicePoolHandle::create_cow_device()`.
 pub(crate) struct CowPool {
     active: bool,
     queue: VecDeque<PrewarmedSlot>,

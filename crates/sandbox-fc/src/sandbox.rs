@@ -19,7 +19,7 @@ use tracing::{info, trace, warn};
 use vsock_host::VsockHost;
 
 use crate::api::ApiError;
-use nbd_cow::NbdCowDevice;
+use nbd_cow::PooledNbdCowDevice;
 
 use crate::api::ApiClient;
 use crate::balloon;
@@ -268,7 +268,7 @@ pub struct FirecrackerSandbox {
     /// Pooled network namespace (returned to pool on destroy).
     pub(crate) network: PooledNetns,
     /// NBD COW device (torn down on destroy).
-    pub(crate) cow_device: NbdCowDevice,
+    pub(crate) cow_device: Option<PooledNbdCowDevice>,
     process_monitor: Option<ProcessMonitorHandle>,
     /// Process-group leader PID for the spawned Firecracker wrapper.
     /// Captured at spawn time for cleanup and best-effort host-side OOM
@@ -314,7 +314,7 @@ impl FirecrackerSandbox {
         sandbox_paths: SandboxPaths,
         sock_paths: SockPaths,
         network: PooledNetns,
-        cow_device: NbdCowDevice,
+        cow_device: PooledNbdCowDevice,
         leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
     ) -> Self {
         let id = config.id.to_string();
@@ -325,7 +325,7 @@ impl FirecrackerSandbox {
             sandbox_paths,
             sock_paths,
             network,
-            cow_device,
+            cow_device: Some(cow_device),
             process_monitor: None,
             process_group_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
@@ -338,6 +338,12 @@ impl FirecrackerSandbox {
             destroyed: false,
             is_parked: false,
         }
+    }
+
+    pub(crate) fn cow_device(&self) -> sandbox::Result<&PooledNbdCowDevice> {
+        self.cow_device.as_ref().ok_or_else(|| SandboxError::Start {
+            message: "COW device missing before sandbox start".into(),
+        })
     }
 
     fn current_state(&self) -> SandboxState {
@@ -428,13 +434,13 @@ impl FirecrackerSandbox {
     }
 
     /// Build the Firecracker JSON configuration for fresh boot.
-    fn build_config(&self) -> serde_json::Value {
+    fn build_config(&self) -> sandbox::Result<serde_json::Value> {
         let inv = InvariantConfig::new();
         let kernel_path = self.factory_config.kernel_path.display().to_string();
-        let cow_device_path = self.cow_device.device_path().display().to_string();
+        let cow_device_path = self.cow_device()?.device_path().display().to_string();
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
-        serde_json::json!({
+        Ok(serde_json::json!({
             "boot-source": {
                 "kernel_image_path": kernel_path,
                 "boot_args": inv.boot_args,
@@ -467,12 +473,12 @@ impl FirecrackerSandbox {
                 "deflate_on_oom": inv.balloon.deflate_on_oom,
                 "stats_polling_interval_s": inv.balloon.stats_polling_interval_s,
             },
-        })
+        }))
     }
 
     /// Start using a fresh boot with `--config-file --api-sock`.
     async fn start_fresh(&mut self, runtime_cancel: CancellationToken) -> sandbox::Result<()> {
-        let config = self.build_config();
+        let config = self.build_config()?;
         let config_json =
             serde_json::to_string_pretty(&config).map_err(|e| SandboxError::Start {
                 message: format!("serialize config: {e}"),
@@ -575,7 +581,7 @@ impl FirecrackerSandbox {
                 message: format!("sock dir missing before spawn: {}", sock_dir.display()),
             });
         }
-        let cow_device_path = self.cow_device.device_path();
+        let cow_device_path = self.cow_device()?.device_path();
         info!(
             id = %self.id,
             api_sock = %api_sock.display(),
@@ -715,15 +721,14 @@ impl Drop for FirecrackerSandbox {
 
         // If factory.destroy() was not called, send pool resources to the
         // async cleanup channel so they can be released without blocking.
-        // NbdCowDevice::Drop handles the kernel-level NBD disconnect; this
-        // covers the pool index, network namespace, and directories.
+        // The owned pooled COW device carries the pool lease; copied device
+        // indices are diagnostics only and are not release authority.
         if !self.destroyed
             && let Some(tx) = self.leak_tx.take()
         {
             let resources = crate::factory::LeakedResources {
                 sandbox_id: self.id.clone(),
-                device_index: Some(self.cow_device.device_index()),
-                cow_device: None,
+                cow_device: self.cow_device.take(),
                 network: Some(self.network.clone()),
                 sock_dir: self.sock_paths.dir().to_owned(),
                 workspace: self.sandbox_paths.workspace().to_owned(),

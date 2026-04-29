@@ -1,7 +1,8 @@
 //! In-process NBD copy-on-write block devices.
 //!
 //! This crate exposes a Linux NBD device backed by a read-only base image and a
-//! sparse copy-on-write (COW) file. [`NbdCowDevice::create`] connects the device,
+//! sparse copy-on-write (COW) file. [`pool::DevicePoolHandle::create_cow_device`]
+//! connects the device,
 //! starts the request dispatch tasks, and serves reads from pending writes, the
 //! COW file, then the base image. Writes are buffered in memory and flushed to
 //! the sparse COW file according to [`DEFAULT_FLUSH_THRESHOLD`].
@@ -17,9 +18,9 @@
 //! - [`protocol`] for NBD transmission protocol parsing and serialization.
 //! - [`error`] for crate error and result types.
 //!
-//! Call [`NbdCowDevice::destroy`] or [`NbdCowDevice::destroy_keep_cow`] when the
-//! device should be shut down cleanly. Dropping a device only performs
-//! best-effort cleanup and may discard buffered writes that were not flushed.
+//! Call pooled-device finalizers when the device should be shut down cleanly.
+//! Dropping a device only performs best-effort cleanup and may discard buffered
+//! writes that were not flushed.
 
 pub mod cow;
 pub mod error;
@@ -30,9 +31,10 @@ pub mod server;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use error::Result;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
@@ -44,6 +46,30 @@ pub const NUM_CONNECTIONS: usize = 4;
 
 /// Default write buffer flush threshold: 4MB.
 pub const DEFAULT_FLUSH_THRESHOLD: usize = 4 * 1024 * 1024;
+
+/// Retry policy for clean COW device finalization.
+#[derive(Clone, Copy, Debug)]
+pub struct DestroyRetryPolicy {
+    /// Number of destroy attempts. Values below 1 are treated as 1 attempt.
+    pub attempts: u32,
+    /// Delay between attempts.
+    pub delay: Duration,
+}
+
+impl DestroyRetryPolicy {
+    fn attempts(self) -> u32 {
+        self.attempts.max(1)
+    }
+}
+
+/// Paths produced by a successful keep-COW finalizer.
+#[derive(Debug)]
+pub struct KeptCow {
+    /// Preserved COW file path.
+    pub cow_file: PathBuf,
+    /// Persisted dirty bitmap sidecar path.
+    pub bitmap_file: PathBuf,
+}
 
 /// Result of checking NBD device ownership via sysfs PID.
 enum DeviceOwnership {
@@ -97,12 +123,12 @@ impl NbdCowDevice {
     /// - **Outer (size-stuck-at-0):** If the kernel hasn't finished tearing down
     ///   a previous connection, disconnect, release with cooldown, and retry
     ///   with fresh sockets. Up to 5 retries with 200ms sleep between attempts.
-    pub async fn create(
+    async fn create_inner(
         base_image: &Path,
         cow_file: &Path,
         size: u64,
-        device_pool: &Mutex<pool::DevicePool>,
-    ) -> Result<Self> {
+        device_pool: &pool::DevicePoolHandle,
+    ) -> Result<(Self, pool::DeviceLease)> {
         // Create COW layer
         let cow_layer = cow::CowLayer::new(
             base_image,
@@ -123,8 +149,9 @@ impl NbdCowDevice {
             // Inner loop: acquire from pool and try to connect.
             // EBUSY retries get a fresh device without consuming the outer budget.
             let mut ebusy_count: u32 = 0;
-            let (device_index, shutdown, server_handles, connect_tid) = loop {
-                let device_index = device_pool.lock().await.acquire().await?;
+            let (lease, shutdown, server_handles, connect_tid) = loop {
+                let lease = device_pool.acquire().await?;
+                let device_index = lease.index();
 
                 // Fresh shutdown token and socketpairs for each attempt
                 let shutdown = CancellationToken::new();
@@ -155,7 +182,7 @@ impl NbdCowDevice {
                     // Release device back — connect was never attempted, device
                     // is still free in kernel. No cooldown needed but release()
                     // adds one defensively.
-                    device_pool.lock().await.release(device_index);
+                    device_pool.release_clean(lease).await;
                     return Err(e);
                 }
 
@@ -164,7 +191,7 @@ impl NbdCowDevice {
                         // Record the TID of the thread that connected — the kernel
                         // stores this in /sys/block/nbdN/pid via task_pid_nr().
                         let tid = unsafe { libc::gettid() } as u32;
-                        break (device_index, shutdown, server_handles, tid);
+                        break (lease, shutdown, server_handles, tid);
                     }
                     Err(error::NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY => {
                         ebusy_count += 1;
@@ -178,13 +205,13 @@ impl NbdCowDevice {
                             handle.abort();
                         }
                         if ebusy_count > MAX_EBUSY_RETRIES {
-                            device_pool.lock().await.discard(device_index);
+                            device_pool.discard(lease).await;
                             return Err(error::NbdCowError::NoFreeDevice);
                         }
                         // Device is owned by another process — stop tracking
                         // without cooldown. Background scan will rediscover
                         // if it frees.
-                        device_pool.lock().await.discard(device_index);
+                        device_pool.discard(lease).await;
                         continue;
                     }
                     Err(e) => {
@@ -193,27 +220,31 @@ impl NbdCowDevice {
                             handle.abort();
                         }
                         // Connect failed with non-EBUSY error. Device may be in
-                        // an unknown kernel state — release with cooldown so it
+                        // an unknown kernel state — retire with cooldown so it
                         // gets re-validated before reuse.
-                        device_pool.lock().await.release(device_index);
+                        device_pool.retire_uncertain(lease).await;
                         return Err(e);
                     }
                 }
             };
+            let device_index = lease.index();
 
             // Verify the device got the correct size via sysfs.
             if netlink::verify_device_size(device_index, size).await {
                 let device_path = PathBuf::from(format!("/dev/nbd{device_index}"));
-                return Ok(Self {
-                    device_index,
-                    device_path,
-                    cow_file: cow_file.to_path_buf(),
-                    cow: cow_layer,
-                    server_handles,
-                    shutdown,
-                    disconnected: false,
-                    connect_tid,
-                });
+                return Ok((
+                    Self {
+                        device_index,
+                        device_path,
+                        cow_file: cow_file.to_path_buf(),
+                        cow: cow_layer,
+                        server_handles,
+                        shutdown,
+                        disconnected: false,
+                        connect_tid,
+                    },
+                    lease,
+                ));
             }
 
             // Size is wrong — disconnect, release with cooldown, and retry.
@@ -222,8 +253,11 @@ impl NbdCowDevice {
                 attempt = size_attempt + 1,
                 "device size 0 after connect, disconnecting and retrying"
             );
-            let _ = netlink::disconnect(device_index);
-            device_pool.lock().await.release(device_index);
+            if netlink::disconnect(device_index).is_ok() {
+                device_pool.release_clean(lease).await;
+            } else {
+                device_pool.retire_uncertain(lease).await;
+            }
             shutdown.cancel();
             for handle in server_handles {
                 handle.abort();
@@ -396,6 +430,177 @@ impl NbdCowDevice {
 
     fn bitmap_path(&self) -> PathBuf {
         cow::bitmap_path_for(&self.cow_file)
+    }
+}
+
+impl pool::DevicePoolHandle {
+    /// Create a pooled NBD COW device.
+    pub async fn create_cow_device(
+        &self,
+        base_image: &Path,
+        cow_file: &Path,
+        size: u64,
+    ) -> Result<PooledNbdCowDevice> {
+        let (device, lease) = NbdCowDevice::create_inner(base_image, cow_file, size, self).await?;
+        Ok(PooledNbdCowDevice {
+            device,
+            lease: LeaseGuard::new(lease),
+            pool: self.clone(),
+        })
+    }
+}
+
+/// A COW device whose NBD pool ownership is tied to the device lifecycle.
+pub struct PooledNbdCowDevice {
+    device: NbdCowDevice,
+    lease: LeaseGuard,
+    pool: pool::DevicePoolHandle,
+}
+
+struct LeaseGuard {
+    lease: Option<pool::DeviceLease>,
+}
+
+impl LeaseGuard {
+    fn new(lease: pool::DeviceLease) -> Self {
+        Self { lease: Some(lease) }
+    }
+
+    fn take(&mut self) -> Option<pool::DeviceLease> {
+        self.lease.take()
+    }
+}
+
+impl Drop for LeaseGuard {
+    fn drop(&mut self) {
+        if let Some(lease) = self.lease.as_ref() {
+            tracing::warn!(
+                device_index = lease.index(),
+                "pooled NBD COW device dropped without finalizer; pool lease will require cleanup"
+            );
+        }
+    }
+}
+
+impl PooledNbdCowDevice {
+    /// NBD device index (N in `/dev/nbdN`), for diagnostics only.
+    pub fn device_index(&self) -> u32 {
+        self.device.device_index()
+    }
+
+    /// Path to the block device (e.g., `/dev/nbd0`).
+    pub fn device_path(&self) -> &Path {
+        self.device.device_path()
+    }
+
+    /// Path to the sparse COW file.
+    pub fn cow_file(&self) -> &Path {
+        self.device.cow_file()
+    }
+
+    /// Log COW device status for debugging.
+    pub async fn log_status(&self) {
+        self.device.log_status().await;
+    }
+
+    /// Destroy the device, removing the COW file and bitmap.
+    pub async fn destroy_with_retries(self, policy: DestroyRetryPolicy) -> Result<()> {
+        let Self {
+            mut device,
+            mut lease,
+            pool,
+        } = self;
+        let attempts = policy.attempts();
+
+        match device.destroy().await {
+            Ok(()) => {
+                Self::release_clean(&pool, &mut lease).await;
+                Ok(())
+            }
+            Err(mut last_err) => {
+                for _ in 1..attempts {
+                    tokio::time::sleep(policy.delay).await;
+                    match device.destroy().await {
+                        Ok(()) => {
+                            Self::release_clean(&pool, &mut lease).await;
+                            return Ok(());
+                        }
+                        Err(e) => last_err = e,
+                    }
+                }
+
+                device.abandon();
+                Self::retire_uncertain(&pool, &mut lease).await;
+                Err(last_err)
+            }
+        }
+    }
+
+    /// Destroy the device while preserving COW data for snapshot persistence.
+    pub async fn destroy_keep_cow_with_retries(
+        self,
+        policy: DestroyRetryPolicy,
+    ) -> Result<KeptCow> {
+        let Self {
+            mut device,
+            mut lease,
+            pool,
+        } = self;
+        let cow_file = device.cow_file().to_path_buf();
+        let bitmap_file = device.bitmap_path();
+        let attempts = policy.attempts();
+
+        match device.destroy_keep_cow().await {
+            Ok(()) => {
+                Self::release_clean(&pool, &mut lease).await;
+                Ok(KeptCow {
+                    cow_file,
+                    bitmap_file,
+                })
+            }
+            Err(mut last_err) => {
+                for _ in 1..attempts {
+                    tokio::time::sleep(policy.delay).await;
+                    match device.destroy_keep_cow().await {
+                        Ok(()) => {
+                            Self::release_clean(&pool, &mut lease).await;
+                            return Ok(KeptCow {
+                                cow_file,
+                                bitmap_file,
+                            });
+                        }
+                        Err(e) => last_err = e,
+                    }
+                }
+
+                device.abandon();
+                Self::retire_uncertain(&pool, &mut lease).await;
+                Err(last_err)
+            }
+        }
+    }
+
+    /// Mark the device as abandoned and retire the pool lease as uncertain.
+    pub async fn abandon(self) {
+        let Self {
+            mut device,
+            mut lease,
+            pool,
+        } = self;
+        device.abandon();
+        Self::retire_uncertain(&pool, &mut lease).await;
+    }
+
+    async fn release_clean(pool: &pool::DevicePoolHandle, lease: &mut LeaseGuard) {
+        if let Some(lease) = lease.take() {
+            pool.release_clean(lease).await;
+        }
+    }
+
+    async fn retire_uncertain(pool: &pool::DevicePoolHandle, lease: &mut LeaseGuard) {
+        if let Some(lease) = lease.take() {
+            pool.retire_uncertain(lease).await;
+        }
     }
 }
 

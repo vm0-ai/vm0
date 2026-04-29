@@ -1,12 +1,13 @@
 //! Device pool for pre-validated NBD device indices.
 //!
-//! Instead of scanning sysfs on every `NbdCowDevice::create()`, this pool
+//! Instead of scanning sysfs on every pooled COW device creation, this pool
 //! maintains a queue of pre-validated device indices ready for immediate use.
 //! Released devices enter a cooldown period before becoming available again,
 //! preventing the "size stuck at 0" flake caused by reusing a device before
 //! the kernel finishes cleanup.
 
 use std::collections::{HashSet, VecDeque};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::error::{NbdCowError, Result};
@@ -27,6 +28,25 @@ struct CooldownSlot {
     released_at: Instant,
 }
 
+/// Owned authority for a checked-out NBD device index.
+///
+/// This intentionally does not implement `Clone` or `Copy`: returning an index
+/// to the pool must consume the lease, not copied diagnostic metadata.
+pub struct DeviceLease {
+    index: u32,
+}
+
+impl DeviceLease {
+    fn new(index: u32) -> Self {
+        Self { index }
+    }
+
+    /// NBD device index (N in `/dev/nbdN`).
+    pub fn index(&self) -> u32 {
+        self.index
+    }
+}
+
 /// Configuration for the device pool.
 pub struct DevicePoolConfig {
     /// Cooldown period before a released device can be reused.
@@ -41,10 +61,59 @@ impl Default for DevicePoolConfig {
     }
 }
 
+/// Cloneable handle to the shared NBD device pool.
+#[derive(Clone)]
+pub struct DevicePoolHandle {
+    inner: Arc<tokio::sync::Mutex<DevicePool>>,
+}
+
+impl DevicePoolHandle {
+    /// Create a new shared device pool handle.
+    pub fn new(config: DevicePoolConfig) -> Self {
+        Self {
+            inner: Arc::new(tokio::sync::Mutex::new(DevicePool::new(config))),
+        }
+    }
+
+    /// Wrap an existing pool.
+    pub fn from_pool(pool: DevicePool) -> Self {
+        Self {
+            inner: Arc::new(tokio::sync::Mutex::new(pool)),
+        }
+    }
+
+    /// Pre-warm the underlying pool.
+    pub async fn warmup(&self) {
+        self.inner.lock().await.warmup().await;
+    }
+
+    /// Clean up the underlying pool.
+    pub async fn cleanup(&self) {
+        self.inner.lock().await.cleanup().await;
+    }
+
+    pub(crate) async fn acquire(&self) -> Result<DeviceLease> {
+        self.inner.lock().await.acquire().await
+    }
+
+    pub(crate) async fn release_clean(&self, lease: DeviceLease) {
+        self.inner.lock().await.release(lease);
+    }
+
+    pub(crate) async fn discard(&self, lease: DeviceLease) {
+        self.inner.lock().await.discard(lease);
+    }
+
+    pub(crate) async fn retire_uncertain(&self, lease: DeviceLease) {
+        self.inner.lock().await.retire_uncertain(lease);
+    }
+}
+
 /// Pre-validated NBD device index pool.
 ///
-/// Manages device indices as a host-level resource shared across factories
-/// via `Arc<Mutex<DevicePool>>`, following the same pattern as `NetnsPool`.
+/// Manages device indices as a host-level resource. Production callers should
+/// share it through [`DevicePoolHandle`] so pool release authority stays tied to
+/// owned device leases.
 pub struct DevicePool {
     active: bool,
     /// Validated free device indices ready for immediate acquire.
@@ -115,7 +184,7 @@ impl DevicePool {
     /// 1. Pop from ready queue (instant)
     /// 2. Await a pending background validation
     /// 3. Synchronous on-demand scan (fallback)
-    pub async fn acquire(&mut self) -> Result<u32> {
+    pub(crate) async fn acquire(&mut self) -> Result<DeviceLease> {
         if !self.active {
             return Err(NbdCowError::NoFreeDevice);
         }
@@ -129,7 +198,7 @@ impl DevicePool {
         if let Some(index) = self.ready.pop_front() {
             self.in_flight.insert(index);
             self.maybe_replenish();
-            return Ok(index);
+            return Ok(DeviceLease::new(index));
         }
 
         // Tier 2: await pending background validation
@@ -138,7 +207,7 @@ impl DevicePool {
                 Ok(Ok(index)) => {
                     self.in_flight.insert(index);
                     self.maybe_replenish();
-                    return Ok(index);
+                    return Ok(DeviceLease::new(index));
                 }
                 Ok(Err(_)) | Err(_) => continue,
             }
@@ -155,14 +224,15 @@ impl DevicePool {
 
         self.in_flight.insert(index);
         self.maybe_replenish();
-        Ok(index)
+        Ok(DeviceLease::new(index))
     }
 
     /// Release a device index back to the pool after disconnect.
     ///
     /// The device enters a cooldown period before it can be reused,
     /// giving the kernel time to finish teardown.
-    pub fn release(&mut self, index: u32) {
+    pub(crate) fn release(&mut self, lease: DeviceLease) {
+        let index = lease.index;
         if !self.active {
             return;
         }
@@ -185,13 +255,28 @@ impl DevicePool {
     /// Used when `connect_device` fails with EBUSY — the device belongs to
     /// another process and should not enter cooldown. Background scans will
     /// rediscover it later if it becomes free.
-    pub fn discard(&mut self, index: u32) {
+    pub(crate) fn discard(&mut self, lease: DeviceLease) {
+        let index = lease.index;
         self.in_flight.remove(&index);
+    }
+
+    /// Retire a device whose post-owner state is uncertain.
+    ///
+    /// This is intentionally conservative: the index must still pass through
+    /// cooldown and sysfs validation before it can become ready again.
+    pub(crate) fn retire_uncertain(&mut self, lease: DeviceLease) {
+        self.release(lease);
     }
 
     /// Clean up the pool: cancel pending tasks and clear queues.
     pub async fn cleanup(&mut self) {
         self.active = false;
+        if !self.in_flight.is_empty() {
+            tracing::warn!(
+                in_flight = self.in_flight.len(),
+                "device pool cleanup with outstanding leases"
+            );
+        }
         self.pending.abort_all();
         while self.pending.join_next().await.is_some() {}
         self.ready.clear();
@@ -322,14 +407,34 @@ mod tests {
     }
 
     #[test]
-    fn release_ignores_duplicate_index() {
+    fn release_consumes_lease_and_enters_cooldown() {
         let mut pool = test_pool_with_in_flight(3);
 
-        pool.release(3);
-        pool.release(3);
+        pool.release(DeviceLease::new(3));
 
         assert_eq!(pool.cooldown.len(), 1);
         assert_eq!(pool.cooldown.front().map(|slot| slot.index), Some(3));
+        assert!(pool.in_flight.is_empty());
+    }
+
+    #[test]
+    fn retire_uncertain_enters_cooldown() {
+        let mut pool = test_pool_with_in_flight(3);
+
+        pool.retire_uncertain(DeviceLease::new(3));
+
+        assert_eq!(pool.cooldown.len(), 1);
+        assert_eq!(pool.cooldown.front().map(|slot| slot.index), Some(3));
+        assert!(pool.in_flight.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cleanup_with_outstanding_lease_does_not_panic() {
+        let mut pool = test_pool_with_in_flight(3);
+
+        pool.cleanup().await;
+
+        assert!(!pool.active);
         assert!(pool.in_flight.is_empty());
     }
 }

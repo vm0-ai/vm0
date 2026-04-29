@@ -8,7 +8,7 @@ use sandbox::{
     SandboxRuntime, SnapshotRef,
 };
 
-use nbd_cow::pool::{DevicePool, DevicePoolConfig};
+use nbd_cow::pool::{DevicePoolConfig, DevicePoolHandle};
 
 use crate::config::{FirecrackerConfig, SnapshotConfig};
 use crate::factory::FirecrackerFactory;
@@ -21,7 +21,7 @@ use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 /// [`FirecrackerFactory`] instances that share them.
 pub struct FirecrackerRuntime {
     netns_pool: Arc<tokio::sync::Mutex<NetnsPool>>,
-    device_pool: Arc<tokio::sync::Mutex<DevicePool>>,
+    device_pool: DevicePoolHandle,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
 }
@@ -51,7 +51,7 @@ impl FirecrackerRuntime {
         );
 
         let t = std::time::Instant::now();
-        let mut device_pool = DevicePool::new(DevicePoolConfig::default());
+        let device_pool = DevicePoolHandle::new(DevicePoolConfig::default());
         device_pool.warmup().await;
         info!(
             elapsed_ms = t.elapsed().as_millis() as u64,
@@ -60,7 +60,7 @@ impl FirecrackerRuntime {
 
         Ok(Self {
             netns_pool: Arc::new(tokio::sync::Mutex::new(netns_pool)),
-            device_pool: Arc::new(tokio::sync::Mutex::new(device_pool)),
+            device_pool,
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
         })
@@ -105,7 +105,7 @@ impl SandboxRuntime for FirecrackerRuntime {
         let mut factory = FirecrackerFactory::new(
             fc_config,
             Some(Arc::clone(&self.netns_pool)),
-            Arc::clone(&self.device_pool),
+            self.device_pool.clone(),
         )
         .await?;
         factory.startup().await?;
@@ -121,7 +121,7 @@ impl SandboxRuntime for FirecrackerRuntime {
         drop(pool);
 
         // Clean up shared device pool.
-        self.device_pool.lock().await.cleanup().await;
+        self.device_pool.cleanup().await;
 
         info!("runtime shutdown complete");
     }
