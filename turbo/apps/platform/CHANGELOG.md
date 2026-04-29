@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.310.0](https://github.com/vm0-ai/vm0/compare/app-v0.309.0...app-v0.310.0) (2026-04-29)
+
+
+### Features
+
+* add model usage ranking ([#11486](https://github.com/vm0-ai/vm0/issues/11486)) ([f4a3513](https://github.com/vm0-ai/vm0/commit/f4a3513015b7a6c046d7c741b8b5e97270b76c3e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.246.0
+
+## [0.309.0](https://github.com/vm0-ai/vm0/compare/app-v0.308.0...app-v0.309.0) (2026-04-29)
+
+
+### Features
+
+* add gumroad connector (api-token + oauth) ([#11470](https://github.com/vm0-ai/vm0/issues/11470)) ([e9039db](https://github.com/vm0-ai/vm0/commit/e9039db1f992be2520f54ecf07b1601dc2537d7b))
+
+
+### Bug Fixes
+
+* adapt connector category menu layout ([#11484](https://github.com/vm0-ai/vm0/issues/11484)) ([369daef](https://github.com/vm0-ai/vm0/commit/369daeff442a9c059a12110bb699115722bd8585))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.245.0
+
+## [0.308.0](https://github.com/vm0-ai/vm0/compare/app-v0.307.0...app-v0.308.0) (2026-04-29)
+
+
+### Features
+
+* add network log type filter ([#11460](https://github.com/vm0-ai/vm0/issues/11460)) ([39e6dd4](https://github.com/vm0-ai/vm0/commit/39e6dd4d6ef57f5b811b4473547588b4da18088e))
+
+
+### Bug Fixes
+
+* allow direct bb0 device code entry ([#11469](https://github.com/vm0-ai/vm0/issues/11469)) ([fb12d85](https://github.com/vm0-ai/vm0/commit/fb12d851f7271dfcd1b21482c6405086a06423aa))
+* refresh account profile display ([#11457](https://github.com/vm0-ai/vm0/issues/11457)) ([c1330ca](https://github.com/vm0-ai/vm0/commit/c1330ca9f63ddf720057f8537ae84fddef921fa3))
+
 ## [0.307.0](https://github.com/vm0-ai/vm0/compare/app-v0.306.2...app-v0.307.0) (2026-04-29)
 
 

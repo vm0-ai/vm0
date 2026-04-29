@@ -1,16 +1,8 @@
 import { computed } from "ccstate";
+import { apiBackendEnabled$ } from "./external/feature-switch.ts";
 import { clerk$ } from "./auth.ts";
 import { fetchFreshToken, handleUnauthorizedRedirect } from "./auth-retry.ts";
-
-function getConfiguredApiUrl(): string {
-  const url = import.meta.env.VITE_API_URL as string | undefined;
-  if (!url) {
-    throw new Error("Missing VITE_API_URL environment variable");
-  }
-  return url;
-}
-
-const CONFIGURED_API_URL = getConfiguredApiUrl();
+import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
 
 /**
  * API base URL for opening external navigation (e.g. connector OAuth popup).
@@ -18,21 +10,8 @@ const CONFIGURED_API_URL = getConfiguredApiUrl();
  * - On a non-localhost host (e.g. app.vm7.ai): derive from current origin
  *   (e.g. www.vm7.ai) so we never open a localhost URL when the user is remote.
  */
-export const apiBaseForNavigation$ = computed(() => {
-  const isLocalhost =
-    typeof location !== "undefined" &&
-    (location.hostname === "localhost" || location.hostname === "127.0.0.1");
-  if (isLocalhost) {
-    const base = CONFIGURED_API_URL;
-    return base.endsWith("/") ? base.slice(0, -1) : base;
-  }
-  if (typeof location === "undefined" || !location.origin) {
-    const base = CONFIGURED_API_URL;
-    return base.endsWith("/") ? base.slice(0, -1) : base;
-  }
-  const url = new URL(location.origin);
-  url.hostname = url.hostname.replace(/(^|-)(platform|app)\./, "$1www.");
-  return url.origin;
+export const apiBaseForNavigation$ = computed(async (get) => {
+  return resolveApiBaseForNavigation(await get(apiBackendEnabled$));
 });
 
 /**
@@ -41,18 +20,8 @@ export const apiBaseForNavigation$ = computed(() => {
  * by replacing "platform" or "app" with "www" in the hostname.
  * Otherwise, uses VITE_API_URL directly.
  */
-function resolveApiBase(): string {
-  if (CONFIGURED_API_URL === "http://localhost:3000") {
-    const currentOrigin = location.origin;
-    const url = new URL(currentOrigin);
-    url.hostname = url.hostname.replace(/(^|-)(platform|app)\./, "$1www.");
-    return url.origin;
-  }
-  return CONFIGURED_API_URL;
-}
-
-export const apiBase$ = computed(() => {
-  return resolveApiBase();
+export const apiBase$ = computed(async (get) => {
+  return resolveApiBase(await get(apiBackendEnabled$));
 });
 
 function mergeHeadersWithAutoIds(
@@ -131,7 +100,7 @@ export const fetch$ = computed((get) => {
   return async (url: string | URL | Request, options?: RequestInit) => {
     const clerk = await get(clerk$);
     const initialToken = (await clerk.session?.getToken()) ?? null;
-    const apiBase = get(apiBase$);
+    const apiBase = await get(apiBase$);
 
     const performFetch = async (token: string | null): Promise<Response> => {
       // Clone Request inputs so the body stream is available for retry.

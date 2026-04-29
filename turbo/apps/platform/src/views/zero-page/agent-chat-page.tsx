@@ -55,6 +55,7 @@ import {
   chatPageModelSelection$,
   setChatPageInput$,
   setChatPageModelSelection$,
+  resetChatPageModelSelection$,
   chatPageTaglineIndex$,
   suggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
@@ -470,6 +471,7 @@ export function AgentChatPage() {
   const orgProviders = useLastResolved(orgModelProviders$);
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
   const setModelSelection = useSet(setChatPageModelSelection$);
+  const resetModelSelection = useSet(resetChatPageModelSelection$);
   const currentAgent = useLastResolved(currentChatAgent$);
   const agentModelDefault =
     currentAgent?.modelProviderId && currentAgent?.selectedModel
@@ -518,6 +520,7 @@ export function AgentChatPage() {
     startTiming();
     setInput("");
     handleSendMessage(text);
+    resetModelSelection();
   };
 
   return (

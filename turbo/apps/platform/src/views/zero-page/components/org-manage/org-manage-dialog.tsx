@@ -16,6 +16,7 @@ import {
 } from "@vm0/ui";
 import {
   IconBuilding,
+  IconChartBar,
   IconCpu,
   IconUsers,
   IconCreditCard,
@@ -38,6 +39,11 @@ import {
   billingSubPage$,
   type OrgManageTab,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import {
+  modelUsageRankingEnabled$,
+  modelUsageRankingOpen$,
+  setModelUsageRankingOpen$,
+} from "../../../../signals/model-usage-ranking.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -152,6 +158,13 @@ function TabContent({ tab }: { tab: OrgManageTab }) {
 export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const activeTab = useGet(orgManageTab$);
   const setActiveTab = useSet(setActiveOrgManageTab$);
+  const rankingOpen = useGet(modelUsageRankingOpen$);
+  const setRankingOpen = useSet(setModelUsageRankingOpen$);
+  const rankingEnabledLoadable = useLoadable(modelUsageRankingEnabled$);
+  const rankingEnabled =
+    rankingEnabledLoadable.state === "hasData"
+      ? rankingEnabledLoadable.data
+      : false;
 
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
@@ -167,9 +180,31 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const meta = TAB_META[activeTab];
   const isBillingSubPage = useGet(billingSubPage$);
   const hideHeader = activeTab === "billing" && isBillingSubPage;
+  const showRankingButton =
+    rankingEnabled && activeTab === "providers" && !rankingOpen;
+  const title =
+    activeTab === "providers" && rankingOpen ? "Model Popularity" : meta.title;
+  const description =
+    activeTab === "providers" && rankingOpen
+      ? "Ranking of the most popular models on VM0, based on platform-wide credits."
+      : meta.description;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setRankingOpen(false);
+    }
+    return onOpenChange(nextOpen);
+  };
+
+  const handleTabChange = (tab: OrgManageTab) => {
+    if (tab !== "providers") {
+      setRankingOpen(false);
+    }
+    return setActiveTab(tab);
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card">
         <DialogTitle className="sr-only">Workspace settings</DialogTitle>
         <DialogDescription className="sr-only">
@@ -187,7 +222,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
             <Select
               value={activeTab}
               onValueChange={(v) => {
-                return setActiveTab(v as OrgManageTab);
+                return handleTabChange(v as OrgManageTab);
               }}
             >
               <SelectTrigger className="h-9 w-full">
@@ -231,7 +266,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
                           key={item.id}
                           type="button"
                           onClick={() => {
-                            return setActiveTab(item.id);
+                            return handleTabChange(item.id);
                           }}
                           className={cn(
                             "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200",
@@ -270,14 +305,28 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
           >
             {!hideHeader && (
               <header className="shrink-0 px-4 sm:px-10 pt-6 sm:pt-8 pb-1">
-                <h2 className="hidden sm:block text-xl font-semibold tracking-tight text-foreground">
-                  {meta.title}
-                </h2>
+                <div className="flex min-h-7 items-center gap-2">
+                  <h2 className="hidden h-7 items-center text-xl font-semibold tracking-tight text-foreground sm:flex">
+                    {title}
+                  </h2>
+                  {showRankingButton && (
+                    <button
+                      type="button"
+                      aria-label="Open VM0 model popularity ranking"
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => {
+                        return setRankingOpen(true);
+                      }}
+                    >
+                      <IconChartBar size={15} stroke={1.75} />
+                    </button>
+                  )}
+                </div>
                 <p
-                  className="text-sm text-muted-foreground mt-1"
+                  className="mt-1 truncate whitespace-nowrap text-sm text-muted-foreground"
                   data-testid="tab-description"
                 >
-                  {meta.description}
+                  {description}
                 </p>
               </header>
             )}

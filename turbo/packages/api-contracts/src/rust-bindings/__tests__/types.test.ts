@@ -5,8 +5,28 @@ import {
   type NormalizedTypeBinding,
 } from "../generate";
 import { type RustTypeBinding, rustTypeBindings } from "../types";
+import {
+  artifactEntrySchema,
+  storageEntrySchema,
+  storageManifestSchema,
+} from "../../contracts/runners";
 
 const expectedBindings = [
+  {
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "ArtifactEntry",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageEntry",
+    direction: "response",
+  },
+  {
+    rustModulePath: ["runners", "storage"],
+    rustTypeName: "StorageManifest",
+    direction: "response",
+  },
   {
     rustModulePath: ["webhooks", "agent", "storages", "prepare"],
     rustTypeName: "Request",
@@ -81,6 +101,31 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain("pub struct Response {");
     expect(firstRender).toContain("pub files: Vec<RequestFile>,");
     expect(firstRender).toContain("pub uploads: Option<ResponseUploads>,");
+    expect(firstRender).toContain("pub struct StorageManifest {");
+    expect(firstRender).toContain("pub storages: Vec<StorageEntry>,");
+    expect(firstRender).toContain("pub artifacts: Vec<ArtifactEntry>,");
+  });
+
+  it("keeps storage manifest field overrides aligned with entry schemas", () => {
+    const manifestSchema = z.toJSONSchema(storageManifestSchema);
+    const storageSchema = { ...z.toJSONSchema(storageEntrySchema) };
+    const artifactSchema = { ...z.toJSONSchema(artifactEntrySchema) };
+    delete storageSchema.$schema;
+    delete artifactSchema.$schema;
+
+    expect(manifestSchema).toMatchObject({
+      required: ["storages", "artifacts"],
+      properties: {
+        storages: {
+          type: "array",
+          items: storageSchema,
+        },
+        artifacts: {
+          type: "array",
+          items: artifactSchema,
+        },
+      },
+    });
   });
 
   it("renders common JSON schema shapes", () => {

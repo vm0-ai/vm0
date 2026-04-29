@@ -1,4 +1,7 @@
-use api_contracts::generated::types::webhooks::agent::storages::{commit, prepare};
+use api_contracts::generated::types::{
+    runners::storage as runner_storage,
+    webhooks::agent::storages::{commit, prepare},
+};
 use serde_json::json;
 
 #[test]
@@ -177,4 +180,112 @@ fn generated_commit_response_deserializes_success_shape() {
     assert_eq!(response.size, 42.0);
     assert_eq!(response.file_count, 3.0);
     assert_eq!(response.deduplicated, Some(true));
+}
+
+#[test]
+fn generated_storage_manifest_deserializes_web_claim_shape() {
+    let manifest: runner_storage::StorageManifest = serde_json::from_value(json!({
+        "storages": [{
+            "name": "workspace",
+            "mountPath": "/workspace",
+            "vasStorageName": "workspace-volume",
+            "vasVersionId": "version-1",
+            "archiveUrl": "https://storage.example/workspace.tar.gz",
+        }],
+        "artifacts": [{
+            "mountPath": "/home/user/.claude/projects/project",
+            "vasStorageName": "memory",
+            "vasStorageId": "storage-id-1",
+            "vasVersionId": "version-2",
+            "archiveUrl": "https://storage.example/artifact.tar.gz",
+            "manifestUrl": "https://storage.example/manifest.json",
+        }],
+    }))
+    .unwrap();
+
+    assert_eq!(manifest.storages[0].name, "workspace");
+    assert_eq!(manifest.storages[0].mount_path, "/workspace");
+    assert_eq!(manifest.storages[0].vas_storage_name, "workspace-volume");
+    assert_eq!(manifest.artifacts[0].vas_storage_id, "storage-id-1");
+    assert_eq!(
+        manifest.artifacts[0].manifest_url.as_deref(),
+        Some("https://storage.example/manifest.json")
+    );
+}
+
+#[test]
+fn generated_storage_manifest_serializes_without_absent_manifest_url() {
+    let manifest = runner_storage::StorageManifest {
+        storages: vec![runner_storage::StorageEntry {
+            name: "workspace".to_string(),
+            mount_path: "/workspace".to_string(),
+            vas_storage_name: "workspace-volume".to_string(),
+            vas_version_id: "version-1".to_string(),
+            archive_url: "https://storage.example/workspace.tar.gz".to_string(),
+        }],
+        artifacts: vec![runner_storage::ArtifactEntry {
+            mount_path: "/home/user/.claude/projects/project".to_string(),
+            vas_storage_name: "memory".to_string(),
+            vas_storage_id: "storage-id-1".to_string(),
+            vas_version_id: "version-2".to_string(),
+            archive_url: "https://storage.example/artifact.tar.gz".to_string(),
+            manifest_url: None,
+        }],
+    };
+
+    let value = serde_json::to_value(manifest).unwrap();
+
+    assert_eq!(
+        value,
+        json!({
+            "storages": [{
+                "name": "workspace",
+                "mountPath": "/workspace",
+                "vasStorageName": "workspace-volume",
+                "vasVersionId": "version-1",
+                "archiveUrl": "https://storage.example/workspace.tar.gz",
+            }],
+            "artifacts": [{
+                "mountPath": "/home/user/.claude/projects/project",
+                "vasStorageName": "memory",
+                "vasStorageId": "storage-id-1",
+                "vasVersionId": "version-2",
+                "archiveUrl": "https://storage.example/artifact.tar.gz",
+            }],
+        })
+    );
+}
+
+#[test]
+fn generated_storage_manifest_serializes_empty_artifacts() {
+    let manifest = runner_storage::StorageManifest {
+        storages: vec![],
+        artifacts: vec![],
+    };
+
+    let value = serde_json::to_value(manifest).unwrap();
+
+    assert_eq!(
+        value,
+        json!({
+            "storages": [],
+            "artifacts": [],
+        })
+    );
+}
+
+#[test]
+fn generated_storage_manifest_rejects_guest_download_null_archive_url() {
+    let result = serde_json::from_value::<runner_storage::StorageManifest>(json!({
+        "storages": [{
+            "name": "workspace",
+            "mountPath": "/workspace",
+            "vasStorageName": "workspace-volume",
+            "vasVersionId": "version-1",
+            "archiveUrl": null,
+        }],
+        "artifacts": [],
+    }));
+
+    assert!(result.is_err());
 }

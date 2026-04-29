@@ -1,5 +1,52 @@
 # Changelog
 
+## [12.320.0](https://github.com/vm0-ai/vm0/compare/web-v12.319.0...web-v12.320.0) (2026-04-29)
+
+
+### Features
+
+* add model usage ranking ([#11486](https://github.com/vm0-ai/vm0/issues/11486)) ([f4a3513](https://github.com/vm0-ai/vm0/commit/f4a3513015b7a6c046d7c741b8b5e97270b76c3e))
+* add zero web voice to agent prompt ([#11496](https://github.com/vm0-ai/vm0/issues/11496)) ([9d72135](https://github.com/vm0-ai/vm0/commit/9d72135fba03b9f518e15d7f74bf4f564a234d42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.246.0
+
+## [12.319.0](https://github.com/vm0-ai/vm0/compare/web-v12.318.0...web-v12.319.0) (2026-04-29)
+
+
+### Features
+
+* add gumroad connector (api-token + oauth) ([#11470](https://github.com/vm0-ai/vm0/issues/11470)) ([e9039db](https://github.com/vm0-ai/vm0/commit/e9039db1f992be2520f54ecf07b1601dc2537d7b))
+* add web voice cli ([#11465](https://github.com/vm0-ai/vm0/issues/11465)) ([bcd8ff8](https://github.com/vm0-ai/vm0/commit/bcd8ff820e5621facaccc1b823ace3a582cb034b))
+
+
+### Bug Fixes
+
+* **api:** stop @sentry/node from emitting duplicate spans ([#11462](https://github.com/vm0-ai/vm0/issues/11462)) ([5fe6c4f](https://github.com/vm0-ai/vm0/commit/5fe6c4f61686f826a654932614e6f5942cf4f280))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.245.0
+
+## [12.318.0](https://github.com/vm0-ai/vm0/compare/web-v12.317.0...web-v12.318.0) (2026-04-29)
+
+
+### Features
+
+* add model usage rankings ([#11464](https://github.com/vm0-ai/vm0/issues/11464)) ([e251a05](https://github.com/vm0-ai/vm0/commit/e251a05dcc738ea7b2ae0c798ef9a47e21978746))
+
+
+### Bug Fixes
+
+* preserve cancelled run chat error ([#11459](https://github.com/vm0-ai/vm0/issues/11459)) ([8fc17bf](https://github.com/vm0-ai/vm0/commit/8fc17bfe5fcf9684784e29714b71e895492df71b))
+
 ## [12.317.0](https://github.com/vm0-ai/vm0/compare/web-v12.316.1...web-v12.317.0) (2026-04-29)
 
 

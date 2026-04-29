@@ -66,10 +66,24 @@ describe("instrument", () => {
           app: "api",
         },
       },
+      integrations: [
+        { name: "Http", options: { spans: false, tracePropagation: false } },
+        { name: "NodeFetch", options: { tracePropagation: false } },
+      ],
       release: "abc123",
       sendDefaultPii: false,
       shutdownTimeout: 500,
+      skipOpenTelemetrySetup: true,
       tracesSampleRate: 0,
+    });
+    expect(context.mocks.sentry.httpIntegration).toHaveBeenCalledWith({
+      spans: false,
+      tracePropagation: false,
+    });
+    expect(
+      context.mocks.sentry.nativeNodeFetchIntegration,
+    ).toHaveBeenCalledWith({
+      tracePropagation: false,
     });
   });
 });

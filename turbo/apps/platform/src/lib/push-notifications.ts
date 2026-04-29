@@ -66,10 +66,11 @@ export const ensurePushSubscription$ = command(
       return;
     }
     set(subscribing$, true);
-    const clerkPromise = get(clerk$);
-    const apiBase = get(apiBase$);
     // eslint-disable-next-line no-restricted-syntax -- finally needed to reset `subscribing$` on success, failure, or abort so the next call can proceed
     try {
+      const clerkPromise = get(clerk$);
+      const apiBase = await get(apiBase$);
+      signal.throwIfAborted();
       await doSubscribe(registration, clerkPromise, apiBase, signal);
       signal.throwIfAborted();
     } finally {

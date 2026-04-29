@@ -83,6 +83,7 @@
     "generate:google-sheets": "tsx src/index.ts google-sheets",
     "generate:granola": "tsx src/index.ts granola",
     "generate:groq": "tsx src/index.ts groq",
+    "generate:gumroad": "tsx src/index.ts gumroad",
     "generate:helicone": "tsx src/index.ts helicone",
     "generate:heygen": "tsx src/index.ts heygen",
     "generate:htmlcsstoimage": "tsx src/index.ts htmlcsstoimage",

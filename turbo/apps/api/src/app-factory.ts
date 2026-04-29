@@ -83,8 +83,8 @@ async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
 // Stamp the matched route template into OTel baggage so child spans (db
 // queries, outbound fetches) can carry `http.route` without reaching back
 // into the parent SERVER span. Any code further down the call tree —
-// including PgInstrumentation's requestHook in instrument.ts — reads it
-// from `propagation.getActiveBaggage()`.
+// including the pg pool wrapper in `lib/db.ts` — reads it from
+// `propagation.getActiveBaggage()`.
 //
 // `c.req.routePath` reflects the *current* middleware's pattern (here `"*"`)
 // until next() returns, but we need the matched route *before* next() so the

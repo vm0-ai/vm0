@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -238,6 +238,31 @@ export async function insertTestUsagePricing(params: {
 }
 
 /**
+ * Delete a usage_pricing row for tests that need to exercise missing-pricing
+ * fallback/error paths.
+ *
+ * @why-db-direct Usage pricing is normally seeded by migrations/dev seed.
+ * Tests that validate unconfigured billing paths need precise control over
+ * this ledger row.
+ */
+export async function deleteTestUsagePricing(params: {
+  kind: string;
+  provider: string;
+  category: string;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(usagePricing)
+    .where(
+      and(
+        eq(usagePricing.kind, params.kind),
+        eq(usagePricing.provider, params.provider),
+        eq(usagePricing.category, params.category),
+      ),
+    );
+}
+
+/**
  * Insert a usage_event record for testing the billing processor.
  *
  * @why-db-direct Usage events are normally written by the agent usage-event
@@ -290,6 +315,22 @@ export async function insertTestUsageEvent(
     })
     .returning({ id: usageEvent.id });
   return record!.id;
+}
+
+/**
+ * Delete usage_event records by provider for tests that use platform-wide
+ * queries and cannot rely on org/user scoping for isolation.
+ */
+export async function deleteTestUsageEventsByProvider(
+  providers: string[],
+): Promise<void> {
+  if (providers.length === 0) {
+    return;
+  }
+  initServices();
+  await globalThis.services.db
+    .delete(usageEvent)
+    .where(inArray(usageEvent.provider, providers));
 }
 
 /**

@@ -538,8 +538,14 @@ impl SandboxControl for FirecrackerControl {
 fn resolve_control_socket(input: &str) -> Result<PathBuf, SandboxControlError> {
     let runtime = RuntimePaths::new();
     let sock_parent = runtime.sock_base();
+    resolve_control_socket_in(&sock_parent, input)
+}
 
-    let entries = std::fs::read_dir(&sock_parent).map_err(|e| {
+fn resolve_control_socket_in(
+    sock_parent: &Path,
+    input: &str,
+) -> Result<PathBuf, SandboxControlError> {
+    let entries = std::fs::read_dir(sock_parent).map_err(|e| {
         SandboxControlError::Connection(format!(
             "cannot read {}: {e} (is a sandbox running?)",
             sock_parent.display()
@@ -1015,10 +1021,23 @@ mod tests {
     }
 
     #[test]
-    fn resolve_control_socket_nonexistent_dir() {
-        let result = resolve_control_socket("nonexistent-id-12345");
-        assert!(result.is_err());
-        let err = result.unwrap_err();
+    fn resolve_control_socket_missing_parent_returns_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+
+        let err = resolve_control_socket_in(&missing, "nonexistent-id-12345").unwrap_err();
+
         assert!(matches!(err, SandboxControlError::Connection(_)));
+    }
+
+    #[test]
+    fn resolve_control_socket_empty_parent_returns_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_parent = dir.path().join("sock");
+        std::fs::create_dir(&sock_parent).unwrap();
+
+        let err = resolve_control_socket_in(&sock_parent, "nonexistent-id-12345").unwrap_err();
+
+        assert!(matches!(err, SandboxControlError::NotFound(_)));
     }
 }

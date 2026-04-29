@@ -2,6 +2,39 @@
 // Do not edit by hand.
 // Regenerate with: cd turbo && pnpm -F @vm0/api-contracts generate:rust
 
+pub mod runners {
+    pub mod storage {
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct ArtifactEntry {
+            pub mount_path: String,
+            pub vas_storage_name: String,
+            pub vas_storage_id: String,
+            pub vas_version_id: String,
+            pub archive_url: String,
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            pub manifest_url: Option<String>,
+        }
+
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct StorageEntry {
+            pub name: String,
+            pub mount_path: String,
+            pub vas_storage_name: String,
+            pub vas_version_id: String,
+            pub archive_url: String,
+        }
+
+        #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        pub struct StorageManifest {
+            pub storages: Vec<StorageEntry>,
+            pub artifacts: Vec<ArtifactEntry>,
+        }
+    }
+}
+
 pub mod webhooks {
     pub mod agent {
         pub mod storages {

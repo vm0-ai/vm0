@@ -12,5 +12,12 @@ vi.stubEnv(
 );
 vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
 vi.stubEnv("CRON_SECRET", "test-cron-secret");
+vi.stubEnv("R2_ACCESS_KEY_ID", "test-access-key");
+vi.stubEnv("R2_ACCOUNT_ID", "test-account");
+vi.stubEnv("R2_SECRET_ACCESS_KEY", "test-secret-key");
+vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
+vi.stubEnv("S3_ENDPOINT", "http://localhost:9000");
+vi.stubEnv("S3_FORCE_PATH_STYLE", "true");
+vi.stubEnv("VM0_API_URL", "http://localhost:3000");
 vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "xaat-test-dummy");
 vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");

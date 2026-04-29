@@ -82,10 +82,11 @@ def _make_http_flow(client_ip="10.200.0.1", host="example.com", port=443, path="
 The addon uses module-level caches. Reset between tests:
 
 ```python
+import registry
+
 def _reset():
     mitm_addon._request_start_times.clear()
-    mitm_addon._registry_cache = {}
-    mitm_addon._registry_cache_key = (0, 0)
+    registry.reset_cache_for_tests()
 
 class TestRequestHandler:
     def setup_method(self):

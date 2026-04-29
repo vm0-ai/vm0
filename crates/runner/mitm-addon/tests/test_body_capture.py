@@ -823,6 +823,23 @@ class TestStreamDecompressor:
         assert decomp is not None
         assert decomp(zstandard.ZstdCompressor().compress(b"hello world")) == b"hello world"
 
+    def test_supported_encodings_across_small_chunks(self, headers):
+        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
+        compressed_by_encoding = {
+            "gzip": gzip.compress(plaintext),
+            "deflate": zlib.compress(plaintext),
+            "br": brotli.compress(plaintext),
+            "zstd": zstandard.ZstdCompressor().compress(plaintext),
+        }
+
+        for encoding, compressed in compressed_by_encoding.items():
+            decomp = create_stream_decompressor(headers(("Content-Encoding", encoding)))
+            assert decomp is not None
+            out = bytearray()
+            for idx in range(0, len(compressed), 3):
+                out.extend(decomp(compressed[idx : idx + 3]))
+            assert bytes(out) == plaintext, encoding
+
     def test_no_encoding_returns_none(self, headers):
         assert create_stream_decompressor(headers()) is None
 

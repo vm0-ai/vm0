@@ -169,7 +169,6 @@ export {
   webhookStoragesContract,
   webhookStoragesIncrementalContract,
   webhookTelemetryContract,
-  webhookUsageContract,
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
@@ -184,7 +183,6 @@ export {
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
-  type WebhookUsageContract,
   webhookUsageEventContract,
   type WebhookUsageEventContract,
 } from "./webhooks";
@@ -884,6 +882,14 @@ export {
   type UsageInsightScheduleRow,
   type UsageInsightChatRow,
 } from "./zero-usage-insight";
+export {
+  zeroModelUsageRankingContract,
+  modelUsageRankingRangeSchema,
+  type ZeroModelUsageRankingContract,
+  type ModelUsageRankingRange,
+  type ModelUsageRankingItem,
+  type ModelUsageRankingResponse,
+} from "./zero-model-usage-ranking";
 export {
   zeroTeamContract,
   teamComposeItemSchema,

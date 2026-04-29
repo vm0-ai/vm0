@@ -20,11 +20,16 @@ patches can't reach.
 
 from . import webhook
 from .counters import decrement_flows, increment_flows, set_pending_path
-from .extract import create_sse_usage_extractor, extract_usage_from_json
+from .extract import (
+    create_model_json_usage_extractor,
+    create_sse_usage_extractor,
+    extract_usage_from_json,
+)
 from .providers.connectors import report_connector_usage, x
 from .providers.model_provider import report_model_provider_usage
 
 __all__ = [
+    "create_model_json_usage_extractor",
     "create_sse_usage_extractor",
     "decrement_flows",
     "extract_usage_from_json",

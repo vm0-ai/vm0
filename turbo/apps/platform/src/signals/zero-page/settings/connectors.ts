@@ -473,7 +473,8 @@ async function watchPopupClosed(
 
 export const connectConnector$ = command(
   async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
-    const baseUrl = get(apiBaseForNavigation$);
+    const baseUrl = await get(apiBaseForNavigation$);
+    signal.throwIfAborted();
 
     set(internalPollingType$, type);
 

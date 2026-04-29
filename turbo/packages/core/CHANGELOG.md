@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.246.0](https://github.com/vm0-ai/vm0/compare/core-v8.245.0...core-v8.246.0) (2026-04-29)
+
+
+### Features
+
+* add model usage ranking ([#11486](https://github.com/vm0-ai/vm0/issues/11486)) ([f4a3513](https://github.com/vm0-ai/vm0/commit/f4a3513015b7a6c046d7c741b8b5e97270b76c3e))
+
+## [8.245.0](https://github.com/vm0-ai/vm0/compare/core-v8.244.0...core-v8.245.0) (2026-04-29)
+
+
+### Features
+
+* add gumroad connector (api-token + oauth) ([#11470](https://github.com/vm0-ai/vm0/issues/11470)) ([e9039db](https://github.com/vm0-ai/vm0/commit/e9039db1f992be2520f54ecf07b1601dc2537d7b))
+
 ## [8.244.0](https://github.com/vm0-ai/vm0/compare/core-v8.243.0...core-v8.244.0) (2026-04-29)
 
 

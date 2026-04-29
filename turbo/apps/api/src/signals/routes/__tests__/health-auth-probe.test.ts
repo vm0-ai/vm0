@@ -8,7 +8,10 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { authContext$ } from "../../auth/auth-context";
+import {
+  authContext$,
+  organizationAuthContext$,
+} from "../../auth/auth-context";
 import { authRoute } from "../../auth/auth-route";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
@@ -118,6 +121,57 @@ const capabilityProbe$ = authRoute(
   capabilityProbeHandler$,
 );
 
+const organizationProbeContract = c.router({
+  check: {
+    method: "GET" as const,
+    path: "/__test/org-required",
+    headers: z.object({
+      authorization: z.string().optional(),
+      cookie: z.string().optional(),
+    }),
+    responses: {
+      200: z.unknown(),
+      400: z.object({
+        error: z.object({ message: z.string(), code: z.string() }),
+      }),
+      401: z.object({
+        error: z.object({ message: z.string(), code: z.string() }),
+      }),
+    },
+  },
+  checkUnauthorized: {
+    method: "GET" as const,
+    path: "/__test/org-required-unauthorized",
+    headers: z.object({
+      authorization: z.string().optional(),
+      cookie: z.string().optional(),
+    }),
+    responses: {
+      200: z.unknown(),
+      400: z.object({
+        error: z.object({ message: z.string(), code: z.string() }),
+      }),
+      401: z.object({
+        error: z.object({ message: z.string(), code: z.string() }),
+      }),
+    },
+  },
+});
+
+const organizationProbeHandler$ = computed((get) => {
+  return { status: 200 as const, body: get(organizationAuthContext$) };
+});
+
+const organizationRequiredRoute$ = authRoute(
+  { requireOrganization: true },
+  organizationProbeHandler$,
+);
+
+const organizationRequiredUnauthorizedRoute$ = authRoute(
+  { requireOrganization: true, missingOrganizationStatus: 401 },
+  organizationProbeHandler$,
+);
+
 describe("GET /health/auth", () => {
   const fixtures: PatFixture[] = [];
 
@@ -210,6 +264,58 @@ describe("GET /health/auth", () => {
         tokenType: "session",
         userId: "user_solo",
       });
+    });
+
+    it("returns bad request when organization context is required", async () => {
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: true,
+        toAuth: () => {
+          return { userId: "user_solo" };
+        },
+      });
+
+      const client = setupApp({
+        context,
+        routes: [
+          ...ROUTES,
+          {
+            route: organizationProbeContract.check,
+            handler: organizationRequiredRoute$,
+          },
+        ],
+      })(organizationProbeContract);
+      const response = await accept(
+        client.check({ headers: { cookie: "__session=opaque" } }),
+        [400],
+      );
+
+      expect(response.body.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("can preserve legacy unauthorized organization failures", async () => {
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: true,
+        toAuth: () => {
+          return { userId: "user_solo" };
+        },
+      });
+
+      const client = setupApp({
+        context,
+        routes: [
+          ...ROUTES,
+          {
+            route: organizationProbeContract.checkUnauthorized,
+            handler: organizationRequiredUnauthorizedRoute$,
+          },
+        ],
+      })(organizationProbeContract);
+      const response = await accept(
+        client.checkUnauthorized({ headers: { cookie: "__session=opaque" } }),
+        [401],
+      );
+
+      expect(response.body.error.code).toBe("UNAUTHORIZED");
     });
 
     it("returns 401 for unauthenticated Clerk sessions", async () => {

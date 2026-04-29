@@ -30,6 +30,7 @@ export enum FeatureSwitchKey {
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
   UsageAnalytics = "usageAnalytics",
+  ModelUsageRanking = "modelUsageRanking",
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
   Lab = "lab",
@@ -45,9 +46,11 @@ export enum FeatureSwitchKey {
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
+  ApiBackend = "apiBackend",
   ConnectorCategories = "connectorCategories",
   PlatformConnectors = "platformConnectors",
 
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
+  GumroadConnector = "gumroadConnector",
 }
