@@ -195,7 +195,7 @@ impl NbdCowDevice {
                     }
                     Err(error::NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY => {
                         ebusy_count += 1;
-                        tracing::debug!(
+                        tracing::info!(
                             device_index,
                             ebusy_count,
                             "EBUSY on connect, trying next device"
@@ -248,7 +248,7 @@ impl NbdCowDevice {
             }
 
             // Size is wrong — disconnect, release with cooldown, and retry.
-            tracing::debug!(
+            tracing::info!(
                 device_index,
                 attempt = size_attempt + 1,
                 "device size 0 after connect, disconnecting and retrying"

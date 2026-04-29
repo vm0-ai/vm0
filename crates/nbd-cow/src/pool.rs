@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 use crate::error::{NbdCowError, Result};
 use crate::netlink;
+use tokio::sync::{mpsc, watch};
 
 /// Number of pre-validated device indices to maintain in the ready queue.
 const BUFFER_SIZE: usize = 4;
@@ -67,6 +68,12 @@ pub struct DevicePoolHandle {
     inner: Arc<tokio::sync::Mutex<DevicePool>>,
 }
 
+enum AcquireStep {
+    Ready(DeviceLease),
+    WaitForPending(watch::Receiver<u64>),
+    Scan { max: u32, exclude: Vec<u32> },
+}
+
 impl DevicePoolHandle {
     /// Create a new shared device pool handle.
     pub fn new(config: DevicePoolConfig) -> Self {
@@ -93,7 +100,32 @@ impl DevicePoolHandle {
     }
 
     pub(crate) async fn acquire(&self) -> Result<DeviceLease> {
-        self.inner.lock().await.acquire().await
+        loop {
+            let step = {
+                let mut pool = self.inner.lock().await;
+                pool.acquire_step()?
+            };
+
+            match step {
+                AcquireStep::Ready(lease) => return Ok(lease),
+                AcquireStep::WaitForPending(mut pending_rx) => {
+                    let _ = pending_rx.changed().await;
+                }
+                AcquireStep::Scan { max, exclude } => {
+                    let index =
+                        tokio::task::spawn_blocking(move || scan_free_device(max, &exclude))
+                            .await
+                            .map_err(|e| {
+                                NbdCowError::Io(std::io::Error::other(format!(
+                                    "scan task panicked: {e}"
+                                )))
+                            })??;
+                    if let Some(lease) = self.finish_acquire_candidate(index).await? {
+                        return Ok(lease);
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) async fn release_clean(&self, lease: DeviceLease) {
@@ -106,6 +138,10 @@ impl DevicePoolHandle {
 
     pub(crate) async fn retire_uncertain(&self, lease: DeviceLease) {
         self.inner.lock().await.retire_uncertain(lease);
+    }
+
+    async fn finish_acquire_candidate(&self, index: u32) -> Result<Option<DeviceLease>> {
+        self.inner.lock().await.finish_acquire_candidate(index)
     }
 }
 
@@ -121,7 +157,15 @@ pub struct DevicePool {
     /// Recently released devices waiting for cooldown to expire.
     cooldown: VecDeque<CooldownSlot>,
     /// Background sysfs validation tasks.
-    pending: tokio::task::JoinSet<Result<u32>>,
+    pending: tokio::task::JoinSet<()>,
+    /// Number of validation tasks whose result has not been drained yet.
+    pending_count: usize,
+    /// Completed validation results from background tasks.
+    validation_tx: mpsc::UnboundedSender<Result<u32>>,
+    validation_rx: mpsc::UnboundedReceiver<Result<u32>>,
+    /// Versioned notification for completed validation results.
+    validation_watch_tx: watch::Sender<u64>,
+    validation_watch_rx: watch::Receiver<u64>,
     /// Total number of NBD devices (from sysfs nbds_max).
     max_devices: u32,
     /// Pool configuration.
@@ -139,11 +183,18 @@ impl DevicePool {
     /// the ready queue and avoid a synchronous sysfs scan on first use.
     pub fn new(config: DevicePoolConfig) -> Self {
         let max_devices = netlink::nbds_max();
+        let (validation_tx, validation_rx) = mpsc::unbounded_channel();
+        let (validation_watch_tx, validation_watch_rx) = watch::channel(0);
         Self {
             active: true,
             ready: VecDeque::with_capacity(BUFFER_SIZE),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            pending_count: 0,
+            validation_tx,
+            validation_rx,
+            validation_watch_tx,
+            validation_watch_rx,
             max_devices,
             config,
             in_flight: HashSet::new(),
@@ -155,17 +206,18 @@ impl DevicePool {
         self.spawn_validations();
 
         // Wait for initial batch to complete
-        while let Some(result) = self.pending.join_next().await {
-            match result {
-                Ok(Ok(index)) => {
-                    self.push_ready_if_untracked(index);
-                }
-                Ok(Err(e)) => tracing::debug!("warmup validation failed: {e}"),
-                Err(e) => tracing::debug!("warmup task panicked: {e}"),
-            }
-            if self.ready.len() >= BUFFER_SIZE {
+        loop {
+            self.drain_completed();
+            if self.ready.len() >= BUFFER_SIZE || self.pending_count == 0 {
                 break;
             }
+
+            let mut pending_rx = self.pending_notification();
+            self.drain_completed();
+            if self.ready.len() >= BUFFER_SIZE || self.pending_count == 0 {
+                break;
+            }
+            let _ = pending_rx.changed().await;
         }
 
         tracing::info!(
@@ -181,54 +233,87 @@ impl DevicePool {
     /// 1. Pop from ready queue (instant)
     /// 2. Await a pending background validation
     /// 3. Synchronous on-demand scan (fallback)
+    #[cfg(test)]
     pub(crate) async fn acquire(&mut self) -> Result<DeviceLease> {
+        loop {
+            match self.acquire_step()? {
+                AcquireStep::Ready(lease) => return Ok(lease),
+                AcquireStep::WaitForPending(mut pending_rx) => {
+                    let _ = pending_rx.changed().await;
+                }
+                AcquireStep::Scan { max, exclude } => {
+                    let index =
+                        tokio::task::spawn_blocking(move || scan_free_device(max, &exclude))
+                            .await
+                            .map_err(|e| {
+                                NbdCowError::Io(std::io::Error::other(format!(
+                                    "scan task panicked: {e}"
+                                )))
+                            })??;
+                    if let Some(lease) = self.finish_acquire_candidate(index)? {
+                        return Ok(lease);
+                    }
+                }
+            }
+        }
+    }
+
+    fn acquire_step(&mut self) -> Result<AcquireStep> {
         if !self.active {
             return Err(NbdCowError::NoFreeDevice);
         }
 
         // Promote expired cooldown slots to ready queue
         self.promote_cooled_down();
-        // Drain completed background tasks into ready queue
         self.drain_completed();
 
         // Tier 1: instant pop from ready queue
-        if let Some(index) = self.ready.pop_front() {
-            self.in_flight.insert(index);
-            self.maybe_replenish();
-            return Ok(DeviceLease::new(index));
+        if let Some(lease) = self.pop_ready_lease() {
+            return Ok(AcquireStep::Ready(lease));
         }
 
-        // Tier 2: await pending background validation
-        while let Some(result) = self.pending.join_next().await {
-            match result {
-                Ok(Ok(index)) => {
-                    if self.is_tracked(index) {
-                        tracing::debug!(
-                            device_index = index,
-                            "ignoring duplicate pending device validation result"
-                        );
-                        continue;
-                    }
-                    self.in_flight.insert(index);
-                    self.maybe_replenish();
-                    return Ok(DeviceLease::new(index));
-                }
-                Ok(Err(_)) | Err(_) => continue,
+        // Tier 2: wait for background validation outside the pool lock.
+        if self.pending_count > 0 {
+            let pending_rx = self.pending_notification();
+            // Close the lost-wakeup gap: if a task completed before we cloned
+            // the watch receiver, its result is now visible on the channel.
+            self.drain_completed();
+            if let Some(lease) = self.pop_ready_lease() {
+                return Ok(AcquireStep::Ready(lease));
+            }
+            if self.pending_count > 0 {
+                return Ok(AcquireStep::WaitForPending(pending_rx));
             }
         }
 
-        // Tier 3: synchronous on-demand scan
-        let max = self.max_devices;
-        let tracked_indices = self.tracked_indices();
-        let index = tokio::task::spawn_blocking(move || scan_free_device(max, &tracked_indices))
-            .await
-            .map_err(|e| {
-                NbdCowError::Io(std::io::Error::other(format!("scan task panicked: {e}")))
-            })??;
+        // Tier 3: synchronous on-demand scan outside the pool lock.
+        Ok(AcquireStep::Scan {
+            max: self.max_devices,
+            exclude: self.tracked_indices(),
+        })
+    }
 
+    fn pop_ready_lease(&mut self) -> Option<DeviceLease> {
+        let index = self.ready.pop_front()?;
         self.in_flight.insert(index);
         self.maybe_replenish();
-        Ok(DeviceLease::new(index))
+        Some(DeviceLease::new(index))
+    }
+
+    fn pending_notification(&self) -> watch::Receiver<u64> {
+        self.validation_watch_rx.clone()
+    }
+
+    fn finish_acquire_candidate(&mut self, index: u32) -> Result<Option<DeviceLease>> {
+        if !self.active {
+            return Err(NbdCowError::NoFreeDevice);
+        }
+        if self.is_tracked(index) {
+            return Ok(None);
+        }
+        self.in_flight.insert(index);
+        self.maybe_replenish();
+        Ok(Some(DeviceLease::new(index)))
     }
 
     /// Release a device index back to the pool after disconnect.
@@ -281,8 +366,14 @@ impl DevicePool {
                 "device pool cleanup with outstanding leases"
             );
         }
+        self.validation_watch_tx
+            .send_modify(|version| *version = version.wrapping_add(1));
         self.pending.abort_all();
         while self.pending.join_next().await.is_some() {}
+        self.pending_count = 0;
+        while self.validation_rx.try_recv().is_ok() {
+            // Drop completed validation results after shutdown.
+        }
         self.ready.clear();
         self.cooldown.clear();
         self.in_flight.clear();
@@ -308,25 +399,10 @@ impl DevicePool {
         }
     }
 
-    /// Drain completed pending tasks into the ready queue.
-    ///
-    /// Deduplicates against the ready queue: concurrent `spawn_blocking`
-    /// tasks may discover the same free device index because each task
-    /// snapshots `tracked_indices` at spawn time.
-    fn drain_completed(&mut self) {
-        while let Some(Ok(result)) = self.pending.try_join_next() {
-            match result {
-                Ok(index) => {
-                    self.push_ready_if_untracked(index);
-                }
-                Err(e) => tracing::debug!("background validation failed: {e}"),
-            }
-        }
-    }
-
     /// Spawn background validation tasks if the ready queue needs replenishment.
     fn maybe_replenish(&mut self) {
-        let total_available = self.ready.len() + self.pending.len();
+        self.drain_completed();
+        let total_available = self.ready.len() + self.pending_count;
         if total_available >= BUFFER_SIZE {
             return;
         }
@@ -336,13 +412,50 @@ impl DevicePool {
 
     /// Spawn background tasks to scan for free devices.
     fn spawn_validations(&mut self) {
-        while self.pending.len() < MAX_PENDING
-            && self.ready.len() + self.pending.len() < BUFFER_SIZE
+        while self.pending_count < MAX_PENDING
+            && self.ready.len() + self.pending_count < BUFFER_SIZE
         {
             let max = self.max_devices;
             let exclude = self.tracked_indices();
-            self.pending
-                .spawn_blocking(move || scan_free_device(max, &exclude));
+            let validation_tx = self.validation_tx.clone();
+            let validation_watch_tx = self.validation_watch_tx.clone();
+            self.pending_count += 1;
+            self.pending.spawn(async move {
+                let result = match tokio::task::spawn_blocking(move || {
+                    scan_free_device(max, &exclude)
+                })
+                .await
+                {
+                    Ok(result) => result,
+                    Err(e) => Err(NbdCowError::Io(std::io::Error::other(format!(
+                        "scan task panicked: {e}"
+                    )))),
+                };
+                let _ = validation_tx.send(result);
+                validation_watch_tx.send_modify(|version| *version = version.wrapping_add(1));
+            });
+        }
+    }
+
+    /// Drain completed validation results into the ready queue.
+    fn drain_completed(&mut self) {
+        loop {
+            match self.validation_rx.try_recv() {
+                Ok(result) => {
+                    self.pending_count = self.pending_count.saturating_sub(1);
+                    if let Ok(index) = result {
+                        self.push_ready_if_untracked(index);
+                    }
+                }
+                Err(mpsc::error::TryRecvError::Empty) => break,
+                Err(mpsc::error::TryRecvError::Disconnected) => break,
+            }
+        }
+
+        while let Some(result) = self.pending.try_join_next() {
+            if result.is_err() {
+                self.pending_count = self.pending_count.saturating_sub(1);
+            }
         }
     }
 
@@ -366,10 +479,6 @@ impl DevicePool {
 
     fn push_ready_if_untracked(&mut self, index: u32) -> bool {
         if self.is_tracked(index) {
-            tracing::debug!(
-                device_index = index,
-                "ignoring duplicate ready device candidate"
-            );
             return false;
         }
         self.ready.push_back(index);
@@ -412,7 +521,23 @@ fn scan_free_device(max_devices: u32, exclude: &[u32]) -> Result<u32> {
 mod tests {
     use super::*;
 
+    fn validation_channel() -> (
+        mpsc::UnboundedSender<Result<u32>>,
+        mpsc::UnboundedReceiver<Result<u32>>,
+    ) {
+        mpsc::unbounded_channel()
+    }
+
+    fn queue_validation_result(pool: &mut DevicePool, result: Result<u32>) {
+        pool.pending_count += 1;
+        pool.validation_tx.send(result).unwrap();
+        pool.validation_watch_tx
+            .send_modify(|version| *version = version.wrapping_add(1));
+    }
+
     fn test_pool_with_in_flight(index: u32) -> DevicePool {
+        let (validation_tx, validation_rx) = validation_channel();
+        let (validation_watch_tx, validation_watch_rx) = watch::channel(0);
         DevicePool {
             active: true,
             // Keep the ready queue full so `release()` does not spawn host
@@ -420,6 +545,11 @@ mod tests {
             ready: VecDeque::from([0, 1, 2, 4]),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            pending_count: 0,
+            validation_tx,
+            validation_rx,
+            validation_watch_tx,
+            validation_watch_rx,
             max_devices: 8,
             config: DevicePoolConfig::default(),
             in_flight: HashSet::from([index]),
@@ -427,11 +557,18 @@ mod tests {
     }
 
     fn test_pool_for_pending_scan() -> DevicePool {
+        let (validation_tx, validation_rx) = validation_channel();
+        let (validation_watch_tx, validation_watch_rx) = watch::channel(0);
         DevicePool {
             active: true,
             ready: VecDeque::new(),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
+            pending_count: 0,
+            validation_tx,
+            validation_rx,
+            validation_watch_tx,
+            validation_watch_rx,
             max_devices: 0,
             config: DevicePoolConfig::default(),
             in_flight: HashSet::new(),
@@ -484,7 +621,7 @@ mod tests {
     async fn acquire_rejects_duplicate_pending_validation_result() {
         let mut pool = test_pool_for_pending_scan();
         pool.in_flight.insert(3);
-        pool.pending.spawn(async { Ok(3) });
+        queue_validation_result(&mut pool, Ok(3));
 
         let result = pool.acquire().await;
 
@@ -502,10 +639,10 @@ mod tests {
             released_at: Instant::now(),
         });
         pool.in_flight.insert(3);
-        pool.pending.spawn(async { Ok(3) });
-        pool.pending.spawn(async { Ok(4) });
-        pool.pending.spawn(async { Ok(5) });
-        pool.pending.spawn(async { Ok(6) });
+        queue_validation_result(&mut pool, Ok(3));
+        queue_validation_result(&mut pool, Ok(4));
+        queue_validation_result(&mut pool, Ok(5));
+        queue_validation_result(&mut pool, Ok(6));
 
         pool.warmup().await;
 
