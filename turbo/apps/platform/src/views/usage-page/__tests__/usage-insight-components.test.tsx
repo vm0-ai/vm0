@@ -788,7 +788,6 @@ describe("usage insight schedules table - rendering and interactions", () => {
     // s2: no description → fall back to name
     expect(screen.getByText("default")).toBeInTheDocument();
   });
-
 });
 
 // ---------------------------------------------------------------------------

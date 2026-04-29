@@ -1098,7 +1098,9 @@ describe("network insights page - per-day schedules and chats", () => {
 
     // Schedules: subtitle in sentence form, total = 60 + 40 = 100
     await waitFor(() => {
-      expect(screen.getByText(/schedules used 100 credits/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/schedules used 100 credits/),
+      ).toBeInTheDocument();
     });
     // Chats: singular "chat used" with the total
     expect(screen.getByText(/chat used 30 credits/)).toBeInTheDocument();
