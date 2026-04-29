@@ -6,10 +6,6 @@
 # `OPENAI_API_KEY` in the host environment and uses --debug-no-mock-codex
 # to suppress USE_MOCK_CODEX forwarding so the real codex binary runs
 # inside the sandbox.
-#
-# CI does not currently expose an OPENAI_API_KEY secret, so these tests
-# skip on the hosted runners and exist to give developers an in-tree
-# escape hatch for verifying the real codex pipeline locally.
 
 load '../../helpers/setup'
 
