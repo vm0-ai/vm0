@@ -59,7 +59,7 @@ export function ZeroChatListPage() {
       : null;
 
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
-  const { titleLabel, searchPlaceholder } = useChatThreadsTitleLabels();
+  const { searchPlaceholder } = useChatThreadsTitleLabels();
 
   const selectedRecentId = useGet(currentChatThreadId$);
   const navigateToChat = useSet(navigateToChat$);
@@ -92,10 +92,6 @@ export function ZeroChatListPage() {
     <div className="flex flex-1 flex-col min-h-0">
       {/* Header */}
       <div className="shrink-0 px-4 pt-4 pb-2">
-        <div className="flex items-center gap-3 mb-3">
-          <h1 className="text-lg font-semibold">{titleLabel}</h1>
-        </div>
-
         <MobileChatAgentSwitcher />
 
         {/* Search */}

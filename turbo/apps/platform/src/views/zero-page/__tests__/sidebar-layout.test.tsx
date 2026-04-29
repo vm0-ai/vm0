@@ -530,8 +530,8 @@ describe("mobile more sheet - Insights navigates to /insights (MOBILE-MORE-001)"
   });
 });
 
-describe("mobile workspace drawer - account link navigates to /settings (MOBILE-DRAWER-003)", () => {
-  it("closes the drawer and routes to /settings when the user card is tapped", async () => {
+describe("mobile workspace drawer - account link navigates to /account (MOBILE-DRAWER-003)", () => {
+  it("closes the drawer and routes to /account when the user card is tapped", async () => {
     mockBaseAPIs();
     detachedSetupPage({
       context,
@@ -554,7 +554,7 @@ describe("mobile workspace drawer - account link navigates to /settings (MOBILE-
     click(accountLink);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/settings");
+      expect(pathname()).toBe("/account");
     });
   });
 });
@@ -576,5 +576,75 @@ describe("mobile bottom tab bar - Schedules link navigates (MOBILE-TAB-004)", ()
     await waitFor(() => {
       expect(pathname()).toBe("/schedules");
     });
+  });
+});
+
+describe("mobile top bar - centered title shows tab label on index pages (MOBILE-TOP-006)", () => {
+  it("renders 'Teammates' centered in the top bar when on /agents with the redesign on", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-top-bar-title")).toHaveTextContent(
+        "Teammates",
+      );
+    });
+  });
+});
+
+describe("mobile top bar - centered title hidden on chat detail pages (MOBILE-TOP-007)", () => {
+  it("does not render the centered title when the breadcrumb is shown", async () => {
+    setMockTeam([
+      {
+        id: DEFAULT_AGENT_ID,
+        displayName: "My Agent",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    detachedSetupPage({
+      context,
+      path: `/agents/${DEFAULT_AGENT_ID}`,
+      featureSwitches: mobileNativeOn(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("breadcrumb-name")).toHaveTextContent(
+        "My Agent",
+      );
+    });
+    expect(
+      screen.queryByTestId("mobile-top-bar-title"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("mobile workspace drawer - no close X button (MOBILE-DRAWER-004)", () => {
+  it("does not render the built-in sheet close button inside the drawer", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+    });
+
+    const trigger = await waitFor(() => {
+      return screen.getByTestId("mobile-org-switcher");
+    });
+    click(trigger);
+
+    const drawer = await waitFor(() => {
+      return screen.getByTestId("mobile-workspace-drawer");
+    });
+    expect(
+      drawer.querySelector('button[aria-label="Close"]'),
+    ).toBeNull();
   });
 });

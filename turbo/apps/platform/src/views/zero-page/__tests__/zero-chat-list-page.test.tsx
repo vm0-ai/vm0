@@ -64,15 +64,16 @@ function setupPage() {
 }
 
 describe("zero chat list page - header and title", () => {
-  it("should render the page with agent-scoped 'Chats with Zero' title (CHAT-LIST-001)", async () => {
+  it("should not render a redundant 'Chats with Zero' heading — agent context comes from the agent switcher (CHAT-LIST-001)", async () => {
     mockChatThreads(createMockThreads());
     setupPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Chats with Zero" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("New chat")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByRole("heading", { name: "Chats with Zero" }),
+    ).not.toBeInTheDocument();
   });
 
   it("should show agent-scoped 'Search chat with Zero' placeholder (CHAT-LIST-002)", async () => {
@@ -362,9 +363,7 @@ describe("mobile chat agent switcher - hidden when redesign off (CHAT-LIST-MOBIL
     detachedSetupPage({ context, path: "/chats" });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: /Chats with/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("New chat")).toBeInTheDocument();
     });
     expect(
       screen.queryByTestId("mobile-chat-agent-switcher"),

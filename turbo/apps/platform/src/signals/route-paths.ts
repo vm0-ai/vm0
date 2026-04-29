@@ -18,6 +18,7 @@ export const ROUTES = {
   connectors: "/connectors",
   directedConnect: "/connectors/:type/connect",
   directedAuthorize: "/connectors/:type/authorize",
+  account: "/account",
   settings: "/settings",
   settingsSlack: "/settings/slack",
   settingsTelegram: "/settings/telegram",

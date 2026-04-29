@@ -53,7 +53,7 @@ function UserIdentityCard({ onClose }: { onClose: () => void }) {
 
   const handleOpenAccount = () => {
     onClose();
-    navigate("/settings");
+    navigate("/account");
   };
 
   return (
@@ -334,6 +334,7 @@ export function MobileWorkspaceDrawer() {
         side="left"
         data-testid="mobile-workspace-drawer"
         className="gap-5 px-4 py-5"
+        hideClose
       >
         <SheetTitle className="sr-only">Workspace and identity</SheetTitle>
         <SheetDescription className="sr-only">

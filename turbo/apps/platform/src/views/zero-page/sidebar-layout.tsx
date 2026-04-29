@@ -195,6 +195,52 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   );
 }
 
+// Resolves a centered page title for the mobile top bar from the active route.
+// Chat routes are excluded — they keep their breadcrumb-style agent label.
+function mobileTopBarTitle(route: RouteKey | null): string | undefined {
+  switch (route) {
+    case "chatList": {
+      return "Chats";
+    }
+    case "agents": {
+      return "Teammates";
+    }
+    case "schedules": {
+      return "Schedules";
+    }
+    case "connectors": {
+      return "Connectors";
+    }
+    case "insights": {
+      return "Insights";
+    }
+    case "works": {
+      return "Slack & Telegram";
+    }
+    case "account": {
+      return "Account";
+    }
+    case "settings": {
+      return "Preferences";
+    }
+    case "settingsApiKeys": {
+      return "API Keys";
+    }
+    case "usage": {
+      return "Usage";
+    }
+    case "activities": {
+      return "Activity logs";
+    }
+    case "lab": {
+      return "Lab";
+    }
+    default: {
+      return undefined;
+    }
+  }
+}
+
 function MobileTopBar() {
   const setExpanded = useSet(setSidebarExpanded$);
 
@@ -218,9 +264,11 @@ function MobileTopBar() {
   const hasDetailName = breadcrumb?.name !== undefined;
   const showBreadcrumb =
     breadcrumb !== null && (!mobileNativeOn || isChatPage || hasDetailName);
+  const centeredTitle =
+    mobileNativeOn && !showBreadcrumb ? mobileTopBarTitle(activeId) : undefined;
 
   return (
-    <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
+    <div className="md:hidden shrink-0 relative flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       {mobileNativeOn ? (
         <MobileWorkspaceDrawer />
       ) : (
@@ -262,6 +310,14 @@ function MobileTopBar() {
         </div>
       )}
       {!showBreadcrumb && <div className="flex-1" />}
+      {centeredTitle && (
+        <h1
+          data-testid="mobile-top-bar-title"
+          className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-sm font-semibold text-foreground truncate max-w-[55%]"
+        >
+          {centeredTitle}
+        </h1>
+      )}
       <MobileTopBarActions activeId={activeId} />
     </div>
   );

@@ -42,6 +42,7 @@ import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
+import { setupAccountHubPage$ } from "./zero-page/account-hub-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
@@ -174,6 +175,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.works,
     setup: setupAuthPageWrapper(setupWorksPage$),
+  },
+  {
+    path: ROUTES.account,
+    setup: setupAuthPageWrapper(setupAccountHubPage$),
   },
   {
     path: ROUTES.settings,

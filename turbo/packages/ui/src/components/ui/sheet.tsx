@@ -30,12 +30,13 @@ interface SheetContentProps extends React.ComponentPropsWithoutRef<
   typeof DialogPrimitive.Content
 > {
   side?: "top" | "bottom" | "left" | "right";
+  hideClose?: boolean;
 }
 
 const SheetContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => {
+>(({ side = "right", className, children, hideClose, ...props }, ref) => {
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -55,12 +56,14 @@ const SheetContent = React.forwardRef<
         {...props}
       >
         {children}
-        <DialogPrimitive.Close
-          className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100 focus:outline-none"
-          aria-label="Close"
-        >
-          <IconX size={20} className="text-foreground" />
-        </DialogPrimitive.Close>
+        {!hideClose && (
+          <DialogPrimitive.Close
+            className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100 focus:outline-none"
+            aria-label="Close"
+          >
+            <IconX size={20} className="text-foreground" />
+          </DialogPrimitive.Close>
+        )}
       </DialogPrimitive.Content>
     </SheetPortal>
   );
