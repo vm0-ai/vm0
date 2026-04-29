@@ -30,10 +30,12 @@ const GC_MIN_AGE: Duration = Duration::from_secs(10 * 60);
 const JOB_LOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
 
 /// Per-host storage archive cache size cap. Enforced by `gc_storage_cache`
-/// as an LRU by `<version>/` dir mtime. Per-entry archives are capped at
-/// 8 MiB by the cache writer (#10808), so this bounds cardinality more
-/// than per-entry size.
+/// as an LRU by `<version>/` dir mtime.
 const STORAGE_CACHE_MAX_BYTES: u64 = 1 << 30; // 1 GiB
+/// Per-host storage archive cache entry cap. The byte cap alone does not
+/// bound many tiny storage versions, and each cached version also creates a
+/// lock file.
+const STORAGE_CACHE_MAX_ENTRIES: u64 = 5_000;
 
 #[derive(Args)]
 pub struct GcArgs {
@@ -1117,10 +1119,16 @@ struct StorageEvictionResult {
     /// Candidate contribution to keep in `total_size` after this attempt.
     /// `None` removes the scan-time size from the cap calculation.
     remaining_size: Option<u64>,
+    /// Candidate contribution to keep in `total_entries` after this attempt.
+    /// Dry-runs set this to false to model the real deletion while leaving
+    /// the filesystem untouched.
+    remaining_entry: bool,
+    /// True when a real run deleted the cache entry, or a dry-run would have.
+    evicted: bool,
 }
 
-/// Bound `/var/lib/vm0-runner/storages/` to `STORAGE_CACHE_MAX_BYTES` by
-/// evicting least-recently-used `<version>` directories.
+/// Bound `/var/lib/vm0-runner/storages/` to storage cache size and entry
+/// limits by evicting least-recently-used `<version>` directories.
 ///
 /// Entries younger than [`GC_MIN_AGE`] or whose per-version flock is held
 /// are always protected — the former prevents races with a writer's
@@ -1131,12 +1139,28 @@ struct StorageEvictionResult {
 /// Missing `storages_dir` is a no-op (cold host before the cache writer
 /// in #10808 lands).
 async fn gc_storage_cache(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
-    gc_storage_cache_with_cap(home, STORAGE_CACHE_MAX_BYTES, dry_run).await
+    gc_storage_cache_with_limits(
+        home,
+        STORAGE_CACHE_MAX_BYTES,
+        STORAGE_CACHE_MAX_ENTRIES,
+        dry_run,
+    )
+    .await
 }
 
+#[cfg(test)]
 async fn gc_storage_cache_with_cap(
     home: &HomePaths,
     max_bytes: u64,
+    dry_run: bool,
+) -> RunnerResult<u64> {
+    gc_storage_cache_with_limits(home, max_bytes, u64::MAX, dry_run).await
+}
+
+async fn gc_storage_cache_with_limits(
+    home: &HomePaths,
+    max_bytes: u64,
+    max_entries: u64,
     dry_run: bool,
 ) -> RunnerResult<u64> {
     let storages_dir = home.storages_dir();
@@ -1152,7 +1176,14 @@ async fn gc_storage_cache_with_cap(
     // without racing the writer, and counting them would evict eligible
     // entries to make room for unmeasurable ones.
     let mut total_size: u64 = 0;
+    let mut total_entries: u64 = 0;
     let mut freed: u64 = 0;
+    let mut scanned_entries: u64 = 0;
+    let mut eligible_entries: u64 = 0;
+    let mut skipped_recent: u64 = 0;
+    let mut skipped_locked: u64 = 0;
+    let mut lock_probe_errors: u64 = 0;
+    let mut evicted_entries: u64 = 0;
 
     while let Some(name_entry) =
         next_entry_warn(&mut name_entries, "gc_storage_cache", &storages_dir).await
@@ -1198,15 +1229,22 @@ async fn gc_storage_cache_with_cap(
                 continue;
             }
 
+            scanned_entries = scanned_entries.saturating_add(1);
+            total_entries = total_entries.saturating_add(1);
+
             let lock_path = home.storage_lock_for_cache_key(name_str, version_str);
             let lock = match probe_lock(&lock_path) {
                 LockProbe::Free(l) => l,
                 LockProbe::Held => {
-                    info!("storages/{name_str}/{version_str}: in use, skipping");
+                    skipped_locked = skipped_locked.saturating_add(1);
+                    tracing::debug!("storages/{name_str}/{version_str}: in use, skipping");
                     continue;
                 }
                 LockProbe::Error(e) => {
-                    info!("storages/{name_str}/{version_str}: lock probe failed ({e}), skipping");
+                    lock_probe_errors = lock_probe_errors.saturating_add(1);
+                    tracing::debug!(
+                        "storages/{name_str}/{version_str}: lock probe failed ({e}), skipping"
+                    );
                     continue;
                 }
             };
@@ -1216,7 +1254,8 @@ async fn gc_storage_cache_with_cap(
             total_size = total_size.saturating_add(size);
             drop(lock);
             if age < GC_MIN_AGE {
-                info!(
+                skipped_recent = skipped_recent.saturating_add(1);
+                tracing::debug!(
                     "storages/{name_str}/{version_str}: too recent ({}s), keeping",
                     age.as_secs()
                 );
@@ -1225,6 +1264,7 @@ async fn gc_storage_cache_with_cap(
 
             let name = name_str.to_owned();
             let version = version_str.to_owned();
+            eligible_entries = eligible_entries.saturating_add(1);
             candidates.push(StorageCandidate {
                 path: version_path,
                 name,
@@ -1235,7 +1275,12 @@ async fn gc_storage_cache_with_cap(
         }
     }
 
-    if total_size <= max_bytes {
+    if total_size <= max_bytes && total_entries <= max_entries {
+        tracing::debug!(
+            "storage cache gc: scanned={scanned_entries}, eligible={eligible_entries}, skipped_recent={skipped_recent}, skipped_locked={skipped_locked}, lock_probe_errors={lock_probe_errors}, bytes={}, entries={total_entries}, limits=({}, {max_entries} entries)",
+            human_bytes(total_size),
+            human_bytes(max_bytes)
+        );
         return Ok(freed);
     }
 
@@ -1243,16 +1288,31 @@ async fn gc_storage_cache_with_cap(
     candidates.sort_by_key(|c| c.mtime);
 
     for c in candidates {
-        if total_size <= max_bytes {
+        if total_size <= max_bytes && total_entries <= max_entries {
             break;
         }
         let result = evict_storage_candidate(home, &c, now, dry_run).await;
         freed = freed.saturating_add(result.freed);
+        if result.evicted {
+            evicted_entries = evicted_entries.saturating_add(1);
+        }
         total_size = total_size.saturating_sub(c.size);
         if let Some(remaining_size) = result.remaining_size {
             total_size = total_size.saturating_add(remaining_size);
         }
+        total_entries = total_entries.saturating_sub(1);
+        if result.remaining_entry {
+            total_entries = total_entries.saturating_add(1);
+        }
     }
+
+    let eviction_action = if dry_run { "would_evict" } else { "evicted" };
+    info!(
+        "storage cache gc: scanned={scanned_entries}, eligible={eligible_entries}, skipped_recent={skipped_recent}, skipped_locked={skipped_locked}, lock_probe_errors={lock_probe_errors}, eviction_action={eviction_action}, evicted_entries={evicted_entries}, freed={}, remaining_bytes={}, remaining_entries={total_entries}, limits=({}, {max_entries} entries)",
+        human_bytes(freed),
+        human_bytes(total_size),
+        human_bytes(max_bytes)
+    );
 
     Ok(freed)
 }
@@ -1264,7 +1324,7 @@ async fn evict_storage_candidate(
     dry_run: bool,
 ) -> StorageEvictionResult {
     let lock_path = home.storage_lock_for_cache_key(&candidate.name, &candidate.version);
-    let _lock = match probe_lock(&lock_path) {
+    let lock = match probe_lock(&lock_path) {
         LockProbe::Free(lock) => lock,
         LockProbe::Held => {
             info!(
@@ -1274,6 +1334,8 @@ async fn evict_storage_candidate(
             return StorageEvictionResult {
                 freed: 0,
                 remaining_size: None,
+                remaining_entry: true,
+                evicted: false,
             };
         }
         LockProbe::Error(e) => {
@@ -1284,6 +1346,8 @@ async fn evict_storage_candidate(
             return StorageEvictionResult {
                 freed: 0,
                 remaining_size: None,
+                remaining_entry: true,
+                evicted: false,
             };
         }
     };
@@ -1298,12 +1362,16 @@ async fn evict_storage_candidate(
             return StorageEvictionResult {
                 freed: 0,
                 remaining_size: None,
+                remaining_entry: false,
+                evicted: false,
             };
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return StorageEvictionResult {
                 freed: 0,
                 remaining_size: None,
+                remaining_entry: false,
+                evicted: false,
             };
         }
         Err(e) => {
@@ -1314,6 +1382,8 @@ async fn evict_storage_candidate(
             return StorageEvictionResult {
                 freed: 0,
                 remaining_size: Some(candidate.size),
+                remaining_entry: true,
+                evicted: false,
             };
         }
     }
@@ -1330,6 +1400,8 @@ async fn evict_storage_candidate(
         return StorageEvictionResult {
             freed: 0,
             remaining_size: Some(size),
+            remaining_entry: true,
+            evicted: false,
         };
     }
 
@@ -1340,14 +1412,27 @@ async fn evict_storage_candidate(
             candidate.version,
             human_bytes(size)
         );
+        info!(
+            "[dry-run] would remove storage lock {}",
+            lock_path.display()
+        );
         return StorageEvictionResult {
             freed: size,
             remaining_size: None,
+            remaining_entry: false,
+            evicted: true,
         };
     }
 
     match tokio::fs::remove_dir_all(&candidate.path).await {
         Ok(()) => {
+            remove_storage_lock_after_eviction(
+                &lock_path,
+                &lock,
+                &candidate.name,
+                &candidate.version,
+            )
+            .await;
             info!(
                 "evicted storages/{}/{} ({})",
                 candidate.name,
@@ -1357,11 +1442,15 @@ async fn evict_storage_candidate(
             StorageEvictionResult {
                 freed: size,
                 remaining_size: None,
+                remaining_entry: false,
+                evicted: true,
             }
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => StorageEvictionResult {
             freed: 0,
             remaining_size: None,
+            remaining_entry: false,
+            evicted: false,
         },
         Err(e) => {
             warn!(
@@ -1371,7 +1460,56 @@ async fn evict_storage_candidate(
             StorageEvictionResult {
                 freed: 0,
                 remaining_size: Some(size),
+                remaining_entry: true,
+                evicted: false,
             }
+        }
+    }
+}
+
+async fn remove_storage_lock_after_eviction(
+    lock_path: &Path,
+    lock: &Flock<std::fs::File>,
+    name_hash: &str,
+    version_hash: &str,
+) {
+    let Ok(lock_meta) = lock.metadata() else {
+        tracing::debug!(
+            "storages/{name_hash}/{version_hash}: cannot stat held lock {}, leaving it for orphan cleanup",
+            lock_path.display()
+        );
+        return;
+    };
+
+    match std::fs::metadata(lock_path) {
+        Ok(path_meta) if path_meta.ino() == lock_meta.ino() => {}
+        Ok(_) => {
+            tracing::debug!(
+                "storages/{name_hash}/{version_hash}: lock path inode changed, leaving {} intact",
+                lock_path.display()
+            );
+            return;
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            tracing::debug!(
+                "storages/{name_hash}/{version_hash}: cannot stat lock {}: {e}",
+                lock_path.display()
+            );
+            return;
+        }
+    }
+
+    match tokio::fs::remove_file(lock_path).await {
+        Ok(()) => {
+            tracing::debug!("removed storage lock {}", lock_path.display());
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            warn!(
+                "storages/{name_hash}/{version_hash}: failed to remove storage lock {}: {e}",
+                lock_path.display()
+            );
         }
     }
 }
@@ -2994,6 +3132,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_storage_cache_over_entry_cap_evicts_oldest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t_mid = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        let t_new = SystemTime::UNIX_EPOCH + Duration::from_secs(3_000_000);
+        let oldest = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_old);
+        let middle = make_storage_entry(&home, "foo", "v2", &[0u8; 32], t_mid);
+        let newest = make_storage_entry(&home, "bar", "v1", &[0u8; 32], t_new);
+        let (oldest_size, _) = dir_stats(&oldest).await;
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 2, false)
+            .await
+            .unwrap();
+
+        assert!(!oldest.exists(), "oldest entry must be evicted");
+        assert!(middle.exists(), "middle entry must survive");
+        assert!(newest.exists(), "newest entry must survive");
+        assert_eq!(freed, oldest_size);
+        assert_eq!(count_storage_cache_versions(&home), 2);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_entry_cap_preserves_recent_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let fresh_a = make_storage_entry(&home, "foo", "v1", &[0u8; 32], SystemTime::now());
+        let fresh_b = make_storage_entry(&home, "foo", "v2", &[0u8; 32], SystemTime::now());
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(fresh_a.exists(), "recent entry must survive");
+        assert!(fresh_b.exists(), "recent entry must survive");
+        assert_eq!(count_storage_cache_versions(&home), 2);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_entry_cap_skips_locked_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_locked = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t_unlocked = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        let locked = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_locked);
+        let unlocked = make_storage_entry(&home, "bar", "v1", &[0u8; 32], t_unlocked);
+        let (unlocked_size, _) = dir_stats(&unlocked).await;
+
+        let lock_file = lock::open_lock_file(&home.storage_lock("foo", "v1")).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockShared).unwrap();
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, false)
+            .await
+            .unwrap();
+
+        assert!(locked.exists(), "locked entry must survive");
+        assert!(!unlocked.exists(), "unlocked entry must be evicted");
+        assert_eq!(freed, unlocked_size);
+        assert_eq!(count_storage_cache_versions(&home), 1);
+    }
+
+    #[tokio::test]
     async fn gc_storage_cache_grace_protects_recent() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
@@ -3067,6 +3274,57 @@ mod tests {
         assert_eq!(
             freed, oldest_size,
             "dry-run must report the bytes a real run would free"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_entry_cap_dry_run_does_not_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t_new = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        let oldest = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_old);
+        let newest = make_storage_entry(&home, "foo", "v2", &[0u8; 32], t_new);
+        let oldest_lock = home.storage_lock("foo", "v1");
+        let (oldest_size, _) = dir_stats(&oldest).await;
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, true)
+            .await
+            .unwrap();
+
+        assert!(oldest.exists(), "dry-run must not delete oldest entry");
+        assert!(newest.exists(), "dry-run must not delete newest entry");
+        assert!(
+            oldest_lock.exists(),
+            "dry-run must not remove the lock file it would clean up"
+        );
+        assert_eq!(freed, oldest_size);
+        assert_eq!(count_storage_cache_versions(&home), 2);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_removes_lock_after_eviction() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_old);
+        let lock_path = home.storage_lock("foo", "v1");
+        drop(lock::open_lock_file(&lock_path).unwrap());
+        assert!(lock_path.exists(), "test setup must create the lock file");
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 0, false)
+            .await
+            .unwrap();
+
+        assert!(freed > 0);
+        assert!(!entry.exists(), "entry should be evicted");
+        assert!(
+            !lock_path.exists(),
+            "matching storage lock should be removed with the evicted entry"
         );
     }
 
@@ -3168,6 +3426,8 @@ mod tests {
 
         assert_eq!(result.freed, 0);
         assert_eq!(result.remaining_size, None);
+        assert!(result.remaining_entry);
+        assert!(!result.evicted);
         assert!(
             entry.exists(),
             "candidate locked after scan must survive delete recheck"
@@ -3194,6 +3454,8 @@ mod tests {
 
         assert_eq!(result.freed, 0);
         assert_eq!(result.remaining_size, Some(fresh_size));
+        assert!(result.remaining_entry);
+        assert!(!result.evicted);
         assert!(
             entry.exists(),
             "candidate that became recent after scan must survive delete recheck"
