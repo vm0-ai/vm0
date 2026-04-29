@@ -41,6 +41,11 @@ impl DeviceLease {
         Self { index }
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_for_test(index: u32) -> Self {
+        Self::new(index)
+    }
+
     /// NBD device index (N in `/dev/nbdN`).
     pub fn index(&self) -> u32 {
         self.index
