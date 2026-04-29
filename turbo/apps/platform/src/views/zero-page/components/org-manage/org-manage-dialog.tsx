@@ -305,8 +305,8 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
           >
             {!hideHeader && (
               <header className="shrink-0 px-4 sm:px-10 pt-6 sm:pt-8 pb-1">
-                <div className="hidden sm:flex min-h-7 items-center gap-2">
-                  <h2 className="flex h-7 items-center text-xl font-semibold tracking-tight text-foreground">
+                <div className="flex min-h-7 items-center gap-2">
+                  <h2 className="hidden h-7 items-center text-xl font-semibold tracking-tight text-foreground sm:flex">
                     {title}
                   </h2>
                   {showRankingButton && (
