@@ -3,6 +3,7 @@
 import { cors } from "hono/cors";
 import type { MiddlewareHandler } from "hono";
 
+import { safeUrlParse } from "../signals/utils";
 import { env } from "./env";
 
 // Mirrors apps/web/proxy.cors.ts. Now that /api/zero/* is served by hono
@@ -17,12 +18,8 @@ const STATIC_ALLOWED_ORIGINS: readonly string[] = [
 function getAllowedOrigin(origin: string | undefined): string | null {
   if (!origin) return null;
 
-  let url: URL;
-  try {
-    url = new URL(origin);
-  } catch {
-    return null;
-  }
+  const url = safeUrlParse(origin);
+  if (!url) return null;
 
   const normalizedOrigin = url.origin;
   const { hostname, protocol } = url;
@@ -55,7 +52,9 @@ function getAllowedOrigin(origin: string | undefined): string | null {
 }
 
 export const corsMiddleware: MiddlewareHandler = cors({
-  origin: (origin) => getAllowedOrigin(origin),
+  origin: (origin) => {
+    return getAllowedOrigin(origin);
+  },
   credentials: true,
   allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowHeaders: [

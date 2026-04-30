@@ -42,6 +42,16 @@ export function safeJsonParse(input: string): unknown {
   }
 }
 
+export function safeUrlParse(input: string): URL | undefined {
+  // eslint-disable-next-line no-restricted-syntax -- centralized guarded URL constructor
+  try {
+    return new URL(input);
+  } catch (error) {
+    throwIfAbort(error);
+    return undefined;
+  }
+}
+
 export function detach(
   promise: Promise<unknown>,
   mechanism: Mechanism,
