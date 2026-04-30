@@ -395,4 +395,79 @@
   .dialog-scrollable::-webkit-scrollbar-thumb:hover {
     background-color: rgba(128, 128, 128, 0.5);
   }
+
+  /*
+   * Running indicator — synchronized breathing dot for "in progress" state.
+   * Phase is anchored to wall-clock time by <RunningIndicator/> via the Web
+   * Animations API (Animation.currentTime), so multiple instances mounted at
+   * different moments stay visually in sync.
+   */
+  .running-indicator {
+    position: relative;
+    display: inline-flex;
+    width: 0.86rem;
+    height: 0.86rem;
+    border-radius: 9999px;
+    color: var(--color-sky-600, #0284c7);
+  }
+  .running-indicator::before {
+    content: "";
+    position: absolute;
+    inset: 2.5px;
+    border-radius: inherit;
+    background: currentColor;
+    transform-origin: center;
+    animation: running-indicator-center 2400ms cubic-bezier(0.33, 0, 0.66, 1)
+      infinite;
+  }
+  .running-indicator::after {
+    content: "";
+    position: absolute;
+    inset: 1.5px;
+    border-radius: inherit;
+    border: 1px solid currentColor;
+    transform-origin: center;
+    animation: running-indicator-ripple 2400ms ease-out infinite;
+  }
+}
+
+@keyframes running-indicator-center {
+  0%,
+  100% {
+    transform: scale(0.64);
+    opacity: 0.34;
+  }
+  52% {
+    transform: scale(0.88);
+    opacity: 0.52;
+  }
+}
+
+@keyframes running-indicator-ripple {
+  0%,
+  45% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  52% {
+    transform: scale(0.8);
+    opacity: 0.34;
+  }
+  100% {
+    transform: scale(1.56);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .running-indicator::before {
+    animation: none;
+    opacity: 0.28;
+    transform: scale(0.62);
+  }
+  .running-indicator::after {
+    animation: none;
+    opacity: 0.18;
+    transform: scale(1);
+  }
 }
