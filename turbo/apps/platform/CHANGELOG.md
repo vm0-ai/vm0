@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.314.3](https://github.com/vm0-ai/vm0/compare/app-v0.314.2...app-v0.314.3) (2026-04-30)
+
+
+### Bug Fixes
+
+* remove visibility gate before markThreadReadIfNeeded on chat open ([#11574](https://github.com/vm0-ai/vm0/issues/11574)) ([1cd70f3](https://github.com/vm0-ai/vm0/commit/1cd70f3df088f17349390a1154bf5cad84d9d6d1))
+
 ## [0.314.2](https://github.com/vm0-ai/vm0/compare/app-v0.314.1...app-v0.314.2) (2026-04-30)
 
 
