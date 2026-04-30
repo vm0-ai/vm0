@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
+use tokio::task::JoinHandle;
 use tracing::trace;
 
 /// Error from a failed command.
@@ -90,7 +91,8 @@ pub async fn exec(program: &str, args: &[&str]) -> Result<String, CommandError> 
 /// This helper is intended for host lifecycle operations where an unbounded
 /// subprocess can block resource cleanup. On timeout the child is killed and
 /// waited before returning. On Unix, the subprocess runs in its own process
-/// group so timeout cleanup also kills grandchildren.
+/// group so timeout cleanup also kills grandchildren. The timeout bounds both
+/// child exit and stdout/stderr pipe draining.
 pub async fn exec_with_timeout(
     program: &str,
     args: &[&str],
@@ -199,6 +201,7 @@ async fn command_output_with_timeout(
     #[cfg(unix)]
     command.process_group(0);
     let mut child = command.spawn().map_err(CommandRunError::Spawn)?;
+    let child_pid = child.id();
 
     let stdout = child
         .stdout
@@ -211,8 +214,9 @@ async fn command_output_with_timeout(
 
     let stdout_task = tokio::spawn(read_pipe(stdout));
     let stderr_task = tokio::spawn(read_pipe(stderr));
+    let deadline = tokio::time::Instant::now() + timeout;
 
-    let status = match tokio::time::timeout(timeout, child.wait()).await {
+    let status = match tokio::time::timeout_at(deadline, child.wait()).await {
         Ok(Ok(status)) => status,
         Ok(Err(e)) => {
             kill_child_tree(&mut child).await;
@@ -226,8 +230,8 @@ async fn command_output_with_timeout(
         }
     };
 
-    let stdout = collect_pipe(stdout_task).await?;
-    let stderr = collect_pipe(stderr_task).await?;
+    let (stdout, stderr) =
+        collect_pipes_with_deadline(stdout_task, stderr_task, deadline, timeout, child_pid).await?;
     Ok(std::process::Output {
         status,
         stdout,
@@ -244,10 +248,45 @@ where
     Ok(output)
 }
 
-async fn collect_pipe(
-    task: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
+async fn collect_pipes_with_deadline(
+    mut stdout_task: JoinHandle<std::io::Result<Vec<u8>>>,
+    mut stderr_task: JoinHandle<std::io::Result<Vec<u8>>>,
+    deadline: tokio::time::Instant,
+    timeout: Duration,
+    child_pid: Option<u32>,
+) -> std::result::Result<(Vec<u8>, Vec<u8>), CommandRunError> {
+    let mut stdout = None;
+    let mut stderr = None;
+    let sleep = tokio::time::sleep_until(deadline);
+    tokio::pin!(sleep);
+
+    loop {
+        tokio::select! {
+            result = &mut stdout_task, if stdout.is_none() => {
+                stdout = Some(collect_pipe_result(result)?);
+            }
+            result = &mut stderr_task, if stderr.is_none() => {
+                stderr = Some(collect_pipe_result(result)?);
+            }
+            () = &mut sleep => {
+                kill_process_group_by_optional_pid(child_pid);
+                abort_pipe_tasks(stdout_task, stderr_task).await;
+                return Err(CommandRunError::Timeout(timeout.as_millis()));
+            }
+        }
+
+        if stdout.is_some() && stderr.is_some() {
+            let stdout = stdout.ok_or(CommandRunError::PipeUnavailable("stdout"))?;
+            let stderr = stderr.ok_or(CommandRunError::PipeUnavailable("stderr"))?;
+            return Ok((stdout, stderr));
+        }
+    }
+}
+
+fn collect_pipe_result(
+    result: std::result::Result<std::io::Result<Vec<u8>>, tokio::task::JoinError>,
 ) -> std::result::Result<Vec<u8>, CommandRunError> {
-    task.await
+    result
         .map_err(CommandRunError::PipeTask)?
         .map_err(CommandRunError::PipeRead)
 }
@@ -259,9 +298,18 @@ async fn kill_child_tree(child: &mut Child) {
     let _ = child.wait().await;
 }
 
+fn kill_process_group_by_optional_pid(pid: Option<u32>) {
+    #[cfg(unix)]
+    if let Some(pid) = pid {
+        crate::process::kill_process_group_by_pid(pid);
+    }
+    #[cfg(not(unix))]
+    let _ = pid;
+}
+
 async fn abort_pipe_tasks(
-    stdout_task: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
-    stderr_task: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
+    stdout_task: JoinHandle<std::io::Result<Vec<u8>>>,
+    stderr_task: JoinHandle<std::io::Result<Vec<u8>>>,
 ) {
     stdout_task.abort();
     stderr_task.abort();
@@ -372,6 +420,24 @@ mod tests {
         )
         .await;
 
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(!std::path::Path::new(marker).exists());
+    }
+
+    #[tokio::test]
+    async fn exec_with_timeout_bounds_pipe_drain_after_parent_exits() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("marker");
+        let marker = marker.to_str().unwrap();
+
+        let outcome = exec_ignore_errors_with_timeout(
+            "sh",
+            &["-c", "(sleep 0.2; touch \"$1\") &", "_", marker],
+            Duration::from_millis(50),
+        )
+        .await;
+
+        assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
         tokio::time::sleep(Duration::from_millis(500)).await;
         assert!(!std::path::Path::new(marker).exists());
     }
