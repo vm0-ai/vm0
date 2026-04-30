@@ -222,6 +222,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatThreadPin]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace the sidebar's per-thread trash button with a kebab/pin menu that exposes Pin/Unpin and Delete. Pinned threads sort to the top of the agent's chat list. Mobile shows the menu trigger always; desktop shows it on hover.",
+    enabled: false,
+  },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Freshdesk helpdesk connector",

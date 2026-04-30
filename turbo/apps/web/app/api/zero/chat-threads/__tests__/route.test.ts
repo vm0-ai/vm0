@@ -8,6 +8,7 @@ import {
   insertTestChatMessage,
   setTestChatThreadLastReadMessageId,
   setTestChatThreadDraft,
+  setTestChatThreadPinnedAt,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -481,6 +482,98 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
         return t.id;
       }),
     ).toEqual([secondId, firstId]);
+  });
+
+  it("floats pinned threads to the top regardless of recency", async () => {
+    const firstCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "First" }),
+      }),
+    );
+    const { id: firstId } = await firstCreate.json();
+
+    await new Promise((resolve) => {
+      return setTimeout(resolve, 10);
+    });
+
+    const secondCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Second" }),
+      }),
+    );
+    const { id: secondId } = await secondCreate.json();
+
+    await new Promise((resolve) => {
+      return setTimeout(resolve, 10);
+    });
+
+    const thirdCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Third" }),
+      }),
+    );
+    const { id: thirdId } = await thirdCreate.json();
+
+    // Baseline: thirdId, secondId, firstId by recency.
+    const baseline = await (
+      await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+        ),
+      )
+    ).json();
+    expect(
+      baseline.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([thirdId, secondId, firstId]);
+
+    // Pin the middle one — it should move to the top while the others keep
+    // their relative recency order.
+    await setTestChatThreadPinnedAt(secondId, new Date());
+
+    const afterPin = await (
+      await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+        ),
+      )
+    ).json();
+    expect(
+      afterPin.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([secondId, thirdId, firstId]);
+    const pinnedRow = afterPin.threads.find((t: { id: string }) => {
+      return t.id === secondId;
+    });
+    expect(pinnedRow.pinnedAt).toEqual(expect.any(String));
+
+    // Unpin returns the order to recency-based.
+    await setTestChatThreadPinnedAt(secondId, null);
+
+    const afterUnpin = await (
+      await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+        ),
+      )
+    ).json();
+    expect(
+      afterUnpin.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([thirdId, secondId, firstId]);
+    const unpinnedRow = afterUnpin.threads.find((t: { id: string }) => {
+      return t.id === secondId;
+    });
+    expect(unpinnedRow.pinnedAt).toBeNull();
   });
 
   it("keeps a thread visible when only an earlier message is archived", async () => {

@@ -7,6 +7,7 @@ import {
   jsonb,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
 
@@ -74,6 +75,13 @@ export const chatThreads = pgTable(
      */
     modelProviderId: uuid("model_provider_id"),
     selectedModel: varchar("selected_model", { length: 255 }),
+    /**
+     * Timestamp at which the user pinned this thread to the top of the sidebar.
+     * NULL means unpinned. Pinned threads sort above unpinned, both groups
+     * keep recency ordering. Per `(user, agent)` because `chat_threads` rows
+     * already carry `user_id` + `agent_compose_id`.
+     */
+    pinnedAt: timestamp("pinned_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -92,6 +100,9 @@ export const chatThreads = pgTable(
         table.userId,
         table.lastReadMessageId,
       ),
+      index("idx_chat_threads_user_compose_pinned")
+        .on(table.userId, table.agentComposeId)
+        .where(sql`${table.pinnedAt} IS NOT NULL`),
     ];
   },
 );

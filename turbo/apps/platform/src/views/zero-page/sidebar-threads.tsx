@@ -11,8 +11,12 @@ import {
   IconChevronRight,
   IconTrash,
   IconPencil,
+  IconDots,
+  IconPin,
+  IconPinnedOff,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   Tooltip,
@@ -21,6 +25,10 @@ import {
   TooltipTrigger,
   Button,
   RunningIndicator,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
 } from "@vm0/ui";
 import {
   Dialog,
@@ -37,7 +45,10 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   chatThreads$,
   deleteChatThread$,
+  pinChatThread$,
+  unpinChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   chatSidebarThreadId$,
   navigateMainChatPreservingSidebar$,
@@ -175,17 +186,139 @@ function handleChatThreadClick(
   closeSidebarOnSelect();
 }
 
+function ChatThreadDeleteButton({
+  threadId,
+  isHighlighted,
+}: {
+  threadId: string;
+  isHighlighted: boolean;
+}) {
+  const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
+
+  function handleDeleteClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setPendingDeleteThreadId(threadId);
+  }
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={handleDeleteClick}
+            className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+              isHighlighted
+                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+            }`}
+            aria-label="Delete chat"
+          >
+            <IconTrash size={16} stroke={2} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">Delete chat</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ChatThreadMenu({
+  threadId,
+  isPinned,
+  isHighlighted,
+}: {
+  threadId: string;
+  isPinned: boolean;
+  isHighlighted: boolean;
+}) {
+  const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
+  const pinChatThread = useSet(pinChatThread$);
+  const unpinChatThread = useSet(unpinChatThread$);
+  const pageSignal = useGet(pageSignal$);
+
+  function handleTogglePin(e: Event) {
+    e.preventDefault();
+    if (isPinned) {
+      detach(unpinChatThread(threadId, pageSignal), Reason.DomCallback);
+    } else {
+      detach(pinChatThread(threadId, pageSignal), Reason.DomCallback);
+    }
+  }
+
+  function handleMenuTriggerClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={handleMenuTriggerClick}
+          className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
+            isHighlighted
+              ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+              : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+          }`}
+          aria-label="Open chat menu"
+          data-testid="chat-thread-menu-trigger"
+          data-pinned={isPinned ? "true" : "false"}
+        >
+          {isPinned ? (
+            <IconPin size={16} stroke={2} />
+          ) : (
+            <IconDots size={16} stroke={2} />
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuItem onSelect={handleTogglePin}>
+          {isPinned ? (
+            <>
+              <IconPinnedOff size={16} stroke={2} className="mr-2" />
+              Unpin chat
+            </>
+          ) : (
+            <>
+              <IconPin size={16} stroke={2} className="mr-2" />
+              Pin chat
+            </>
+          )}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setPendingDeleteThreadId(threadId);
+          }}
+          className="text-destructive focus:text-destructive"
+        >
+          <IconTrash size={16} stroke={2} className="mr-2" />
+          Delete chat
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   const pathParams = useGet(pathParams$);
   const selectedThreadId =
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarThreadId = useGet(chatSidebarThreadId$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
-  const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const openChatSidebar = useSet(openChatSidebar$);
   const navigateMainChatPreservingSidebar = useSet(
     navigateMainChatPreservingSidebar$,
   );
+  const features = useLastResolved(featureSwitch$);
+  const pinEnabled = features?.[FeatureSwitchKey.ChatThreadPin] ?? false;
+  const isPinned =
+    pinEnabled && session.pinnedAt !== null && session.pinnedAt !== undefined;
   const isCurrentPage = selectedThreadId === session.id;
   const isHighlighted = isCurrentPage || sidebarThreadId === session.id;
   const paneIndicator = getChatThreadPaneIndicator({
@@ -202,12 +335,6 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
     isRunning,
     isUnread,
   });
-
-  function handleDeleteClick(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setPendingDeleteThreadId(session.id);
-  }
 
   function closeSidebarOnSelect() {
     setSidebarExpanded(false);
@@ -255,29 +382,19 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
             <SessionStateIndicator state={indicatorState} />
           </span>
         )}
-        {indicatorState !== "draft" && (
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleDeleteClick}
-                  className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
-                    isHighlighted
-                      ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                      : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-                  }`}
-                  aria-label="Delete chat"
-                >
-                  <IconTrash size={16} stroke={2} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">Delete chat</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+        {indicatorState !== "draft" &&
+          (pinEnabled ? (
+            <ChatThreadMenu
+              threadId={session.id}
+              isPinned={isPinned}
+              isHighlighted={isHighlighted}
+            />
+          ) : (
+            <ChatThreadDeleteButton
+              threadId={session.id}
+              isHighlighted={isHighlighted}
+            />
+          ))}
       </div>
     </div>
   );

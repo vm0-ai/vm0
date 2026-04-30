@@ -10,6 +10,8 @@ import {
 } from "../agent-chat.ts";
 import {
   chatThreadByIdContract,
+  chatThreadPinContract,
+  chatThreadUnpinContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -71,6 +73,28 @@ export const deleteChatThread$ = command(
       }
     }
 
+    set(reloadChatThreads$);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Pin / unpin thread
+// ---------------------------------------------------------------------------
+
+export const pinChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(chatThreadPinContract);
+    await accept(client.pin({ params: { id: threadId } }), [204]);
+    signal.throwIfAborted();
+    set(reloadChatThreads$);
+  },
+);
+
+export const unpinChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(chatThreadUnpinContract);
+    await accept(client.unpin({ params: { id: threadId } }), [204]);
+    signal.throwIfAborted();
     set(reloadChatThreads$);
   },
 );

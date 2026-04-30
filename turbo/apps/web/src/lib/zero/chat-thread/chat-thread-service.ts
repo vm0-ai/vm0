@@ -90,6 +90,7 @@ export async function listChatThreads(
     agentAvatarUrl: string | null;
     createdAt: Date;
     updatedAt: Date;
+    pinnedAt: Date | null;
     isRead: boolean;
     lastMessageArchivedAt: Date | null;
     running: boolean;
@@ -126,6 +127,7 @@ export async function listChatThreads(
       agentAvatarUrl: zeroAgents.avatarUrl,
       createdAt: chatThreads.createdAt,
       updatedAt: chatThreads.updatedAt,
+      pinnedAt: chatThreads.pinnedAt,
       isRead: sql<boolean>`CASE
         WHEN ${lastMessage.id} IS NULL THEN true
         ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
@@ -154,6 +156,7 @@ export async function listChatThreads(
     )
     .where(and(...filters))
     .orderBy(
+      sql`(${chatThreads.pinnedAt} IS NULL)`,
       desc(sql`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`),
     );
 
@@ -311,6 +314,44 @@ export async function deleteChatThread(
     .returning({ id: chatThreads.id });
 
   if (deleted.length === 0) {
+    throw notFound("Chat thread not found");
+  }
+}
+
+/**
+ * Pin a chat thread to the top of the sidebar list. Idempotent: re-pinning
+ * an already-pinned thread refreshes `pinned_at` to the current time.
+ */
+export async function pinChatThread(
+  threadId: string,
+  userId: string,
+): Promise<void> {
+  const updated = await globalThis.services.db
+    .update(chatThreads)
+    .set({ pinnedAt: new Date() })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .returning({ id: chatThreads.id });
+
+  if (updated.length === 0) {
+    throw notFound("Chat thread not found");
+  }
+}
+
+/**
+ * Clear the pin from a chat thread. Idempotent: unpinning an already-unpinned
+ * thread is a no-op write but still succeeds.
+ */
+export async function unpinChatThread(
+  threadId: string,
+  userId: string,
+): Promise<void> {
+  const updated = await globalThis.services.db
+    .update(chatThreads)
+    .set({ pinnedAt: null })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .returning({ id: chatThreads.id });
+
+  if (updated.length === 0) {
     throw notFound("Chat thread not found");
   }
 }

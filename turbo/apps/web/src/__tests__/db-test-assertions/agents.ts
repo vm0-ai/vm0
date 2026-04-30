@@ -170,6 +170,26 @@ export async function getTestChatThreadLastReadAt(
 }
 
 /**
+ * Read the pinned_at value for a chat thread.
+ *
+ * @why-db-direct The list endpoint exposes pinnedAt as ISO string, but
+ * pin/unpin route tests need raw DB state to assert the column was
+ * updated/cleared.
+ */
+export async function getTestChatThreadPinnedAt(
+  threadId: string,
+): Promise<Date | null | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ pinnedAt: chatThreads.pinnedAt })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (!row) return undefined;
+  return row.pinnedAt;
+}
+
+/**
  * Read the last_read_message_id value for a chat thread.
  *
  * @why-db-direct No API route exposes last_read_message_id directly. Tests

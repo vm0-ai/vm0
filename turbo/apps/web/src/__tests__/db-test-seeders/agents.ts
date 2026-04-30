@@ -409,6 +409,24 @@ export async function setTestChatThreadLastReadAt(
 }
 
 /**
+ * Set pinned_at on a chat thread directly in the database.
+ *
+ * @why-db-direct The pin/unpin route is exercised in its own route test;
+ * list-route ordering tests need to seed an arbitrary pinned state to
+ * assert the new ORDER BY without round-tripping the auth/clerk-mocked POST.
+ */
+export async function setTestChatThreadPinnedAt(
+  threadId: string,
+  pinnedAt: Date | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ pinnedAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
  * Set last_read_message_id on a chat thread directly in the database.
  *
  * @why-db-direct Tests need to seed exact read state without invoking the
