@@ -1155,63 +1155,8 @@ impl NetnsPool {
         // `reconcile_orphan_namespaces` above MUST have finished
         // synchronously — otherwise `vm0-ns-{own}-00` may still exist from
         // a previous runner and `ip netns add` will fail with EEXIST.
-        if BUFFER_SIZE > 0 {
-            let mut plain_set = tokio::task::JoinSet::new();
-            let mut proxy_set = tokio::task::JoinSet::new();
-
-            // Plain namespaces (connectivity only). Only needed when proxy
-            // is disabled; with proxy configured, `acquire()` always routes
-            // to the proxy queue, so plain entries would be unreachable
-            // until `cleanup()`.
-            if pool.proxy_port.is_none() {
-                for _ in 0..BUFFER_SIZE {
-                    let ns_index = pool.next_ns_index;
-                    pool.next_ns_index += 1;
-                    let pool_index = pool.pool_index;
-                    let default_iface = pool.default_iface.clone();
-                    plain_set.spawn(create_single_namespace(
-                        pool_index,
-                        ns_index,
-                        default_iface,
-                        None,
-                        None,
-                    ));
-                }
-            }
-
-            // Proxy namespaces (connectivity + REDIRECT rules).
-            if let Some(proxy_port) = pool.proxy_port {
-                let dns_port = pool.dns_port;
-                for _ in 0..BUFFER_SIZE {
-                    let ns_index = pool.next_ns_index;
-                    pool.next_ns_index += 1;
-                    let pool_index = pool.pool_index;
-                    let default_iface = pool.default_iface.clone();
-                    proxy_set.spawn(create_single_namespace(
-                        pool_index,
-                        ns_index,
-                        default_iface,
-                        Some(proxy_port),
-                        dns_port,
-                    ));
-                }
-            }
-
-            while let Some(result) = plain_set.join_next().await {
-                match result {
-                    Ok(Ok(ns)) => pool.plain_queue.push_back(ns),
-                    Ok(Err(e)) => error!(error = %e, "failed to create namespace"),
-                    Err(e) => error!(error = %e, "namespace creation task panicked"),
-                }
-            }
-            while let Some(result) = proxy_set.join_next().await {
-                match result {
-                    Ok(Ok(ns)) => pool.proxy_queue.push_back(ns),
-                    Ok(Err(e)) => error!(error = %e, "failed to create proxy namespace"),
-                    Err(e) => error!(error = %e, "proxy namespace creation task panicked"),
-                }
-            }
-        }
+        pool.spawn_initial_warmup();
+        pool.drain_initial_warmup().await;
 
         info!(
             plain = pool.plain_queue.len(),
@@ -1277,6 +1222,61 @@ impl NetnsPool {
 
     fn spawn_proxy_creation(&mut self) -> Result<()> {
         self.spawn_creation(PendingKind::Proxy)
+    }
+
+    fn spawn_initial_warmup(&mut self) {
+        if BUFFER_SIZE == 0 {
+            return;
+        }
+
+        // Plain namespaces (connectivity only). Only needed when proxy
+        // is disabled; with proxy configured, `acquire()` always routes
+        // to the proxy queue, so plain entries would be unreachable
+        // until `cleanup()`.
+        if self.proxy_port.is_none() {
+            for _ in 0..BUFFER_SIZE {
+                if let Err(e) = self.spawn_plain_creation() {
+                    warn!(error = %e, "failed to start initial namespace creation");
+                    break;
+                }
+            }
+        }
+
+        // Proxy namespaces (connectivity + REDIRECT rules).
+        if self.proxy_port.is_some() {
+            for _ in 0..BUFFER_SIZE {
+                if let Err(e) = self.spawn_proxy_creation() {
+                    warn!(error = %e, "failed to start initial proxy namespace creation");
+                    break;
+                }
+            }
+        }
+    }
+
+    async fn drain_initial_warmup(&mut self) {
+        loop {
+            let mut waiter = if self.pending_plain.is_empty() && self.pending_proxy.is_empty() {
+                None
+            } else {
+                Some(self.completion_wake_tx.subscribe())
+            };
+
+            let delete = self.drain_completed(true);
+            if !delete.is_empty() {
+                delete_namespaces_with_ops(self.ops.clone(), delete).await;
+            }
+            if self.pending_plain.is_empty() && self.pending_proxy.is_empty() {
+                return;
+            }
+
+            let Some(waiter) = waiter.as_mut() else {
+                continue;
+            };
+            if waiter.changed().await.is_err() {
+                warn!("namespace creation notifier closed during initial warmup");
+                return;
+            }
+        }
     }
 
     fn spawn_creation(&mut self, kind: PendingKind) -> Result<()> {
@@ -2506,6 +2506,42 @@ mod tests {
             .await;
 
         assert_eq!(deleted.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn dropped_pool_deletes_late_pending_creation() {
+        let release = Arc::new(tokio::sync::Notify::new());
+        let deleted = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        let deleted_for_ops = Arc::clone(&deleted);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Trusted })),
+            delete_namespace: Arc::new(move |_| {
+                let deleted = Arc::clone(&deleted_for_ops);
+                Box::pin(async move {
+                    deleted.fetch_add(1, Ordering::SeqCst);
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        pool.spawn_plain_creation_for_test({
+            let release = Arc::clone(&release);
+            async move {
+                release.notified().await;
+                Ok(test_info("late-ns"))
+            }
+        });
+
+        drop(pool);
+        release.notify_one();
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while deleted.load(Ordering::SeqCst) == 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("late pending namespace should be deleted after pool drop");
     }
 
     #[tokio::test]
