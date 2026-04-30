@@ -412,53 +412,123 @@ mod tests {
     #[tokio::test]
     async fn exec_with_timeout_kills_child_process_group() {
         let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
         let marker = dir.path().join("marker");
+        let pid_file = pid_file.to_str().unwrap();
         let marker = marker.to_str().unwrap();
 
-        let _ = exec_ignore_errors_with_timeout(
+        let outcome = exec_ignore_errors_with_timeout(
             "sh",
-            &["-c", "(sleep 0.2; touch \"$1\") & wait", "_", marker],
-            Duration::from_millis(50),
+            &[
+                "-c",
+                "(sleep 5; touch \"$2\") & echo $! > \"$1\"; wait",
+                "_",
+                pid_file,
+                marker,
+            ],
+            Duration::from_millis(250),
         )
         .await;
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
+        let pid = read_pid_file(pid_file).await;
+        assert_pid_exits(pid).await;
         assert!(!std::path::Path::new(marker).exists());
     }
 
     #[tokio::test]
     async fn exec_with_timeout_bounds_pipe_drain_after_parent_exits() {
         let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
         let marker = dir.path().join("marker");
+        let pid_file = pid_file.to_str().unwrap();
         let marker = marker.to_str().unwrap();
 
         let outcome = exec_ignore_errors_with_timeout(
             "sh",
-            &["-c", "(sleep 0.2; touch \"$1\") &", "_", marker],
-            Duration::from_millis(50),
+            &[
+                "-c",
+                "(sleep 5; touch \"$2\") & echo $! > \"$1\"",
+                "_",
+                pid_file,
+                marker,
+            ],
+            Duration::from_millis(250),
         )
         .await;
 
         assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        let pid = read_pid_file(pid_file).await;
+        assert_pid_exits(pid).await;
         assert!(!std::path::Path::new(marker).exists());
     }
 
     #[tokio::test]
     async fn exec_with_timeout_aborts_only_remaining_pipe_reader() {
         let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
         let marker = dir.path().join("marker");
+        let pid_file = pid_file.to_str().unwrap();
         let marker = marker.to_str().unwrap();
 
         let outcome = exec_ignore_errors_with_timeout(
             "sh",
-            &["-c", "(exec 1>&-; sleep 0.2; touch \"$1\") &", "_", marker],
-            Duration::from_millis(50),
+            &[
+                "-c",
+                "(exec 1>&-; sleep 5; touch \"$2\") & echo $! > \"$1\"",
+                "_",
+                pid_file,
+                marker,
+            ],
+            Duration::from_millis(250),
         )
         .await;
 
         assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        let pid = read_pid_file(pid_file).await;
+        assert_pid_exits(pid).await;
         assert!(!std::path::Path::new(marker).exists());
+    }
+
+    async fn read_pid_file(path: &str) -> u32 {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+        loop {
+            match std::fs::read_to_string(path) {
+                Ok(pid) => return pid.trim().parse().expect("pid file contains pid"),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => panic!("read pid file {path}: {e}"),
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "pid file was not written: {path}"
+            );
+            tokio::task::yield_now().await;
+        }
+    }
+
+    async fn assert_pid_exits(pid: u32) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        while process_exists(pid) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "process {pid} was not killed by command timeout"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    #[cfg(unix)]
+    fn process_exists(pid: u32) -> bool {
+        let pid = nix::unistd::Pid::from_raw(i32::try_from(pid).expect("pid fits in i32"));
+        match nix::sys::signal::kill(pid, None) {
+            Ok(()) => true,
+            Err(nix::errno::Errno::ESRCH) => false,
+            Err(_) => true,
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn process_exists(_pid: u32) -> bool {
+        false
     }
 }
