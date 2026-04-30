@@ -2762,6 +2762,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn release_cancelled_after_trusted_flush_before_commit_deletes_on_retry() {
+        let flush_entered = Arc::new(tokio::sync::Notify::new());
+        let first_flush_release = Arc::new(tokio::sync::Notify::new());
+        let flush_count = Arc::new(AtomicUsize::new(0));
+        let delete_count = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let flush_entered_for_ops = Arc::clone(&flush_entered);
+        let first_flush_release_for_ops = Arc::clone(&first_flush_release);
+        let flush_count_for_ops = Arc::clone(&flush_count);
+        let delete_count_for_ops = Arc::clone(&delete_count);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(move |_| {
+                let flush_entered = Arc::clone(&flush_entered_for_ops);
+                let first_flush_release = Arc::clone(&first_flush_release_for_ops);
+                let flush_count = Arc::clone(&flush_count_for_ops);
+                Box::pin(async move {
+                    let attempt = flush_count.fetch_add(1, Ordering::SeqCst);
+                    if attempt == 0 {
+                        flush_entered.notify_one();
+                        first_flush_release.notified().await;
+                    }
+                    ConntrackFlushOutcome::Trusted
+                })
+            }),
+            delete_namespace: Arc::new(move |_| {
+                let delete_count = Arc::clone(&delete_count_for_ops);
+                Box::pin(async move {
+                    delete_count.fetch_add(1, Ordering::SeqCst);
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
+        let handle = NetnsPoolHandle::new_for_test(pool);
+
+        let mut release = Box::pin(handle.release(&mut lease));
+        tokio::select! {
+            outcome = &mut release => panic!("release completed before flush finished: {outcome:?}"),
+            _ = flush_entered.notified() => {}
+        }
+        let guard = handle.inner.lock().await;
+        first_flush_release.notify_one();
+        tokio::select! {
+            outcome = &mut release => panic!("release completed while pool lock was held: {outcome:?}"),
+            _ = tokio::task::yield_now() => {}
+        }
+        assert!(guard.non_reusable.contains("test-ns"));
+        drop(release);
+
+        assert!(lease.is_some());
+        assert_eq!(flush_count.load(Ordering::SeqCst), 1);
+        drop(guard);
+
+        let outcome = handle.release(&mut lease).await;
+
+        assert!(matches!(outcome, NetnsReleaseOutcome::Deleted));
+        assert!(lease.is_none());
+        assert_eq!(
+            flush_count.load(Ordering::SeqCst),
+            1,
+            "cancelled post-flush commit must not flush/requeue on retry"
+        );
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        let pool = handle.inner.lock().await;
+        assert!(pool.non_reusable.is_empty());
+        assert!(pool.in_flight.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
     async fn direct_release_cancelled_during_flush_marks_namespace_non_reusable_for_retry() {
         let flush_entered = Arc::new(tokio::sync::Notify::new());
         let first_flush_release = Arc::new(tokio::sync::Notify::new());
@@ -2920,6 +2991,78 @@ mod tests {
         assert_eq!(delete_count.load(Ordering::SeqCst), 2);
         let pool = handle.inner.lock().await;
         assert!(pool.non_reusable.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn release_cancelled_after_delete_before_commit_retries_delete_without_flush() {
+        let delete_entered = Arc::new(tokio::sync::Notify::new());
+        let first_delete_release = Arc::new(tokio::sync::Notify::new());
+        let flush_count = Arc::new(AtomicUsize::new(0));
+        let delete_count = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let flush_count_for_ops = Arc::clone(&flush_count);
+        let delete_count_for_ops = Arc::clone(&delete_count);
+        let delete_entered_for_ops = Arc::clone(&delete_entered);
+        let first_delete_release_for_ops = Arc::clone(&first_delete_release);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(move |_| {
+                let flush_count = Arc::clone(&flush_count_for_ops);
+                Box::pin(async move {
+                    flush_count.fetch_add(1, Ordering::SeqCst);
+                    ConntrackFlushOutcome::Untrusted
+                })
+            }),
+            delete_namespace: Arc::new(move |_| {
+                let delete_count = Arc::clone(&delete_count_for_ops);
+                let delete_entered = Arc::clone(&delete_entered_for_ops);
+                let first_delete_release = Arc::clone(&first_delete_release_for_ops);
+                Box::pin(async move {
+                    let attempt = delete_count.fetch_add(1, Ordering::SeqCst);
+                    if attempt == 0 {
+                        delete_entered.notify_one();
+                        first_delete_release.notified().await;
+                    }
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
+        let handle = NetnsPoolHandle::new_for_test(pool);
+
+        let mut release = Box::pin(handle.release(&mut lease));
+        tokio::select! {
+            outcome = &mut release => panic!("release completed before delete finished: {outcome:?}"),
+            _ = delete_entered.notified() => {}
+        }
+        let guard = handle.inner.lock().await;
+        first_delete_release.notify_one();
+        tokio::select! {
+            outcome = &mut release => panic!("release completed while pool lock was held: {outcome:?}"),
+            _ = tokio::task::yield_now() => {}
+        }
+        assert!(guard.non_reusable.contains("test-ns"));
+        drop(release);
+
+        assert!(lease.is_some());
+        assert_eq!(flush_count.load(Ordering::SeqCst), 1);
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        drop(guard);
+
+        let outcome = handle.release(&mut lease).await;
+
+        assert!(matches!(outcome, NetnsReleaseOutcome::Deleted));
+        assert!(lease.is_none());
+        assert_eq!(
+            flush_count.load(Ordering::SeqCst),
+            1,
+            "tainted post-delete retry must not flush/requeue"
+        );
+        assert_eq!(delete_count.load(Ordering::SeqCst), 2);
+        let pool = handle.inner.lock().await;
+        assert!(pool.non_reusable.is_empty());
+        assert!(pool.in_flight.is_empty());
         assert!(pool.plain_queue.is_empty());
     }
 

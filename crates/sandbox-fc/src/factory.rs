@@ -2020,18 +2020,21 @@ mod tests {
 
     #[tokio::test]
     async fn leak_cleaner_drop_signals_shutdown_and_detaches_drain() {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let live_sender_clone = tx.clone();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let cleaned_clone = Arc::clone(&cleaned);
         let handle = tokio::spawn(async move {
-            shutdown_rx.await.unwrap();
-            rx.close();
-            let mut drained = Vec::new();
-            while let Some(leaked) = rx.recv().await {
-                drained.push(leaked.sandbox_id);
-            }
-            done_tx.send(drained).unwrap();
+            drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
+                let cleaned = Arc::clone(&cleaned_clone);
+                async move {
+                    cleaned.lock().await.push(leaked.sandbox_id);
+                }
+            })
+            .await;
+            done_tx.send(()).unwrap();
         });
         let cleaner = LeakCleaner {
             tx: Some(tx),
@@ -2044,11 +2047,11 @@ mod tests {
             .unwrap();
         drop(cleaner);
 
-        let drained = tokio::time::timeout(std::time::Duration::from_secs(1), done_rx)
+        tokio::time::timeout(std::time::Duration::from_secs(1), done_rx)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(drained, vec!["queued".to_string()]);
+        assert_eq!(*cleaned.lock().await, vec!["queued".to_string()]);
         assert!(matches!(
             live_sender_clone.send(test_leaked_resource("late")),
             Err(tokio::sync::mpsc::error::SendError(_))
