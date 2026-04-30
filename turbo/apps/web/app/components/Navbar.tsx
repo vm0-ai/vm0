@@ -6,15 +6,25 @@ import NextLink from "next/link";
 import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
-import { IconArrowRight } from "@tabler/icons-react";
+import {
+  IconArrowRight,
+  IconArrowUpRight,
+  IconBrandGithub,
+} from "@tabler/icons-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
+import { NavMenu, type NavMenuItem } from "./NavMenu";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/zero/url";
 import { isBlogEnabled } from "../../src/env";
+
 interface NavbarProps {
   initialIsSignedIn?: boolean;
 }
+
+const GITHUB_URL = "https://github.com/vm0-ai/vm0";
+const STATUS_URL = "https://status.vm0.ai";
+const DEMO_URL = "https://calendar.app.google/csdygPrHHyNgxpTPA";
 
 export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
   const { theme } = useTheme();
@@ -24,7 +34,6 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
   const { signOut } = useClerk();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Close mobile menu on resize to desktop
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 768) {
@@ -37,7 +46,6 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
     };
   }, []);
 
-  // Prevent body scroll when mobile menu is open
   useEffect(() => {
     if (mobileMenuOpen) {
       document.body.style.overflow = "hidden";
@@ -54,6 +62,64 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
       console.error("Sign out error:", error);
     });
   };
+
+  const closeMobile = () => {
+    setMobileMenuOpen(false);
+  };
+
+  const blogItem: NavMenuItem | null = isBlogEnabled()
+    ? {
+        label: t("blog"),
+        description: t("blogDesc"),
+        href: "/blog",
+        icon: "/assets/nav/blog.png",
+      }
+    : null;
+
+  const resourcesItems: NavMenuItem[] = [
+    ...(blogItem ? [blogItem] : []),
+    {
+      label: t("support"),
+      description: t("supportDesc"),
+      href: "/support",
+      icon: "/assets/nav/support.png",
+    },
+    {
+      label: t("status"),
+      description: t("statusDesc"),
+      href: STATUS_URL,
+      icon: "/assets/nav/status.png",
+      external: true,
+    },
+    {
+      label: t("github"),
+      description: t("githubDesc"),
+      href: GITHUB_URL,
+      icon: "/assets/nav/github.png",
+      external: true,
+    },
+  ];
+
+  const trustItems: NavMenuItem[] = [
+    {
+      label: t("models"),
+      description: t("modelsDesc"),
+      href: "/models",
+      icon: "/assets/nav/models.png",
+    },
+    {
+      label: t("modelRankings"),
+      description: t("modelRankingsDesc"),
+      href: "/rankings",
+      icon: "/assets/nav/rankings.png",
+    },
+    {
+      label: t("security"),
+      description: t("securityDesc"),
+      href: "/security",
+      icon: "/assets/nav/security.png",
+    },
+  ];
 
   return (
     <nav className="navbar">
@@ -74,44 +140,39 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
             </Link>
           </div>
 
-          {/* Desktop Navigation */}
-          <div
-            className="nav-center nav-desktop"
-            style={{ display: "flex", gap: "32px" }}
-          >
-            <Link href="/pricing" className="nav-link">
-              {t("pricing")}
-            </Link>
-            <Link href="/security" className="nav-link">
-              {t("security")}
-            </Link>
+          <div className="nav-center nav-desktop">
             <Link href="/use-cases" className="nav-link">
               {t("useCases")}
             </Link>
-            <Link href="/models" className="nav-link">
-              {t("models")}
+            <NavMenu
+              label={t("resources")}
+              items={resourcesItems}
+              alignOffset={-40}
+            />
+            <NavMenu
+              label={t("trustAndTech")}
+              items={trustItems}
+              alignOffset={40}
+            />
+            <Link href="/pricing" className="nav-link">
+              {t("pricing")}
             </Link>
-            {isBlogEnabled() && (
-              <Link href="/blog" className="nav-link">
-                {t("blog")}
-              </Link>
-            )}
-            <a
-              href="https://github.com/vm0-ai/vm0"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="nav-link"
-            >
-              {t("github")}
-            </a>
           </div>
 
           <div className="nav-right">
-            {/* Desktop buttons */}
+            <a
+              href={GITHUB_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="nav-icon-btn nav-desktop"
+              aria-label="GitHub"
+            >
+              <IconBrandGithub size={16} strokeWidth={1.8} />
+            </a>
             {!isSignedIn && (
               <>
                 <a
-                  href="https://calendar.app.google/csdygPrHHyNgxpTPA"
+                  href={DEMO_URL}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn-try-demo nav-desktop"
@@ -146,7 +207,6 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
               </>
             )}
 
-            {/* Hamburger Menu Button */}
             <button
               className="hamburger-btn"
               onClick={() => {
@@ -169,67 +229,52 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
         </div>
       </div>
 
-      {/* Mobile Menu */}
       <div className={`mobile-menu ${mobileMenuOpen ? "open" : ""}`}>
         <div className="mobile-menu-content">
           <div className="mobile-menu-links">
             <Link
-              href="/security"
-              className="mobile-menu-link"
-              onClick={() => {
-                return setMobileMenuOpen(false);
-              }}
-            >
-              {t("security")}
-            </Link>
-            <Link
               href="/use-cases"
               className="mobile-menu-link"
-              onClick={() => {
-                return setMobileMenuOpen(false);
-              }}
+              onClick={closeMobile}
             >
               {t("useCases")}
             </Link>
             <Link
-              href="/models"
+              href="/pricing"
               className="mobile-menu-link"
-              onClick={() => {
-                return setMobileMenuOpen(false);
-              }}
+              onClick={closeMobile}
             >
-              {t("models")}
+              {t("pricing")}
             </Link>
-            {isBlogEnabled() && (
-              <Link
-                href="/blog"
-                className="mobile-menu-link"
-                onClick={() => {
-                  return setMobileMenuOpen(false);
-                }}
-              >
-                {t("blog")}
-              </Link>
-            )}
+
+            <div className="mobile-menu-section-title">{t("resources")}</div>
+            {resourcesItems.map((item) => {
+              return (
+                <MobileMenuRow
+                  key={item.href}
+                  item={item}
+                  onSelect={closeMobile}
+                />
+              );
+            })}
+
+            <div className="mobile-menu-section-title">{t("trustAndTech")}</div>
+            {trustItems.map((item) => {
+              return (
+                <MobileMenuRow
+                  key={item.href}
+                  item={item}
+                  onSelect={closeMobile}
+                />
+              );
+            })}
+
             <a
-              href="https://github.com/vm0-ai/vm0"
+              href={DEMO_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="mobile-menu-link"
-              onClick={() => {
-                return setMobileMenuOpen(false);
-              }}
-            >
-              {t("github")}
-            </a>
-            <a
-              href="https://calendar.app.google/csdygPrHHyNgxpTPA"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mobile-menu-link"
-              onClick={() => {
-                return setMobileMenuOpen(false);
-              }}
+              onClick={closeMobile}
             >
               {t("contact")}
             </a>
@@ -237,7 +282,7 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
               <>
                 <button
                   onClick={() => {
-                    setMobileMenuOpen(false);
+                    closeMobile();
                     handleSignOut();
                   }}
                   className="mobile-menu-link"
@@ -250,9 +295,7 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mobile-menu-link group"
-                  onClick={() => {
-                    return setMobileMenuOpen(false);
-                  }}
+                  onClick={closeMobile}
                   style={{ display: "flex", alignItems: "center", gap: "8px" }}
                 >
                   <span>{t("openApp")}</span>
@@ -271,7 +314,6 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
         </div>
       </div>
 
-      {/* Overlay */}
       {mobileMenuOpen && (
         <div
           className="mobile-menu-overlay"
@@ -281,5 +323,56 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
         />
       )}
     </nav>
+  );
+}
+
+interface MobileMenuRowProps {
+  item: NavMenuItem;
+  onSelect: () => void;
+}
+
+function MobileMenuRow({ item, onSelect }: MobileMenuRowProps) {
+  const body = (
+    <span className="mobile-menu-row-body">
+      <Image
+        src={item.icon}
+        alt=""
+        width={22}
+        height={22}
+        className="mobile-menu-row-icon"
+      />
+      <span className="mobile-menu-row-label">{item.label}</span>
+      {item.external && (
+        <IconArrowUpRight
+          size={12}
+          strokeWidth={1.8}
+          className="mobile-menu-row-ext"
+        />
+      )}
+    </span>
+  );
+
+  if (item.external) {
+    return (
+      <a
+        href={item.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mobile-menu-link mobile-menu-row"
+        onClick={onSelect}
+      >
+        {body}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      href={item.href}
+      className="mobile-menu-link mobile-menu-row"
+      onClick={onSelect}
+    >
+      {body}
+    </Link>
   );
 }

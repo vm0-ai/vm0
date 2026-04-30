@@ -89,7 +89,19 @@
     "useCases": "Casos de uso",
     "models": "Modelos",
     "signOut": "Cerrar sesión",
-    "openApp": "Abrir app"
+    "openApp": "Abrir app",
+    "resources": "Recursos",
+    "trustAndTech": "Confianza y tecnología",
+    "modelRankings": "Ranking de modelos",
+    "support": "Soporte",
+    "status": "Estado",
+    "modelsDesc": "LLMs de frontera, tu elección",
+    "modelRankingsDesc": "Tabla de evaluación independiente",
+    "securityDesc": "Acceso mediado y aislamiento de permisos",
+    "blogDesc": "Novedades, análisis y escritos del equipo",
+    "supportDesc": "Artículos de ayuda y contacto directo",
+    "statusDesc": "Estado del sistema e incidentes en vivo",
+    "githubDesc": "Issues, releases y código fuente"
   },
   "pricing": {
     "title": "Elige Tu Plan",

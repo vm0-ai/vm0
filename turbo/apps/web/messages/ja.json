@@ -89,7 +89,19 @@
     "useCases": "ユースケース",
     "models": "モデル",
     "signOut": "サインアウト",
-    "openApp": "アプリを開く"
+    "openApp": "アプリを開く",
+    "resources": "リソース",
+    "trustAndTech": "信頼性とテクノロジー",
+    "modelRankings": "モデルランキング",
+    "support": "サポート",
+    "status": "ステータス",
+    "modelsDesc": "最先端のLLMから自由に選択",
+    "modelRankingsDesc": "独立したベンチマーク・リーダーボード",
+    "securityDesc": "仲介アクセスと権限分離",
+    "blogDesc": "アップデート、深掘り記事、チーム執筆",
+    "supportDesc": "ヘルプ記事と直接お問い合わせ",
+    "statusDesc": "システム稼働状況とインシデント",
+    "githubDesc": "Issue、リリース、ソースコード"
   },
   "pricing": {
     "title": "プランを選択",

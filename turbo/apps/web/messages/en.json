@@ -89,7 +89,19 @@
     "useCases": "Use Cases",
     "models": "Models",
     "signOut": "Sign out",
-    "openApp": "Open app"
+    "openApp": "Open app",
+    "resources": "Resources",
+    "trustAndTech": "Trust & Tech",
+    "modelRankings": "Model Rankings",
+    "support": "Support",
+    "status": "Status",
+    "modelsDesc": "Frontier LLMs, your choice",
+    "modelRankingsDesc": "Independent benchmark leaderboard",
+    "securityDesc": "Brokered access & permission isolation",
+    "blogDesc": "Updates, deep-dives, and team writing",
+    "supportDesc": "Help articles and direct contact",
+    "statusDesc": "Live system health and incidents",
+    "githubDesc": "Issues, releases, and source code"
   },
   "pricing": {
     "title": "Choose Your Plan",

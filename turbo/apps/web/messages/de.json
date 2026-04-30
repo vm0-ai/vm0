@@ -89,7 +89,19 @@
     "useCases": "Anwendungsfälle",
     "models": "Modelle",
     "signOut": "Abmelden",
-    "openApp": "App öffnen"
+    "openApp": "App öffnen",
+    "resources": "Ressourcen",
+    "trustAndTech": "Vertrauen & Technik",
+    "modelRankings": "Modell-Ranking",
+    "support": "Support",
+    "status": "Status",
+    "modelsDesc": "Frontier-LLMs, Ihre Wahl",
+    "modelRankingsDesc": "Unabhängige Benchmark-Rangliste",
+    "securityDesc": "Vermittelter Zugang & Berechtigungstrennung",
+    "blogDesc": "Updates, Tiefenanalysen und Team-Beiträge",
+    "supportDesc": "Hilfeartikel und direkter Kontakt",
+    "statusDesc": "Live-Systemzustand und Vorfälle",
+    "githubDesc": "Issues, Releases und Quellcode"
   },
   "pricing": {
     "title": "Wählen Sie Ihren Plan",
