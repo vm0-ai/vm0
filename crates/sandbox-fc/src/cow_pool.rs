@@ -527,7 +527,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let config = test_config(tmp.path());
         let ws = tmp.path().join("pending-slot");
-        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
         let (release_tx, release_rx) = std::sync::mpsc::channel();
         let mut pool = CowPool::new(config);
 
@@ -545,8 +545,9 @@ mod tests {
             }
         });
 
-        entered_rx
-            .recv_timeout(std::time::Duration::from_secs(1))
+        tokio::time::timeout(std::time::Duration::from_secs(1), entered_rx)
+            .await
+            .expect("pending slot creation should enter")
             .unwrap();
         assert!(ws.exists());
         drop(pool);
