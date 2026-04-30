@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.319.0](https://github.com/vm0-ai/vm0/compare/app-v0.318.0...app-v0.319.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** pin chat threads in platform sidebar ([#11636](https://github.com/vm0-ai/vm0/issues/11636)) ([7190949](https://github.com/vm0-ai/vm0/commit/719094992e2a7e13f1086b2bd8b5219759ac8c86))
+
+
+### Refactoring
+
+* collapse LocalChatThreadSnapshot into polymorphic ChatThreadDataSource ([#11637](https://github.com/vm0-ai/vm0/issues/11637)) ([d590af1](https://github.com/vm0-ai/vm0/commit/d590af152f9f75c6cab2708d3721ad3d2319cdf2)), closes [#11632](https://github.com/vm0-ai/vm0/issues/11632)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.250.0
+
 ## [0.318.0](https://github.com/vm0-ai/vm0/compare/app-v0.317.0...app-v0.318.0) (2026-04-30)
 
 

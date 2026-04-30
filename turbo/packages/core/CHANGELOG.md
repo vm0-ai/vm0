@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.250.0](https://github.com/vm0-ai/vm0/compare/core-v8.249.0...core-v8.250.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** pin chat threads in platform sidebar ([#11636](https://github.com/vm0-ai/vm0/issues/11636)) ([7190949](https://github.com/vm0-ai/vm0/commit/719094992e2a7e13f1086b2bd8b5219759ac8c86))
+
 ## [8.249.0](https://github.com/vm0-ai/vm0/compare/core-v8.248.1...core-v8.249.0) (2026-04-30)
 
 

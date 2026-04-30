@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.329.0](https://github.com/vm0-ai/vm0/compare/web-v12.328.0...web-v12.329.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** pin chat threads in platform sidebar ([#11636](https://github.com/vm0-ai/vm0/issues/11636)) ([7190949](https://github.com/vm0-ai/vm0/commit/719094992e2a7e13f1086b2bd8b5219759ac8c86))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.250.0
+
 ## [12.328.0](https://github.com/vm0-ai/vm0/compare/web-v12.327.0...web-v12.328.0) (2026-04-30)
 
 
