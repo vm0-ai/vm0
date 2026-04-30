@@ -4,4 +4,4 @@ mod pool;
 
 pub use guest::generate_boot_args;
 pub use guest::{GUEST_NETWORK, GuestNetwork};
-pub use pool::{NetnsInfo, NetnsLease, NetnsPool, NetnsPoolConfig};
+pub use pool::{NetnsInfo, NetnsLease, NetnsPool, NetnsPoolConfig, NetnsPoolHandle};

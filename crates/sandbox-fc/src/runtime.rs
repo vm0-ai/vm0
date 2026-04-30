@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use tracing::{info, warn};
 
@@ -12,15 +10,15 @@ use nbd_cow::pool::{DevicePoolConfig, DevicePoolHandle};
 
 use crate::config::{FirecrackerConfig, SnapshotConfig};
 use crate::factory::FirecrackerFactory;
-use crate::network::{NetnsPool, NetnsPoolConfig};
+use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 
 /// Firecracker-backed sandbox runtime.
 ///
-/// Manages shared resources ([`NetnsPool`], [`DevicePoolHandle`]) and creates
+/// Manages shared resources (`NetnsPoolHandle`, [`DevicePoolHandle`]) and creates
 /// [`FirecrackerFactory`] instances that share them.
 pub struct FirecrackerRuntime {
-    netns_pool: Arc<tokio::sync::Mutex<NetnsPool>>,
+    netns_pool: NetnsPoolHandle,
     device_pool: DevicePoolHandle,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
@@ -39,12 +37,12 @@ impl FirecrackerRuntime {
             dns_port: config.dns_port,
         }
         .into_checked()?;
-        let netns_pool = NetnsPool::create_checked(netns_config).await.map_err(|e| {
-            SandboxError::Initialization {
+        let netns_pool = NetnsPoolHandle::create_checked(netns_config)
+            .await
+            .map_err(|e| SandboxError::Initialization {
                 phase: SandboxInitializationPhase::Runtime,
                 message: format!("netns pool: {e}"),
-            }
-        })?;
+            })?;
         info!(
             elapsed_ms = t.elapsed().as_millis() as u64,
             "runtime netns pool created"
@@ -59,7 +57,7 @@ impl FirecrackerRuntime {
         );
 
         Ok(Self {
-            netns_pool: Arc::new(tokio::sync::Mutex::new(netns_pool)),
+            netns_pool,
             device_pool,
             proxy_port: config.proxy_port,
             dns_port: config.dns_port,
@@ -104,7 +102,7 @@ impl SandboxRuntime for FirecrackerRuntime {
         let fc_config = self.to_firecracker_config(config);
         let mut factory = FirecrackerFactory::new(
             fc_config,
-            Some(Arc::clone(&self.netns_pool)),
+            Some(self.netns_pool.clone()),
             self.device_pool.clone(),
         )
         .await?;
@@ -114,11 +112,9 @@ impl SandboxRuntime for FirecrackerRuntime {
 
     async fn shutdown(&mut self) {
         // Clean up shared netns pool.
-        let mut pool = self.netns_pool.lock().await;
-        if let Err(e) = pool.cleanup().await {
+        if let Err(e) = self.netns_pool.cleanup().await {
             warn!(error = %e, "failed to cleanup shared netns pool");
         }
-        drop(pool);
 
         // Clean up shared device pool.
         self.device_pool.cleanup().await;
