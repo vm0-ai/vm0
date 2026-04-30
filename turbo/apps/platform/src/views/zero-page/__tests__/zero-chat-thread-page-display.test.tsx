@@ -1087,6 +1087,151 @@ describe("zero chat thread page display - artifacts drawer", () => {
     });
   });
 
+  it("syncs bulk Google Drive artifacts sequentially", async () => {
+    const user = userEvent.setup();
+    const syncBodies: unknown[] = [];
+    let firstSyncFinished = false;
+    let secondSyncStartedAfterFirst = false;
+    let releaseFirstSync: () => void = () => {
+      throw new Error("First sync has not started");
+    };
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "See attached",
+          runId: "run-artifacts-sequential-sync",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setMockConnectors([
+      {
+        id: "00000000-0000-4000-8000-000000000000",
+        type: "google-drive",
+        authMethod: "oauth",
+        externalId: "drive-user",
+        externalUsername: "Drive User",
+        externalEmail: "drive@example.com",
+        oauthScopes: ["https://www.googleapis.com/auth/drive"],
+        needsReconnect: false,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    server.use(
+      http.get("https://example.com/first.csv", () => {
+        return new HttpResponse("label,value\nfirst,1\n", {
+          headers: { "Content-Type": "text/csv" },
+        });
+      }),
+      http.get("https://example.com/second.csv", () => {
+        return new HttpResponse("label,value\nsecond,2\n", {
+          headers: { "Content-Type": "text/csv" },
+        });
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-artifacts-sequential-sync",
+              files: [
+                {
+                  id: "file-1",
+                  filename: "first.csv",
+                  contentType: "text/csv",
+                  size: 1024,
+                  url: "https://example.com/first.csv",
+                  createdAt: "2026-03-10T00:00:00Z",
+                  googleDriveSync: { status: "not_synced" },
+                },
+                {
+                  id: "file-2",
+                  filename: "second.csv",
+                  contentType: "text/csv",
+                  size: 2048,
+                  url: "https://example.com/second.csv",
+                  createdAt: "2026-03-10T00:00:00Z",
+                  googleDriveSync: { status: "not_synced" },
+                },
+              ],
+            },
+          ],
+        });
+      }),
+      mockApi(
+        chatThreadArtifactsContract.syncGoogleDrive,
+        ({ body, respond, deferred }) => {
+          syncBodies.push(body);
+          if (body.fileId === "file-1") {
+            const gate = deferred<void>();
+            releaseFirstSync = () => {
+              firstSyncFinished = true;
+              gate.resolve();
+            };
+            return gate.promise.then(() => {
+              return respond(200, {
+                id: `drive-${body.fileId}`,
+                name: `${body.fileId}.csv`,
+                webViewLink: `https://drive.google.com/file/d/${body.fileId}/view`,
+              });
+            });
+          }
+          if (body.fileId === "file-2") {
+            secondSyncStartedAfterFirst = firstSyncFinished;
+          }
+          return respond(200, {
+            id: `drive-${body.fileId}`,
+            name: `${body.fileId}.csv`,
+            webViewLink: `https://drive.google.com/file/d/${body.fileId}/view`,
+          });
+        },
+      ),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open artifacts");
+    });
+    click(button);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("first.csv").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByLabelText("More artifact actions"));
+    await user.click(screen.getByText("Sync all to Google Drive"));
+
+    await waitFor(() => {
+      expect(syncBodies).toStrictEqual([
+        {
+          runId: "run-artifacts-sequential-sync",
+          fileId: "file-1",
+        },
+      ]);
+    });
+
+    releaseFirstSync();
+
+    await waitFor(() => {
+      expect(syncBodies).toStrictEqual([
+        {
+          runId: "run-artifacts-sequential-sync",
+          fileId: "file-1",
+        },
+        {
+          runId: "run-artifacts-sequential-sync",
+          fileId: "file-2",
+        },
+      ]);
+    });
+    expect(secondSyncStartedAfterFirst).toBeTruthy();
+  });
+
   it("opens Google Drive OAuth in a new tab and syncs after the connector event", async () => {
     const user = userEvent.setup();
     const fileUrl = "https://example.com/disconnected-chart.png";

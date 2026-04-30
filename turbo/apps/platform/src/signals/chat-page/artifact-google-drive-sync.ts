@@ -1,7 +1,10 @@
 import { command } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import {
+  zeroUserConnectorsContract,
+  type UserConnectorEnabledTypes,
+} from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
@@ -69,32 +72,34 @@ export async function syncArtifactFilesToGoogleDrive(
 
   const toastId = toast.loading(googleDriveSyncLoadingMessage(params.files));
   const client = params.createClient(chatThreadArtifactsContract);
-  const results: ArtifactGoogleDriveSyncResult[] = await Promise.all(
-    params.files.map((file) => {
-      return accept(
-        client.syncGoogleDrive({
-          params: { threadId: params.threadId },
-          body: {
-            runId: file.runId,
-            fileId: file.fileId,
-          },
-          fetchOptions: params.signal ? { signal: params.signal } : undefined,
-        }),
-        [200],
-        { toast: false },
-      ).then(
-        () => {
-          return { ok: true as const };
+  const results: ArtifactGoogleDriveSyncResult[] = [];
+  for (const file of params.files) {
+    params.signal?.throwIfAborted();
+    const result = await accept(
+      client.syncGoogleDrive({
+        params: { threadId: params.threadId },
+        body: {
+          runId: file.runId,
+          fileId: file.fileId,
         },
-        (error: unknown) => {
-          return {
-            ok: false as const,
-            message: googleDriveSyncErrorMessage(error),
-          };
-        },
-      );
-    }),
-  );
+        fetchOptions: params.signal ? { signal: params.signal } : undefined,
+      }),
+      [200],
+      { toast: false },
+    ).then(
+      () => {
+        return { ok: true as const };
+      },
+      (error: unknown) => {
+        params.signal?.throwIfAborted();
+        return {
+          ok: false as const,
+          message: googleDriveSyncErrorMessage(error),
+        };
+      },
+    );
+    results.push(result);
+  }
   const syncedCount = results.filter((result) => {
     return result.ok;
   }).length;
@@ -142,13 +147,13 @@ async function authorizeGoogleDriveForAgent(params: {
   readonly signal: AbortSignal;
 }): Promise<void> {
   const client = params.createClient(zeroUserConnectorsContract);
-  const current = await accept(
+  const current = (await accept(
     client.get({
       params: { id: params.agentId },
       fetchOptions: { signal: params.signal },
     }),
     [200],
-  );
+  )) as { body: UserConnectorEnabledTypes };
   params.signal.throwIfAborted();
 
   if (current.body.enabledTypes.includes("google-drive")) {
