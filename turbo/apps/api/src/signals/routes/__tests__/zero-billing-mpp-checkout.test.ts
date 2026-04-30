@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 import { createApp } from "../../../app-factory";
 import { testContext } from "../../../__tests__/test-helpers";
 import { signPatJwtForTests } from "../../auth/tokens";
+import { now } from "../../../lib/time";
 
 const ctx = testContext();
 
@@ -12,7 +13,7 @@ function createPatToken(
   userId: string,
   tokenId: string,
 ): string {
-  const nowSeconds = Math.floor(Date.now() / 1000);
+  const nowSeconds = Math.floor(now() / 1000);
   return signPatJwtForTests({
     scope: "cli",
     userId,

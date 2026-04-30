@@ -6,6 +6,7 @@ import { Mppx, stripe as mppxStripe } from "mppx/server";
 import { db } from "../../lib/db";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { nowDate } from "../../lib/time";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import {
@@ -18,14 +19,12 @@ import {
 
 const log = logger("billing:mpp-checkout");
 
-const TIER_MONTHLY_CREDITS: Record<string, number> = {
+const TIER_MONTHLY_CREDITS = Object.freeze<Record<string, number>>({
   pro: 20_000,
   team: 120_000,
-};
+});
 
 const CREDITS_PER_DOLLAR = 1000;
-
-const MPP_CREDITS_NEVER_EXPIRES_AT = new Date("2999-12-31T00:00:00Z");
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -101,13 +100,13 @@ async function grantMppCredits(
         stripeInvoiceId: paymentRef,
         amount: credits,
         remaining: credits,
-        expiresAt: MPP_CREDITS_NEVER_EXPIRES_AT,
+        expiresAt: new Date("2999-12-31T00:00:00Z"),
       })
       .onConflictDoNothing()
       .returning({ id: creditExpiresRecord.id });
 
     if (!inserted) {
-      log.info("MPP credits already granted — idempotent replay", {
+      log.debug("MPP credits already granted — idempotent replay", {
         orgId,
         paymentRef,
       });
@@ -137,11 +136,11 @@ async function grantMppCredits(
           tier: activeTier,
           credits: sql`${orgMetadata.credits} + ${credits}`,
           subscriptionStatus: "active",
-          updatedAt: new Date(),
+          updatedAt: nowDate(),
         },
       });
 
-    log.info("MPP credits granted", { orgId, tier, credits, paymentRef });
+    log.debug("MPP credits granted", { orgId, tier, credits, paymentRef });
   });
 }
 
