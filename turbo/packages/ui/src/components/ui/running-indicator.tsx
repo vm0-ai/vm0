@@ -15,7 +15,9 @@ function RunningIndicator({
   const ref = useRef<HTMLSpanElement | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el) {
+    // getAnimations is unavailable in some non-browser test DOMs (e.g.
+    // happy-dom); skip phase syncing there.
+    if (!el || typeof el.getAnimations !== "function") {
       return;
     }
     // Anchor every indicator's animation phase to wall-clock time, so
