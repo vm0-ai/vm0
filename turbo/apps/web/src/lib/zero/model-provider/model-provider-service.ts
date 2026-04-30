@@ -85,7 +85,7 @@ function getTypesForFramework(framework: string): string[] {
 
 /**
  * Atomically assign isDefault=true to a provider, but only if no other provider
- * for the same framework already has isDefault=true for the same userId scope.
+ * already has isDefault=true for the same userId scope.
  *
  * Uses a single UPDATE with NOT EXISTS subquery to prevent the race condition
  * where two concurrent inserts both set isDefault=true.
@@ -93,16 +93,15 @@ function getTypesForFramework(framework: string): string[] {
  * The userId filter ensures org-level defaults (sentinel userId) and user-level
  * defaults are independent — they do not interfere with each other.
  *
+ * There is exactly one default per workspace — no per-framework defaults.
+ *
  * @returns true if isDefault was set, false if another default already exists
  */
 async function assignDefaultIfFirst(
   orgId: string,
   userId: string,
   providerId: string,
-  framework: ModelProviderFramework,
 ): Promise<boolean> {
-  const frameworkTypes = getTypesForFramework(framework);
-
   const result = await globalThis.services.db
     .update(modelProviders)
     .set({ isDefault: true })
@@ -119,7 +118,6 @@ async function assignDefaultIfFirst(
                 eq(modelProviders.userId, userId),
                 eq(modelProviders.isDefault, true),
                 ne(modelProviders.id, providerId),
-                inArray(modelProviders.type, frameworkTypes),
               ),
             ),
         ),
@@ -196,7 +194,6 @@ async function upsertModelProvider(
   if (!secretName) {
     throw badRequest(`Provider "${type}" does not have a secret name`);
   }
-  const framework = getFrameworkForType(type);
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedValue = encryptSecretValue(secret, encryptionKey);
 
@@ -264,14 +261,9 @@ async function upsertModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the framework (on create or update)
+  // Assign default if no other default exists (on create or update)
   if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(
-      orgId,
-      userId,
-      provider!.id,
-      framework,
-    );
+    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
     if (isDefault) {
       provider!.isDefault = true;
     }
@@ -414,7 +406,6 @@ async function upsertMultiAuthModelProvider(
     );
   }
 
-  const framework = getFrameworkForType(type);
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
   log.debug("upserting multi-auth model provider", {
@@ -490,14 +481,9 @@ async function upsertMultiAuthModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the framework (on create or update)
+  // Assign default if no other default exists (on create or update)
   if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(
-      orgId,
-      userId,
-      provider!.id,
-      framework,
-    );
+    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
     if (isDefault) {
       provider!.isDefault = true;
     }
@@ -541,8 +527,6 @@ async function upsertNoSecretModelProvider(
   type: ModelProviderType,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
-  const framework = getFrameworkForType(type);
-
   log.debug("upserting no-secret model provider", {
     orgId,
     type,
@@ -587,14 +571,9 @@ async function upsertNoSecretModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the framework
+  // Assign default if no other default exists
   if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(
-      orgId,
-      userId,
-      provider!.id,
-      framework,
-    );
+    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
     if (isDefault) {
       provider!.isDefault = true;
     }
@@ -633,8 +612,6 @@ async function deleteModelProvider(
   userId: string,
   type: ModelProviderType,
 ): Promise<void> {
-  const framework = getFrameworkForType(type);
-
   // Find the model provider
   const [provider] = await globalThis.services.db
     .select()
@@ -692,7 +669,7 @@ async function deleteModelProvider(
 
   log.debug("model provider deleted", { orgId, type });
 
-  // If it was default, assign new default for framework
+  // If it was default, assign new default
   if (wasDefault) {
     const remaining = await globalThis.services.db
       .select({ id: modelProviders.id, type: modelProviders.type })
@@ -702,9 +679,7 @@ async function deleteModelProvider(
       )
       .orderBy(modelProviders.createdAt);
 
-    const nextDefault = remaining.find((p) => {
-      return getFrameworkForType(p.type as ModelProviderType) === framework;
-    });
+    const nextDefault = remaining[0];
 
     if (nextDefault) {
       await globalThis.services.db
@@ -713,7 +688,6 @@ async function deleteModelProvider(
         .where(eq(modelProviders.id, nextDefault.id));
 
       log.debug("new default assigned", {
-        framework,
         newDefaultType: nextDefault.type,
       });
     }
@@ -762,7 +736,7 @@ async function setModelProviderDefault(
     });
   }
 
-  // Get all providers for the same framework to clear their defaults
+  // Get all providers to clear their defaults
   const allProviders = await globalThis.services.db
     .select({ id: modelProviders.id, type: modelProviders.type })
     .from(modelProviders)
@@ -770,22 +744,18 @@ async function setModelProviderDefault(
       and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
     );
 
-  const sameFrameworkIds = allProviders
-    .filter((p) => {
-      return getFrameworkForType(p.type as ModelProviderType) === framework;
-    })
-    .map((p) => {
-      return p.id;
-    });
+  const allProviderIds = allProviders.map((p) => {
+    return p.id;
+  });
 
   // Use transaction to ensure atomicity
   await globalThis.services.db.transaction(async (tx) => {
-    // Clear all defaults for this framework
-    if (sameFrameworkIds.length > 0) {
+    // Clear all defaults
+    if (allProviderIds.length > 0) {
       await tx
         .update(modelProviders)
         .set({ isDefault: false, updatedAt: new Date() })
-        .where(inArray(modelProviders.id, sameFrameworkIds));
+        .where(inArray(modelProviders.id, allProviderIds));
     }
 
     // Set new default
