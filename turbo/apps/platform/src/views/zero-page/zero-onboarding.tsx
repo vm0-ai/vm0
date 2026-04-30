@@ -273,11 +273,8 @@ function ConnectStepContent() {
     ) {
       setSelectedConnector(type);
     } else {
-      // During onboarding the backend authorizes connectors for the default
-      // agent at step 4, so suppress the multi-agent permission dialog that
-      // connectConnector$ normally triggers.
       detach(
-        connect(type, pageSignal).then(() => {
+        connect(type, {}, pageSignal).then(() => {
           return clearPermissionDialog(null);
         }),
         Reason.DomCallback,

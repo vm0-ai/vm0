@@ -649,7 +649,10 @@ export function ZeroConnectorsPage() {
     ) {
       setSelected(type);
     } else {
-      detach(connect(type, signal), Reason.DomCallback);
+      detach(
+        connect(type, { showPermissionDialog: true }, signal),
+        Reason.DomCallback,
+      );
     }
   };
 
@@ -808,6 +811,7 @@ export function ZeroConnectorsPage() {
           onClose={() => {
             return setSelected(null);
           }}
+          showPermissionDialogOnConnect
           onSuccess={() => {
             const label =
               allConnectors.find((c) => {
@@ -826,7 +830,10 @@ export function ZeroConnectorsPage() {
           }}
           onReconnect={(type) => {
             setScopeReviewType(null);
-            detach(connect(type, signal), Reason.DomCallback);
+            detach(
+              connect(type, { showPermissionDialog: true }, signal),
+              Reason.DomCallback,
+            );
           }}
         />
       )}

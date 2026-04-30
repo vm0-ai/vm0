@@ -39,6 +39,10 @@ const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
 
+type PostConnectOptions = {
+  readonly showPermissionDialog?: boolean;
+};
+
 // ---------------------------------------------------------------------------
 // Derived state
 // ---------------------------------------------------------------------------
@@ -291,7 +295,12 @@ export const setTokenFormSubmitting$ = command(
 // ---------------------------------------------------------------------------
 
 export const enablePlatformConnector$ = command(
-  async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
+  async (
+    { get, set },
+    type: ConnectorType,
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroPlatformConnectorContract);
     await accept(
@@ -313,7 +322,9 @@ export const enablePlatformConnector$ = command(
     toast.success(`${CONNECTOR_TYPES[type].label} enabled`, {
       id: `connector-connected-${type}`,
     });
-    set(internalPermissionDialogType$, type);
+    if (options.showPermissionDialog) {
+      set(internalPermissionDialogType$, type);
+    }
   },
 );
 
@@ -326,6 +337,7 @@ export const submitApiToken$ = command(
     { get, set },
     type: ConnectorType,
     inputSecrets: Record<string, string>,
+    options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
@@ -368,7 +380,9 @@ export const submitApiToken$ = command(
     toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`, {
       id: `connector-connected-${type}`,
     });
-    set(internalPermissionDialogType$, type);
+    if (options.showPermissionDialog) {
+      set(internalPermissionDialogType$, type);
+    }
   },
 );
 
@@ -472,7 +486,12 @@ async function watchPopupClosed(
 // ---------------------------------------------------------------------------
 
 export const connectConnector$ = command(
-  async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
+  async (
+    { get, set },
+    type: ConnectorType,
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ) => {
     const baseUrl = await get(apiBaseForNavigation$);
     signal.throwIfAborted();
 
@@ -576,10 +595,13 @@ export const connectConnector$ = command(
     const hidden = new Set(get(hiddenConnectorTypes$));
     hidden.delete(type);
     set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-    // Close connect modal on OAuth success and show permission dialog
+    // Close connect modal on OAuth success. Only connectors-page flows should
+    // show the post-connect permission dialog.
     if (isConnected) {
       set(internalSelectedConnectorType$, null);
-      set(internalPermissionDialogType$, type);
+      if (options.showPermissionDialog) {
+        set(internalPermissionDialogType$, type);
+      }
     }
     return isConnected;
   },
@@ -594,9 +616,10 @@ export const connectAndSettle$ = command(
     { set },
     type: ConnectorType,
     onSuccess: () => void | Promise<void>,
+    options: PostConnectOptions,
     signal: AbortSignal,
   ): Promise<void> => {
-    const connected = await set(connectConnector$, type, signal);
+    const connected = await set(connectConnector$, type, options, signal);
     if (connected) {
       await onSuccess();
     }
