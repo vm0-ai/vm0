@@ -1505,6 +1505,9 @@ impl NetnsPool {
             Ok(plan) => plan,
             Err(message) => return NetnsReleaseOutcome::InvalidLease(message),
         };
+        if plan.active_at_prepare {
+            self.mark_non_reusable(&plan);
+        }
 
         let can_requeue = if plan.active_at_prepare {
             (plan.ops.flush_conntrack)(plan.info.peer_ip.clone())
@@ -1516,9 +1519,6 @@ impl NetnsPool {
 
         if can_requeue && self.active {
             return self.commit_release_requeue(lease, &plan);
-        }
-        if plan.active_at_prepare {
-            self.mark_non_reusable(&plan);
         }
 
         let delete = (plan.ops.delete_namespace)(plan.info.clone()).await;
@@ -1832,11 +1832,15 @@ impl NetnsPoolHandle {
 
     pub(crate) async fn release(&self, lease: &mut Option<NetnsLease>) -> NetnsReleaseOutcome {
         let plan = {
-            let pool = self.inner.lock().await;
-            match pool.prepare_release(lease) {
+            let mut pool = self.inner.lock().await;
+            let plan = match pool.prepare_release(lease) {
                 Ok(plan) => plan,
                 Err(message) => return NetnsReleaseOutcome::InvalidLease(message),
+            };
+            if plan.active_at_prepare {
+                pool.mark_non_reusable(&plan);
             }
+            plan
         };
 
         let can_requeue = if plan.active_at_prepare {
@@ -1854,9 +1858,6 @@ impl NetnsPoolHandle {
                     return pool.commit_release_requeue(lease, &plan);
                 }
             }
-        } else if plan.active_at_prepare {
-            let mut pool = self.inner.lock().await;
-            pool.mark_non_reusable(&plan);
         }
 
         let delete = (plan.ops.delete_namespace)(plan.info.clone()).await;
@@ -2652,6 +2653,75 @@ mod tests {
         let pool = handle.inner.lock().await;
         assert!(!pool.active);
         assert!(pool.in_flight.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cancelled_release_during_flush_marks_namespace_non_reusable_for_retry() {
+        let flush_entered = Arc::new(tokio::sync::Notify::new());
+        let first_flush_release = Arc::new(tokio::sync::Notify::new());
+        let flush_count = Arc::new(AtomicUsize::new(0));
+        let delete_count = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let flush_entered_for_ops = Arc::clone(&flush_entered);
+        let first_flush_release_for_ops = Arc::clone(&first_flush_release);
+        let flush_count_for_ops = Arc::clone(&flush_count);
+        let delete_count_for_ops = Arc::clone(&delete_count);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(move |_| {
+                let flush_entered = Arc::clone(&flush_entered_for_ops);
+                let first_flush_release = Arc::clone(&first_flush_release_for_ops);
+                let flush_count = Arc::clone(&flush_count_for_ops);
+                Box::pin(async move {
+                    let attempt = flush_count.fetch_add(1, Ordering::SeqCst);
+                    if attempt == 0 {
+                        flush_entered.notify_one();
+                        first_flush_release.notified().await;
+                    }
+                    ConntrackFlushOutcome::Trusted
+                })
+            }),
+            delete_namespace: Arc::new(move |_| {
+                let delete_count = Arc::clone(&delete_count_for_ops);
+                Box::pin(async move {
+                    delete_count.fetch_add(1, Ordering::SeqCst);
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
+        let handle = NetnsPoolHandle::new_for_test(pool);
+
+        {
+            let release = handle.release(&mut lease);
+            tokio::pin!(release);
+            tokio::select! {
+                outcome = &mut release => panic!("release completed before flush was cancelled: {outcome:?}"),
+                _ = flush_entered.notified() => {}
+            }
+        }
+
+        assert!(lease.is_some());
+        assert_eq!(flush_count.load(Ordering::SeqCst), 1);
+        {
+            let pool = handle.inner.lock().await;
+            assert!(pool.non_reusable.contains("test-ns"));
+        }
+
+        first_flush_release.notify_one();
+        let outcome = handle.release(&mut lease).await;
+
+        assert!(matches!(outcome, NetnsReleaseOutcome::Deleted));
+        assert!(lease.is_none());
+        assert_eq!(
+            flush_count.load(Ordering::SeqCst),
+            1,
+            "cancelled flush must taint the namespace before retry"
+        );
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        let pool = handle.inner.lock().await;
+        assert!(pool.non_reusable.is_empty());
         assert!(pool.plain_queue.is_empty());
     }
 

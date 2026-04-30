@@ -83,6 +83,23 @@ impl std::fmt::Debug for PrewarmedSlot {
     }
 }
 
+struct SlotCapacityGuard<'a> {
+    next_slot_idx: &'a mut u32,
+}
+
+impl<'a> SlotCapacityGuard<'a> {
+    fn reserve(next_slot_idx: &'a mut u32) -> Self {
+        *next_slot_idx += 1;
+        Self { next_slot_idx }
+    }
+}
+
+impl Drop for SlotCapacityGuard<'_> {
+    fn drop(&mut self) {
+        *self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
+    }
+}
+
 /// Pool error type.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum CowPoolError {
@@ -210,22 +227,17 @@ impl CowPool {
         if self.next_slot_idx >= MAX_SLOTS {
             return Err(CowPoolError::SlotLimitReached { max: MAX_SLOTS });
         }
-        self.next_slot_idx += 1;
         let config = self.config.clone();
-        match tokio::task::spawn_blocking(move || create_slot(&config)).await {
+        let reservation = SlotCapacityGuard::reserve(&mut self.next_slot_idx);
+        let result = tokio::task::spawn_blocking(move || create_slot(&config)).await;
+        drop(reservation);
+        match result {
             Ok(Ok(slot)) => {
-                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
                 self.maybe_replenish();
                 Ok(slot)
             }
-            Ok(Err(e)) => {
-                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                Err(e)
-            }
-            Err(e) => {
-                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                Err(CowPoolError::CowFileCreation(format!("join: {e}")))
-            }
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(CowPoolError::CowFileCreation(format!("join: {e}"))),
         }
     }
 
@@ -438,6 +450,60 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelled_on_demand_acquire_reclaims_slot_capacity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let fifo = tmp.path().join("golden.fifo");
+        nix::unistd::mkfifo(
+            &fifo,
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces.clone(),
+            base_size: 64 * 1024 * 1024,
+            golden_cow: Some(fifo.clone()),
+        };
+        let mut pool = CowPool::new(config);
+        pool.next_slot_idx = MAX_SLOTS - 1;
+
+        {
+            let acquire = pool.acquire();
+            tokio::pin!(acquire);
+            tokio::select! {
+                result = &mut acquire => panic!("on-demand acquire completed before cancellation: {result:?}"),
+                () = wait_for_workspace_entry(&workspaces) => {}
+            }
+        }
+
+        assert_eq!(
+            pool.next_slot_idx,
+            MAX_SLOTS - 1,
+            "cancelled on-demand acquire must reclaim reserved capacity"
+        );
+
+        let writer = tokio::task::spawn_blocking(move || {
+            use std::io::Write;
+
+            let mut fifo = std::fs::OpenOptions::new().write(true).open(fifo).unwrap();
+            fifo.write_all(b"cow").unwrap();
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(1), writer)
+            .await
+            .expect("fifo writer should not block forever")
+            .unwrap();
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while workspace_entry_exists(&workspaces) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("detached on-demand slot should be dropped after creation");
+    }
+
     #[tokio::test]
     async fn slot_limit_enforced() {
         let tmp = tempfile::tempdir().unwrap();
@@ -520,6 +586,26 @@ mod tests {
         drop(pool);
 
         assert!(!ws.exists(), "queued slot should be removed on pool drop");
+    }
+
+    fn workspace_entry_exists(path: &Path) -> bool {
+        match std::fs::read_dir(path) {
+            Ok(mut entries) => entries.next().is_some(),
+            Err(e) if e.kind() == ErrorKind::NotFound => false,
+            Err(e) => panic!("read workspace dir {}: {e}", path.display()),
+        }
+    }
+
+    async fn wait_for_workspace_entry(path: &Path) {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        while !workspace_entry_exists(path) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "workspace entry was not created under {}",
+                path.display()
+            );
+            tokio::task::yield_now().await;
+        }
     }
 
     #[tokio::test]
