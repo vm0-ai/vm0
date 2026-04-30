@@ -6,11 +6,7 @@ import NextLink from "next/link";
 import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
-import {
-  IconArrowRight,
-  IconArrowUpRight,
-  IconBrandGithub,
-} from "@tabler/icons-react";
+import { IconArrowRight, IconArrowUpRight } from "@tabler/icons-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { NavMenu, type NavMenuItem } from "./NavMenu";
@@ -37,7 +33,7 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
 
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth > 768) {
+      if (window.innerWidth > 960) {
         setMobileMenuOpen(false);
       }
     };
@@ -167,15 +163,6 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
           </div>
 
           <div className="nav-right">
-            <a
-              href={GITHUB_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="nav-icon-btn nav-desktop"
-              aria-label="GitHub"
-            >
-              <IconBrandGithub size={16} strokeWidth={1.8} />
-            </a>
             {!isSignedIn && (
               <>
                 <a

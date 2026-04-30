@@ -502,25 +502,6 @@ body {
   color: hsl(var(--muted-foreground));
 }
 
-/* ===== NAV ICON BUTTON (e.g. GitHub) ===== */
-.nav-icon-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 0.5rem;
-  border: 0.7px solid hsl(var(--gray-300));
-  background: hsl(var(--gray-0));
-  color: hsl(var(--foreground));
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.nav-icon-btn:hover {
-  background: hsl(var(--gray-50));
-}
-
 /* ===== NAV BUTTONS ===== */
 .btn-try-demo {
   padding: 7px 14px;
@@ -1262,15 +1243,7 @@ body {
 }
 
 /* ===== RESPONSIVE ===== */
-@media (max-width: 768px) {
-  .container {
-    padding: 0 16px;
-  }
-
-  .navbar {
-    padding: 12px 0;
-  }
-
+@media (max-width: 960px) {
   .nav-desktop {
     display: none !important;
   }
@@ -1285,6 +1258,16 @@ body {
 
   .mobile-menu-overlay {
     display: block;
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 0 16px;
+  }
+
+  .navbar {
+    padding: 12px 0;
   }
 
   .footer-content {
