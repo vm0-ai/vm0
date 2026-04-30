@@ -6,6 +6,8 @@ use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
 use tracing::trace;
 
+type PipeReadTask = JoinHandle<std::io::Result<Vec<u8>>>;
+
 /// Error from a failed command.
 #[derive(Debug, thiserror::Error)]
 #[error("command failed: {command}\n{detail}")]
@@ -202,6 +204,7 @@ async fn command_output_with_timeout(
     command.process_group(0);
     let mut child = command.spawn().map_err(CommandRunError::Spawn)?;
     let child_pid = child.id();
+    let mut kill_guard = ProcessGroupKillGuard::new(child_pid);
 
     let stdout = child
         .stdout
@@ -212,26 +215,30 @@ async fn command_output_with_timeout(
         .take()
         .ok_or(CommandRunError::PipeUnavailable("stderr"))?;
 
-    let stdout_task = tokio::spawn(read_pipe(stdout));
-    let stderr_task = tokio::spawn(read_pipe(stderr));
+    let mut pipe_tasks = PipeTasks::new(
+        tokio::spawn(read_pipe(stdout)),
+        tokio::spawn(read_pipe(stderr)),
+    );
     let deadline = tokio::time::Instant::now() + timeout;
 
     let status = match tokio::time::timeout_at(deadline, child.wait()).await {
         Ok(Ok(status)) => status,
         Ok(Err(e)) => {
             kill_child_tree(&mut child).await;
-            abort_pipe_tasks(stdout_task, stderr_task).await;
+            pipe_tasks.abort_all().await;
             return Err(CommandRunError::Wait(e));
         }
         Err(_) => {
             kill_child_tree(&mut child).await;
-            abort_pipe_tasks(stdout_task, stderr_task).await;
+            pipe_tasks.abort_all().await;
             return Err(CommandRunError::Timeout(timeout.as_millis()));
         }
     };
 
-    let (stdout, stderr) =
-        collect_pipes_with_deadline(stdout_task, stderr_task, deadline, timeout, child_pid).await?;
+    let (stdout, stderr) = pipe_tasks
+        .collect_with_deadline(deadline, timeout, child_pid)
+        .await?;
+    kill_guard.disarm();
     Ok(std::process::Output {
         status,
         stdout,
@@ -248,38 +255,119 @@ where
     Ok(output)
 }
 
-async fn collect_pipes_with_deadline(
-    mut stdout_task: JoinHandle<std::io::Result<Vec<u8>>>,
-    mut stderr_task: JoinHandle<std::io::Result<Vec<u8>>>,
-    deadline: tokio::time::Instant,
-    timeout: Duration,
-    child_pid: Option<u32>,
-) -> std::result::Result<(Vec<u8>, Vec<u8>), CommandRunError> {
-    let stdout = match tokio::time::timeout_at(deadline, &mut stdout_task).await {
-        Ok(result) => match collect_pipe_result(result) {
-            Ok(stdout) => stdout,
-            Err(e) => {
-                abort_pipe_task(stderr_task).await;
-                return Err(e);
+struct ProcessGroupKillGuard {
+    pid: Option<u32>,
+}
+
+impl ProcessGroupKillGuard {
+    fn new(pid: Option<u32>) -> Self {
+        Self { pid }
+    }
+
+    fn disarm(&mut self) {
+        self.pid = None;
+    }
+}
+
+impl Drop for ProcessGroupKillGuard {
+    fn drop(&mut self) {
+        kill_process_group_by_optional_pid(self.pid);
+    }
+}
+
+struct PipeTasks {
+    stdout: Option<PipeReadTask>,
+    stderr: Option<PipeReadTask>,
+}
+
+impl PipeTasks {
+    fn new(stdout: PipeReadTask, stderr: PipeReadTask) -> Self {
+        Self {
+            stdout: Some(stdout),
+            stderr: Some(stderr),
+        }
+    }
+
+    async fn collect_with_deadline(
+        &mut self,
+        deadline: tokio::time::Instant,
+        timeout: Duration,
+        child_pid: Option<u32>,
+    ) -> std::result::Result<(Vec<u8>, Vec<u8>), CommandRunError> {
+        let stdout = match tokio::time::timeout_at(
+            deadline,
+            self.stdout
+                .as_mut()
+                .ok_or(CommandRunError::PipeUnavailable("stdout"))?,
+        )
+        .await
+        {
+            Ok(result) => {
+                self.stdout.take();
+                match collect_pipe_result(result) {
+                    Ok(stdout) => stdout,
+                    Err(e) => {
+                        self.abort_stderr().await;
+                        return Err(e);
+                    }
+                }
             }
-        },
-        Err(_) => {
-            kill_process_group_by_optional_pid(child_pid);
-            abort_pipe_tasks(stdout_task, stderr_task).await;
-            return Err(CommandRunError::Timeout(timeout.as_millis()));
-        }
-    };
+            Err(_) => {
+                kill_process_group_by_optional_pid(child_pid);
+                self.abort_all().await;
+                return Err(CommandRunError::Timeout(timeout.as_millis()));
+            }
+        };
 
-    let stderr = match tokio::time::timeout_at(deadline, &mut stderr_task).await {
-        Ok(result) => collect_pipe_result(result)?,
-        Err(_) => {
-            kill_process_group_by_optional_pid(child_pid);
-            abort_pipe_task(stderr_task).await;
-            return Err(CommandRunError::Timeout(timeout.as_millis()));
-        }
-    };
+        let stderr = match tokio::time::timeout_at(
+            deadline,
+            self.stderr
+                .as_mut()
+                .ok_or(CommandRunError::PipeUnavailable("stderr"))?,
+        )
+        .await
+        {
+            Ok(result) => {
+                self.stderr.take();
+                collect_pipe_result(result)?
+            }
+            Err(_) => {
+                kill_process_group_by_optional_pid(child_pid);
+                self.abort_stderr().await;
+                return Err(CommandRunError::Timeout(timeout.as_millis()));
+            }
+        };
 
-    Ok((stdout, stderr))
+        Ok((stdout, stderr))
+    }
+
+    async fn abort_all(&mut self) {
+        self.abort_stdout().await;
+        self.abort_stderr().await;
+    }
+
+    async fn abort_stdout(&mut self) {
+        if let Some(task) = self.stdout.take() {
+            abort_pipe_task(task).await;
+        }
+    }
+
+    async fn abort_stderr(&mut self) {
+        if let Some(task) = self.stderr.take() {
+            abort_pipe_task(task).await;
+        }
+    }
+}
+
+impl Drop for PipeTasks {
+    fn drop(&mut self) {
+        if let Some(task) = self.stdout.take() {
+            task.abort();
+        }
+        if let Some(task) = self.stderr.take() {
+            task.abort();
+        }
+    }
 }
 
 fn collect_pipe_result(
@@ -306,15 +394,7 @@ fn kill_process_group_by_optional_pid(pid: Option<u32>) {
     let _ = pid;
 }
 
-async fn abort_pipe_tasks(
-    stdout_task: JoinHandle<std::io::Result<Vec<u8>>>,
-    stderr_task: JoinHandle<std::io::Result<Vec<u8>>>,
-) {
-    abort_pipe_task(stdout_task).await;
-    abort_pipe_task(stderr_task).await;
-}
-
-async fn abort_pipe_task(task: JoinHandle<std::io::Result<Vec<u8>>>) {
+async fn abort_pipe_task(task: PipeReadTask) {
     task.abort();
     let _ = task.await;
 }
@@ -490,11 +570,50 @@ mod tests {
         assert!(!std::path::Path::new(marker).exists());
     }
 
+    #[tokio::test]
+    async fn exec_with_timeout_cancel_kills_child_process_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("pid");
+        let marker = dir.path().join("marker");
+        let pid_file = pid_file.to_str().unwrap().to_string();
+        let marker = marker.to_str().unwrap().to_string();
+
+        let command = tokio::spawn({
+            let pid_file = pid_file.clone();
+            let marker = marker.clone();
+            async move {
+                exec_ignore_errors_with_timeout(
+                    "sh",
+                    &[
+                        "-c",
+                        "(sleep 5; touch \"$2\") & echo $! > \"$1\"; wait",
+                        "_",
+                        &pid_file,
+                        &marker,
+                    ],
+                    Duration::from_secs(10),
+                )
+                .await
+            }
+        });
+
+        let pid = read_pid_file(&pid_file).await;
+        command.abort();
+        let _ = command.await;
+
+        assert_pid_exits(pid).await;
+        assert!(!std::path::Path::new(&marker).exists());
+    }
+
     async fn read_pid_file(path: &str) -> u32 {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
         loop {
             match std::fs::read_to_string(path) {
-                Ok(pid) => return pid.trim().parse().expect("pid file contains pid"),
+                Ok(pid) => match pid.trim().parse() {
+                    Ok(pid) => return pid,
+                    Err(_) if pid.trim().is_empty() => {}
+                    Err(e) => panic!("pid file {path} contains invalid pid: {e}"),
+                },
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => panic!("read pid file {path}: {e}"),
             }
