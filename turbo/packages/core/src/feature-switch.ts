@@ -214,7 +214,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Enable manual chat history loading from a Load history button at the top of a thread. When off, chat stays in the latest-50/no-history mode.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatMessageStartButton]: {
     maintainer: "linghan@vm0.ai",
