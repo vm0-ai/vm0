@@ -1380,7 +1380,7 @@ describe("zero chat thread page display - message status indicators", () => {
 });
 
 describe("zero chat thread page display - manual history button", () => {
-  it("keeps load history hidden when the feature switch is off", async () => {
+  it("shows load history by default when history exists", async () => {
     mockChatLifecycle({
       historyMessages: [
         {
@@ -1396,7 +1396,7 @@ describe("zero chat thread page display - manual history button", () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     });
-    expect(screen.queryByText("Load history")).not.toBeInTheDocument();
+    expect(screen.getByText("Load history")).toBeInTheDocument();
   });
 
   it("shows load history when the feature switch is on and history exists", async () => {
