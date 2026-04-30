@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.4...sandbox-fc-v0.27.5) (2026-04-30)
+
+
+### Refactoring
+
+* **sandbox-fc:** introduce netns lease ownership ([#11560](https://github.com/vm0-ai/vm0/issues/11560)) ([6562e9d](https://github.com/vm0-ai/vm0/commit/6562e9db08189bf5216e0263a0700460a4892929))
+
 ## [0.27.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.3...sandbox-fc-v0.27.4) (2026-04-29)
 
 

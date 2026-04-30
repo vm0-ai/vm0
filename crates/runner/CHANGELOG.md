@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.99.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.2...runner-rs-v0.99.3) (2026-04-30)
+
+
+### Refactoring
+
+* **runner:** clarify build orchestration ([#11580](https://github.com/vm0-ai/vm0/issues/11580)) ([60926e3](https://github.com/vm0-ai/vm0/commit/60926e366abaf11c4430e08eac6903262038152c))
+
 ## [0.99.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.1...runner-rs-v0.99.2) (2026-04-29)
 
 

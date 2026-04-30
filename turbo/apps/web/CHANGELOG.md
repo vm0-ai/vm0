@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.324.0](https://github.com/vm0-ai/vm0/compare/web-v12.323.0...web-v12.324.0) (2026-04-30)
+
+
+### Features
+
+* add promo credits messaging to homepage hero ([#11587](https://github.com/vm0-ai/vm0/issues/11587)) ([5b60624](https://github.com/vm0-ai/vm0/commit/5b60624abe8a409cdceafec890cdc668adcc2e19))
+* refresh env driver docs ([#11591](https://github.com/vm0-ai/vm0/issues/11591)) ([0883e1d](https://github.com/vm0-ai/vm0/commit/0883e1d4aa502ebf7d2e9fe385ec1eaaa531703c))
+
 ## [12.323.0](https://github.com/vm0-ai/vm0/compare/web-v12.322.0...web-v12.323.0) (2026-04-29)
 
 
