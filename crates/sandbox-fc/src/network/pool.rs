@@ -3198,6 +3198,34 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn release_abandoned_delete_consumes_lease_and_clears_tracking() {
+        let delete_count = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let delete_count_for_ops = Arc::clone(&delete_count);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Untrusted })),
+            delete_namespace: Arc::new(move |_| {
+                let delete_count = Arc::clone(&delete_count_for_ops);
+                Box::pin(async move {
+                    delete_count.fetch_add(1, Ordering::SeqCst);
+                    NamespaceDeleteOutcome::Abandoned
+                })
+            }),
+        };
+        let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
+
+        let outcome = pool.release_outcome(&mut lease).await;
+
+        assert!(matches!(outcome, NetnsReleaseOutcome::Abandoned));
+        assert!(lease.is_none());
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        assert!(pool.in_flight.is_empty());
+        assert!(pool.non_reusable.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
     async fn cleanup_retry_drains_pending_creation_after_cancel() {
         let mut pool = NetnsPool::inactive_for_test();
         pool.active = true;
@@ -3308,6 +3336,31 @@ mod tests {
 
         pool.cleanup().await.unwrap();
 
+        assert!(!pool.active);
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cleanup_removes_queued_namespace_after_abandoned_delete() {
+        let delete_count = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        pool.plain_queue.push_back(test_info("test-ns"));
+        let delete_count_for_ops = Arc::clone(&delete_count);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Trusted })),
+            delete_namespace: Arc::new(move |_| {
+                let delete_count = Arc::clone(&delete_count_for_ops);
+                Box::pin(async move {
+                    delete_count.fetch_add(1, Ordering::SeqCst);
+                    NamespaceDeleteOutcome::Abandoned
+                })
+            }),
+        };
+
+        pool.cleanup().await.unwrap();
+
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
         assert!(!pool.active);
         assert!(pool.plain_queue.is_empty());
     }
