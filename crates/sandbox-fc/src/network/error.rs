@@ -13,6 +13,9 @@ pub enum NetworkError {
     #[error("namespace limit reached: max {max} namespaces allowed")]
     NamespaceLimitReached { max: u32 },
 
+    #[error("pool is not active")]
+    PoolNotActive,
+
     #[error("failed to detect default network interface from: {0}")]
     NoDefaultInterface(String),
 

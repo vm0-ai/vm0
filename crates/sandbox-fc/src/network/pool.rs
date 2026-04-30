@@ -968,6 +968,10 @@ impl NetnsPool {
     /// (namespaces with iptables REDIRECT rules). Otherwise acquires from
     /// the plain queue.
     pub async fn acquire(&mut self) -> Result<NetnsLease> {
+        if !self.active {
+            return Err(NetworkError::PoolNotActive);
+        }
+
         // Move completed background tasks into queues before checking.
         self.drain_completed();
 
@@ -1932,6 +1936,19 @@ mod tests {
 
         assert!(!pool.active);
         assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn acquire_rejects_inactive_pool() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.plain_queue.push_back(test_info("test-ns"));
+
+        let err = pool.acquire().await.unwrap_err();
+
+        assert!(matches!(err, NetworkError::PoolNotActive));
+        assert_eq!(pool.plain_queue.len(), 1);
+        assert!(pool.in_flight.is_empty());
+        pool.cleanup().await.unwrap();
     }
 
     #[tokio::test]
