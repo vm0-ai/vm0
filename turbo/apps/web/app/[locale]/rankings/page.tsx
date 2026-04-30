@@ -418,7 +418,7 @@ function StatBlock({
           letterSpacing: "0.6px",
           textTransform: "uppercase",
           color: "var(--text-muted)",
-          fontFamily: '"Fira Mono", monospace',
+          fontFamily: '"Noto Sans", sans-serif',
         }}
       >
         {label}
@@ -506,7 +506,7 @@ function RankingTable({
                   <td style={tableBodyCell({ isLast })}>
                     <span
                       style={{
-                        fontFamily: '"Fira Mono", monospace',
+                        fontFamily: '"Noto Sans", sans-serif',
                         fontSize: "13px",
                         color: "var(--text-muted)",
                         fontVariantNumeric: "tabular-nums",
@@ -670,7 +670,7 @@ function tableHeadCell({
     letterSpacing: "0.8px",
     textTransform: "uppercase",
     color: "var(--text-muted)",
-    fontFamily: '"Fira Mono", monospace',
+    fontFamily: '"Noto Sans", sans-serif',
     textAlign: align ?? "left",
     borderBottom: "1px solid var(--border-light)",
     background: "transparent",
