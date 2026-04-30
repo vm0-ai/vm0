@@ -115,45 +115,6 @@
   }
 }
 
-/* Chat thread list: synchronized running-state ripple indicator */
-.zero-running-indicator {
-  position: relative;
-  display: inline-flex;
-  width: 0.86rem;
-  height: 0.86rem;
-  border-radius: 9999px;
-}
-.zero-running-indicator::before {
-  content: "";
-  position: absolute;
-  inset: 2.5px;
-  border-radius: inherit;
-  background: currentColor;
-  opacity: var(--zero-running-indicator-center-opacity, 0.34);
-  transform: scale(var(--zero-running-indicator-center-scale, 0.64));
-  transform-origin: center;
-}
-.zero-running-indicator::after {
-  content: "";
-  position: absolute;
-  inset: 1.5px;
-  border-radius: inherit;
-  border: 1px solid currentColor;
-  opacity: var(--zero-running-indicator-ripple-opacity, 0);
-  transform: scale(var(--zero-running-indicator-ripple-scale, 0.82));
-  transform-origin: center;
-}
-@media (prefers-reduced-motion: reduce) {
-  .zero-running-indicator::before {
-    opacity: 0.28;
-    transform: scale(0.62);
-  }
-  .zero-running-indicator::after {
-    opacity: 0.18;
-    transform: scale(1);
-  }
-}
-
 /* Zero app: inherits global cool gray tokens; only card-specific tokens defined here */
 .zero-app {
   --zero-card-radius: 1rem;

@@ -11,6 +11,7 @@ import {
   IconChevronRight,
   IconTrash,
   IconPencil,
+  IconLoader2,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
@@ -65,135 +66,15 @@ import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
-const RUNNING_INDICATOR_ANIMATION_MS = 2400;
-const RUNNING_INDICATOR_CONSUMERS_KEY = "zeroRunningIndicatorConsumers";
-const RUNNING_INDICATOR_FRAME_KEY = "zeroRunningIndicatorFrame";
-
-function setRunningIndicatorFrame(now: number): void {
-  const phase =
-    (now % RUNNING_INDICATOR_ANIMATION_MS) / RUNNING_INDICATOR_ANIMATION_MS;
-  const rippleStart = 0.52;
-  const smooth = (value: number): number => {
-    return value * value * (3 - 2 * value);
-  };
-  const centerProgress = smooth(Math.min(phase / rippleStart, 1));
-  const rippleProgress =
-    phase < rippleStart ? 0 : smooth((phase - rippleStart) / (1 - rippleStart));
-  const centerBaseScale = 0.64;
-  const centerScaleRange = 0.24;
-  const rippleOpacity =
-    phase < rippleStart ? 0 : Math.pow(1 - rippleProgress, 1.35) * 0.34;
-  const rootStyle = document.documentElement.style;
-  rootStyle.setProperty(
-    "--zero-running-indicator-center-scale",
-    (
-      centerBaseScale +
-      centerProgress * centerScaleRange -
-      rippleProgress * centerScaleRange
-    ).toFixed(3),
-  );
-  rootStyle.setProperty(
-    "--zero-running-indicator-center-opacity",
-    (0.34 + centerProgress * 0.18 - rippleProgress * 0.18).toFixed(3),
-  );
-  rootStyle.setProperty(
-    "--zero-running-indicator-ripple-scale",
-    (0.8 + rippleProgress * 0.76).toFixed(3),
-  );
-  rootStyle.setProperty(
-    "--zero-running-indicator-ripple-opacity",
-    rippleOpacity.toFixed(3),
-  );
-}
-
-function tickRunningIndicator(now: number): void {
-  setRunningIndicatorFrame(now);
-  setRunningIndicatorFrameId(
-    window.requestAnimationFrame(tickRunningIndicator),
-  );
-}
-
-function getRunningIndicatorRoot(): HTMLElement {
-  return document.documentElement;
-}
-
-function getRunningIndicatorConsumerCount(): number {
-  const value =
-    getRunningIndicatorRoot().dataset[RUNNING_INDICATOR_CONSUMERS_KEY];
-  const count = value ? Number(value) : 0;
-  return Number.isFinite(count) && count > 0 ? count : 0;
-}
-
-function setRunningIndicatorConsumerCount(count: number): void {
-  const root = getRunningIndicatorRoot();
-  if (count > 0) {
-    root.dataset[RUNNING_INDICATOR_CONSUMERS_KEY] = String(count);
-    return;
-  }
-  delete root.dataset[RUNNING_INDICATOR_CONSUMERS_KEY];
-}
-
-function getRunningIndicatorFrameId(): number | null {
-  const value = getRunningIndicatorRoot().dataset[RUNNING_INDICATOR_FRAME_KEY];
-  if (!value) {
-    return null;
-  }
-  const frame = Number(value);
-  return Number.isFinite(frame) ? frame : null;
-}
-
-function setRunningIndicatorFrameId(frame: number | null): void {
-  const root = getRunningIndicatorRoot();
-  if (frame !== null) {
-    root.dataset[RUNNING_INDICATOR_FRAME_KEY] = String(frame);
-    return;
-  }
-  delete root.dataset[RUNNING_INDICATOR_FRAME_KEY];
-}
-
-function registerRunningIndicator(): void {
-  const consumerCount = getRunningIndicatorConsumerCount();
-  setRunningIndicatorConsumerCount(consumerCount + 1);
-  if (consumerCount === 0 && getRunningIndicatorFrameId() === null) {
-    tickRunningIndicator(window.performance.now());
-  }
-}
-
-function unregisterRunningIndicator(): void {
-  const consumerCount = Math.max(0, getRunningIndicatorConsumerCount() - 1);
-  setRunningIndicatorConsumerCount(consumerCount);
-  if (consumerCount === 0) {
-    const frame = getRunningIndicatorFrameId();
-    if (frame !== null) {
-      window.cancelAnimationFrame(frame);
-      setRunningIndicatorFrameId(null);
-    }
-  }
-}
-
-function createRunningIndicatorRef(): (node: HTMLSpanElement | null) => void {
-  let currentNode: HTMLSpanElement | null = null;
-  return (node) => {
-    if (currentNode === node) {
-      return;
-    }
-    if (currentNode !== null && currentNode !== node) {
-      unregisterRunningIndicator();
-    }
-    currentNode = node;
-    if (node !== null) {
-      registerRunningIndicator();
-    }
-  };
-}
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
     return (
-      <span
-        ref={createRunningIndicatorRef()}
+      <IconLoader2
         aria-label="Running"
-        className="zero-running-indicator"
+        size={16}
+        stroke={2}
+        className="animate-spin text-sky-600"
       />
     );
   }
