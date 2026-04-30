@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { sql } from "drizzle-orm";
+import { getTranslations } from "next-intl/server";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import {
   VM0_MODEL_ALIAS_TO_MODEL,
@@ -15,13 +16,8 @@ import { MODELS, vendorIconPath, type ModelEntry } from "../models/data";
 
 const BASE_URL = "https://www.vm0.ai";
 const HOUR_MS = 60 * 60_000;
-const PERIODS = [
-  { key: "today", label: "Today" },
-  { key: "week", label: "This week" },
-  { key: "month", label: "This month" },
-] as const;
 
-type PeriodKey = (typeof PERIODS)[number]["key"];
+type PeriodKey = "today" | "week" | "month";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -70,18 +66,16 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { locale } = await params;
-  const title = "AI Model Rankings";
-  const description =
-    "Hourly VM0 model usage rankings across today, this week, and this month.";
+  const t = await getTranslations({ locale, namespace: "rankings" });
   const url = `${BASE_URL}/${locale}/rankings`;
 
   return {
-    title,
-    description,
+    title: t("pageTitle"),
+    description: t("pageDescription"),
     alternates: buildLocaleAlternates("/rankings", locale as Locale),
     openGraph: {
-      title,
-      description,
+      title: t("pageTitle"),
+      description: t("pageDescription"),
       url,
       type: "website",
       images: [
@@ -89,14 +83,14 @@ export async function generateMetadata({
           url: "/og-image.png",
           width: 1200,
           height: 630,
-          alt: title,
+          alt: t("pageTitle"),
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
-      title,
-      description,
+      title: t("pageTitle"),
+      description: t("pageDescription"),
       images: ["/og-image.png"],
       creator: "@vm0_ai",
       site: "@vm0_ai",
@@ -106,11 +100,8 @@ export async function generateMetadata({
 
 function parsePeriod(value: string | string[] | undefined): PeriodKey {
   const raw = Array.isArray(value) ? value[0] : value;
-  return PERIODS.some((period) => {
-    return period.key === raw;
-  })
-    ? (raw as PeriodKey)
-    : "week";
+  if (raw === "today" || raw === "week" || raw === "month") return raw;
+  return "week";
 }
 
 function startOfUtcDay(date: Date): Date {
@@ -187,13 +178,14 @@ function formatShare(value: number): string {
 function formatChange(
   current: number,
   previous: number,
+  changeNewLabel: string,
 ): {
   label: string;
   tone: "up" | "down" | "flat" | "new";
 } {
   if (previous === 0) {
     return current > 0
-      ? { label: "new", tone: "new" }
+      ? { label: changeNewLabel, tone: "new" }
       : { label: "0%", tone: "flat" };
   }
 
@@ -326,9 +318,9 @@ async function getRankings(period: PeriodKey): Promise<{
   };
 }
 
-function formatWindow(start: Date, end: Date): string {
+function formatWindow(start: Date, end: Date, waitingLabel: string): string {
   if (end <= start) {
-    return "Waiting for the first completed UTC hour";
+    return waitingLabel;
   }
   const fmt = (date: Date) => {
     return date.toISOString().slice(0, 10);
@@ -339,21 +331,29 @@ function formatWindow(start: Date, end: Date): string {
   return `${fmt(start)} → ${fmt(end)} UTC`;
 }
 
-function PeriodTabs({ active, locale }: { active: PeriodKey; locale: string }) {
+function PeriodTabs({
+  active,
+  locale,
+  labels,
+}: {
+  active: PeriodKey;
+  locale: string;
+  labels: Record<PeriodKey, string>;
+}) {
   return (
     <div className="uc-filter-row" role="tablist" aria-label="Ranking period">
-      {PERIODS.map((period) => {
-        const isActive = active === period.key;
+      {(["today", "week", "month"] as const).map((key) => {
+        const isActive = active === key;
         return (
           <a
-            key={period.key}
-            href={`/${locale}/rankings?view=${period.key}`}
+            key={key}
+            href={`/${locale}/rankings?view=${key}`}
             role="tab"
             aria-selected={isActive}
             className={`uc-pill${isActive ? " uc-pill--active" : ""}`}
             style={{ textDecoration: "none" }}
           >
-            {period.label}
+            {labels[key]}
           </a>
         );
       })}
@@ -364,11 +364,13 @@ function PeriodTabs({ active, locale }: { active: PeriodKey; locale: string }) {
 function ChangeBadge({
   current,
   previous,
+  changeNewLabel,
 }: {
   current: number;
   previous: number;
+  changeNewLabel: string;
 }) {
-  const change = formatChange(current, previous);
+  const change = formatChange(current, previous, changeNewLabel);
   const color =
     change.tone === "up" || change.tone === "new"
       ? "#3F7B5A"
@@ -437,12 +439,28 @@ function StatBlock({
   );
 }
 
+interface RankingTableMessages {
+  headerRank: string;
+  headerModel: string;
+  headerTokens: string;
+  headerShare: string;
+  headerChange: string;
+  tokensIn: string;
+  tokensOut: string;
+  emptyState: string;
+  footerModels: string;
+  footerTokens: string;
+  changeNew: string;
+}
+
 function RankingTable({
   rows,
   totalTokens,
+  messages,
 }: {
   rows: RankingRow[];
   totalTokens: number;
+  messages: RankingTableMessages;
 }) {
   if (rows.length === 0) {
     return (
@@ -458,7 +476,7 @@ function RankingTable({
           fontWeight: 300,
         }}
       >
-        No model usage has been aggregated for this period yet.
+        {messages.emptyState}
       </div>
     );
   }
@@ -491,11 +509,17 @@ function RankingTable({
           </colgroup>
           <thead>
             <tr>
-              <th style={tableHeadCell()}>Rank</th>
-              <th style={tableHeadCell()}>Model</th>
-              <th style={tableHeadCell({ align: "right" })}>Tokens</th>
-              <th style={tableHeadCell({ align: "right" })}>Share</th>
-              <th style={tableHeadCell({ align: "right" })}>Change</th>
+              <th style={tableHeadCell()}>{messages.headerRank}</th>
+              <th style={tableHeadCell()}>{messages.headerModel}</th>
+              <th style={tableHeadCell({ align: "right" })}>
+                {messages.headerTokens}
+              </th>
+              <th style={tableHeadCell({ align: "right" })}>
+                {messages.headerShare}
+              </th>
+              <th style={tableHeadCell({ align: "right" })}>
+                {messages.headerChange}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -604,8 +628,8 @@ function RankingTable({
                         color: "var(--text-muted)",
                       }}
                     >
-                      {formatTokens(row.inputTokens)} in ·{" "}
-                      {formatTokens(row.outputTokens)} out
+                      {formatTokens(row.inputTokens)} {messages.tokensIn} ·{" "}
+                      {formatTokens(row.outputTokens)} {messages.tokensOut}
                     </div>
                   </td>
                   <td style={tableBodyCell({ isLast, align: "right" })}>
@@ -629,6 +653,7 @@ function RankingTable({
                     <ChangeBadge
                       current={row.totalTokens}
                       previous={row.previousTotalTokens}
+                      changeNewLabel={messages.changeNew}
                     />
                   </td>
                 </tr>
@@ -651,9 +676,9 @@ function RankingTable({
           letterSpacing: "0.1px",
         }}
       >
-        <span>Top 50 models by token usage</span>
+        <span>{messages.footerModels}</span>
         <span style={{ fontVariantNumeric: "tabular-nums" }}>
-          {formatTokens(totalTokens)} tokens ranked
+          {formatTokens(totalTokens)} {messages.footerTokens}
         </span>
       </div>
     </div>
@@ -694,10 +719,35 @@ export default async function RankingsPage({
   searchParams,
 }: PageProps) {
   const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "rankings" });
   const resolvedSearchParams = (await searchParams) ?? {};
   const activePeriod = parsePeriod(resolvedSearchParams.view);
   const rankings = await getRankings(activePeriod);
-  const windowLabel = formatWindow(rankings.windowStart, rankings.windowEnd);
+  const windowLabel = formatWindow(
+    rankings.windowStart,
+    rankings.windowEnd,
+    t("statWaiting"),
+  );
+
+  const periodLabels: Record<PeriodKey, string> = {
+    today: t("periodToday"),
+    week: t("periodWeek"),
+    month: t("periodMonth"),
+  };
+
+  const tableMessages: RankingTableMessages = {
+    headerRank: t("tableHeaderRank"),
+    headerModel: t("tableHeaderModel"),
+    headerTokens: t("tableHeaderTokens"),
+    headerShare: t("tableHeaderShare"),
+    headerChange: t("tableHeaderChange"),
+    tokensIn: t("tableTokensIn"),
+    tokensOut: t("tableTokensOut"),
+    emptyState: t("tableEmptyState"),
+    footerModels: t("tableFooterModels"),
+    footerTokens: t("tableFooterTokens"),
+    changeNew: t("changeNew"),
+  };
 
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
@@ -706,13 +756,13 @@ export default async function RankingsPage({
       {
         "@type": "ListItem",
         position: 1,
-        name: "Home",
+        name: t("breadcrumbHome"),
         item: `${BASE_URL}/${locale}`,
       },
       {
         "@type": "ListItem",
         position: 2,
-        name: "AI Model Rankings",
+        name: t("breadcrumbRankings"),
         item: `${BASE_URL}/${locale}/rankings`,
       },
     ],
@@ -727,13 +777,14 @@ export default async function RankingsPage({
 
       <section className="hero-section" style={{ paddingBottom: "32px" }}>
         <div className="container">
-          <h1 className="hero-title">AI Model Rankings</h1>
-          <p className="hero-description">
-            VM0 model usage ranked by hourly token totals across the selected
-            UTC window.
-          </p>
+          <h1 className="hero-title">{t("pageTitle")}</h1>
+          <p className="hero-description">{t("heroDescription")}</p>
           <div style={{ marginTop: "32px" }}>
-            <PeriodTabs active={activePeriod} locale={locale} />
+            <PeriodTabs
+              active={activePeriod}
+              locale={locale}
+              labels={periodLabels}
+            />
           </div>
         </div>
       </section>
@@ -751,17 +802,25 @@ export default async function RankingsPage({
               marginBottom: "40px",
             }}
           >
-            <StatBlock label="Models" value={String(rankings.rows.length)} />
             <StatBlock
-              label="Ranked tokens"
+              label={t("statModels")}
+              value={String(rankings.rows.length)}
+            />
+            <StatBlock
+              label={t("statRankedTokens")}
               value={formatTokens(rankings.totalTokens)}
             />
-            <StatBlock label="Window" value={windowLabel} variant="sm" />
+            <StatBlock
+              label={t("statWindow")}
+              value={windowLabel}
+              variant="sm"
+            />
           </div>
 
           <RankingTable
             rows={rankings.rows}
             totalTokens={rankings.totalTokens}
+            messages={tableMessages}
           />
         </div>
       </section>

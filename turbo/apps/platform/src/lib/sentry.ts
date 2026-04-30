@@ -36,25 +36,11 @@ export function initSentry(): void {
         return null;
       }
 
-      // ApiError thrown by accept() carries status+code. Use them to:
-      //  (a) drop 4xx, which are expected business states, and
-      //  (b) for 5xx, regroup by (status, code) so Sentry stops collapsing
-      //      every API error under the generic accept.ts frame.
+      // ApiError thrown by accept() — surfaced to users via toast
+      // notifications and not actionable in Sentry.
       const original = hint?.originalException;
       if (original instanceof ApiError) {
-        if (original.status >= 400 && original.status < 500) {
-          return null;
-        }
-        event.fingerprint = [
-          "api-error",
-          String(original.status),
-          original.code,
-        ];
-        event.tags = {
-          ...event.tags,
-          "api.status": original.status,
-          "api.code": original.code,
-        };
+        return null;
       }
 
       return event;
