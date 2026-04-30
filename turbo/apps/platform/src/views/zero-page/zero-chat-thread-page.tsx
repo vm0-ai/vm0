@@ -2324,7 +2324,10 @@ function AssistantErrorContent({ error }: { error: string }) {
 
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
-      <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted/50 px-3 py-1.5 text-[13px] text-muted-foreground">
+      <div
+        className="inline-flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-1.5 text-[13px] text-muted-foreground"
+        style={{ border: "0.7px solid hsl(var(--border))" }}
+      >
         <IconHandStop size={14} stroke={1.75} className="shrink-0" />
         <span>Paused mid-thought — pick it back up whenever.</span>
       </div>
