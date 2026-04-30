@@ -25,7 +25,7 @@ function initEnv() {
         .int()
         .positive()
         .default(10000),
-      // Database driver selection
+      // Database driver selection for runtime connections
       // Defaults to 'pg' — node-postgres TCP pool + attachDatabasePool is the
       // Vercel Fluid + Neon 2026 recommended path. Override to 'neon' only
       // for environments that specifically need the WebSocket driver.
