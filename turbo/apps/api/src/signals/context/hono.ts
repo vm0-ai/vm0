@@ -13,7 +13,6 @@ export const initHono$ = command(
   },
 );
 
-// Request Headers
 function header(name: string) {
   return computed((get) => {
     const context = get(innerHonoContext$);
@@ -25,7 +24,6 @@ export const userAgent$ = header("User-Agent");
 export const authorization$ = header("authorization");
 export const cookie$ = header("cookie");
 
-// Response Headers
 function resHeader(name: string) {
   return computed((get) => {
     const context = get(innerHonoContext$);

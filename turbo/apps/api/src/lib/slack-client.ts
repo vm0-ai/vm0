@@ -15,7 +15,8 @@ function isSlackApiError(value: unknown): value is SlackApiError {
 async function callSlackApi<T>(
   token: string,
   method: string,
-  params?: Record<string, string | number | boolean | undefined>,
+  params: Record<string, string | number | boolean | undefined>,
+  signal?: AbortSignal,
 ): Promise<T> {
   const url = new URL(`https://slack.com/api/${method}`);
   if (params) {
@@ -31,6 +32,7 @@ async function callSlackApi<T>(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/x-www-form-urlencoded",
     },
+    signal,
   });
 
   if (!response.ok) {
@@ -40,6 +42,7 @@ async function callSlackApi<T>(
   }
 
   const data: unknown = await response.json();
+  signal?.throwIfAborted();
 
   if (isSlackApiError(data)) {
     throw new Error(`Slack API error: ${data.error}`);
@@ -71,6 +74,7 @@ export async function listConversations(
     excludeArchived?: boolean;
     limit?: number;
   },
+  signal?: AbortSignal,
 ): Promise<{ id: string; name: string }[]> {
   const channels: { id: string; name: string }[] = [];
   let cursor: string | undefined;
@@ -85,6 +89,7 @@ export async function listConversations(
         limit: options?.limit ?? 200,
         cursor,
       },
+      signal,
     );
 
     for (const ch of result.channels ?? []) {
@@ -120,9 +125,15 @@ interface FilesInfoResponse {
 export async function getFileInfo(
   token: string,
   fileId: string,
+  signal?: AbortSignal,
 ): Promise<SlackFileInfo> {
-  const result = await callSlackApi<FilesInfoResponse>(token, "files.info", {
-    file: fileId,
-  });
+  const result = await callSlackApi<FilesInfoResponse>(
+    token,
+    "files.info",
+    {
+      file: fileId,
+    },
+    signal,
+  );
   return result.file;
 }

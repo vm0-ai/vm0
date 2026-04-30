@@ -56,8 +56,6 @@ export function honoSignalHandler(
       ? store.set(handler$, signal)
       : store.get(handler$));
 
-    // Allow handlers to return a raw Response for streaming endpoints
-    // (e.g. file downloads). The Response is passed through to Hono directly.
     if (data instanceof Response) {
       return data;
     }

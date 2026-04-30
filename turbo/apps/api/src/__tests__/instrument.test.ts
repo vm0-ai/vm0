@@ -20,7 +20,7 @@ describe("instrument", () => {
     const { OTLPTraceExporter } =
       await import("@opentelemetry/exporter-trace-otlp-http");
     await importInstrument((envModule) => {
-      envModule.mockEnv("VERCEL_GIT_COMMIT_SHA", "abc123");
+      envModule.mockEnv("GIT_COMMIT_SHA", "abc123");
     });
 
     expect(context.mocks.otel.registerOTel).toHaveBeenCalledWith(
@@ -32,12 +32,6 @@ describe("instrument", () => {
         traceExporter: expect.any(OTLPTraceExporter),
       }),
     );
-  });
-
-  it("does not initialize OpenTelemetry without VERCEL_GIT_COMMIT_SHA", async () => {
-    await importInstrument();
-
-    expect(context.mocks.otel.registerOTel).not.toHaveBeenCalled();
   });
 
   it("does not initialize Sentry without a DSN", async () => {
@@ -54,8 +48,8 @@ describe("instrument", () => {
         "SENTRY_DSN",
         "https://examplePublicKey@o0.ingest.sentry.io/0",
       );
-      envModule.mockEnv("VERCEL_ENV", "production");
-      envModule.mockEnv("VERCEL_GIT_COMMIT_SHA", "abc123");
+      envModule.mockEnv("SENTRY_ENV", "production");
+      envModule.mockEnv("GIT_COMMIT_SHA", "abc123");
     });
 
     expect(context.mocks.sentry.init).toHaveBeenCalledWith({

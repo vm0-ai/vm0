@@ -1,7 +1,7 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z, type ZodType } from "zod";
 
-import { testOverride } from "./lazy-singleton";
+import { testOverride } from "./singleton";
 
 const SCHEMA = {
   DATABASE_URL: z.string().min(1),
@@ -11,25 +11,21 @@ const SCHEMA = {
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
   OPENAI_API_KEY: z.string().min(1),
   SENTRY_DSN: z.url().optional(),
-  VERCEL_GIT_COMMIT_SHA: z.string().optional(),
-  VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
-  VITEST: z.enum(["true", "false"]).optional(),
-  VM0_DEBUG: z.string().optional(),
-  VM0_API_URL: z.url().optional(),
-  VM0_WEB_URL: z.url().optional(),
+  GIT_COMMIT_SHA: z.string(),
+  SENTRY_ENV: z.enum(["production", "preview", "development"]),
+  VITEST: z.enum(["true", "false"]).default("false"),
+  VM0_DEBUG: z.string().default(""),
+  VM0_API_URL: z.url(),
+  VM0_WEB_URL: z.url(),
   CRON_SECRET: z.string().min(1),
-  R2_ACCESS_KEY_ID: z.string().min(1).optional(),
-  R2_ACCOUNT_ID: z.string().min(1).optional(),
-  R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
-  R2_USER_STORAGES_BUCKET_NAME: z.string().min(1).optional(),
-  S3_ENDPOINT: z.url().optional(),
-  S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).optional(),
-  S3_REGION: z.string().min(1).optional(),
-  AXIOM_TOKEN_SESSIONS: z.string().min(1).optional(),
-  AXIOM_TOKEN_TELEMETRY: z.string().min(1).optional(),
-  AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]).optional(),
-  STRIPE_SECRET_KEY: z.string().min(1).optional(),
-  TELEGRAM_FORWARD_BOT_TOKEN: z.string().min(1).optional(),
+  R2_ACCESS_KEY_ID: z.string().min(1),
+  R2_ACCOUNT_ID: z.string().min(1),
+  R2_SECRET_ACCESS_KEY: z.string().min(1),
+  R2_USER_STORAGES_BUCKET_NAME: z.string().min(1),
+  AXIOM_TOKEN_SESSIONS: z.string().min(1),
+  AXIOM_TOKEN_TELEMETRY: z.string().min(1),
+  AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
+  STRIPE_SECRET_KEY: z.string().min(1),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({
@@ -39,7 +35,7 @@ const baseEnv = createEnv<undefined, typeof SCHEMA>({
 });
 
 type EnvShape = typeof baseEnv;
-export type EnvKey = keyof EnvShape;
+type EnvKey = keyof EnvShape;
 
 const {
   get: getOverrideEnv,

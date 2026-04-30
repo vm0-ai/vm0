@@ -6,6 +6,9 @@ import { type Context, type MiddlewareHandler, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 // oxlint-disable-next-line no-restricted-imports -- app-factory needs the matched route resolver before next(); other signals files use the wrappers from signals/context/hono.
 import { routePath } from "hono/route";
+import { Readable } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
+import { request as undiciRequest, type Dispatcher } from "undici";
 
 import { env } from "./lib/env";
 import { logger } from "./lib/log";
@@ -15,11 +18,12 @@ import { isAbortError } from "./signals/utils";
 
 const L = logger("App");
 
-// Hop-by-hop headers must not be forwarded across a proxy hop. fetch() will
-// recompute Content-Length and ignore Host, but we strip them defensively.
+// Hop-by-hop headers (RFC 7230 §6.1) — must not be forwarded across a proxy
+// hop. We use undici.request rather than fetch so the upstream bytes (and
+// their content-encoding) flow through verbatim; that means content-length
+// stays meaningful and is NOT stripped here.
 const HOP_BY_HOP_HEADERS: Readonly<Record<string, true>> = {
   connection: true,
-  "content-length": true,
   host: true,
   "keep-alive": true,
   "proxy-authenticate": true,
@@ -45,55 +49,58 @@ function isProxyRequestHeader(name: string): boolean {
   return Object.hasOwn(PROXY_REQUEST_HEADERS, name.toLowerCase());
 }
 
-function buildProxyRequest(context: Context, webUrl: string): Request {
+async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
   const incoming = new URL(context.req.url);
   const target = new URL(`${incoming.pathname}${incoming.search}`, webUrl);
 
-  const headers = new Headers();
+  const requestHeaders: Record<string, string> = {};
   for (const [key, value] of context.req.raw.headers) {
     if (!isHopByHop(key) && !isProxyRequestHeader(key)) {
-      headers.set(key, value);
+      requestHeaders[key] = value;
     }
   }
 
-  const init: RequestInit & { duplex?: "half" } = {
-    method: context.req.method,
-    headers,
-    redirect: "manual",
+  // GET/HEAD must not carry a body. For everything else, adapt the incoming
+  // web ReadableStream into a Node Readable for undici.
+  const hasBody = context.req.method !== "GET" && context.req.method !== "HEAD";
+  // The dom and node:stream/web flavours of ReadableStream are the same
+  // runtime object; TS surfaces them as distinct types because tsconfig pulls
+  // in lib.dom alongside @types/node, so coerce through unknown.
+  const webBody = context.req.raw.body as unknown as NodeReadableStream | null;
+  const requestBody =
+    hasBody && webBody ? Readable.fromWeb(webBody) : undefined;
+
+  // undici.request — unlike fetch — does not auto-decompress, so compressed
+  // upstream bytes flow through verbatim and the original content-encoding
+  // header stays accurate.
+  const upstream = await undiciRequest(target, {
+    method: context.req.method as Dispatcher.HttpMethod,
+    headers: requestHeaders,
+    body: requestBody,
     signal: context.req.raw.signal,
-  };
+  });
 
-  // GET/HEAD must not have a body. For everything else, stream the incoming
-  // body through — `duplex: "half"` is required by undici when sending a
-  // ReadableStream body.
-  if (context.req.method !== "GET" && context.req.method !== "HEAD") {
-    init.body = context.req.raw.body;
-    init.duplex = "half";
-  }
-
-  return new Request(target, init);
-}
-
-async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
-  const upstream = await fetch(buildProxyRequest(context, webUrl));
-  // Strip hop-by-hop headers from the upstream response too, so the runtime
-  // can set its own Content-Length / Transfer-Encoding for our reply.
-  const headers = new Headers();
-  for (const [key, value] of upstream.headers) {
-    if (!isHopByHop(key) && key.toLowerCase() !== "set-cookie") {
-      headers.set(key, value);
+  const responseHeaders = new Headers();
+  for (const [name, value] of Object.entries(upstream.headers)) {
+    if (value === undefined || name === "set-cookie" || isHopByHop(name)) {
+      continue;
+    }
+    const values = Array.isArray(value) ? value : [value];
+    for (const v of values) {
+      responseHeaders.append(name, v);
     }
   }
-  for (const cookie of upstream.headers.getSetCookie()) {
-    headers.append("set-cookie", cookie);
+  const setCookie = upstream.headers["set-cookie"];
+  if (setCookie) {
+    const list = Array.isArray(setCookie) ? setCookie : [setCookie];
+    for (const cookie of list) {
+      responseHeaders.append("set-cookie", cookie);
+    }
   }
-  // Buffer the upstream body to avoid losing it when the undici ReadableStream
-  // is re-wrapped in a new Response (streams >1 chunk are silently dropped).
-  const body = await upstream.arrayBuffer();
-  return new Response(body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers,
+
+  return new Response(Readable.toWeb(upstream.body) as ReadableStream, {
+    status: upstream.statusCode,
+    headers: responseHeaders,
   });
 }
 
@@ -174,11 +181,7 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
   // match a registered route to VM0_WEB_URL so legacy traffic keeps working
   // until each endpoint is migrated.
   app.notFound((context) => {
-    const webUrl = env("VM0_WEB_URL");
-    if (!webUrl) {
-      return context.json({ error: "Not Found" }, 404);
-    }
-    return proxyToWeb(context, webUrl);
+    return proxyToWeb(context, env("VM0_WEB_URL"));
   });
 
   return app;

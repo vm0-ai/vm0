@@ -9,8 +9,8 @@ import {
   verifyComposeJobToken,
   verifySandboxToken,
   verifyZeroToken,
-} from "./tokens";
-import { now } from "../external/time";
+} from "../tokens";
+import { now } from "../../external/time";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -28,8 +28,8 @@ describe("auth tokens", () => {
       exp: nowSeconds + 60,
     });
 
-    expect(isPatToken(token)).toBe(true);
-    expect(verifyCliToken(token)).toEqual({
+    expect(isPatToken(token)).toBeTruthy();
+    expect(verifyCliToken(token)).toStrictEqual({
       userId: "user_pat",
       orgId: "org_pat",
       tokenId: "token_pat",
@@ -57,13 +57,13 @@ describe("auth tokens", () => {
       exp: nowSeconds + 60,
     });
 
-    expect(isSandboxToken(sandboxToken)).toBe(true);
-    expect(verifySandboxToken(sandboxToken)).toEqual({
+    expect(isSandboxToken(sandboxToken)).toBeTruthy();
+    expect(verifySandboxToken(sandboxToken)).toStrictEqual({
       userId: "user_sandbox",
       orgId: "org_sandbox",
       runId: "run_sandbox",
     });
-    expect(verifyZeroToken(zeroToken)).toEqual({
+    expect(verifyZeroToken(zeroToken)).toStrictEqual({
       userId: "user_zero",
       orgId: "org_zero",
       runId: "run_zero",
@@ -91,7 +91,7 @@ describe("auth tokens", () => {
 
     expect(verifyCliToken(expiredToken)).toBeNull();
     expect(verifySandboxToken(composeJobToken)).toBeNull();
-    expect(verifyComposeJobToken(composeJobToken)).toEqual({
+    expect(verifyComposeJobToken(composeJobToken)).toStrictEqual({
       userId: "user_compose",
       jobId: "job_compose",
     });

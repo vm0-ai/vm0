@@ -1,4 +1,4 @@
-export function lazySingleton<T>(factory: () => T): {
+export function singleton<T>(factory: () => T): {
   (): T;
   readonly peek: () => T | undefined;
   readonly reset: () => void;

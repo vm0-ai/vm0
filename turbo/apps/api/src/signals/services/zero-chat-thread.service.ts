@@ -160,8 +160,7 @@ function inferMimetype(filename: string): string {
 }
 
 function buildFileUrl(userId: string, id: string, filename: string): string {
-  const baseUrl = env("VM0_API_URL") ?? "http://localhost:3000";
-  return `${baseUrl}/f/${encodeURIComponent(userId)}/${id}/${encodeURIComponent(filename)}`;
+  return `${env("VM0_API_URL")}/f/${encodeURIComponent(userId)}/${id}/${encodeURIComponent(filename)}`;
 }
 
 function hasAgentSessionId(

@@ -119,6 +119,7 @@ runs:
           app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
           api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
           axiom_dataset_suffix="prod"
+          sentry_env="production"
           runner_default_group="vm0/production"
           concurrent_run_limit_cap="10"
           slack_redirect_base_url="$(repo_var SLACK_REDIRECT_BASE_URL)"
@@ -129,6 +130,7 @@ runs:
           app_url="$INPUT_APP_URL"
           api_url="$INPUT_API_URL"
           axiom_dataset_suffix="dev"
+          sentry_env="preview"
           runner_default_group="vm0/development-${INPUT_JOB_REF}"
           concurrent_run_limit_cap="0"
           slack_redirect_base_url="$INPUT_WEB_URL"
@@ -139,11 +141,13 @@ runs:
         add_env VM0_API_URL "$api_url"
         if [[ "$INPUT_APP" == "api" ]]; then
           add_env VM0_WEB_URL "$web_url"
+          add_env SENTRY_ENV "$sentry_env"
         fi
-        # Vercel CLI prebuilt deploys do not reliably populate VERCEL_GIT_*
-        # system vars. Inject the workflow head commit explicitly so OTel
-        # / Sentry can tag service.version and release on every deploy.
-        add_env VERCEL_GIT_COMMIT_SHA "${GITHUB_SHA:-}"
+        # Inject the workflow head commit explicitly so OTel / Sentry can tag
+        # service.version and release on every deploy. Vercel CLI prebuilt
+        # deploys do not reliably populate Vercel's own VERCEL_GIT_* system
+        # vars, and we don't want runtime to depend on Vercel auto-injection.
+        add_env GIT_COMMIT_SHA "${GITHUB_SHA:-}"
         add_env BLOG_BASE_URL "$web_url"
         add_env STRAPI_URL "$strapi_url"
         add_var CLERK_PUBLISHABLE_KEY CLERK_PUBLISHABLE_KEY
