@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.316.0](https://github.com/vm0-ai/vm0/compare/app-v0.315.0...app-v0.316.0) (2026-04-30)
+
+
+### Features
+
+* add artifact google drive sync ([#11595](https://github.com/vm0-ai/vm0/issues/11595)) ([4e3f205](https://github.com/vm0-ai/vm0/commit/4e3f205dce5a93826a2962bf9848a21ff8d272d0))
+
+
+### Bug Fixes
+
+* **org:** remove model usage ranking ([#11585](https://github.com/vm0-ai/vm0/issues/11585)) ([b966f13](https://github.com/vm0-ai/vm0/commit/b966f13120e867272d6854a2fa30c4482b5f62df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.248.1
+
 ## [0.315.0](https://github.com/vm0-ai/vm0/compare/app-v0.314.3...app-v0.315.0) (2026-04-30)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.325.0](https://github.com/vm0-ai/vm0/compare/web-v12.324.0...web-v12.325.0) (2026-04-30)
+
+
+### Features
+
+* add artifact google drive sync ([#11595](https://github.com/vm0-ai/vm0/issues/11595)) ([4e3f205](https://github.com/vm0-ai/vm0/commit/4e3f205dce5a93826a2962bf9848a21ff8d272d0))
+
+
+### Bug Fixes
+
+* **org:** remove model usage ranking ([#11585](https://github.com/vm0-ai/vm0/issues/11585)) ([b966f13](https://github.com/vm0-ai/vm0/commit/b966f13120e867272d6854a2fa30c4482b5f62df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.248.1
+
 ## [12.324.0](https://github.com/vm0-ai/vm0/compare/web-v12.323.0...web-v12.324.0) (2026-04-30)
 
 
