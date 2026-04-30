@@ -60,34 +60,6 @@ fn format_command_display(program: &str, args: &[&str]) -> String {
     parts.join(" ")
 }
 
-/// Execute a command.
-///
-/// Invokes the program binary directly with the given arguments.
-/// Returns trimmed stdout on success.
-#[cfg_attr(not(test), allow(dead_code))]
-pub async fn exec(program: &str, args: &[&str]) -> Result<String, CommandError> {
-    let cmd_display = format_command_display(program, args);
-    trace!(command = %cmd_display, "exec");
-
-    let output = Command::new(program).args(args).output().await;
-
-    let output = output.map_err(|e| CommandError {
-        command: cmd_display.clone(),
-        detail: e.to_string(),
-    })?;
-
-    if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        Ok(stdout)
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(CommandError {
-            command: cmd_display,
-            detail: stderr,
-        })
-    }
-}
-
 /// Execute a command with a bounded runtime.
 ///
 /// This helper is intended for host lifecycle operations where an unbounded
@@ -119,26 +91,6 @@ pub async fn exec_with_timeout(
             command: cmd_display,
             detail: stderr,
         })
-    }
-}
-
-/// Execute a command, ignoring any errors.
-#[cfg_attr(not(test), allow(dead_code))]
-pub async fn exec_ignore_errors(program: &str, args: &[&str]) {
-    let cmd_display = format_command_display(program, args);
-    trace!(command = %cmd_display, "exec_ignore_errors");
-
-    let output = Command::new(program).args(args).output().await;
-
-    match output {
-        Ok(o) if !o.status.success() => {
-            let stderr = String::from_utf8_lossy(&o.stderr);
-            trace!(command = %cmd_display, stderr = %stderr.trim(), "command failed (ignored)");
-        }
-        Err(e) => {
-            trace!(command = %cmd_display, error = %e, "command failed to spawn (ignored)");
-        }
-        _ => {}
     }
 }
 
@@ -410,20 +362,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn exec_returns_trimmed_stdout() {
-        let output = exec("echo", &["hello"]).await.unwrap();
+    async fn exec_with_timeout_returns_trimmed_stdout() {
+        let output = exec_with_timeout("echo", &["hello"], Duration::from_secs(1))
+            .await
+            .unwrap();
         assert_eq!(output, "hello");
     }
 
     #[tokio::test]
-    async fn exec_captures_multiline_output() {
-        let output = exec("printf", &["a\\nb\\nc"]).await.unwrap();
+    async fn exec_with_timeout_captures_multiline_output() {
+        let output = exec_with_timeout("printf", &["a\\nb\\nc"], Duration::from_secs(1))
+            .await
+            .unwrap();
         assert_eq!(output, "a\nb\nc");
     }
 
     #[tokio::test]
-    async fn exec_returns_error_on_failure() {
-        let err = exec("false", &[]).await.unwrap_err();
+    async fn exec_with_timeout_returns_error_on_failure() {
+        let err = exec_with_timeout("false", &[], Duration::from_secs(1))
+            .await
+            .unwrap_err();
         assert!(
             err.command.contains("false"),
             "command was: {}",
@@ -432,27 +390,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn exec_error_contains_stderr() {
-        let err = exec("bash", &["-c", "echo oops >&2; exit 1"])
-            .await
-            .unwrap_err();
+    async fn exec_with_timeout_error_contains_stderr() {
+        let err = exec_with_timeout(
+            "bash",
+            &["-c", "echo oops >&2; exit 1"],
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap_err();
         assert!(err.detail.contains("oops"), "detail was: {}", err.detail);
     }
 
     #[tokio::test]
-    async fn exec_passes_multiple_args() {
-        let output = exec("printf", &["%s-%s", "a", "b"]).await.unwrap();
+    async fn exec_with_timeout_passes_multiple_args() {
+        let output = exec_with_timeout("printf", &["%s-%s", "a", "b"], Duration::from_secs(1))
+            .await
+            .unwrap();
         assert_eq!(output, "a-b");
     }
 
     #[tokio::test]
-    async fn exec_ignore_errors_does_not_panic_on_failure() {
-        exec_ignore_errors("false", &[]).await;
+    async fn exec_ignore_errors_with_timeout_reports_nonzero() {
+        let outcome = exec_ignore_errors_with_timeout("false", &[], Duration::from_secs(1)).await;
+        assert_eq!(outcome, IgnoredCommandOutcome::NonZero);
     }
 
     #[tokio::test]
-    async fn exec_ignore_errors_does_not_panic_on_success() {
-        exec_ignore_errors("true", &[]).await;
+    async fn exec_ignore_errors_with_timeout_reports_success() {
+        let outcome = exec_ignore_errors_with_timeout("true", &[], Duration::from_secs(1)).await;
+        assert_eq!(outcome, IgnoredCommandOutcome::Success);
     }
 
     #[tokio::test]
