@@ -66,10 +66,31 @@ import { Link } from "../router/link.tsx";
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
 const RUNNING_INDICATOR_ANIMATION_MS = 2400;
-const RUNNING_INDICATOR_CONSUMERS_KEY = "zeroRunningIndicatorConsumers";
-const RUNNING_INDICATOR_FRAME_KEY = "zeroRunningIndicatorFrame";
+const RUNNING_INDICATOR_CENTER_SCALE_VAR =
+  "--zero-running-indicator-center-scale";
+const RUNNING_INDICATOR_CENTER_OPACITY_VAR =
+  "--zero-running-indicator-center-opacity";
+const RUNNING_INDICATOR_RIPPLE_SCALE_VAR =
+  "--zero-running-indicator-ripple-scale";
+const RUNNING_INDICATOR_RIPPLE_OPACITY_VAR =
+  "--zero-running-indicator-ripple-opacity";
+const RUNNING_INDICATOR_STYLE_VARS = [
+  RUNNING_INDICATOR_CENTER_SCALE_VAR,
+  RUNNING_INDICATOR_CENTER_OPACITY_VAR,
+  RUNNING_INDICATOR_RIPPLE_SCALE_VAR,
+  RUNNING_INDICATOR_RIPPLE_OPACITY_VAR,
+] as const;
+const runningIndicatorNodes = new Set<HTMLSpanElement>();
+let runningIndicatorFrameId: number | null = null;
 
-function setRunningIndicatorFrame(now: number): void {
+interface RunningIndicatorFrame {
+  centerScale: string;
+  centerOpacity: string;
+  rippleScale: string;
+  rippleOpacity: string;
+}
+
+function getRunningIndicatorFrame(now: number): RunningIndicatorFrame {
   const phase =
     (now % RUNNING_INDICATOR_ANIMATION_MS) / RUNNING_INDICATOR_ANIMATION_MS;
   const rippleStart = 0.52;
@@ -83,91 +104,71 @@ function setRunningIndicatorFrame(now: number): void {
   const centerScaleRange = 0.24;
   const rippleOpacity =
     phase < rippleStart ? 0 : Math.pow(1 - rippleProgress, 1.35) * 0.34;
-  const rootStyle = document.documentElement.style;
-  rootStyle.setProperty(
-    "--zero-running-indicator-center-scale",
-    (
+  return {
+    centerScale: (
       centerBaseScale +
       centerProgress * centerScaleRange -
       rippleProgress * centerScaleRange
     ).toFixed(3),
+    centerOpacity: (
+      0.34 +
+      centerProgress * 0.18 -
+      rippleProgress * 0.18
+    ).toFixed(3),
+    rippleScale: (0.8 + rippleProgress * 0.76).toFixed(3),
+    rippleOpacity: rippleOpacity.toFixed(3),
+  };
+}
+
+function applyRunningIndicatorFrame(
+  node: HTMLSpanElement,
+  frame: RunningIndicatorFrame,
+): void {
+  node.style.setProperty(RUNNING_INDICATOR_CENTER_SCALE_VAR, frame.centerScale);
+  node.style.setProperty(
+    RUNNING_INDICATOR_CENTER_OPACITY_VAR,
+    frame.centerOpacity,
   );
-  rootStyle.setProperty(
-    "--zero-running-indicator-center-opacity",
-    (0.34 + centerProgress * 0.18 - rippleProgress * 0.18).toFixed(3),
+  node.style.setProperty(RUNNING_INDICATOR_RIPPLE_SCALE_VAR, frame.rippleScale);
+  node.style.setProperty(
+    RUNNING_INDICATOR_RIPPLE_OPACITY_VAR,
+    frame.rippleOpacity,
   );
-  rootStyle.setProperty(
-    "--zero-running-indicator-ripple-scale",
-    (0.8 + rippleProgress * 0.76).toFixed(3),
-  );
-  rootStyle.setProperty(
-    "--zero-running-indicator-ripple-opacity",
-    rippleOpacity.toFixed(3),
-  );
+}
+
+function clearRunningIndicatorStyle(node: HTMLSpanElement): void {
+  for (const variable of RUNNING_INDICATOR_STYLE_VARS) {
+    node.style.removeProperty(variable);
+  }
 }
 
 function tickRunningIndicator(now: number): void {
-  setRunningIndicatorFrame(now);
-  setRunningIndicatorFrameId(
-    window.requestAnimationFrame(tickRunningIndicator),
+  const frame = getRunningIndicatorFrame(now);
+  for (const node of runningIndicatorNodes) {
+    applyRunningIndicatorFrame(node, frame);
+  }
+  runningIndicatorFrameId = window.requestAnimationFrame(tickRunningIndicator);
+}
+
+function registerRunningIndicator(node: HTMLSpanElement): void {
+  runningIndicatorNodes.add(node);
+  applyRunningIndicatorFrame(
+    node,
+    getRunningIndicatorFrame(window.performance.now()),
   );
-}
-
-function getRunningIndicatorRoot(): HTMLElement {
-  return document.documentElement;
-}
-
-function getRunningIndicatorConsumerCount(): number {
-  const value =
-    getRunningIndicatorRoot().dataset[RUNNING_INDICATOR_CONSUMERS_KEY];
-  const count = value ? Number(value) : 0;
-  return Number.isFinite(count) && count > 0 ? count : 0;
-}
-
-function setRunningIndicatorConsumerCount(count: number): void {
-  const root = getRunningIndicatorRoot();
-  if (count > 0) {
-    root.dataset[RUNNING_INDICATOR_CONSUMERS_KEY] = String(count);
-    return;
-  }
-  delete root.dataset[RUNNING_INDICATOR_CONSUMERS_KEY];
-}
-
-function getRunningIndicatorFrameId(): number | null {
-  const value = getRunningIndicatorRoot().dataset[RUNNING_INDICATOR_FRAME_KEY];
-  if (!value) {
-    return null;
-  }
-  const frame = Number(value);
-  return Number.isFinite(frame) ? frame : null;
-}
-
-function setRunningIndicatorFrameId(frame: number | null): void {
-  const root = getRunningIndicatorRoot();
-  if (frame !== null) {
-    root.dataset[RUNNING_INDICATOR_FRAME_KEY] = String(frame);
-    return;
-  }
-  delete root.dataset[RUNNING_INDICATOR_FRAME_KEY];
-}
-
-function registerRunningIndicator(): void {
-  const consumerCount = getRunningIndicatorConsumerCount();
-  setRunningIndicatorConsumerCount(consumerCount + 1);
-  if (consumerCount === 0 && getRunningIndicatorFrameId() === null) {
+  if (runningIndicatorFrameId === null) {
     tickRunningIndicator(window.performance.now());
   }
 }
 
-function unregisterRunningIndicator(): void {
-  const consumerCount = Math.max(0, getRunningIndicatorConsumerCount() - 1);
-  setRunningIndicatorConsumerCount(consumerCount);
-  if (consumerCount === 0) {
-    const frame = getRunningIndicatorFrameId();
-    if (frame !== null) {
-      window.cancelAnimationFrame(frame);
-      setRunningIndicatorFrameId(null);
-    }
+function unregisterRunningIndicator(node: HTMLSpanElement): void {
+  if (!runningIndicatorNodes.delete(node)) {
+    return;
+  }
+  clearRunningIndicatorStyle(node);
+  if (runningIndicatorNodes.size === 0 && runningIndicatorFrameId !== null) {
+    window.cancelAnimationFrame(runningIndicatorFrameId);
+    runningIndicatorFrameId = null;
   }
 }
 
@@ -177,12 +178,12 @@ function createRunningIndicatorRef(): (node: HTMLSpanElement | null) => void {
     if (currentNode === node) {
       return;
     }
-    if (currentNode !== null && currentNode !== node) {
-      unregisterRunningIndicator();
+    if (currentNode !== null) {
+      unregisterRunningIndicator(currentNode);
     }
     currentNode = node;
     if (node !== null) {
-      registerRunningIndicator();
+      registerRunningIndicator(node);
     }
   };
 }

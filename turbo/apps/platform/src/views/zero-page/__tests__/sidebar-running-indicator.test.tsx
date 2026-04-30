@@ -30,6 +30,12 @@ const context = testContext();
 const mockApi = createMockApi(context);
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+const RUNNING_INDICATOR_STYLE_VARS = [
+  "--zero-running-indicator-center-scale",
+  "--zero-running-indicator-center-opacity",
+  "--zero-running-indicator-ripple-scale",
+  "--zero-running-indicator-ripple-opacity",
+] as const;
 
 interface ThreadFixture {
   id: string;
@@ -71,6 +77,9 @@ function getSidebar(): HTMLElement {
 
 beforeEach(() => {
   setMockUserPreferences({ pinnedAgentIds: [] });
+  for (const variable of RUNNING_INDICATOR_STYLE_VARS) {
+    document.documentElement.style.removeProperty(variable);
+  }
 });
 
 describe("sidebar running indicator", () => {
@@ -130,6 +139,40 @@ describe("sidebar running indicator", () => {
         within(getSidebar()).queryByLabelText("Unread"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("scopes animated Running styles to the indicator element", async () => {
+    mockAPIs({
+      current: [
+        {
+          id: "thread-style-scope",
+          title: "Scoped running",
+          agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+          isRead: true,
+          isArchived: false,
+          running: true,
+        },
+      ],
+    });
+    detachedSetupPage({ context, path: "/" });
+
+    const sidebar = await screen.findByRole("navigation", { name: "Sidebar" });
+    const indicator = await within(sidebar).findByLabelText("Running");
+
+    await waitFor(() => {
+      expect(
+        indicator.style.getPropertyValue(
+          "--zero-running-indicator-center-scale",
+        ),
+      ).not.toBe("");
+    });
+    for (const variable of RUNNING_INDICATOR_STYLE_VARS) {
+      expect(document.documentElement.style.getPropertyValue(variable)).toBe(
+        "",
+      );
+    }
   });
 
   it("does not render Unread indicator on the selected thread", async () => {
