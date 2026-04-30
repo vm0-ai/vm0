@@ -197,19 +197,6 @@ impl Drop for NetnsLease {
     }
 }
 
-/// Deprecated name retained for callers that refer to the old type name.
-///
-/// The old `PooledNetns` metadata struct was cloneable, which made namespace
-/// release authority ambiguous. This alias is not source-compatible with the
-/// old public-field metadata struct: it names a non-cloneable [`NetnsLease`].
-/// New code should keep the lease in an `Option<NetnsLease>` and pass it to
-/// [`NetnsPool::release`].
-#[deprecated(
-    since = "0.28.0",
-    note = "use NetnsLease and release it with NetnsPool::release(&mut Option<NetnsLease>)"
-)]
-pub type PooledNetns = NetnsLease;
-
 /// Configuration for creating a [`NetnsPool`].
 ///
 /// When `proxy_port` is set, the pool pre-warms and acquires from the proxy
