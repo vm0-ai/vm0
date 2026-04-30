@@ -55,7 +55,6 @@ export const MODEL_PROVIDER_ENV_VARS = [
  * Single DB query: caller passes the already-fetched defaultProvider.
  */
 function resolveProviderType(
-  framework: string,
   defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>,
   explicitModelProvider?: string,
 ): ModelProviderType {
@@ -72,14 +71,6 @@ function resolveProviderType(
     providerType = defaultProvider.type;
   } else {
     throw noModelProvider();
-  }
-
-  const providerFramework = getFrameworkForType(providerType);
-  if (providerFramework !== framework) {
-    throw badRequest(
-      `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
-        `This provider is for "${providerFramework}" agents.`,
-    );
   }
 
   return providerType;
@@ -313,7 +304,6 @@ export async function resolveModelProviderSecrets(
   const secretUserId = ORG_SENTINEL_USER_ID;
 
   const providerType = resolveProviderType(
-    framework,
     defaultProvider,
     explicitModelProvider,
   );
