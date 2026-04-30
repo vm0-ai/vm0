@@ -16,6 +16,13 @@ const BUILD_SCRIPT: &str = include_str!("../../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
 const INJECT_CA_SCRIPT: &str = include_str!("../../scripts/inject-ca.sh");
 
+const GUEST_AGENT_DEST: &str = "/usr/local/bin/guest-agent";
+const GUEST_DOWNLOAD_DEST: &str = "/usr/local/bin/guest-download";
+const GUEST_INIT_DEST: &str = "/sbin/guest-init";
+const GUEST_RESEED_DEST: &str = "/sbin/guest-reseed";
+const GUEST_MOCK_CLAUDE_DEST: &str = "/usr/local/bin/guest-mock-claude";
+const GUEST_MOCK_CODEX_DEST: &str = "/usr/local/bin/guest-mock-codex";
+
 /// Bump to invalidate all cached rootfs images (R2 + local).
 ///
 /// Bumping orphans previous R2 objects; swept by `runner gc` after TTL.
@@ -128,14 +135,57 @@ pub struct BuildArgs {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RootfsCachePolicy {
-    BestEffort,
-    StrictWarm,
+enum BuildMode {
+    FullImage,
+    WarmRootfsCache,
 }
 
-impl RootfsCachePolicy {
-    fn is_strict(self) -> bool {
-        matches!(self, Self::StrictWarm)
+impl BuildMode {
+    fn from_args(args: &BuildArgs) -> Self {
+        if args.warm_rootfs_cache {
+            Self::WarmRootfsCache
+        } else {
+            Self::FullImage
+        }
+    }
+
+    fn builds_snapshot(self) -> bool {
+        matches!(self, Self::FullImage)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum RootfsCache<'a> {
+    Disabled,
+    BestEffort(&'a R2ImageCache),
+    Required(&'a R2ImageCache),
+}
+
+impl<'a> RootfsCache<'a> {
+    fn from_optional(mode: BuildMode, cache: Option<&'a R2ImageCache>) -> RunnerResult<Self> {
+        match (mode, cache) {
+            (BuildMode::FullImage, Some(cache)) => Ok(Self::BestEffort(cache)),
+            (BuildMode::WarmRootfsCache, Some(cache)) => Ok(Self::Required(cache)),
+            (BuildMode::FullImage, None) => Ok(Self::Disabled),
+            (BuildMode::WarmRootfsCache, None) => Err(RunnerError::Internal(
+                "--warm-rootfs-cache requires all R2_* image cache environment variables".into(),
+            )),
+        }
+    }
+
+    fn as_cache(self) -> Option<&'a R2ImageCache> {
+        match self {
+            Self::Disabled => None,
+            Self::BestEffort(cache) | Self::Required(cache) => Some(cache),
+        }
+    }
+
+    fn is_required(self) -> bool {
+        matches!(self, Self::Required(_))
+    }
+
+    fn is_disabled(self) -> bool {
+        matches!(self, Self::Disabled)
     }
 }
 
@@ -143,15 +193,64 @@ struct RootfsBuildInput<'a> {
     paths: &'a HomePaths,
     rootfs_hash: &'a str,
     rootfs_paths: &'a RootfsPaths,
-    r2: Option<&'a R2ImageCache>,
-    policy: RootfsCachePolicy,
+    cache: RootfsCache<'a>,
     disk_mb: u32,
-    guest_agent: &'a Path,
-    guest_download: &'a Path,
-    guest_init: &'a Path,
-    guest_mock_claude: &'a Path,
-    guest_mock_codex: &'a Path,
-    guest_reseed: &'a Path,
+    guests: &'a GuestBinaries,
+}
+
+struct GuestBinaries {
+    // Keeps extracted bundled guest binaries alive for hash computation and
+    // build-rootfs.sh execution.
+    _temp_dir: tempfile::TempDir,
+    guest_agent: PathBuf,
+    guest_download: PathBuf,
+    guest_init: PathBuf,
+    guest_mock_claude: PathBuf,
+    guest_mock_codex: PathBuf,
+    guest_reseed: PathBuf,
+}
+
+impl GuestBinaries {
+    async fn resolve(args: &mut BuildArgs) -> RunnerResult<Self> {
+        let temp_dir = tempfile::tempdir()
+            .map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
+        let temp_path = temp_dir.path();
+        let guest_agent = resolve_guest(args.guest_agent.take(), "guest-agent", temp_path).await?;
+        let guest_download =
+            resolve_guest(args.guest_download.take(), "guest-download", temp_path).await?;
+        let guest_init = resolve_guest(args.guest_init.take(), "guest-init", temp_path).await?;
+        let guest_mock_claude = resolve_guest(
+            args.guest_mock_claude.take(),
+            "guest-mock-claude",
+            temp_path,
+        )
+        .await?;
+        let guest_mock_codex =
+            resolve_guest(args.guest_mock_codex.take(), "guest-mock-codex", temp_path).await?;
+        let guest_reseed =
+            resolve_guest(args.guest_reseed.take(), "guest-reseed", temp_path).await?;
+
+        Ok(Self {
+            _temp_dir: temp_dir,
+            guest_agent,
+            guest_download,
+            guest_init,
+            guest_mock_claude,
+            guest_mock_codex,
+            guest_reseed,
+        })
+    }
+
+    fn hash_inputs(&self) -> [(&Path, &str); 6] {
+        [
+            (self.guest_agent.as_path(), GUEST_AGENT_DEST),
+            (self.guest_download.as_path(), GUEST_DOWNLOAD_DEST),
+            (self.guest_init.as_path(), GUEST_INIT_DEST),
+            (self.guest_reseed.as_path(), GUEST_RESEED_DEST),
+            (self.guest_mock_claude.as_path(), GUEST_MOCK_CLAUDE_DEST),
+            (self.guest_mock_codex.as_path(), GUEST_MOCK_CODEX_DEST),
+        ]
+    }
 }
 
 /// Resolve a guest binary path: CLI arg takes priority, then bundled binary
@@ -185,45 +284,15 @@ async fn resolve_guest(
 }
 
 /// Build an image (rootfs from R2 cache or local build, snapshot always local).
-pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> RunnerResult<()> {
+pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> RunnerResult<()> {
     let def = profile::get(&args.profile)?;
     let dry_run = args.dry_run;
-    let warm_rootfs_cache = args.warm_rootfs_cache;
+    let mode = BuildMode::from_args(&args);
 
-    // Create temp dir for any bundled guest binaries that need extracting.
-    // IMPORTANT: tmp_dir must outlive build script execution — dropping it deletes extracted guests.
-    let tmp_dir =
-        tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
-
-    // Resolve all guest binary paths (CLI arg → bundled → error).
-    let guest_agent = resolve_guest(args.guest_agent, "guest-agent", tmp_dir.path()).await?;
-    let guest_download =
-        resolve_guest(args.guest_download, "guest-download", tmp_dir.path()).await?;
-    let guest_init = resolve_guest(args.guest_init, "guest-init", tmp_dir.path()).await?;
-    let guest_mock_claude =
-        resolve_guest(args.guest_mock_claude, "guest-mock-claude", tmp_dir.path()).await?;
-    let guest_mock_codex =
-        resolve_guest(args.guest_mock_codex, "guest-mock-codex", tmp_dir.path()).await?;
-    let guest_reseed = resolve_guest(args.guest_reseed, "guest-reseed", tmp_dir.path()).await?;
-
-    // Fixed order for deterministic hashing — do NOT reorder.
-    let bins: [(&Path, &str); 6] = [
-        (guest_agent.as_path(), "/usr/local/bin/guest-agent"),
-        (guest_download.as_path(), "/usr/local/bin/guest-download"),
-        (guest_init.as_path(), "/sbin/guest-init"),
-        (guest_reseed.as_path(), "/sbin/guest-reseed"),
-        (
-            guest_mock_claude.as_path(),
-            "/usr/local/bin/guest-mock-claude",
-        ),
-        (
-            guest_mock_codex.as_path(),
-            "/usr/local/bin/guest-mock-codex",
-        ),
-    ];
+    let guests = GuestBinaries::resolve(&mut args).await?;
 
     // Compute two separate hashes: rootfs (R2-cacheable) and snapshot (local only).
-    let rootfs_hash = compute_rootfs_hash(&bins, def.disk_mb).await?;
+    let rootfs_hash = compute_rootfs_hash(&guests.hash_inputs(), def.disk_mb).await?;
     let snapshot_hash = compute_snapshot_hash(
         &rootfs_hash,
         def.vcpu,
@@ -252,7 +321,7 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     let snapshot_dir = snapshot_paths.dir();
 
     // Fast path: both rootfs and snapshot already present.
-    if !warm_rootfs_cache
+    if mode.builds_snapshot()
         && is_rootfs_present(&rootfs_paths).await?
         && provider.is_complete(snapshot_dir).await.unwrap_or(false)
     {
@@ -267,92 +336,104 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     let r2 = R2ImageCache::from_env()
         .await
         .map_err(|e| RunnerError::Internal(format!("R2 cache init: {e}")))?;
-    if r2.is_none() {
-        if warm_rootfs_cache {
-            return Err(RunnerError::Internal(
-                "--warm-rootfs-cache requires all R2_* image cache environment variables".into(),
-            ));
-        }
+    let rootfs_cache = RootfsCache::from_optional(mode, r2.as_ref())?;
+    if rootfs_cache.is_disabled() {
         // Info, not warn — dev environments routinely run without R2 configured.
         tracing::info!("R2 cache disabled (R2_* env vars not set) — skipping download and upload");
     }
 
-    let policy = if warm_rootfs_cache {
-        RootfsCachePolicy::StrictWarm
-    } else {
-        RootfsCachePolicy::BestEffort
-    };
     let input = RootfsBuildInput {
         paths: &paths,
         rootfs_hash: &rootfs_hash,
         rootfs_paths: &rootfs_paths,
-        r2: r2.as_ref(),
-        policy,
+        cache: rootfs_cache,
         disk_mb: def.disk_mb,
-        guest_agent: &guest_agent,
-        guest_download: &guest_download,
-        guest_init: &guest_init,
-        guest_mock_claude: &guest_mock_claude,
-        guest_mock_codex: &guest_mock_codex,
-        guest_reseed: &guest_reseed,
+        guests: &guests,
     };
 
-    if warm_rootfs_cache {
-        if upload_existing_rootfs_for_warm_if_present(&input, paths.rootfs_lock(&rootfs_hash))
-            .await?
-        {
+    match mode {
+        BuildMode::WarmRootfsCache => {
+            if upload_existing_rootfs_for_warm_if_present(&input, paths.rootfs_lock(&rootfs_hash))
+                .await?
+            {
+                tracing::info!("rootfs cache warm complete: rootfs={rootfs_hash}");
+                return Ok(());
+            }
+
+            let rootfs_lock_path = paths.rootfs_lock(&rootfs_hash);
+            tracing::info!(
+                "acquiring exclusive rootfs lock for warm build: {}",
+                rootfs_lock_path.display()
+            );
+            let _rootfs_lock = lock::acquire(rootfs_lock_path).await?;
+            ensure_rootfs_under_lock(input).await?;
             tracing::info!("rootfs cache warm complete: rootfs={rootfs_hash}");
-            return Ok(());
+            Ok(())
         }
 
-        let rootfs_lock_path = paths.rootfs_lock(&rootfs_hash);
-        tracing::info!(
-            "acquiring exclusive rootfs lock for warm build: {}",
-            rootfs_lock_path.display()
-        );
-        let _rootfs_lock = lock::acquire(rootfs_lock_path).await?;
-        ensure_rootfs_under_lock(input).await?;
-        tracing::info!("rootfs cache warm complete: rootfs={rootfs_hash}");
-        return Ok(());
+        BuildMode::FullImage => {
+            // Acquire the rootfs lock before any rootfs mutation. Full builds keep it
+            // through snapshot creation so GC cannot reap the rootfs while the snapshot
+            // provider is reading it.
+            let rootfs_lock_path = paths.rootfs_lock(&rootfs_hash);
+            tracing::info!(
+                "acquiring exclusive rootfs lock for image build: {}",
+                rootfs_lock_path.display()
+            );
+            let _rootfs_lock = lock::acquire(rootfs_lock_path).await?;
+            let _snapshot_lock = lock::acquire(paths.snapshot_lock(&snapshot_hash)).await?;
+
+            // Re-check after acquiring lock — another process may have completed the build.
+            if is_rootfs_present(&rootfs_paths).await?
+                && provider.is_complete(snapshot_dir).await.unwrap_or(false)
+            {
+                tracing::info!(
+                    "[OK] image already built: rootfs={rootfs_hash}, snapshot={snapshot_hash}"
+                );
+                touch_mtime(rootfs_dir);
+                touch_mtime(snapshot_dir);
+                return Ok(());
+            }
+
+            ensure_rootfs_under_lock(input).await?;
+
+            build_snapshot(
+                &paths,
+                &rootfs_paths,
+                &snapshot_hash,
+                snapshot_dir,
+                def,
+                provider,
+            )
+            .await?;
+
+            tracing::info!(
+                "image creation complete: rootfs={rootfs_hash}, snapshot={snapshot_hash}"
+            );
+            Ok(())
+        }
     }
+}
 
-    // Acquire the rootfs lock before any rootfs mutation. Full builds keep it
-    // through snapshot creation so GC cannot reap the rootfs while the snapshot
-    // provider is reading it.
-    let rootfs_lock_path = paths.rootfs_lock(&rootfs_hash);
-    tracing::info!(
-        "acquiring exclusive rootfs lock for image build: {}",
-        rootfs_lock_path.display()
-    );
-    let _rootfs_lock = lock::acquire(rootfs_lock_path).await?;
-    let _snapshot_lock = lock::acquire(paths.snapshot_lock(&snapshot_hash)).await?;
-
-    // Re-check after acquiring lock — another process may have completed the build.
-    if is_rootfs_present(&rootfs_paths).await?
-        && provider.is_complete(snapshot_dir).await.unwrap_or(false)
-    {
-        tracing::info!("[OK] image already built: rootfs={rootfs_hash}, snapshot={snapshot_hash}");
-        touch_mtime(rootfs_dir);
-        touch_mtime(snapshot_dir);
-        return Ok(());
-    }
-
-    ensure_rootfs_under_lock(input).await?;
-
-    // --- Phase 2: Build snapshot ---
-    //
+async fn build_snapshot(
+    paths: &HomePaths,
+    rootfs_paths: &RootfsPaths,
+    snapshot_hash: &str,
+    snapshot_dir: &Path,
+    def: &profile::ProfileDef,
+    provider: &dyn SnapshotProvider,
+) -> RunnerResult<()> {
     // Snapshot dir is nested under the rootfs dir:
     // <images>/<rootfs_hash>/snapshots/<snapshot_hash>/
     tokio::fs::create_dir_all(snapshot_dir)
         .await
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", snapshot_dir.display())))?;
 
-    let rootfs_path = rootfs_paths.rootfs();
     let create_config = sandbox::SnapshotCreateConfig {
-        id: snapshot_hash.clone(),
+        id: snapshot_hash.to_string(),
         binary_path: paths.firecracker_bin(FIRECRACKER_VERSION),
         kernel_path: paths.kernel_bin(FIRECRACKER_VERSION, KERNEL_VERSION),
-        rootfs_path,
+        rootfs_path: rootfs_paths.rootfs(),
         output_dir: snapshot_dir.to_path_buf(),
         vcpu_count: def.vcpu,
         memory_mb: def.memory_mb,
@@ -375,7 +456,6 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         "snapshot creation complete"
     );
 
-    tracing::info!("image creation complete: rootfs={rootfs_hash}, snapshot={snapshot_hash}");
     Ok(())
 }
 
@@ -399,12 +479,12 @@ async fn ensure_rootfs_under_lock(input: RootfsBuildInput<'_>) -> RunnerResult<(
     let mut rootfs_from_r2 = false;
 
     let need_rootfs = !is_rootfs_present(input.rootfs_paths).await?;
-    let mut work_dir = None;
+    let mut scripts = RootfsScripts::new();
 
     if need_rootfs {
         // Try R2 download (rootfs only). try_download manages its own staging
         // directory and atomic rename, so rootfs_dir stays absent on failure.
-        if let Some(cache) = input.r2 {
+        if let Some(cache) = input.cache.as_cache() {
             match cache.try_download(input.rootfs_hash, rootfs_dir).await {
                 Ok(true) => {
                     if tokio::fs::try_exists(input.rootfs_paths.rootfs())
@@ -451,7 +531,7 @@ async fn ensure_rootfs_under_lock(input: RootfsBuildInput<'_>) -> RunnerResult<(
                             input.rootfs_hash
                         );
                         force_reupload = true;
-                    } else if input.policy.is_strict() {
+                    } else if input.cache.is_required() {
                         return Err(RunnerError::Internal(format!(
                             "R2 download failed while warming rootfs cache: {e}"
                         )));
@@ -463,13 +543,13 @@ async fn ensure_rootfs_under_lock(input: RootfsBuildInput<'_>) -> RunnerResult<(
         }
 
         if !rootfs_from_r2 {
-            let work_dir_path = work_dir_for_rootfs(&mut work_dir).await?;
+            let work_dir_path = scripts.path().await?;
             build_rootfs_locally(&input, &work_dir_path).await?;
             upload_rootfs_to_r2(&input, force_reupload).await?;
         }
     } else {
         tracing::info!("[OK] rootfs already present: {}", rootfs_dir.display());
-        if input.policy.is_strict() {
+        if input.cache.is_required() {
             upload_rootfs_to_r2(&input, false).await?;
         }
     }
@@ -483,7 +563,7 @@ async fn ensure_rootfs_under_lock(input: RootfsBuildInput<'_>) -> RunnerResult<(
     // rootfs_hash, different vcpu/memory profile) live under
     // `<rootfs_dir>/snapshots/` and would be collateral damage.
     if rootfs_from_r2 {
-        let work_dir_path = work_dir_for_rootfs(&mut work_dir).await?;
+        let work_dir_path = scripts.path().await?;
         inject_ca_into_staging(&input, &work_dir_path).await?;
         // Commit the rootfs. Same-filesystem rename is POSIX-atomic, so
         // `rootfs.ext4` only becomes visible once CA injection has fully
@@ -518,27 +598,41 @@ async fn upload_existing_rootfs_for_warm_if_present(
     Ok(true)
 }
 
-async fn work_dir_for_rootfs(work_dir: &mut Option<tempfile::TempDir>) -> RunnerResult<PathBuf> {
-    if work_dir.is_none() {
-        let dir = tempfile::tempdir()
-            .map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
-        tokio::fs::write(dir.path().join("build-rootfs.sh"), BUILD_SCRIPT)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("write build script: {e}")))?;
-        tokio::fs::write(dir.path().join("verify-rootfs.sh"), VERIFY_SCRIPT)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("write verify script: {e}")))?;
-        tokio::fs::write(dir.path().join("inject-ca.sh"), INJECT_CA_SCRIPT)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("write inject-ca script: {e}")))?;
-        *work_dir = Some(dir);
+struct RootfsScripts {
+    temp_dir: Option<tempfile::TempDir>,
+}
+
+impl RootfsScripts {
+    fn new() -> Self {
+        Self { temp_dir: None }
     }
-    match work_dir.as_ref() {
-        Some(dir) => Ok(dir.path().to_path_buf()),
-        None => Err(RunnerError::Internal(
-            "rootfs work dir was not initialized".into(),
-        )),
+
+    async fn path(&mut self) -> RunnerResult<PathBuf> {
+        if self.temp_dir.is_none() {
+            self.temp_dir = Some(create_rootfs_scripts_dir().await?);
+        }
+        match self.temp_dir.as_ref() {
+            Some(dir) => Ok(dir.path().to_path_buf()),
+            None => Err(RunnerError::Internal(
+                "rootfs scripts dir was not initialized".into(),
+            )),
+        }
     }
+}
+
+async fn create_rootfs_scripts_dir() -> RunnerResult<tempfile::TempDir> {
+    let dir =
+        tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
+    tokio::fs::write(dir.path().join("build-rootfs.sh"), BUILD_SCRIPT)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("write build script: {e}")))?;
+    tokio::fs::write(dir.path().join("verify-rootfs.sh"), VERIFY_SCRIPT)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("write verify script: {e}")))?;
+    tokio::fs::write(dir.path().join("inject-ca.sh"), INJECT_CA_SCRIPT)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("write inject-ca script: {e}")))?;
+    Ok(dir)
 }
 
 async fn build_rootfs_locally(input: &RootfsBuildInput<'_>, work_dir: &Path) -> RunnerResult<()> {
@@ -550,12 +644,12 @@ async fn build_rootfs_locally(input: &RootfsBuildInput<'_>, work_dir: &Path) -> 
 
     // Local rootfs build — the slow path (debootstrap + apt install).
     let rootfs_dir_str = rootfs_dir.to_string_lossy();
-    let guest_agent_str = input.guest_agent.to_string_lossy();
-    let guest_download_str = input.guest_download.to_string_lossy();
-    let guest_init_str = input.guest_init.to_string_lossy();
-    let guest_mock_claude_str = input.guest_mock_claude.to_string_lossy();
-    let guest_mock_codex_str = input.guest_mock_codex.to_string_lossy();
-    let guest_reseed_str = input.guest_reseed.to_string_lossy();
+    let guest_agent_str = input.guests.guest_agent.to_string_lossy();
+    let guest_download_str = input.guests.guest_download.to_string_lossy();
+    let guest_init_str = input.guests.guest_init.to_string_lossy();
+    let guest_mock_claude_str = input.guests.guest_mock_claude.to_string_lossy();
+    let guest_mock_codex_str = input.guests.guest_mock_codex.to_string_lossy();
+    let guest_reseed_str = input.guests.guest_reseed.to_string_lossy();
     let ca_dir = input.paths.ca_dir();
     let ca_dir_str = ca_dir.to_string_lossy();
     let debootstrap_dir = input.paths.debootstrap_dir();
@@ -630,13 +724,10 @@ async fn build_rootfs_locally(input: &RootfsBuildInput<'_>, work_dir: &Path) -> 
 }
 
 async fn upload_rootfs_to_r2(input: &RootfsBuildInput<'_>, force: bool) -> RunnerResult<()> {
-    let Some(cache) = input.r2 else {
-        if input.policy.is_strict() {
-            return Err(RunnerError::Internal(
-                "--warm-rootfs-cache requires R2 cache configuration".into(),
-            ));
-        }
-        return Ok(());
+    let (cache, required) = match input.cache {
+        RootfsCache::Disabled => return Ok(()),
+        RootfsCache::BestEffort(cache) => (cache, false),
+        RootfsCache::Required(cache) => (cache, true),
     };
 
     let files = vec![input.rootfs_paths.rootfs()];
@@ -645,7 +736,7 @@ async fn upload_rootfs_to_r2(input: &RootfsBuildInput<'_>, force: bool) -> Runne
             tracing::info!("uploaded rootfs to R2: {}", input.rootfs_hash);
             Ok(())
         }
-        Err(e) if input.policy.is_strict() => Err(RunnerError::Internal(format!(
+        Err(e) if required => Err(RunnerError::Internal(format!(
             "R2 upload failed while warming rootfs cache: {e}"
         ))),
         Err(e) => {
@@ -961,24 +1052,64 @@ mod tests {
     fn rootfs_input<'a>(
         home: &'a HomePaths,
         rootfs: &'a RootfsPaths,
-        guest: &'a Path,
-        policy: RootfsCachePolicy,
-        r2: Option<&'a R2ImageCache>,
+        guests: &'a GuestBinaries,
+        cache: RootfsCache<'a>,
     ) -> RootfsBuildInput<'a> {
         RootfsBuildInput {
             paths: home,
             rootfs_hash: "test-hash",
             rootfs_paths: rootfs,
-            r2,
-            policy,
+            cache,
             disk_mb: 16384,
-            guest_agent: guest,
-            guest_download: guest,
-            guest_init: guest,
-            guest_mock_claude: guest,
-            guest_mock_codex: guest,
+            guests,
+        }
+    }
+
+    fn test_guest_binaries() -> GuestBinaries {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let guest = temp_dir.path().join("guest");
+        std::fs::write(&guest, b"guest").unwrap();
+        GuestBinaries {
+            _temp_dir: temp_dir,
+            guest_agent: guest.clone(),
+            guest_download: guest.clone(),
+            guest_init: guest.clone(),
+            guest_mock_claude: guest.clone(),
+            guest_mock_codex: guest.clone(),
             guest_reseed: guest,
         }
+    }
+
+    #[test]
+    fn guest_binaries_hash_inputs_preserve_destination_order() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let guest_agent = temp_dir.path().join("guest-agent");
+        let guest_download = temp_dir.path().join("guest-download");
+        let guest_init = temp_dir.path().join("guest-init");
+        let guest_reseed = temp_dir.path().join("guest-reseed");
+        let guest_mock_claude = temp_dir.path().join("guest-mock-claude");
+        let guest_mock_codex = temp_dir.path().join("guest-mock-codex");
+        let guests = GuestBinaries {
+            _temp_dir: temp_dir,
+            guest_agent: guest_agent.clone(),
+            guest_download: guest_download.clone(),
+            guest_init: guest_init.clone(),
+            guest_mock_claude: guest_mock_claude.clone(),
+            guest_mock_codex: guest_mock_codex.clone(),
+            guest_reseed: guest_reseed.clone(),
+        };
+
+        assert_eq!(
+            guests.hash_inputs(),
+            [
+                (guest_agent.as_path(), GUEST_AGENT_DEST),
+                (guest_download.as_path(), GUEST_DOWNLOAD_DEST),
+                (guest_init.as_path(), GUEST_INIT_DEST),
+                (guest_reseed.as_path(), GUEST_RESEED_DEST),
+                (guest_mock_claude.as_path(), GUEST_MOCK_CLAUDE_DEST),
+                (guest_mock_codex.as_path(), GUEST_MOCK_CODEX_DEST),
+            ]
+        );
     }
 
     #[test]
@@ -990,20 +1121,23 @@ mod tests {
 
         assert!(cli.args.warm_rootfs_cache);
         assert!(!cli.args.dry_run);
+        assert_eq!(BuildMode::from_args(&cli.args), BuildMode::WarmRootfsCache);
     }
 
     #[test]
-    fn rootfs_cache_policy_marks_only_warm_as_strict() {
-        assert!(!RootfsCachePolicy::BestEffort.is_strict());
-        assert!(RootfsCachePolicy::StrictWarm.is_strict());
+    fn build_mode_defaults_to_full_image() {
+        let cli = <TestBuildCli as clap::Parser>::try_parse_from(build_args()).unwrap();
+
+        assert_eq!(BuildMode::from_args(&cli.args), BuildMode::FullImage);
+        assert!(BuildMode::from_args(&cli.args).builds_snapshot());
     }
 
     #[tokio::test]
-    async fn work_dir_for_rootfs_writes_embedded_scripts_once() {
-        let mut work_dir = None;
+    async fn rootfs_scripts_writes_embedded_scripts_once() {
+        let mut scripts = RootfsScripts::new();
 
-        let first = work_dir_for_rootfs(&mut work_dir).await.unwrap();
-        let second = work_dir_for_rootfs(&mut work_dir).await.unwrap();
+        let first = scripts.path().await.unwrap();
+        let second = scripts.path().await.unwrap();
 
         assert_eq!(first, second);
         assert!(first.join("build-rootfs.sh").exists());
@@ -1011,17 +1145,14 @@ mod tests {
         assert!(first.join("inject-ca.sh").exists());
     }
 
-    #[tokio::test]
-    async fn strict_upload_requires_r2_cache() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
-        let rootfs = RootfsPaths::new(&home, "strict-hash");
-        let guest = dir.path().join("guest");
-        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::StrictWarm, None);
+    #[test]
+    fn required_warm_cache_requires_r2_config() {
+        let err = RootfsCache::from_optional(BuildMode::WarmRootfsCache, None).unwrap_err();
 
-        let err = upload_rootfs_to_r2(&input, false).await.unwrap_err();
-
-        assert!(err.to_string().contains("--warm-rootfs-cache requires R2"));
+        assert!(
+            err.to_string()
+                .contains("--warm-rootfs-cache requires all R2_*")
+        );
     }
 
     #[tokio::test]
@@ -1029,30 +1160,35 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
         let rootfs = RootfsPaths::new(&home, "best-effort-hash");
-        let guest = dir.path().join("guest");
-        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::BestEffort, None);
+        let guests = test_guest_binaries();
+        let input = rootfs_input(&home, &rootfs, &guests, RootfsCache::Disabled);
 
         upload_rootfs_to_r2(&input, false).await.unwrap();
     }
 
+    #[test]
+    fn rootfs_cache_full_image_can_run_without_r2() {
+        let cache = RootfsCache::from_optional(BuildMode::FullImage, None).unwrap();
+
+        assert!(cache.is_disabled());
+    }
+
     #[tokio::test]
-    async fn strict_warm_existing_rootfs_still_requires_r2_cache() {
+    async fn existing_rootfs_best_effort_allows_missing_r2_cache() {
         let dir = tempfile::tempdir().unwrap();
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
-        let rootfs = RootfsPaths::new(&home, "strict-local-hash");
+        let rootfs = RootfsPaths::new(&home, "best-effort-local-hash");
         tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
         tokio::fs::write(rootfs.rootfs(), b"local-rootfs")
             .await
             .unwrap();
-        let guest = dir.path().join("guest");
-        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::StrictWarm, None);
+        let guests = test_guest_binaries();
+        let input = rootfs_input(&home, &rootfs, &guests, RootfsCache::Disabled);
 
-        let err = ensure_rootfs_under_lock(input).await.unwrap_err();
-
-        assert!(err.to_string().contains("--warm-rootfs-cache requires R2"));
+        ensure_rootfs_under_lock(input).await.unwrap();
         assert!(
             rootfs.rootfs().exists(),
-            "strict warm must not remove a valid local rootfs when R2 is missing"
+            "best-effort build must not remove a valid local rootfs when R2 is missing"
         );
     }
 
@@ -1065,8 +1201,8 @@ mod tests {
         tokio::fs::write(rootfs.rootfs(), b"local-rootfs")
             .await
             .unwrap();
-        let guest = dir.path().join("guest");
-        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::StrictWarm, None);
+        let guests = test_guest_binaries();
+        let input = rootfs_input(&home, &rootfs, &guests, RootfsCache::Disabled);
         let rootfs_lock_path = home.rootfs_lock("warm-shared-lock-hash");
         let _existing_reader = lock::acquire_shared(rootfs_lock_path.clone())
             .await
@@ -1079,8 +1215,7 @@ mod tests {
         .await
         .expect("warm upload should share the rootfs lock with active runners");
 
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("--warm-rootfs-cache requires R2"));
+        assert!(result.unwrap());
     }
 
     #[tokio::test]
@@ -1092,8 +1227,8 @@ mod tests {
         tokio::fs::write(rootfs.rootfs(), b"local-rootfs")
             .await
             .unwrap();
-        let guest = dir.path().join("guest");
-        let input = rootfs_input(&home, &rootfs, &guest, RootfsCachePolicy::BestEffort, None);
+        let guests = test_guest_binaries();
+        let input = rootfs_input(&home, &rootfs, &guests, RootfsCache::Disabled);
 
         ensure_rootfs_under_lock(input).await.unwrap();
 
