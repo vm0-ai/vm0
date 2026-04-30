@@ -371,9 +371,9 @@ function ChangeBadge({
   const change = formatChange(current, previous);
   const color =
     change.tone === "up" || change.tone === "new"
-      ? "#ed4e01"
+      ? "#3F7B5A"
       : change.tone === "down"
-        ? "var(--text-muted)"
+        ? "#B45848"
         : "var(--text-muted)";
 
   return (
@@ -479,11 +479,19 @@ function RankingTable({
             minWidth: "640px",
             borderCollapse: "collapse",
             textAlign: "left",
+            tableLayout: "fixed",
           }}
         >
+          <colgroup>
+            <col style={{ width: "72px" }} />
+            <col />
+            <col style={{ width: "180px" }} />
+            <col style={{ width: "100px" }} />
+            <col style={{ width: "110px" }} />
+          </colgroup>
           <thead>
             <tr>
-              <th style={tableHeadCell({ width: 64 })}>Rank</th>
+              <th style={tableHeadCell()}>Rank</th>
               <th style={tableHeadCell()}>Model</th>
               <th style={tableHeadCell({ align: "right" })}>Tokens</th>
               <th style={tableHeadCell({ align: "right" })}>Share</th>
@@ -654,8 +662,7 @@ function RankingTable({
 
 function tableHeadCell({
   align,
-  width,
-}: { align?: "right"; width?: number } = {}): React.CSSProperties {
+}: { align?: "right" } = {}): React.CSSProperties {
   return {
     padding: "16px 24px",
     fontSize: 11,
@@ -665,7 +672,6 @@ function tableHeadCell({
     color: "var(--text-muted)",
     fontFamily: '"Fira Mono", monospace',
     textAlign: align ?? "left",
-    width,
     borderBottom: "1px solid var(--border-light)",
     background: "transparent",
   };
