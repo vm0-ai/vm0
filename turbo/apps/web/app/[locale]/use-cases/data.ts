@@ -469,7 +469,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "document-decisions",
     color: "#8a7cbe",
-    screenshots: ["/assets/use-cases/document-decisions.png"],
+    screenshots: [
+      "/assets/use-cases/document-decisions.png",
+      "/assets/use-cases/document-decisions-2.png",
+    ],
     avatar: {
       rotation: 2,
       skin: 3,
