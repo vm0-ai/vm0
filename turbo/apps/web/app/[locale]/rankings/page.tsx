@@ -605,7 +605,8 @@ function RankingTable({
                       }}
                     >
                       {formatTokens(row.inputTokens)} in ·{" "}
-                      {formatTokens(row.outputTokens)} out
+                      {formatTokens(row.outputTokens)} out ·{" "}
+                      {formatTokens(row.cacheTokens)} cache
                     </div>
                   </td>
                   <td style={tableBodyCell({ isLast, align: "right" })}>
