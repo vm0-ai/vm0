@@ -1,3 +1,19 @@
+//! In-process job execution for the runner.
+//!
+//! `cmd/start/mod.rs::spawn_job` calls this module after a provider claim and
+//! budget reservation. The executor owns the sandbox-side run flow, while the
+//! caller owns the final sandbox lifecycle decision.
+//!
+//! There are two public entry points:
+//! - `execute_job` starts a fresh Firecracker VM.
+//! - `execute_job_reuse` runs in a kept-alive idle VM.
+//!
+//! Both entry points return `ExecuteOutcome` plus a pending `JobTelemetry`
+//! buffer. When `ExecuteOutcome::sandbox` is `Some`, the sandbox is still alive
+//! and the caller decides whether to park it for reuse or destroy it. The
+//! caller also flushes telemetry after firing `provider.complete`, so the
+//! user-visible completion signal is not blocked on best-effort uploads.
+
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
@@ -69,7 +85,7 @@ pub struct ExecuteOutcome {
 ///
 /// Returns [`ExecuteOutcome`] with the sandbox still alive (not stopped/destroyed)
 /// plus the pending [`JobTelemetry`] buffer. The caller (`spawn_job` in
-/// `cmd/start.rs`) decides whether to park the sandbox or destroy it, and
+/// `cmd/start/mod.rs`) decides whether to park the sandbox or destroy it, and
 /// **must** flush the telemetry **after** firing `provider.complete` so the
 /// user-visible run-complete signal isn't blocked on best-effort telemetry
 /// uploads (~383 ms saved per job).
@@ -117,7 +133,7 @@ pub async fn execute_job(
 ///
 /// Skips create + start. Re-registers proxy, fixes clock, then runs the agent.
 /// Returns [`ExecuteOutcome`] with the sandbox still alive plus the pending
-/// [`JobTelemetry`] buffer — the caller (`spawn_job` in `cmd/start.rs`) must
+/// [`JobTelemetry`] buffer — the caller (`spawn_job` in `cmd/start/mod.rs`) must
 /// flush telemetry after firing `provider.complete` (see [`execute_job`] for
 /// rationale).
 pub async fn execute_job_reuse(
