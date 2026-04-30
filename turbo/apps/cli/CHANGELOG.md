@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.140.2](https://github.com/vm0-ai/vm0/compare/cli-v9.140.1...cli-v9.140.2) (2026-04-30)
+
+
+### Refactoring
+
+* **api:** tighten env schema and clean up dead code ([#11621](https://github.com/vm0-ai/vm0/issues/11621)) ([849fe02](https://github.com/vm0-ai/vm0/commit/849fe027474e831d4721c3f3758142f4677a60da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.249.0
+
 ## [9.140.1](https://github.com/vm0-ai/vm0/compare/cli-v9.140.0...cli-v9.140.1) (2026-04-30)
 
 
