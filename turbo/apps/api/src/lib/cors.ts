@@ -10,10 +10,9 @@ import { env } from "./env";
 // directly (not proxied to Next), responses from registered routes need their
 // own CORS headers — the web proxy fallthrough is no longer in the request
 // path for migrated endpoints.
-const STATIC_ALLOWED_ORIGINS = new Set([
-  "https://www.vm0.ai",
-  "https://vm0.ai",
-]);
+const STATIC_ALLOWED_ORIGINS = Object.freeze(
+  new Set(["https://www.vm0.ai", "https://vm0.ai"]),
+);
 
 function getAllowedOrigin(origin: string | undefined): string | null {
   if (!origin) {
