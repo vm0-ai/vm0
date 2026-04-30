@@ -32,10 +32,6 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/process-credits",
-      "schedule": "* * * * *"
-    },
-    {
       "path": "/api/cron/process-usage-events",
       "schedule": "* * * * *"
     },

@@ -9,7 +9,7 @@ import {
   ensureOrgRow,
   findInsightsDaily,
   insertTestUsageEvent,
-  seedCreditUsageRecord,
+  seedUsageEventRecord,
   seedInsightsDaily,
   seedUserCacheEntry,
   setOrgCredits,
@@ -153,7 +153,7 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     await seedUserCacheEntry(userId, "test@example.com");
 
-    await seedCreditUsageRecord({
+    await seedUsageEventRecord({
       runId,
       orgId,
       userId,
@@ -191,7 +191,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
 
     await seedUserCacheEntry(userId, "test@example.com");
-    await seedCreditUsageRecord({
+    await seedUsageEventRecord({
       runId,
       orgId,
       userId,
@@ -349,14 +349,14 @@ describe("GET /api/cron/aggregate-insights", () => {
       completedAt: date,
     });
 
-    await seedCreditUsageRecord({
+    await seedUsageEventRecord({
       runId: run1Id,
       orgId,
       userId,
       creditsCharged: 100,
       createdAt: date,
     });
-    await seedCreditUsageRecord({
+    await seedUsageEventRecord({
       runId: run2Id,
       orgId,
       userId,
@@ -678,7 +678,7 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     await seedUserCacheEntry(userId, "test@example.com");
 
-    await seedCreditUsageRecord({
+    await seedUsageEventRecord({
       runId,
       orgId,
       userId,
@@ -714,7 +714,7 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     await seedUserCacheEntry(userId, "alice@example.com", "Alice");
 
-    await seedCreditUsageRecord({
+    await seedUsageEventRecord({
       runId,
       orgId,
       userId,
@@ -750,7 +750,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     // Seed cache entry without name (name=null)
     await seedUserCacheEntry(userId, "bob@example.com");
 
-    await seedCreditUsageRecord({
+    await seedUsageEventRecord({
       runId,
       orgId,
       userId,

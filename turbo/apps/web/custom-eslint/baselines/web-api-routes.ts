@@ -39,7 +39,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/cron/cleanup-sandboxes/route.ts",
   "app/api/cron/drain-email-outbox/route.ts",
   "app/api/cron/execute-schedules/route.ts",
-  "app/api/cron/process-credits/route.ts",
   "app/api/cron/process-usage-events/route.ts",
   "app/api/cron/sync-skills/route.ts",
   "app/api/cron/telegram-cleanup/route.ts",

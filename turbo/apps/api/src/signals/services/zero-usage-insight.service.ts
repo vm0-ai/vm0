@@ -305,23 +305,6 @@ function usageRowsCte(p: UsageInsightSqlParams): string {
   return `
     usage_rows AS (
       SELECT
-        'legacy' AS ledger,
-        cu.created_at AS activity_time,
-        cu.run_id,
-        cu.user_id,
-        cu.org_id,
-        COALESCE(cu.credits_charged, 0)::bigint AS credits_charged,
-        (cu.input_tokens + cu.output_tokens + cu.cache_read_input_tokens + cu.cache_creation_input_tokens)::bigint AS tokens
-      FROM credit_usage cu
-      WHERE cu.user_id = ${p.userIdLit}
-        AND cu.org_id = ${p.orgIdLit}
-        AND cu.status = 'processed'
-        AND ${activityTimeWindowPredicate("cu", p)}
-
-      UNION ALL
-
-      SELECT
-        'event' AS ledger,
         ue.created_at AS activity_time,
         ue.run_id,
         ue.user_id,
@@ -342,7 +325,7 @@ function usageRowsWith(p: UsageInsightSqlParams): string {
 
 function agentNameExpr(): string {
   return `CASE
-    WHEN ${USAGE_ROW_ALIAS}.ledger = 'event' AND ar.id IS NULL THEN 'others'
+    WHEN ar.id IS NULL THEN 'others'
     ELSE COALESCE(za.display_name, za.name, acv_compose.name, 'unknown')
   END`;
 }
@@ -414,7 +397,6 @@ function queryUsageInsightAgentBuckets(db: Db, p: UsageInsightSqlParams) {
         LEFT JOIN agent_compose_versions acv ON acv.id = ar.agent_compose_version_id
         LEFT JOIN agent_composes acv_compose ON acv_compose.id = acv.compose_id
         LEFT JOIN zero_agents za ON za.id = acv_compose.id
-        WHERE ${USAGE_ROW_ALIAS}.ledger = 'event' OR ar.id IS NOT NULL
         GROUP BY 1
         ORDER BY 2 DESC
       ),
@@ -433,7 +415,6 @@ function queryUsageInsightAgentBuckets(db: Db, p: UsageInsightSqlParams) {
       LEFT JOIN agent_compose_versions acv ON acv.id = ar.agent_compose_version_id
       LEFT JOIN agent_composes acv_compose ON acv_compose.id = acv.compose_id
       LEFT JOIN zero_agents za ON za.id = acv_compose.id
-      WHERE ${USAGE_ROW_ALIAS}.ledger = 'event' OR ar.id IS NOT NULL
       GROUP BY 1, 2
       ORDER BY 1
     `),

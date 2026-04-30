@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { sql } from "drizzle-orm";
-import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import {
@@ -53,16 +52,6 @@ function utcHourStart(date: Date): Date {
   );
 }
 
-function creditUsageModelExpression() {
-  const modelColumn = sql.raw('"credit_usage"."model"');
-  return sql<string>`CASE ${sql.join(
-    getModelAliasEntries().map(([alias, model]) => {
-      return sql`WHEN ${modelColumn} = ${alias} THEN ${model}`;
-    }),
-    sql` `,
-  )} ELSE ${modelColumn} END`;
-}
-
 function usageEventModelExpression() {
   const providerColumn = sql.raw('"usage_event"."provider"');
   return sql<string>`CASE ${sql.join(
@@ -78,7 +67,6 @@ async function replaceModelStats(
   windowStart: Date,
   windowEnd: Date,
 ): Promise<number> {
-  const creditUsageModelExpr = creditUsageModelExpression();
   const usageEventModelExpr = usageEventModelExpression();
   const modelStatsModelIdSql = getModelStatsModelIdSql();
 
@@ -92,24 +80,6 @@ async function replaceModelStats(
 
     return tx.execute(sql`
       WITH usage_rows AS (
-        SELECT
-          date_trunc('hour', ${creditUsage.createdAt})::timestamp AS hour_start,
-          ${creditUsageModelExpr} AS model,
-          ${creditUsage.orgId} AS org_id,
-          ${creditUsage.userId} AS user_id,
-          COALESCE(${creditUsage.runId}::text, ${creditUsage.id}::text) AS request_key,
-          ${creditUsage.inputTokens}::bigint AS input_tokens,
-          ${creditUsage.outputTokens}::bigint AS output_tokens,
-          ${creditUsage.cacheReadInputTokens}::bigint AS cache_read_input_tokens,
-          ${creditUsage.cacheCreationInputTokens}::bigint AS cache_creation_input_tokens,
-          COALESCE(${creditUsage.creditsCharged}, 0)::bigint AS credits_charged
-        FROM ${creditUsage}
-        WHERE ${creditUsage.createdAt} >= ${windowStart}
-          AND ${creditUsage.createdAt} < ${windowEnd}
-          AND ${creditUsage.model} IN (${modelStatsModelIdSql})
-
-        UNION ALL
-
         SELECT
           date_trunc('hour', ${usageEvent.createdAt})::timestamp AS hour_start,
           ${usageEventModelExpr} AS model,

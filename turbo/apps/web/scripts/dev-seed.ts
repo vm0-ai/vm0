@@ -6,14 +6,13 @@ import { eq, sql } from "drizzle-orm";
 import { getEligibleConnectorTypes } from "@vm0/connectors/connector-utils";
 import { VM0_MODEL_TO_PROVIDER } from "@vm0/api-contracts/contracts/model-providers";
 import { schema } from "@vm0/db";
-import { creditPricing } from "@vm0/db/schema/credit-pricing";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { skills } from "@vm0/db/schema/skill";
 import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
 
 /**
- * Dev seed: populate credit_pricing, usage_pricing, vm0_api_keys, and skills tables.
+ * Dev seed: populate usage_pricing, vm0_api_keys, and skills tables.
  *
  * Pricing convention: 1 USD = 1000 credits.
  * Prices are per 1M tokens, stored as integer credits per 1M tokens.
@@ -29,89 +28,6 @@ function usd(amount: number): number {
   return Math.round(amount * USD_TO_CREDITS);
 }
 
-const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
-  {
-    model: "claude-sonnet-4-6",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(3),
-    outputTokenPrice: usd(15),
-    cacheReadTokenPrice: usd(0.3),
-    cacheCreationTokenPrice: usd(3.75),
-  },
-  {
-    model: "claude-opus-4-6",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(15),
-    outputTokenPrice: usd(75),
-    cacheReadTokenPrice: usd(1.5),
-    cacheCreationTokenPrice: usd(18.75),
-  },
-  {
-    model: "claude-opus-4-7",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(5),
-    outputTokenPrice: usd(25),
-    cacheReadTokenPrice: usd(0.5),
-    cacheCreationTokenPrice: usd(6.25),
-  },
-  {
-    model: "claude-haiku-4-5",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(1),
-    outputTokenPrice: usd(5),
-    cacheReadTokenPrice: usd(0.1),
-    cacheCreationTokenPrice: usd(1.25),
-  },
-  {
-    model: "kimi-k2.6",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.6),
-    outputTokenPrice: usd(3),
-    cacheReadTokenPrice: usd(0.1),
-    cacheCreationTokenPrice: usd(0.6),
-  },
-  {
-    model: "kimi-k2.5",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.6),
-    outputTokenPrice: usd(3),
-    cacheReadTokenPrice: usd(0.1),
-    cacheCreationTokenPrice: usd(0.6),
-  },
-  {
-    model: "glm-5.1",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(1.4),
-    outputTokenPrice: usd(4.4),
-    cacheReadTokenPrice: usd(0.26),
-    cacheCreationTokenPrice: usd(1.4),
-  },
-  {
-    model: "MiniMax-M2.7",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.3),
-    outputTokenPrice: usd(1.2),
-    cacheReadTokenPrice: usd(0.06),
-    cacheCreationTokenPrice: usd(0.375),
-  },
-  {
-    model: "deepseek-v4-pro",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(1.74),
-    outputTokenPrice: usd(3.48),
-    cacheReadTokenPrice: usd(0.145),
-    cacheCreationTokenPrice: 0,
-  },
-  {
-    model: "deepseek-v4-flash",
-    modelProvider: "vm0",
-    inputTokenPrice: usd(0.14),
-    outputTokenPrice: usd(0.28),
-    cacheReadTokenPrice: usd(0.028),
-    cacheCreationTokenPrice: 0,
-  },
-];
-
 type UsagePricingRow = [category: string, unitPrice: number, unitSize: number];
 
 function usageGroup(
@@ -125,8 +41,7 @@ function usageGroup(
 }
 
 const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
-  // Model usage — mirrors MODEL_PRICING for the unified usage_event ledger.
-  // credit_pricing stays seeded during the compatibility window.
+  // Model usage in the unified usage_event ledger.
   ...usageGroup("model", "claude-sonnet-4-6", [
     ["tokens.input", usd(3), 1_000_000],
     ["tokens.output", usd(15), 1_000_000],
@@ -275,28 +190,6 @@ async function devSeed() {
   const db = drizzle(client, { schema });
 
   try {
-    // --- credit_pricing (batch upsert) ---
-    console.log("Seeding credit_pricing...");
-    for (const p of MODEL_PRICING) {
-      await db
-        .insert(creditPricing)
-        .values(p)
-        .onConflictDoUpdate({
-          target: [creditPricing.model, creditPricing.modelProvider],
-          set: {
-            inputTokenPrice: sql`excluded.input_token_price`,
-            outputTokenPrice: sql`excluded.output_token_price`,
-            cacheReadTokenPrice: sql`excluded.cache_read_token_price`,
-            cacheCreationTokenPrice: sql`excluded.cache_creation_token_price`,
-            updatedAt: new Date(),
-          },
-        });
-      console.log(
-        `  ${p.modelProvider}/${p.model}: input=${p.inputTokenPrice} output=${p.outputTokenPrice}`,
-      );
-    }
-    console.log(`✅ Seeded ${MODEL_PRICING.length} credit pricing entries`);
-
     // --- usage_pricing (batch upsert) ---
     console.log("Seeding usage_pricing...");
     for (const p of USAGE_PRICING) {

@@ -17,7 +17,7 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
-  findTestCreditUsagesByRunId,
+  findTestUsageEventsByRunId,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -743,7 +743,7 @@ describe("POST /api/webhooks/agent/events", () => {
   // ============================================
 
   describe("Billing Isolation", () => {
-    it("does not write to credit_usage for result events", async () => {
+    it("does not write usage_event rows for result events", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/events",
         {
@@ -774,8 +774,8 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await postAndFlush(request);
       expect(response.status).toBe(200);
 
-      const proxyRows = await findTestCreditUsagesByRunId(testRunId);
-      expect(proxyRows).toHaveLength(0);
+      const usageRows = await findTestUsageEventsByRunId(testRunId);
+      expect(usageRows).toHaveLength(0);
     });
   });
 });

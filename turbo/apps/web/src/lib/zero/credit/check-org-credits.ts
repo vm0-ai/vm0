@@ -11,7 +11,7 @@ import type { Database } from "../../../types/global";
  *
  * The spendable balance subtracts unsettled expired records so a dormant
  * non-subscription org whose credits have expired (but haven't yet been
- * settled by `processOrgCredits` or the next renewal) isn't admitted on its
+ * settled by `processOrgUsageEvents` or the next renewal) isn't admitted on its
  * stale inflated balance — same form `getBillingStatus` presents in the UI.
  *
  * Callable from any vm0-billable route. For LLM runs that may use BYOK,

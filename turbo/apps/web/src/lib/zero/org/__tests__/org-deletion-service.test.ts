@@ -9,7 +9,7 @@ import {
   findTestQueueEntry,
   insertOrgDefaultModelProvider,
   insertTestQueueEntry,
-  insertTestCreditUsageForRun,
+  insertTestModelUsageEventForRun,
   insertTestConversation,
   insertTestStorage,
   insertTestStorageVersion,
@@ -149,14 +149,14 @@ describe("deleteOrgData", () => {
       completedAt: new Date(),
     });
 
-    await insertTestCreditUsageForRun({ runId, orgId, userId });
+    await insertTestModelUsageEventForRun({ runId, orgId, userId });
     await insertTestConversation({ runId });
 
     await deleteOrgData(orgId);
 
     expect(await countOrgRows("agent_runs", orgId)).toBe(0);
-    // credit_usage preserved permanently (runId set to NULL)
-    expect(await countOrgRows("credit_usage", orgId)).toBe(1);
+    // usage_event is preserved permanently for billing audit (runId set to NULL)
+    expect(await countOrgRows("usage_event", orgId)).toBeGreaterThan(0);
   });
 
   it("should cascade delete storages and versions", async () => {
@@ -270,7 +270,7 @@ describe("deleteOrgData", () => {
       startedAt: new Date(),
     });
 
-    await insertTestCreditUsageForRun({ runId, orgId, userId });
+    await insertTestModelUsageEventForRun({ runId, orgId, userId });
     await insertTestConversation({ runId });
     await insertTestQueueEntry(runId);
 
@@ -333,7 +333,7 @@ describe("deleteOrgData", () => {
     // Execute deletion
     await deleteOrgData(orgId);
 
-    // Verify ALL tables are empty for this org (except credit_usage — preserved for audit)
+    // Verify all non-ledger tables are empty for this org.
     const tables = [
       "agent_runs",
       "agent_run_queue",
