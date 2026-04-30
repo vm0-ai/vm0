@@ -87,7 +87,10 @@ async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
   for (const cookie of upstream.headers.getSetCookie()) {
     headers.append("set-cookie", cookie);
   }
-  return new Response(upstream.body, {
+  // Buffer the upstream body to avoid losing it when the undici ReadableStream
+  // is re-wrapped in a new Response (streams >1 chunk are silently dropped).
+  const body = await upstream.arrayBuffer();
+  return new Response(body, {
     status: upstream.status,
     statusText: upstream.statusText,
     headers,
