@@ -35,7 +35,7 @@ const baseEnv = createEnv<undefined, typeof SCHEMA>({
 });
 
 type EnvShape = typeof baseEnv;
-export type EnvKey = keyof EnvShape;
+type EnvKey = keyof EnvShape;
 
 const {
   get: getOverrideEnv,
