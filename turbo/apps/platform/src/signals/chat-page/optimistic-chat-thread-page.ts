@@ -21,11 +21,9 @@ import {
 } from "../route.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
-import {
-  createChatThreadSignals,
-  ensureDraft$,
-  type LocalChatThreadSnapshot,
-} from "./create-chat-thread.ts";
+import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
+import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
+import { createPendingChatThread } from "./pending-chat-thread.ts";
 import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 
 const SIDEBAR_PARAM = "sidebar";
@@ -197,30 +195,16 @@ const createNewChatThread$ = command(
 
     const threadId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
-    const cancelRequested$ = state(false);
-    const localSnapshot: LocalChatThreadSnapshot = {
-      threadData: {
-        id: threadId,
-        title: null,
-        agentId: resolvedComposeId,
-        latestSessionId: null,
-        lastReadMessageId: null,
-        latestSessionProviderType: null,
-        activeRunIds: [],
-        activeRuns: [],
-        isLegacySession: false,
-        draftContent: null,
-        draftAttachments: null,
-        modelProviderId: null,
-        selectedModel: null,
-      },
+    const dataSource = createLocalChatThreadDataSource({
+      threadData: createPendingChatThread(threadId, resolvedComposeId),
       messages: [],
-      cancelRequested$,
-    };
-    const { draft: threadDraft } = set(ensureDraft$, threadId);
-    const localThread = createChatThreadSignals(threadId, threadDraft, {
-      localSnapshot,
     });
+    const { draft: threadDraft } = set(ensureDraft$, threadId);
+    const localThread = createChatThreadSignals(
+      threadId,
+      threadDraft,
+      dataSource,
+    );
     set(localThread.hideSkeleton$);
 
     const createClient = get(zeroClient$);
@@ -342,23 +326,12 @@ const sendNewThreadMessage$ = command(
     const threadId = crypto.randomUUID();
     const clientMessageId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
-    const cancelRequested$ = state(false);
-    const localSnapshot: LocalChatThreadSnapshot = {
-      threadData: {
-        id: threadId,
-        title: null,
+    const dataSource = createLocalChatThreadDataSource({
+      threadData: createPendingChatThread(
+        threadId,
         agentId,
-        latestSessionId: null,
-        lastReadMessageId: null,
-        latestSessionProviderType: null,
-        activeRunIds: [`pending-${threadId}`],
-        activeRuns: [{ id: `pending-${threadId}`, status: "pending" }],
-        isLegacySession: false,
-        draftContent: null,
-        draftAttachments: null,
-        modelProviderId: null,
-        selectedModel: null,
-      },
+        `pending-${threadId}`,
+      ),
       messages: [
         {
           id: clientMessageId,
@@ -368,12 +341,13 @@ const sendNewThreadMessage$ = command(
           createdAt,
         },
       ],
-      cancelRequested$,
-    };
-    const { draft: threadDraft } = set(ensureDraft$, threadId);
-    const localThread = createChatThreadSignals(threadId, threadDraft, {
-      localSnapshot,
     });
+    const { draft: threadDraft } = set(ensureDraft$, threadId);
+    const localThread = createChatThreadSignals(
+      threadId,
+      threadDraft,
+      dataSource,
+    );
     set(localThread.hideSkeleton$);
     set(draft.clear$);
 
