@@ -53,7 +53,7 @@ export const deleteChatThread$ = command(
     signal.throwIfAborted();
 
     const client = get(zeroClient$)(chatThreadByIdContract);
-    await accept(client.delete({ params: { id: threadId } }), [204]);
+    await accept(client.delete({ params: { id: threadId }, fetchOptions: { signal } }), [204]);
     signal.throwIfAborted();
 
     toast.success("Chat deleted");
@@ -84,7 +84,7 @@ export const deleteChatThread$ = command(
 export const pinChatThread$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(chatThreadPinContract);
-    await accept(client.pin({ params: { id: threadId } }), [204]);
+    await accept(client.pin({ params: { id: threadId }, fetchOptions: { signal } }), [204]);
     signal.throwIfAborted();
     set(reloadChatThreads$);
   },
@@ -93,7 +93,7 @@ export const pinChatThread$ = command(
 export const unpinChatThread$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(chatThreadUnpinContract);
-    await accept(client.unpin({ params: { id: threadId } }), [204]);
+    await accept(client.unpin({ params: { id: threadId }, fetchOptions: { signal } }), [204]);
     signal.throwIfAborted();
     set(reloadChatThreads$);
   },
