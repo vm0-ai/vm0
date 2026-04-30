@@ -8,9 +8,11 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { mockApi } from "../../../mocks/msw-contract.ts";
-import { hasSubscription } from "../../../mocks/ably.ts";
+import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 import { updateChatArtifacts } from "../../../mocks/mock-helpers.ts";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { setMockConnectors } from "../../../mocks/handlers/api-connectors.ts";
 import {
   mockChatLifecycle,
   mockSubagentThread,
@@ -814,9 +816,12 @@ describe("zero chat thread page display - artifacts drawer", () => {
       .spyOn(URL, "createObjectURL")
       .mockReturnValue("blob:artifact-download");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    let downloadedFilename = "";
     const anchorClickSpy = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => {});
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        downloadedFilename = this.download;
+      });
 
     detachedSetupPage({
       context,
@@ -838,13 +843,22 @@ describe("zero chat thread page display - artifacts drawer", () => {
       document.querySelectorAll('img[src="https://example.com/chart.png"]')
         .length,
     ).toBeGreaterThanOrEqual(3);
-    const downloadButtons = screen.getAllByLabelText("Download chart.png");
-    expect(downloadButtons[0]!.tagName).toBe("BUTTON");
-    await user.click(downloadButtons[0]!);
+    expect(screen.getAllByLabelText("Download chart.png")).toHaveLength(1);
+    await user.click(screen.getByLabelText("More artifact actions"));
+    await user.click(screen.getByText("Download all"));
     await waitFor(() => {
       expect(createObjectURLSpy).toHaveBeenCalledOnce();
       expect(anchorClickSpy).toHaveBeenCalledOnce();
     });
+    expect(downloadedFilename).toBe("vm0-artifact-thread-test-1.zip");
+    const zipBlob = createObjectURLSpy.mock.calls[0]?.[0];
+    expect(zipBlob).toBeInstanceOf(Blob);
+    expect((zipBlob as Blob).type).toBe("application/zip");
+    const zipText = new TextDecoder().decode(
+      await (zipBlob as Blob).arrayBuffer(),
+    );
+    expect(zipText).toContain("chart.png");
+    expect(zipText).toContain("data.csv");
     expect(screen.getAllByText("chart.png").length).toBeGreaterThan(0);
     expect(screen.getByText("data.csv")).toBeInTheDocument();
 
@@ -930,6 +944,410 @@ describe("zero chat thread page display - artifacts drawer", () => {
       expect(screen.getAllByText("artifact.zip").length).toBeGreaterThan(0);
     });
     expect(artifactsRequests).toBeGreaterThanOrEqual(2);
+  });
+
+  it("copies artifact links and syncs to Google Drive when connected", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://example.com/chart.png";
+    let artifactsRequests = 0;
+    const syncBodies: unknown[] = [];
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "See attached",
+          runId: "run-artifacts-actions",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setMockConnectors([
+      {
+        id: "00000000-0000-4000-8000-000000000000",
+        type: "google-drive",
+        authMethod: "oauth",
+        externalId: "drive-user",
+        externalUsername: "Drive User",
+        externalEmail: "drive@example.com",
+        oauthScopes: ["https://www.googleapis.com/auth/drive"],
+        needsReconnect: false,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    server.use(
+      http.get(fileUrl, () => {
+        return new HttpResponse(new Blob(["img"], { type: "image/png" }), {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        artifactsRequests += 1;
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-artifacts-actions",
+              files: [
+                {
+                  id: "file-1",
+                  filename: "chart.png",
+                  contentType: "image/png",
+                  size: 4096,
+                  url: fileUrl,
+                  createdAt: "2026-03-10T00:00:00Z",
+                  googleDriveSync:
+                    artifactsRequests > 1
+                      ? {
+                          status: "synced",
+                          id: "drive-file-id",
+                          name: "chart.png",
+                          webViewLink:
+                            "https://drive.google.com/file/d/drive-file-id/view",
+                        }
+                      : { status: "not_synced" },
+                },
+                {
+                  id: "file-2",
+                  filename: "data.csv",
+                  contentType: "text/csv",
+                  size: 2048,
+                  url: "https://example.com/data.csv",
+                  createdAt: "2026-03-10T00:00:00Z",
+                  googleDriveSync: { status: "not_synced" },
+                },
+              ],
+            },
+          ],
+        });
+      }),
+      mockApi(
+        chatThreadArtifactsContract.syncGoogleDrive,
+        ({ body, respond }) => {
+          syncBodies.push(body);
+          return respond(200, {
+            id: "drive-file-id",
+            name: "chart.png",
+            webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+          });
+        },
+      ),
+    );
+    const writeTextSpy = vi
+      .spyOn(navigator.clipboard, "writeText")
+      .mockResolvedValue(undefined);
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open artifacts");
+    });
+    click(button);
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Copy link for chart.png"),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Copy link for chart.png"));
+    expect(writeTextSpy).toHaveBeenCalledWith(fileUrl);
+
+    await user.click(screen.getByLabelText("Sync chart.png to Google Drive"));
+
+    await waitFor(() => {
+      expect(syncBodies).toStrictEqual([
+        {
+          runId: "run-artifacts-actions",
+          fileId: "file-1",
+        },
+      ]);
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("chart.png is synced to Google Drive"),
+      ).toHaveAttribute("aria-disabled", "true");
+    });
+
+    await user.click(screen.getByLabelText("More artifact actions"));
+    await user.click(screen.getByText("Sync all to Google Drive"));
+
+    await waitFor(() => {
+      expect(syncBodies).toStrictEqual([
+        {
+          runId: "run-artifacts-actions",
+          fileId: "file-1",
+        },
+        {
+          runId: "run-artifacts-actions",
+          fileId: "file-2",
+        },
+      ]);
+    });
+  });
+
+  it("syncs bulk Google Drive artifacts sequentially", async () => {
+    const user = userEvent.setup();
+    const syncBodies: unknown[] = [];
+    let firstSyncFinished = false;
+    let secondSyncStartedAfterFirst = false;
+    let releaseFirstSync: () => void = () => {
+      throw new Error("First sync has not started");
+    };
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "See attached",
+          runId: "run-artifacts-sequential-sync",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setMockConnectors([
+      {
+        id: "00000000-0000-4000-8000-000000000000",
+        type: "google-drive",
+        authMethod: "oauth",
+        externalId: "drive-user",
+        externalUsername: "Drive User",
+        externalEmail: "drive@example.com",
+        oauthScopes: ["https://www.googleapis.com/auth/drive"],
+        needsReconnect: false,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    server.use(
+      http.get("https://example.com/first.csv", () => {
+        return new HttpResponse("label,value\nfirst,1\n", {
+          headers: { "Content-Type": "text/csv" },
+        });
+      }),
+      http.get("https://example.com/second.csv", () => {
+        return new HttpResponse("label,value\nsecond,2\n", {
+          headers: { "Content-Type": "text/csv" },
+        });
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-artifacts-sequential-sync",
+              files: [
+                {
+                  id: "file-1",
+                  filename: "first.csv",
+                  contentType: "text/csv",
+                  size: 1024,
+                  url: "https://example.com/first.csv",
+                  createdAt: "2026-03-10T00:00:00Z",
+                  googleDriveSync: { status: "not_synced" },
+                },
+                {
+                  id: "file-2",
+                  filename: "second.csv",
+                  contentType: "text/csv",
+                  size: 2048,
+                  url: "https://example.com/second.csv",
+                  createdAt: "2026-03-10T00:00:00Z",
+                  googleDriveSync: { status: "not_synced" },
+                },
+              ],
+            },
+          ],
+        });
+      }),
+      mockApi(
+        chatThreadArtifactsContract.syncGoogleDrive,
+        ({ body, respond, deferred }) => {
+          syncBodies.push(body);
+          if (body.fileId === "file-1") {
+            const gate = deferred<void>();
+            releaseFirstSync = () => {
+              firstSyncFinished = true;
+              gate.resolve();
+            };
+            return gate.promise.then(() => {
+              return respond(200, {
+                id: `drive-${body.fileId}`,
+                name: `${body.fileId}.csv`,
+                webViewLink: `https://drive.google.com/file/d/${body.fileId}/view`,
+              });
+            });
+          }
+          if (body.fileId === "file-2") {
+            secondSyncStartedAfterFirst = firstSyncFinished;
+          }
+          return respond(200, {
+            id: `drive-${body.fileId}`,
+            name: `${body.fileId}.csv`,
+            webViewLink: `https://drive.google.com/file/d/${body.fileId}/view`,
+          });
+        },
+      ),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open artifacts");
+    });
+    click(button);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("first.csv").length).toBeGreaterThan(0);
+    });
+    await user.click(screen.getByLabelText("More artifact actions"));
+    await user.click(screen.getByText("Sync all to Google Drive"));
+
+    await waitFor(() => {
+      expect(syncBodies).toStrictEqual([
+        {
+          runId: "run-artifacts-sequential-sync",
+          fileId: "file-1",
+        },
+      ]);
+    });
+
+    releaseFirstSync();
+
+    await waitFor(() => {
+      expect(syncBodies).toStrictEqual([
+        {
+          runId: "run-artifacts-sequential-sync",
+          fileId: "file-1",
+        },
+        {
+          runId: "run-artifacts-sequential-sync",
+          fileId: "file-2",
+        },
+      ]);
+    });
+    expect(secondSyncStartedAfterFirst).toBeTruthy();
+  });
+
+  it("opens Google Drive OAuth in a new tab and syncs after the connector event", async () => {
+    const user = userEvent.setup();
+    const fileUrl = "https://example.com/disconnected-chart.png";
+    let authorizeCalled = false;
+    let syncSawAuthorize = false;
+    let syncBody: unknown;
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: false } as Window);
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "See attached",
+          runId: "run-artifacts-disconnected-actions",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    setMockConnectors([]);
+    server.use(
+      http.get(fileUrl, () => {
+        return new HttpResponse(new Blob(["img"], { type: "image/png" }), {
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-artifacts-disconnected-actions",
+              files: [
+                {
+                  id: "file-disconnected",
+                  filename: "disconnected-chart.png",
+                  contentType: "image/png",
+                  size: 4096,
+                  url: fileUrl,
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+      mockApi(
+        chatThreadArtifactsContract.syncGoogleDrive,
+        ({ body, respond }) => {
+          syncSawAuthorize = authorizeCalled;
+          syncBody = body;
+          return respond(200, {
+            id: "drive-file-id",
+            name: "disconnected-chart.png",
+            webViewLink: "https://drive.google.com/file/d/drive-file-id/view",
+          });
+        },
+      ),
+      mockApi(zeroUserConnectorsContract.get, ({ respond }) => {
+        return respond(200, { enabledTypes: [] });
+      }),
+      mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
+        authorizeCalled = body.enabledTypes.includes("google-drive");
+        return respond(200, { enabledTypes: body.enabledTypes });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    const button = await waitFor(() => {
+      return screen.getByLabelText("Open artifacts");
+    });
+    click(button);
+
+    const syncButton = await waitFor(() => {
+      return screen.getByLabelText(
+        "Sync disconnected-chart.png to Google Drive",
+      );
+    });
+
+    await user.click(syncButton);
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/api/zero/connectors/google-drive/authorize"),
+        "_blank",
+      );
+      expect(hasSubscription("connector:changed")).toBeTruthy();
+    });
+    expect(syncBody).toBeUndefined();
+
+    setMockConnectors([
+      {
+        id: "00000000-0000-4000-8000-000000000000",
+        type: "google-drive",
+        authMethod: "oauth",
+        externalId: "drive-user",
+        externalUsername: "Drive User",
+        externalEmail: "drive@example.com",
+        oauthScopes: ["https://www.googleapis.com/auth/drive"],
+        needsReconnect: false,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    triggerAblyEvent("connector:changed");
+
+    await waitFor(() => {
+      expect(syncBody).toStrictEqual({
+        runId: "run-artifacts-disconnected-actions",
+        fileId: "file-disconnected",
+      });
+      expect(syncSawAuthorize).toBeTruthy();
+    });
   });
 });
 

@@ -4,6 +4,7 @@ export const openai = {
   openai: {
     label: "OpenAI",
     category: "ai-general-models",
+    generation: ["audio", "image", "text"],
     tags: ["llm", "ai", "gpt", "chatgpt"],
     environmentMapping: {
       OPENAI_TOKEN: "$secrets.OPENAI_TOKEN",

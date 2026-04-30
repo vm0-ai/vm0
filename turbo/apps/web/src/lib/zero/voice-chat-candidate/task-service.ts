@@ -342,7 +342,7 @@ export async function appendTaskAssistantResult(params: {
 // Returns the `CancelRunResult` for each run this call actually transitioned
 // to `cancelled`. `alreadyCancelled` replays are filtered out — the original
 // caller owned their side effects. The caller is responsible for invoking
-// `dispatchCancelSideEffects` / `processOrgCredits`; this module stays free of
+// `dispatchCancelSideEffects` / `processOrgUsageEvents`; this module stays free of
 // Next.js request-context coupling so non-HTTP callers remain safe.
 async function cancelSessionPendingRuns(session: {
   id: string;

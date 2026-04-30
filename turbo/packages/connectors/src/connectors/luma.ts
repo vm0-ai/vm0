@@ -4,6 +4,7 @@ export const luma = {
   luma: {
     label: "Luma AI",
     category: "ai-image-video",
+    generation: ["image", "video"],
     environmentMapping: {
       LUMA_TOKEN: "$secrets.LUMA_TOKEN",
     },

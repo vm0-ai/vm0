@@ -4,6 +4,7 @@ export const dify = {
   dify: {
     label: "Dify",
     category: "ai-agent-apps",
+    generation: ["text"],
     environmentMapping: {
       DIFY_TOKEN: "$secrets.DIFY_TOKEN",
     },

@@ -28,9 +28,9 @@ const log = logger("service:usage-event");
  *    unit_size) and status = 'processed'
  * 5. Deduct the total from org_metadata.credits
  *
- * Shares the `credit_` advisory lock with processOrgCredits() because both
- * flows settle expires records and deduct from org_metadata.credits, so they
- * must not interleave per org.
+ * Uses the `credit_` advisory lock while settling expires records and
+ * deducting from org_metadata.credits, so per-org credit updates remain
+ * serialized.
  */
 export async function processOrgUsageEvents(orgId: string): Promise<void> {
   const db = globalThis.services.db;

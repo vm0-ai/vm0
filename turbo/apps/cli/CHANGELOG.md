@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.140.1](https://github.com/vm0-ai/vm0/compare/cli-v9.140.0...cli-v9.140.1) (2026-04-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.248.1
+
+## [9.140.0](https://github.com/vm0-ai/vm0/compare/cli-v9.139.3...cli-v9.140.0) (2026-04-30)
+
+
+### Features
+
+* add generation connector doctor ([#11594](https://github.com/vm0-ai/vm0/issues/11594)) ([cdf0174](https://github.com/vm0-ai/vm0/commit/cdf0174912a26c92c770a6a7a78c0a7056933b95))
+
 ## [9.139.3](https://github.com/vm0-ai/vm0/compare/cli-v9.139.2...cli-v9.139.3) (2026-04-29)
 
 

@@ -115,6 +115,19 @@ function getAttachmentDownloadUrl(url: string): string {
   return parsed.toString();
 }
 
+export function getAttachmentRawUrl(url: string): string {
+  if (!URL.canParse(url, window.location.origin)) {
+    return url;
+  }
+  const parsed = new URL(url, window.location.origin);
+  const isFileRoute = /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
+  if (isFileRoute) {
+    parsed.searchParams.delete("download");
+    parsed.searchParams.set("raw", "1");
+  }
+  return parsed.toString();
+}
+
 function triggerDirectDownload(url: string, filename: string): void {
   const a = document.createElement("a");
   a.href = getAttachmentDownloadUrl(url);

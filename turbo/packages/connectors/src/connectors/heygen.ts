@@ -4,6 +4,7 @@ export const heygen = {
   heygen: {
     label: "HeyGen",
     category: "marketing-content-growth",
+    generation: ["video"],
     environmentMapping: {
       HEYGEN_TOKEN: "$secrets.HEYGEN_TOKEN",
     },

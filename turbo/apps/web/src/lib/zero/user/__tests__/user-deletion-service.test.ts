@@ -11,7 +11,7 @@ import {
   findTestRunRecord,
   findTestQueueEntry,
   insertTestQueueEntry,
-  insertTestCreditUsageForRun,
+  insertTestModelUsageEventForRun,
   insertTestConversation,
   insertTestStorage,
   insertTestStorageVersion,
@@ -148,7 +148,7 @@ describe("deleteUserData", () => {
       completedAt: new Date(),
     });
 
-    await insertTestCreditUsageForRun({ runId, orgId, userId });
+    await insertTestModelUsageEventForRun({ runId, orgId, userId });
     await insertTestConversation({ runId });
 
     await deleteUserData(userId);
@@ -320,7 +320,7 @@ describe("deleteUserData", () => {
       startedAt: new Date(),
     });
 
-    await insertTestCreditUsageForRun({ runId, orgId, userId });
+    await insertTestModelUsageEventForRun({ runId, orgId, userId });
     await insertTestConversation({ runId });
     await insertTestQueueEntry(runId);
 

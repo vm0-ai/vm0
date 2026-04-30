@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.248.1](https://github.com/vm0-ai/vm0/compare/core-v8.248.0...core-v8.248.1) (2026-04-30)
+
+
+### Bug Fixes
+
+* **org:** remove model usage ranking ([#11585](https://github.com/vm0-ai/vm0/issues/11585)) ([b966f13](https://github.com/vm0-ai/vm0/commit/b966f13120e867272d6854a2fa30c4482b5f62df))
+
 ## [8.248.0](https://github.com/vm0-ai/vm0/compare/core-v8.247.0...core-v8.248.0) (2026-04-29)
 
 

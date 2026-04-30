@@ -6,7 +6,6 @@ import { logger } from "../../../../src/lib/shared/logger";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -531,7 +530,7 @@ function mergeActiveUserRows(rows: ActiveUserRow[]): ActiveUserRow[] {
 
 async function queryActiveUsers(lookbackStart: Date): Promise<ActiveUserRow[]> {
   const db = globalThis.services.db;
-  const [completedRuns, legacyUsage, eventUsage] = await Promise.all([
+  const [completedRuns, eventUsage] = await Promise.all([
     db
       .select({
         orgId: agentRuns.orgId,
@@ -548,23 +547,6 @@ async function queryActiveUsers(lookbackStart: Date): Promise<ActiveUserRow[]> {
         ),
       )
       .groupBy(agentRuns.orgId, agentRuns.userId),
-    db
-      .select({
-        orgId: creditUsage.orgId,
-        userId: creditUsage.userId,
-        lastActivity: sql<Date>`MAX(${creditUsage.processedAt})`.as(
-          "last_activity",
-        ),
-      })
-      .from(creditUsage)
-      .where(
-        and(
-          eq(creditUsage.status, "processed"),
-          gte(creditUsage.processedAt, lookbackStart),
-          isNotNull(creditUsage.processedAt),
-        ),
-      )
-      .groupBy(creditUsage.orgId, creditUsage.userId),
     db
       .select({
         orgId: usageEvent.orgId,
@@ -584,7 +566,7 @@ async function queryActiveUsers(lookbackStart: Date): Promise<ActiveUserRow[]> {
       .groupBy(usageEvent.orgId, usageEvent.userId),
   ]);
 
-  return mergeActiveUserRows([...completedRuns, ...legacyUsage, ...eventUsage]);
+  return mergeActiveUserRows([...completedRuns, ...eventUsage]);
 }
 
 function mergeAgentRows(
@@ -707,61 +689,6 @@ async function queryCompletedRunCounts(
   });
 }
 
-async function queryLegacyCreditRows(
-  db: typeof globalThis.services.db,
-  orgIds: string[],
-  dayStart: Date,
-  dayEnd: Date,
-): Promise<LedgerCreditRow[]> {
-  const isRunless = sql`${creditUsage.runId} IS NULL`;
-  const rows = await db
-    .select({
-      orgId: creditUsage.orgId,
-      userId: creditUsage.userId,
-      agentId: sql<
-        string | null
-      >`CASE WHEN ${isRunless} THEN NULL ELSE ${zeroAgents.id}::text END`.as(
-        "agent_id",
-      ),
-      agentName:
-        sql<string>`CASE WHEN ${isRunless} THEN ${OTHER_USAGE_AGENT_NAME} ELSE COALESCE(${zeroAgents.displayName}, ${zeroAgents.name}, 'Unknown agent') END`.as(
-          "agent_name",
-        ),
-      credits:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits",
-        ),
-    })
-    .from(creditUsage)
-    .leftJoin(agentRuns, eq(creditUsage.runId, agentRuns.id))
-    .leftJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .leftJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
-    .where(
-      and(
-        inArray(creditUsage.orgId, orgIds),
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.processedAt, dayStart),
-        lt(creditUsage.processedAt, dayEnd),
-        isNotNull(creditUsage.processedAt),
-      ),
-    )
-    .groupBy(
-      creditUsage.orgId,
-      creditUsage.userId,
-      isRunless,
-      zeroAgents.id,
-      zeroAgents.displayName,
-      zeroAgents.name,
-    );
-
-  return rows.map((row) => {
-    return { ...row, credits: Number(row.credits) };
-  });
-}
-
 async function queryUsageEventCreditRows(
   db: typeof globalThis.services.db,
   orgIds: string[],
@@ -823,11 +750,7 @@ async function queryLedgerCreditRows(
   dayStart: Date,
   dayEnd: Date,
 ): Promise<LedgerCreditRow[]> {
-  const [legacyRows, eventRows] = await Promise.all([
-    queryLegacyCreditRows(db, orgIds, dayStart, dayEnd),
-    queryUsageEventCreditRows(db, orgIds, dayStart, dayEnd),
-  ]);
-  return [...legacyRows, ...eventRows];
+  return queryUsageEventCreditRows(db, orgIds, dayStart, dayEnd);
 }
 
 async function queryNetworkRunAgentRows(

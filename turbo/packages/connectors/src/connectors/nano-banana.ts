@@ -5,6 +5,7 @@ export const nanoBanana = {
   "nano-banana": {
     label: "Nano Banana",
     category: "ai-image-video",
+    generation: ["image"],
     environmentMapping: {},
     helpText: "Google Gemini image generation, billed to your org credits",
     featureFlag: FeatureSwitchKey.PlatformConnectors,

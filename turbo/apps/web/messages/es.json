@@ -89,7 +89,19 @@
     "useCases": "Casos de uso",
     "models": "Modelos",
     "signOut": "Cerrar sesión",
-    "openApp": "Abrir app"
+    "openApp": "Abrir app",
+    "resources": "Recursos",
+    "trustAndTech": "Confianza y tecnología",
+    "modelRankings": "Ranking de modelos",
+    "support": "Soporte",
+    "status": "Estado",
+    "modelsDesc": "LLMs de frontera, tu elección",
+    "modelRankingsDesc": "Tabla de evaluación independiente",
+    "securityDesc": "Acceso mediado y aislamiento de permisos",
+    "blogDesc": "Novedades, análisis y escritos del equipo",
+    "supportDesc": "Artículos de ayuda y contacto directo",
+    "statusDesc": "Estado del sistema e incidentes en vivo",
+    "githubDesc": "Issues, releases y código fuente"
   },
   "pricing": {
     "title": "Elige Tu Plan",
@@ -4916,6 +4928,1619 @@
     "multiplierPositioningBelowBaseline": "{name} factura a ×{multiplier}, lo que significa que un paso aquí cuesta solo {multiplier}× los créditos de un paso equivalente en Sonnet 4.6 (la base ×1). Esto lo sitúa muy por debajo de la base de créditos y lo convierte en la elección natural para trabajo en segundo plano de alto volumen donde el coste por paso importa más que la máxima calidad de razonamiento.",
     "tierExplanationCore": "VM0 posiciona {name} como modelo principal de agente, recomendado junto a Claude Opus 4.7, Claude Opus 4.6 y Claude Sonnet 4.6 para los pasos que determinan el resultado real de una ejecución. Estos son los modelos que elegimos para el rol de orquestador, para agentes que trabajan con código y para cualquier paso donde una respuesta incorrecta sea costosa.",
     "tierExplanationCostSaving": "VM0 posiciona {name} como una opción de ahorro en lugar de un modelo principal de agente. Úsalo para optimizar el coste unitario en trabajo no principal, como clasificación masiva, prefiltros, respuestas cortas con requisitos de latencia o agentes heredados fijos, manteniendo Claude Opus 4.7, Claude Opus 4.6 o Claude Sonnet 4.6 en los pasos que deciden la ejecución.",
-    "availableSince": "Disponible en VM0 desde {date}."
+    "availableSince": "Disponible en VM0 desde {date}.",
+    "content": {
+      "claude-opus-4-7": {
+        "name": "Claude Opus 4.7",
+        "pageTitle": "Claude Opus 4.7",
+        "tagline": "El modelo insignia Claude 4 de Anthropic. La opción más potente de la familia para bucles de agente de largo horizonte, razonamiento complejo y ediciones de código al primer intento.",
+        "cardIntro": "El modelo insignia Claude 4 de Anthropic. La mayor calidad de razonamiento de la familia en bucles de agente de múltiples pasos, recuperación de contexto largo y ediciones de código.",
+        "metaTitle": "Claude Opus 4.7: Benchmarks, Precios y Capacidades",
+        "metaDescription": "Reseña de Claude Opus 4.7. El modelo insignia Claude 4 de Anthropic con contexto de 1M tokens, pensamiento adaptativo, precios de $5/$25 y mejoras sobre Opus 4.6 en SWE-bench, Terminal-Bench, OSWorld, ARC AGI 2 y GPQA Diamond.",
+        "summary": "Claude Opus 4.7 es el modelo al que recurres cuando el trabajo debe salir bien a la primera: código que compila limpiamente, planes de múltiples pasos que no pierden el hilo en largas cadenas de herramientas, puzles abstractos con los que modelos más pequeños tropiezan. Los benchmarks del proveedor (SWE-bench Verified, Terminal-Bench 2.0, ARC AGI 2, OSWorld, BrowseComp) ponen cifras concretas a las mejoras sobre Opus 4.6.\n\nEl precio de lista del proveedor es de $5 / $25 por 1M tokens con entrada cacheada a $0,50 / 1M, el más alto de la familia Claude. El patrón rentable es mantener Sonnet 4.6 como predeterminado y enrutar solo los pasos más difíciles a Opus.",
+        "releaseDate": "Abril 2026 (sucediendo a Opus 4.6)",
+        "familyPosition": "Nivel superior de la familia Claude 4. La actualización recomendada por Anthropic para usuarios de Opus 4.6.",
+        "background": [
+          "Claude Opus 4.7 es el buque insignia de la familia Claude 4 de Anthropic, lanzado en abril de 2026 como la actualización recomendada desde Opus 4.6. Anthropic lo presenta como una mejora sustancial en codificación agéntica y razonamiento abstracto, no como un simple refresco de la API superficial. La ventana de contexto de 1M tokens y los niveles de esfuerzo de pensamiento adaptativo introducidos en 4.6 se mantienen sin cambios, por lo que el código de agente existente funciona sin reescrituras.",
+          "En comparación con Sonnet 4.6 (el caballo de batalla de la misma familia), Opus invierte más cómputo por token. El beneficio práctico se manifiesta en tres áreas: menos instrucciones perdidas en bucles de agente largos, parches de código significativamente mejores al primer intento y mejor recuperación cuando el historial de conversación supera los 100K tokens. El compromiso es el precio de lista más alto de la familia Claude ($5 / $25 por 1M tokens) y una velocidad de salida por token más lenta, razón por la cual Anthropic posiciona a Opus como el orquestador o nivel de escalación, no como el predeterminado universal.",
+          "Los rankings independientes (Artificial Analysis, Vellum) corroboran el orden relativo frente a Opus 4.6, pero las cifras absolutas cambian semanalmente y OpenAI ha señalado contaminación de datos de entrenamiento en SWE-bench Verified en todos los modelos frontera. Trata las puntuaciones públicas como direccionales, no como autoritativas; las diferencias estructurales de comportamiento (coherencia en bucles largos, calidad de parche al primer intento, fiabilidad de enrutamiento multi-herramienta) son la señal más duradera."
+        ],
+        "architecture": "Opus 4.7 mantiene la ventana de contexto de 1M tokens de Opus 4.6, facturada a precio de entrada estándar en toda la ventana. Soporta pensamiento adaptativo en cuatro niveles de esfuerzo (bajo, medio, alto y máximo), una API de Compactación para resumen de contexto del lado del servidor en ejecuciones largas, y caché de prompts donde la entrada cacheada se factura a una décima parte de la tarifa de entrada. Las superficies multi-agente y de uso de herramientas no cambian respecto a 4.6, incluyendo el Protocolo Mailbox para equipos de agentes peer-to-peer y el parámetro `inference_geo` que expone inferencia solo en EE. UU. con un multiplicador de 1,1×. Las entradas son multimodales: texto, visión y código.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Generación Claude 4"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, visión, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Inglés primero, multilingüe"
+          },
+          {
+            "label": "Caché de prompts",
+            "value": "Soportado (Anthropic)"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "1M tokens"
+          },
+          {
+            "label": "Salida máxima",
+            "value": "Hasta 64K tokens"
+          },
+          {
+            "label": "Niveles de esfuerzo",
+            "value": "Bajo / Medio / Alto / Máximo"
+          },
+          {
+            "label": "Precio de lista",
+            "value": "$5 entrada / $25 salida por 1M"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor de los materiales de lanzamiento de Opus 4.7 de Anthropic, con deltas mostrados contra las cifras públicas de Opus 4.6. Las reseñas independientes sitúan a 4.7 por delante de GPT-5.2 en la mayoría de tareas de codificación agéntica y a pocos puntos de Gemini 3 Pro en razonamiento abstracto. Trata los porcentajes absolutos como direccionales; OpenAI ha señalado contaminación de datos de entrenamiento en SWE-bench Verified en todos los modelos frontera.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "~83,5%",
+            "note": "reportado por el proveedor; sube desde 80,8% de Opus 4.6"
+          },
+          {
+            "name": "SWE-bench Pro",
+            "score": "Lidera la familia Claude",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "~71%",
+            "note": "reportado por el proveedor; sube desde 65,4% de Opus 4.6"
+          },
+          {
+            "name": "τ2-bench Retail",
+            "score": "~93%",
+            "note": "uso de herramientas reportado por el proveedor"
+          },
+          {
+            "name": "OSWorld (uso de computadora)",
+            "score": "~76%",
+            "note": "reportado por el proveedor; sube desde 72,7% de Opus 4.6"
+          },
+          {
+            "name": "BrowseComp",
+            "score": "~88%",
+            "note": "tareas web reportadas por el proveedor"
+          },
+          {
+            "name": "ARC AGI 2",
+            "score": "~75%",
+            "note": "reportado por el proveedor; sube desde 68,8% de Opus 4.6"
+          },
+          {
+            "name": "Humanity's Last Exam (con herramientas)",
+            "score": "Lidera la familia Claude",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "GPQA Diamond",
+            "score": "~92%",
+            "note": "ciencia de nivel posgrado reportado por el proveedor"
+          },
+          {
+            "name": "MRCR v2 (1M, 8-agujas)",
+            "score": "Mejorado sobre el 76% de 4.6",
+            "note": "recuperación de contexto largo"
+          },
+          {
+            "name": "MMMU Pro (multimodal)",
+            "score": "Lidera la familia Claude",
+            "note": "reportado por el proveedor"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Enrutamiento de herramientas",
+            "body": "La tasa más baja de llamadas a herramientas mal enrutadas en la familia Claude. La brecha frente a Sonnet 4.6 se amplía en casos límite difíciles como selección condicional de herramientas, argumentos profundamente anidados y llamadas a herramientas después de largos tramos de razonamiento."
+          },
+          {
+            "title": "Recuperación de contexto largo",
+            "body": "Coherente en transcripciones de agente de más de 200K tokens. La ventana de 1M tokens se mantiene mucho mejor que sus predecesores gracias a las mejoras de deterioro de contexto que Anthropic introdujo en Opus 4.6 y refinó aún más para 4.7. MRCR v2 a 1M reportado por el proveedor muestra una mejora medible sobre el 76% de Opus 4.6."
+          },
+          {
+            "title": "Ediciones de código al primer intento",
+            "body": "La mejor calidad de parche en la familia Claude. La opción correcta cuando un agente debe modificar código que debe seguir compilando y pasando pruebas, especialmente cuando el parche abarca múltiples archivos. El resultado de Terminal-Bench 2.0 de Anthropic refleja esto directamente."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Más lento que Sonnet 4.6 y notablemente más lento que Haiku 4.5. Anthropic publica ~41 tokens/seg en esfuerzo máximo para Opus 4.6, y 4.7 está en un rango similar. Resérvalo para los pasos que realmente necesitan la profundidad de razonamiento adicional y ejecuta niveles más ligeros en paralelo."
+          },
+          {
+            "title": "Comportamiento de alucinación",
+            "body": "Opus 4.7 mantiene la postura conservadora de rechazo de Anthropic y tiende a admitir incertidumbre en lugar de confabular, razón por la cual los equipos de producción siguen pagando la prima por razonamiento de alto riesgo a pesar de que alternativas de peso abierto más baratas como Kimi K2.6 y DeepSeek V4 Pro ahora lo igualan en benchmarks."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "La revisión de PR que detecta lo que los humanos pasan por alto",
+            "body": "Cuando un pull request cambia 30 archivos, Opus 4.7 mantiene todo el cambio en memoria de trabajo y escribe una revisión que conecta lo que cambió en `auth/middleware.ts` con la prueba que rompió en `routes/admin.test.ts`. Los revisores junior reciben el tipo de retroalimentación entre archivos que los ingenieros senior suelen detectar en una segunda pasada, y el equipo envía menos parches que pasan CI pero fallan en producción."
+          },
+          {
+            "title": "La ejecución de investigación que lee todo el montón",
+            "body": "Carga un borrador de contrato de 200 páginas, tres propuestas de competidores y las opiniones legales del último trimestre en la ventana de contexto de 1M tokens, luego pide a Opus que marque cada cláusula más restrictiva que el mercado y enumere los puntos probables de negociación. Los modelos más pequeños empiezan a olvidar secciones anteriores después de 100K tokens; Opus mantiene la imagen completa y referencia el párrafo exacto que está citando."
+          },
+          {
+            "title": "El orquestador ejecutando un plan multi-herramienta",
+            "body": "Usa Opus 4.7 como el planificador que divide la solicitud de un cliente en diez pasos, despacha cada paso a un sub-agente de nivel Sonnet o Haiku, y une los resultados. Ejecutar Opus solo en la capa de planificación (y los niveles más baratos en el resto) cuesta una fracción de ejecutar Opus de principio a fin, conservando la mayor parte de la calidad."
+          },
+          {
+            "title": "Las ediciones de código al primer intento que no desperdician una ejecución de CI",
+            "body": "Pide a Opus 4.7 que migre un código base de 50 archivos de un ORM a otro, refactorice un módulo enredado o aplique una corrección de seguridad en todo el repositorio. El parche se aplica limpiamente al primer intento con más frecuencia que cualquier otro modelo de la familia, que es lo que refleja Terminal-Bench 2.0 reportado por el proveedor, y lo que tu factura de CI también reflejará."
+          }
+        ],
+        "avoidFor": "Evita Opus 4.7 en trabajo rutinario de alto volumen donde Sonnet 4.6 alcanza la misma calidad a una fracción del costo, en respuestas de chat sensibles a la latencia donde Haiku 4.5 es mucho más rápido, y en trabajos de clasificación o extracción masiva donde DeepSeek V4 Flash es aproximadamente 80× más barato a nivel de proveedor.",
+        "comparisons": [
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 es el caballo de batalla predeterminado en la familia Claude y la opción correcta para la mayoría de agentes. Promueve a Opus 4.7 solo cuando Sonnet falla visiblemente en razonamiento difícil, contexto largo o ediciones de código al primer intento, usualmente como el orquestador que delega hacia abajo a sub-agentes de nivel Sonnet o Haiku."
+          },
+          {
+            "vs": "Claude Opus 4.6",
+            "body": "Misma ventana de contexto (1M tokens), mismo precio de proveedor y la misma arquitectura de pensamiento adaptativo. Opus 4.7 es la generación más reciente con mejoras reportadas por el proveedor en SWE-bench Verified, Terminal-Bench 2.0, ARC AGI 2 y OSWorld. Elige 4.7 para nuevos agentes; mantén 4.6 solo cuando un agente existente haya sido validado contra esa versión y necesites estabilidad de comportamiento."
+          },
+          {
+            "vs": "Kimi K2.6",
+            "body": "Kimi K2.6 de Moonshot lidera varios benchmarks agénticos en la frontera de código abierto (SWE-bench Pro 58,6 reportado por el proveedor versus 53,4 de Opus 4.6). Opus 4.7 mantiene el liderazgo en fiabilidad de enrutamiento de herramientas para agentes de producción en inglés y en perfil de seguridad, razón por la cual la mayoría de equipos empresariales aún lo mantienen como el nivel de alto riesgo."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro va por detrás de Opus en la mayoría de benchmarks de razonamiento pero lo iguala en codificación (SWE-bench Verified reportado por el proveedor dentro de ~0,2 puntos). La división es clara: elige DeepSeek cuando el costo bruto domina, elige Opus 4.7 cuando la fiabilidad, el perfil de seguridad o la precisión de enrutamiento de herramientas importan más que el precio por llamada."
+          },
+          {
+            "vs": "GPT-5.2 / Gemini 3 Pro",
+            "body": "Los materiales del proveedor de Anthropic posicionan a Opus 4.7 por delante de GPT-5.2 en la mayoría de tareas de codificación agéntica (Terminal-Bench, τ2-bench Retail) y a pocos puntos de Gemini 3 Pro en razonamiento abstracto (ARC AGI 2, GPQA Diamond). Los rankings independientes corroboran el orden aproximado pero cambian semanalmente."
+          }
+        ],
+        "verdict": "Opus 4.7 es el nivel de escalación. Usa Sonnet 4.6 por defecto; promueve a Opus solo en los pasos específicos donde Sonnet falla visiblemente.",
+        "faqs": [
+          {
+            "q": "¿Cuál es la ventana de contexto de Claude Opus 4.7?",
+            "a": "1 millón de tokens, con hasta 64K tokens de salida por respuesta. La ventana completa se factura a tarifas estándar. Una solicitud de 900K tokens tiene la misma tarifa por token que una solicitud de 9K tokens."
+          },
+          {
+            "q": "¿Puede Claude Opus 4.7 manejar imágenes?",
+            "a": "Sí. Opus 4.7 es multimodal. Acepta entradas de imagen junto con texto y código, por lo que los agentes basados en capturas de pantalla y visión de documentos funcionan de forma nativa."
+          },
+          {
+            "q": "¿Cuándo debería elegir Opus 4.7 sobre Sonnet 4.6?",
+            "a": "Cuando (a) el agente es el planificador/orquestador y las decisiones se propagan en cascada, (b) la ejecución es lo suficientemente larga como para que Sonnet empiece a perder instrucciones, o (c) la salida debe aplicarse limpiamente al primer intento (ediciones de código, cargas estructuradas)."
+          },
+          {
+            "q": "¿Debería migrar de Opus 4.6 a Opus 4.7?",
+            "a": "Sí. Anthropic recomienda explícitamente 4.7 sobre 4.6. Mismo multiplicador, mejor comportamiento. Migra los agentes de producción fijados solo después de ejecutarlos en tu suite de regresión."
+          },
+          {
+            "q": "¿Opus 4.7 soporta caché de prompts?",
+            "a": "Sí. La entrada cacheada se factura a $0,50 por 1M tokens. Un descuento del 10× en la porción cacheada. Vale la pena usarlo cuando tu prompt de sistema o esquema de herramientas es estable entre llamadas."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Predeterminado más barato para la mayoría de bucles de agente"
+          },
+          {
+            "slug": "kimi-k2.6",
+            "reason": "Mejor recuperación de contexto largo a menor costo"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Razonamiento optimizado en costo si Claude es excesivo"
+          }
+        ],
+        "routingNotes": "En VM0, Opus 4.7 se enruta directamente a la API Messages de Anthropic y se expone de tres formas: a través del pool de créditos VM0 Managed, a través de una clave API directa de Anthropic, y a través del proveedor OAuth de Claude Code para equipos ya autenticados con Claude Code.",
+        "vm0Notes": "El caché de prompts está habilitado por defecto a través de VM0, lo que reduce sustancialmente el costo de prompts de sistema repetidos, definiciones de herramientas y documentos de referencia pegados en agentes que emiten muchos turnos desde el mismo prefijo. No hay anulaciones de timeout del lado de VM0 para Opus 4.7; el modelo usa los timeouts de API predeterminados de Anthropic. Sonnet 4.6 sigue siendo el predeterminado de la plataforma para nuevos agentes, por lo que el patrón estándar es mantener niveles baratos ejecutándose en todas partes y enrutar solo los pasos más difíciles a Opus 4.7."
+      },
+      "claude-opus-4-6": {
+        "name": "Claude Opus 4.6",
+        "pageTitle": "Claude Opus 4.6 en VM0",
+        "tagline": "El anterior buque insignia de Anthropic. Mismo multiplicador y contexto de 1M que Opus 4.7. Mantenlo fijado solo cuando un agente haya sido validado en esta versión exacta.",
+        "cardIntro": "El anterior buque insignia de Anthropic. Mismo costo de crédito que Opus 4.7. Mantenlo fijado solo si un agente específico ha sido validado contra esta versión.",
+        "metaTitle": "Claude Opus 4.6 en VM0: Benchmarks, Precios y Migración",
+        "metaDescription": "Reseña de Claude Opus 4.6 en VM0. El anterior buque insignia de Anthropic. SWE-bench Verified 80,8%, precios $5/$25, contexto 1M, y cuándo mantener 4.6 en lugar de actualizar.",
+        "summary": "Claude Opus 4.6 fue el buque insignia de Anthropic antes de Opus 4.7 e introdujo la mayoría de lo que ahora define la familia Claude 4: la ventana de contexto de 1M tokens en beta, pensamiento adaptativo en cuatro niveles de esfuerzo, y las puntuaciones más altas de codificación agéntica que Anthropic había entregado en ese momento (SWE-bench Verified 80,8%, Terminal-Bench 2.0 65,4%, OSWorld 72,7% reportados por el proveedor).\n\nEl precio de lista del proveedor es el mismo $5 / $25 por 1M tokens que 4.7. La única buena razón para quedarse en 4.6 es la estabilidad de comportamiento para un agente que ya ha sido validado contra esta versión; cualquier cosa nueva debería comenzar en 4.7.",
+        "releaseDate": "5 de febrero de 2026",
+        "familyPosition": "Anterior nivel superior de la familia Claude 4. Reemplazado por Claude Opus 4.7.",
+        "background": [
+          "Claude Opus 4.6 fue el modelo frontera de Anthropic antes de Opus 4.7. Fue lanzado el 5 de febrero de 2026 e introdujo varias capacidades que definieron la familia Claude 4: pensamiento adaptativo con cuatro niveles de esfuerzo, la ventana de contexto de 1M tokens en beta, y las puntuaciones más altas de codificación agéntica de Anthropic en el momento del lanzamiento.",
+          "En VM0 tiene el mismo multiplicador de crédito ×1,7 que Opus 4.7. Anthropic recomienda explícitamente migrar a 4.7 para nuevo trabajo; mantén 4.6 solo si un agente específico ha sido validado contra esta versión y aún no quieres volver a ejecutar pruebas de regresión."
+        ],
+        "architecture": "Opus 4.6 introdujo el pensamiento adaptativo con cuatro niveles de esfuerzo (bajo, medio, alto y máximo, con alto como predeterminado) y la ventana de contexto de 1M tokens en beta a precio estándar. Añadió una API de Compactación para resumen de contexto del lado del servidor, deshabilitó el prellenado como cambio disruptivo respecto a Opus 4.5 (usa salidas estructuradas en su lugar), e incorporó un Protocolo Mailbox para equipos multi-agente peer-to-peer. Un parámetro `inference_geo` expone inferencia solo en EE. UU. con un multiplicador de 1,1×.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Generación Claude 4"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, visión, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Inglés primero, multilingüe"
+          },
+          {
+            "label": "Caché de prompts",
+            "value": "Soportado (Anthropic)"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "1M tokens (beta)"
+          },
+          {
+            "label": "Salida máxima",
+            "value": "Hasta 128K tokens"
+          },
+          {
+            "label": "Disponible en VM0",
+            "value": "Disponible desde el lanzamiento"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor de los materiales de lanzamiento de Opus 4.6 de Anthropic y Artificial Analysis. Trata las cifras absolutas de SWE-bench con precaución. OpenAI ha señalado contaminación de datos de entrenamiento en SWE-bench Verified en todos los modelos frontera.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "80,8%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "65,4%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "OSWorld (uso de computadora)",
+            "score": "72,7%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "MRCR v2 (1M, 8-agujas)",
+            "score": "76%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Índice de Inteligencia Artificial Analysis",
+            "score": "53",
+            "note": "esfuerzo máximo"
+          },
+          {
+            "name": "Velocidad",
+            "score": "~41 tokens/seg",
+            "note": "Artificial Analysis"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Razonamiento",
+            "body": "Fuerte en pasos de razonamiento difíciles. Opus 4.7 es incrementalmente mejor a un costo de proveedor ligeramente menor. No hay categoría de benchmark donde 4.6 lidere."
+          },
+          {
+            "title": "Uso de herramientas",
+            "body": "Fiable en flujos de agente multi-herramienta. Similar a Sonnet 4.6 en precisión de enrutamiento con robustez adicional en casos límite."
+          },
+          {
+            "title": "Contexto largo",
+            "body": "Contexto de 1M tokens con 76% de recuperación MRCR v2. Realmente utilizable en toda la ventana, no solo nominal."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Más lento que Sonnet 4.6 y Haiku 4.5; comparable a Opus 4.7. Alrededor de 41 tokens/seg en esfuerzo máximo según Artificial Analysis."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente de producción que ya está dando resultados",
+            "body": "Tu equipo pasó dos semanas ajustando prompts y esquemas de herramientas contra Opus 4.6, el agente ha estado en producción durante un mes, y los clientes están contentos. Fijar a 4.6 mantiene el comportamiento idéntico mientras decides si la actualización a 4.7 vale un ciclo de revalidación, en lugar de dejar que Anthropic actualice automáticamente tu tráfico y cambie silenciosamente las salidas."
+          },
+          {
+            "title": "La línea base de regresión para un despliegue de Opus 4.7",
+            "body": "Ejecuta el mismo conjunto de prompts a través de 4.6 y 4.7 lado a lado, compara las salidas y decide dónde la actualización realmente cambia el comportamiento antes de activar el cambio en producción. Mismo precio de proveedor, mismo multiplicador, interfaz idéntica — lo único diferente son los pesos del modelo, que es exactamente lo que quieres cuando estás aislando regresiones."
+          }
+        ],
+        "avoidFor": "No inicies nuevos agentes en Opus 4.6 a menos que tengas una razón concreta, ya que 4.7 se ofrece con el mismo multiplicador con mejor comportamiento y un precio de lista de proveedor más bajo. Cualquier cosa sensible al costo debería ir a 4.7 por la misma razón.",
+        "comparisons": [
+          {
+            "vs": "Claude Opus 4.7",
+            "body": "Mismo multiplicador ×1,7 y ventana de contexto de 1M. Opus 4.7 es más nuevo, más rápido y con precio de lista de proveedor más bajo. Mantén 4.6 solo cuando ya hayas invertido en ajustes contra esta versión."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 es ×1 y maneja la mayoría de bucles de agente. Recurre a Opus solo cuando Sonnet falla visiblemente. Usualmente para orquestación o ediciones de código difíciles."
+          },
+          {
+            "vs": "Kimi K2.6",
+            "body": "Kimi K2.6 (×0,3) supera ligeramente a Opus 4.6 en SWE-bench Pro (58,6 vs 53,4 reportado por el proveedor) y es mucho más barato. Opus 4.6 mantiene la ventaja del perfil de seguridad y es la opción empresarial occidental predeterminada."
+          }
+        ],
+        "verdict": "Mantenlo fijado si ya lo has validado; de lo contrario, comienza en Opus 4.7. La migración es un cambio de configuración, no una reescritura.",
+        "faqs": [
+          {
+            "q": "¿Cuándo se lanzó Claude Opus 4.6?",
+            "a": "Anthropic lanzó Opus 4.6 el 5 de febrero de 2026. Opus 4.7 lo siguió poco después."
+          },
+          {
+            "q": "¿Debería migrar de Opus 4.6 a Opus 4.7?",
+            "a": "Sí para trabajo nuevo. Mismo multiplicador, mismo contexto de 1M, precio de lista de proveedor más bajo, mejor comportamiento en tareas de codificación agéntica. Migra los agentes fijados solo después de ejecutarlos en tu suite de regresión."
+          },
+          {
+            "q": "¿Cuál es la ventana de contexto de Claude Opus 4.6?",
+            "a": "1 millón de tokens (beta) con hasta 128K tokens de salida por respuesta."
+          },
+          {
+            "q": "¿Por qué Opus 4.6 es el predeterminado en el proveedor de clave API de Anthropic?",
+            "a": "Predeterminado histórico de antes del lanzamiento de Opus 4.7. Puedes cambiar cualquier agente a Opus 4.7, Sonnet 4.6 o Haiku 4.5 en Configuración de VM0 → Proveedores de Modelos sin cambiar la clave API."
+          },
+          {
+            "q": "¿Qué es el pensamiento adaptativo?",
+            "a": "Una capa de planificación que permite a Claude decidir cuánto cómputo de razonamiento gastar por turno. Cuatro niveles: bajo, medio, alto, máximo. Con alto como predeterminado. Reemplazó el interruptor de pensamiento extendido de Opus 4.5."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-opus-4-7",
+            "reason": "Más nuevo, menor costo de proveedor"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Línea base Sonnet a mucho menor costo"
+          },
+          {
+            "slug": "kimi-k2.6",
+            "reason": "Alternativa de peso abierto más barata en benchmarks agénticos"
+          }
+        ],
+        "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Disponible en VM0 Managed y como el modelo predeterminado en los proveedores de clave API de Anthropic y OAuth de Claude Code.",
+        "vm0Notes": "Opus 4.6 tiene el precio de lista de proveedor más alto por token de cualquier modelo Built-in, por lo que el caché de prompts importa aquí más que en cualquier otro lugar y está activado por defecto. Sigue siendo el modelo predeterminado en los proveedores de clave API de Anthropic y OAuth de Claude Code, lo que significa que probablemente es el modelo para el que tu equipo ya tiene memoria muscular, aunque Opus 4.7 sea la opción recomendada para nuevo trabajo."
+      },
+      "claude-sonnet-4-6": {
+        "name": "Claude Sonnet 4.6",
+        "pageTitle": "Claude Sonnet 4.6 en VM0. El modelo de agente predeterminado",
+        "tagline": "El predeterminado para la mayoría de agentes VM0. Enrutamiento de herramientas sólido, buen comportamiento en contexto largo y la línea base de crédito. Todos los demás modelos tienen precios relativos a Sonnet 4.6.",
+        "cardIntro": "El predeterminado para la mayoría de agentes VM0. Alta precisión de enrutamiento de herramientas, buen comportamiento en contexto largo y la línea base de crédito. Todos los demás modelos tienen precios relativos a Sonnet 4.6.",
+        "metaTitle": "Claude Sonnet 4.6 en VM0: Benchmarks, Precios y Casos de Uso",
+        "metaDescription": "Claude Sonnet 4.6 es el modelo predeterminado en VM0. Línea base de crédito ×1, contexto 1M, precios $3/$15, SWE-bench Verified 77%. Las tareas de agente que mejor maneja.",
+        "summary": "Claude Sonnet 4.6 es el caballo de batalla de la familia Claude 4 y el modelo Built-in predeterminado en VM0. Elige la herramienta correcta con los argumentos correctos de manera más fiable que cualquier cosa más barata, se mantiene coherente en conversaciones de cientos de miles de tokens, y la mayoría de agentes de producción — triaje de Slack, revisión de PR en GitHub, soporte al cliente — nunca necesitan ser promovidos más allá de él.\n\nEl precio de lista del proveedor es $3 / $15 por 1M tokens, con entrada cacheada a $0,30 / 1M. Recurre a Opus solo cuando Sonnet falla visiblemente en el razonamiento más difícil, y a Haiku o DeepSeek V4 Flash cuando el costo unitario domina.",
+        "releaseDate": "Febrero 2026 (generación Claude 4.6)",
+        "familyPosition": "Nivel medio de la familia Claude 4. El modelo caballo de batalla de Anthropic, situado entre Haiku y Opus.",
+        "background": [
+          "Claude Sonnet 4.6 se sitúa en el medio de la familia Claude 4 de Anthropic. Es el modelo caballo de batalla diseñado para manejar toda la amplitud del trabajo típico de agente: enrutamiento multi-herramienta, ediciones de código, conversaciones de larga duración y tareas de salida estructurada. Sin el sobrecosto de Opus.",
+          "En el catálogo Built-in de VM0, el multiplicador de crédito de todos los demás modelos está normalizado contra Sonnet 4.6 (×1). Esto hace que Sonnet sea la opción correcta cuando quieres conversaciones de presupuesto predecibles: \"este agente ejecuta aproximadamente a 2× un paso de Sonnet\" es una frase más útil que cotizaciones absolutas en dólares que cambian cada trimestre.",
+          "Sonnet 4.6 soporta el caché de prompts de Anthropic, lo que marca una gran diferencia para los agentes VM0 que envían un prompt de sistema estable y un esquema de herramientas fijo. Los tokens de entrada cacheados se facturan a $0,30 por 1M en lugar de $3. Un ahorro de 10× en las partes del prompt que no cambian entre turnos."
+        ],
+        "architecture": "Sonnet 4.6 incluye la ventana de contexto de 1M tokens a precio estándar, pensamiento adaptativo heredado de Opus 4.6, y caché de prompts que factura la entrada cacheada a una décima parte de la tarifa de entrada. Acepta entrada multimodal: texto, visión y código.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Generación Claude 4"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, visión, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Inglés primero, multilingüe"
+          },
+          {
+            "label": "Caché de prompts",
+            "value": "Soportado (Anthropic)"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "1M tokens"
+          },
+          {
+            "label": "Salida máxima",
+            "value": "Hasta 64K tokens"
+          },
+          {
+            "label": "Predeterminado para",
+            "value": "VM0 Managed"
+          }
+        ],
+        "benchmarksNote": "Sonnet 4.6 se sitúa aproximadamente 3 a 4 puntos porcentuales por detrás de Opus 4.6 en los benchmarks de codificación principales de Anthropic, siendo de tres a cinco veces más barato a nivel de proveedor. El típico compromiso Opus/Sonnet.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "~77%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Recuperación de contexto largo",
+            "score": "Fuerte más allá de 100K+",
+            "note": "observación interna"
+          },
+          {
+            "name": "Enrutamiento de herramientas",
+            "score": "El mejor en su clase a ×1",
+            "note": "VM0 interno"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Enrutamiento de herramientas",
+            "body": "La mejor precisión de enrutamiento de herramientas en su clase a este precio. En flujos multi-herramienta en Slack, GitHub, Linear y Notion, Sonnet 4.6 elige la herramienta correcta con los argumentos correctos de manera más fiable que cualquier modelo por debajo de ×1,7."
+          },
+          {
+            "title": "Coherencia en contexto largo",
+            "body": "Coherente en transcripciones de más de 100K tokens. Solo queda por debajo de Opus 4.7 en las ejecuciones más largas y adversas."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Más rápido que Opus y más lento que Haiku. El equilibrio correcto velocidad/calidad para agentes de producción."
+          },
+          {
+            "title": "Previsibilidad de costos",
+            "body": "El precio es la línea base de crédito; el caché de prompts hace que el costo en VM0 sea especialmente predecible para agentes con prompts de sistema fijos."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente de Slack que sabe dónde están las cosas",
+            "body": "Clasifica preguntas entrantes, hace seguimiento en hilos estancados, publica actualizaciones de estado y responde consultas de búsqueda (\"¿quién está a cargo de la refactorización de auth?\"). La precisión de enrutamiento de herramientas de Sonnet significa que la herramienta correcta se llama con los argumentos correctos al primer intento, incluso cuando la solicitud es ambigua, por lo que el agente se siente fiable en lugar de impredecible."
+          },
+          {
+            "title": "El agente de revisión de PR que no se ahoga en ruido",
+            "body": "Sonnet maneja el grueso del trabajo consciente de código — revisión de PR, andamiaje de pruebas, sugerencias de refactorización, bisección de bugs — sin dejar comentarios estilísticos que nadie pidió. La ventana de contexto de 1M tokens le permite incorporar los archivos relacionados y revisiones anteriores cuando importa, y solo escalas a Opus 4.7 para los parches con los que Sonnet visiblemente tiene dificultades."
+          },
+          {
+            "title": "El agente de investigación que hace 20 llamadas a herramientas seguidas",
+            "body": "GitHub más Linear más Notion más la web, unidos a través de más de veinte turnos de herramientas para responder una pregunta como \"¿por qué este cliente se dio de baja el trimestre pasado?\" Sonnet mantiene el objetivo a la vista en toda la cadena a una fracción del costo de Opus, lo que lo hace sostenible para investigación cotidiana en lugar de inmersiones profundas puntuales."
+          },
+          {
+            "title": "El asistente de soporte al cliente con un prompt de sistema estable",
+            "body": "Historiales de conversación largos, llamadas frecuentes a herramientas del CRM, el mismo prompt de sistema pesado y esquema de herramientas en cada turno. El caché de prompts de Sonnet convierte ese prefijo fijo en una fracción del costo de entrada después de la primera llamada, lo que mantiene el costo por conversación plano a medida que crece el volumen."
+          }
+        ],
+        "avoidFor": "Evita Sonnet 4.6 en los pasos de razonamiento más difíciles donde visiblemente pierde instrucciones y deberías escalar a Opus 4.7, en clasificación masiva a alto volumen donde DeepSeek V4 Flash es aproximadamente 50× más barato, y en micro-respuestas críticas en latencia donde Haiku 4.5 es significativamente más rápido.",
+        "comparisons": [
+          {
+            "vs": "Claude Opus 4.7",
+            "body": "Sonnet 4.6 es ×1; Opus 4.7 es ×1,7. Sonnet maneja la mayoría de agentes; Opus es la actualización cuando la profundidad de razonamiento importa más que el rendimiento. Muchos equipos usan Opus como planificador y Sonnet como trabajador."
+          },
+          {
+            "vs": "Claude Haiku 4.5",
+            "body": "Haiku 4.5 es ×0,3. Tres veces más barato que Sonnet. Sonnet lidera en precisión de enrutamiento de herramientas y coherencia en contexto largo; Haiku gana en velocidad y costo. Usa Haiku como sub-agente o para flujos simples de alto volumen."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro (×0,3) iguala a Sonnet en benchmarks de codificación (SWE-bench Verified reportado por el proveedor) a un costo mucho menor. El compromiso es algo de fiabilidad de enrutamiento de herramientas y un perfil de seguridad menos maduro."
+          }
+        ],
+        "verdict": "Comienza aquí. Migra hacia arriba a Opus 4.7 o hacia abajo a Haiku 4.5 / DeepSeek V4 Pro una vez que hayas visto el comportamiento real en producción y sepas qué dirección tiene sentido.",
+        "faqs": [
+          {
+            "q": "¿Por qué Sonnet 4.6 es el modelo predeterminado en VM0 Managed?",
+            "a": "Logra el mejor equilibrio de calidad de razonamiento, precisión de enrutamiento de herramientas y costo en nuestro catálogo. Los agentes nuevos casi siempre funcionan en Sonnet sin ajustes adicionales."
+          },
+          {
+            "q": "¿Cuál es la ventana de contexto de Claude Sonnet 4.6?",
+            "a": "1 millón de tokens con hasta 64K tokens de salida por respuesta."
+          },
+          {
+            "q": "¿Sonnet 4.6 soporta entrada de imágenes?",
+            "a": "Sí. Es multimodal. Texto, código e imágenes."
+          },
+          {
+            "q": "¿Cuándo debería dejar de usar Sonnet 4.6?",
+            "a": "Cambia a Opus 4.7 si Sonnet visiblemente pierde el objetivo en bucles de agente largos o falla en ediciones de código difíciles. Cambia a Haiku 4.5 o DeepSeek V4 Flash para flujos simples de alto volumen donde el costo domina."
+          },
+          {
+            "q": "¿Es Sonnet 4.6 lo mismo que Sonnet 4.5?",
+            "a": "No. 4.6 es la generación más reciente en la familia Claude 4 con mejor comportamiento en contexto largo y pensamiento adaptativo. El precio de proveedor por token es idéntico."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-opus-4-7",
+            "reason": "Usar cuando Sonnet alcanza su techo de razonamiento"
+          },
+          {
+            "slug": "claude-haiku-4-5",
+            "reason": "Hermano más barato para enrutamiento y triaje"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Alternativa mucho más barata con calidad de razonamiento similar"
+          }
+        ],
+        "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Modelo predeterminado en VM0 Managed.",
+        "vm0Notes": "Sonnet 4.6 es la línea base de crédito (×1) contra la que se normaliza el multiplicador de todos los demás modelos Built-in, razón principal por la que sigue siendo la primera opción para nuevos agentes en VM0; escala a Opus solo cuando Sonnet visiblemente rinde por debajo de lo esperado en una tarea específica. El caché de prompts nativo se combina bien con los prompts de sistema y definiciones de herramientas estables de VM0, y mantiene predecible el costo por turno de agentes de larga duración."
+      },
+      "glm-5.1": {
+        "name": "GLM-5.1",
+        "pageTitle": "GLM-5.1 en VM0. Agentes de contexto largo",
+        "tagline": "El buque insignia de Z.AI. Hasta 1M tokens de ventana de contexto. Potente para agentes de código base completo o base de conocimiento completa a un precio muy por debajo de Sonnet.",
+        "cardIntro": "El buque insignia de Z.AI. Hasta 1M tokens de ventana de contexto. Potente para agentes de código base completo o base de conocimiento completa a un precio muy por debajo de Sonnet.",
+        "metaTitle": "GLM-5.1 en VM0: Contexto 1M, Precios y Mejores Tareas de Agente",
+        "metaDescription": "Reseña de GLM-5.1 en VM0. El buque insignia de Z.AI con hasta 1M tokens de contexto, costo de crédito ×0,4. Especificaciones, precios, rendimiento y tareas de agente recomendadas.",
+        "summary": "GLM-5.1 es el especialista en contexto largo del catálogo, con hasta 1M tokens de entrada. Úsalo cuando el prompt es genuinamente enorme: un repositorio completo de una vez, varios cientos de documentos en una sola ejecución de investigación. Los rankings independientes lo sitúan consistentemente en el nivel superior de modelos de peso abierto para trabajo de contexto largo.\n\nEl precio de lista del proveedor es $1,40 / $4,40 por 1M tokens, muy por debajo de la mitad de Sonnet 4.6 a nivel de proveedor, y la API es compatible con Anthropic, por lo que los agentes estilo Claude funcionan sin reescritura. Recurre a Sonnet u Opus cuando la profundidad de razonamiento en inglés importa más que el tamaño del contexto, y a Haiku cuando la latencia domina.",
+        "releaseDate": "Principios de 2026; GA completa en VM0 abril 2026",
+        "familyPosition": "El modelo insignia de propósito general de Z.AI / Zhipu AI.",
+        "background": [
+          "GLM-5.1 es el buque insignia de la serie GLM de Zhipu AI, distribuido a través de Z.AI. Es un modelo de razonamiento con fuerte capacidad general y una ventana de contexto inusualmente grande: hasta 1M tokens, varias veces más grande que los predeterminados de Anthropic y Moonshot en el mismo rango de precio.",
+          "En VM0, GLM-5.1 se expone de dos formas: a través de VM0 Managed (enrutado vía OpenRouter con el id upstream `z-ai/glm-5.1`), y mediante una clave API directa de Z.AI (donde es el modelo predeterminado). Ambas rutas usan la interfaz compatible con Anthropic de Z.AI, por lo que los agentes VM0 existentes funcionan sin cambios.",
+          "GLM-5.1 estuvo ampliamente disponible en VM0 en abril de 2026 cuando su feature flag fue retirado (PR #10497). Es la opción de contexto largo costo-eficiente en el catálogo, con ×0,4 créditos, menos de la mitad de Sonnet 4.6."
+        ],
+        "architecture": "GLM-5.1 expone una ventana de contexto de hasta 1M tokens (la más grande del catálogo Built-in) a través de una superficie API compatible con Anthropic, por lo que los agentes estilo Claude funcionan sin cambios. El upstream soporta caché de prompts en `api.z.ai`.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Serie GLM-5"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Multilingüe"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "Hasta 1M tokens"
+          },
+          {
+            "label": "Caché de prompts",
+            "value": "Soportado (compatible con Anthropic)"
+          },
+          {
+            "label": "Disponible en VM0",
+            "value": "Abril 2026"
+          }
+        ],
+        "benchmarksNote": "Las reseñas independientes sitúan a GLM-5.1 en el nivel superior de modelos de peso abierto para tareas de contexto largo. Las cifras cambian semanalmente en los rankings de terceros. Deliberadamente no fijamos porcentajes exactos aquí.",
+        "benchmarks": [
+          {
+            "name": "Code Arena",
+            "score": "Top-3 (pesos abiertos)",
+            "note": "ranking de terceros"
+          },
+          {
+            "name": "Recuperación de contexto largo",
+            "score": "Fuerte en ventana de 1M tokens",
+            "note": "reportado por el proveedor"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Recuperación de contexto largo",
+            "body": "La ventana de 1M tokens de GLM-5.1 es genuinamente utilizable. Mantiene la coherencia mucho más allá del límite de 200K que restringe a la familia Anthropic en los modelos más antiguos de 200K. Útil para agentes de repositorio completo o corpus de documentos completo."
+          },
+          {
+            "title": "Razonamiento",
+            "body": "Razonamiento general sólido. Por debajo de Sonnet 4.6 en el enrutamiento multi-herramienta en inglés más difícil, pero la brecha es pequeña en relación con la diferencia de costo."
+          },
+          {
+            "title": "Uso de herramientas",
+            "body": "Fiable en la superficie de herramientas común de VM0 (Slack, GitHub, Notion, Linear). Algunos casos límite en llamadas a herramientas profundamente anidadas se manejan con menos precisión que Claude Sonnet 4.6."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "La refactorización de repositorio completo que cabe en un solo prompt",
+            "body": "Carga un código base de tamaño medio de 500K tokens en una sola llamada a GLM-5.1 y pide un renombrado entre archivos, una revisión arquitectónica o un pase de seguridad. Los modelos con ventanas más pequeñas te obligan a dividir el repositorio y unir resultados, que es donde se infiltran los bugs. GLM-5.1 mantiene cada archivo en memoria de trabajo y referencia las rutas correctas en su salida."
+          },
+          {
+            "title": "La ejecución de investigación sobre cientos de documentos",
+            "body": "Wikis, RFCs, contratos, tickets de soporte del año pasado — carga todo el montón de una vez y busca patrones entre documentos. El costo por ejecución se mantiene manejable gracias al bajo precio de proveedor, lo que hace que este tipo de flujo de trabajo de \"leer todo, resumir una vez\" sea realmente asequible en producción en lugar de un proyecto científico único."
+          },
+          {
+            "title": "El trabajo de pensamiento que necesita más de diez minutos",
+            "body": "Algunos pasos de agente genuinamente toman de cinco a treinta minutos — investigación profunda, análisis multi-documento, pases largos de planificación. VM0 establece un timeout de API de 50 minutos para el proveedor Z.AI para que esos pasos de pensamiento largos no se corten a mitad del razonamiento, lo que hace de GLM-5.1 la opción segura sobre modelos enrutados a través de proveedores con timeouts predeterminados más cortos."
+          }
+        ],
+        "avoidFor": "Evita GLM-5.1 en el razonamiento en inglés más difícil donde Sonnet 4.6 u Opus 4.7 aún lideran, y en respuestas de chat críticas en latencia donde Haiku 4.5 es mucho más rápido.",
+        "comparisons": [
+          {
+            "vs": "Kimi K2.6",
+            "body": "Ambos son opciones de contexto largo a costo de crédito similar (×0,4 vs ×0,3). Kimi tiene mejor recuperación de contexto largo en nuestra evaluación interna; GLM-5.1 gana en tamaño bruto de contexto (1M vs 256K). Elige Kimi para transcripciones muy largas; elige GLM-5.1 cuando necesitas meter un código base completo en un solo prompt."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 (×1) lidera en precisión de enrutamiento de herramientas y razonamiento en inglés. GLM-5.1 (×0,4) lidera en ventana de contexto y es la opción correcta cuando el costo o el tamaño del contexto dominan la decisión."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro (×0,3) es más barato y tiene mejores benchmarks en Code Arena según reseñas de terceros. GLM-5.1 aún gana en tamaño de contexto. Elige DeepSeek para trabajo de contexto estándar sensible al costo; elige GLM-5.1 cuando el tamaño del contexto es la restricción."
+          }
+        ],
+        "verdict": "Elige GLM-5.1 cuando el tamaño del contexto es la restricción. Para todo lo demás, DeepSeek V4 Pro es más barato y Sonnet 4.6 enruta herramientas de manera más fiable.",
+        "faqs": [
+          {
+            "q": "¿Qué tan grande es la ventana de contexto de GLM-5.1 en VM0?",
+            "a": "Hasta 1 millón de tokens. La más grande en nuestro catálogo Built-in. Suficiente para contener un repositorio de tamaño medio o varios cientos de documentos en un solo prompt."
+          },
+          {
+            "q": "¿Qué proveedor debería usar para GLM-5.1?",
+            "a": "VM0 Managed es la ruta más simple. Si quieres facturación directa con el proveedor, conecta una clave API de Z.AI."
+          },
+          {
+            "q": "¿GLM-5.1 es de pesos abiertos?",
+            "a": "Z.AI publica variantes de pesos abiertos de la serie GLM. La versión expuesta en VM0 se enruta a la API alojada de Z.AI para fiabilidad en producción."
+          },
+          {
+            "q": "¿GLM-5.1 soporta entrada de imágenes?",
+            "a": "GLM-5.1 en VM0 está expuesto para texto y código. Para entrada multimodal (imagen/video), elige Claude Sonnet 4.6 o Kimi K2.6."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "kimi-k2.6",
+            "reason": "Mejor recuperación de contexto largo"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Alternativa más barata con contexto más corto"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Razonamiento más fuerte si el costo no es la restricción"
+          }
+        ],
+        "routingNotes": "En VM0 Managed, GLM-5.1 se enruta a través de OpenRouter con el id upstream `z-ai/glm-5.1`. Con una clave API de Z.AI habla directamente con el endpoint compatible con Anthropic de `api.z.ai`. Modelo predeterminado en el proveedor Z.AI.",
+        "vm0Notes": "VM0 establece un timeout de API de 50 minutos para el proveedor Z.AI para que los pasos de pensamiento largos se completen de manera fiable sin caídas, y empareja el contexto de 1M tokens del modelo con agentes de documentos de alto volumen que necesitan el espacio."
+      },
+      "claude-haiku-4-5": {
+        "name": "Claude Haiku 4.5",
+        "pageTitle": "Claude Haiku 4.5 en VM0. Enrutamiento rápido y barato",
+        "tagline": "El Claude rápido y barato. Suficientemente bueno para enrutamiento, resúmenes cortos y llamadas simples a herramientas a una fracción del costo de Sonnet.",
+        "cardIntro": "El Claude rápido y barato. Suficientemente bueno para enrutamiento, resúmenes cortos y llamadas simples a herramientas a una fracción del costo de Sonnet.",
+        "metaTitle": "Claude Haiku 4.5 en VM0: SWE-bench, Precios y Casos de Uso",
+        "metaDescription": "Reseña de Claude Haiku 4.5 en VM0. Claude rápido y barato con SWE-bench Verified 73,3%. Multiplicador ×0,3, precios $1/$5, 97 tok/seg, ideal para triaje y enrutamiento.",
+        "summary": "Claude Haiku 4.5 es el Claude pequeño y rápido — las respuestas se ejecutan a aproximadamente 97 tokens de salida por segundo (cuatro a cinco veces más rápido que Sonnet 4.5) y puedes ejecutarlo en mucho tráfico sin ver la factura dispararse.\n\nSigue siendo un Claude real: SWE-bench Verified reportado por el proveedor alcanza 73,3%, solo unos pocos puntos por detrás de Sonnet 4.5 a un tercio del costo, y la evaluación de codificación agéntica de Augment supuestamente lo sitúa al 90% del rendimiento de Sonnet 4.5.\n\nEl precio de lista del proveedor es $1 / $5 por 1M tokens con entrada cacheada a $0,10 / 1M. Úsalo como el trabajador de alto rendimiento o sub-agente bajo un sistema liderado por Sonnet u Opus; evítalo cuando el bucle es largo y de múltiples pasos.",
+        "releaseDate": "Finales de 2025 (generación Claude 4.5)",
+        "familyPosition": "El nivel más pequeño de la familia Claude 4. La opción de alto rendimiento y baja latencia de Anthropic.",
+        "background": [
+          "Claude Haiku 4.5 es el miembro pequeño y rápido de la familia Claude 4. Está construido para trabajo sensible a la latencia y de alto volumen donde Sonnet sería excesivo: llamadas a una sola herramienta, clasificaciones rápidas, resúmenes cortos y respuestas simples de Slack.",
+          "Haiku 4.5 es notablemente capaz para su nivel. La puntuación SWE-bench Verified reportada por Anthropic es 73,3%. Solo ~4 puntos por detrás de Sonnet 4.5 a un tercio del costo. En la evaluación de codificación agéntica de Augment, supuestamente alcanza el 90% del rendimiento de Sonnet 4.5, lo que lo sitúa en territorio genuino de sub-agente.",
+          "A pesar de ser el Claude pequeño, Haiku 4.5 es multimodal (capaz de visión), soporta caché de prompts y se ejecuta a ~97 tokens/seg. Cómodamente el modelo más rápido en nuestro catálogo Built-in."
+        ],
+        "architecture": "Haiku 4.5 incluye una ventana de contexto de 200K tokens, entrada multimodal de texto, visión y código, y caché de prompts que factura la entrada cacheada a una décima parte de la tarifa de entrada. La salida se ejecuta a aproximadamente 97 tokens por segundo, cuatro a cinco veces más rápido que Sonnet 4.5.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Generación Claude 4"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, visión, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Inglés primero, multilingüe"
+          },
+          {
+            "label": "Caché de prompts",
+            "value": "Soportado (Anthropic)"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "200K tokens"
+          },
+          {
+            "label": "Salida máxima",
+            "value": "Hasta 64K tokens"
+          },
+          {
+            "label": "Ideal para",
+            "value": "Flujos de alto volumen / sensibles a latencia"
+          }
+        ],
+        "benchmarksNote": "Cifras reportadas por el proveedor de los materiales de lanzamiento de Haiku 4.5 de Anthropic. Nota que OpenAI señaló contaminación de datos de entrenamiento en SWE-bench Verified en todos los modelos frontera. Trata las cifras absolutas con precaución, pero el orden relativo es robusto.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "73,3%",
+            "note": "reportado por el proveedor, promedio de 50 intentos"
+          },
+          {
+            "name": "SWE-bench Pro",
+            "score": "39,5%",
+            "note": "terceros (Scale AI)"
+          },
+          {
+            "name": "OSWorld (uso de computadora)",
+            "score": "50,7%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Velocidad",
+            "score": "~97 tokens/seg",
+            "note": "reportado por el proveedor"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Velocidad",
+            "body": "El modelo más rápido del catálogo Built-in a ~97 tokens/seg. La latencia de respuesta es lo suficientemente corta para agentes interactivos de Slack."
+          },
+          {
+            "title": "Precisión de enrutamiento",
+            "body": "Suficientemente buena para flujos de una sola herramienta; el enrutamiento multi-herramienta está significativamente por detrás de Sonnet 4.6 en casos límite. Mantén los esquemas de herramientas ajustados."
+          },
+          {
+            "title": "Razonamiento",
+            "body": "Se mantiene en tareas cortas; pierde el hilo en bucles largos de múltiples pasos. Úsalo como trabajador, no como planificador."
+          },
+          {
+            "title": "Costo",
+            "body": "El costo más bajo en la familia Claude en VM0. El caché de prompts lo convierte en la opción Anthropic práctica más barata para prompts repetidos."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente de triaje de Slack que se siente instantáneo",
+            "body": "Lee cada mensaje entrante, lo clasifica (\"reporte de bug\", \"oportunidad de venta\", \"solicitud de reunión\"), lo enruta al canal correcto y publica un acuse de recibo en menos de dos segundos. A la velocidad de Sonnet, el mismo flujo se sentiría lento; a los ~97 tokens por segundo de Haiku, se siente como si el bot estuviera realmente prestando atención en tiempo real."
+          },
+          {
+            "title": "El sub-agente bajo un planificador Sonnet u Opus",
+            "body": "Sonnet (u Opus) elige la estrategia y divide la solicitud en diez pasos concretos; Haiku ejecuta cada uno. \"Extrae este campo del CRM, resume este correo, formatea esta lista\" — ninguno de esos pasos necesita razonamiento de nivel insignia, y enrutarlos a Haiku en lugar de ejecutar todo el bucle en Sonnet reduce drásticamente el costo por conversación sin cambiar la calidad de salida."
+          },
+          {
+            "title": "El clasificador masivo que se ejecuta en cada registro",
+            "body": "Etiqueta un millón de tickets, extrae los campos estructurados del backlog de correos del último trimestre, enruta un flujo de formularios entrantes. El bajo costo por token de Haiku más el caché de prompts en el prompt de sistema (estable) significa que el costo unitario por registro es esencialmente insignificante en el presupuesto, lo que hace que los flujos de trabajo de \"clasificar todo\" sean realmente viables."
+          },
+          {
+            "title": "La micro-tarea de visión que necesita ser rápida",
+            "body": "OCR de una captura de pantalla, identificar qué tipo de gráfico es, extraer un número de una imagen de recibo. Haiku 4.5 es multimodal y muy rápido, lo que significa que un agente de UI que toma una captura de pantalla cada pocos segundos y pregunta \"¿qué acaba de cambiar?\" se mantiene receptivo en lugar de tartamudear."
+          }
+        ],
+        "avoidFor": "Evita Haiku 4.5 en bucles de agente largos de múltiples pasos donde pierde instrucciones después de varios turnos, y en razonamiento difícil o ediciones de código donde Sonnet 4.6 u Opus 4.7 es la opción correcta.",
+        "comparisons": [
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet (×1) es el predeterminado para agentes completos. Haiku (×0,3) es la opción correcta cuando la velocidad y el costo importan más que la coherencia en bucles largos. Típicamente como trabajador bajo un planificador Sonnet/Opus. Los benchmarks del proveedor sitúan a Haiku a ~4 puntos de Sonnet 4.5 en SWE-bench Verified."
+          },
+          {
+            "vs": "DeepSeek V4 Flash",
+            "body": "DeepSeek V4 Flash (×0,02) es mucho más barato pero con uso de herramientas más débil y menos fiable en bucles de múltiples pasos. Usa Flash para trabajo masivo de un solo paso; usa Haiku para respuestas cortas interactivas estilo Slack."
+          },
+          {
+            "vs": "MiniMax M2.7",
+            "body": "MiniMax M2.7 (×0,1) es más barato y más fuerte en tareas multilingües. Haiku 4.5 lidera en fiabilidad de enrutamiento de herramientas en inglés y es multimodal."
+          }
+        ],
+        "verdict": "El Claude que pones bajo carga pesada. Triaje, clasificación, sub-agente bajo un orquestador Sonnet/Opus — sí. Rol de planificador — no, ese es el trabajo de Sonnet.",
+        "faqs": [
+          {
+            "q": "¿Es Haiku 4.5 multimodal?",
+            "a": "Sí. Haiku 4.5 acepta entradas de imagen junto con texto y código, por lo que los agentes impulsados por visión funcionan de forma nativa."
+          },
+          {
+            "q": "¿Qué tan rápido es Haiku 4.5?",
+            "a": "Anthropic reporta ~97 tokens por segundo. 4 a 5 veces más rápido que Sonnet 4.5. El modelo más rápido en nuestro catálogo Built-in."
+          },
+          {
+            "q": "¿Cuándo debería elegir Haiku sobre Sonnet?",
+            "a": "Elige Haiku cuando (a) el bucle de agente es corto, usualmente menos de 5 turnos, (b) la latencia importa más que la profundidad de razonamiento, o (c) necesitas un sub-agente barato bajo un orquestador Sonnet/Opus."
+          },
+          {
+            "q": "¿Puede Haiku ejecutar agentes multi-herramienta?",
+            "a": "Puede, pero la precisión disminuye en casos límite comparado con Sonnet 4.6. Mantén la superficie de herramientas reducida y el bucle corto, o recurre a Sonnet."
+          },
+          {
+            "q": "¿Cuál es la puntuación SWE-bench de Haiku 4.5?",
+            "a": "Anthropic reporta 73,3% en SWE-bench Verified. A ~4 puntos de Sonnet 4.5 a un tercio del costo. En el más difícil SWE-bench Pro obtiene 39,5% (Scale AI)."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Subir de nivel cuando la fidelidad de enrutamiento importa"
+          },
+          {
+            "slug": "deepseek-v4-flash",
+            "reason": "Aún más barato para tareas de un solo paso"
+          },
+          {
+            "slug": "minimax-m2.7",
+            "reason": "Alternativa multilingüe barata"
+          }
+        ],
+        "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Disponible en VM0 Managed y los proveedores OAuth de Anthropic / Claude Code.",
+        "vm0Notes": "Haiku 4.5 tiene el multiplicador Claude más bajo (×0,3) y es la opción correcta para cargas de trabajo de enrutamiento de alto volumen, con el caché de prompts manteniendo bajo el costo de prompts cortos repetidos. No tiene la calidad de agente multi-paso de Sonnet, así que diseña cualquier agente basado en Haiku para mantener los bucles cortos y la superficie de herramientas reducida."
+      },
+      "kimi-k2.6": {
+        "name": "Kimi K2.6",
+        "pageTitle": "Kimi K2.6 en VM0. Agentes de contexto largo",
+        "tagline": "El último modelo de peso abierto de Moonshot. Los mejores benchmarks agénticos de su clase en la frontera de código abierto e interfaz compatible con Claude.",
+        "cardIntro": "Lo último de Moonshot. La mejor recuperación de contexto largo en nuestra evaluación interna e interfaz compatible con Claude.",
+        "metaTitle": "Kimi K2.6 en VM0: SWE-bench, Precios y Uso de Contexto Largo",
+        "metaDescription": "Reseña de Kimi K2.6 en VM0. MoE de 1T parámetros de peso abierto de Moonshot. SWE-bench Pro 58,6, costo de crédito ×0,3, contexto 256K. Especificaciones y tareas recomendadas.",
+        "summary": "Kimi K2.6 es el buque insignia de peso abierto de Moonshot y actualmente el modelo agéntico de código abierto más fuerte en varios benchmarks públicos. Mantiene ejecuciones muy largas sin perder el hilo (Moonshot ha documentado sesiones desatendidas de más de 12 horas y más de 4.000 llamadas a herramientas) y acepta entrada de imagen y video de forma nativa. SWE-bench Pro reportado por el proveedor alcanza 58,6 (por encima de Claude Opus 4.6 y GPT-5.4 en ese benchmark), y la tasa de alucinación bajó del ~65% de K2.5 al ~39%.\n\nEl precio de lista del proveedor es $0,60 / $3 por 1M tokens, pesos abiertos bajo licencia MIT Modificada, y la API es compatible con Anthropic. Recurre a Sonnet 4.6 cuando la fiabilidad de enrutamiento de herramientas en producción importa más que las puntuaciones de benchmark, y a Haiku cuando la latencia domina.",
+        "releaseDate": "20 de abril de 2026",
+        "familyPosition": "Cima de la serie Kimi K2 de peso abierto de Moonshot. Sucesor de K2.5 y K2 Thinking.",
+        "background": [
+          "Kimi K2.6 es el modelo agéntico de peso abierto de Moonshot AI lanzado el 20 de abril de 2026. Es un modelo Mixture-of-Experts (MoE) de 1 billón de parámetros con 32B parámetros activos por token. La misma familia de arquitectura que K2.5 y K2 Thinking, con ganancias sustanciales en codificación agéntica y razonamiento de largo horizonte.",
+          "K2.6 causó un gran impacto en los rankings independientes. Las puntuaciones reportadas por el proveedor lo sitúan por delante de GPT-5.4 (xhigh) y Claude Opus 4.6 (esfuerzo máximo) en SWE-bench Pro, con una tasa de alucinación del 39% (bajando del 65% de K2.5). Artificial Analysis lo clasifica #4 en su Índice de Inteligencia. La opción líder de peso abierto.",
+          "En VM0 se expone a través de la clave API de Moonshot como modelo predeterminado, mediante VM0 Managed con el mismo multiplicador ×0,3, y vía OpenRouter. La API es compatible con Anthropic, por lo que los agentes VM0 escritos para Claude funcionan sin cambios de código."
+        ],
+        "architecture": "K2.6 es un modelo Mixture-of-Experts con 1B parámetros totales y 32B activos por token, con una ventana de contexto de 256K tokens y entrada multimodal de imagen y video (salida solo texto). Moonshot lo combina con un runtime Agent Swarm que escala horizontalmente a 300 sub-agentes y 4.000 pasos coordinados, y ha documentado sesiones de codificación de largo horizonte de 12 horas o más. Los pesos abiertos están publicados en Hugging Face bajo una Licencia MIT Modificada.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Serie Kimi K2"
+          },
+          {
+            "label": "Parámetros",
+            "value": "1B total / 32B activos (MoE)"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Imagen, video, texto"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Multilingüe"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "256K tokens"
+          },
+          {
+            "label": "Licencia",
+            "value": "MIT Modificada (pesos abiertos)"
+          },
+          {
+            "label": "Disponible en VM0",
+            "value": "Abril 2026"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor del blog de lanzamiento de K2.6 de Moonshot. Terceros independientes (Artificial Analysis, TokenMix) corroboran el orden relativo. La tasa de alucinación de K2.6 bajó al 39% desde el 65% de K2.5. Una mejora significativa en seguridad/fiabilidad.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Pro",
+            "score": "58,6",
+            "note": "reportado por el proveedor; supera a GPT-5.4, Opus 4.6"
+          },
+          {
+            "name": "SWE-bench Verified",
+            "score": "80,2",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "66,7",
+            "note": "framework Terminus-2"
+          },
+          {
+            "name": "LiveCodeBench (v6)",
+            "score": "89,6",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "HLE (con herramientas)",
+            "score": "54,0",
+            "note": "supera a GPT-5.4 y Opus 4.6"
+          },
+          {
+            "name": "BrowseComp (Agent Swarm)",
+            "score": "86,3",
+            "note": "sube desde 78,4 de K2.5"
+          },
+          {
+            "name": "Índice de Inteligencia Artificial Analysis",
+            "score": "54",
+            "note": "#4 general, líder en pesos abiertos"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Recuperación de contexto largo",
+            "body": "La recuperación de contexto largo más fuerte en nuestra evaluación interna en todo el catálogo Built-in. Mantiene la coherencia en transcripciones largas de agente donde Anthropic Sonnet empieza a desviarse."
+          },
+          {
+            "title": "Benchmarks agénticos",
+            "body": "SWE-bench Pro 58,6 reportado por el proveedor es el más alto del catálogo al momento de escribir. Supera a GPT-5.4 y Opus 4.6."
+          },
+          {
+            "title": "Codificación de largo horizonte",
+            "body": "Sesiones autónomas documentadas de más de 12 horas completando más de 4.000 llamadas a herramientas. El modelo realmente mantiene el rendimiento en ejecuciones muy largas."
+          },
+          {
+            "title": "Uso de herramientas",
+            "body": "Fiable en los flujos de herramientas comunes de VM0. La API compatible con Anthropic significa que los esquemas de herramientas diseñados para Claude funcionan directamente."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "La investigación que tiene que leer cada hilo antiguo",
+            "body": "Excava en seis meses de conversaciones de Slack para encontrar por qué un cliente se dio de baja, peina el backlog de tickets de soporte en busca de un patrón de bug recurrente, o une ideas a través de cientos de RFCs. La recuperación de contexto largo de K2.6 se mantiene en transcripciones donde Anthropic Sonnet empieza a olvidar turnos anteriores, que es exactamente lo que necesitan los flujos de trabajo de \"leer todo el montón\"."
+          },
+          {
+            "title": "La refactorización autónoma que se ejecuta durante la noche",
+            "body": "Moonshot ha documentado una refactorización autónoma de 13 horas de un motor de matching de ocho años, con K2.6 manteniendo más de 4.000 llamadas a herramientas sin desviarse de la tarea. Ese es el tipo de ejecución donde la mayoría de los modelos pierden el objetivo alrededor de la segunda hora; la estabilidad de largo horizonte de K2.6 es lo que hace que \"empezar el viernes por la noche, revisar el lunes por la mañana\" realmente funcione."
+          },
+          {
+            "title": "El agente multimodal que maneja capturas de pantalla y clips",
+            "body": "K2.6 acepta tanto entrada de imagen como de video a través de MoonViT, lo cual es inusual fuera de la familia Claude. Útil para agentes de QA basados en capturas de pantalla, pipelines de visión de documentos y cualquier despliegue donde de otro modo tendrías que incorporar un modelo de visión separado solo para leer imágenes."
+          }
+        ],
+        "avoidFor": "Evita K2.6 en los casos límite más difíciles de enrutamiento de herramientas donde Sonnet 4.6 aún lidera en fiabilidad de producción, y en respuestas de chat críticas en latencia donde Haiku 4.5 es significativamente más rápido.",
+        "comparisons": [
+          {
+            "vs": "GLM-5.1",
+            "body": "Ambos son opciones de contexto largo. K2.6 gana en recuperación bruta de contexto largo en nuestra evaluación interna; GLM-5.1 gana en tamaño de contexto (1M vs 256K). Predetermina K2.6 para transcripciones largas; recurre a GLM-5.1 solo cuando necesitas más de 256K tokens en un solo prompt."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet (×1) lidera en fiabilidad de enrutamiento multi-herramienta en inglés. K2.6 (×0,3) gana en costo y en benchmarks agénticos (SWE-bench Pro). Combínalos: Sonnet para enrutamiento complejo de herramientas, K2.6 para trabajo de agente sensible al costo."
+          },
+          {
+            "vs": "Kimi K2.5",
+            "body": "K2.6 es la generación más reciente con mejor uso de herramientas, menor tasa de alucinación (39% vs 65%) y mejor razonamiento. K2.5 (×0,2) es ligeramente más barato. Prefiere K2.6 para trabajo nuevo."
+          }
+        ],
+        "verdict": "El predeterminado de peso abierto para trabajo de agente serio — contexto largo, costo-efectivo. Las brechas restantes frente a Sonnet 4.6 son fiabilidad de enrutamiento de herramientas y soporte empresarial.",
+        "faqs": [
+          {
+            "q": "¿Cuándo se lanzó Kimi K2.6?",
+            "a": "Moonshot AI lanzó Kimi K2.6 el 20 de abril de 2026. Los pesos abiertos están publicados en Hugging Face bajo una Licencia MIT Modificada."
+          },
+          {
+            "q": "¿Cuál es la ventana de contexto?",
+            "a": "256K tokens. K2.6 se diferencia por la calidad de recuperación a ese tamaño, no por el tamaño bruto de la ventana. La recuperación empieza a degradarse pasados ~180K (similar a otros modelos de 256K)."
+          },
+          {
+            "q": "¿Necesito reescribir mi agente para usar Kimi?",
+            "a": "No. Kimi K2.6 expone una API compatible con Anthropic, por lo que los agentes VM0 ajustados para Claude funcionan sin cambios de código."
+          },
+          {
+            "q": "¿Cómo se compara Kimi K2.6 con Claude Opus 4.6?",
+            "a": "En benchmarks agénticos (reportados por el proveedor), K2.6 lidera. SWE-bench Pro 58,6 vs 53,4 de Opus 4.6, HLE con herramientas 54,0 vs 53,0. Opus 4.6 mantiene una ventaja en perfil de seguridad y fiabilidad de enrutamiento de herramientas en inglés en producción."
+          },
+          {
+            "q": "¿K2.6 soporta entrada de imágenes?",
+            "a": "Sí. K2.6 acepta entrada de imagen y video. Salida solo texto. Los agentes multimodales funcionan de forma nativa."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "kimi-k2.5",
+            "reason": "Generación anterior, multiplicador ligeramente más barato"
+          },
+          {
+            "slug": "glm-5.1",
+            "reason": "Ventana de contexto aún más larga (1M tokens)"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Alternativa más barata para trabajo sensible al costo"
+          }
+        ],
+        "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de Moonshot en `api.moonshot.ai`. Modelo predeterminado en el proveedor Moonshot; también disponible en VM0 Managed y vía OpenRouter.",
+        "vm0Notes": "K2.6 tiene la recuperación de contexto largo más fuerte del catálogo Built-in según nuestra evaluación interna, y a ×0,3 créditos es lo suficientemente barato como para actuar como un sustituto viable de Sonnet para trabajo sensible al costo."
+      },
+      "deepseek-v4-pro": {
+        "name": "DeepSeek V4 Pro",
+        "pageTitle": "DeepSeek V4 Pro en VM0. Razonamiento optimizado en costo",
+        "tagline": "El modelo insignia de razonamiento V4 de DeepSeek. A 0,2 puntos de Claude Opus 4.6 en SWE-bench Verified a un séptimo del costo de proveedor. API compatible con Claude.",
+        "cardIntro": "El buque insignia de DeepSeek. Razonamiento potente a un tercio del costo de crédito de Sonnet, API compatible con Claude.",
+        "metaTitle": "DeepSeek V4 Pro en VM0: Benchmarks, Precios y Comparación",
+        "metaDescription": "Reseña de DeepSeek V4 Pro en VM0. MoE de 1,6T de peso abierto con SWE-bench Verified 80,6%, costo de crédito ×0,3, contexto 1M. Precios, especificaciones y comparación con Claude.",
+        "summary": "DeepSeek V4 Pro es el buque insignia de la generación V4 de DeepSeek — un MoE de 1,6T parámetros de peso abierto bajo licencia MIT. El titular es la relación precio-calidad: SWE-bench Verified reportado por el proveedor es 80,6%, a una fracción de punto de Claude Opus 4.6, a aproximadamente un séptimo del costo de proveedor de Anthropic. Esto hace que los agentes intensivos en razonamiento — revisión masiva de PR, análisis de documentos por lotes, resúmenes programados — sean asequibles a alto volumen.\n\nEl precio de lista del proveedor es $1,74 / $3,48 por 1M tokens con lecturas de caché a $0,028 / 1M y escrituras de caché gratuitas (único en el catálogo). Contexto de 1M tokens, API compatible con Anthropic. Recurre a Sonnet 4.6 cuando la fiabilidad de enrutamiento de herramientas en producción es el factor decisivo, y a V4 Flash cuando el trabajo masivo de un solo paso justifica un modelo 12× más barato.",
+        "releaseDate": "24 de abril de 2026",
+        "familyPosition": "Variante de razonamiento de la familia DeepSeek V4. Emparejado con V4 Flash para costo.",
+        "background": [
+          "DeepSeek V4 Pro es el buque insignia de la generación V4 de DeepSeek, lanzado el 24 de abril de 2026 bajo la Licencia MIT. Es un modelo Mixture-of-Experts de peso abierto con 1,6T parámetros totales y 49B activos por token, emparejado con V4 Flash (284B / 13B activos) para trabajo sensible al costo.",
+          "Ambos modelos V4 comparten un conjunto de características idéntico: ventana de contexto de 1M tokens, 384K de salida máxima, tres modos de esfuerzo de razonamiento (standard, think, think-max), salida JSON, llamadas a herramientas y completado FIM en modo no-think. El modelo Pro añade una arquitectura de atención híbrida (Compressed Sparse Attention + Heavily Compressed Attention) para una eficiencia de contexto largo drásticamente mejorada. 27% de los FLOPs de inferencia por token y 10% de la caché KV vs DeepSeek V3.2 en contexto de 1M.",
+          "DeepSeek causó sensación durante 2025 al ofrecer razonamiento de nivel Anthropic a una fracción del precio. V4 Pro continúa ese patrón: SWE-bench Verified 80,6% reportado por el proveedor está a 0,2 puntos de Claude Opus 4.6, a aproximadamente un séptimo del costo de proveedor. En VM0 se expone a través del proveedor de clave API de DeepSeek y en VM0 Managed a ×0,3. El mismo multiplicador que Claude Haiku 4.5 pero con un comportamiento de razonamiento sustancialmente más fuerte."
+        ],
+        "architecture": "V4 Pro es un modelo Mixture-of-Experts con 1,6T parámetros totales y 49B activos por token, con una pila de atención híbrida (Compressed Sparse Attention más Heavily Compressed Attention) que mantiene la inferencia de contexto largo económica. Soporta una ventana de contexto de 1M tokens con 384K de salida máxima, tres modos de esfuerzo de razonamiento (standard, think y think-max), y usa Conexiones Hiper-Restringidas de Variedad para propagación estable de señales. El modelo fue entrenado en más de 32T tokens con el optimizador Muon y se publica bajo la Licencia MIT con pesos abiertos.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Serie DeepSeek V4"
+          },
+          {
+            "label": "Parámetros",
+            "value": "1,6T total / 49B activos (MoE)"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Multilingüe"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "1M tokens"
+          },
+          {
+            "label": "Salida máxima",
+            "value": "384K tokens"
+          },
+          {
+            "label": "Licencia",
+            "value": "MIT (pesos abiertos)"
+          },
+          {
+            "label": "Disponible en VM0",
+            "value": "24 de abril de 2026"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor del lanzamiento de V4 Pro de DeepSeek. Reseñas independientes (Geeky Gadgets, Code Arena) sitúan a V4 Pro tercero en Code Arena detrás de GLM-5.1 y Kimi K2.6. Las afirmaciones de benchmark más fuertes provienen de los propios materiales de DeepSeek. Trátalas como direccionales, no como verdad absoluta.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "80,6%",
+            "note": "reportado por el proveedor; a 0,2pts de Opus 4.6"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "67,9%",
+            "note": "reportado por el proveedor; supera a Opus 4.6"
+          },
+          {
+            "name": "LiveCodeBench",
+            "score": "93,5%",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Rating Codeforces",
+            "score": "3206",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "MMLU-Pro",
+            "score": "Iguala a GPT-5.4",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Índice de Inteligencia Artificial Analysis",
+            "score": "52",
+            "note": "esfuerzo máximo"
+          },
+          {
+            "name": "Velocidad",
+            "score": "~36 tokens/seg",
+            "note": "Artificial Analysis"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Razonamiento",
+            "body": "El razonamiento sub-Sonnet más fuerte de nuestro catálogo. Se mantiene en trabajo multi-paso donde modelos más baratos empiezan a desviarse. MMLU-Pro reportado por el proveedor iguala a GPT-5.4."
+          },
+          {
+            "title": "Benchmarks de codificación",
+            "body": "Reportado por el proveedor: SWE-bench Verified 80,6% (a 0,2 de Opus 4.6), Terminal-Bench 2.0 67,9% (supera a Opus 4.6), LiveCodeBench 93,5%."
+          },
+          {
+            "title": "Eficiencia de costo",
+            "body": "La propiedad destacada. Costo de crédito ×0,3 con razonamiento que compite bien con Sonnet 4.6 hace de V4 Pro el predeterminado de optimización de costos. ~7× más barato que Claude Opus 4.7."
+          },
+          {
+            "title": "Economía de caché",
+            "body": "Las escrituras de caché son gratuitas. Único entre los modelos Built-in de VM0. Los prompts de sistema estables y los grandes documentos de referencia pegados no cuestan nada extra en caché, solo se factura el lado de lectura."
+          },
+          {
+            "title": "Velocidad",
+            "body": "Alrededor de 36 tokens/seg en esfuerzo máximo según Artificial Analysis. Más lento que Haiku, ligeramente más lento que Opus 4.6."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente de revisión de PR que se ejecuta en cada commit",
+            "body": "La precisión de nivel Sonnet a aproximadamente un tercio del costo de proveedor de Sonnet es lo que hace que \"revisar cada commit, no solo los PR grandes\" sea realmente viable. V4 Pro lee el diff, los archivos relacionados y el issue vinculado, luego escribe un comentario estructurado — y el precio por llamada es lo suficientemente bajo como para que ejecutarlo como un paso de CI en cada push no aparezca como una partida notable."
+          },
+          {
+            "title": "El resumidor programado que se ejecuta cada noche",
+            "body": "Extrae las conversaciones de clientes de ayer, tickets de soporte o llamadas de ventas y escribe un resumen. El prompt de sistema y el esquema de herramientas no cambian entre ejecuciones, y DeepSeek no factura las escrituras de caché — así que el largo prefijo fijo se paga una vez y las lecturas cacheadas cuestan una fracción de la entrada normal. Aquí es donde el modelo de precios de V4 Pro cambia genuinamente lo que es asequible."
+          },
+          {
+            "title": "El agente de código de repositorio completo que cuesta menos que Opus",
+            "body": "Contexto de 1M tokens con atención híbrida (Compressed Sparse Attention más Heavily Compressed Attention) significa que un código base de tamaño medio cabe en un solo prompt y el costo de inferencia se mantiene manejable a medida que la ventana se llena. Para refactorizaciones entre archivos y revisiones a nivel de arquitectura, aquí es donde obtienes el flujo de trabajo estilo Opus de \"ver todo a la vez\" sin la factura estilo Opus."
+          }
+        ],
+        "avoidFor": "Evita V4 Pro en los casos límite más difíciles de enrutamiento de herramientas donde Sonnet 4.6 aún lidera, y en trabajo masivo de un solo paso donde no se requiere razonamiento y V4 Flash es aproximadamente 12× más barato.",
+        "comparisons": [
+          {
+            "vs": "DeepSeek V4 Flash",
+            "body": "Mismo proveedor, diferente posicionamiento. V4 Pro (×0,3) te da razonamiento; V4 Flash (×0,02) te da el modelo de un solo paso más barato posible. SWE-bench Verified reportado por el proveedor muestra a Flash a 1,6 puntos de Pro (79,0 vs 80,6). Pero Pro se destaca en Terminal-Bench (67,9 vs 56,9) en uso de herramientas multi-paso."
+          },
+          {
+            "vs": "Claude Sonnet 4.6",
+            "body": "Sonnet 4.6 (×1) gana en casos límite de enrutamiento de herramientas y razonamiento en inglés. V4 Pro (×0,3) gana en costo y es competitivo en benchmarks de codificación (reportados por el proveedor). Vale la pena hacer pruebas A/B en un agente real antes de comprometerse."
+          },
+          {
+            "vs": "Kimi K2.6",
+            "body": "Mismo multiplicador (×0,3). Kimi tiene mejor recuperación de contexto largo y un Índice de Inteligencia más alto (54 vs 52); V4 Pro tiene mejor economía de caché (escrituras gratuitas) y una ventana de contexto de 1M vs 256K de Kimi. Elige según qué propiedad importa más."
+          }
+        ],
+        "verdict": "Prefiltra con V4 Flash, escala a V4 Pro para razonamiento, escala a Sonnet 4.6 solo cuando V4 Pro se estanca en casos límite de enrutamiento de herramientas.",
+        "faqs": [
+          {
+            "q": "¿Cuándo se lanzó DeepSeek V4 Pro?",
+            "a": "DeepSeek lanzó V4 Pro y V4 Flash juntos el 24 de abril de 2026 bajo la Licencia MIT con pesos abiertos."
+          },
+          {
+            "q": "¿Por qué las escrituras de caché son gratuitas?",
+            "a": "DeepSeek no factura la porción de escritura de caché. Solo las lecturas de caché facturan, a $0,145 por 1M tokens. Los prompts de sistema estables y los grandes contextos de referencia no cuestan nada extra en caché."
+          },
+          {
+            "q": "¿Cuál es la ventana de contexto de V4 Pro?",
+            "a": "1 millón de tokens con hasta 384K tokens de salida. La arquitectura de atención híbrida hace que la ventana completa sea utilizable a un costo de inferencia mucho menor que V3.2."
+          },
+          {
+            "q": "¿Cómo se compara V4 Pro con Claude Opus 4.6?",
+            "a": "SWE-bench Verified reportado por el proveedor está a 0,2 puntos (80,6 vs 80,8). Terminal-Bench 2.0 favorece a V4 Pro (67,9 vs 65,4). Opus 4.6 lidera en HLE (40,0 vs 37,7) y matemáticas HMMT 2026 (96,2 vs 95,2). A un costo de proveedor ~7× menor, V4 Pro es la opción correcta cuando la calidad de razonamiento es el listón pero el costo importa."
+          },
+          {
+            "q": "¿Es V4 Pro de código abierto?",
+            "a": "Sí. Los pesos se publican bajo la Licencia MIT. La API alojada de DeepSeek es la ruta de producción para VM0."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "deepseek-v4-flash",
+            "reason": "12× más barato, trabajo de un solo paso"
+          },
+          {
+            "slug": "claude-sonnet-4-6",
+            "reason": "Subir de nivel para enrutamiento difícil de herramientas"
+          },
+          {
+            "slug": "kimi-k2.6",
+            "reason": "Mismo precio, mejor recuperación de contexto largo"
+          }
+        ],
+        "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de DeepSeek en `api.deepseek.com`. Disponible en VM0 Managed y el proveedor DeepSeek.",
+        "vm0Notes": "DeepSeek factura lecturas de caché pero no escrituras, lo que supone un ahorro real cuando el prompt de sistema es estable. VM0 establece un timeout de API de 10 minutos para el proveedor DeepSeek y deshabilita el tráfico no esencial para mantener la capacidad de respuesta de los agentes de larga duración. El resultado es el razonamiento más fuerte de cualquier modelo sub-Sonnet en el catálogo Built-in."
+      },
+      "kimi-k2.5": {
+        "name": "Kimi K2.5",
+        "pageTitle": "Kimi K2.5 en VM0. La generación anterior de Moonshot",
+        "tagline": "La generación anterior de Kimi. Más barato que K2.6 pero con uso de herramientas más débil; mantenlo fijado solo si un agente específico fue validado en esta versión.",
+        "cardIntro": "La generación anterior de Kimi. Más barato que K2.6 pero con uso de herramientas más débil; mantenlo fijado solo si un agente específico fue validado en esta versión.",
+        "metaTitle": "Kimi K2.5 en VM0: Especificaciones, Precios y Migración a K2.6",
+        "metaDescription": "Reseña de Kimi K2.5 en VM0. El anterior buque insignia de Moonshot a costo de crédito ×0,2. SWE-bench Pro 50,7, contexto 256K. Cuándo mantener K2.5 en lugar de K2.6.",
+        "summary": "Kimi K2.5 es el anterior buque insignia de Moonshot, el modelo de peso abierto que K2.6 reemplazó en abril de 2026. Sigue siendo capaz — fuerte en resúmenes de contexto largo — pero K2.6 lidera en cada benchmark publicado al mismo precio de proveedor, y la brecha en tasa de alucinación es amplia (K2.5 ~65% en la evaluación de Moonshot versus ~39% de K2.6).\n\nEl precio de lista del proveedor es $0,60 / $3 por 1M tokens, idéntico a K2.6. La propuesta honesta: si construiste sobre K2.5 y funciona, déjalo; si empiezas desde cero, comienza en K2.6.",
+        "releaseDate": "Finales de 2025 (serie Kimi K2)",
+        "familyPosition": "Generación anterior de la serie Kimi K2 de peso abierto de Moonshot. Reemplazada por K2.6.",
+        "background": [
+          "Kimi K2.5 fue el modelo Kimi insignia de Moonshot antes de K2.6. Fue el primer Kimi ampliamente desplegado en combinar razonamiento de contexto largo con una superficie API compatible con Claude, y sigue siendo un modelo capaz para trabajo de resumen de contexto largo.",
+          "En VM0 tiene el mismo precio de lista de proveedor que K2.6 pero un multiplicador de crédito más bajo (×0,2). El multiplicador más bajo refleja el posicionamiento en lugar del costo bruto por token. K2.6 es el predeterminado recomendado para trabajo nuevo; K2.5 es la fijación legacy.",
+          "K2.5 tiene una puntuación SWE-bench Pro reportada por el proveedor de 50,7 y una tasa de alucinación de ~65%. Ambas significativamente por detrás de K2.6 (58,6 y 39%). En comportamiento, se mantiene estable para agentes de producción fijados."
+        ],
+        "architecture": "K2.5 es un modelo Mixture-of-Experts con 1B parámetros totales y 32B activos por token de la misma familia que K2.6, con una ventana de contexto de 256K tokens y una superficie API compatible con Anthropic. Los pesos abiertos están publicados en Hugging Face.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Serie Kimi K2"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Imagen, texto, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Multilingüe"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "256K tokens"
+          },
+          {
+            "label": "Licencia",
+            "value": "MIT Modificada (pesos abiertos)"
+          },
+          {
+            "label": "Disponible en VM0",
+            "value": "Disponible desde el lanzamiento"
+          }
+        ],
+        "benchmarksNote": "Los benchmarks de K2.5 ahora son más útiles como línea base de comparación para K2.6. El modelo más nuevo lidera en cada métrica publicada al mismo costo de proveedor.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Pro",
+            "score": "50,7",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "BrowseComp",
+            "score": "78,4",
+            "note": "reportado por el proveedor"
+          },
+          {
+            "name": "Tasa de alucinación",
+            "score": "~65%",
+            "note": "bajó a 39% en K2.6"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Contexto largo",
+            "body": "Fuerte, forma similar a K2.6 pero con K2.6 teniendo ventaja en benchmarks de recuperación más difíciles."
+          },
+          {
+            "title": "Uso de herramientas",
+            "body": "Sólido en flujos comunes; K2.6 es significativamente mejor en agentes multi-herramienta complejos."
+          },
+          {
+            "title": "Alucinaciones",
+            "body": "Tasa de alucinación reportada por el proveedor de ~65%. Mucho más alta que el 39% de K2.6. Espera más salidas confiadas pero incorrectas."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente legacy que ya funciona",
+            "body": "Tu equipo validó un agente contra K2.5 hace unos meses, los prompts están ajustados, la suite de evaluación pasa, los clientes están contentos. Fijar a K2.5 mantiene ese comportamiento exacto mientras decides si la actualización a K2.6 vale la pena volver a ejecutar la validación. Mismo endpoint de Moonshot, misma interfaz compatible con Anthropic — solo cambian los pesos del modelo cuando cambias."
+          },
+          {
+            "title": "El trabajo de resumen masivo donde la ventaja de K2.6 no se nota",
+            "body": "Transcripciones de cientos de miles de tokens entrando, resúmenes de tres párrafos saliendo. La precisión de enrutamiento de herramientas no es parte de la carga de trabajo, la resistencia a alucinaciones importa menos cuando un humano va a revisar la salida de todos modos, y al mismo precio de proveedor que K2.6 puedes ejecutar K2.5 en estos trabajos sin tocar el pipeline existente."
+          }
+        ],
+        "avoidFor": "No inicies nuevos agentes en K2.5, ya que K2.6 es una actualización gratuita en todos los sentidos significativos excepto el multiplicador. Evítalo en enrutamiento multi-herramienta en inglés donde Sonnet 4.6 lidera, y en tareas donde la alucinación es costosa porque la tasa de K2.5 es materialmente peor que la de K2.6.",
+        "comparisons": [
+          {
+            "vs": "Kimi K2.6",
+            "body": "K2.6 es la generación más reciente con mejor uso de herramientas, menor tasa de alucinación (39% vs 65%) y mejor razonamiento. K2.5 (×0,2) es ligeramente más barato. Elige K2.5 solo para agentes legacy fijados."
+          },
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "DeepSeek V4 Pro (×0,3) tiene razonamiento más fuerte. K2.5 (×0,2) gana en tamaño de contexto y se mantiene dentro de la superficie API de Moonshot."
+          }
+        ],
+        "verdict": "Modo mantenimiento. Fíjalo si tienes un agente ya validado en él; de lo contrario, comienza en K2.6.",
+        "faqs": [
+          {
+            "q": "¿Por qué K2.5 tiene un multiplicador más bajo que K2.6 al mismo precio de proveedor?",
+            "a": "Los multiplicadores reflejan el posicionamiento de VM0 de cada modelo en el catálogo, no solo el costo por token. K2.6 es el predeterminado Kimi recomendado a ×0,3; K2.5 está posicionado como legacy a ×0,2."
+          },
+          {
+            "q": "¿Debería migrar de K2.5 a K2.6?",
+            "a": "Sí para trabajo nuevo. Mismo precio de proveedor, mejor uso de herramientas y razonamiento, tasa de alucinación mucho más baja. Migra los agentes fijados solo después de ejecutarlos en tu suite de regresión."
+          },
+          {
+            "q": "¿Cuál es la tasa de alucinación?",
+            "a": "~65% reportada por el proveedor. Significativamente más alta que K2.6 (39%). Si tu agente reporta hechos a usuarios, esto importa; considera K2.6 en su lugar."
+          },
+          {
+            "q": "¿Cuál es la ventana de contexto de K2.5?",
+            "a": "256K tokens. Igual que K2.6."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "kimi-k2.6",
+            "reason": "Kimi más nuevo con mejor uso de herramientas"
+          },
+          {
+            "slug": "glm-5.1",
+            "reason": "Ventana de contexto más grande si la necesitas"
+          },
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Razonamiento más fuerte a multiplicador ligeramente más alto"
+          }
+        ],
+        "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de Moonshot en `api.moonshot.ai`. Disponible en VM0 Managed, Moonshot, OpenRouter y Vercel AI Gateway.",
+        "vm0Notes": "K2.5 tiene el mismo precio de proveedor por token que K2.6 pero un multiplicador más bajo (×0,2 versus ×0,3) porque el multiplicador refleja el posicionamiento en lugar del costo bruto. El comportamiento en contexto largo es sólido, pero K2.6 es la opción recomendada para cualquier trabajo nuevo en VM0."
+      },
+      "minimax-m2.7": {
+        "name": "MiniMax M2.7",
+        "pageTitle": "MiniMax M2.7 en VM0. Multilingüe a ×0,1",
+        "tagline": "Razonamiento multilingüe potente a un décimo del costo de crédito de Sonnet. Timeout generoso para pasos de pensamiento largos.",
+        "cardIntro": "Razonamiento multilingüe potente a un décimo del costo de crédito de Sonnet. Timeout generoso para pasos de pensamiento largos.",
+        "metaTitle": "MiniMax M2.7 en VM0: Precios, Especificaciones y Uso Multilingüe",
+        "metaDescription": "Reseña de MiniMax M2.7 en VM0. Razonamiento multilingüe potente a costo de crédito ×0,1, timeout de API de 50 min. Precios y tareas.",
+        "summary": "MiniMax M2.7 es el caballo de batalla multilingüe barato del catálogo. Úsalo cuando el idioma principal del agente no es el inglés y el costo unitario importa: redacción de respuestas multilingües, triaje de soporte en idiomas mixtos, resúmenes programados sobre corpus no ingleses. No intenta superar a Sonnet en benchmarks en inglés; se trata de mantener el tráfico de producción multilingüe asequible.\n\nEl precio de lista del proveedor es $0,30 / $1,20 por 1M tokens, API compatible con Anthropic. VM0 establece un timeout de API de 50 minutos para el proveedor MiniMax para que los pasos de pensamiento largos se completen de manera fiable. Recurre a Sonnet 4.6 para uso de herramientas en inglés y a Haiku 4.5 para respuestas críticas en latencia.",
+        "releaseDate": "Disponible desde el lanzamiento de la serie M2",
+        "familyPosition": "El último modelo de razonamiento de texto en la serie M2 de MiniMax.",
+        "background": [
+          "MiniMax M2.7 es de MiniMax, un laboratorio de IA con una línea de productos multilingüe y multimodal. El lado de razonamiento de texto es lo que está expuesto en VM0; los productos de imagen y voz de MiniMax son ofertas separadas en la plataforma del laboratorio.",
+          "En VM0, M2.7 es el modelo predeterminado en el proveedor de clave API de MiniMax. El catálogo Built-in lo ofrece a ×0,1. Uno de los multiplicadores más bajos del catálogo, convirtiéndolo en el razonador barato pero creíble predeterminado para cargas de trabajo multilingües.",
+          "El proveedor MiniMax de VM0 establece un timeout de API de 50 minutos y deshabilita el tráfico no esencial, para que los pasos de pensamiento largos se completen de manera fiable sin caídas de conexión."
+        ],
+        "architecture": "M2.7 expone una superficie API compatible con Anthropic con una ventana de contexto de 200K tokens y cobertura multilingüe. Se ejecuta en `api.minimax.io`.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Serie MiniMax M2"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Multilingüe"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "200K tokens"
+          },
+          {
+            "label": "Caché de prompts",
+            "value": "Soportado (compatible con Anthropic)"
+          },
+          {
+            "label": "Disponible en VM0",
+            "value": "Disponible desde el lanzamiento"
+          }
+        ],
+        "benchmarksNote": "MiniMax publica menos cifras de comparación directa que Anthropic, Moonshot o DeepSeek. Mantenemos esta sección honesta. Elige M2.7 basándote en el perfil de idioma y el posicionamiento de costo en lugar de perseguir rankings.",
+        "benchmarks": [
+          {
+            "name": "Enrutamiento multi-herramienta en inglés",
+            "score": "Por debajo de Sonnet 4.6",
+            "note": "VM0 interno"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Multilingüe",
+            "body": "Más fuerte en flujos multilingües que la familia Anthropic. La elección natural cuando el idioma principal del agente no es el inglés."
+          },
+          {
+            "title": "Razonamiento",
+            "body": "Sólido para trabajo de agente general; por debajo de Sonnet 4.6 y Kimi K2.6 en los casos límite más difíciles de enrutamiento de herramientas."
+          },
+          {
+            "title": "Latencia",
+            "body": "Más lento que Haiku 4.5; el timeout de 50 minutos de VM0 significa que los pasos de pensamiento muy largos sobreviven sin caerse."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El agente de cliente multilingüe que suena nativo",
+            "body": "Redactando respuestas, clasificando tickets, manteniendo hilos de chat multilingües donde la conversación cambia de idioma a mitad de mensaje. El entrenamiento de M2.7 enfatizó la cobertura multilingüe, por lo que la salida se lee más naturalmente para clientes no angloparlantes que el mismo prompt enrutado a través de un modelo inglés primero."
+          },
+          {
+            "title": "El resumidor nocturno ejecutándose sobre contenido multilingüe",
+            "body": "Las conversaciones de clientes del último trimestre, un año de tickets de soporte bilingües, una pila de documentos regulatorios multilingües — trabajos de resumen masivo donde la velocidad no es crítica pero el costo unitario importa mucho. El precio de proveedor de M2.7 mantiene el costo de los flujos de trabajo de \"resumir todo\" lo suficientemente bajo como para que puedan ejecutarse en cada lote en lugar de cada dos semanas."
+          },
+          {
+            "title": "El trabajo de pensamiento que necesita un plazo largo",
+            "body": "Pases de razonamiento multi-paso que genuinamente toman diez minutos o más — investigación profunda, análisis de documentos, cadenas de planificación. El proveedor MiniMax de VM0 se ejecuta con un timeout de API de 50 minutos (y deshabilita el tráfico no esencial), por lo que esos pasos de pensamiento largos se completan limpiamente en lugar de cortarse y forzar un reintento."
+          }
+        ],
+        "avoidFor": "Evita M2.7 en agentes multi-herramienta con inglés primero donde Sonnet 4.6 es más fiable, y en respuestas críticas en latencia donde Haiku 4.5 es más rápido.",
+        "comparisons": [
+          {
+            "vs": "Kimi K2.6",
+            "body": "Kimi K2.6 (×0,3) tiene razonamiento y uso de herramientas más fuertes. M2.7 (×0,1) cuesta un tercio y tiene un perfil multilingüe más fuerte. Predetermina Kimi para trabajo general; recurre a MiniMax para trabajos de fondo multilingües baratos."
+          },
+          {
+            "vs": "DeepSeek V4 Flash",
+            "body": "Ambos están por debajo de Haiku en costo. V4 Flash es más rápido e incluso más barato (×0,02) pero con razonamiento más débil. M2.7 es la mejor opción cuando el trabajo necesita más que razonamiento de un solo paso."
+          },
+          {
+            "vs": "GLM-5.1",
+            "body": "GLM-5.1 (×0,4) es más capaz en trabajo de contexto largo en inglés. M2.7 (×0,1) es mucho más barato y la opción correcta cuando el perfil de idioma y el presupuesto dominan."
+          }
+        ],
+        "verdict": "El predeterminado multilingüe barato. Úsalo cuando el perfil de idioma y el presupuesto lo requieran; recurre a Kimi K2.6 o Sonnet 4.6 cuando la calidad bruta importa.",
+        "faqs": [
+          {
+            "q": "¿Cuál es el timeout de API?",
+            "a": "VM0 establece un timeout de 50 minutos para el proveedor MiniMax, más un flag para suprimir el tráfico no esencial. Los pasos de pensamiento largos se completan de manera fiable."
+          },
+          {
+            "q": "¿MiniMax M2.7 soporta entrada de imágenes?",
+            "a": "M2.7 en VM0 es el modelo de razonamiento de texto. MiniMax vende productos multimodales por separado; la generación de imagen y voz no es parte de la superficie de agente Built-in de VM0 hoy."
+          },
+          {
+            "q": "¿Por qué el multiplicador es tan bajo (×0,1)?",
+            "a": "El precio de lista del proveedor es genuinamente bajo ($0,30/$1,20 por 1M) y VM0 fija el precio del modelo en consecuencia. Úsalo como un caballo de batalla multilingüe barato, no como un reemplazo de razonamiento para Sonnet."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "kimi-k2.6",
+            "reason": "Razonamiento más fuerte a un precio similar"
+          },
+          {
+            "slug": "deepseek-v4-flash",
+            "reason": "Aún más barato si la calidad lo permite"
+          },
+          {
+            "slug": "claude-haiku-4-5",
+            "reason": "Alternativa Anthropic para triaje rápido"
+          }
+        ],
+        "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de MiniMax en `api.minimax.io`. Modelo predeterminado en el proveedor MiniMax; también disponible en VM0 Managed.",
+        "vm0Notes": "VM0 establece un timeout de API de 50 minutos para el proveedor MiniMax y deshabilita el tráfico no esencial, para que los pasos de pensamiento largos sobrevivan sin caerse. El multiplicador ×0,1 es el más bajo sin contar Flash en el catálogo, razón por la cual M2.7 se empareja naturalmente con cargas de trabajo multilingües de alto volumen."
+      },
+      "deepseek-v4-flash": {
+        "name": "DeepSeek V4 Flash",
+        "pageTitle": "DeepSeek V4 Flash en VM0. El modelo más barato",
+        "tagline": "El modelo más barato del catálogo. 50× menos que Sonnet 4.6. Sorprendentemente capaz para su nivel. SWE-bench Verified reportado por el proveedor a 1,6 puntos de V4 Pro.",
+        "cardIntro": "El modelo más barato del catálogo. 50× menos que Sonnet 4.6. Bueno para tareas de un solo paso de alto volumen donde el prompt hace la mayor parte del trabajo.",
+        "metaTitle": "DeepSeek V4 Flash en VM0: El Modelo Más Barato, Benchmarks y Precio",
+        "metaDescription": "Reseña de DeepSeek V4 Flash en VM0. El modelo Built-in más barato a costo de crédito ×0,02 ($0,14/$0,28). SWE-bench Verified 79% reportado por el proveedor, contexto 1M. Casos de uso.",
+        "summary": "DeepSeek V4 Flash es el líder en costo de la generación V4, diseñado para el costo unitario más bajo absoluto del catálogo. Es bueno en trabajo de un solo paso donde el prompt hace la mayor parte del trabajo: etiquetar un millón de tickets, extraer campos estructurados de backlogs de correo, puntuar reseñas, prefiltrar registros antes de que los casos difíciles vayan a un modelo más fuerte. SWE-bench Verified reportado por el proveedor es 79,0% (a 1,6 puntos de V4 Pro), pero Terminal-Bench 2.0 se queda atrás por 11 puntos — ahí es donde Flash pierde: en cadenas largas de herramientas multi-paso.\n\nEl precio de lista del proveedor es $0,14 / $0,28 por 1M tokens con lecturas de caché a $0,028 / 1M y escrituras de caché gratuitas. No pongas Flash en un rol de planificador; para eso, V4 Pro o Sonnet 4.6. En cualquier otro lugar donde el costo domina, nada compite.",
+        "releaseDate": "24 de abril de 2026",
+        "familyPosition": "Líder en costo de la familia DeepSeek V4. Emparejado con V4 Pro para razonamiento.",
+        "background": [
+          "DeepSeek V4 Flash es el líder en costo de la generación V4 de DeepSeek, lanzado el 24 de abril de 2026 junto con V4 Pro. Donde V4 Pro está posicionado para razonamiento, Flash está posicionado para el costo unitario más bajo absoluto. Un modelo que puedes ejecutar a volúmenes muy altos sin pensar en el presupuesto.",
+          "Flash es un MoE de 284B parámetros con 13B activos por token (vs 1,6T / 49B de Pro). Ambos comparten el conjunto de características idéntico de la familia V4: contexto de 1M tokens, 384K de salida máxima, tres modos de esfuerzo de razonamiento, salida JSON y llamadas a herramientas.",
+          "En VM0 tiene un multiplicador de crédito ×0,02. El más bajo de todo el catálogo Built-in. Esto lo convierte en el predeterminado para clasificación masiva, etiquetado, extracción y cargas de trabajo de prefiltrado donde el prompt hace la mayor parte del trabajo y el modelo solo necesita seguir instrucciones de manera fiable. Comparte la economía de caché de escritura gratuita de la familia V4: solo se facturan las lecturas de caché."
+        ],
+        "architecture": "V4 Flash es un modelo Mixture-of-Experts con 284B parámetros totales y 13B activos por token, con una ventana de contexto de 1M tokens y 384K de salida máxima. Expone tres modos de esfuerzo de razonamiento (standard, think y think-max), factura solo lecturas de caché (las escrituras de caché son gratuitas) y se publica bajo la Licencia MIT con pesos abiertos.",
+        "specs": [
+          {
+            "label": "Familia",
+            "value": "Serie DeepSeek V4"
+          },
+          {
+            "label": "Parámetros",
+            "value": "284B total / 13B activos (MoE)"
+          },
+          {
+            "label": "Modalidades",
+            "value": "Texto, código"
+          },
+          {
+            "label": "Idiomas",
+            "value": "Multilingüe"
+          },
+          {
+            "label": "Ventana de contexto",
+            "value": "1M tokens"
+          },
+          {
+            "label": "Salida máxima",
+            "value": "384K tokens"
+          },
+          {
+            "label": "Licencia",
+            "value": "MIT (pesos abiertos)"
+          },
+          {
+            "label": "Disponible en VM0",
+            "value": "24 de abril de 2026"
+          }
+        ],
+        "benchmarksNote": "Puntuaciones reportadas por el proveedor del lanzamiento de V4 de DeepSeek. Flash iguala a Pro en benchmarks más simples pero pierde terreno en uso de herramientas multi-paso (Terminal-Bench) y recuperación factual (SimpleQA). Exactamente lo que esperarías del MoE más pequeño.",
+        "benchmarks": [
+          {
+            "name": "SWE-bench Verified",
+            "score": "79,0%",
+            "note": "reportado por el proveedor; a 1,6pts de V4 Pro"
+          },
+          {
+            "name": "Terminal-Bench 2.0",
+            "score": "56,9%",
+            "note": "reportado por el proveedor; 11pts por detrás de V4 Pro"
+          },
+          {
+            "name": "SimpleQA-Verified",
+            "score": "34,1%",
+            "note": "reportado por el proveedor; por detrás de V4 Pro"
+          }
+        ],
+        "performance": [
+          {
+            "title": "Costo",
+            "body": "De lejos el costo más bajo del catálogo Built-in. La opción correcta cuando el costo unitario domina la decisión."
+          },
+          {
+            "title": "Precisión en un solo paso",
+            "body": "Buena cuando el prompt es explícito y la tarea cabe en uno o dos turnos. Cae notablemente cuando se le pide planificar, ramificar y recordar a través de muchos pasos."
+          },
+          {
+            "title": "Uso de herramientas multi-paso",
+            "body": "Terminal-Bench 2.0 reportado por el proveedor es 56,9% (vs 67,9% de V4 Pro). Significativamente por detrás en flujos complejos de herramientas multi-paso. No pongas V4 Flash en un rol de planificador."
+          },
+          {
+            "title": "Ventana de contexto",
+            "body": "1M tokens. Igual que V4 Pro y mucho más grande que Anthropic Haiku (200K)."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "El clasificador que se ejecuta en cada registro sin pestañear",
+            "body": "Etiqueta un millón de tickets por categoría, enruta formularios entrantes al equipo correcto, puntúa cada reseña en las dimensiones que importan. El costo por registro en Flash es fracciones de centavo, que es lo que hace que los flujos de trabajo de \"clasificar todo a medida que llega\" sean realmente sostenibles en lugar de limitarse a una muestra."
+          },
+          {
+            "title": "El prefiltro delante de un modelo más fuerte",
+            "body": "Ejecuta V4 Flash en cada registro primero, luego enruta el 5% superior (o los casos en los que Flash no tiene confianza) a V4 Pro o Sonnet 4.6. Los pipelines de dos etapas superan a los de un solo modelo en costo total casi siempre — Flash maneja el 95% fácil, el modelo más fuerte solo ve el 5% difícil, y tu factura escala con la necesidad de razonamiento en lugar del volumen total."
+          },
+          {
+            "title": "El trabajo de extracción masiva que obtiene datos estructurados de cualquier lugar",
+            "body": "Backlogs de correo, PDFs, transcripciones de reuniones, facturas escaneadas — cualquier lugar donde haya un prompt de sistema fijo pidiendo la misma forma JSON. Flash factura lecturas de caché pero no escrituras, por lo que el largo prefijo fijo que define el esquema de salida se paga una vez y se amortiza en todo el lote, llevando el costo marginal por documento cerca de cero."
+          },
+          {
+            "title": "La Q&A de un solo paso sobre documentos largos",
+            "body": "Carga un libro entero, un contrato de 200 páginas o un código base en la ventana de contexto de 1M tokens y haz una sola pregunta dirigida. Flash responde en un solo paso a fracciones de centavo por llamada — más que suficientemente rápido para responder \"¿este documento menciona X?\" a través de un documento largo a escala, que es uno de los flujos de trabajo donde los bucles agénticos genuinamente no ayudan."
+          }
+        ],
+        "avoidFor": "Evita V4 Flash en bucles de agente multi-paso donde se desvía en cadenas largas de herramientas, y en razonamiento difícil, ediciones de código o roles de planificador donde V4 Pro o Sonnet 4.6 es la opción correcta.",
+        "comparisons": [
+          {
+            "vs": "DeepSeek V4 Pro",
+            "body": "Mismo proveedor; V4 Pro (×0,3) hace el razonamiento, V4 Flash (×0,02) hace el volumen. La división clásica: Flash como prefiltro, Pro como escalador. SWE-bench Verified reportado por el proveedor está a 1,6 puntos (79,0 vs 80,6); Terminal-Bench 2.0 favorece a Pro por 11 puntos (67,9 vs 56,9)."
+          },
+          {
+            "vs": "Claude Haiku 4.5",
+            "body": "Haiku 4.5 (×0,3) es más fiable en enrutamiento multi-herramienta y más rápido en flujos interactivos. V4 Flash (×0,02) gana en costo bruto y tamaño de contexto. Elige Flash para trabajos por lotes; elige Haiku para respuestas interactivas estilo Slack."
+          },
+          {
+            "vs": "MiniMax M2.7",
+            "body": "M2.7 (×0,1) es más fuerte en razonamiento multilingüe y tiene un timeout de 50 minutos para pensamiento largo. V4 Flash (×0,02) es más rápido y mucho más barato para trabajo de un solo paso."
+          }
+        ],
+        "verdict": "El modelo más barato del catálogo. Correcto para etiquetado masivo, extracción y prefiltrado; incorrecto para roles de planificador o bucles de agente largos.",
+        "faqs": [
+          {
+            "q": "¿Cuándo se lanzó DeepSeek V4 Flash?",
+            "a": "DeepSeek lanzó V4 Flash y V4 Pro juntos el 24 de abril de 2026 bajo la Licencia MIT con pesos abiertos."
+          },
+          {
+            "q": "¿Debería ejecutar todo mi agente en V4 Flash?",
+            "a": "Probablemente no. Flash es excelente en tareas de un solo paso pero se desvía en bucles largos multi-paso (Terminal-Bench 2.0 reportado por el proveedor está 11 puntos por detrás de V4 Pro). El patrón estándar es usarlo como prefiltro y escalar los casos difíciles a V4 Pro o Sonnet 4.6."
+          },
+          {
+            "q": "¿Las escrituras de caché son realmente gratuitas?",
+            "a": "Sí. DeepSeek no factura la porción de escritura de caché. Solo las lecturas de caché facturan, a $0,028 por 1M tokens."
+          },
+          {
+            "q": "¿Es V4 Flash de código abierto?",
+            "a": "Sí. Los pesos se publican bajo la Licencia MIT (284B total / 13B activos MoE). La API alojada de DeepSeek es la ruta de producción para VM0."
+          },
+          {
+            "q": "¿Cuál es la ventana de contexto de V4 Flash?",
+            "a": "1 millón de tokens. Idéntica a V4 Pro. Útil para Q&A de un solo paso sobre documentos largos incluso en el nivel más barato."
+          }
+        ],
+        "alternatives": [
+          {
+            "slug": "deepseek-v4-pro",
+            "reason": "Mismo proveedor, razonamiento mucho más fuerte"
+          },
+          {
+            "slug": "claude-haiku-4-5",
+            "reason": "Alternativa Anthropic para enrutamiento"
+          },
+          {
+            "slug": "minimax-m2.7",
+            "reason": "Alternativa multilingüe barata"
+          }
+        ],
+        "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de DeepSeek en `api.deepseek.com`. Modelo predeterminado en el proveedor DeepSeek; también disponible en VM0 Managed.",
+        "vm0Notes": "V4 Flash tiene el multiplicador de crédito más bajo de cualquier modelo Built-in (×0,02), aproximadamente 50× menos que Sonnet 4.6. Las lecturas de caché facturan mientras que las escrituras de caché son gratuitas, y VM0 establece un timeout de API de 10 minutos para el proveedor DeepSeek que se empareja naturalmente con el trabajo corto de un solo paso de Flash."
+      }
+    }
+  },
+  "rankings": {
+    "pageTitle": "Ranking de Modelos de IA",
+    "pageDescription": "Rankings de uso de modelos VM0 por hora, hoy, esta semana y este mes.",
+    "breadcrumbHome": "Inicio",
+    "breadcrumbRankings": "Ranking de Modelos de IA",
+    "periodToday": "Hoy",
+    "periodWeek": "Esta semana",
+    "periodMonth": "Este mes",
+    "heroDescription": "Uso de modelos VM0 clasificado por totales de tokens por hora en la ventana UTC seleccionada.",
+    "statModels": "Modelos",
+    "statRankedTokens": "Tokens clasificados",
+    "statWindow": "Ventana",
+    "statWaiting": "Esperando la primera hora UTC completada",
+    "tableHeaderRank": "Puesto",
+    "tableHeaderModel": "Modelo",
+    "tableHeaderTokens": "Tokens",
+    "tableHeaderShare": "Cuota",
+    "tableHeaderChange": "Cambio",
+    "tableTokensIn": "entrada",
+    "tableTokensOut": "salida",
+    "tableEmptyState": "Aún no se ha agregado uso de modelos para este período.",
+    "tableFooterModels": "Top 50 modelos por uso de tokens",
+    "tableFooterTokens": "tokens clasificados",
+    "changeNew": "nuevo"
   }
 }

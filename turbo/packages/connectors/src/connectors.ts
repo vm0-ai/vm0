@@ -243,6 +243,16 @@ export type ConnectorDisplayCategory =
 
 export type ConnectorDisplayCategoryGroup = "ai";
 
+export type ConnectorGenerationType =
+  | "audio"
+  | "code"
+  | "document"
+  | "image"
+  | "presentation"
+  | "text"
+  | "video"
+  | "website";
+
 export const CONNECTOR_DISPLAY_CATEGORY_GROUPS: Record<
   ConnectorDisplayCategoryGroup,
   { label: string; menuLabel: string }
@@ -345,6 +355,11 @@ export interface ConnectorConfig {
   readonly oauth?: ConnectorOAuthConfig;
   /** Environment mapping declaring which env vars this connector provides. */
   readonly environmentMapping: Record<string, string>;
+  /**
+   * Output categories this connector skill can generate. This is product
+   * metadata for discovery and routing, not a permission/capability grant.
+   */
+  readonly generation?: readonly ConnectorGenerationType[];
   /**
    * Optional concept words and common-guess aliases used by connector search.
    * Lowercase only. Avoid duplicating content already in `label`,

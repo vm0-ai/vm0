@@ -6,6 +6,7 @@ import {
   createTestOrg,
   insertOrgDefaultModelProvider,
 } from "../../../../__tests__/api-test-helpers";
+import { getTestModelProviderIdByType } from "../../../../__tests__/db-test-assertions/org";
 import { mockClerk } from "../../../../__tests__/clerk-mock";
 
 const context = testContext();
@@ -82,5 +83,30 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
     expect(result.resolvedModelProvider).toBe("anthropic-api-key");
     expect(result.framework).toBe("claude-code");
+  });
+
+  it("provider's framework wins when modelProviderId pin disagrees with compose framework (#11616)", async () => {
+    // Production-shaped path: compose declares (or defaults to) framework:
+    // claude-code, but the thread is eager-pinned (#11528) to a modelProviderId
+    // for an openai-api-key provider whose declared framework is codex. Per
+    // Epic #11520 the provider's framework must win — no throw.
+    const userId = uniqueId("eager-pin-codex");
+    const orgId = await setupOrg(userId);
+    await insertOrgDefaultModelProvider(orgId, "openai-api-key");
+    const modelProviderId = await getTestModelProviderIdByType(
+      orgId,
+      "openai-api-key",
+    );
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      "claude-code",
+      false,
+      undefined,
+      modelProviderId,
+    );
+
+    expect(result.resolvedModelProvider).toBe("openai-api-key");
+    expect(result.framework).toBe("codex");
   });
 });

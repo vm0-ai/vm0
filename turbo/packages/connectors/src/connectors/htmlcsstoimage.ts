@@ -4,6 +4,7 @@ export const htmlcsstoimage = {
   htmlcsstoimage: {
     label: "HTML/CSS to Image",
     category: "marketing-content-growth",
+    generation: ["image"],
     environmentMapping: {
       HCTI_API_KEY: "$secrets.HCTI_API_KEY",
       HCTI_USER_ID: "$vars.HCTI_USER_ID",

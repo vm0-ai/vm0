@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   createTestRequest,
   insertOrgMembersEntry,
-  insertTestCreditUsage,
+  insertTestModelUsageEvent,
   insertTestUsageEvent,
   updateOrgStripeFields,
 } from "../../../../../../../src/__tests__/api-test-helpers";
@@ -26,18 +26,17 @@ describe("/api/zero/org/members/credit-cap", () => {
   });
 
   /**
-   * Helper to insert a processed credit_usage record via test helpers.
+   * Helper to insert processed model usage_event rows via test helpers.
    */
-  async function insertProcessedCreditUsage(
+  async function insertProcessedModelUsage(
     orgId: string,
     userId: string,
     creditsCharged: number,
     processedAt?: Date,
   ): Promise<void> {
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       model: "claude-sonnet-4-20250514",
-      modelProvider: "vm0",
       creditsCharged,
       status: "processed",
       processedAt,
@@ -111,8 +110,8 @@ describe("/api/zero/org/members/credit-cap", () => {
       // Set up billing period
       await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
 
-      // Insert processed credit usage exceeding the cap we'll set
-      await insertProcessedCreditUsage(user.orgId, user.userId, 200);
+      // Insert processed usage exceeding the cap we'll set
+      await insertProcessedModelUsage(user.orgId, user.userId, 200);
 
       const request = createTestRequest(BASE_URL, {
         method: "PUT",
@@ -130,11 +129,11 @@ describe("/api/zero/org/members/credit-cap", () => {
       });
     });
 
-    it("disables member when combined credit_usage and usage_event spend exceeds cap", async () => {
+    it("disables member when usage_event spend exceeds cap", async () => {
       const periodEnd = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
       await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
 
-      await insertProcessedCreditUsage(user.orgId, user.userId, 80);
+      await insertProcessedModelUsage(user.orgId, user.userId, 80);
       await insertProcessedUsageEvent(user.orgId, user.userId, 40);
 
       const request = createTestRequest(BASE_URL, {
@@ -153,11 +152,11 @@ describe("/api/zero/org/members/credit-cap", () => {
       });
     });
 
-    it("disables member when combined spend exactly reaches cap", async () => {
+    it("disables member when usage_event spend exactly reaches cap", async () => {
       const periodEnd = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
       await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
 
-      await insertProcessedCreditUsage(user.orgId, user.userId, 60);
+      await insertProcessedModelUsage(user.orgId, user.userId, 60);
       await insertProcessedUsageEvent(user.orgId, user.userId, 40);
 
       const request = createTestRequest(BASE_URL, {
@@ -180,7 +179,7 @@ describe("/api/zero/org/members/credit-cap", () => {
       const periodEnd = new Date("2099-04-01T00:00:00Z");
       await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
 
-      await insertProcessedCreditUsage(
+      await insertProcessedModelUsage(
         user.orgId,
         user.userId,
         40,
@@ -211,7 +210,7 @@ describe("/api/zero/org/members/credit-cap", () => {
       await updateOrgStripeFields(user.orgId, { currentPeriodEnd: periodEnd });
 
       // Insert usage of 200
-      await insertProcessedCreditUsage(user.orgId, user.userId, 200);
+      await insertProcessedModelUsage(user.orgId, user.userId, 200);
 
       // First set cap below usage (disables)
       const request1 = createTestRequest(BASE_URL, {

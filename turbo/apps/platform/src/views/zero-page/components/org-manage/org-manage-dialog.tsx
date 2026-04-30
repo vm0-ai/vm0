@@ -16,7 +16,6 @@ import {
 } from "@vm0/ui";
 import {
   IconBuilding,
-  IconChartBar,
   IconCpu,
   IconUsers,
   IconCreditCard,
@@ -39,11 +38,6 @@ import {
   billingSubPage$,
   type OrgManageTab,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import {
-  modelUsageRankingEnabled$,
-  modelUsageRankingOpen$,
-  setModelUsageRankingOpen$,
-} from "../../../../signals/model-usage-ranking.ts";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
 
@@ -158,14 +152,6 @@ function TabContent({ tab }: { tab: OrgManageTab }) {
 export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const activeTab = useGet(orgManageTab$);
   const setActiveTab = useSet(setActiveOrgManageTab$);
-  const rankingOpen = useGet(modelUsageRankingOpen$);
-  const setRankingOpen = useSet(setModelUsageRankingOpen$);
-  const rankingEnabledLoadable = useLoadable(modelUsageRankingEnabled$);
-  const rankingEnabled =
-    rankingEnabledLoadable.state === "hasData"
-      ? rankingEnabledLoadable.data
-      : false;
-
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
@@ -180,31 +166,13 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const meta = TAB_META[activeTab];
   const isBillingSubPage = useGet(billingSubPage$);
   const hideHeader = activeTab === "billing" && isBillingSubPage;
-  const showRankingButton =
-    rankingEnabled && activeTab === "providers" && !rankingOpen;
-  const title =
-    activeTab === "providers" && rankingOpen ? "Model Popularity" : meta.title;
-  const description =
-    activeTab === "providers" && rankingOpen
-      ? "Ranking of the most popular models on VM0, based on platform-wide tokens."
-      : meta.description;
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      setRankingOpen(false);
-    }
-    return onOpenChange(nextOpen);
-  };
 
   const handleTabChange = (tab: OrgManageTab) => {
-    if (tab !== "providers") {
-      setRankingOpen(false);
-    }
     return setActiveTab(tab);
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="zero-app flex flex-col w-[calc(100vw-2rem)] max-w-[1200px] h-[92dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden zero-border rounded-xl bg-card">
         <DialogTitle className="sr-only">Workspace settings</DialogTitle>
         <DialogDescription className="sr-only">
@@ -307,26 +275,14 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
               <header className="shrink-0 px-4 sm:px-10 pt-6 sm:pt-8 pb-1">
                 <div className="flex min-h-7 items-center gap-2">
                   <h2 className="hidden h-7 items-center text-xl font-semibold tracking-tight text-foreground sm:flex">
-                    {title}
+                    {meta.title}
                   </h2>
-                  {showRankingButton && (
-                    <button
-                      type="button"
-                      aria-label="Open VM0 model popularity ranking"
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={() => {
-                        return setRankingOpen(true);
-                      }}
-                    >
-                      <IconChartBar size={15} stroke={1.75} />
-                    </button>
-                  )}
                 </div>
                 <p
                   className="mt-1 truncate whitespace-nowrap text-sm text-muted-foreground"
                   data-testid="tab-description"
                 >
-                  {description}
+                  {meta.description}
                 </p>
               </header>
             )}

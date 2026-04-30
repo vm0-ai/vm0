@@ -138,7 +138,7 @@ export async function updateOrg(
  * a larger atomic operation (e.g. credit processing).
  *
  * Intentionally does NOT call ensureStarterCreditGrant — this primitive
- * runs after credit_usage was already recorded, which implies onboarding
+ * runs after usage_event was already recorded, which implies onboarding
  * (or test-token) has already created the org_metadata row with the
  * starter grant. The ON CONFLICT INSERT path here is a defensive fallback
  * for orgs that somehow lack a row; it creates a row with negative credits,

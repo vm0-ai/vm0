@@ -79,6 +79,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -146,6 +147,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -168,7 +170,7 @@ describe("connectConnector$", () => {
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(3);
     expect(context.store.get(pollingConnectorType$)).toBeNull();
-    expect(context.store.get(permissionDialogType$)).toBe("github");
+    expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
   it("exits when popup is closed even if connector not found", async () => {
@@ -186,6 +188,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -203,7 +206,7 @@ describe("connectConnector$", () => {
     expect(context.store.get(pollingConnectorType$)).toBeNull();
   });
 
-  it("sets permissionDialogType$ after connector appears", async () => {
+  it("sets permissionDialogType$ after connector appears when requested", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
@@ -218,6 +221,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      { showPermissionDialog: true },
       context.signal,
     );
 
@@ -248,6 +252,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -277,6 +282,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -289,7 +295,7 @@ describe("connectConnector$", () => {
 
     expect(result).toBeTruthy();
     expect(context.store.get(pollingConnectorType$)).toBeNull();
-    expect(context.store.get(permissionDialogType$)).toBe("github");
+    expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
   it("handles multiple fetch cycles in standalone mode", async () => {
@@ -312,6 +318,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -331,7 +338,7 @@ describe("connectConnector$", () => {
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(3);
     expect(context.store.get(pollingConnectorType$)).toBeNull();
-    expect(context.store.get(permissionDialogType$)).toBe("github");
+    expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 });
 
@@ -343,6 +350,7 @@ describe("submitApiToken$", () => {
       submitApiToken$,
       "github",
       { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_test123" },
+      { showPermissionDialog: true },
       context.signal,
     );
 

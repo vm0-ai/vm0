@@ -96,9 +96,8 @@ describe("onboarding connector permission dialog suppression", () => {
       }),
     );
 
-    // Click "Connect" on GitHub — this triggers connectConnector$ which
-    // normally sets permissionDialogType$, but the onboarding wrapper
-    // clears it immediately after.
+    // Click "Connect" on GitHub — this triggers connectConnector$ without
+    // opting into the post-connect permission dialog.
     click(screen.getByText("Connect"));
 
     // Wait for the Ably subscription to be registered, then simulate the
@@ -114,9 +113,8 @@ describe("onboarding connector permission dialog suppression", () => {
       expect(screen.getByText("Connected")).toBeInTheDocument();
     });
 
-    // The key assertion: permissionDialogType$ should be null because the
-    // onboarding component clears it after connectConnector$ completes.
-    // Without the fix, this would be "github".
+    // The key assertion: permissionDialogType$ should be null outside the
+    // connectors page.
     await waitFor(() => {
       expect(context.store.get(permissionDialogType$)).toBeNull();
     });

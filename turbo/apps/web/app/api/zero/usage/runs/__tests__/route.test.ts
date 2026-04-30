@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createCompletedRun,
   createTestRequest,
-  insertTestCreditUsage,
-  insertTestCreditUsageForRun,
+  insertTestModelUsageEvent,
+  insertTestModelUsageEventForRun,
   insertTestUsageEvent,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -65,7 +65,7 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.status).toBe(403);
   });
 
-  it("returns empty result when no runs with credit usage", async () => {
+  it("returns empty result when no runs with processed usage events", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/zero/usage/runs",
     );
@@ -80,7 +80,7 @@ describe("GET /api/zero/usage/runs", () => {
   it("returns per-run records with credit totals", async () => {
     const { userId, orgId } = await context.user;
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 1000,
       outputTokens: 500,
@@ -90,7 +90,7 @@ describe("GET /api/zero/usage/runs", () => {
       status: "processed",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 2000,
       outputTokens: 1000,
@@ -105,7 +105,7 @@ describe("GET /api/zero/usage/runs", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    // Each insertTestCreditUsage creates a separate run
+    // Each insertTestModelUsageEvent creates a separate run
     expect(data.runs).toHaveLength(2);
     expect(data.pagination.total).toBe(2);
 
@@ -119,7 +119,7 @@ describe("GET /api/zero/usage/runs", () => {
 
     // Create 3 runs
     for (let i = 0; i < 3; i++) {
-      await insertTestCreditUsage(orgId, {
+      await insertTestModelUsageEvent(orgId, {
         userId,
         creditsCharged: (i + 1) * 10,
         status: "processed",
@@ -154,13 +154,13 @@ describe("GET /api/zero/usage/runs", () => {
     const user1 = uniqueId("user-alpha");
     const user2 = uniqueId("user-beta");
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId: user1,
       creditsCharged: 50,
       status: "processed",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId: user2,
       creditsCharged: 100,
       status: "processed",
@@ -177,16 +177,16 @@ describe("GET /api/zero/usage/runs", () => {
     expect(data.runs[0].creditsCharged).toBe(50);
   });
 
-  it("excludes runs with only pending credit usage", async () => {
+  it("excludes runs with only pending usage events", async () => {
     const { userId, orgId } = await context.user;
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       creditsCharged: 50,
       status: "processed",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       creditsCharged: 0,
       status: "pending",
@@ -257,11 +257,11 @@ describe("GET /api/zero/usage/runs", () => {
     });
   });
 
-  it("combines credit_usage and usage_event totals for the same run", async () => {
+  it("sums multiple usage_event totals for the same run", async () => {
     const { userId, orgId } = await context.user;
     const runId = await createCompletedRun(orgId, userId, new Date());
 
-    await insertTestCreditUsageForRun({
+    await insertTestModelUsageEventForRun({
       runId,
       orgId,
       userId,

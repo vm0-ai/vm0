@@ -33,16 +33,12 @@ setup_file() {
     # 2. Org-level openai-api-key provider — picked up as default by eager-pin
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
 
-    # 3. Compose declares framework: codex (required by agentDefinitionSchema
-    # in turbo/packages/api-contracts/src/contracts/composes.ts:169). No
-    # `model_provider:` is declared — the org's only provider is the
-    # openai-api-key one set up in step (2), so eager-pin (#11528) is the
-    # path that wires the thread to that provider. The framework is matched
-    # both at admission (zero-run-policy.ts:213-238 calls
-    # getOrgDefaultModelProvider(orgId, composeFramework)) and at secret
-    # resolution (resolve-model-provider.ts:77-83 enforces
-    # providerFramework === composeFramework strictly), so a mismatched
-    # compose framework would fail with noModelProvider() or badRequest().
+    # 3. Compose declares framework: codex explicitly. The framework is
+    # matched at admission (zero-run-policy.ts:213-238 calls
+    # getOrgDefaultModelProvider(orgId, composeFramework)). At secret
+    # resolution the provider's declared framework wins (Epic #11520) and
+    # is propagated downstream via build-zero-context.ts's
+    # resolvedFramework, with no compose-vs-provider equality check.
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
 agents:

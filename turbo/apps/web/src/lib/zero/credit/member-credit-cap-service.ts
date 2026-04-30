@@ -1,6 +1,5 @@
 import { eq, and, sql, gte, lt, inArray } from "drizzle-orm";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { getOrgBillingPeriod } from "../org/org-metadata-service";
 
@@ -180,26 +179,6 @@ async function getProcessedUsageTotalsByUser(
 
   const db = globalThis.services.db;
 
-  const creditRows = await db
-    .select({
-      userId: creditUsage.userId,
-      total:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "total",
-        ),
-    })
-    .from(creditUsage)
-    .where(
-      and(
-        eq(creditUsage.orgId, orgId),
-        inArray(creditUsage.userId, uniqueUserIds),
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.processedAt, billingPeriod.start),
-        lt(creditUsage.processedAt, billingPeriod.end),
-      ),
-    )
-    .groupBy(creditUsage.userId);
-
   const eventRows = await db
     .select({
       userId: usageEvent.userId,
@@ -220,7 +199,6 @@ async function getProcessedUsageTotalsByUser(
     )
     .groupBy(usageEvent.userId);
 
-  addUsageRows(usageMap, creditRows);
   addUsageRows(usageMap, eventRows);
 
   return usageMap;
@@ -257,7 +235,7 @@ export async function resetMemberCreditFlags(orgId: string): Promise<void> {
 }
 
 /**
- * Get a member's total processed credit usage in the current billing period.
+ * Get a member's total processed usage_event credits in the current billing period.
  */
 async function getMemberUsageInBillingPeriod(
   orgId: string,

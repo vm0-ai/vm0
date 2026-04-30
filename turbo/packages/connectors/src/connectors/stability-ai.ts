@@ -5,6 +5,7 @@ export const stabilityAi = {
   "stability-ai": {
     label: "Stability AI",
     category: "ai-image-video",
+    generation: ["image"],
     environmentMapping: {
       STABILITY_TOKEN: "$secrets.STABILITY_TOKEN",
     },

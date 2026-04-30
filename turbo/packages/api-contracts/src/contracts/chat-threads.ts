@@ -28,8 +28,21 @@ const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
 });
 
+const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("synced"),
+    id: z.string(),
+    name: z.string(),
+    webViewLink: z.string().nullable(),
+  }),
+  z.object({ status: z.literal("not_synced") }),
+  z.object({ status: z.literal("disconnected") }),
+  z.object({ status: z.literal("unknown") }),
+]);
+
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
   createdAt: z.string(),
+  googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
 const chatThreadArtifactRunSchema = z.object({
@@ -460,6 +473,29 @@ export const chatThreadArtifactsContract = c.router({
     },
     summary: "List uploaded files associated with every run in a chat thread",
   },
+  syncGoogleDrive: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/artifacts",
+    headers: authHeadersSchema,
+    pathParams: z.object({ threadId: z.string() }),
+    body: z.object({
+      runId: z.string(),
+      fileId: z.string(),
+    }),
+    responses: {
+      200: z.object({
+        id: z.string(),
+        name: z.string(),
+        webViewLink: z.string().nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Sync a chat artifact file to the user's connected Google Drive",
+  },
 });
 
 export type ChatThreadsContract = typeof chatThreadsContract;
@@ -483,6 +519,7 @@ export {
   attachFileSchema,
   resolvedAttachFileSchema,
   chatThreadArtifactFileSchema,
+  chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
 };
 
@@ -497,5 +534,8 @@ export type AttachFile = z.infer<typeof attachFileSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
 export type ChatThreadArtifactFile = z.infer<
   typeof chatThreadArtifactFileSchema
+>;
+export type ChatThreadArtifactGoogleDriveSync = z.infer<
+  typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;

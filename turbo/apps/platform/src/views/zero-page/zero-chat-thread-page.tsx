@@ -1,4 +1,8 @@
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactNode,
+} from "react";
 import {
   useGet,
   useSet,
@@ -15,13 +19,16 @@ import {
   IconPlayerStop,
   IconCopy,
   IconCheck,
+  IconDots,
   IconPin,
   IconVolume2,
   IconArrowBarToUp,
+  IconBrandGoogleDrive,
   IconDownload,
   IconEye,
   IconFile,
   IconFileMusic,
+  IconLink,
   IconLoader2,
   IconPackage,
   IconVideo,
@@ -36,12 +43,17 @@ import {
   SheetHeader,
   SheetTitle,
   Skeleton,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
+import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import docCsvIcon from "./assets/doc-csv.svg";
@@ -63,10 +75,12 @@ import {
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import { zeroClient$ } from "../../signals/api-client.ts";
 import {
   AttachmentLightbox,
   downloadAttachmentUrl,
   FileAttachmentChip,
+  getAttachmentRawUrl,
   PreviewableFileAttachmentChip,
 } from "./zero-attachment-chips.tsx";
 import {
@@ -83,6 +97,12 @@ import {
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
+  writeToClipboard,
+  type ChatClipboardAttachment,
+} from "../../signals/zero-page/clipboard.ts";
+import { connectors$ } from "../../signals/external/connectors.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import {
   chatShortcutHelpOpen$,
   setChatShortcutHelpOpen$,
 } from "../../signals/chat-page/chat-shortcut-help.ts";
@@ -93,11 +113,9 @@ import type {
   GroupedChatMessageGroup,
   PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
-import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
-import type { ChatClipboardAttachment } from "../../signals/zero-page/clipboard.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -117,6 +135,17 @@ import {
   navigateToAdjacentThread$,
   scrollCurrentThread$,
 } from "../../signals/chat-page/chat-keyboard.ts";
+import {
+  type ArtifactGoogleDriveSyncFile,
+  syncArtifactFilesToGoogleDrive,
+  syncArtifactFileToGoogleDrive,
+  waitForGoogleDriveAndSyncArtifacts$,
+} from "../../signals/chat-page/artifact-google-drive-sync.ts";
+import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
+import { createZipBlob } from "../../lib/zip.ts";
+
+const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
+  "Connect Google Drive to upload artifacts";
 
 const CHAT_SHORTCUT_SECTIONS = [
   {
@@ -481,30 +510,438 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
   return <ArtifactFileIcon file={file} />;
 }
 
-function ArtifactDownloadAction({
-  file,
-  className,
+async function copyArtifactLinkToClipboard(
+  file: ChatThreadArtifactFile,
+): Promise<void> {
+  const copied = await writeToClipboard(file.url);
+  if (copied) {
+    toast.success("Link copied");
+    return;
+  }
+  toast.error("Failed to copy link");
+}
+
+function downloadArtifactItemsAsZip(params: {
+  readonly items: readonly ChatArtifactItem[];
+  readonly signal: AbortSignal;
+  readonly threadId: string;
+}): Promise<void> {
+  const toastId = toast.loading(`Preparing ${params.items.length} files...`);
+  return Promise.all(
+    params.items.map((item) => {
+      return fetchArtifactZipEntry(item, params.signal);
+    }),
+  ).then(
+    (entries) => {
+      const zip = createZipBlob(entries);
+      triggerArtifactZipDownload(zip, `vm0-artifact-${params.threadId}.zip`);
+      toast.success("Downloaded artifacts", { id: toastId });
+    },
+    (error: unknown) => {
+      params.signal.throwIfAborted();
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to prepare artifact download",
+        { id: toastId },
+      );
+    },
+  );
+}
+
+function fetchArtifactZipEntry(
+  item: ChatArtifactItem,
+  signal: AbortSignal,
+): Promise<{
+  readonly filename: string;
+  readonly data: ArrayBuffer;
+  readonly modifiedAt: Date;
+}> {
+  return fetch(getAttachmentRawUrl(item.file.url), {
+    mode: "cors",
+    signal,
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Failed to download ${item.file.filename}`);
+      }
+      return response.arrayBuffer();
+    })
+    .then((data) => {
+      return {
+        filename: item.file.filename,
+        data,
+        modifiedAt: new Date(item.file.createdAt),
+      };
+    });
+}
+
+function triggerArtifactZipDownload(blob: Blob, filename: string): void {
+  const blobUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = blobUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(blobUrl);
+}
+
+function artifactItemsToGoogleDriveFiles(
+  items: readonly ChatArtifactItem[],
+): ArtifactGoogleDriveSyncFile[] {
+  return items.map((item) => {
+    return {
+      runId: item.runId,
+      fileId: item.file.id,
+      filename: item.file.filename,
+    };
+  });
+}
+
+function isArtifactSyncedToGoogleDrive(item: ChatArtifactItem): boolean {
+  return item.file.googleDriveSync?.status === "synced";
+}
+
+type WaitForGoogleDriveAndSyncArtifactsFn = (
+  params: {
+    readonly agentId: string;
+    readonly threadId: string;
+    readonly files: readonly ArtifactGoogleDriveSyncFile[];
+  },
+  signal: AbortSignal,
+) => Promise<unknown>;
+
+function startGoogleDriveConnectAndSync(params: {
+  agentId: string | null | undefined;
+  apiBase: string | null | undefined;
+  files: readonly ArtifactGoogleDriveSyncFile[];
+  pageSignal: AbortSignal;
+  threadId: string;
+  waitForGoogleDriveAndSyncArtifacts: WaitForGoogleDriveAndSyncArtifactsFn;
+  onSyncComplete: () => void;
+}): void {
+  if (params.files.length === 0) {
+    return;
+  }
+  if (!params.agentId) {
+    toast.error("Agent is still loading");
+    return;
+  }
+  if (!params.apiBase) {
+    toast.error("Google Drive connection page is still loading");
+    return;
+  }
+  detach(
+    params
+      .waitForGoogleDriveAndSyncArtifacts(
+        {
+          agentId: params.agentId,
+          threadId: params.threadId,
+          files: params.files,
+        },
+        params.pageSignal,
+      )
+      .then(() => {
+        params.onSyncComplete();
+      }),
+    Reason.DomCallback,
+    "artifact google drive connect sync",
+  );
+  const authWindow = window.open(
+    `${params.apiBase}/api/zero/connectors/google-drive/authorize`,
+    "_blank",
+  );
+  if (!authWindow) {
+    toast.error("Failed to open Google Drive connection page");
+  }
+}
+
+function syncArtifactFilesAndRefresh(params: {
+  sync: Promise<boolean>;
+  onSyncSuccess: () => void;
+  reason: string;
+}): void {
+  detach(
+    params.sync.then((success) => {
+      if (success) {
+        params.onSyncSuccess();
+      }
+    }),
+    Reason.DomCallback,
+    params.reason,
+  );
+}
+
+function ArtifactGoogleDriveConnectMenuItem({
+  agentId,
+  files,
+  label,
+  onSyncComplete,
+  threadId,
 }: {
-  file: ChatThreadArtifactFile;
-  className: string;
+  agentId: string | null | undefined;
+  files: readonly ArtifactGoogleDriveSyncFile[];
+  label: string;
+  onSyncComplete: () => void;
+  threadId: string;
 }) {
+  const waitForGoogleDriveAndSyncArtifacts = useSet(
+    waitForGoogleDriveAndSyncArtifacts$,
+  );
+  const apiBase = useLastResolved(apiBaseForNavigation$);
   const pageSignal = useGet(pageSignal$);
 
   return (
-    <button
-      type="button"
-      onClick={() => {
-        detach(
-          downloadAttachmentUrl(file.url, pageSignal, file.filename),
-          Reason.DomCallback,
-          "artifact download",
-        );
-      }}
-      className={className}
-      aria-label={`Download ${file.filename}`}
-    >
-      <IconDownload size={16} stroke={1.5} />
-    </button>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuItem
+            className="text-muted-foreground"
+            title={CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
+            onClick={() => {
+              startGoogleDriveConnectAndSync({
+                agentId,
+                apiBase,
+                files,
+                pageSignal,
+                threadId,
+                waitForGoogleDriveAndSyncArtifacts,
+                onSyncComplete,
+              });
+            }}
+          >
+            <IconBrandGoogleDrive size={14} stroke={1.5} />
+            {label}
+          </DropdownMenuItem>
+        </TooltipTrigger>
+        <TooltipContent side="left">
+          {CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ArtifactPreviewIconButton({
+  ariaLabel,
+  children,
+  disabled = false,
+  onClick,
+  tooltip,
+}: {
+  ariaLabel: string;
+  children: ReactNode;
+  disabled?: boolean;
+  onClick: () => void;
+  tooltip: string;
+}) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-disabled={disabled}
+            aria-label={ariaLabel}
+            onClick={() => {
+              if (!disabled) {
+                onClick();
+              }
+            }}
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+              disabled &&
+                "cursor-not-allowed opacity-45 hover:bg-transparent hover:text-muted-foreground",
+            )}
+          >
+            {children}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p className="text-xs">{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ArtifactPreviewActions({
+  item,
+  googleDriveConnected,
+  agentId,
+  threadId,
+  onSyncSuccess,
+}: {
+  item: ChatArtifactItem;
+  googleDriveConnected: boolean;
+  agentId: string | null | undefined;
+  threadId: string;
+  onSyncSuccess: () => void;
+}) {
+  const createClient = useGet(zeroClient$);
+  const waitForGoogleDriveAndSyncArtifacts = useSet(
+    waitForGoogleDriveAndSyncArtifacts$,
+  );
+  const apiBase = useLastResolved(apiBaseForNavigation$);
+  const pageSignal = useGet(pageSignal$);
+  const { file } = item;
+  const synced = isArtifactSyncedToGoogleDrive(item);
+  const syncTooltip = synced
+    ? "Synced to Google Drive"
+    : googleDriveConnected
+      ? "Sync to Google Drive"
+      : CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP;
+  const syncAriaLabel = synced
+    ? `${file.filename} is synced to Google Drive`
+    : `Sync ${file.filename} to Google Drive`;
+
+  return (
+    <div className="flex shrink-0 items-center gap-1">
+      <ArtifactPreviewIconButton
+        ariaLabel={`Copy link for ${file.filename}`}
+        tooltip="Copy link"
+        onClick={() => {
+          detach(
+            copyArtifactLinkToClipboard(file),
+            Reason.DomCallback,
+            "artifact copy link",
+          );
+        }}
+      >
+        <IconLink size={16} stroke={1.5} />
+      </ArtifactPreviewIconButton>
+      <ArtifactPreviewIconButton
+        ariaLabel={`Download ${file.filename}`}
+        tooltip="Download"
+        onClick={() => {
+          detach(
+            downloadAttachmentUrl(file.url, pageSignal, file.filename),
+            Reason.DomCallback,
+            "artifact download",
+          );
+        }}
+      >
+        <IconDownload size={16} stroke={1.5} />
+      </ArtifactPreviewIconButton>
+      <ArtifactPreviewIconButton
+        ariaLabel={syncAriaLabel}
+        disabled={synced}
+        tooltip={syncTooltip}
+        onClick={() => {
+          if (googleDriveConnected) {
+            syncArtifactFilesAndRefresh({
+              sync: syncArtifactFileToGoogleDrive({
+                createClient,
+                threadId,
+                runId: item.runId,
+                fileId: item.file.id,
+                filename: item.file.filename,
+                signal: pageSignal,
+              }),
+              onSyncSuccess,
+              reason: "artifact google drive sync",
+            });
+            return;
+          }
+          startGoogleDriveConnectAndSync({
+            agentId,
+            apiBase,
+            files: artifactItemsToGoogleDriveFiles([item]),
+            pageSignal,
+            threadId,
+            waitForGoogleDriveAndSyncArtifacts,
+            onSyncComplete: onSyncSuccess,
+          });
+        }}
+      >
+        <IconBrandGoogleDrive size={16} stroke={1.5} />
+      </ArtifactPreviewIconButton>
+    </div>
+  );
+}
+
+function ArtifactBulkActionsMenu({
+  items,
+  googleDriveConnected,
+  agentId,
+  onSyncSuccess,
+  threadId,
+}: {
+  items: readonly ChatArtifactItem[];
+  googleDriveConnected: boolean;
+  agentId: string | null | undefined;
+  onSyncSuccess: () => void;
+  threadId: string;
+}) {
+  const createClient = useGet(zeroClient$);
+  const pageSignal = useGet(pageSignal$);
+  const syncableItems = items.filter((item) => {
+    return !isArtifactSyncedToGoogleDrive(item);
+  });
+  const files = artifactItemsToGoogleDriveFiles(syncableItems);
+  const allSynced = items.length > 0 && files.length === 0;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          aria-label="More artifact actions"
+        >
+          <IconDots size={15} stroke={1.5} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuItem
+          onClick={() => {
+            detach(
+              downloadArtifactItemsAsZip({
+                items,
+                signal: pageSignal,
+                threadId,
+              }),
+              Reason.DomCallback,
+              "artifact download all",
+            );
+          }}
+        >
+          <IconDownload size={14} stroke={1.5} />
+          Download all
+        </DropdownMenuItem>
+        {googleDriveConnected ? (
+          <DropdownMenuItem
+            disabled={allSynced}
+            onClick={() => {
+              syncArtifactFilesAndRefresh({
+                sync: syncArtifactFilesToGoogleDrive({
+                  createClient,
+                  threadId,
+                  files,
+                  signal: pageSignal,
+                }),
+                onSyncSuccess,
+                reason: "artifact google drive sync all",
+              });
+            }}
+          >
+            <IconBrandGoogleDrive size={14} stroke={1.5} />
+            {allSynced
+              ? "Synced all to Google Drive"
+              : "Sync all to Google Drive"}
+          </DropdownMenuItem>
+        ) : (
+          <ArtifactGoogleDriveConnectMenuItem
+            agentId={agentId}
+            files={files}
+            label="Sync all to Google Drive"
+            onSyncComplete={onSyncSuccess}
+            threadId={threadId}
+          />
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -672,10 +1109,20 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   );
 }
 
-function ArtifactPreviewPanel({ item }: { item: ChatArtifactItem }) {
+function ArtifactPreviewPanel({
+  item,
+  googleDriveConnected,
+  agentId,
+  onSyncSuccess,
+  threadId,
+}: {
+  item: ChatArtifactItem;
+  googleDriveConnected: boolean;
+  agentId: string | null | undefined;
+  onSyncSuccess: () => void;
+  threadId: string;
+}) {
   const { file } = item;
-  const actionClass =
-    "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
 
   return (
     <div className="overflow-hidden rounded-lg border border-border/70 bg-background shadow-sm">
@@ -697,7 +1144,13 @@ function ArtifactPreviewPanel({ item }: { item: ChatArtifactItem }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <ArtifactDownloadAction file={file} className={actionClass} />
+          <ArtifactPreviewActions
+            item={item}
+            googleDriveConnected={googleDriveConnected}
+            agentId={agentId}
+            threadId={threadId}
+            onSyncSuccess={onSyncSuccess}
+          />
         </div>
       </div>
     </div>
@@ -790,8 +1243,6 @@ function ArtifactFileRow({
   onPreview: () => void;
 }) {
   const { file } = item;
-  const actionClass =
-    "flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
 
   return (
     <div
@@ -805,7 +1256,7 @@ function ArtifactFileRow({
       <button
         type="button"
         onClick={onPreview}
-        className="flex min-w-0 flex-1 items-start gap-3 rounded-l-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-lg px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         aria-label={`Select ${file.filename}`}
       >
         <ArtifactThumbnail file={file} selected={selected} />
@@ -825,17 +1276,17 @@ function ArtifactFileRow({
           </div>
         </div>
       </button>
-      <div className="flex shrink-0 items-center pr-3">
-        <ArtifactDownloadAction file={file} className={actionClass} />
-      </div>
     </div>
   );
 }
 
 function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
+  const connectorList = useLastResolved(connectors$);
+  const agentId = useLastResolved(thread.agentId$);
   const selectedArtifactKey = useGet(thread.artifactPreviewKey$);
   const setSelectedArtifactKey = useSet(thread.setArtifactPreviewKey$);
+  const reloadArtifacts = useSet(thread.setArtifactsDrawerOpen$);
 
   if (loadable.state === "loading") {
     return (
@@ -887,14 +1338,36 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
   }
 
   const selectedKey = selectedItem ? artifactItemKey(selectedItem) : null;
+  const googleDriveConnected =
+    connectorList?.connectors.some((connector) => {
+      return connector.type === "google-drive" && !connector.needsReconnect;
+    }) ?? false;
+  const refreshArtifactSyncStatus = () => {
+    reloadArtifacts(true);
+  };
 
   return (
     <div className="flex flex-col gap-5">
-      {selectedItem && <ArtifactPreviewPanel item={selectedItem} />}
+      {selectedItem && (
+        <ArtifactPreviewPanel
+          item={selectedItem}
+          googleDriveConnected={googleDriveConnected}
+          agentId={agentId}
+          onSyncSuccess={refreshArtifactSyncStatus}
+          threadId={thread.threadId}
+        />
+      )}
       <div className="flex items-center justify-between border-b border-border/60 pb-3 text-xs text-muted-foreground">
         <span>
           {totalFiles} file{totalFiles === 1 ? "" : "s"}
         </span>
+        <ArtifactBulkActionsMenu
+          items={items}
+          googleDriveConnected={googleDriveConnected}
+          agentId={agentId}
+          onSyncSuccess={refreshArtifactSyncStatus}
+          threadId={thread.threadId}
+        />
       </div>
       <div className="flex flex-col gap-2">
         {items.map((item) => {

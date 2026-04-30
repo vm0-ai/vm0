@@ -166,13 +166,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show admin-only daily credits chart and per-run records on Usage page",
     enabled: true,
   },
-  [FeatureSwitchKey.ModelUsageRanking]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the VM0 model popularity ranking in workspace model provider settings.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:

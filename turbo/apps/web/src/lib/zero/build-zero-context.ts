@@ -354,7 +354,7 @@ interface BuildZeroContextResult {
   resolvedModelProvider: ModelProviderType | undefined;
   /** Provider-derived framework, source-of-truth for downstream. */
   resolvedFramework: string;
-  /** The logical model name selected by the user, for credit usage billing. */
+  /** The logical model name selected by the user, for model usage billing. */
   selectedModel: string | undefined;
 }
 

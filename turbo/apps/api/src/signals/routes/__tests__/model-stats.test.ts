@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 
@@ -59,51 +58,6 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     mockNow(new Date(expectedWindowEnd.getTime() + 30 * 60_000));
     const connectorEventId = randomUUID();
     const outputEventId = randomUUID();
-
-    await db.insert(creditUsage).values([
-      {
-        orgId,
-        userId,
-        model,
-        modelProvider: "",
-        inputTokens: 100,
-        outputTokens: 40,
-        cacheReadInputTokens: 10,
-        cacheCreationInputTokens: 5,
-        creditsCharged: 12,
-        status: "processed",
-        createdAt,
-        processedAt: createdAt,
-      },
-      {
-        orgId,
-        userId,
-        model: modelAlias,
-        modelProvider: "openrouter-api-key",
-        inputTokens: 50,
-        outputTokens: 5,
-        cacheReadInputTokens: 2,
-        cacheCreationInputTokens: 3,
-        creditsCharged: 2,
-        status: "processed",
-        createdAt,
-        processedAt: createdAt,
-      },
-      {
-        orgId,
-        userId,
-        model: unknownModel,
-        modelProvider: "",
-        inputTokens: 100_000,
-        outputTokens: 40_000,
-        cacheReadInputTokens: 10_000,
-        cacheCreationInputTokens: 5000,
-        creditsCharged: 12_000,
-        status: "processed",
-        createdAt,
-        processedAt: createdAt,
-      },
-    ]);
 
     await db.insert(usageEvent).values([
       {
@@ -197,13 +151,13 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
     expect(row).toMatchObject({
       hourStart: expectedHourStart,
       modelProvider: "",
-      inputTokens: 475,
-      outputTokens: 245,
-      cacheReadInputTokens: 12,
-      cacheCreationInputTokens: 8,
-      totalTokens: 740,
-      creditsCharged: 22,
-      requestCount: 5,
+      inputTokens: 325,
+      outputTokens: 200,
+      cacheReadInputTokens: 0,
+      cacheCreationInputTokens: 0,
+      totalTokens: 525,
+      creditsCharged: 8,
+      requestCount: 3,
       orgCount: 1,
       userCount: 1,
     });
@@ -236,7 +190,7 @@ describe("GET /api/internal/cron/aggregate-model-stats", () => {
       )
       .limit(1);
 
-    expect(updatedRow?.creditsCharged).toBe(26);
+    expect(updatedRow?.creditsCharged).toBe(12);
 
     const [connectorRow] = await db
       .select()

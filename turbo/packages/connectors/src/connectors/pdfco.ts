@@ -4,6 +4,7 @@ export const pdfco = {
   pdfco: {
     label: "PDF.co",
     category: "data-automation-infrastructure",
+    generation: ["document"],
     environmentMapping: {
       PDFCO_TOKEN: "$secrets.PDFCO_TOKEN",
     },

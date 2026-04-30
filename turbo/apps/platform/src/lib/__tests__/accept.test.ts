@@ -1,11 +1,6 @@
-import * as Sentry from "@sentry/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, accept } from "../accept";
-
-vi.mock("@sentry/react", () => {
-  return { addBreadcrumb: vi.fn() };
-});
 
 vi.mock("@vm0/ui/components/ui/sonner", () => {
   return { toast: { error: vi.fn() } };
@@ -113,50 +108,5 @@ describe("accept", () => {
         );
       },
     );
-  });
-
-  it("adds a warning breadcrumb for 4xx errors", async () => {
-    type OkOrBad =
-      | { status: 200; body: { id: string } }
-      | { status: 400; body: { error: { message: string; code: string } } };
-    const response: OkOrBad = {
-      status: 400,
-      body: { error: { message: "Bad input", code: "BAD_REQUEST" } },
-    };
-
-    await expect(
-      accept(Promise.resolve(response), [200]),
-    ).rejects.toBeInstanceOf(ApiError);
-    expect(vi.mocked(Sentry.addBreadcrumb)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(Sentry.addBreadcrumb)).toHaveBeenCalledWith({
-      category: "api",
-      level: "warning",
-      message: "API 400 BAD_REQUEST",
-      data: { status: 400, code: "BAD_REQUEST" },
-    });
-  });
-
-  it("adds an error breadcrumb for 5xx errors", async () => {
-    type OkOrFail =
-      | { status: 200; body: { id: string } }
-      | { status: 500; body: null };
-    const response: OkOrFail = { status: 500, body: null };
-
-    await expect(
-      accept(Promise.resolve(response), [200]),
-    ).rejects.toBeInstanceOf(ApiError);
-    expect(vi.mocked(Sentry.addBreadcrumb)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(Sentry.addBreadcrumb)).toHaveBeenCalledWith({
-      category: "api",
-      level: "error",
-      message: "API 500 UNKNOWN",
-      data: { status: 500, code: "UNKNOWN" },
-    });
-  });
-
-  it("does not add a breadcrumb for accepted responses", async () => {
-    const response = { status: 200 as const, body: { id: "x" } };
-    await accept(Promise.resolve(response), [200]);
-    expect(vi.mocked(Sentry.addBreadcrumb)).not.toHaveBeenCalled();
   });
 });

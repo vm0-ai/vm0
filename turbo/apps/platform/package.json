@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.314.3",
+  "version": "0.316.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -42,7 +42,6 @@
     "posthog-js": "^1.372.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "recharts": "^3.8.1",
     "signal-timers": "^1.0.4",
     "yaml": "^2.7.1"
   },

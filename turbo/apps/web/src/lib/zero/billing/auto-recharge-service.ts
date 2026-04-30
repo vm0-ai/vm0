@@ -93,7 +93,7 @@ async function resolvePaymentMethod(
  * Check if auto-recharge should trigger for an org and, if so,
  * create a Stripe one-time invoice to purchase credits.
  *
- * Called after processOrgCredits commits its transaction.
+ * Called after processOrgUsageEvents commits its transaction.
  * Errors are caught internally — callers should fire-and-forget.
  */
 export async function triggerAutoRecharge(orgId: string): Promise<void> {

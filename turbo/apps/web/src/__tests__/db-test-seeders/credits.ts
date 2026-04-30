@@ -2,9 +2,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { randomBytes, randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { creditPricing } from "@vm0/db/schema/credit-pricing";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -101,52 +99,6 @@ export async function updateOrgStripeSubscription(
       updatedAt: new Date(),
     })
     .where(eq(orgMetadata.orgId, orgId));
-}
-
-/**
- * Insert a credit_pricing record for testing.
- * Uses upsert so tests can safely set pricing for the same model.
- *
- * @why-db-direct Credit pricing is reference data managed via database
- * migrations, not API endpoints or webhooks. No user-facing flow creates
- * pricing records.
- */
-export async function insertTestCreditPricing(
-  model: string,
-  options?: {
-    inputTokenPrice?: number;
-    outputTokenPrice?: number;
-    cacheReadTokenPrice?: number;
-    cacheCreationTokenPrice?: number;
-    modelProvider?: string;
-  },
-): Promise<void> {
-  initServices();
-  const inputTokenPrice = options?.inputTokenPrice ?? 100;
-  const outputTokenPrice = options?.outputTokenPrice ?? 200;
-  const cacheReadTokenPrice = options?.cacheReadTokenPrice ?? 0;
-  const cacheCreationTokenPrice = options?.cacheCreationTokenPrice ?? 0;
-  const modelProvider = options?.modelProvider ?? "";
-
-  await globalThis.services.db
-    .insert(creditPricing)
-    .values({
-      model,
-      modelProvider,
-      inputTokenPrice,
-      outputTokenPrice,
-      cacheReadTokenPrice,
-      cacheCreationTokenPrice,
-    })
-    .onConflictDoUpdate({
-      target: [creditPricing.model, creditPricing.modelProvider],
-      set: {
-        inputTokenPrice,
-        outputTokenPrice,
-        cacheReadTokenPrice,
-        cacheCreationTokenPrice,
-      },
-    });
 }
 
 /**
@@ -333,30 +285,82 @@ export async function deleteTestUsageEventsByProvider(
     .where(inArray(usageEvent.provider, providers));
 }
 
+async function insertModelUsageEventRows(params: {
+  runId: string;
+  orgId: string;
+  userId: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  status?: string;
+  creditsCharged?: number | null;
+  createdAt?: Date;
+  processedAt?: Date | null;
+}): Promise<string> {
+  const status = params.status ?? "pending";
+  const createdAt = params.createdAt ?? new Date();
+  const processedAt =
+    params.processedAt !== undefined
+      ? params.processedAt
+      : status === "processed"
+        ? createdAt
+        : null;
+  const provider = params.model ?? "claude-sonnet-4-6";
+  const quantities = [
+    ["tokens.input", params.inputTokens ?? 0],
+    ["tokens.output", params.outputTokens ?? 0],
+    ["tokens.cache_read", params.cacheReadInputTokens ?? 0],
+    ["tokens.cache_creation", params.cacheCreationInputTokens ?? 0],
+  ] as const;
+  const billableRows = quantities.filter(([_category, quantity], index) => {
+    return index === 0 || quantity > 0;
+  });
+
+  const [record] = await globalThis.services.db
+    .insert(usageEvent)
+    .values(
+      billableRows.map(([category, quantity], index) => {
+        return {
+          runId: params.runId,
+          orgId: params.orgId,
+          userId: params.userId,
+          kind: "model",
+          provider,
+          category,
+          quantity,
+          status,
+          creditsCharged: index === 0 ? (params.creditsCharged ?? null) : null,
+          idempotencyKey: randomUUID(),
+          createdAt,
+          processedAt,
+        };
+      }),
+    )
+    .returning({ id: usageEvent.id });
+
+  return record!.id;
+}
+
 /**
- * Insert a credit_usage record for testing.
- * Creates the required compose, version, and run records as FK dependencies.
+ * Insert model usage_event records for testing and create run dependencies.
  *
- * @why-db-direct Credit usage records are created by agent event webhooks
- * during run execution. Tests need precise control over token counts,
- * models, status, and FK relationships without running actual agents.
+ * @why-db-direct Usage events are normally written by the agent usage-event
+ * webhook. Tests need precise control over token counts, status, billing
+ * timestamps, and FK relationships without running actual agents.
  *
- * @returns The credit_usage record ID
+ * @returns The first usage_event record ID
  */
-export async function insertTestCreditUsage(
+export async function insertTestModelUsageEvent(
   orgId: string,
   options: {
     userId?: string;
     model?: string;
-    modelProvider?: string;
     inputTokens?: number;
     outputTokens?: number;
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
-    webSearchRequests?: number;
-    costUsd?: string;
-    resultUuid?: string;
-    messageId?: string;
     status?: string;
     creditsCharged?: number;
     processedAt?: Date | null;
@@ -387,7 +391,7 @@ export async function insertTestCreditUsage(
     agentComposeId: compose!.id,
   });
 
-  // Create a run (FK required by credit_usage)
+  // Create a run for run-scoped usage reporting.
   const [run] = await globalThis.services.db
     .insert(agentRuns)
     .values({
@@ -400,116 +404,100 @@ export async function insertTestCreditUsage(
     })
     .returning();
 
-  // Auto-set processedAt for processed records if not explicitly provided
-  const processedAt =
-    options.processedAt !== undefined
-      ? options.processedAt
-      : options.status === "processed"
-        ? new Date()
-        : null;
-
-  const [record] = await globalThis.services.db
-    .insert(creditUsage)
-    .values({
-      runId: run!.id,
-      resultUuid: options.resultUuid ?? null,
-      messageId: options.messageId ?? null,
-      orgId,
-      userId,
-      model: options.model ?? "gpt-4",
-      modelProvider: options.modelProvider ?? "",
-      inputTokens: options.inputTokens ?? 1000,
-      outputTokens: options.outputTokens ?? 500,
-      cacheReadInputTokens: options.cacheReadInputTokens ?? 0,
-      cacheCreationInputTokens: options.cacheCreationInputTokens ?? 0,
-      webSearchRequests: options.webSearchRequests ?? 0,
-      costUsd: options.costUsd ?? null,
-      status: options.status ?? "pending",
-      creditsCharged: options.creditsCharged ?? null,
-      processedAt,
-    })
-    .returning();
-
-  return record!.id;
+  return insertModelUsageEventRows({
+    runId: run!.id,
+    orgId,
+    userId,
+    model: options.model,
+    inputTokens: options.inputTokens ?? 1000,
+    outputTokens: options.outputTokens ?? 500,
+    cacheReadInputTokens: options.cacheReadInputTokens ?? 0,
+    cacheCreationInputTokens: options.cacheCreationInputTokens ?? 0,
+    status: options.status,
+    creditsCharged: options.creditsCharged,
+    processedAt: options.processedAt,
+  });
 }
 
 /**
- * Insert a credit_usage record for an existing run.
+ * Insert model usage_event records for an existing run.
  *
- * @why-db-direct Simplified credit usage insertion for a known run. Tests
+ * @why-db-direct Simplified usage event insertion for a known run. Tests
  * need precise control over usage attributes without agent execution.
  */
-export async function insertTestCreditUsageForRun(params: {
+export async function insertTestModelUsageEventForRun(params: {
   runId: string;
   orgId: string;
   userId: string;
-  messageId?: string;
   inputTokens?: number;
   outputTokens?: number;
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
-  webSearchRequests?: number;
   status?: string;
   creditsCharged?: number;
   processedAt?: Date | null;
 }): Promise<{ id: string }> {
   initServices();
-  const processedAt =
-    params.processedAt !== undefined
-      ? params.processedAt
-      : params.status === "processed"
-        ? new Date()
-        : null;
+  const id = await insertModelUsageEventRows({
+    runId: params.runId,
+    orgId: params.orgId,
+    userId: params.userId,
+    inputTokens: params.inputTokens ?? 100,
+    outputTokens: params.outputTokens ?? 50,
+    cacheReadInputTokens: params.cacheReadInputTokens ?? 0,
+    cacheCreationInputTokens: params.cacheCreationInputTokens ?? 0,
+    status: params.status,
+    creditsCharged: params.creditsCharged,
+    processedAt: params.processedAt,
+  });
 
-  const [record] = await globalThis.services.db
-    .insert(creditUsage)
-    .values({
-      runId: params.runId,
-      orgId: params.orgId,
-      userId: params.userId,
-      model: "claude-3-5-sonnet-20241022",
-      modelProvider: "anthropic",
-      messageId: params.messageId ?? null,
-      inputTokens: params.inputTokens ?? 100,
-      outputTokens: params.outputTokens ?? 50,
-      cacheReadInputTokens: params.cacheReadInputTokens ?? 0,
-      cacheCreationInputTokens: params.cacheCreationInputTokens ?? 0,
-      webSearchRequests: params.webSearchRequests ?? 0,
-      status: params.status ?? "pending",
-      creditsCharged: params.creditsCharged ?? null,
-      processedAt,
-    })
-    .returning({ id: creditUsage.id });
-
-  return { id: record!.id };
+  return { id };
 }
 
 /**
- * Back-date an existing credit_usage record's createdAt for testing
+ * Back-date a model usage_event group's createdAt for testing
  * date-range filtering.
  *
- * @why-db-direct No API supports timestamp manipulation on credit usage
+ * @why-db-direct No API supports timestamp manipulation on usage event
  * records. Tests need specific createdAt values for date-range queries.
  */
-export async function setTestCreditUsageCreatedAt(
+export async function setTestUsageEventCreatedAt(
   id: string,
   createdAt: Date,
 ): Promise<void> {
   initServices();
+  const [record] = await globalThis.services.db
+    .select({
+      runId: usageEvent.runId,
+      originalCreatedAt: usageEvent.createdAt,
+    })
+    .from(usageEvent)
+    .where(eq(usageEvent.id, id))
+    .limit(1);
+
+  if (!record) return;
+
   await globalThis.services.db
-    .update(creditUsage)
+    .update(usageEvent)
     .set({ createdAt })
-    .where(eq(creditUsage.id, id));
+    .where(
+      record.runId
+        ? and(
+            eq(usageEvent.runId, record.runId),
+            eq(usageEvent.createdAt, record.originalCreatedAt),
+          )
+        : eq(usageEvent.id, id),
+    );
 }
 
 /**
- * Seed a credit_usage record for testing insights aggregation.
+ * Seed model usage_event records for testing insights aggregation.
  *
- * @why-db-direct Seeds credit usage with specific createdAt/processedAt
+ * @why-db-direct Seeds usage events with specific createdAt/processedAt
  * timestamps for insights aggregation tests. Normally created by agent
  * webhooks, but tests need controlled timestamps.
  */
-export async function seedCreditUsageRecord(options: {
+export async function seedUsageEventRecord(options: {
   runId: string;
   orgId: string;
   userId: string;
@@ -518,12 +506,11 @@ export async function seedCreditUsageRecord(options: {
   processedAt?: Date;
 }): Promise<void> {
   initServices();
-  await globalThis.services.db.insert(creditUsage).values({
+  await insertModelUsageEventRows({
     runId: options.runId,
     orgId: options.orgId,
     userId: options.userId,
     model: "claude-sonnet-4-20250514",
-    modelProvider: "anthropic",
     inputTokens: 100,
     outputTokens: 50,
     creditsCharged: options.creditsCharged,

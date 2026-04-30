@@ -4,6 +4,7 @@ export const browserless = {
   browserless: {
     label: "Browserless",
     category: "data-automation-infrastructure",
+    generation: ["document", "image"],
     environmentMapping: {
       BROWSERLESS_TOKEN: "$secrets.BROWSERLESS_TOKEN",
     },

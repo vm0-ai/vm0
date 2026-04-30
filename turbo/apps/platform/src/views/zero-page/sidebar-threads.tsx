@@ -11,7 +11,6 @@ import {
   IconChevronRight,
   IconTrash,
   IconPencil,
-  IconLoader2,
 } from "@tabler/icons-react";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
@@ -21,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   Button,
+  RunningIndicator,
 } from "@vm0/ui";
 import {
   Dialog,
@@ -69,14 +69,7 @@ type ChatThreadPaneIndicator = "main" | "sidebar";
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
-    return (
-      <IconLoader2
-        aria-label="Running"
-        size={16}
-        stroke={2}
-        className="animate-spin text-sky-600"
-      />
-    );
+    return <RunningIndicator />;
   }
   if (state === "unread") {
     return (

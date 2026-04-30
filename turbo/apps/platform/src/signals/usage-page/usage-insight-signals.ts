@@ -130,7 +130,7 @@ export const usageInsightAsync$ = computed(async (get) => {
 
 // --- Bucket densification ---
 //
-// The API returns sparse buckets: only timestamps where credit_usage rows
+// The API returns sparse buckets: only timestamps where usage_event rows
 // exist. The chart positions buckets at uniform x-spacing by index, so a
 // 4-day gap (Apr 2 → Apr 6) renders the same width as a 1-day gap, which
 // makes the x-axis labels look irregular and skips dates with no usage.
