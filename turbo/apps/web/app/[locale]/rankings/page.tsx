@@ -318,11 +318,7 @@ async function getRankings(period: PeriodKey): Promise<{
   };
 }
 
-function formatWindow(
-  start: Date,
-  end: Date,
-  waitingLabel: string,
-): string {
+function formatWindow(start: Date, end: Date, waitingLabel: string): string {
   if (end <= start) {
     return waitingLabel;
   }
