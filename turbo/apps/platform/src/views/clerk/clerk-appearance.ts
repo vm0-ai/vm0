@@ -1,7 +1,15 @@
 import type { ClerkProviderProps } from "@clerk/clerk-react";
 
 type Appearance = NonNullable<ClerkProviderProps["appearance"]>;
-type Elements = NonNullable<Appearance["elements"]>;
+
+// Clerk's element styles accept a string (CSS class) or a nested CSS-in-JS
+// object. Resolving the full element map through `Appearance["elements"]`
+// causes TS2590 "union type too complex" because `Appearance` is a union of
+// all per-component themes (SignIn, UserProfile, UserButton, …). We type the
+// helper outputs against this minimal local shape and let the final return
+// assemble into `Appearance`.
+type ElementStyle = string | Record<string, unknown>;
+type Elements = Record<string, ElementStyle>;
 
 /**
  * Clerk appearance for hosted UI surfaces (UserProfile modal, sign-in drawer,
@@ -11,21 +19,22 @@ type Elements = NonNullable<Appearance["elements"]>;
  * `<html>` — no JS-side theme listening needed.
  */
 export function getClerkAppearance(): Appearance {
+  const elements: Elements = {
+    ...cardElements(),
+    ...navbarElements(),
+    ...profileSectionElements(),
+    ...formElements(),
+    ...chromeElements(),
+    ...signInElements(),
+    ...userButtonElements(),
+  };
   return {
     variables: clerkVariables(),
-    elements: {
-      ...cardElements(),
-      ...navbarElements(),
-      ...profileSectionElements(),
-      ...formElements(),
-      ...chromeElements(),
-      ...signInElements(),
-      ...userButtonElements(),
-    },
+    elements,
   };
 }
 
-function clerkVariables(): Appearance["variables"] {
+function clerkVariables(): Record<string, string> {
   return {
     colorPrimary: "hsl(var(--primary))",
     colorBackground: "hsl(var(--card))",
