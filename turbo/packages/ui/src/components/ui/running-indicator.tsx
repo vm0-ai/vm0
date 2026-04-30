@@ -1,8 +1,4 @@
-import {
-  useLayoutEffect,
-  useRef,
-  type HTMLAttributes,
-} from "react";
+import { useLayoutEffect, useRef, type HTMLAttributes } from "react";
 import { cn } from "../../lib/utils";
 
 const RUNNING_INDICATOR_DURATION_MS = 2400;
