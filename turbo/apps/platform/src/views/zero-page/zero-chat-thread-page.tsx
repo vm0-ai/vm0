@@ -2328,7 +2328,7 @@ function AssistantErrorContent({ error }: { error: string }) {
         className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[13px] text-muted-foreground"
         style={{
           border: "0.7px solid hsl(var(--border))",
-          borderRadius: "10px",
+          borderRadius: "12px",
         }}
       >
         <IconHandStop size={14} stroke={1.75} className="shrink-0" />

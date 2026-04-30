@@ -56,7 +56,7 @@ export function SidebarUpgradeCard() {
       type="button"
       onClick={handleClick}
       className="flex w-full items-center gap-3 p-2.5 text-left transition-colors hover:bg-muted/30 zero-card shadow-[0_1px_2px_hsl(220_12%_20%/0.04),0_4px_12px_hsl(220_12%_20%/0.03)]"
-      style={{ borderRadius: "7px" }}
+      style={{ borderRadius: "12px" }}
     >
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">Get {next.label}</p>
