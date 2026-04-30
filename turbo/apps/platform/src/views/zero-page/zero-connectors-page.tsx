@@ -111,10 +111,10 @@ function ConnectorCategoryMenu({
   }
 
   return (
-    <aside className="pointer-events-none absolute bottom-0 top-[60px] hidden w-44 min-[1184px]:left-[960px] min-[1184px]:block 2xl:left-full 2xl:ml-16">
+    <aside className="pointer-events-none fixed right-6 top-[28vh] z-20 hidden w-44 min-[1332px]:block">
       <nav
         aria-label="Connector categories"
-        className="group pointer-events-auto sticky top-[28vh] flex max-h-[68vh] flex-col gap-3 overflow-y-auto pb-3 pl-5"
+        className="group pointer-events-auto ml-auto flex max-h-[68vh] w-6 flex-col gap-3 overflow-x-hidden overflow-y-auto rounded-xl border border-transparent bg-transparent px-1 py-2 transition-all duration-150 hover:w-44 hover:border-border/60 hover:bg-popover hover:shadow-lg focus-within:w-44 focus-within:border-border/60 focus-within:bg-popover focus-within:shadow-lg 2xl:ml-0 2xl:w-full 2xl:overflow-y-auto 2xl:rounded-none 2xl:border-transparent 2xl:px-0 2xl:py-0 2xl:pb-3 2xl:pl-5 2xl:hover:w-full 2xl:hover:border-transparent 2xl:hover:bg-transparent 2xl:hover:shadow-none 2xl:focus-within:w-full 2xl:focus-within:border-transparent 2xl:focus-within:bg-transparent 2xl:focus-within:shadow-none"
       >
         {groups.flatMap((group) => {
           if (group.kind === "group") {
@@ -215,7 +215,7 @@ function ConnectorCategoryMenuItem({
       aria-current={activeState === "current" ? "true" : undefined}
       data-testid={`connector-category-menu-${targetId}`}
       title={label}
-      className={`group/item relative flex h-3 w-full items-center text-left leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
+      className={`group/item relative flex h-3 w-full items-center text-left leading-snug transition-all duration-150 group-hover:h-5 group-focus-within:h-5 2xl:group-hover:h-3 2xl:group-focus-within:h-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/20 ${
         activeState === "current"
           ? isChild
             ? "text-[11px] text-foreground hover:text-foreground"
@@ -228,9 +228,9 @@ function ConnectorCategoryMenuItem({
     >
       <span
         aria-hidden="true"
-        className={`block h-0.5 rounded-sm transition-colors ${lineClass}`}
+        className={`block h-0.5 rounded-sm transition-all duration-150 group-hover:opacity-0 group-focus-within:opacity-0 2xl:group-hover:opacity-100 2xl:group-focus-within:opacity-100 ${lineClass}`}
       />
-      <span className="absolute left-7 top-1/2 block -translate-y-1/2 translate-x-1 whitespace-nowrap opacity-0 transition duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:translate-x-0 group-focus-within:opacity-100">
+      <span className="absolute left-0 top-1/2 block -translate-y-1/2 translate-x-1 whitespace-nowrap opacity-0 transition-all duration-150 group-hover:left-3 group-hover:translate-x-0 group-hover:opacity-100 group-focus-within:left-3 group-focus-within:translate-x-0 group-focus-within:opacity-100 2xl:left-7 2xl:group-hover:left-7 2xl:group-focus-within:left-7">
         {menuLabel}
       </span>
     </button>
@@ -732,8 +732,8 @@ export function ZeroConnectorsPage() {
       className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
     >
       <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
-        <div className="mx-auto w-full max-w-[960px] min-[1184px]:max-w-[1136px] 2xl:max-w-[960px]">
-          <div className="flex w-full max-w-[960px] flex-wrap items-end justify-between gap-4">
+        <div className="mx-auto w-full max-w-[900px]">
+          <div className="flex w-full max-w-[900px] flex-wrap items-end justify-between gap-4">
             <div className="min-w-0 hidden md:block">
               <h1 className="text-lg font-semibold tracking-tight text-foreground">
                 Connectors
@@ -763,7 +763,7 @@ export function ZeroConnectorsPage() {
       </header>
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
-        <div className="relative mx-auto w-full max-w-[960px] min-[1184px]:max-w-[1136px] 2xl:max-w-[960px]">
+        <div className="relative mx-auto w-full max-w-[900px]">
           {activeTab === "builtin" &&
             allTypesLoadable.state === "hasData" &&
             showConnectorCategories && (
@@ -773,7 +773,7 @@ export function ZeroConnectorsPage() {
               />
             )}
 
-          <div className="min-w-0 flex w-full max-w-[960px] flex-col gap-6">
+          <div className="min-w-0 flex w-full max-w-[900px] flex-col gap-6">
             <div className="flex items-center justify-between">
               <Tabs
                 value={activeTab}
