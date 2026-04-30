@@ -1824,6 +1824,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn release_after_cleanup_deletes_outstanding_lease_without_requeueing() {
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let info = test_info("test-ns");
+        let mut lease = Some(pool.checkout(info).unwrap());
+
+        pool.cleanup().await.unwrap();
+
+        assert!(!pool.active);
+        assert!(lease.is_some());
+        assert!(pool.in_flight.contains("test-ns"));
+
+        pool.release(&mut lease).await.unwrap();
+
+        assert!(lease.is_none());
+        assert!(pool.in_flight.is_empty());
+        assert!(pool.plain_queue.is_empty());
+        assert!(pool.proxy_queue.is_empty());
+        pool.cleanup().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn cleanup_retry_drains_pending_creation_after_cancel() {
         let mut pool = NetnsPool::inactive_for_test();
         pool.active = true;
