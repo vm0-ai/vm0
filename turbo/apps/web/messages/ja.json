@@ -6513,5 +6513,30 @@
         "vm0Notes": "V4 FlashはBuilt-inモデル中最低のクレジットマルチプライヤー（×0.02）を持ち、Sonnet 4.6の約50分の1です。キャッシュ読み取りは課金、キャッシュ書き込みは無料。VM0はDeepSeekプロバイダーに10分のAPIタイムアウトを設定しており、Flashの短い単発作業と自然に適合します。"
       }
     }
+  },
+  "rankings": {
+    "pageTitle": "AIモデルランキング",
+    "pageDescription": "本日、今週、今月のVM0モデル使用状況ランキング（1時間ごと更新）。",
+    "breadcrumbHome": "ホーム",
+    "breadcrumbRankings": "AIモデルランキング",
+    "periodToday": "今日",
+    "periodWeek": "今週",
+    "periodMonth": "今月",
+    "heroDescription": "選択されたUTCウィンドウにおける1時間ごとのトークン総数でランク付けされたVM0モデル使用状況。",
+    "statModels": "モデル",
+    "statRankedTokens": "集計トークン",
+    "statWindow": "ウィンドウ",
+    "statWaiting": "最初の完了したUTC時間を待機中",
+    "tableHeaderRank": "順位",
+    "tableHeaderModel": "モデル",
+    "tableHeaderTokens": "トークン",
+    "tableHeaderShare": "シェア",
+    "tableHeaderChange": "変化",
+    "tableTokensIn": "入力",
+    "tableTokensOut": "出力",
+    "tableEmptyState": "この期間のモデル使用データはまだ集計されていません。",
+    "tableFooterModels": "トークン使用量トップ50モデル",
+    "tableFooterTokens": "トークン集計",
+    "changeNew": "新規"
   }
 }

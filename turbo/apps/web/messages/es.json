@@ -6517,5 +6517,30 @@
         "vm0Notes": "V4 Flash tiene el multiplicador de crédito más bajo de cualquier modelo Built-in (×0,02), aproximadamente 50× menos que Sonnet 4.6. Las lecturas de caché facturan mientras que las escrituras de caché son gratuitas, y VM0 establece un timeout de API de 10 minutos para el proveedor DeepSeek que se empareja naturalmente con el trabajo corto de un solo paso de Flash."
       }
     }
+  },
+  "rankings": {
+    "pageTitle": "Ranking de Modelos de IA",
+    "pageDescription": "Rankings de uso de modelos VM0 por hora, hoy, esta semana y este mes.",
+    "breadcrumbHome": "Inicio",
+    "breadcrumbRankings": "Ranking de Modelos de IA",
+    "periodToday": "Hoy",
+    "periodWeek": "Esta semana",
+    "periodMonth": "Este mes",
+    "heroDescription": "Uso de modelos VM0 clasificado por totales de tokens por hora en la ventana UTC seleccionada.",
+    "statModels": "Modelos",
+    "statRankedTokens": "Tokens clasificados",
+    "statWindow": "Ventana",
+    "statWaiting": "Esperando la primera hora UTC completada",
+    "tableHeaderRank": "Puesto",
+    "tableHeaderModel": "Modelo",
+    "tableHeaderTokens": "Tokens",
+    "tableHeaderShare": "Cuota",
+    "tableHeaderChange": "Cambio",
+    "tableTokensIn": "entrada",
+    "tableTokensOut": "salida",
+    "tableEmptyState": "Aún no se ha agregado uso de modelos para este período.",
+    "tableFooterModels": "Top 50 modelos por uso de tokens",
+    "tableFooterTokens": "tokens clasificados",
+    "changeNew": "nuevo"
   }
 }
