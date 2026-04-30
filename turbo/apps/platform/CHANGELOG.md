@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.315.0](https://github.com/vm0-ai/vm0/compare/app-v0.314.3...app-v0.315.0) (2026-04-30)
+
+
+### Features
+
+* **ui:** add wall-clock-synced RunningIndicator component ([#11589](https://github.com/vm0-ai/vm0/issues/11589)) ([88e01d9](https://github.com/vm0-ai/vm0/commit/88e01d9cce03f0b319c9be6fcca0bbff44c04e76))
+
+
+### Bug Fixes
+
+* **auth:** skip reload when org transiently clears to undefined on mobile ([#11570](https://github.com/vm0-ai/vm0/issues/11570)) ([461193f](https://github.com/vm0-ai/vm0/commit/461193f9f7e0de1b01304a404bcf09461812da82))
+
 ## [0.314.3](https://github.com/vm0-ai/vm0/compare/app-v0.314.2...app-v0.314.3) (2026-04-30)
 
 
