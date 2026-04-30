@@ -5131,7 +5131,7 @@
             "reason": "Cheaper default for most agent loops"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Stronger long-context recall at lower cost"
           },
           {
@@ -5296,7 +5296,7 @@
             "reason": "Sonnet baseline at much lower cost"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Cheaper open-weight alternative on agentic benchmarks"
           }
         ],
@@ -5458,7 +5458,7 @@
         "routingNotes": "Routed directly to Anthropic's Messages API. Default model on VM0 Managed.",
         "vm0Notes": "Sonnet 4.6 is the credit baseline (×1) that every other Built-in model's multiplier is normalised against, which is the main reason it stays the first choice for new agents on VM0; escalate to Opus only when Sonnet visibly underperforms on a specific task. Native prompt caching pairs well with VM0's stable system prompts and tool definitions, and keeps the per-turn cost of long-running agents predictable."
       },
-      "glm-5.1": {
+      "glm-5-1": {
         "name": "GLM-5.1",
         "pageTitle": "GLM-5.1 on VM0. Long-context agents",
         "tagline": "Z.AI's flagship. Up to a 1M-token context window. Strong for whole-codebase or whole-knowledge-base agents at well below Sonnet pricing.",
@@ -5577,7 +5577,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Stronger long-context recall"
           },
           {
@@ -5745,14 +5745,14 @@
             "reason": "Even cheaper for single-shot tasks"
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Cheap multilingual alternative"
           }
         ],
         "routingNotes": "Routed directly to Anthropic's Messages API. Available on VM0 Managed and the Anthropic / Claude Code OAuth providers.",
         "vm0Notes": "Haiku 4.5 carries the lowest Claude multiplier (×0.3) and is the right pick for high-volume routing workloads, with prompt caching keeping the cost of repeated short prompts down. It doesn't carry Sonnet's multi-step agent quality, so design any Haiku-based agent to keep loops short and the tool surface narrow."
       },
-      "kimi-k2.6": {
+      "kimi-k2-6": {
         "name": "Kimi K2.6",
         "pageTitle": "Kimi K2.6 on VM0. Long-context agents",
         "tagline": "Moonshot's latest open-weight model. Best-in-class agentic benchmarks at the open-source frontier and a Claude-compatible interface.",
@@ -5908,11 +5908,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.5",
+            "slug": "kimi-k2-5",
             "reason": "Older generation, slightly cheaper multiplier"
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Even longer context window (1M tokens)"
           },
           {
@@ -6095,14 +6095,14 @@
             "reason": "Step up for hard tool routing"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Same price, stronger long-context recall"
           }
         ],
         "routingNotes": "Routed through DeepSeek's Anthropic-compatible endpoint at `api.deepseek.com`. Available on VM0 Managed and the DeepSeek provider.",
         "vm0Notes": "DeepSeek bills cache reads but not cache writes, which is a real cost win whenever the system prompt is stable. VM0 sets a 10-minute API timeout for the DeepSeek provider and disables non-essential traffic to keep long-running agents responsive. The result is the strongest reasoning of any sub-Sonnet model in the Built-in lineup."
       },
-      "kimi-k2.5": {
+      "kimi-k2-5": {
         "name": "Kimi K2.5",
         "pageTitle": "Kimi K2.5 on VM0. Moonshot's previous generation",
         "tagline": "The previous Kimi generation. Cheaper than K2.6 but with weaker tool-use; pin it only if a specific agent was validated on this version.",
@@ -6218,11 +6218,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Newer Kimi with better tool-use"
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Larger context window if you need it"
           },
           {
@@ -6233,7 +6233,7 @@
         "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Available on VM0 Managed, Moonshot, OpenRouter, and Vercel AI Gateway.",
         "vm0Notes": "K2.5 carries the same per-token vendor price as K2.6 but a lower multiplier (×0.2 versus ×0.3) because the multiplier reflects positioning rather than raw cost. Long-context behaviour is solid, but K2.6 is the recommended choice for any new work on VM0."
       },
-      "minimax-m2.7": {
+      "minimax-m2-7": {
         "name": "MiniMax M2.7",
         "pageTitle": "MiniMax M2.7 on VM0. Multilingual at ×0.1",
         "tagline": "Strong multilingual reasoning at one-tenth of Sonnet's credit cost. Generous timeout for long thinking steps.",
@@ -6343,7 +6343,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Stronger reasoning at a similar price"
           },
           {
@@ -6510,7 +6510,7 @@
             "reason": "Anthropic alternative for routing"
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Cheap multilingual alternative"
           }
         ],

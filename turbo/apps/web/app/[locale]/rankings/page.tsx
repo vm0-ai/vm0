@@ -32,7 +32,6 @@ interface RankingRow {
   readonly iconPath: string | null;
   readonly inputTokens: number;
   readonly outputTokens: number;
-  readonly cacheTokens: number;
   readonly totalTokens: number;
   readonly previousTotalTokens: number;
   readonly share: number;
@@ -42,7 +41,6 @@ interface RawRankingRow {
   readonly model: unknown;
   readonly input_tokens: unknown;
   readonly output_tokens: unknown;
-  readonly cache_tokens: unknown;
   readonly total_tokens: unknown;
   readonly previous_total_tokens: unknown;
 }
@@ -240,9 +238,8 @@ async function getRankings(period: PeriodKey): Promise<{
     WITH current_period AS (
       SELECT
         ${modelExpr} AS model,
-        COALESCE(SUM(${modelStat.inputTokens}), 0)::bigint AS input_tokens,
+        COALESCE(SUM(${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS input_tokens,
         COALESCE(SUM(${modelStat.outputTokens}), 0)::bigint AS output_tokens,
-        COALESCE(SUM(${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}), 0)::bigint AS cache_tokens,
         COALESCE(SUM(${modelStat.totalTokens}), 0)::bigint AS total_tokens
       FROM ${modelStat}
       WHERE ${modelStat.hourStart} >= ${window.start}
@@ -262,7 +259,6 @@ async function getRankings(period: PeriodKey): Promise<{
       current_period.model,
       current_period.input_tokens,
       current_period.output_tokens,
-      current_period.cache_tokens,
       current_period.total_tokens,
       COALESCE(previous_period.previous_total_tokens, 0)::bigint AS previous_total_tokens
     FROM current_period
@@ -309,7 +305,6 @@ async function getRankings(period: PeriodKey): Promise<{
         iconPath: vendorIconPath(item.modelEntry.vendor),
         inputTokens: toNumber(item.row.input_tokens),
         outputTokens: toNumber(item.row.output_tokens),
-        cacheTokens: toNumber(item.row.cache_tokens),
         totalTokens: item.totalTokens,
         previousTotalTokens: toNumber(item.row.previous_total_tokens),
         share: totalTokens > 0 ? (item.totalTokens / totalTokens) * 100 : 0,

@@ -5130,7 +5130,7 @@
             "reason": "Predeterminado más barato para la mayoría de bucles de agente"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Mejor recuperación de contexto largo a menor costo"
           },
           {
@@ -5295,7 +5295,7 @@
             "reason": "Línea base Sonnet a mucho menor costo"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Alternativa de peso abierto más barata en benchmarks agénticos"
           }
         ],
@@ -5457,7 +5457,7 @@
         "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Modelo predeterminado en VM0 Managed.",
         "vm0Notes": "Sonnet 4.6 es la línea base de crédito (×1) contra la que se normaliza el multiplicador de todos los demás modelos Built-in, razón principal por la que sigue siendo la primera opción para nuevos agentes en VM0; escala a Opus solo cuando Sonnet visiblemente rinde por debajo de lo esperado en una tarea específica. El caché de prompts nativo se combina bien con los prompts de sistema y definiciones de herramientas estables de VM0, y mantiene predecible el costo por turno de agentes de larga duración."
       },
-      "glm-5.1": {
+      "glm-5-1": {
         "name": "GLM-5.1",
         "pageTitle": "GLM-5.1 en VM0. Agentes de contexto largo",
         "tagline": "El buque insignia de Z.AI. Hasta 1M tokens de ventana de contexto. Potente para agentes de código base completo o base de conocimiento completa a un precio muy por debajo de Sonnet.",
@@ -5576,7 +5576,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Mejor recuperación de contexto largo"
           },
           {
@@ -5744,14 +5744,14 @@
             "reason": "Aún más barato para tareas de un solo paso"
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Alternativa multilingüe barata"
           }
         ],
         "routingNotes": "Enrutado directamente a la API Messages de Anthropic. Disponible en VM0 Managed y los proveedores OAuth de Anthropic / Claude Code.",
         "vm0Notes": "Haiku 4.5 tiene el multiplicador Claude más bajo (×0,3) y es la opción correcta para cargas de trabajo de enrutamiento de alto volumen, con el caché de prompts manteniendo bajo el costo de prompts cortos repetidos. No tiene la calidad de agente multi-paso de Sonnet, así que diseña cualquier agente basado en Haiku para mantener los bucles cortos y la superficie de herramientas reducida."
       },
-      "kimi-k2.6": {
+      "kimi-k2-6": {
         "name": "Kimi K2.6",
         "pageTitle": "Kimi K2.6 en VM0. Agentes de contexto largo",
         "tagline": "El último modelo de peso abierto de Moonshot. Los mejores benchmarks agénticos de su clase en la frontera de código abierto e interfaz compatible con Claude.",
@@ -5907,11 +5907,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.5",
+            "slug": "kimi-k2-5",
             "reason": "Generación anterior, multiplicador ligeramente más barato"
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Ventana de contexto aún más larga (1M tokens)"
           },
           {
@@ -6094,14 +6094,14 @@
             "reason": "Subir de nivel para enrutamiento difícil de herramientas"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Mismo precio, mejor recuperación de contexto largo"
           }
         ],
         "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de DeepSeek en `api.deepseek.com`. Disponible en VM0 Managed y el proveedor DeepSeek.",
         "vm0Notes": "DeepSeek factura lecturas de caché pero no escrituras, lo que supone un ahorro real cuando el prompt de sistema es estable. VM0 establece un timeout de API de 10 minutos para el proveedor DeepSeek y deshabilita el tráfico no esencial para mantener la capacidad de respuesta de los agentes de larga duración. El resultado es el razonamiento más fuerte de cualquier modelo sub-Sonnet en el catálogo Built-in."
       },
-      "kimi-k2.5": {
+      "kimi-k2-5": {
         "name": "Kimi K2.5",
         "pageTitle": "Kimi K2.5 en VM0. La generación anterior de Moonshot",
         "tagline": "La generación anterior de Kimi. Más barato que K2.6 pero con uso de herramientas más débil; mantenlo fijado solo si un agente específico fue validado en esta versión.",
@@ -6217,11 +6217,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Kimi más nuevo con mejor uso de herramientas"
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Ventana de contexto más grande si la necesitas"
           },
           {
@@ -6232,7 +6232,7 @@
         "routingNotes": "Enrutado a través del endpoint compatible con Anthropic de Moonshot en `api.moonshot.ai`. Disponible en VM0 Managed, Moonshot, OpenRouter y Vercel AI Gateway.",
         "vm0Notes": "K2.5 tiene el mismo precio de proveedor por token que K2.6 pero un multiplicador más bajo (×0,2 versus ×0,3) porque el multiplicador refleja el posicionamiento en lugar del costo bruto. El comportamiento en contexto largo es sólido, pero K2.6 es la opción recomendada para cualquier trabajo nuevo en VM0."
       },
-      "minimax-m2.7": {
+      "minimax-m2-7": {
         "name": "MiniMax M2.7",
         "pageTitle": "MiniMax M2.7 en VM0. Multilingüe a ×0,1",
         "tagline": "Razonamiento multilingüe potente a un décimo del costo de crédito de Sonnet. Timeout generoso para pasos de pensamiento largos.",
@@ -6342,7 +6342,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Razonamiento más fuerte a un precio similar"
           },
           {
@@ -6509,7 +6509,7 @@
             "reason": "Alternativa Anthropic para enrutamiento"
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Alternativa multilingüe barata"
           }
         ],

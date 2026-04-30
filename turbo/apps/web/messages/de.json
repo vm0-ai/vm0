@@ -5126,7 +5126,7 @@
             "reason": "Gleiche Familie, 3× günstiger, schnellere Inferenz. Standardmodell für die meisten Agent-Aufgaben."
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Gute Reasoning-Qualität zu ×0,3 Credits. Ideal zur Kostenoptimierung."
           },
           {
@@ -5291,7 +5291,7 @@
             "reason": "Günstigere Alternative innerhalb der Claude 4-Familie."
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Deutlich günstiger (×0,3 Credits) mit guter Reasoning-Qualität."
           }
         ],
@@ -5445,7 +5445,7 @@
         "routingNotes": "Routed directly to Anthropic's Messages API. Default model on VM0 Managed.",
         "vm0Notes": "Sonnet 4.6 is the credit baseline (×1) that every other Built-in model's multiplier is normalised against, which is the main reason it stays the first choice for new agents on VM0; escalate to Opus only when Sonnet visibly underperforms on a specific task. Native prompt caching pairs well with VM0's stable system prompts and tool definitions, and keeps the per-turn cost of long-running agents predictable."
       },
-      "glm-5.1": {
+      "glm-5-1": {
         "name": "GLM-5.1",
         "pageTitle": "GLM-5.1 on VM0. Long-context agents",
         "tagline": "Z.AIs Flaggschiff-Modell. Starke Code-Generierung und Long-Context-Recall zu einem mittleren Preis — ×0,4 Credits auf VM0.",
@@ -5564,7 +5564,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Ähnlicher Preis mit Bildunterstützung und starken Benchmarks."
           },
           {
@@ -5724,14 +5724,14 @@
             "reason": "Noch günstiger (×0,02 Credits) mit 1M-Kontextfenster."
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Ultra-günstig (×0,1 Credits) für Bulk-Klassifikation."
           }
         ],
         "routingNotes": "Routed directly to Anthropic's Messages API. Available on VM0 Managed and the Anthropic / Claude Code OAuth providers.",
         "vm0Notes": "Haiku 4.5 carries the lowest Claude multiplier (×0.3) and is the right pick for high-volume routing workloads, with prompt caching keeping the cost of repeated short prompts down. It doesn't carry Sonnet's multi-step agent quality, so design any Haiku-based agent to keep loops short and the tool surface narrow."
       },
-      "kimi-k2.6": {
+      "kimi-k2-6": {
         "name": "Kimi K2.6",
         "pageTitle": "Kimi K2.6 on VM0. Long-context agents",
         "tagline": "Moonshots Open-Source-Flaggschiff. Starke SWE-bench-Ergebnisse, Bildunterstützung und AWS-Fehlerbehebungsfähigkeiten zu ×0,3 Credits.",
@@ -5887,11 +5887,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.5",
+            "slug": "kimi-k2-5",
             "reason": "Vorherige Generation, noch günstiger (×0,2 Credits) mit ähnlichen Fähigkeiten."
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Ähnlicher Preis, 1M-Kontext, aber ohne Bildunterstützung."
           },
           {
@@ -6074,14 +6074,14 @@
             "reason": "Bessere Allround-Qualität und Anthropic-Ökosystem zu höheren Kosten."
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Ähnlicher Preis mit zusätzlicher Bildunterstützung."
           }
         ],
         "routingNotes": "Routed through DeepSeek's Anthropic-compatible endpoint at `api.deepseek.com`. Available on VM0 Managed and the DeepSeek provider.",
         "vm0Notes": "DeepSeek bills cache reads but not cache writes, which is a real cost win whenever the system prompt is stable. VM0 sets a 10-minute API timeout for the DeepSeek provider and disables non-essential traffic to keep long-running agents responsive. The result is the strongest reasoning of any sub-Sonnet model in the Built-in lineup."
       },
-      "kimi-k2.5": {
+      "kimi-k2-5": {
         "name": "Kimi K2.5",
         "pageTitle": "Kimi K2.5 on VM0. Moonshot's previous generation",
         "tagline": "Moonshots vorheriges Flaggschiff. Immer noch solide mit Bildunterstützung und extrem niedrigen Kosten — ×0,2 Credits.",
@@ -6197,11 +6197,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Direkter Nachfolger mit besseren Benchmarks bei ×0,3 Credits."
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Ähnlicher Preisbereich mit 1M-Kontext."
           },
           {
@@ -6212,7 +6212,7 @@
         "routingNotes": "Routed through Moonshot's Anthropic-compatible endpoint at `api.moonshot.ai`. Available on VM0 Managed, Moonshot, OpenRouter, and Vercel AI Gateway.",
         "vm0Notes": "K2.5 carries the same per-token vendor price as K2.6 but a lower multiplier (×0.2 versus ×0.3) because the multiplier reflects positioning rather than raw cost. Long-context behaviour is solid, but K2.6 is the recommended choice for any new work on VM0."
       },
-      "minimax-m2.7": {
+      "minimax-m2-7": {
         "name": "MiniMax M2.7",
         "pageTitle": "MiniMax M2.7 on VM0. Multilingual at ×0.1",
         "tagline": "Das günstigste Modell auf VM0. ×0,1 Credits für Bulk-Klassifikation, Vorfiltern und einfache Automatisierung.",
@@ -6322,7 +6322,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Deutlich bessere Qualität bei immer noch niedrigen Kosten (×0,3 Credits)."
           },
           {
@@ -6489,7 +6489,7 @@
             "reason": "Bessere Anthropic-Integration zu höheren Kosten (×0,3 Credits)."
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Ähnliche Positionierung, aber ×0,1 Credits vs. ×0,02."
           }
         ],

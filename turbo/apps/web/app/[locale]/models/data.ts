@@ -83,7 +83,7 @@ export const MODELS: ModelEntry[] = [
       "DeepSeek V4 Pro",
       "GPT-5.2 / Gemini 3 Pro",
     ],
-    alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2.6", "deepseek-v4-pro"],
+    alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2-6", "deepseek-v4-pro"],
   },
 
   {
@@ -106,7 +106,7 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "Anthropic API key",
     defaultFor: ["Anthropic API key", "Claude Code OAuth"],
     comparisonSlugs: ["Claude Opus 4.7", "Claude Sonnet 4.6", "Kimi K2.6"],
-    alternativeSlugs: ["claude-opus-4-7", "claude-sonnet-4-6", "kimi-k2.6"],
+    alternativeSlugs: ["claude-opus-4-7", "claude-sonnet-4-6", "kimi-k2-6"],
   },
 
   {
@@ -137,7 +137,7 @@ export const MODELS: ModelEntry[] = [
   },
 
   {
-    slug: "glm-5.1",
+    slug: "glm-5-1",
     modelId: "glm-5.1",
     name: "GLM-5.1",
     vendor: "Z.AI",
@@ -157,7 +157,7 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "Z.AI API key",
     defaultFor: ["Z.AI"],
     comparisonSlugs: ["Kimi K2.6", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
-    alternativeSlugs: ["kimi-k2.6", "deepseek-v4-pro", "claude-sonnet-4-6"],
+    alternativeSlugs: ["kimi-k2-6", "deepseek-v4-pro", "claude-sonnet-4-6"],
   },
 
   {
@@ -183,12 +183,12 @@ export const MODELS: ModelEntry[] = [
     alternativeSlugs: [
       "claude-sonnet-4-6",
       "deepseek-v4-flash",
-      "minimax-m2.7",
+      "minimax-m2-7",
     ],
   },
 
   {
-    slug: "kimi-k2.6",
+    slug: "kimi-k2-6",
     modelId: "kimi-k2.6",
     name: "Kimi K2.6",
     vendor: "Moonshot",
@@ -207,7 +207,7 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "Moonshot API key",
     defaultFor: ["Moonshot"],
     comparisonSlugs: ["GLM-5.1", "Claude Sonnet 4.6", "Kimi K2.5"],
-    alternativeSlugs: ["kimi-k2.5", "glm-5.1", "deepseek-v4-pro"],
+    alternativeSlugs: ["kimi-k2-5", "glm-5-1", "deepseek-v4-pro"],
   },
 
   {
@@ -231,11 +231,11 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "DeepSeek API key",
     defaultFor: [],
     comparisonSlugs: ["DeepSeek V4 Flash", "Claude Sonnet 4.6", "Kimi K2.6"],
-    alternativeSlugs: ["deepseek-v4-flash", "claude-sonnet-4-6", "kimi-k2.6"],
+    alternativeSlugs: ["deepseek-v4-flash", "claude-sonnet-4-6", "kimi-k2-6"],
   },
 
   {
-    slug: "kimi-k2.5",
+    slug: "kimi-k2-5",
     modelId: "kimi-k2.5",
     name: "Kimi K2.5",
     vendor: "Moonshot",
@@ -254,11 +254,11 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "Moonshot API key",
     defaultFor: [],
     comparisonSlugs: ["Kimi K2.6", "DeepSeek V4 Pro"],
-    alternativeSlugs: ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro"],
+    alternativeSlugs: ["kimi-k2-6", "glm-5-1", "deepseek-v4-pro"],
   },
 
   {
-    slug: "minimax-m2.7",
+    slug: "minimax-m2-7",
     modelId: "MiniMax-M2.7",
     name: "MiniMax M2.7",
     vendor: "MiniMax",
@@ -278,7 +278,7 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "MiniMax API key",
     defaultFor: ["MiniMax"],
     comparisonSlugs: ["Kimi K2.6", "DeepSeek V4 Flash", "GLM-5.1"],
-    alternativeSlugs: ["kimi-k2.6", "deepseek-v4-flash", "claude-haiku-4-5"],
+    alternativeSlugs: ["kimi-k2-6", "deepseek-v4-flash", "claude-haiku-4-5"],
   },
 
   {
@@ -302,7 +302,7 @@ export const MODELS: ModelEntry[] = [
     byoKeyLabel: "DeepSeek API key",
     defaultFor: ["DeepSeek"],
     comparisonSlugs: ["DeepSeek V4 Pro", "Claude Haiku 4.5", "MiniMax M2.7"],
-    alternativeSlugs: ["deepseek-v4-pro", "claude-haiku-4-5", "minimax-m2.7"],
+    alternativeSlugs: ["deepseek-v4-pro", "claude-haiku-4-5", "minimax-m2-7"],
   },
 ];
 
