@@ -393,7 +393,7 @@ describe("createApp", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(response.headers.get("access-control-allow-origin")).toBe(null);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
     });
 
     it("allows *.vm7.ai over http only in development", async () => {

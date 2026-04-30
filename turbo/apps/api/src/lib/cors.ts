@@ -10,21 +10,25 @@ import { env } from "./env";
 // directly (not proxied to Next), responses from registered routes need their
 // own CORS headers — the web proxy fallthrough is no longer in the request
 // path for migrated endpoints.
-const STATIC_ALLOWED_ORIGINS: readonly string[] = [
+const STATIC_ALLOWED_ORIGINS = new Set([
   "https://www.vm0.ai",
   "https://vm0.ai",
-];
+]);
 
 function getAllowedOrigin(origin: string | undefined): string | null {
-  if (!origin) return null;
+  if (!origin) {
+    return null;
+  }
 
   const url = safeUrlParse(origin);
-  if (!url) return null;
+  if (!url) {
+    return null;
+  }
 
   const normalizedOrigin = url.origin;
   const { hostname, protocol } = url;
 
-  if (STATIC_ALLOWED_ORIGINS.includes(normalizedOrigin)) {
+  if (STATIC_ALLOWED_ORIGINS.has(normalizedOrigin)) {
     return normalizedOrigin;
   }
 
@@ -34,18 +38,28 @@ function getAllowedOrigin(origin: string | undefined): string | null {
     deployEnv === "development" &&
     protocol === "http:" &&
     hostname === "localhost";
-  if (!allowHttpLocalhost && protocol !== "https:") return null;
+  if (!allowHttpLocalhost && protocol !== "https:") {
+    return null;
+  }
 
-  if (hostname.endsWith(".vm0.ai")) return normalizedOrigin;
+  if (hostname.endsWith(".vm0.ai")) {
+    return normalizedOrigin;
+  }
 
   if (deployEnv === "preview" && hostname.endsWith(".vm6.ai")) {
     return normalizedOrigin;
   }
 
   if (deployEnv === "development") {
-    if (hostname === "localhost") return normalizedOrigin;
-    if (hostname.endsWith(".vm6.ai")) return normalizedOrigin;
-    if (hostname.endsWith(".vm7.ai")) return normalizedOrigin;
+    if (hostname === "localhost") {
+      return normalizedOrigin;
+    }
+    if (hostname.endsWith(".vm6.ai")) {
+      return normalizedOrigin;
+    }
+    if (hostname.endsWith(".vm7.ai")) {
+      return normalizedOrigin;
+    }
   }
 
   return null;
@@ -70,5 +84,5 @@ export const corsMiddleware: MiddlewareHandler = cors({
     "Authorization",
     "Range",
   ],
-  maxAge: 86400,
+  maxAge: 86_400,
 });
