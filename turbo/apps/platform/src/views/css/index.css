@@ -143,7 +143,8 @@
   animation: zero-running-ripple 2400ms ease-out infinite;
 }
 @keyframes zero-running-center {
-  0%, 100% {
+  0%,
+  100% {
     transform: scale(0.64);
     opacity: 0.34;
   }
@@ -153,7 +154,8 @@
   }
 }
 @keyframes zero-running-ripple {
-  0%, 45% {
+  0%,
+  45% {
     transform: scale(0.8);
     opacity: 0;
   }

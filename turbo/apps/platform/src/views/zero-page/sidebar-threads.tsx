@@ -68,12 +68,7 @@ type ChatThreadPaneIndicator = "main" | "sidebar";
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
-    return (
-      <span
-        aria-label="Running"
-        className="zero-running-indicator"
-      />
-    );
+    return <span aria-label="Running" className="zero-running-indicator" />;
   }
   if (state === "unread") {
     return (
