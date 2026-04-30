@@ -27,23 +27,14 @@ interface S3StorageManifest {
   readonly files: readonly S3FileEntry[];
 }
 
-const s3Client$ = computed((): S3Client | null => {
-  const accessKeyId = env("R2_ACCESS_KEY_ID");
-  const secretAccessKey = env("R2_SECRET_ACCESS_KEY");
-  if (!accessKeyId || !secretAccessKey) {
-    return null;
-  }
-  const endpoint =
-    env("S3_ENDPOINT") ??
-    `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`;
+const s3Client$ = computed((): S3Client => {
   return new S3Client({
-    region: env("S3_REGION") ?? "auto",
-    endpoint,
+    region: "auto",
+    endpoint: `https://${env("R2_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
     credentials: {
-      accessKeyId,
-      secretAccessKey,
+      accessKeyId: env("R2_ACCESS_KEY_ID"),
+      secretAccessKey: env("R2_SECRET_ACCESS_KEY"),
     },
-    forcePathStyle: env("S3_FORCE_PATH_STYLE") === "true",
   });
 });
 
@@ -53,9 +44,6 @@ export function listS3Objects(
 ): Computed<Promise<readonly S3Object[]>> {
   return computed(async (get): Promise<readonly S3Object[]> => {
     const client = get(s3Client$);
-    if (!client) {
-      return [];
-    }
     const objects: S3Object[] = [];
     let continuationToken: string | undefined;
 
@@ -91,9 +79,6 @@ export function downloadS3Buffer(
 ): Computed<Promise<Buffer>> {
   return computed(async (get): Promise<Buffer> => {
     const client = get(s3Client$);
-    if (!client) {
-      throw new Error("S3 client not configured");
-    }
     const response = await client.send(
       new GetObjectCommand({ Bucket: bucket, Key: key }),
     );

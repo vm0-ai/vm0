@@ -1,6 +1,6 @@
 import { env } from "../lib/env";
 import { logger } from "../lib/log";
-import { lazySingleton } from "./external/lazy-singleton";
+import { singleton } from "../lib/singleton";
 
 export enum Mechanism {
   WaitUntil = "wait_until",
@@ -15,7 +15,7 @@ class PromiseTracker {
   descriptions = new Map<Promise<unknown>, string>();
 }
 
-const tracker = lazySingleton(() => {
+const tracker = singleton(() => {
   return new PromiseTracker();
 });
 

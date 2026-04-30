@@ -1,30 +1,14 @@
 import { computed, type Computed } from "ccstate";
-
+import { Axiom } from "@axiomhq/js";
 import { env } from "../../lib/env";
+import { singleton } from "../../lib/singleton";
 
-const axiomClient$ = computed(
-  (): Promise<{
-    query: (apl: string) => Promise<{
-      matches?: { _time: string; data: Record<string, unknown> }[];
-    }>;
-  } | null> => {
-    const token = env("AXIOM_TOKEN_TELEMETRY");
-    if (!token) {
-      return Promise.resolve(null);
-    }
-    return import("@axiomhq/js")
-      .then(({ Axiom }) => {
-        return new Axiom({ token }) as {
-          query: (apl: string) => Promise<{
-            matches?: { _time: string; data: Record<string, unknown> }[];
-          }>;
-        };
-      })
-      .catch(() => {
-        return null;
-      });
-  },
-);
+const axiomClient = singleton(() => {
+  return new Axiom({ token: env("AXIOM_TOKEN_TELEMETRY") });
+});
+const axiomClient$ = computed(() => {
+  return axiomClient();
+});
 
 export function getDatasetName(base: string): string {
   return `vm0-${base}-${env("AXIOM_DATASET_SUFFIX")}`;

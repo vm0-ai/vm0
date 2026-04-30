@@ -9,12 +9,12 @@ import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool, type PoolClient, type QueryConfig } from "pg";
 
 import { env } from "./env";
-import { lazySingleton } from "./lazy-singleton";
+import { singleton } from "./singleton";
 import { deriveSqlSpanName } from "./sql-span-name";
 
 const HTTP_ROUTE_BAGGAGE_KEY = "http.route";
 
-const pool = lazySingleton((): Pool => {
+const pool = singleton((): Pool => {
   // `@opentelemetry/instrumentation-pg` would normally hook `pg.Pool` via
   // `require-in-the-middle`, but `vercel deploy --prebuilt --archive=tgz`
   // bundles the api into a single `index.js` so the require hook never fires.
@@ -145,7 +145,7 @@ const pool = lazySingleton((): Pool => {
   );
 });
 
-export const db = lazySingleton((): NodePgDatabase<typeof schema> => {
+export const db = singleton((): NodePgDatabase<typeof schema> => {
   return drizzle(pool(), { schema });
 });
 

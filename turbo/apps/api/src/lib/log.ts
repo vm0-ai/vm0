@@ -1,5 +1,5 @@
 import { env } from "./env";
-import { lazySingleton } from "./lazy-singleton";
+import { singleton } from "./singleton";
 
 type LogMethod = (...args: unknown[]) => void;
 
@@ -41,7 +41,7 @@ class LoggerRegistry {
   }
 }
 
-const loggerRegistry = lazySingleton(() => {
+const loggerRegistry = singleton(() => {
   return new LoggerRegistry();
 });
 

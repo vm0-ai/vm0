@@ -166,9 +166,6 @@ const sandboxTokenAuth$ = command(
     options: AuthOptions,
     signal: AbortSignal,
   ): Promise<AuthContext | null> => {
-    // Zero tokens carry their own capabilities — evaluate before the
-    // sandbox capability guard so they work on routes that don't
-    // declare acceptAnySandboxCapability.
     const zeroResult = await set(zeroAuth$, token, options, signal);
     if (zeroResult) {
       return zeroResult;
@@ -212,10 +209,6 @@ const resolvedAuthContext$ = command(
           return result;
         }
       }
-      // Recognized PAT prefix that failed verification or DB lookup must not
-      // fall through to Clerk session auth — match web's `requireApiKeyAuth`
-      // semantics so a bogus/expired PAT alongside a valid Clerk cookie is
-      // still rejected.
       return null;
     }
 
@@ -235,9 +228,6 @@ const resolvedAuthContext$ = command(
       return null;
     }
 
-    // Unrecognized Bearer shape (e.g. a Clerk session JWT forwarded by the
-    // platform api-client) — defer to Clerk session auth, which validates
-    // both the Authorization header and the cookie.
     return await get(clerkSessionAuth$);
   },
 );

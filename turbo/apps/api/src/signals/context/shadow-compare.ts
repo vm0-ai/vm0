@@ -2,7 +2,7 @@ import type { AppRoute } from "@ts-rest/core";
 import { command, type Command } from "ccstate";
 
 import { env } from "../../lib/env";
-import { testOverride } from "../../lib/lazy-singleton";
+import { testOverride } from "../../lib/singleton";
 import { logger } from "../../lib/log";
 import { safeJsonParse } from "../utils";
 import type { SignalRouteHandler } from "./route";
@@ -265,14 +265,9 @@ export function shadowCompareRoute({
         isCommand(handler) ? set(handler, signal) : get(handler),
       );
 
-      const webUrl = env("VM0_WEB_URL");
-      if (!webUrl) {
-        return await apiPromise;
-      }
-
       const webPromise = fetchWebRouteResult(
         webRequest,
-        webUrl,
+        env("VM0_WEB_URL"),
         signal,
         timeoutMs,
       );

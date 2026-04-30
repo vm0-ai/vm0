@@ -13,12 +13,7 @@ interface StripeInvoice {
 export async function listStripeInvoices(
   customerId: string,
 ): Promise<readonly StripeInvoice[]> {
-  const secretKey = env("STRIPE_SECRET_KEY");
-  if (!secretKey) {
-    return [];
-  }
-
-  const stripe = new StripeSDK(secretKey);
+  const stripe = new StripeSDK(env("STRIPE_SECRET_KEY"));
   const result = await stripe.invoices.list({
     customer: customerId,
     limit: 24,

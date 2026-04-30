@@ -16,7 +16,7 @@ import {
   zeroSlackOrgInstallation,
   zeroSlackOrgStatus,
 } from "../services/zero-slack-data.service";
-import { getFileInfo } from "../external/slack-client";
+import { getFileInfo } from "../../lib/slack-client";
 import { fetchSlackFile } from "../external/slack-file-fetcher";
 import type { RouteEntry } from "../route";
 
@@ -86,61 +86,39 @@ const getSlackDownloadFileInner$ = computed(async (get) => {
     );
   }
 
-  return getFileInfo(installation.botToken, query.file_id)
-    .then((fileInfo) => {
-      const downloadUrl = fileInfo.url_private_download ?? fileInfo.url_private;
-      if (!downloadUrl) {
-        return new Response(
-          JSON.stringify({
-            error: {
-              message: "File does not have a downloadable URL",
-              code: "NOT_FOUND",
-            },
-          }),
-          { status: 404, headers: { "Content-Type": "application/json" } },
-        );
-      }
-
-      return fetchSlackFile(downloadUrl, installation.botToken).then(
-        (fileResponse) => {
-          const headers = new Headers();
-          const contentLength = fileResponse.headers.get("content-length");
-          const contentType =
-            fileResponse.headers.get("content-type") ??
-            fileInfo.mimetype ??
-            "application/octet-stream";
-
-          headers.set("Content-Type", contentType);
-          headers.set(
-            "X-File-Name",
-            encodeURIComponent(fileInfo.name ?? query.file_id),
-          );
-          headers.set("X-File-Mimetype", contentType);
-          if (contentLength) {
-            headers.set("Content-Length", contentLength);
-          }
-
-          return new Response(fileResponse.body, { status: 200, headers });
+  const fileInfo = await getFileInfo(installation.botToken, query.file_id);
+  const downloadUrl = fileInfo.url_private_download ?? fileInfo.url_private;
+  if (!downloadUrl) {
+    return new Response(
+      JSON.stringify({
+        error: {
+          message: "File does not have a downloadable URL",
+          code: "NOT_FOUND",
         },
-      );
-    })
-    .catch((error) => {
-      return new Response(
-        JSON.stringify({
-          error: {
-            message:
-              error instanceof Error
-                ? error.message
-                : "Failed to download file",
-            code: "BAD_GATEWAY",
-          },
-        }),
-        {
-          status: 502,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    });
+      }),
+      { status: 404, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  const fileResponse = await fetchSlackFile(downloadUrl, installation.botToken);
+  const headers = new Headers();
+  const contentLength = fileResponse.headers.get("content-length");
+  const contentType =
+    fileResponse.headers.get("content-type") ??
+    fileInfo.mimetype ??
+    "application/octet-stream";
+
+  headers.set("Content-Type", contentType);
+  headers.set(
+    "X-File-Name",
+    encodeURIComponent(fileInfo.name ?? query.file_id),
+  );
+  headers.set("X-File-Mimetype", contentType);
+  if (contentLength) {
+    headers.set("Content-Length", contentLength);
+  }
+
+  return new Response(fileResponse.body, { status: 200, headers });
 });
 
 const slackReadAuth = {

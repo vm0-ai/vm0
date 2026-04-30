@@ -9,8 +9,8 @@ import {
   verifyComposeJobToken,
   verifySandboxToken,
   verifyZeroToken,
-} from "./tokens";
-import { now } from "../external/time";
+} from "../tokens";
+import { now } from "../../external/time";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);

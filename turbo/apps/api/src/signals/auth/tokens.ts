@@ -7,7 +7,6 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { lazySingleton } from "../external/lazy-singleton";
 import { now } from "../external/time";
 import { safeJsonParse } from "../utils";
 import {
@@ -16,6 +15,7 @@ import {
   SandboxAuth,
   ZeroAuth,
 } from "../../types/auth";
+import { singleton } from "../../lib/singleton";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
@@ -82,7 +82,7 @@ function deriveJwtKey(): Buffer {
   );
 }
 
-const getJwtKey = lazySingleton((): Buffer => {
+const getJwtKey = singleton((): Buffer => {
   return deriveJwtKey();
 });
 

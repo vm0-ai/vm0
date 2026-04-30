@@ -18,12 +18,18 @@ R2_USER_STORAGES_BUCKET_NAME=op://Development/cloudflare/R2_USER_STORAGES_BUCKET
 # Optional: Realtime (Ably) — required for runner realtime token endpoint
 ABLY_API_KEY=op://Development/ably/ABLY_API_KEY
 
-# Optional: Observability (Axiom)
+# Required: Observability (Axiom). apps/api validates these at startup.
 AXIOM_TOKEN_SESSIONS=op://Development/axiom/AXIOM_TOKEN_SESSIONS
 AXIOM_TOKEN_TELEMETRY=op://Development/axiom/AXIOM_TOKEN_TELEMETRY
 AXIOM_DATASET_SUFFIX=dev
-# api/instrument.ts gates OTel on this — set any non-empty value so local dev emits spans
-VERCEL_GIT_COMMIT_SHA=local-dev
+
+# Required: apps/api Sentry environment tag. CI injects "production" or
+# "preview" via .github/actions/web-api-env. Local dev uses "development".
+SENTRY_ENV=development
+
+# Required: git commit SHA used as OTel service.version and Sentry release.
+# CI injects ${GITHUB_SHA} via web-api-env; locally any non-empty marker works.
+GIT_COMMIT_SHA=local-dev
 
 SECRETS_ENCRYPTION_KEY=op://Development/vm0/SECRETS_ENCRYPTION_KEY
 
@@ -161,8 +167,11 @@ NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
 # Required: App UI URL (for settings page links in error messages)
 APP_URL=https://app.vm7.ai:8443
 
-# Optional: Web app URL — apps/api proxies any unmatched route here while
-# legacy endpoints are migrated. Leave unset to fall through to a plain 404.
+# Required: API URL (apps/api self-reference, e.g. for generating absolute callback URLs)
+VM0_API_URL=https://api.vm7.ai:8443
+
+# Required: Web app URL — apps/api proxies any unmatched route here while
+# legacy endpoints are migrated.
 VM0_WEB_URL=https://www.vm7.ai:8443
 
 # Optional: Blog Configuration

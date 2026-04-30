@@ -4,7 +4,7 @@ import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
-import { listConversations } from "../external/slack-client";
+import { listConversations } from "../../lib/slack-client";
 import { decryptSecretValue } from "./crypto.utils";
 
 interface SlackOrgStatusResult {
