@@ -72,4 +72,3 @@ export async function getFile(
 export function buildFileDownloadUrl(token: string, filePath: string): string {
   return `https://api.telegram.org/file/bot${token}/${filePath}`;
 }
-
