@@ -389,12 +389,18 @@ body {
   align-items: center;
   gap: 4px;
   line-height: 1;
+  outline: none;
   transition: color 0.2s;
 }
 
 .nav-trigger:hover,
 .nav-trigger-active {
   color: hsl(var(--foreground));
+}
+
+.nav-trigger:focus-visible {
+  border-radius: 4px;
+  box-shadow: 0 0 0 2px hsl(var(--gray-300));
 }
 
 .nav-trigger-caret {

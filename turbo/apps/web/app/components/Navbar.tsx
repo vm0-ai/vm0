@@ -33,6 +33,7 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
   const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
   const { signOut } = useClerk();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     const handleResize = () => {
@@ -145,14 +146,20 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
               {t("useCases")}
             </Link>
             <NavMenu
+              id="resources"
               label={t("resources")}
               items={resourcesItems}
               alignOffset={-40}
+              openId={openMenuId}
+              onOpenChange={setOpenMenuId}
             />
             <NavMenu
+              id="trust-and-tech"
               label={t("trustAndTech")}
               items={trustItems}
               alignOffset={40}
+              openId={openMenuId}
+              onOpenChange={setOpenMenuId}
             />
             <Link href="/pricing" className="nav-link">
               {t("pricing")}

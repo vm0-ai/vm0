@@ -15,15 +15,25 @@ export interface NavMenuItem {
 }
 
 interface NavMenuProps {
+  id: string;
   label: string;
   alignOffset?: number;
   items: NavMenuItem[];
+  openId: string | null;
+  onOpenChange: (id: string | null) => void;
 }
 
 const CLOSE_DELAY_MS = 120;
 
-export function NavMenu({ label, items, alignOffset = 0 }: NavMenuProps) {
-  const [open, setOpen] = React.useState(false);
+export function NavMenu({
+  id,
+  label,
+  items,
+  alignOffset = 0,
+  openId,
+  onOpenChange,
+}: NavMenuProps) {
+  const open = openId === id;
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cancelClose = React.useCallback(() => {
@@ -36,9 +46,14 @@ export function NavMenu({ label, items, alignOffset = 0 }: NavMenuProps) {
   const scheduleClose = React.useCallback(() => {
     cancelClose();
     closeTimer.current = setTimeout(() => {
-      setOpen(false);
+      onOpenChange(null);
     }, CLOSE_DELAY_MS);
-  }, [cancelClose]);
+  }, [cancelClose, onOpenChange]);
+
+  const openSelf = React.useCallback(() => {
+    cancelClose();
+    onOpenChange(id);
+  }, [cancelClose, id, onOpenChange]);
 
   React.useEffect(() => {
     return () => {
@@ -48,23 +63,22 @@ export function NavMenu({ label, items, alignOffset = 0 }: NavMenuProps) {
 
   const handleSelect = () => {
     cancelClose();
-    setOpen(false);
+    onOpenChange(null);
   };
 
   return (
-    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+    <PopoverPrimitive.Root
+      open={open}
+      onOpenChange={(next) => {
+        onOpenChange(next ? id : null);
+      }}
+    >
       <PopoverPrimitive.Trigger
         type="button"
         className={`nav-trigger${open ? " nav-trigger-active" : ""}`}
-        onPointerEnter={() => {
-          cancelClose();
-          setOpen(true);
-        }}
+        onPointerEnter={openSelf}
         onPointerLeave={scheduleClose}
-        onFocus={() => {
-          cancelClose();
-          setOpen(true);
-        }}
+        onFocus={openSelf}
         onBlur={scheduleClose}
       >
         {label}
