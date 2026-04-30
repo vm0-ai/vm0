@@ -5119,7 +5119,7 @@
             "reason": "Cheaper default for most agent loops"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Stronger long-context recall at lower cost"
           },
           {
@@ -5284,7 +5284,7 @@
             "reason": "Sonnet baseline at much lower cost"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Cheaper open-weight alternative on agentic benchmarks"
           }
         ],
@@ -5565,7 +5565,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Stronger long-context recall"
           },
           {
@@ -5733,7 +5733,7 @@
             "reason": "Even cheaper for single-shot tasks"
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Cheap multilingual alternative"
           }
         ],
@@ -5896,11 +5896,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.5",
+            "slug": "kimi-k2-5",
             "reason": "Older generation, slightly cheaper multiplier"
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Even longer context window (1M tokens)"
           },
           {
@@ -6083,7 +6083,7 @@
             "reason": "Step up for hard tool routing"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Same price, stronger long-context recall"
           }
         ],
@@ -6206,11 +6206,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Newer Kimi with better tool-use"
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Larger context window if you need it"
           },
           {
@@ -6331,7 +6331,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Stronger reasoning at a similar price"
           },
           {
@@ -6498,7 +6498,7 @@
             "reason": "Anthropic alternative for routing"
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Cheap multilingual alternative"
           }
         ],

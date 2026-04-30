@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { ModelsClient } from "./ModelsClient";
-import { MODELS, modelI18nKey } from "./data";
+import { MODELS } from "./data";
 import type { Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 
@@ -59,12 +59,11 @@ export default async function ModelsPage({ params }: PageProps) {
     name: t("jsonLdListName"),
     description: t("jsonLdListDescription"),
     itemListElement: MODELS.map((m, i) => {
-      const cn = `content.${modelI18nKey(m.slug)}`;
       return {
         "@type": "ListItem",
         position: i + 1,
-        name: t(`${cn}.name`),
-        description: t(`${cn}.cardIntro`),
+        name: t(`content.${m.slug}.name`),
+        description: t(`content.${m.slug}.cardIntro`),
       };
     }),
   };

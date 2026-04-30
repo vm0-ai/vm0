@@ -5114,7 +5114,7 @@
             "reason": "Gleiche Familie, 3× günstiger, schnellere Inferenz. Standardmodell für die meisten Agent-Aufgaben."
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Gute Reasoning-Qualität zu ×0,3 Credits. Ideal zur Kostenoptimierung."
           },
           {
@@ -5279,7 +5279,7 @@
             "reason": "Günstigere Alternative innerhalb der Claude 4-Familie."
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Deutlich günstiger (×0,3 Credits) mit guter Reasoning-Qualität."
           }
         ],
@@ -5552,7 +5552,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Ähnlicher Preis mit Bildunterstützung und starken Benchmarks."
           },
           {
@@ -5712,7 +5712,7 @@
             "reason": "Noch günstiger (×0,02 Credits) mit 1M-Kontextfenster."
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Ultra-günstig (×0,1 Credits) für Bulk-Klassifikation."
           }
         ],
@@ -5875,11 +5875,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.5",
+            "slug": "kimi-k2-5",
             "reason": "Vorherige Generation, noch günstiger (×0,2 Credits) mit ähnlichen Fähigkeiten."
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Ähnlicher Preis, 1M-Kontext, aber ohne Bildunterstützung."
           },
           {
@@ -6062,7 +6062,7 @@
             "reason": "Bessere Allround-Qualität und Anthropic-Ökosystem zu höheren Kosten."
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Ähnlicher Preis mit zusätzlicher Bildunterstützung."
           }
         ],
@@ -6185,11 +6185,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Direkter Nachfolger mit besseren Benchmarks bei ×0,3 Credits."
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Ähnlicher Preisbereich mit 1M-Kontext."
           },
           {
@@ -6310,7 +6310,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Deutlich bessere Qualität bei immer noch niedrigen Kosten (×0,3 Credits)."
           },
           {
@@ -6477,7 +6477,7 @@
             "reason": "Bessere Anthropic-Integration zu höheren Kosten (×0,3 Credits)."
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Ähnliche Positionierung, aber ×0,1 Credits vs. ×0,02."
           }
         ],

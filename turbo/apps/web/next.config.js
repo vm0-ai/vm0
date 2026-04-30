@@ -4,7 +4,32 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin("./i18n.ts");
 
 /** @type {import('next').NextConfig} */
+// Models whose URL slug was originally published with a dot (e.g.
+// `/models/kimi-k2.6`). The dotted form trips Next.js's "looks like a
+// static asset" matcher in proxy.ts and bypasses Clerk middleware, so the
+// page errors. We migrated to hyphen-only slugs and 301 the old URLs.
+const MODEL_SLUG_REDIRECTS = [
+  ["kimi-k2.6", "kimi-k2-6"],
+  ["kimi-k2.5", "kimi-k2-5"],
+  ["glm-5.1", "glm-5-1"],
+  ["minimax-m2.7", "minimax-m2-7"],
+];
+
 const nextConfig = {
+  async redirects() {
+    return MODEL_SLUG_REDIRECTS.flatMap(([from, to]) => [
+      {
+        source: `/models/${from}`,
+        destination: `/models/${to}`,
+        permanent: true,
+      },
+      {
+        source: `/:locale/models/${from}`,
+        destination: `/:locale/models/${to}`,
+        permanent: true,
+      },
+    ]);
+  },
   async headers() {
     return [
       {

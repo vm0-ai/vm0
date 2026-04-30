@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { ModelDetailClient } from "./ModelDetailClient";
-import { MODEL_SLUGS, MODELS, getModelBySlug, modelI18nKey } from "../data";
+import { MODEL_SLUGS, MODELS, getModelBySlug } from "../data";
 import { locales, type Locale } from "../../../../i18n";
 import { buildLocaleAlternates } from "../../../lib/seo/alternates";
 
@@ -24,7 +24,7 @@ export async function generateMetadata({
   }
 
   const t = await getTranslations({ locale, namespace: "models" });
-  const cn = `content.${modelI18nKey(slug)}`;
+  const cn = `content.${slug}`;
   const metaTitle = t(`${cn}.metaTitle`);
   const metaDesc = t(`${cn}.metaDescription`);
   const ogImageAlt = t(`${cn}.pageTitle`);
@@ -79,7 +79,7 @@ export default async function ModelDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const cn = `content.${modelI18nKey(slug)}`;
+  const cn = `content.${slug}`;
   const related = MODELS.filter((m) => {
     return m.slug !== model.slug;
   }).slice(0, 3);

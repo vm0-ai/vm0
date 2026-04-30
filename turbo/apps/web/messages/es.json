@@ -5118,7 +5118,7 @@
             "reason": "Predeterminado más barato para la mayoría de bucles de agente"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Mejor recuperación de contexto largo a menor costo"
           },
           {
@@ -5283,7 +5283,7 @@
             "reason": "Línea base Sonnet a mucho menor costo"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Alternativa de peso abierto más barata en benchmarks agénticos"
           }
         ],
@@ -5564,7 +5564,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Mejor recuperación de contexto largo"
           },
           {
@@ -5732,7 +5732,7 @@
             "reason": "Aún más barato para tareas de un solo paso"
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Alternativa multilingüe barata"
           }
         ],
@@ -5895,11 +5895,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.5",
+            "slug": "kimi-k2-5",
             "reason": "Generación anterior, multiplicador ligeramente más barato"
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Ventana de contexto aún más larga (1M tokens)"
           },
           {
@@ -6082,7 +6082,7 @@
             "reason": "Subir de nivel para enrutamiento difícil de herramientas"
           },
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Mismo precio, mejor recuperación de contexto largo"
           }
         ],
@@ -6205,11 +6205,11 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Kimi más nuevo con mejor uso de herramientas"
           },
           {
-            "slug": "glm-5.1",
+            "slug": "glm-5-1",
             "reason": "Ventana de contexto más grande si la necesitas"
           },
           {
@@ -6330,7 +6330,7 @@
         ],
         "alternatives": [
           {
-            "slug": "kimi-k2.6",
+            "slug": "kimi-k2-6",
             "reason": "Razonamiento más fuerte a un precio similar"
           },
           {
@@ -6497,7 +6497,7 @@
             "reason": "Alternativa Anthropic para enrutamiento"
           },
           {
-            "slug": "minimax-m2.7",
+            "slug": "minimax-m2-7",
             "reason": "Alternativa multilingüe barata"
           }
         ],
