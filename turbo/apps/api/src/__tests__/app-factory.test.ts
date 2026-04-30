@@ -16,7 +16,9 @@ function headerValue(headers: unknown, name: string): string | undefined {
     const result = (headers as { get(n: string): string | null }).get(name);
     return result ?? undefined;
   }
-  for (const [key, value] of Object.entries(headers as Record<string, string>)) {
+  for (const [key, value] of Object.entries(
+    headers as Record<string, string>,
+  )) {
     if (key.toLowerCase() === lower) return value;
   }
   return undefined;
@@ -27,9 +29,13 @@ async function readBodyAsString(body: unknown): Promise<string> {
   if (body instanceof Buffer) return body.toString("utf-8");
   if (body instanceof Uint8Array) return Buffer.from(body).toString("utf-8");
   if (body == null) return "";
-  if (typeof (body as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function") {
+  if (
+    typeof (body as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+  ) {
     const chunks: Buffer[] = [];
-    for await (const chunk of body as AsyncIterable<Buffer | Uint8Array | string>) {
+    for await (const chunk of body as AsyncIterable<
+      Buffer | Uint8Array | string
+    >) {
       if (typeof chunk === "string") {
         chunks.push(Buffer.from(chunk));
       } else if (Buffer.isBuffer(chunk)) {

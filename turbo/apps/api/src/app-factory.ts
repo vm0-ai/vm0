@@ -62,8 +62,7 @@ async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
 
   // GET/HEAD must not carry a body. For everything else, adapt the incoming
   // web ReadableStream into a Node Readable for undici.
-  const hasBody =
-    context.req.method !== "GET" && context.req.method !== "HEAD";
+  const hasBody = context.req.method !== "GET" && context.req.method !== "HEAD";
   // The dom and node:stream/web flavours of ReadableStream are the same
   // runtime object; TS surfaces them as distinct types because tsconfig pulls
   // in lib.dom alongside @types/node, so coerce through unknown.
