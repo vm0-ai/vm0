@@ -11,6 +11,7 @@
 //! - No recycling (COW files have dirty data after VM use)
 
 use std::collections::VecDeque;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use tracing::{error, info, warn};
@@ -54,6 +55,22 @@ impl PrewarmedSlot {
     #[cfg(test)]
     fn cow_file(&self) -> PathBuf {
         self.workspace.join("cow.img")
+    }
+
+    fn remove_workspace(&self) {
+        match std::fs::remove_dir_all(&self.workspace) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => {
+                warn!(id = %self.id, error = %e, "failed to delete pool workspace dir");
+            }
+        }
+    }
+}
+
+impl Drop for PrewarmedSlot {
+    fn drop(&mut self) {
+        self.remove_workspace();
     }
 }
 
@@ -346,9 +363,7 @@ fn sparse_copy(src: &Path, dst: &Path) -> Result<(), CowPoolError> {
 ///
 /// Removes the workspace directory (which contains the COW file).
 pub(crate) fn destroy_slot(slot: PrewarmedSlot) {
-    if let Err(e) = std::fs::remove_dir_all(&slot.workspace) {
-        warn!(id = %slot.id, error = %e, "failed to delete pool workspace dir");
-    }
+    drop(slot);
 }
 
 // ---------------------------------------------------------------------------
@@ -479,5 +494,31 @@ mod tests {
         assert!(ws.exists());
         destroy_slot(slot);
         assert!(!ws.exists(), "workspace should be removed");
+    }
+
+    #[test]
+    fn dropped_slot_removes_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let slot = create_slot(&config).unwrap();
+        let ws = slot.workspace.clone();
+        assert!(ws.exists());
+        drop(slot);
+        assert!(!ws.exists(), "workspace should be removed on slot drop");
+    }
+
+    #[test]
+    fn dropped_pool_removes_queued_slots() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let slot = create_slot(&config).unwrap();
+        let ws = slot.workspace.clone();
+        assert!(ws.exists());
+
+        let mut pool = CowPool::new(config);
+        pool.queue.push_back(slot);
+        drop(pool);
+
+        assert!(!ws.exists(), "queued slot should be removed on pool drop");
     }
 }
