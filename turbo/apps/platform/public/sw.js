@@ -39,9 +39,7 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys
-            .filter((k) => k !== STATIC_CACHE)
-            .map((k) => caches.delete(k)),
+          keys.filter((k) => k !== STATIC_CACHE).map((k) => caches.delete(k)),
         ),
       )
       .then(() => self.clients.claim()),
