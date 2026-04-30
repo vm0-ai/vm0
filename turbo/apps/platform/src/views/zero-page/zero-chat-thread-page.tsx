@@ -16,6 +16,7 @@ import {
   IconAlertCircle,
   IconPhoto,
   IconChartLine,
+  IconPlayerPause,
   IconPlayerStop,
   IconCopy,
   IconCheck,
@@ -2320,6 +2321,19 @@ function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
+
+  if (error.trim().toLowerCase() === "run cancelled") {
+    return (
+      <div className="zero-pill inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-[13px]">
+        <IconPlayerPause
+          size={14}
+          stroke={1.75}
+          className="shrink-0 opacity-60"
+        />
+        <span>Caught me mid-sentence. I&apos;ll wait for your cue.</span>
+      </div>
+    );
+  }
 
   const noProviderGuidance = RUN_ERROR_GUIDANCE.NO_MODEL_PROVIDER;
   const isNoModelProvider =
