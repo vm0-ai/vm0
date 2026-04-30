@@ -10,7 +10,9 @@ import { useUndiciMock } from "./setup";
 import { accept, setupApp, testContext } from "./test-helpers";
 
 function headerValue(headers: unknown, name: string): string | undefined {
-  if (!headers) { return undefined; }
+  if (!headers) {
+    return undefined;
+  }
   const lower = name.toLowerCase();
   if (typeof (headers as { get?: unknown }).get === "function") {
     const result = (headers as { get(n: string): string | null }).get(name);
@@ -19,16 +21,26 @@ function headerValue(headers: unknown, name: string): string | undefined {
   for (const [key, value] of Object.entries(
     headers as Record<string, string>,
   )) {
-    if (key.toLowerCase() === lower) { return value; }
+    if (key.toLowerCase() === lower) {
+      return value;
+    }
   }
   return undefined;
 }
 
 async function readBodyAsString(body: unknown): Promise<string> {
-  if (typeof body === "string") { return body; }
-  if (body instanceof Buffer) { return body.toString("utf8"); }
-  if (body instanceof Uint8Array) { return Buffer.from(body).toString("utf8"); }
-  if (body === null) { return ""; }
+  if (typeof body === "string") {
+    return body;
+  }
+  if (body instanceof Buffer) {
+    return body.toString("utf8");
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(body).toString("utf8");
+  }
+  if (body === null) {
+    return "";
+  }
   if (
     typeof (body as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
   ) {
