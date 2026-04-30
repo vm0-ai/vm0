@@ -27,6 +27,8 @@ const isPublicRoute = createRouteMatcher([
   "/use-cases/:slug",
   "/:locale/use-cases",
   "/:locale/use-cases/:slug",
+  "/rankings",
+  "/:locale/rankings",
   "/terms-of-use",
   "/privacy-policy",
   "/support",

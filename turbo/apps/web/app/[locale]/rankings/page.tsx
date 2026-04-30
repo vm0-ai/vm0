@@ -14,8 +14,6 @@ import { initServices } from "../../../src/lib/init-services";
 import { MODELS, vendorIconPath, type ModelEntry } from "../models/data";
 
 const BASE_URL = "https://www.vm0.ai";
-const MAX_WIDTH = 1120;
-const PAGE_PADDING = 24;
 const HOUR_MS = 60 * 60_000;
 const PERIODS = [
   { key: "today", label: "Today" },
@@ -328,13 +326,22 @@ async function getRankings(period: PeriodKey): Promise<{
   };
 }
 
+function formatWindow(start: Date, end: Date): string {
+  if (end <= start) {
+    return "Waiting for the first completed UTC hour";
+  }
+  const fmt = (date: Date) => {
+    return date.toISOString().slice(0, 10);
+  };
+  if (fmt(start) === fmt(end)) {
+    return `${fmt(start)} UTC`;
+  }
+  return `${fmt(start)} → ${fmt(end)} UTC`;
+}
+
 function PeriodTabs({ active, locale }: { active: PeriodKey; locale: string }) {
   return (
-    <div
-      className="inline-flex rounded-lg border border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-50))] p-1"
-      role="tablist"
-      aria-label="Ranking period"
-    >
+    <div className="uc-filter-row" role="tablist" aria-label="Ranking period">
       {PERIODS.map((period) => {
         const isActive = active === period.key;
         return (
@@ -343,11 +350,8 @@ function PeriodTabs({ active, locale }: { active: PeriodKey; locale: string }) {
             href={`/${locale}/rankings?view=${period.key}`}
             role="tab"
             aria-selected={isActive}
-            className={`rounded-md px-3 py-2 text-[14px] font-medium transition-colors ${
-              isActive
-                ? "bg-[hsl(var(--foreground))] text-[hsl(var(--background))]"
-                : "text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-            }`}
+            className={`uc-pill${isActive ? " uc-pill--active" : ""}`}
+            style={{ textDecoration: "none" }}
           >
             {period.label}
           </a>
@@ -365,14 +369,72 @@ function ChangeBadge({
   previous: number;
 }) {
   const change = formatChange(current, previous);
-  const className =
+  const color =
     change.tone === "up" || change.tone === "new"
-      ? "text-emerald-600"
+      ? "#ed4e01"
       : change.tone === "down"
-        ? "text-red-500"
-        : "text-[hsl(var(--muted-foreground))]";
+        ? "var(--text-muted)"
+        : "var(--text-muted)";
 
-  return <span className={className}>{change.label}</span>;
+  return (
+    <span
+      style={{ color, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}
+    >
+      {change.label}
+    </span>
+  );
+}
+
+function StatBlock({
+  label,
+  value,
+  variant = "lg",
+}: {
+  label: string;
+  value: string;
+  variant?: "lg" | "sm";
+}) {
+  const valueStyle: React.CSSProperties =
+    variant === "lg"
+      ? {
+          fontSize: "28px",
+          fontWeight: 300,
+          letterSpacing: "-0.5px",
+          lineHeight: 1.2,
+        }
+      : {
+          fontSize: "16px",
+          fontWeight: 400,
+          letterSpacing: "-0.1px",
+          lineHeight: 1.4,
+        };
+
+  return (
+    <div>
+      <div
+        style={{
+          fontSize: "12px",
+          fontWeight: 500,
+          letterSpacing: "0.6px",
+          textTransform: "uppercase",
+          color: "var(--text-muted)",
+          fontFamily: '"Fira Mono", monospace',
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          marginTop: "8px",
+          color: "var(--text-primary)",
+          fontVariantNumeric: "tabular-nums",
+          ...valueStyle,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
 }
 
 function RankingTable({
@@ -384,93 +446,241 @@ function RankingTable({
 }) {
   if (rows.length === 0) {
     return (
-      <div className="border-y border-[hsl(var(--gray-200))] py-16 text-center">
-        <p className="text-[15px] text-[hsl(var(--muted-foreground))]">
-          No model usage has been aggregated for this period yet.
-        </p>
+      <div
+        style={{
+          padding: "80px 24px",
+          textAlign: "center",
+          border: "1px solid var(--border-light)",
+          borderRadius: "16px",
+          background: "white",
+          color: "var(--text-secondary)",
+          fontSize: "15px",
+          fontWeight: 300,
+        }}
+      >
+        No model usage has been aggregated for this period yet.
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto border-y border-[hsl(var(--gray-200))]">
-      <table className="w-full min-w-[640px] border-collapse text-left">
-        <thead>
-          <tr className="border-b border-[hsl(var(--gray-200))] text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
-            <th className="w-[64px] px-3 py-3 font-medium">Rank</th>
-            <th className="px-3 py-3 font-medium">Model</th>
-            <th className="px-3 py-3 text-right font-medium">Tokens</th>
-            <th className="px-3 py-3 text-right font-medium">Share</th>
-            <th className="px-3 py-3 text-right font-medium">Change</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            return (
-              <tr
-                key={row.model}
-                className="border-b border-[hsl(var(--gray-100))] last:border-b-0"
-              >
-                <td className="px-3 py-4 text-[15px] text-[hsl(var(--muted-foreground))]">
-                  {row.rank}
-                </td>
-                <td className="px-3 py-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[hsl(var(--gray-200))] bg-white">
-                      {row.iconPath ? (
-                        /* eslint-disable-next-line @next/next/no-img-element */
-                        <img
-                          src={row.iconPath}
-                          alt=""
-                          width={22}
-                          height={22}
-                          className="h-[22px] w-[22px]"
-                        />
-                      ) : (
-                        <span className="text-[13px] font-semibold text-[hsl(var(--foreground))]">
-                          {row.name.charAt(0)}
-                        </span>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="truncate text-[15px] font-medium text-[hsl(var(--foreground))]">
-                        {row.name}
+    <div
+      style={{
+        border: "1px solid var(--border-light)",
+        borderRadius: "16px",
+        background: "white",
+        overflow: "hidden",
+      }}
+    >
+      <div style={{ overflowX: "auto" }}>
+        <table
+          style={{
+            width: "100%",
+            minWidth: "640px",
+            borderCollapse: "collapse",
+            textAlign: "left",
+          }}
+        >
+          <thead>
+            <tr>
+              <th style={tableHeadCell({ width: 64 })}>Rank</th>
+              <th style={tableHeadCell()}>Model</th>
+              <th style={tableHeadCell({ align: "right" })}>Tokens</th>
+              <th style={tableHeadCell({ align: "right" })}>Share</th>
+              <th style={tableHeadCell({ align: "right" })}>Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => {
+              const isLast = index === rows.length - 1;
+              return (
+                <tr key={row.model}>
+                  <td style={tableBodyCell({ isLast })}>
+                    <span
+                      style={{
+                        fontFamily: '"Fira Mono", monospace',
+                        fontSize: "13px",
+                        color: "var(--text-muted)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {String(row.rank).padStart(2, "0")}
+                    </span>
+                  </td>
+                  <td style={tableBodyCell({ isLast })}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "12px",
+                        minWidth: 0,
+                      }}
+                    >
+                      <div
+                        style={{
+                          flexShrink: 0,
+                          width: 36,
+                          height: 36,
+                          borderRadius: 10,
+                          border: "1px solid var(--border-light)",
+                          background: "white",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        {row.iconPath ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img
+                            src={row.iconPath}
+                            alt=""
+                            width={20}
+                            height={20}
+                            style={{ width: 20, height: 20 }}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "var(--text-primary)",
+                            }}
+                          >
+                            {row.name.charAt(0)}
+                          </span>
+                        )}
                       </div>
-                      <div className="truncate text-[12px] text-[hsl(var(--muted-foreground))]">
-                        {row.vendor}
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            fontSize: 15,
+                            fontWeight: 500,
+                            color: "var(--text-primary)",
+                            letterSpacing: "-0.1px",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {row.name}
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 2,
+                            fontSize: 13,
+                            fontWeight: 300,
+                            color: "var(--text-muted)",
+                          }}
+                        >
+                          {row.vendor}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </td>
-                <td className="px-3 py-4 text-right">
-                  <div className="text-[15px] font-medium text-[hsl(var(--foreground))]">
-                    {formatTokens(row.totalTokens)}
-                  </div>
-                  <div className="text-[12px] text-[hsl(var(--muted-foreground))]">
-                    {formatTokens(row.inputTokens)} in /{" "}
-                    {formatTokens(row.outputTokens)} out
-                  </div>
-                </td>
-                <td className="px-3 py-4 text-right text-[14px] text-[hsl(var(--foreground))]">
-                  {formatShare(row.share)}
-                </td>
-                <td className="px-3 py-4 text-right text-[14px] font-medium">
-                  <ChangeBadge
-                    current={row.totalTokens}
-                    previous={row.previousTotalTokens}
-                  />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[hsl(var(--gray-100))] px-3 py-3 text-[13px] text-[hsl(var(--muted-foreground))]">
+                  </td>
+                  <td style={tableBodyCell({ isLast, align: "right" })}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 500,
+                        color: "var(--text-primary)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {formatTokens(row.totalTokens)}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 2,
+                        fontSize: 12,
+                        fontWeight: 300,
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {formatTokens(row.inputTokens)} in ·{" "}
+                      {formatTokens(row.outputTokens)} out
+                    </div>
+                  </td>
+                  <td style={tableBodyCell({ isLast, align: "right" })}>
+                    <span
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 400,
+                        color: "var(--text-secondary)",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {formatShare(row.share)}
+                    </span>
+                  </td>
+                  <td
+                    style={{
+                      ...tableBodyCell({ isLast, align: "right" }),
+                      fontSize: 14,
+                    }}
+                  >
+                    <ChangeBadge
+                      current={row.totalTokens}
+                      previous={row.previousTotalTokens}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "12px",
+          justifyContent: "space-between",
+          padding: "16px 24px",
+          borderTop: "1px solid var(--border-light)",
+          fontSize: 13,
+          fontWeight: 300,
+          color: "var(--text-muted)",
+          letterSpacing: "0.1px",
+        }}
+      >
         <span>Top 50 models by token usage</span>
-        <span>{formatTokens(totalTokens)} tokens in ranked models</span>
+        <span style={{ fontVariantNumeric: "tabular-nums" }}>
+          {formatTokens(totalTokens)} tokens ranked
+        </span>
       </div>
     </div>
   );
+}
+
+function tableHeadCell({
+  align,
+  width,
+}: { align?: "right"; width?: number } = {}): React.CSSProperties {
+  return {
+    padding: "16px 24px",
+    fontSize: 11,
+    fontWeight: 500,
+    letterSpacing: "0.8px",
+    textTransform: "uppercase",
+    color: "var(--text-muted)",
+    fontFamily: '"Fira Mono", monospace',
+    textAlign: align ?? "left",
+    width,
+    borderBottom: "1px solid var(--border-light)",
+    background: "transparent",
+  };
+}
+
+function tableBodyCell({
+  isLast,
+  align,
+}: { isLast?: boolean; align?: "right" } = {}): React.CSSProperties {
+  return {
+    padding: "16px 24px",
+    textAlign: align ?? "left",
+    verticalAlign: "middle",
+    borderBottom: isLast ? "none" : "1px solid var(--border-light)",
+  };
 }
 
 export default async function RankingsPage({
@@ -481,67 +691,75 @@ export default async function RankingsPage({
   const resolvedSearchParams = (await searchParams) ?? {};
   const activePeriod = parsePeriod(resolvedSearchParams.view);
   const rankings = await getRankings(activePeriod);
-  const updatedThrough =
-    rankings.windowEnd <= rankings.windowStart
-      ? "waiting for the first completed UTC hour"
-      : `${rankings.windowStart.toISOString().slice(0, 10)} to ${rankings.windowEnd.toISOString().replace(".000Z", "Z")}`;
+  const windowLabel = formatWindow(rankings.windowStart, rankings.windowEnd);
+
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: `${BASE_URL}/${locale}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "AI Model Rankings",
+        item: `${BASE_URL}/${locale}/rankings`,
+      },
+    ],
+  };
 
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
+      <script type="application/ld+json" suppressHydrationWarning>
+        {JSON.stringify(breadcrumbJsonLd)}
+      </script>
       <Particles />
-      <main className="pb-20 pt-[calc(var(--total-header-height)+44px)] md:pb-28 md:pt-[calc(var(--total-header-height)+64px)]">
-        <section
-          className="mx-auto"
-          style={{ maxWidth: MAX_WIDTH, padding: `0 ${PAGE_PADDING}px` }}
-        >
-          <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h1 className="text-[32px] font-semibold leading-tight tracking-normal sm:text-[40px]">
-                AI Model Rankings
-              </h1>
-              <p className="mt-3 max-w-[680px] text-[16px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                VM0 model usage ranked by hourly token totals across the
-                selected UTC window.
-              </p>
-            </div>
+
+      <section className="hero-section" style={{ paddingBottom: "32px" }}>
+        <div className="container">
+          <h1 className="hero-title">AI Model Rankings</h1>
+          <p className="hero-description">
+            VM0 model usage ranked by hourly token totals across the selected
+            UTC window.
+          </p>
+          <div style={{ marginTop: "32px" }}>
             <PeriodTabs active={activePeriod} locale={locale} />
           </div>
+        </div>
+      </section>
 
-          <div className="mt-8 grid grid-cols-1 gap-3 border-y border-[hsl(var(--gray-200))] py-4 sm:grid-cols-3">
-            <div>
-              <div className="text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
-                Models
-              </div>
-              <div className="mt-1 text-[24px] font-semibold">
-                {rankings.rows.length}
-              </div>
-            </div>
-            <div>
-              <div className="text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
-                Ranked tokens
-              </div>
-              <div className="mt-1 text-[24px] font-semibold">
-                {formatTokens(rankings.totalTokens)}
-              </div>
-            </div>
-            <div>
-              <div className="text-[12px] uppercase text-[hsl(var(--muted-foreground))]">
-                Window
-              </div>
-              <div className="mt-1 text-[14px] leading-8 text-[hsl(var(--foreground))]">
-                {updatedThrough}
-              </div>
-            </div>
+      <section className="section-spacing" style={{ paddingTop: 0 }}>
+        <div className="container">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              gap: "24px",
+              padding: "32px 0",
+              borderTop: "1px solid var(--border-light)",
+              borderBottom: "1px solid var(--border-light)",
+              marginBottom: "40px",
+            }}
+          >
+            <StatBlock label="Models" value={String(rankings.rows.length)} />
+            <StatBlock
+              label="Ranked tokens"
+              value={formatTokens(rankings.totalTokens)}
+            />
+            <StatBlock label="Window" value={windowLabel} variant="sm" />
           </div>
 
-          <section className="mt-8">
-            <RankingTable
-              rows={rankings.rows}
-              totalTokens={rankings.totalTokens}
-            />
-          </section>
-        </section>
-      </main>
+          <RankingTable
+            rows={rankings.rows}
+            totalTokens={rankings.totalTokens}
+          />
+        </div>
+      </section>
+
       <Footer />
     </div>
   );
