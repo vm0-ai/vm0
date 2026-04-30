@@ -433,7 +433,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "build-with-v0",
     color: "#7c8cbe",
-    screenshots: ["/assets/use-cases/build-with-v0.png"],
+    screenshots: ["/assets/use-cases/build-with-v0.png", "/assets/use-cases/build-with-v0-2.png"],
     avatar: {
       rotation: 3,
       skin: 1,
@@ -655,7 +655,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "customer-360",
     color: "#9e8abe",
-    screenshots: ["/assets/use-cases/customer-360.png"],
+    screenshots: ["/assets/use-cases/customer-360.png", "/assets/use-cases/customer-360-2.png"],
     avatar: {
       rotation: 1,
       skin: 5,
@@ -829,7 +829,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "multilingual-cms-publishing",
     color: "#8E75FF",
-    screenshots: ["/assets/use-cases/multilingual-cms-publishing.png"],
+    screenshots: ["/assets/use-cases/multilingual-cms-publishing.png", "/assets/use-cases/multilingual-cms-publishing-2.png"],
     avatar: {
       rotation: 2,
       skin: 2,
@@ -891,7 +891,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "api-performance",
     color: "#c07890",
-    screenshots: ["/assets/use-cases/api-performance.png"],
+    screenshots: ["/assets/use-cases/api-performance.png", "/assets/use-cases/api-performance-2.png"],
     avatar: {
       rotation: 1,
       skin: 4,
