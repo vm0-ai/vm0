@@ -631,15 +631,6 @@ body {
   background: hsl(var(--gray-50));
 }
 
-.mobile-menu-section-title {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: hsl(var(--muted-foreground));
-  padding: 16px 14px 6px;
-}
-
 .mobile-menu-row .mobile-menu-row-body {
   display: inline-flex;
   align-items: center;

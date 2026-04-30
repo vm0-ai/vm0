@@ -241,7 +241,6 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
               {t("pricing")}
             </Link>
 
-            <div className="mobile-menu-section-title">{t("resources")}</div>
             {resourcesItems.map((item) => {
               return (
                 <MobileMenuRow
@@ -252,7 +251,6 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
               );
             })}
 
-            <div className="mobile-menu-section-title">{t("trustAndTech")}</div>
             {trustItems.map((item) => {
               return (
                 <MobileMenuRow
