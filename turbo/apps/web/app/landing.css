@@ -654,6 +654,44 @@ body {
   margin-left: 2px;
 }
 
+.mobile-menu-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-menu-group-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.mobile-menu-group-caret {
+  color: hsl(var(--muted-foreground));
+  transition: transform 0.2s ease;
+}
+
+.mobile-menu-group-open .mobile-menu-group-caret {
+  transform: rotate(180deg);
+  color: hsl(var(--foreground));
+}
+
+.mobile-menu-group-children {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 12px;
+}
+
+.mobile-menu-group-open .mobile-menu-group-children {
+  display: flex;
+}
+
 .mobile-menu-controls {
   display: flex;
   align-items: center;

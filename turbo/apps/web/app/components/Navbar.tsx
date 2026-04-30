@@ -6,7 +6,11 @@ import NextLink from "next/link";
 import { Link } from "../../navigation";
 import { useTranslations } from "next-intl";
 import { useTheme } from "./ThemeProvider";
-import { IconArrowRight, IconArrowUpRight } from "@tabler/icons-react";
+import {
+  IconArrowRight,
+  IconArrowUpRight,
+  IconChevronDown,
+} from "@tabler/icons-react";
 import { ThemeToggle } from "./ThemeToggle";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 import { NavMenu, type NavMenuItem } from "./NavMenu";
@@ -241,25 +245,16 @@ export function Navbar({ initialIsSignedIn = false }: NavbarProps) {
               {t("pricing")}
             </Link>
 
-            {resourcesItems.map((item) => {
-              return (
-                <MobileMenuRow
-                  key={item.href}
-                  item={item}
-                  onSelect={closeMobile}
-                />
-              );
-            })}
-
-            {trustItems.map((item) => {
-              return (
-                <MobileMenuRow
-                  key={item.href}
-                  item={item}
-                  onSelect={closeMobile}
-                />
-              );
-            })}
+            <MobileMenuGroup
+              label={t("resources")}
+              items={resourcesItems}
+              onSelect={closeMobile}
+            />
+            <MobileMenuGroup
+              label={t("trustAndTech")}
+              items={trustItems}
+              onSelect={closeMobile}
+            />
 
             <a
               href={DEMO_URL}
@@ -366,5 +361,46 @@ function MobileMenuRow({ item, onSelect }: MobileMenuRowProps) {
     >
       {body}
     </Link>
+  );
+}
+
+interface MobileMenuGroupProps {
+  label: string;
+  items: NavMenuItem[];
+  onSelect: () => void;
+}
+
+function MobileMenuGroup({ label, items, onSelect }: MobileMenuGroupProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div
+      className={`mobile-menu-group${open ? " mobile-menu-group-open" : ""}`}
+    >
+      <button
+        type="button"
+        className="mobile-menu-link mobile-menu-group-trigger"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen((prev) => {
+            return !prev;
+          });
+        }}
+      >
+        <span>{label}</span>
+        <IconChevronDown
+          size={14}
+          strokeWidth={1.8}
+          className="mobile-menu-group-caret"
+        />
+      </button>
+      <div className="mobile-menu-group-children">
+        {items.map((item) => {
+          return (
+            <MobileMenuRow key={item.href} item={item} onSelect={onSelect} />
+          );
+        })}
+      </div>
+    </div>
   );
 }
