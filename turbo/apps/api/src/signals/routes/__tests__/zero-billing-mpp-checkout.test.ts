@@ -7,7 +7,11 @@ import { signPatJwtForTests } from "../../auth/tokens";
 
 const ctx = testContext();
 
-function createPatToken(orgId: string, userId: string, tokenId: string): string {
+function createPatToken(
+  orgId: string,
+  userId: string,
+  tokenId: string,
+): string {
   const nowSeconds = Math.floor(Date.now() / 1000);
   return signPatJwtForTests({
     scope: "cli",
@@ -104,7 +108,7 @@ describe("GET /api/zero/billing/mpp/checkout", () => {
     expect(res.status).toBe(402);
     const wwwAuth = res.headers.get("www-authenticate");
     expect(wwwAuth).toBeTruthy();
-    expect(wwwAuth!.startsWith("Payment ")).toBe(true);
+    expect(wwwAuth!.startsWith("Payment ")).toBeTruthy();
   });
 
   it("returns 402 with WWW-Authenticate for valid Bearer request (team)", async () => {
@@ -126,13 +130,10 @@ describe("GET /api/zero/billing/mpp/checkout", () => {
 
   it("returns 400 for phase 2 without org query param", async () => {
     const app = createAppForTest();
-    const res = await app.request(
-      "/api/zero/billing/mpp/checkout?tier=pro",
-      {
-        method: "GET",
-        headers: { authorization: "Payment invalid-credential" },
-      },
-    );
+    const res = await app.request("/api/zero/billing/mpp/checkout?tier=pro", {
+      method: "GET",
+      headers: { authorization: "Payment invalid-credential" },
+    });
 
     // org query param is required in phase 2 — validated before mppx
     expect(res.status).toBe(400);

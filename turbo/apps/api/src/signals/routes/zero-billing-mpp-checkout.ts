@@ -87,7 +87,9 @@ async function grantMppCredits(
   paymentRef: string,
 ): Promise<void> {
   const credits = TIER_MONTHLY_CREDITS[tier];
-  if (!credits) return;
+  if (!credits) {
+    return;
+  }
 
   const d = db();
   await d.transaction(async (tx) => {
@@ -195,6 +197,7 @@ export const mppCheckoutHandler: Handler = async (c) => {
     const result = (await mppx.stripe.charge({
       amount: String(amountCents),
       currency: "usd",
+      decimals: 2,
     })(c.req.raw)) as MppChargeResult;
 
     if (result.status === 402) {
@@ -218,6 +221,7 @@ export const mppCheckoutHandler: Handler = async (c) => {
     const result = (await mppx.stripe.charge({
       amount: String(amountCents),
       currency: "usd",
+      decimals: 2,
     })(c.req.raw)) as MppChargeResult;
 
     if (result.status === 402) {

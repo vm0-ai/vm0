@@ -99,7 +99,7 @@ export const ROUTES: readonly RouteEntry[] = [
 ];
 
 /** MPP routes use raw Hono handlers (HTTP 402 protocol, not ts-rest). */
-export interface MppRouteEntry {
+interface MppRouteEntry {
   readonly method: string;
   readonly path: string;
   readonly handler: Handler;
