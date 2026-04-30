@@ -1,4 +1,5 @@
 import type { AppRoute } from "@ts-rest/core";
+import type { Handler } from "hono";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
@@ -42,6 +43,7 @@ import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroVoiceChatRoutes } from "./routes/zero-voice-chat";
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
+import { mppCheckoutHandler } from "./routes/zero-billing-mpp-checkout";
 
 export type { SignalRouteHandler };
 
@@ -94,4 +96,19 @@ export const ROUTES: readonly RouteEntry[] = [
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,
+];
+
+/** MPP routes use raw Hono handlers (HTTP 402 protocol, not ts-rest). */
+export interface MppRouteEntry {
+  readonly method: string;
+  readonly path: string;
+  readonly handler: Handler;
+}
+
+export const MPP_ROUTES: readonly MppRouteEntry[] = [
+  {
+    method: "GET",
+    path: "/api/zero/billing/mpp/checkout",
+    handler: mppCheckoutHandler,
+  },
 ];

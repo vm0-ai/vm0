@@ -13,7 +13,7 @@ import { request as undiciRequest, type Dispatcher } from "undici";
 import { env } from "./lib/env";
 import { logger } from "./lib/log";
 import { honoSignalHandler } from "./signals/context/route";
-import { ROUTES, type RouteEntry } from "./signals/route";
+import { MPP_ROUTES, ROUTES, type RouteEntry } from "./signals/route";
 import { isAbortError } from "./signals/utils";
 
 const L = logger("App");
@@ -174,6 +174,11 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
 
   for (const { route, handler } of routes) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
+  }
+
+  // MPP routes use raw Hono handlers (HTTP 402 protocol)
+  for (const { method, path, handler } of MPP_ROUTES) {
+    app.on(method, path, handler);
   }
 
   // Routes that have not been ported off the web app yet still hit api.vm0.ai

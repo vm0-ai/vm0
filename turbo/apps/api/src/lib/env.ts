@@ -26,6 +26,7 @@ const SCHEMA = {
   AXIOM_TOKEN_TELEMETRY: z.string().min(1),
   AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
   STRIPE_SECRET_KEY: z.string().min(1),
+  MPP_SECRET_KEY: z.string().min(32),
 } as const;
 
 const baseEnv = createEnv<undefined, typeof SCHEMA>({
