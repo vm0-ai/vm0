@@ -54,7 +54,7 @@ export const zeroUsageRunsContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get per-run credit usage records for the org",
+    summary: "Get per-run usage records for the org",
   },
 });
 

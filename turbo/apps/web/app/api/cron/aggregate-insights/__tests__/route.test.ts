@@ -140,7 +140,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(agents[0]!.runs).toBe(2);
   });
 
-  it("should aggregate credit usage per member", async () => {
+  it("should aggregate usage_event credits per member", async () => {
     const { date } = recentDate();
 
     const runId = await seedCompletedTestRun({

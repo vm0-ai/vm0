@@ -116,7 +116,7 @@ describe("evaluateMemberCaps", () => {
       creditEnabled: true,
     });
 
-    // Insert processed credit usage exceeding cap (75 credits total)
+    // Insert processed usage_event credits exceeding cap (75 credits total)
     await insertTestModelUsageEvent(orgId, {
       userId,
       status: "processed",
@@ -153,7 +153,7 @@ describe("evaluateMemberCaps", () => {
       creditEnabled: true,
     });
 
-    // Insert processed credit usage under cap (25 credits)
+    // Insert processed usage_event credits under cap (25 credits)
     await insertTestModelUsageEvent(orgId, {
       userId,
       status: "processed",

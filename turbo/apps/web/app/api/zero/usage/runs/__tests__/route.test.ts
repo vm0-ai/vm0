@@ -65,7 +65,7 @@ describe("GET /api/zero/usage/runs", () => {
     expect(response.status).toBe(403);
   });
 
-  it("returns empty result when no runs with credit usage", async () => {
+  it("returns empty result when no runs with processed usage events", async () => {
     const request = createTestRequest(
       "http://localhost:3000/api/zero/usage/runs",
     );
@@ -177,7 +177,7 @@ describe("GET /api/zero/usage/runs", () => {
     expect(data.runs[0].creditsCharged).toBe(50);
   });
 
-  it("excludes runs with only pending credit usage", async () => {
+  it("excludes runs with only pending usage events", async () => {
     const { userId, orgId } = await context.user;
 
     await insertTestModelUsageEvent(orgId, {

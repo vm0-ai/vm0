@@ -162,7 +162,7 @@ interface ModelProviderSecretResult {
    *  Used for firewall lookup instead of the meta-provider type. */
   concreteProviderType?: ModelProviderType;
   /** The logical model name selected by the user (e.g. "claude-sonnet-4-6").
-   *  Used for credit usage billing. */
+   *  Used for model usage billing. */
   selectedModel?: string;
 }
 

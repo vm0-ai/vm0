@@ -110,7 +110,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(typeof data.grandTotalCredits).toBe("number");
     expect(typeof data.grandTotalTokens).toBe("number");
 
-    // Grand total should include the inserted credit usage
+    // Grand total should include the inserted usage events
     expect(data.grandTotalCredits).toBeGreaterThanOrEqual(100);
 
     // Totals across bucket series should be <= grandTotal
@@ -549,7 +549,7 @@ describe("GET /api/zero/usage/insight", () => {
     });
     let eventBoostedScheduleId = "";
 
-    // Seed 105 schedules in parallel, each with one run + credit usage
+    // Seed 105 schedules in parallel, each with one run + usage events
     await Promise.all(
       Array.from({ length: 105 }, async (_, i) => {
         const scheduleId = await seedTestSchedule({

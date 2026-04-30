@@ -235,7 +235,7 @@ export async function resetMemberCreditFlags(orgId: string): Promise<void> {
 }
 
 /**
- * Get a member's total processed credit usage in the current billing period.
+ * Get a member's total processed usage_event credits in the current billing period.
  */
 async function getMemberUsageInBillingPeriod(
   orgId: string,
