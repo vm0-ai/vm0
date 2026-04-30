@@ -23,9 +23,9 @@ AXIOM_TOKEN_SESSIONS=op://Development/axiom/AXIOM_TOKEN_SESSIONS
 AXIOM_TOKEN_TELEMETRY=op://Development/axiom/AXIOM_TOKEN_TELEMETRY
 AXIOM_DATASET_SUFFIX=dev
 
-# Required: apps/api Sentry environment tag. CI injects "production" or
+# Required: apps/api deploy stage tag. CI injects "production" or
 # "preview" via .github/actions/web-api-env. Local dev uses "development".
-SENTRY_ENV=development
+ENV=development
 
 # Required: git commit SHA used as OTel service.version and Sentry release.
 # CI injects ${GITHUB_SHA} via web-api-env; locally any non-empty marker works.
