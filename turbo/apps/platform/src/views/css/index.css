@@ -115,13 +115,14 @@
   }
 }
 
-/* Chat thread list: synchronized running-state ripple indicator */
+/* Chat thread list: synchronized running-state breathing indicator */
 .zero-running-indicator {
   position: relative;
   display: inline-flex;
   width: 0.86rem;
   height: 0.86rem;
   border-radius: 9999px;
+  color: var(--color-sky-600, #0284c7);
 }
 .zero-running-indicator::before {
   content: "";
@@ -129,9 +130,8 @@
   inset: 2.5px;
   border-radius: inherit;
   background: currentColor;
-  opacity: var(--zero-running-indicator-center-opacity, 0.34);
-  transform: scale(var(--zero-running-indicator-center-scale, 0.64));
   transform-origin: center;
+  animation: zero-running-center 2400ms cubic-bezier(0.33, 0, 0.66, 1) infinite;
 }
 .zero-running-indicator::after {
   content: "";
@@ -139,16 +139,41 @@
   inset: 1.5px;
   border-radius: inherit;
   border: 1px solid currentColor;
-  opacity: var(--zero-running-indicator-ripple-opacity, 0);
-  transform: scale(var(--zero-running-indicator-ripple-scale, 0.82));
   transform-origin: center;
+  animation: zero-running-ripple 2400ms ease-out infinite;
+}
+@keyframes zero-running-center {
+  0%, 100% {
+    transform: scale(0.64);
+    opacity: 0.34;
+  }
+  52% {
+    transform: scale(0.88);
+    opacity: 0.52;
+  }
+}
+@keyframes zero-running-ripple {
+  0%, 45% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  52% {
+    transform: scale(0.8);
+    opacity: 0.34;
+  }
+  100% {
+    transform: scale(1.56);
+    opacity: 0;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .zero-running-indicator::before {
+    animation: none;
     opacity: 0.28;
     transform: scale(0.62);
   }
   .zero-running-indicator::after {
+    animation: none;
     opacity: 0.18;
     transform: scale(1);
   }
