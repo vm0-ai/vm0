@@ -8,7 +8,6 @@ import {
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
 import {
-  createDeferredPromise,
   onRef,
   resetSignal,
   setLoop,
@@ -1164,20 +1163,6 @@ function createRunTracking({
         return;
       }
 
-      // Mark thread as read on open (focus-gated)
-      if (document.visibilityState !== "visible") {
-        const visibleDeferred = createDeferredPromise<void>(signal);
-        const handler = () => {
-          if (document.visibilityState === "visible" && !visibleDeferred.settled()) {
-            visibleDeferred.resolve();
-          }
-        };
-        document.addEventListener("visibilitychange", handler, {
-          signal,
-        });
-        await visibleDeferred.promise;
-        signal.throwIfAborted();
-      }
       await set(markThreadReadIfNeeded$, signal);
 
       const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
