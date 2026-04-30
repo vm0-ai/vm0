@@ -14,6 +14,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   IconAlertCircle,
+  IconHandStop,
   IconPhoto,
   IconChartLine,
   IconPlayerStop,
@@ -2322,7 +2323,16 @@ function AssistantErrorContent({ error }: { error: string }) {
   const pageSignal = useGet(pageSignal$);
 
   if (error.trim().toLowerCase() === "run cancelled") {
-    return <p className="italic">Paused here, ready when you are</p>;
+    return (
+      <div className="inline-flex items-center gap-2 rounded-xl border border-primary/25 bg-primary/10 px-3 py-1.5 text-[13px]">
+        <IconHandStop
+          size={14}
+          stroke={1.75}
+          className="shrink-0 text-primary/70"
+        />
+        <span>Paused mid-thought — pick it back up whenever.</span>
+      </div>
+    );
   }
 
   const noProviderGuidance = RUN_ERROR_GUIDANCE.NO_MODEL_PROVIDER;
