@@ -1168,7 +1168,7 @@ function createRunTracking({
       if (document.visibilityState !== "visible") {
         const visibleDeferred = createDeferredPromise<void>(signal);
         const handler = () => {
-          if (document.visibilityState === "visible") {
+          if (document.visibilityState === "visible" && !visibleDeferred.settled()) {
             visibleDeferred.resolve();
           }
         };
