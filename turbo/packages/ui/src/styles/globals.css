@@ -396,12 +396,7 @@
     background-color: rgba(128, 128, 128, 0.5);
   }
 
-  /*
-   * Running indicator — synchronized breathing dot for "in progress" state.
-   * Phase is anchored to wall-clock time by <RunningIndicator/> via the Web
-   * Animations API (Animation.currentTime), so multiple instances mounted at
-   * different moments stay visually in sync.
-   */
+  /* Running indicator — breathing dot for "in progress" state. */
   .running-indicator {
     position: relative;
     display: inline-flex;
