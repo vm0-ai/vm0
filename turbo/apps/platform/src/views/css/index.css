@@ -452,12 +452,10 @@
     background-color: hsl(var(--muted-foreground) / 0.3);
   }
 
-  /* Clerk subscription drawer header styling */
+  /* Clerk subscription drawer header — defense-in-depth over appearance config */
   .cl-drawerHeader {
-    background-color: hsl(
-      var(--gray-50)
-    ) !important; /* sidebar color (gray-50) */
-    border-bottom: 0.7px solid hsl(var(--gray-400)) !important; /* border token (gray-200) */
+    background-color: hsl(var(--sidebar)) !important;
+    border-bottom: 0.7px solid hsl(var(--border)) !important;
   }
 }
 
