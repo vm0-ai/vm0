@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.328.0](https://github.com/vm0-ai/vm0/compare/web-v12.327.0...web-v12.328.0) (2026-04-30)
+
+
+### Features
+
+* **api:** add cors middleware for cross-origin browser access ([#11633](https://github.com/vm0-ai/vm0/issues/11633)) ([ca50728](https://github.com/vm0-ai/vm0/commit/ca50728186ca1d0619d41bf29f357bf62bde1ab3))
+
+
+### Bug Fixes
+
+* add missing display flex to nav-center CSS ([#11626](https://github.com/vm0-ai/vm0/issues/11626)) ([50057bb](https://github.com/vm0-ai/vm0/commit/50057bbe033d772b64c7a734cf507bd6293168eb))
+* respect dark mode in rankings table background ([#11628](https://github.com/vm0-ai/vm0/issues/11628)) ([fee3c9a](https://github.com/vm0-ai/vm0/commit/fee3c9a844b96cf3a2703c176e1304a739d75f5d))
+* stabilize landing nav dropdown clicks ([#11625](https://github.com/vm0-ai/vm0/issues/11625)) ([17f92ca](https://github.com/vm0-ai/vm0/commit/17f92ca2ac9b2bb3265a2c0e7b30c66fdbdd03b1))
+
 ## [12.327.0](https://github.com/vm0-ai/vm0/compare/web-v12.326.0...web-v12.327.0) (2026-04-30)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.318.0](https://github.com/vm0-ai/vm0/compare/app-v0.317.0...app-v0.318.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** soft chat style for cancelled runs ([#11622](https://github.com/vm0-ai/vm0/issues/11622)) ([cf0cd29](https://github.com/vm0-ai/vm0/commit/cf0cd2973cf5aeede5d6145e7bdce7edbce87be2))
+
 ## [0.317.0](https://github.com/vm0-ai/vm0/compare/app-v0.316.1...app-v0.317.0) (2026-04-30)
 
 
