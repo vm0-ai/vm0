@@ -45,7 +45,7 @@ use std::fs::File;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use nix::fcntl::{Flock, FlockArg};
@@ -82,6 +82,7 @@ const MAX_NAMESPACES: u32 = 256;
 const BUFFER_SIZE: usize = 4;
 /// Maximum time for host commands that create, reset, or delete netns state.
 const NETNS_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
+static CONNTRACK_NOT_FOUND_LOGGED: AtomicBool = AtomicBool::new(false);
 
 // Compile-time check: all /30 subnets fit within `10.200.0.0/16`.
 // 64 pools × 256 ns × 4 addresses per /30 = 65536 = exactly 2^16.
@@ -903,7 +904,15 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
         exec_ignore_errors_with_timeout("conntrack", &src_args, NETNS_COMMAND_TIMEOUT),
         exec_ignore_errors_with_timeout("conntrack", &dst_args, NETNS_COMMAND_TIMEOUT),
     );
-    if src.completed_without_timeout() && dst.completed_without_timeout() {
+    if conntrack_flush_is_trusted(src, dst) {
+        if conntrack_command_missing(src, dst)
+            && !CONNTRACK_NOT_FOUND_LOGGED.swap(true, Ordering::Relaxed)
+        {
+            warn!(
+                peer_ip,
+                "conntrack command not found; reusing namespace without conntrack flush"
+            );
+        }
         ConntrackFlushOutcome::Trusted
     } else {
         warn!(
@@ -914,6 +923,21 @@ async fn flush_conntrack(peer_ip: &str) -> ConntrackFlushOutcome {
         );
         ConntrackFlushOutcome::Untrusted
     }
+}
+
+fn conntrack_flush_is_trusted(src: IgnoredCommandOutcome, dst: IgnoredCommandOutcome) -> bool {
+    (src.completed_without_timeout() && dst.completed_without_timeout())
+        || conntrack_command_missing(src, dst)
+}
+
+fn conntrack_command_missing(src: IgnoredCommandOutcome, dst: IgnoredCommandOutcome) -> bool {
+    matches!(
+        (src, dst),
+        (
+            IgnoredCommandOutcome::NotFound,
+            IgnoredCommandOutcome::NotFound
+        )
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -2237,6 +2261,34 @@ mod tests {
         assert_eq!(pi, "05");
         assert_eq!(ni, "2a");
         assert_eq!(make_host_device(pi, ni), "vm0-ve-05-2a");
+    }
+
+    #[test]
+    fn conntrack_flush_trusts_completed_deletes() {
+        assert!(conntrack_flush_is_trusted(
+            IgnoredCommandOutcome::Success,
+            IgnoredCommandOutcome::NonZero
+        ));
+    }
+
+    #[test]
+    fn conntrack_flush_trusts_missing_optional_command() {
+        assert!(conntrack_flush_is_trusted(
+            IgnoredCommandOutcome::NotFound,
+            IgnoredCommandOutcome::NotFound
+        ));
+    }
+
+    #[test]
+    fn conntrack_flush_does_not_trust_timeout_or_partial_missing_command() {
+        assert!(!conntrack_flush_is_trusted(
+            IgnoredCommandOutcome::Timeout,
+            IgnoredCommandOutcome::Success
+        ));
+        assert!(!conntrack_flush_is_trusted(
+            IgnoredCommandOutcome::NotFound,
+            IgnoredCommandOutcome::Success
+        ));
     }
 
     #[test]

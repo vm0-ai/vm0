@@ -2,7 +2,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 use tracing::trace;
 
 /// Error from a failed command.
@@ -14,14 +14,16 @@ pub struct CommandError {
 }
 
 /// Outcome for best-effort commands where callers intentionally ignore
-/// non-zero exits but still need to know whether cleanup timed out or failed to
-/// spawn.
+/// non-zero exits but still need coarse failure classification for cleanup
+/// safety decisions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IgnoredCommandOutcome {
     Success,
     NonZero,
+    NotFound,
     SpawnError,
     WaitError,
+    PipeError,
     Timeout,
 }
 
@@ -29,6 +31,22 @@ impl IgnoredCommandOutcome {
     pub fn completed_without_timeout(self) -> bool {
         matches!(self, Self::Success | Self::NonZero)
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum CommandRunError {
+    #[error("spawn failed: {0}")]
+    Spawn(std::io::Error),
+    #[error("wait failed: {0}")]
+    Wait(std::io::Error),
+    #[error("pipe read task failed: {0}")]
+    PipeTask(tokio::task::JoinError),
+    #[error("pipe read failed: {0}")]
+    PipeRead(std::io::Error),
+    #[error("{0} pipe unavailable")]
+    PipeUnavailable(&'static str),
+    #[error("timed out after {0}ms")]
+    Timeout(u128),
 }
 
 /// Format a human-readable display string for a command invocation.
@@ -71,7 +89,8 @@ pub async fn exec(program: &str, args: &[&str]) -> Result<String, CommandError> 
 ///
 /// This helper is intended for host lifecycle operations where an unbounded
 /// subprocess can block resource cleanup. On timeout the child is killed and
-/// waited before returning.
+/// waited before returning. On Unix, the subprocess runs in its own process
+/// group so timeout cleanup also kills grandchildren.
 pub async fn exec_with_timeout(
     program: &str,
     args: &[&str],
@@ -82,9 +101,9 @@ pub async fn exec_with_timeout(
 
     let output = command_output_with_timeout(program, args, timeout)
         .await
-        .map_err(|detail| CommandError {
+        .map_err(|e| CommandError {
             command: cmd_display.clone(),
-            detail,
+            detail: e.to_string(),
         })?;
 
     if output.status.success() {
@@ -135,16 +154,32 @@ pub async fn exec_ignore_errors_with_timeout(
             trace!(command = %cmd_display, stderr = %stderr.trim(), "command failed (ignored)");
             IgnoredCommandOutcome::NonZero
         }
-        Err(detail) if detail.starts_with("timed out ") => {
-            trace!(command = %cmd_display, detail, "command timed out (ignored)");
+        Err(CommandRunError::Timeout(ms)) => {
+            trace!(command = %cmd_display, timeout_ms = ms as u64, "command timed out (ignored)");
             IgnoredCommandOutcome::Timeout
         }
-        Err(detail) if detail.starts_with("wait failed: ") => {
-            trace!(command = %cmd_display, detail, "command wait failed (ignored)");
+        Err(CommandRunError::Wait(e)) => {
+            trace!(command = %cmd_display, error = %e, "command wait failed (ignored)");
             IgnoredCommandOutcome::WaitError
         }
-        Err(detail) => {
-            trace!(command = %cmd_display, detail, "command failed to spawn (ignored)");
+        Err(CommandRunError::PipeTask(e)) => {
+            trace!(command = %cmd_display, error = %e, "command pipe task failed (ignored)");
+            IgnoredCommandOutcome::PipeError
+        }
+        Err(CommandRunError::PipeRead(e)) => {
+            trace!(command = %cmd_display, error = %e, "command pipe read failed (ignored)");
+            IgnoredCommandOutcome::PipeError
+        }
+        Err(CommandRunError::PipeUnavailable(pipe)) => {
+            trace!(command = %cmd_display, pipe, "command pipe unavailable (ignored)");
+            IgnoredCommandOutcome::PipeError
+        }
+        Err(CommandRunError::Spawn(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            trace!(command = %cmd_display, error = %e, "command not found (ignored)");
+            IgnoredCommandOutcome::NotFound
+        }
+        Err(CommandRunError::Spawn(e)) => {
+            trace!(command = %cmd_display, error = %e, "command failed to spawn (ignored)");
             IgnoredCommandOutcome::SpawnError
         }
     }
@@ -154,23 +189,25 @@ async fn command_output_with_timeout(
     program: &str,
     args: &[&str],
     timeout: Duration,
-) -> std::result::Result<std::process::Output, String> {
-    let mut child = Command::new(program)
+) -> std::result::Result<std::process::Output, CommandRunError> {
+    let mut command = Command::new(program);
+    command
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    let mut child = command.spawn().map_err(CommandRunError::Spawn)?;
 
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| "stdout pipe unavailable".to_string())?;
+        .ok_or(CommandRunError::PipeUnavailable("stdout"))?;
     let stderr = child
         .stderr
         .take()
-        .ok_or_else(|| "stderr pipe unavailable".to_string())?;
+        .ok_or(CommandRunError::PipeUnavailable("stderr"))?;
 
     let stdout_task = tokio::spawn(read_pipe(stdout));
     let stderr_task = tokio::spawn(read_pipe(stderr));
@@ -178,14 +215,14 @@ async fn command_output_with_timeout(
     let status = match tokio::time::timeout(timeout, child.wait()).await {
         Ok(Ok(status)) => status,
         Ok(Err(e)) => {
+            kill_child_tree(&mut child).await;
             abort_pipe_tasks(stdout_task, stderr_task).await;
-            return Err(format!("wait failed: {e}"));
+            return Err(CommandRunError::Wait(e));
         }
         Err(_) => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            kill_child_tree(&mut child).await;
             abort_pipe_tasks(stdout_task, stderr_task).await;
-            return Err(format!("timed out after {}ms", timeout.as_millis()));
+            return Err(CommandRunError::Timeout(timeout.as_millis()));
         }
     };
 
@@ -209,10 +246,17 @@ where
 
 async fn collect_pipe(
     task: tokio::task::JoinHandle<std::io::Result<Vec<u8>>>,
-) -> std::result::Result<Vec<u8>, String> {
+) -> std::result::Result<Vec<u8>, CommandRunError> {
     task.await
-        .map_err(|e| format!("pipe read task failed: {e}"))?
-        .map_err(|e| format!("pipe read failed: {e}"))
+        .map_err(CommandRunError::PipeTask)?
+        .map_err(CommandRunError::PipeRead)
+}
+
+async fn kill_child_tree(child: &mut Child) {
+    #[cfg(unix)]
+    crate::process::kill_process_group(child);
+    let _ = child.start_kill();
+    let _ = child.wait().await;
 }
 
 async fn abort_pipe_tasks(
@@ -304,15 +348,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn exec_with_timeout_kills_child_before_followup_command() {
+    async fn exec_ignore_errors_with_timeout_reports_not_found() {
+        let outcome = exec_ignore_errors_with_timeout(
+            "vm0-definitely-missing-command-for-timeout-test",
+            &[],
+            Duration::from_millis(50),
+        )
+        .await;
+
+        assert_eq!(outcome, IgnoredCommandOutcome::NotFound);
+    }
+
+    #[tokio::test]
+    async fn exec_with_timeout_kills_child_process_group() {
         let dir = tempfile::tempdir().unwrap();
         let marker = dir.path().join("marker");
-        let script = format!("sleep 1; touch {}", marker.display());
+        let marker = marker.to_str().unwrap();
 
-        let _ = exec_ignore_errors_with_timeout("sh", &["-c", &script], Duration::from_millis(50))
-            .await;
+        let _ = exec_ignore_errors_with_timeout(
+            "sh",
+            &["-c", "(sleep 0.2; touch \"$1\") & wait", "_", marker],
+            Duration::from_millis(50),
+        )
+        .await;
 
-        tokio::time::sleep(Duration::from_millis(1200)).await;
-        assert!(!marker.exists());
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(!std::path::Path::new(marker).exists());
     }
 }
