@@ -341,9 +341,7 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
     // Wait for the sidebar to finish loading (empty state confirms threads loaded
     // and the default agent id has resolved)
     const newChatButton = await waitFor(() => {
-      expect(
-        screen.getByText("Start a conversation and it'll show up here"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Start a new chat")).toBeInTheDocument();
       return screen.getByLabelText("New chat with Zero");
     });
 

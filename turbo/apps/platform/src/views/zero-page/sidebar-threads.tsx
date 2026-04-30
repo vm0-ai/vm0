@@ -318,13 +318,14 @@ function ChatThreads() {
     filteredOptimisticChatThreads.length === 0 &&
     filteredChatThreads.length === 0
   ) {
-    return (
-      <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-        {trimmedTerm
-          ? "No chats match your search"
-          : "Start a conversation and it'll show up here"}
-      </p>
-    );
+    if (trimmedTerm) {
+      return (
+        <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+          No chats match your search
+        </p>
+      );
+    }
+    return <NewChatGhostRow />;
   }
   return (
     <>
@@ -369,13 +370,11 @@ function ChatThreads() {
   );
 }
 
-function ChatThreadsTitle() {
+function useNewChat() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
   const { signal: rootSignal } = useGet(rootSignal$);
-  const { titleLabel, searchPlaceholder, newChatAriaLabel } =
-    useChatThreadsTitleLabels();
   const newChatDisabled = useGet(optimisticChatThread$) !== null;
   const onNewChat = (pane: OptimisticChatPane) => {
     detach(
@@ -384,6 +383,30 @@ function ChatThreadsTitle() {
     );
     setExpanded(false);
   };
+  return { onNewChat, newChatDisabled };
+}
+
+function NewChatGhostRow() {
+  const { onNewChat, newChatDisabled } = useNewChat();
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        onNewChat(e.altKey ? "sidebar" : "main");
+      }}
+      disabled={newChatDisabled}
+      className="flex h-8 items-center gap-2 rounded-lg border border-dashed border-sidebar-foreground/20 px-2 text-sm text-sidebar-foreground/60 transition-colors hover:border-sidebar-foreground/40 hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:pointer-events-none disabled:opacity-50"
+    >
+      <IconPlus size={14} stroke={2.5} className="shrink-0" />
+      <span className="truncate">Start a new chat</span>
+    </button>
+  );
+}
+
+function ChatThreadsTitle() {
+  const { titleLabel, searchPlaceholder, newChatAriaLabel } =
+    useChatThreadsTitleLabels();
+  const { onNewChat, newChatDisabled } = useNewChat();
   const searchOpen = useGet(threadSearchOpen$);
   const setSearchOpen = useSet(setThreadSearchOpen$);
   const searchTerm = useGet(sidebarSearchTerm$);
