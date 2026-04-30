@@ -37,7 +37,6 @@ describe("/api/zero/org/members/credit-cap", () => {
     await insertTestModelUsageEvent(orgId, {
       userId,
       model: "claude-sonnet-4-20250514",
-      modelProvider: "vm0",
       creditsCharged,
       status: "processed",
       processedAt,

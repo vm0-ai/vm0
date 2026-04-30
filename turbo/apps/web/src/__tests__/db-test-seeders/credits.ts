@@ -357,15 +357,10 @@ export async function insertTestModelUsageEvent(
   options: {
     userId?: string;
     model?: string;
-    modelProvider?: string;
     inputTokens?: number;
     outputTokens?: number;
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
-    webSearchRequests?: number;
-    costUsd?: string;
-    resultUuid?: string;
-    messageId?: string;
     status?: string;
     creditsCharged?: number;
     processedAt?: Date | null;
@@ -434,12 +429,10 @@ export async function insertTestModelUsageEventForRun(params: {
   runId: string;
   orgId: string;
   userId: string;
-  messageId?: string;
   inputTokens?: number;
   outputTokens?: number;
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
-  webSearchRequests?: number;
   status?: string;
   creditsCharged?: number;
   processedAt?: Date | null;
