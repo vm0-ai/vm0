@@ -6,7 +6,7 @@ import { Link } from "../../../../navigation";
 import { Footer } from "../../../components/Footer";
 import { Particles } from "../../../components/Particles";
 import { getAppUrl } from "../../../../src/lib/zero/url";
-import { MODELS, type ModelEntry, vendorIconPath } from "../data";
+import { MODELS, type ModelEntry, modelI18nKey, vendorIconPath } from "../data";
 
 const MAX_WIDTH = 880;
 const PAGE_PADDING = 24;
@@ -127,10 +127,10 @@ export function ModelDetailClient({ model, related }: Props) {
   const t = useTranslations("models");
   const platformUrl = getAppUrl();
   const c = (key: string) => {
-    return `content.${model.slug}.${key}`;
+    return `content.${modelI18nKey(model.slug)}.${key}`;
   };
   const rc = (slug: string, key: string) => {
-    return `content.${slug}.${key}`;
+    return `content.${modelI18nKey(slug)}.${key}`;
   };
 
   const heroMeta = [

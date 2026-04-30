@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Link } from "../../../navigation";
 import { Footer } from "../../components/Footer";
 import { Particles } from "../../components/Particles";
-import { MODELS, type ModelEntry, vendorIconPath } from "./data";
+import { MODELS, type ModelEntry, modelI18nKey, vendorIconPath } from "./data";
 
 const MAX_WIDTH = 1200;
 const PAGE_PADDING = 24;
@@ -182,7 +182,7 @@ export function ModelsClient() {
           className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 lg:grid-cols-3"
         >
           {visibleModels.map((model) => {
-            const cn = `content.${model.slug}`;
+            const cn = `content.${modelI18nKey(model.slug)}`;
             return (
               <ModelCard
                 key={model.slug}

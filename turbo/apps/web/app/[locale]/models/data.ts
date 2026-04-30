@@ -310,6 +310,13 @@ export const MODEL_SLUGS = MODELS.map((m) => {
   return m.slug;
 });
 
+// next-intl uses dots as nested-key path separators, so a slug like `glm-5.1`
+// would resolve as `glm-5 → 1` and miss the actual entry. Convert dots to
+// hyphens for translation keys; URL slugs remain unchanged.
+export function modelI18nKey(slug: string): string {
+  return slug.replace(/\./g, "-");
+}
+
 export function getModelBySlug(slug: string): ModelEntry | undefined {
   return MODELS.find((m) => {
     return m.slug === slug;
