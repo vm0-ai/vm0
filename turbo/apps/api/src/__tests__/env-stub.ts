@@ -19,7 +19,7 @@ vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-user-storages");
 vi.stubEnv("VM0_API_URL", "http://localhost:3000");
 vi.stubEnv("VM0_WEB_URL", "http://localhost:3001");
 vi.stubEnv("GIT_COMMIT_SHA", "test-commit-sha");
-vi.stubEnv("SENTRY_ENV", "development");
+vi.stubEnv("ENV", "development");
 vi.stubEnv("AXIOM_TOKEN_SESSIONS", "xaat-test-sessions");
 vi.stubEnv("AXIOM_TOKEN_TELEMETRY", "xaat-test-telemetry");
 vi.stubEnv("AXIOM_DATASET_SUFFIX", "dev");
