@@ -16,7 +16,7 @@ import {
   IconAlertCircle,
   IconPhoto,
   IconChartLine,
-  IconPlayerPause,
+  IconPlayerPauseFilled,
   IconPlayerStop,
   IconCopy,
   IconCheck,
@@ -2324,11 +2324,10 @@ function AssistantErrorContent({ error }: { error: string }) {
 
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
-      <div className="zero-pill inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-[13px]">
-        <IconPlayerPause
-          size={14}
-          stroke={1.75}
-          className="shrink-0 opacity-60"
+      <div className="flex items-baseline gap-2">
+        <IconPlayerPauseFilled
+          size={13}
+          className="shrink-0 self-center text-muted-foreground/70"
         />
         <span>Caught me mid-sentence. I&apos;ll wait for your cue.</span>
       </div>
