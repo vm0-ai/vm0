@@ -521,4 +521,43 @@ mod tests {
 
         assert!(!ws.exists(), "queued slot should be removed on pool drop");
     }
+
+    #[tokio::test]
+    async fn dropped_pool_removes_late_pending_slot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let ws = tmp.path().join("pending-slot");
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let mut pool = CowPool::new(config);
+
+        pool.pending.spawn_blocking({
+            let ws = ws.clone();
+            move || {
+                std::fs::create_dir_all(&ws).unwrap();
+                std::fs::write(ws.join("cow.img"), b"cow").unwrap();
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(PrewarmedSlot {
+                    id: "pending".into(),
+                    workspace: ws,
+                })
+            }
+        });
+
+        entered_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .unwrap();
+        assert!(ws.exists());
+        drop(pool);
+        release_tx.send(()).unwrap();
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while ws.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("late pending slot workspace should be removed after pool drop");
+    }
 }
