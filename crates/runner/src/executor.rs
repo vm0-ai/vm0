@@ -204,7 +204,7 @@ fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: 
 
 /// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM
 /// and the categorized reason no idle VM was reused. Both originate in
-/// `cmd/start.rs`; the id becomes the sandbox's identity, and the reuse result
+/// `cmd/start/mod.rs`; the id becomes the sandbox's identity, and the reuse result
 /// is forwarded to the guest for /complete metadata.
 #[derive(Clone, Copy)]
 pub struct NewSandboxDispatch {
@@ -430,7 +430,7 @@ async fn unregister_proxy_registry(
 ///
 /// Called after `run_in_sandbox` completes, whether the sandbox will be
 /// parked (keep-alive) or destroyed. Rust-side network-log attribution stays
-/// open until `cmd/start.rs` quiesces the sandbox and closes the returned
+/// open until `cmd/start/mod.rs` quiesces the sandbox and closes the returned
 /// `NetworkLogSession`; the HTTP upload remains deferred after
 /// `provider.complete`.
 async fn post_job_cleanup(
