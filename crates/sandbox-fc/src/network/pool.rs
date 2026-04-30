@@ -2292,6 +2292,24 @@ mod tests {
     }
 
     #[test]
+    fn conntrack_flush_does_not_trust_uncertain_command_failures() {
+        for outcome in [
+            IgnoredCommandOutcome::SpawnError,
+            IgnoredCommandOutcome::WaitError,
+            IgnoredCommandOutcome::PipeError,
+        ] {
+            assert!(
+                !conntrack_flush_is_trusted(outcome, IgnoredCommandOutcome::Success),
+                "trusted left-side outcome: {outcome:?}"
+            );
+            assert!(
+                !conntrack_flush_is_trusted(IgnoredCommandOutcome::Success, outcome),
+                "trusted right-side outcome: {outcome:?}"
+            );
+        }
+    }
+
+    #[test]
     fn generate_veth_ip_pair_no_overlap_all_pools() {
         let mut seen = std::collections::HashSet::new();
         for pool in 0..MAX_POOLS {
@@ -2584,6 +2602,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shared_release_deletes_when_cleanup_races_after_flush_started() {
+        let flush_entered = Arc::new(tokio::sync::Notify::new());
+        let flush_release = Arc::new(tokio::sync::Notify::new());
+        let delete_count = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let flush_entered_for_ops = Arc::clone(&flush_entered);
+        let flush_release_for_ops = Arc::clone(&flush_release);
+        let delete_count_for_ops = Arc::clone(&delete_count);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(move |_| {
+                let flush_entered = Arc::clone(&flush_entered_for_ops);
+                let flush_release = Arc::clone(&flush_release_for_ops);
+                Box::pin(async move {
+                    flush_entered.notify_one();
+                    flush_release.notified().await;
+                    ConntrackFlushOutcome::Trusted
+                })
+            }),
+            delete_namespace: Arc::new(move |_| {
+                let delete_count = Arc::clone(&delete_count_for_ops);
+                Box::pin(async move {
+                    delete_count.fetch_add(1, Ordering::SeqCst);
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        let lease = Some(pool.checkout(test_info("test-ns")).unwrap());
+        let handle = NetnsPoolHandle::new_for_test(pool);
+
+        let release_task = tokio::spawn({
+            let handle = handle.clone();
+            async move {
+                let mut lease = lease;
+                let outcome = handle.release(&mut lease).await;
+                (outcome, lease)
+            }
+        });
+        flush_entered.notified().await;
+
+        handle.cleanup().await.unwrap();
+        flush_release.notify_one();
+        let (outcome, lease) = release_task.await.unwrap();
+
+        assert!(matches!(outcome, NetnsReleaseOutcome::Deleted));
+        assert!(lease.is_none());
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        let pool = handle.inner.lock().await;
+        assert!(!pool.active);
+        assert!(pool.in_flight.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
     async fn untrusted_conntrack_flush_deletes_without_requeue() {
         let delete_count = Arc::new(AtomicUsize::new(0));
         let mut pool = NetnsPool::inactive_for_test();
@@ -2721,6 +2793,57 @@ mod tests {
         cleanup.await.unwrap().unwrap();
         let pool = handle.inner.lock().await;
         assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn shared_cleanup_retry_keeps_queue_when_cancelled_during_delete() {
+        let delete_entered = Arc::new(tokio::sync::Notify::new());
+        let delete_release = Arc::new(tokio::sync::Notify::new());
+        let delete_count = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        pool.plain_queue.push_back(test_info("test-ns"));
+        let delete_entered_for_ops = Arc::clone(&delete_entered);
+        let delete_release_for_ops = Arc::clone(&delete_release);
+        let delete_count_for_ops = Arc::clone(&delete_count);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Trusted })),
+            delete_namespace: Arc::new(move |_| {
+                let delete_entered = Arc::clone(&delete_entered_for_ops);
+                let delete_release = Arc::clone(&delete_release_for_ops);
+                let delete_count = Arc::clone(&delete_count_for_ops);
+                Box::pin(async move {
+                    let attempt = delete_count.fetch_add(1, Ordering::SeqCst);
+                    delete_entered.notify_one();
+                    if attempt == 0 {
+                        delete_release.notified().await;
+                    }
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        let handle = NetnsPoolHandle::new_for_test(pool);
+
+        let cleanup = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.cleanup().await }
+        });
+        delete_entered.notified().await;
+        cleanup.abort();
+        let _ = cleanup.await;
+
+        {
+            let pool = handle.inner.lock().await;
+            assert!(!pool.active);
+            assert_eq!(pool.plain_queue.len(), 1);
+            assert_eq!(pool.plain_queue.front().unwrap().name(), "test-ns");
+        }
+
+        delete_release.notify_one();
+        handle.cleanup().await.unwrap();
+        let pool = handle.inner.lock().await;
+        assert!(pool.plain_queue.is_empty());
+        assert_eq!(delete_count.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
