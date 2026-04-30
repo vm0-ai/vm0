@@ -146,6 +146,7 @@ jobs:
           fi
 
       - name: Run Production Migration Smoke Test
+        id: run-migration-smoke-test
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
@@ -162,6 +163,7 @@ jobs:
           echo "Production migration smoke test completed"
 
       - name: Delete Production Migration Smoke Branch
+        id: delete-migration-smoke-branch
         if: ${{ always() && steps.create-migration-smoke-branch.outcome != 'skipped' }}
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
@@ -223,8 +225,40 @@ jobs:
                   type: mrkdwn
                   text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
 
+      - name: Notify Slack - Smoke Failure
+        if: >-
+          ${{
+            failure() &&
+            steps.slack-start.outputs.ts &&
+            (
+              steps.create-migration-smoke-branch.outcome == 'failure' ||
+              steps.run-migration-smoke-test.outcome == 'failure' ||
+              steps.delete-migration-smoke-branch.outcome == 'failure'
+            )
+          }}
+        uses: slackapi/slack-github-action@v3.0.2
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.slack-start.outputs.ts }}"
+            text: "*Database Migration Smoke* ❌ Smoke check failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration Smoke* ❌ Smoke check failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n⚠️ Production database migration was not run. The failure happened before the real production DB migration, on the Neon smoke branch `release-smoke/production-migration` or its cleanup.\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
       - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
+        if: >-
+          ${{
+            failure() &&
+            steps.slack-start.outputs.ts &&
+            steps.create-migration-smoke-branch.outcome != 'failure' &&
+            steps.run-migration-smoke-test.outcome != 'failure' &&
+            steps.delete-migration-smoke-branch.outcome != 'failure'
+          }}
         uses: slackapi/slack-github-action@v3.0.2
         with:
           method: chat.update
