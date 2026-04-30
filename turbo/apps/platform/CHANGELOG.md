@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.314.2](https://github.com/vm0-ai/vm0/compare/app-v0.314.1...app-v0.314.2) (2026-04-30)
+
+
+### Bug Fixes
+
+* **pwa:** remove offline fallback from service worker ([#11571](https://github.com/vm0-ai/vm0/issues/11571)) ([c862506](https://github.com/vm0-ai/vm0/commit/c86250676360c79801519649735ac308024ccb58))
+
 ## [0.314.1](https://github.com/vm0-ai/vm0/compare/app-v0.314.0...app-v0.314.1) (2026-04-29)
 
 
