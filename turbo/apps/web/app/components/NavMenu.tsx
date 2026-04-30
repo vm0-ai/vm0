@@ -23,7 +23,7 @@ interface NavMenuProps {
   onOpenChange: (id: string | null) => void;
 }
 
-const CLOSE_DELAY_MS = 120;
+const CLOSE_DELAY_MS = 250;
 
 export function NavMenu({
   id,

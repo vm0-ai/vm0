@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.249.0](https://github.com/vm0-ai/vm0/compare/core-v8.248.1...core-v8.249.0) (2026-04-30)
+
+
+### Features
+
+* enable ChatManualHistory for all users ([#11617](https://github.com/vm0-ai/vm0/issues/11617)) ([7f1ec4b](https://github.com/vm0-ai/vm0/commit/7f1ec4bb4fa5dbe79220dadeed673210c59f5d16))
+
 ## [8.248.1](https://github.com/vm0-ai/vm0/compare/core-v8.248.0...core-v8.248.1) (2026-04-30)
 
 

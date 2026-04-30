@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.317.0](https://github.com/vm0-ai/vm0/compare/app-v0.316.1...app-v0.317.0) (2026-04-30)
+
+
+### Features
+
+* enable ChatManualHistory for all users ([#11617](https://github.com/vm0-ai/vm0/issues/11617)) ([7f1ec4b](https://github.com/vm0-ai/vm0/commit/7f1ec4bb4fa5dbe79220dadeed673210c59f5d16))
+
+
+### Bug Fixes
+
+* stop reporting HTTP errors to Sentry from frontend ([#11612](https://github.com/vm0-ai/vm0/issues/11612)) ([e3efe44](https://github.com/vm0-ai/vm0/commit/e3efe447467c5f5e13394ddb086cb16e1aa355e7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.249.0
+
 ## [0.316.1](https://github.com/vm0-ai/vm0/compare/app-v0.316.0...app-v0.316.1) (2026-04-30)
 
 

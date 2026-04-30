@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.327.0](https://github.com/vm0-ai/vm0/compare/web-v12.326.0...web-v12.327.0) (2026-04-30)
+
+
+### Features
+
+* **web:** regroup marketing nav into Resources & Trust & Tech mega-menus ([#11610](https://github.com/vm0-ai/vm0/issues/11610)) ([51c2fbe](https://github.com/vm0-ai/vm0/commit/51c2fbe553f272f05200563d76b41245a595715c))
+* **web:** show cache tokens on rankings page ([#11614](https://github.com/vm0-ai/vm0/issues/11614)) ([6e34b1a](https://github.com/vm0-ai/vm0/commit/6e34b1ae626aa6099461e7e7349cca0a21adb7c4))
+
+
+### Bug Fixes
+
+* **web:** resolve i18n keys for model slugs containing dots ([#11615](https://github.com/vm0-ai/vm0/issues/11615)) ([3f86cc7](https://github.com/vm0-ai/vm0/commit/3f86cc78eaff32a67fba25fcf6bb42bc94c973bf))
+* **zero:** drop residual framework strict-equality check ([#11616](https://github.com/vm0-ai/vm0/issues/11616)) ([#11619](https://github.com/vm0-ai/vm0/issues/11619)) ([b98842a](https://github.com/vm0-ai/vm0/commit/b98842a4e9f6beefc622d4982f8d16e3a1837428))
+
+
+### Refactoring
+
+* **api:** tighten env schema and clean up dead code ([#11621](https://github.com/vm0-ai/vm0/issues/11621)) ([849fe02](https://github.com/vm0-ai/vm0/commit/849fe027474e831d4721c3f3758142f4677a60da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.249.0
+
 ## [12.326.0](https://github.com/vm0-ai/vm0/compare/web-v12.325.0...web-v12.326.0) (2026-04-30)
 
 

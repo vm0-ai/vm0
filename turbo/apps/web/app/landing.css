@@ -335,6 +335,7 @@ body {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
   align-items: center;
   gap: 32px;
 }
@@ -431,6 +432,17 @@ body {
   box-shadow:
     0 1px 2px rgba(20, 22, 28, 0.04),
     0 12px 32px -12px rgba(20, 22, 28, 0.16);
+}
+
+/* Invisible hover-bridge over the trigger gap so pointerenter on the
+   popover fires before the close-timer expires. */
+.nav-popover::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -10px;
+  height: 10px;
 }
 
 .nav-popover[data-state="open"] {
