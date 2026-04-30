@@ -186,7 +186,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/model-providers/[type]/model/route.ts",
   "app/api/zero/model-providers/[type]/route.ts",
   "app/api/zero/model-providers/route.ts",
-  "app/api/zero/model-usage-ranking/route.ts",
   "app/api/zero/onboarding/complete/route.ts",
   "app/api/zero/onboarding/setup/route.ts",
   "app/api/zero/onboarding/status/route.ts",

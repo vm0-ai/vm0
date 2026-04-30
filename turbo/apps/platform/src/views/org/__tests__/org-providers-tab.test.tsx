@@ -12,7 +12,6 @@ import {
   type ModelProviderResponse,
   MODEL_PROVIDER_TYPES,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   zeroModelProvidersDefaultContract,
   zeroModelProvidersByTypeContract,
@@ -26,7 +25,6 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import { setMockModelUsageRanking } from "../../../mocks/handlers/api-usage.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 
 const context = testContext();
@@ -65,13 +63,10 @@ function mockAPIs(options?: {
   setMockOrgModelProviders(options?.providers ?? []);
 }
 
-async function openProvidersPage(options?: {
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
-}) {
+async function openProvidersPage() {
   detachedSetupPage({
     context,
     path: "/?settings=providers",
-    featureSwitches: options?.featureSwitches,
   });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -130,65 +125,19 @@ describe("org providers tab - display", () => {
     });
   });
 
-  it("shows VM0 model popularity ranking in place of the provider list", async () => {
+  it("does not show the VM0 model popularity ranking entry point", async () => {
     mockAPIs({
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
-    setMockModelUsageRanking([
-      {
-        model: "claude-sonnet-4-6",
-        inputTokens: 900_000,
-        outputTokens: 250_000,
-        cacheTokens: 50_000,
-        totalTokens: 1_200_000,
-        previousTotalTokens: 872_727,
-        changePercent: 0.375,
-        share: 0.75,
-      },
-      {
-        model: "kimi-k2.6",
-        inputTokens: 200_000,
-        outputTokens: 150_000,
-        cacheTokens: 50_000,
-        totalTokens: 400_000,
-        previousTotalTokens: 0,
-        changePercent: null,
-        share: 0.25,
-      },
-    ]);
-
-    await openProvidersPage({
-      featureSwitches: { [FeatureSwitchKey.ModelUsageRanking]: true },
-    });
+    await openProvidersPage();
     await waitFor(() => {
-      expect(
-        screen.getByLabelText("Open VM0 model popularity ranking"),
-      ).toBeInTheDocument();
-    });
-    click(screen.getByLabelText("Open VM0 model popularity ranking"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Model Popularity")).toBeInTheDocument();
+      expect(screen.getByText("Default provider")).toBeInTheDocument();
     });
     expect(
-      screen.getByText(
-        "Ranking of the most popular models on VM0, based on platform-wide tokens.",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Default provider")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Claude Sonnet 4.6").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Kimi/i)).toBeInTheDocument();
-    expect(screen.getByText("LLM Leaderboard")).toBeInTheDocument();
-
-    const backButton = screen.getAllByRole("button").find((el) => {
-      return el.textContent?.includes("Model providers");
-    });
-    expect(backButton).toBeDefined();
-    click(backButton!);
-
-    await waitFor(() => {
-      expect(screen.getByText("Configured")).toBeInTheDocument();
-    });
+      screen.queryByLabelText("Open VM0 model popularity ranking"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Model Popularity")).not.toBeInTheDocument();
+    expect(screen.queryByText("LLM Leaderboard")).not.toBeInTheDocument();
   });
 });
 
