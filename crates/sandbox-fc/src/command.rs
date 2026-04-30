@@ -255,32 +255,31 @@ async fn collect_pipes_with_deadline(
     timeout: Duration,
     child_pid: Option<u32>,
 ) -> std::result::Result<(Vec<u8>, Vec<u8>), CommandRunError> {
-    let mut stdout = None;
-    let mut stderr = None;
-    let sleep = tokio::time::sleep_until(deadline);
-    tokio::pin!(sleep);
-
-    loop {
-        tokio::select! {
-            result = &mut stdout_task, if stdout.is_none() => {
-                stdout = Some(collect_pipe_result(result)?);
+    let stdout = match tokio::time::timeout_at(deadline, &mut stdout_task).await {
+        Ok(result) => match collect_pipe_result(result) {
+            Ok(stdout) => stdout,
+            Err(e) => {
+                abort_pipe_task(stderr_task).await;
+                return Err(e);
             }
-            result = &mut stderr_task, if stderr.is_none() => {
-                stderr = Some(collect_pipe_result(result)?);
-            }
-            () = &mut sleep => {
-                kill_process_group_by_optional_pid(child_pid);
-                abort_pipe_tasks(stdout_task, stderr_task).await;
-                return Err(CommandRunError::Timeout(timeout.as_millis()));
-            }
+        },
+        Err(_) => {
+            kill_process_group_by_optional_pid(child_pid);
+            abort_pipe_tasks(stdout_task, stderr_task).await;
+            return Err(CommandRunError::Timeout(timeout.as_millis()));
         }
+    };
 
-        if stdout.is_some() && stderr.is_some() {
-            let stdout = stdout.ok_or(CommandRunError::PipeUnavailable("stdout"))?;
-            let stderr = stderr.ok_or(CommandRunError::PipeUnavailable("stderr"))?;
-            return Ok((stdout, stderr));
+    let stderr = match tokio::time::timeout_at(deadline, &mut stderr_task).await {
+        Ok(result) => collect_pipe_result(result)?,
+        Err(_) => {
+            kill_process_group_by_optional_pid(child_pid);
+            abort_pipe_task(stderr_task).await;
+            return Err(CommandRunError::Timeout(timeout.as_millis()));
         }
-    }
+    };
+
+    Ok((stdout, stderr))
 }
 
 fn collect_pipe_result(
@@ -311,10 +310,13 @@ async fn abort_pipe_tasks(
     stdout_task: JoinHandle<std::io::Result<Vec<u8>>>,
     stderr_task: JoinHandle<std::io::Result<Vec<u8>>>,
 ) {
-    stdout_task.abort();
-    stderr_task.abort();
-    let _ = stdout_task.await;
-    let _ = stderr_task.await;
+    abort_pipe_task(stdout_task).await;
+    abort_pipe_task(stderr_task).await;
+}
+
+async fn abort_pipe_task(task: JoinHandle<std::io::Result<Vec<u8>>>) {
+    task.abort();
+    let _ = task.await;
 }
 
 #[cfg(test)]
@@ -433,6 +435,24 @@ mod tests {
         let outcome = exec_ignore_errors_with_timeout(
             "sh",
             &["-c", "(sleep 0.2; touch \"$1\") &", "_", marker],
+            Duration::from_millis(50),
+        )
+        .await;
+
+        assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(!std::path::Path::new(marker).exists());
+    }
+
+    #[tokio::test]
+    async fn exec_with_timeout_aborts_only_remaining_pipe_reader() {
+        let dir = tempfile::tempdir().unwrap();
+        let marker = dir.path().join("marker");
+        let marker = marker.to_str().unwrap();
+
+        let outcome = exec_ignore_errors_with_timeout(
+            "sh",
+            &["-c", "(exec 1>&-; sleep 0.2; touch \"$1\") &", "_", marker],
             Duration::from_millis(50),
         )
         .await;
