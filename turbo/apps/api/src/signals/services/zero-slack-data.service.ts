@@ -7,7 +7,7 @@ import { db$ } from "../external/db";
 import { listConversations } from "../external/slack-client";
 import { decryptSecretValue } from "./crypto.utils";
 
-export interface SlackOrgStatusResult {
+interface SlackOrgStatusResult {
   readonly isConnected: boolean;
   readonly isInstalled: boolean;
   readonly isAdmin: boolean;
@@ -116,7 +116,7 @@ export function zeroSlackOrgInstallation(args: {
   });
 }
 
-export interface SlackChannel {
+interface SlackChannel {
   readonly id: string;
   readonly name: string;
 }

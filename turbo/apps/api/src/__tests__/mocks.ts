@@ -37,7 +37,6 @@ export interface ApiTestMocks {
     };
   };
   readonly telegram: {
-    readonly fetchFile: AsyncMock;
     readonly getMe: AsyncMock;
     readonly getFile: AsyncMock;
   };
@@ -90,7 +89,6 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   const telegram = {
-    fetchFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     getMe: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     getFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
@@ -201,12 +199,6 @@ vi.mock("../signals/external/slack-file-fetcher", () => {
   };
 });
 
-vi.mock("../signals/external/telegram-file-fetcher", () => {
-  return {
-    fetchTelegramFile: apiTestMocks.telegram.fetchFile,
-  };
-});
-
 vi.mock("../signals/external/telegram-client", () => {
   return {
     getMe: apiTestMocks.telegram.getMe,
@@ -237,7 +229,6 @@ export function resetApiTestMocks(): void {
   apiTestMocks.slack.files.info.mockReset();
   apiTestMocks.slack.fetchFile.mockReset();
   apiTestMocks.stripe.invoices.list.mockReset();
-  apiTestMocks.telegram.fetchFile.mockReset();
   apiTestMocks.telegram.getMe.mockReset();
   apiTestMocks.telegram.getFile.mockReset();
   apiTestMocks.otel.registerOTel.mockReset();

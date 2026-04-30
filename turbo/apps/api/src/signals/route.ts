@@ -40,7 +40,6 @@ import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
 import { zeroVoiceChatRoutes } from "./routes/zero-voice-chat";
-import { zeroVoiceChatCandidateRoutes } from "./routes/zero-voice-chat-candidate";
 import { zeroVoiceIoQuotaRoutes } from "./routes/zero-voice-io-quota";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 
@@ -75,7 +74,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroMemberCreditCapRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroVoiceChatRoutes,
-  ...zeroVoiceChatCandidateRoutes,
   ...zeroVoiceIoQuotaRoutes,
   ...zeroWebDownloadRoutes,
   ...zeroQueuePositionRoutes,

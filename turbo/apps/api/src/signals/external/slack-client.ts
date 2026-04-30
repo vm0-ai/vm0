@@ -48,7 +48,7 @@ async function callSlackApi<T>(
   return data as T;
 }
 
-export interface SlackConversation {
+interface SlackConversation {
   id: string;
   name: string;
   is_channel: boolean;
@@ -103,7 +103,7 @@ export async function listConversations(
   return channels;
 }
 
-export interface SlackFileInfo {
+interface SlackFileInfo {
   id: string;
   name: string;
   mimetype: string;

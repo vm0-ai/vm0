@@ -11,7 +11,7 @@ import { downloadS3Buffer, downloadManifest } from "../external/s3";
 import { env } from "../../lib/env";
 import { extractFileFromTarGz } from "../../lib/tar";
 
-export interface AgentInstructionsResult {
+interface AgentInstructionsResult {
   readonly content: string | null;
   readonly filename: string | null;
 }

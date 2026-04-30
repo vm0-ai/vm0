@@ -14,7 +14,7 @@ import { extractFileFromTarGz } from "../../lib/tar";
 
 const SKILL_FILENAME = "SKILL.md";
 
-export interface SkillDetailResult {
+interface SkillDetailResult {
   readonly name: string;
   readonly displayName: string | null;
   readonly description: string | null;

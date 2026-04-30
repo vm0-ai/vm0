@@ -8,7 +8,7 @@ import { db$ } from "../external/db";
 import { getMe } from "../external/telegram-client";
 import { decryptSecretValue } from "./crypto.utils";
 
-export interface TelegramBotListItem {
+interface TelegramBotListItem {
   readonly id: string;
   readonly username: string | null;
   readonly agent: { readonly id: string; readonly name: string } | null;

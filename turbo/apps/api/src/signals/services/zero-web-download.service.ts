@@ -38,7 +38,7 @@ function inferMimetype(filename: string): string {
   return mapped ?? "application/octet-stream";
 }
 
-export interface DownloadFileResult {
+interface DownloadFileResult {
   readonly buffer: Buffer;
   readonly contentType: string;
   readonly filename: string;

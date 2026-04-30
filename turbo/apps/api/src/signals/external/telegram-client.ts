@@ -1,5 +1,3 @@
-import { env } from "../../lib/env";
-
 interface TelegramApiError {
   readonly ok: false;
   readonly description: string;
@@ -41,7 +39,7 @@ async function callTelegramApi<T>(
   return data as T;
 }
 
-export interface TelegramBotInfo {
+interface TelegramBotInfo {
   readonly id: number;
   readonly username: string;
   readonly first_name: string;
@@ -55,7 +53,7 @@ export async function getMe(token: string): Promise<TelegramBotInfo> {
   return result.result;
 }
 
-export interface TelegramFile {
+interface TelegramFile {
   readonly file_id: string;
   readonly file_path: string;
 }
@@ -75,18 +73,3 @@ export function buildFileDownloadUrl(token: string, filePath: string): string {
   return `https://api.telegram.org/file/bot${token}/${filePath}`;
 }
 
-function getForwardProxy(): { token: string } | null {
-  const proxyToken = env("TELEGRAM_FORWARD_BOT_TOKEN");
-  if (!proxyToken) {
-    return null;
-  }
-  return { token: proxyToken };
-}
-
-export function createBotToken(botToken: string): string {
-  const proxy = getForwardProxy();
-  if (!proxy) {
-    return botToken;
-  }
-  return proxy.token;
-}

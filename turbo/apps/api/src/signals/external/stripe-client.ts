@@ -1,7 +1,7 @@
 import StripeSDK from "stripe";
 import { env } from "../../lib/env";
 
-export interface StripeInvoice {
+interface StripeInvoice {
   readonly id: string;
   readonly number: string | null;
   readonly created: number;
