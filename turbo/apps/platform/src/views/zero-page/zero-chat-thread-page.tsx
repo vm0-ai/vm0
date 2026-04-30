@@ -16,7 +16,6 @@ import {
   IconAlertCircle,
   IconPhoto,
   IconChartLine,
-  IconPlayerPauseFilled,
   IconPlayerStop,
   IconCopy,
   IconCheck,
@@ -2323,15 +2322,7 @@ function AssistantErrorContent({ error }: { error: string }) {
   const pageSignal = useGet(pageSignal$);
 
   if (error.trim().toLowerCase() === "run cancelled") {
-    return (
-      <div className="flex items-baseline gap-2 italic">
-        <IconPlayerPauseFilled
-          size={13}
-          className="shrink-0 self-center text-muted-foreground/70"
-        />
-        <span>Paused here, ready when you are</span>
-      </div>
-    );
+    return <p className="italic">Paused here, ready when you are</p>;
   }
 
   const noProviderGuidance = RUN_ERROR_GUIDANCE.NO_MODEL_PROVIDER;
