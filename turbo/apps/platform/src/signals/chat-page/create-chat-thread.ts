@@ -7,11 +7,7 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
-import {
-  onRef,
-  resetSignal,
-  setLoop,
-} from "../utils.ts";
+import { onRef, resetSignal, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
 import {
