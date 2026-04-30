@@ -4,7 +4,8 @@ import Script from "next/script";
 import { type Locale } from "../../../i18n";
 import { buildLocaleAlternates } from "../../lib/seo/alternates";
 import { RankingsPage } from "./RankingsPage";
-import { getRankings, type PeriodKey, PERIODS } from "./data";
+import { type PeriodKey, PERIODS } from "./data";
+import { getRankings } from "./get-rankings";
 
 const BASE_URL = "https://www.vm0.ai";
 
