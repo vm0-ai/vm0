@@ -1,0 +1,362 @@
+import { Command } from "commander";
+import chalk from "chalk";
+import {
+  CONNECTOR_TYPES,
+  type ConnectorConfig,
+  type ConnectorGenerationType,
+  type ConnectorType,
+} from "@vm0/connectors/connectors";
+import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
+import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
+import { withErrorHandler } from "../../../lib/command";
+import { getPlatformOrigin } from "./platform-url";
+
+const GENERATION_TYPE_ORDER: readonly ConnectorGenerationType[] = [
+  "image",
+  "video",
+  "audio",
+  "text",
+  "code",
+  "document",
+  "presentation",
+  "website",
+];
+
+const GENERATION_TYPE_LABELS: Record<ConnectorGenerationType, string> = {
+  audio: "Audio",
+  code: "Code",
+  document: "Document",
+  image: "Image",
+  presentation: "Presentation",
+  text: "Text",
+  video: "Video",
+  website: "Website",
+};
+
+type ConnectedConnector = ConnectorListResponse["connectors"][number];
+
+type CandidateStatus =
+  | "ready"
+  | "needs-reconnect"
+  | "not-authorized"
+  | "not-connected"
+  | "not-available";
+
+interface GenerateOptions {
+  all?: boolean;
+  json?: boolean;
+}
+
+interface GenerationCandidate {
+  type: ConnectorType;
+  label: string;
+  status: CandidateStatus;
+  reason: string;
+  account?: string;
+  authMethod?: string;
+  actionLabel?: string;
+  actionUrl?: string;
+}
+
+function getAvailableGenerationTypes(): ConnectorGenerationType[] {
+  const available = new Set<ConnectorGenerationType>();
+  for (const config of Object.values(CONNECTOR_TYPES)) {
+    for (const generationType of config.generation ?? []) {
+      available.add(generationType);
+    }
+  }
+
+  return GENERATION_TYPE_ORDER.filter((type) => {
+    return available.has(type);
+  });
+}
+
+function parseGenerationType(value: string): ConnectorGenerationType {
+  const availableTypes = getAvailableGenerationTypes();
+  if (availableTypes.includes(value as ConnectorGenerationType)) {
+    return value as ConnectorGenerationType;
+  }
+
+  throw new Error(`Unknown generation type: ${value}`, {
+    cause: new Error(`Available types: ${availableTypes.join(", ")}`),
+  });
+}
+
+function getGenerationConnectors(
+  generationType: ConnectorGenerationType,
+): Array<[ConnectorType, ConnectorConfig]> {
+  return (
+    Object.entries(CONNECTOR_TYPES) as Array<[ConnectorType, ConnectorConfig]>
+  )
+    .filter(([, config]) => {
+      return config.generation?.includes(generationType) === true;
+    })
+    .sort(([a], [b]) => {
+      return a.localeCompare(b);
+    });
+}
+
+function formatAccount(connector: ConnectedConnector): string | undefined {
+  if (connector.externalUsername) return `@${connector.externalUsername}`;
+  if (connector.externalEmail) return connector.externalEmail;
+  if (connector.externalId) return connector.externalId;
+  return undefined;
+}
+
+function getAction(
+  status: CandidateStatus,
+  type: ConnectorType,
+  label: string,
+  agentId: string | undefined,
+  platformOrigin: string,
+): { actionLabel?: string; actionUrl?: string } {
+  if (status === "needs-reconnect") {
+    return {
+      actionLabel: `Reconnect ${label}`,
+      actionUrl: `${platformOrigin}/connectors`,
+    };
+  }
+
+  if (status === "not-authorized" && agentId) {
+    return {
+      actionLabel: `Authorize ${label}`,
+      actionUrl: `${platformOrigin}/connectors/${type}/authorize?agentId=${agentId}`,
+    };
+  }
+
+  if (status === "not-connected") {
+    if (agentId) {
+      return {
+        actionLabel: `Connect and authorize ${label}`,
+        actionUrl: `${platformOrigin}/connectors/${type}/authorize?agentId=${agentId}`,
+      };
+    }
+
+    return {
+      actionLabel: `Connect ${label}`,
+      actionUrl: `${platformOrigin}/connectors/${type}/connect`,
+    };
+  }
+
+  return {};
+}
+
+function toCandidate(params: {
+  type: ConnectorType;
+  config: ConnectorConfig;
+  connector: ConnectedConnector | undefined;
+  configuredTypes: Set<ConnectorType>;
+  authorizedTypes: Set<string> | null;
+  agentId: string | undefined;
+  platformOrigin: string;
+}): GenerationCandidate {
+  const {
+    type,
+    config,
+    connector,
+    configuredTypes,
+    authorizedTypes,
+    agentId,
+    platformOrigin,
+  } = params;
+
+  let status: CandidateStatus;
+  let reason: string;
+
+  if (connector?.needsReconnect) {
+    status = "needs-reconnect";
+    reason = "connected, reconnect required";
+  } else if (!connector) {
+    status = configuredTypes.has(type) ? "not-connected" : "not-available";
+    reason =
+      status === "not-connected"
+        ? agentId
+          ? "not connected or authorized for current agent"
+          : "not connected"
+        : "not available in this environment";
+  } else if (authorizedTypes && !authorizedTypes.has(type)) {
+    status = "not-authorized";
+    reason = "connected, not authorized for current agent";
+  } else {
+    status = "ready";
+    reason = agentId
+      ? "connected and authorized for current agent"
+      : "connected; agent authorization was not checked";
+  }
+
+  return {
+    type,
+    label: config.label,
+    status,
+    reason,
+    account: connector ? formatAccount(connector) : undefined,
+    authMethod: connector?.authMethod,
+    ...getAction(status, type, config.label, agentId, platformOrigin),
+  };
+}
+
+function pad(value: string, width: number): string {
+  return value.padEnd(width);
+}
+
+function renderRows(candidates: GenerationCandidate[]): void {
+  const typeWidth = Math.max(
+    4,
+    ...candidates.map((candidate) => {
+      return candidate.type.length;
+    }),
+  );
+  const labelWidth = Math.max(
+    5,
+    ...candidates.map((candidate) => {
+      return candidate.label.length;
+    }),
+  );
+
+  for (const candidate of candidates) {
+    const suffix =
+      candidate.status === "ready"
+        ? (candidate.account ?? candidate.authMethod ?? "")
+        : candidate.reason;
+    console.log(
+      `  ${pad(candidate.type, typeWidth)}  ${pad(candidate.label, labelWidth)}  ${suffix}`,
+    );
+  }
+}
+
+function renderActions(candidates: GenerationCandidate[]): void {
+  const actionable = candidates.filter((candidate) => {
+    return candidate.actionLabel && candidate.actionUrl;
+  });
+  if (actionable.length === 0) return;
+
+  console.log("");
+  console.log("Next actions:");
+  for (const candidate of actionable) {
+    console.log(`  [${candidate.actionLabel}](${candidate.actionUrl})`);
+  }
+}
+
+function renderText(params: {
+  generationType: ConnectorGenerationType;
+  agentId: string | undefined;
+  ready: GenerationCandidate[];
+  other: GenerationCandidate[];
+  showAll: boolean;
+}): void {
+  const { generationType, agentId, ready, other, showAll } = params;
+  const label = GENERATION_TYPE_LABELS[generationType];
+  const scope = agentId ? "for current agent" : "(connected connectors)";
+
+  console.log(`${label} generation choices ${scope}`);
+  console.log("");
+
+  if (agentId) {
+    console.log(`${"Agent:".padEnd(10)}${agentId}`);
+    console.log("");
+  } else {
+    console.log(
+      "ZERO_AGENT_ID is not set, so agent authorization could not be checked.",
+    );
+    console.log("");
+  }
+
+  if (ready.length > 0) {
+    renderRows(ready);
+  } else {
+    console.log(`No ready ${generationType} generation connectors found.`);
+  }
+
+  if (showAll && other.length > 0) {
+    console.log("");
+    console.log(`Other ${generationType} generation connectors`);
+    console.log("");
+    renderRows(other);
+  }
+
+  if (ready.length === 0 || showAll) {
+    renderActions(other);
+  }
+}
+
+export const generateCommand = new Command()
+  .name("generate")
+  .description("Show generation connector choices for the current agent")
+  .argument(
+    "<type>",
+    `Generation type (${getAvailableGenerationTypes().join(", ")})`,
+  )
+  .option("--all", "Also show unavailable or not-yet-authorized connectors")
+  .option("--json", "Output machine-readable JSON")
+  .action(
+    withErrorHandler(async (type: string, options: GenerateOptions) => {
+      const generationType = parseGenerationType(type);
+      const agentId = process.env.ZERO_AGENT_ID;
+      const [connectorList, enabledTypes, platformOrigin] = await Promise.all([
+        listZeroConnectors(),
+        agentId ? getZeroAgentUserConnectors(agentId) : Promise.resolve(null),
+        getPlatformOrigin(),
+      ]);
+      const connectedMap = new Map(
+        connectorList.connectors.map((connector) => {
+          return [connector.type, connector];
+        }),
+      );
+      const configuredTypes = new Set(connectorList.configuredTypes);
+      const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
+      const candidates = getGenerationConnectors(generationType).map(
+        ([connectorType, config]) => {
+          return toCandidate({
+            type: connectorType,
+            config,
+            connector: connectedMap.get(connectorType),
+            configuredTypes,
+            authorizedTypes,
+            agentId,
+            platformOrigin,
+          });
+        },
+      );
+      const ready = candidates.filter((candidate) => {
+        return candidate.status === "ready";
+      });
+      const other = candidates.filter((candidate) => {
+        return candidate.status !== "ready";
+      });
+
+      if (options.json) {
+        console.log(
+          JSON.stringify(
+            {
+              generationType,
+              availableTypes: getAvailableGenerationTypes(),
+              agentId: agentId ?? null,
+              choices: ready,
+              otherCandidates: other,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+
+      renderText({
+        generationType,
+        agentId,
+        ready,
+        other,
+        showAll: options.all === true,
+      });
+
+      if (!options.all && other.length > 0) {
+        console.log("");
+        console.log(
+          chalk.dim(
+            `Use --all to see every ${generationType} generation candidate.`,
+          ),
+        );
+      }
+    }),
+  );

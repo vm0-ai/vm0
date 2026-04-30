@@ -4,6 +4,7 @@ export const fal = {
   fal: {
     label: "fal.ai",
     category: "ai-image-video",
+    generation: ["image", "video"],
     environmentMapping: {
       FAL_TOKEN: "$secrets.FAL_TOKEN",
     },

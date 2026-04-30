@@ -4,6 +4,7 @@ export const huggingFace = {
   "hugging-face": {
     label: "Hugging Face",
     category: "ai-general-models",
+    generation: ["image", "text"],
     environmentMapping: {
       HUGGING_FACE_TOKEN: "$secrets.HUGGING_FACE_TOKEN",
     },
