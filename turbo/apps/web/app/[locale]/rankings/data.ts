@@ -17,7 +17,7 @@ export const PERIODS = [
 
 export type PeriodKey = (typeof PERIODS)[number]["key"];
 
-export interface RankingRow {
+interface RankingRow {
   readonly rank: number;
   readonly model: string;
   readonly name: string;
@@ -189,7 +189,7 @@ export async function getRankings(period: PeriodKey): Promise<{
       row,
       model,
       modelEntry,
-      totalTokens: toNumber(row.totalTokens),
+      totalTokens: toNumber(row.total_tokens),
     });
   }
 

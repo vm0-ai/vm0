@@ -36,13 +36,7 @@ interface RankingsPageProps {
   };
 }
 
-function PeriodTabs({
-  active,
-  locale,
-}: {
-  active: PeriodKey;
-  locale: string;
-}) {
+function PeriodTabs({ active, locale }: { active: PeriodKey; locale: string }) {
   const t = useTranslations("rankingsPage");
 
   return (
@@ -116,13 +110,7 @@ function ChangeBadge({
   );
 }
 
-function StatCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function StatCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-5 py-4">
       <div className="text-[11px] font-medium uppercase tracking-wider text-[hsl(var(--muted-foreground))]">
