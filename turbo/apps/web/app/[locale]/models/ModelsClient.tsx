@@ -54,9 +54,13 @@ const FILTERS: {
 function ModelCard({
   model,
   readMoreLabel,
+  name,
+  cardIntro,
 }: {
   model: ModelEntry;
   readMoreLabel: string;
+  name: string;
+  cardIntro: string;
 }) {
   const iconPath = vendorIconPath(model.vendor);
   return (
@@ -80,13 +84,13 @@ function ModelCard({
             href={`/models/${model.slug}`}
             className="text-[hsl(var(--foreground))] hover:text-[#ed4e01]"
           >
-            {model.name}
+            {name}
           </Link>
         </h2>
       </header>
 
       <p className="mt-4 line-clamp-3 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-        {model.cardIntro}
+        {cardIntro}
       </p>
 
       <div className="mt-5">
@@ -178,11 +182,14 @@ export function ModelsClient() {
           className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 lg:grid-cols-3"
         >
           {visibleModels.map((model) => {
+            const cn = `content.${model.slug}`;
             return (
               <ModelCard
                 key={model.slug}
                 model={model}
                 readMoreLabel={t("readMoreAbout", { name: model.name })}
+                name={t(`${cn}.name`)}
+                cardIntro={t(`${cn}.cardIntro`)}
               />
             );
           })}
