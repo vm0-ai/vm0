@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.316.1](https://github.com/vm0-ai/vm0/compare/app-v0.316.0...app-v0.316.1) (2026-04-30)
+
+
+### Bug Fixes
+
+* align connectors menu layout ([#11604](https://github.com/vm0-ai/vm0/issues/11604)) ([caeb778](https://github.com/vm0-ai/vm0/commit/caeb778714255ecfa52d6effea98988e28302930))
+
 ## [0.316.0](https://github.com/vm0-ai/vm0/compare/app-v0.315.0...app-v0.316.0) (2026-04-30)
 
 

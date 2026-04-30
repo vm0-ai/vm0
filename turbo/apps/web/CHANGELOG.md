@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.326.0](https://github.com/vm0-ai/vm0/compare/web-v12.325.0...web-v12.326.0) (2026-04-30)
+
+
+### Features
+
+* **web:** make rankings page public and align with official site style ([#11593](https://github.com/vm0-ai/vm0/issues/11593)) ([32a1753](https://github.com/vm0-ai/vm0/commit/32a17530de0b58540958b3b715961ecb7466494d))
+
 ## [12.325.0](https://github.com/vm0-ai/vm0/compare/web-v12.324.0...web-v12.325.0) (2026-04-30)
 
 
