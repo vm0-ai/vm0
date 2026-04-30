@@ -2762,6 +2762,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn direct_release_cancelled_during_flush_marks_namespace_non_reusable_for_retry() {
+        let flush_entered = Arc::new(tokio::sync::Notify::new());
+        let first_flush_release = Arc::new(tokio::sync::Notify::new());
+        let flush_count = Arc::new(AtomicUsize::new(0));
+        let delete_count = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let flush_entered_for_ops = Arc::clone(&flush_entered);
+        let first_flush_release_for_ops = Arc::clone(&first_flush_release);
+        let flush_count_for_ops = Arc::clone(&flush_count);
+        let delete_count_for_ops = Arc::clone(&delete_count);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(move |_| {
+                let flush_entered = Arc::clone(&flush_entered_for_ops);
+                let first_flush_release = Arc::clone(&first_flush_release_for_ops);
+                let flush_count = Arc::clone(&flush_count_for_ops);
+                Box::pin(async move {
+                    let attempt = flush_count.fetch_add(1, Ordering::SeqCst);
+                    if attempt == 0 {
+                        flush_entered.notify_one();
+                        first_flush_release.notified().await;
+                    }
+                    ConntrackFlushOutcome::Trusted
+                })
+            }),
+            delete_namespace: Arc::new(move |_| {
+                let delete_count = Arc::clone(&delete_count_for_ops);
+                Box::pin(async move {
+                    delete_count.fetch_add(1, Ordering::SeqCst);
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        let mut lease = Some(pool.checkout(test_info("test-ns")).unwrap());
+
+        {
+            let release = pool.release(&mut lease);
+            tokio::pin!(release);
+            tokio::select! {
+                result = &mut release => panic!("release completed before flush was cancelled: {result:?}"),
+                _ = flush_entered.notified() => {}
+            }
+        }
+
+        assert!(lease.is_some());
+        assert_eq!(flush_count.load(Ordering::SeqCst), 1);
+        assert!(pool.non_reusable.contains("test-ns"));
+
+        first_flush_release.notify_one();
+        pool.release(&mut lease).await.unwrap();
+
+        assert!(lease.is_none());
+        assert_eq!(
+            flush_count.load(Ordering::SeqCst),
+            1,
+            "direct cancelled flush must taint the namespace before retry"
+        );
+        assert_eq!(delete_count.load(Ordering::SeqCst), 1);
+        assert!(pool.non_reusable.is_empty());
+        assert!(pool.plain_queue.is_empty());
+    }
+
+    #[tokio::test]
     async fn untrusted_conntrack_flush_deletes_without_requeue() {
         let delete_count = Arc::new(AtomicUsize::new(0));
         let mut pool = NetnsPool::inactive_for_test();

@@ -505,6 +505,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_pending_acquire_keeps_slot_for_cleanup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let ws = tmp.path().join("pending-acquire-slot");
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let mut pool = CowPool::new(config);
+        pool.next_slot_idx = 1;
+        pool.pending.spawn_blocking({
+            let ws = ws.clone();
+            move || {
+                std::fs::create_dir_all(&ws).unwrap();
+                std::fs::write(ws.join("cow.img"), b"cow").unwrap();
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(PrewarmedSlot {
+                    id: "pending".into(),
+                    workspace: ws,
+                })
+            }
+        });
+
+        {
+            let acquire = pool.acquire();
+            tokio::pin!(acquire);
+            tokio::select! {
+                result = &mut acquire => panic!("pending acquire completed before cancellation: {result:?}"),
+                result = entered_rx => result.expect("pending slot creation should enter"),
+            }
+        }
+
+        assert_eq!(
+            pool.pending.len(),
+            1,
+            "cancelled join_next must leave pending slot owned by the pool"
+        );
+        release_tx.send(()).unwrap();
+        pool.cleanup().await;
+
+        assert_eq!(pool.next_slot_idx, 0);
+        assert!(pool.pending.is_empty());
+        assert!(pool.queue.is_empty());
+        assert!(!ws.exists(), "cleanup should remove pending acquire slot");
+    }
+
+    #[tokio::test]
     async fn slot_limit_enforced() {
         let tmp = tempfile::tempdir().unwrap();
         let mut pool = CowPool::new(test_config(tmp.path()));
