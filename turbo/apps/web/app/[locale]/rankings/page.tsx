@@ -465,7 +465,7 @@ function RankingTable({
           textAlign: "center",
           border: "1px solid var(--border-light)",
           borderRadius: "16px",
-          background: "white",
+          background: "var(--card-bg)",
           color: "var(--text-secondary)",
           fontSize: "15px",
           fontWeight: 300,
@@ -481,7 +481,7 @@ function RankingTable({
       style={{
         border: "1px solid var(--border-light)",
         borderRadius: "16px",
-        background: "white",
+        background: "var(--card-bg)",
         overflow: "hidden",
       }}
     >
@@ -550,7 +550,7 @@ function RankingTable({
                           height: 36,
                           borderRadius: 10,
                           border: "1px solid var(--border-light)",
-                          background: "white",
+                          background: "var(--card-bg)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
