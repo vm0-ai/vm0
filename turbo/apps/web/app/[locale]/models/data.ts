@@ -65,14 +65,25 @@ export const MODELS: ModelEntry[] = [
     multiplier: 1.7,
     contextWindowK: 1000,
     promptCaching: true,
-    modalities: ["Text","Vision","Code"],
+    modalities: ["Text", "Vision", "Code"],
     releasedToVm0: "April 17, 2026",
-    pricing: {"inputUsd": 5, "outputUsd": 25, "cacheReadUsd": 0.5, "cacheWriteUsd": 6.25},
+    pricing: {
+      inputUsd: 5,
+      outputUsd: 25,
+      cacheReadUsd: 0.5,
+      cacheWriteUsd: 6.25,
+    },
     vm0Tier: "core",
     byoKeyLabel: "Anthropic API key",
     defaultFor: [],
-    comparisonSlugs: ["Claude Sonnet 4.6","Claude Opus 4.6","Kimi K2.6","DeepSeek V4 Pro","GPT-5.2 / Gemini 3 Pro"],
-    alternativeSlugs: ["claude-sonnet-4-6","kimi-k2.6","deepseek-v4-pro"],
+    comparisonSlugs: [
+      "Claude Sonnet 4.6",
+      "Claude Opus 4.6",
+      "Kimi K2.6",
+      "DeepSeek V4 Pro",
+      "GPT-5.2 / Gemini 3 Pro",
+    ],
+    alternativeSlugs: ["claude-sonnet-4-6", "kimi-k2.6", "deepseek-v4-pro"],
   },
 
   {
@@ -83,14 +94,19 @@ export const MODELS: ModelEntry[] = [
     multiplier: 1.7,
     contextWindowK: 1000,
     promptCaching: true,
-    modalities: ["Text","Vision","Code"],
+    modalities: ["Text", "Vision", "Code"],
     releasedToVm0: "Available since launch",
-    pricing: {"inputUsd": 15, "outputUsd": 75, "cacheReadUsd": 1.5, "cacheWriteUsd": 18.75},
+    pricing: {
+      inputUsd: 15,
+      outputUsd: 75,
+      cacheReadUsd: 1.5,
+      cacheWriteUsd: 18.75,
+    },
     vm0Tier: "core",
     byoKeyLabel: "Anthropic API key",
-    defaultFor: ["Anthropic API key","Claude Code OAuth"],
-    comparisonSlugs: ["Claude Opus 4.7","Claude Sonnet 4.6","Kimi K2.6"],
-    alternativeSlugs: ["claude-opus-4-7","claude-sonnet-4-6","kimi-k2.6"],
+    defaultFor: ["Anthropic API key", "Claude Code OAuth"],
+    comparisonSlugs: ["Claude Opus 4.7", "Claude Sonnet 4.6", "Kimi K2.6"],
+    alternativeSlugs: ["claude-opus-4-7", "claude-sonnet-4-6", "kimi-k2.6"],
   },
 
   {
@@ -101,14 +117,23 @@ export const MODELS: ModelEntry[] = [
     multiplier: 1,
     contextWindowK: 1000,
     promptCaching: true,
-    modalities: ["Text","Vision","Code"],
+    modalities: ["Text", "Vision", "Code"],
     releasedToVm0: "Available since launch",
-    pricing: {"inputUsd": 3, "outputUsd": 15, "cacheReadUsd": 0.3, "cacheWriteUsd": 3.75},
+    pricing: {
+      inputUsd: 3,
+      outputUsd: 15,
+      cacheReadUsd: 0.3,
+      cacheWriteUsd: 3.75,
+    },
     vm0Tier: "core",
     byoKeyLabel: "Anthropic API key",
     defaultFor: ["VM0 Managed"],
-    comparisonSlugs: ["Claude Opus 4.7","Claude Haiku 4.5","DeepSeek V4 Pro"],
-    alternativeSlugs: ["claude-opus-4-7","claude-haiku-4-5","deepseek-v4-pro"],
+    comparisonSlugs: ["Claude Opus 4.7", "Claude Haiku 4.5", "DeepSeek V4 Pro"],
+    alternativeSlugs: [
+      "claude-opus-4-7",
+      "claude-haiku-4-5",
+      "deepseek-v4-pro",
+    ],
   },
 
   {
@@ -119,15 +144,20 @@ export const MODELS: ModelEntry[] = [
     multiplier: 0.4,
     contextWindowK: 1000,
     promptCaching: true,
-    modalities: ["Text","Code"],
+    modalities: ["Text", "Code"],
     releasedToVm0: "April 2026",
-    pricing: {"inputUsd": 1.4, "outputUsd": 4.4, "cacheReadUsd": 0.26, "cacheWriteUsd": 1.4},
+    pricing: {
+      inputUsd: 1.4,
+      outputUsd: 4.4,
+      cacheReadUsd: 0.26,
+      cacheWriteUsd: 1.4,
+    },
     vm0Tier: "cost-saving",
     vm0TimeoutMin: 50,
     byoKeyLabel: "Z.AI API key",
     defaultFor: ["Z.AI"],
-    comparisonSlugs: ["Kimi K2.6","Claude Sonnet 4.6","DeepSeek V4 Pro"],
-    alternativeSlugs: ["kimi-k2.6","deepseek-v4-pro","claude-sonnet-4-6"],
+    comparisonSlugs: ["Kimi K2.6", "Claude Sonnet 4.6", "DeepSeek V4 Pro"],
+    alternativeSlugs: ["kimi-k2.6", "deepseek-v4-pro", "claude-sonnet-4-6"],
   },
 
   {
@@ -138,14 +168,23 @@ export const MODELS: ModelEntry[] = [
     multiplier: 0.3,
     contextWindowK: 200,
     promptCaching: true,
-    modalities: ["Text","Vision","Code"],
+    modalities: ["Text", "Vision", "Code"],
     releasedToVm0: "Available since launch",
-    pricing: {"inputUsd": 1, "outputUsd": 5, "cacheReadUsd": 0.1, "cacheWriteUsd": 1.25},
+    pricing: {
+      inputUsd: 1,
+      outputUsd: 5,
+      cacheReadUsd: 0.1,
+      cacheWriteUsd: 1.25,
+    },
     vm0Tier: "cost-saving",
     byoKeyLabel: "Anthropic API key",
     defaultFor: [],
-    comparisonSlugs: ["Claude Sonnet 4.6","DeepSeek V4 Flash","MiniMax M2.7"],
-    alternativeSlugs: ["claude-sonnet-4-6","deepseek-v4-flash","minimax-m2.7"],
+    comparisonSlugs: ["Claude Sonnet 4.6", "DeepSeek V4 Flash", "MiniMax M2.7"],
+    alternativeSlugs: [
+      "claude-sonnet-4-6",
+      "deepseek-v4-flash",
+      "minimax-m2.7",
+    ],
   },
 
   {
@@ -156,14 +195,19 @@ export const MODELS: ModelEntry[] = [
     multiplier: 0.3,
     contextWindowK: 256,
     promptCaching: true,
-    modalities: ["Text","Vision","Code"],
+    modalities: ["Text", "Vision", "Code"],
     releasedToVm0: "April 2026",
-    pricing: {"inputUsd": 0.6, "outputUsd": 3, "cacheReadUsd": 0.1, "cacheWriteUsd": 0.6},
+    pricing: {
+      inputUsd: 0.6,
+      outputUsd: 3,
+      cacheReadUsd: 0.1,
+      cacheWriteUsd: 0.6,
+    },
     vm0Tier: "cost-saving",
     byoKeyLabel: "Moonshot API key",
     defaultFor: ["Moonshot"],
-    comparisonSlugs: ["GLM-5.1","Claude Sonnet 4.6","Kimi K2.5"],
-    alternativeSlugs: ["kimi-k2.5","glm-5.1","deepseek-v4-pro"],
+    comparisonSlugs: ["GLM-5.1", "Claude Sonnet 4.6", "Kimi K2.5"],
+    alternativeSlugs: ["kimi-k2.5", "glm-5.1", "deepseek-v4-pro"],
   },
 
   {
@@ -174,15 +218,20 @@ export const MODELS: ModelEntry[] = [
     multiplier: 0.3,
     contextWindowK: 1000,
     promptCaching: true,
-    modalities: ["Text","Code"],
+    modalities: ["Text", "Code"],
     releasedToVm0: "April 24, 2026",
-    pricing: {"inputUsd": 1.74, "outputUsd": 3.48, "cacheReadUsd": 0.145, "cacheWriteUsd": null},
+    pricing: {
+      inputUsd: 1.74,
+      outputUsd: 3.48,
+      cacheReadUsd: 0.145,
+      cacheWriteUsd: null,
+    },
     vm0Tier: "cost-saving",
     vm0TimeoutMin: 10,
     byoKeyLabel: "DeepSeek API key",
     defaultFor: [],
-    comparisonSlugs: ["DeepSeek V4 Flash","Claude Sonnet 4.6","Kimi K2.6"],
-    alternativeSlugs: ["deepseek-v4-flash","claude-sonnet-4-6","kimi-k2.6"],
+    comparisonSlugs: ["DeepSeek V4 Flash", "Claude Sonnet 4.6", "Kimi K2.6"],
+    alternativeSlugs: ["deepseek-v4-flash", "claude-sonnet-4-6", "kimi-k2.6"],
   },
 
   {
@@ -193,14 +242,19 @@ export const MODELS: ModelEntry[] = [
     multiplier: 0.2,
     contextWindowK: 256,
     promptCaching: true,
-    modalities: ["Text","Image","Code"],
+    modalities: ["Text", "Image", "Code"],
     releasedToVm0: "Available since launch",
-    pricing: {"inputUsd": 0.6, "outputUsd": 3, "cacheReadUsd": 0.1, "cacheWriteUsd": 0.6},
+    pricing: {
+      inputUsd: 0.6,
+      outputUsd: 3,
+      cacheReadUsd: 0.1,
+      cacheWriteUsd: 0.6,
+    },
     vm0Tier: "cost-saving",
     byoKeyLabel: "Moonshot API key",
     defaultFor: [],
-    comparisonSlugs: ["Kimi K2.6","DeepSeek V4 Pro"],
-    alternativeSlugs: ["kimi-k2.6","glm-5.1","deepseek-v4-pro"],
+    comparisonSlugs: ["Kimi K2.6", "DeepSeek V4 Pro"],
+    alternativeSlugs: ["kimi-k2.6", "glm-5.1", "deepseek-v4-pro"],
   },
 
   {
@@ -211,15 +265,20 @@ export const MODELS: ModelEntry[] = [
     multiplier: 0.1,
     contextWindowK: 200,
     promptCaching: true,
-    modalities: ["Text","Code"],
+    modalities: ["Text", "Code"],
     releasedToVm0: "Available since launch",
-    pricing: {"inputUsd": 0.3, "outputUsd": 1.2, "cacheReadUsd": 0.06, "cacheWriteUsd": 0.375},
+    pricing: {
+      inputUsd: 0.3,
+      outputUsd: 1.2,
+      cacheReadUsd: 0.06,
+      cacheWriteUsd: 0.375,
+    },
     vm0Tier: "cost-saving",
     vm0TimeoutMin: 50,
     byoKeyLabel: "MiniMax API key",
     defaultFor: ["MiniMax"],
-    comparisonSlugs: ["Kimi K2.6","DeepSeek V4 Flash","GLM-5.1"],
-    alternativeSlugs: ["kimi-k2.6","deepseek-v4-flash","claude-haiku-4-5"],
+    comparisonSlugs: ["Kimi K2.6", "DeepSeek V4 Flash", "GLM-5.1"],
+    alternativeSlugs: ["kimi-k2.6", "deepseek-v4-flash", "claude-haiku-4-5"],
   },
 
   {
@@ -230,20 +289,29 @@ export const MODELS: ModelEntry[] = [
     multiplier: 0.02,
     contextWindowK: 1000,
     promptCaching: true,
-    modalities: ["Text","Code"],
+    modalities: ["Text", "Code"],
     releasedToVm0: "April 24, 2026",
-    pricing: {"inputUsd": 0.14, "outputUsd": 0.28, "cacheReadUsd": 0.028, "cacheWriteUsd": null},
+    pricing: {
+      inputUsd: 0.14,
+      outputUsd: 0.28,
+      cacheReadUsd: 0.028,
+      cacheWriteUsd: null,
+    },
     vm0Tier: "cost-saving",
     vm0TimeoutMin: 10,
     byoKeyLabel: "DeepSeek API key",
     defaultFor: ["DeepSeek"],
-    comparisonSlugs: ["DeepSeek V4 Pro","Claude Haiku 4.5","MiniMax M2.7"],
-    alternativeSlugs: ["deepseek-v4-pro","claude-haiku-4-5","minimax-m2.7"],
+    comparisonSlugs: ["DeepSeek V4 Pro", "Claude Haiku 4.5", "MiniMax M2.7"],
+    alternativeSlugs: ["deepseek-v4-pro", "claude-haiku-4-5", "minimax-m2.7"],
   },
 ];
 
-export const MODEL_SLUGS = MODELS.map((m) => m.slug);
+export const MODEL_SLUGS = MODELS.map((m) => {
+  return m.slug;
+});
 
 export function getModelBySlug(slug: string): ModelEntry | undefined {
-  return MODELS.find((m) => m.slug === slug);
+  return MODELS.find((m) => {
+    return m.slug === slug;
+  });
 }

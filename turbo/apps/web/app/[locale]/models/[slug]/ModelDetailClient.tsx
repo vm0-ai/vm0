@@ -126,8 +126,12 @@ interface Props {
 export function ModelDetailClient({ model, related }: Props) {
   const t = useTranslations("models");
   const platformUrl = getAppUrl();
-  const c = (key: string) => `content.${model.slug}.${key}`;
-  const rc = (slug: string, key: string) => `content.${slug}.${key}`;
+  const c = (key: string) => {
+    return `content.${model.slug}.${key}`;
+  };
+  const rc = (slug: string, key: string) => {
+    return `content.${slug}.${key}`;
+  };
 
   const heroMeta = [
     formatContextWindow(model.contextWindowK),
@@ -190,16 +194,18 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* TL;DR */}
           <Card className="mb-12">
             <div className="flex flex-col gap-4">
-              {t(c("summary")).split("\n\n").map((para, i) => {
-                return (
-                  <p
-                    key={i}
-                    className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]"
-                  >
-                    {inlineCode(para)}
-                  </p>
-                );
-              })}
+              {t(c("summary"))
+                .split("\n\n")
+                .map((para, i) => {
+                  return (
+                    <p
+                      key={i}
+                      className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]"
+                    >
+                      {inlineCode(para)}
+                    </p>
+                  );
+                })}
             </div>
           </Card>
 
@@ -237,27 +243,41 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* Specs */}
           <Section title={t("specsHeading")}>
             <Card>
-              {(t.raw(c("specs")) as { label: string; value: string }[]).map((row, i, arr) => {
-                return (
-                  <DataRow
-                    key={row.label}
-                    label={row.label}
-                    value={row.value}
-                    last={i === arr.length - 1}
-                  />
-                );
-              })}
+              {(t.raw(c("specs")) as { label: string; value: string }[]).map(
+                (row, i, arr) => {
+                  return (
+                    <DataRow
+                      key={row.label}
+                      label={row.label}
+                      value={row.value}
+                      last={i === arr.length - 1}
+                    />
+                  );
+                },
+              )}
             </Card>
           </Section>
 
           {/* Benchmarks */}
-          {(t.raw(c("benchmarks")) as { name: string; score: string; note?: string }[]).length > 0 && (
+          {(
+            t.raw(c("benchmarks")) as {
+              name: string;
+              score: string;
+              note?: string;
+            }[]
+          ).length > 0 && (
             <Section
               title={t("benchmarksHeading", { name: model.name })}
               subtitle={t(c("benchmarksNote"))}
             >
               <Card>
-                {(t.raw(c("benchmarks")) as { name: string; score: string; note?: string }[]).map((b, i, arr) => {
+                {(
+                  t.raw(c("benchmarks")) as {
+                    name: string;
+                    score: string;
+                    note?: string;
+                  }[]
+                ).map((b, i, arr) => {
                   const last = i === arr.length - 1;
                   return (
                     <div
@@ -320,7 +340,9 @@ export function ModelDetailClient({ model, related }: Props) {
             subtitle={t("performanceSubtitle")}
           >
             <div className="grid gap-4 sm:grid-cols-2">
-              {(t.raw(c("performance")) as { title: string; body: string }[]).map((note) => {
+              {(
+                t.raw(c("performance")) as { title: string; body: string }[]
+              ).map((note) => {
                 return (
                   <Card key={note.title} className="!p-6">
                     <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
@@ -338,7 +360,9 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* Best agent tasks */}
           <Section title={t("bestForHeading", { name: model.name })}>
             <div className="flex flex-col gap-4">
-              {(t.raw(c("bestForExamples")) as { title: string; body: string }[]).map((ex) => {
+              {(
+                t.raw(c("bestForExamples")) as { title: string; body: string }[]
+              ).map((ex) => {
                 return (
                   <Card key={ex.title} className="!p-6">
                     <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
@@ -367,7 +391,10 @@ export function ModelDetailClient({ model, related }: Props) {
             <Section title={t("comparisonsHeading", { name: model.name })}>
               <div className="flex flex-col gap-4">
                 {(() => {
-                  const cmps = t.raw(c("comparisons")) as { vs: string; body: string }[];
+                  const cmps = t.raw(c("comparisons")) as {
+                    vs: string;
+                    body: string;
+                  }[];
                   return cmps.map((cmp) => {
                     return (
                       <Card key={cmp.vs} className="!p-6">
@@ -424,7 +451,10 @@ export function ModelDetailClient({ model, related }: Props) {
             <Section title={t("alternativesHeading")}>
               <div className="grid gap-3 sm:grid-cols-2">
                 {(() => {
-                  const alts = t.raw(c("alternatives")) as { slug: string; reason: string }[];
+                  const alts = t.raw(c("alternatives")) as {
+                    slug: string;
+                    reason: string;
+                  }[];
                   return alts.map((alt) => {
                     return (
                       <Link
