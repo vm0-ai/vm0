@@ -80,7 +80,7 @@ function createIdbMessageStores(userId: string, orgId: string) {
       const index = tx.store.index("byThreadAndTime");
       const range = IDBKeyRange.bound(
         [threadId, ""],
-        [threadId, anchorMsg.createdAt],
+        [threadId, anchorMsg.createdAt, beforeId],
       );
       const messages: PagedChatMessage[] = [];
       let cursor = await index.openCursor(range, "prev");

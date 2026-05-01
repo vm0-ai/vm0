@@ -117,10 +117,13 @@ describe("idb-message-store", () => {
     // Write a malformed row directly via the raw store (bypassing type safety)
     const { openDB } = await import("idb");
     const db = await openDB(`vm0-chat-${USER}-invalid-${ORG}`, 1);
-    // Put an object missing required fields
+    // Put an object with threadId so it matches the index, but missing required
+    // fields (role) so schema validation rejects it
     await db.put("chat_messages", {
       id: "bad-1",
-      // missing role, content, createdAt
+      threadId: THREAD,
+      createdAt: "2026-05-02T00:00:00Z",
+      // missing role, content
     });
 
     // Reading should fail on schema validation
