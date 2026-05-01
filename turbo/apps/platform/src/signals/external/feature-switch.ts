@@ -106,6 +106,16 @@ export const trinityEnabled$ = computed(async (get) => {
   return features[FeatureSwitchKey.Trinity] ?? false;
 });
 
+export const idbMessageEnabled$ = computed(async (get) => {
+  const features = await get(featureSwitch$);
+  return features[FeatureSwitchKey.IdbMessage] ?? false;
+});
+
+export const pwaOfflineCacheEnabled$ = computed(async (get) => {
+  const features = await get(featureSwitch$);
+  return features[FeatureSwitchKey.PwaOfflineCache] ?? false;
+});
+
 export const detachedSetFeatureSwitch$ = command(
   (
     { set },

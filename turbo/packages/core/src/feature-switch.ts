@@ -401,12 +401,18 @@ export function getFeatureSwitchDescriptions(): Record<
 
 /**
  * Check if a feature is enabled for the given context.
+ *
+ * `ctx` is required so callers must pass identity (userId/orgId/email) or an
+ * explicit `{}`. A switch gated by `enabledUserHashes` / `enabledOrgIdHashes`
+ * silently returns `false` when ctx omits identity, which has caused bugs.
+ * Client-side callers should usually read the platform `featureSwitch$` signal
+ * instead — it also merges DB overrides on top of identity context.
  */
 export function isFeatureEnabled(
   key: FeatureSwitchKey,
-  ctx?: FeatureSwitchContext,
+  ctx: FeatureSwitchContext,
 ): boolean {
-  const override = ctx?.overrides?.[key];
+  const override = ctx.overrides?.[key];
   if (override !== undefined) {
     return override;
   }
@@ -415,17 +421,17 @@ export function isFeatureEnabled(
   if (featureSwitch.enabled) {
     return true;
   }
-  if (ctx?.userId && featureSwitch.enabledUserHashes?.length) {
+  if (ctx.userId && featureSwitch.enabledUserHashes?.length) {
     if (featureSwitch.enabledUserHashes.includes(fnv1a(ctx.userId)))
       return true;
   }
-  if (ctx?.email && featureSwitch.enabledEmailHashes?.length) {
+  if (ctx.email && featureSwitch.enabledEmailHashes?.length) {
     if (
       featureSwitch.enabledEmailHashes.includes(fnv1a(ctx.email.toLowerCase()))
     )
       return true;
   }
-  if (ctx?.orgId && featureSwitch.enabledOrgIdHashes?.length) {
+  if (ctx.orgId && featureSwitch.enabledOrgIdHashes?.length) {
     if (featureSwitch.enabledOrgIdHashes.includes(fnv1a(ctx.orgId)))
       return true;
   }

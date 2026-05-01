@@ -8,7 +8,7 @@ import {
 
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.Dummy)).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -18,7 +18,7 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return false for disabled switch without context", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector)).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -47,7 +47,9 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return false when no orgId provided but switch has enabledOrgIdHashes", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.PlatformConnectors)).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {})).toBe(
+      false,
+    );
   });
 
   it("should return true when orgId matches even if userId does not", () => {
@@ -161,8 +163,8 @@ describe("overrides", () => {
   });
 
   it("should behave identically when no overrides provided", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.Dummy)).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector)).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.Dummy, { userId: "any-user" }),
     ).toBe(true);
