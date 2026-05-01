@@ -1442,10 +1442,12 @@ function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
 // ---------------------------------------------------------------------------
 
 function ChatThread({ thread }: { thread: ChatThreadSignals }) {
+  const setRuntimeRef = useSet(thread.setRuntimeRef$);
   const onKeyDown = useChatThreadKeyDown(thread);
 
   return (
     <section
+      ref={setRuntimeRef}
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
