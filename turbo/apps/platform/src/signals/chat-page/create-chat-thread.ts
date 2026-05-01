@@ -172,7 +172,6 @@ export interface ChatThreadSignals {
   // ── Focus ─────────────────────────────────────────────────────────────────
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
-  setRuntimeRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   // ── Draft sync ────────────────────────────────────────────────────────────
   scheduleDraftSync$: Command<Promise<void>, [AbortSignal]>;
   // ── Paged messages (sole rendering path) ─────────────────────────────────
@@ -868,49 +867,6 @@ function createInputRef() {
   return { setInputRef$, focusInput$ };
 }
 
-function createRuntimeRef({
-  threadData$,
-  groupedChatMessages$,
-  hideSkeleton$,
-  scrollToBottom$,
-  runPhraseLoop$,
-  loadPagedMessages$,
-}: {
-  threadData$: Computed<Promise<ChatThread | null>>;
-  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
-  hideSkeleton$: Command<void, []>;
-  scrollToBottom$: Command<void, []>;
-  runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
-  loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
-}) {
-  return onRef(
-    command(async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
-      const threadData = await get(threadData$);
-      signal.throwIfAborted();
-      if (!threadData) {
-        set(hideSkeleton$);
-        return;
-      }
-
-      await get(groupedChatMessages$);
-      signal.throwIfAborted();
-
-      animationFrame(
-        () => {
-          set(scrollToBottom$);
-          set(hideSkeleton$);
-        },
-        { signal },
-      );
-
-      await Promise.all([
-        set(runPhraseLoop$, signal),
-        set(loadPagedMessages$, signal),
-      ]);
-    }),
-  );
-}
-
 function createLatestRunStatus(
   threadData$: Computed<Promise<ChatThread | null>>,
 ) {
@@ -1331,14 +1287,6 @@ export function createChatThreadSignals(
   } = createArtifacts(threadId, groupedChatMessages$);
 
   const latestRunStatus$ = createLatestRunStatus(threadData$);
-  const setRuntimeRef$ = createRuntimeRef({
-    threadData$,
-    groupedChatMessages$,
-    hideSkeleton$,
-    scrollToBottom$,
-    runPhraseLoop$,
-    loadPagedMessages$,
-  });
 
   return {
     threadId,
@@ -1366,7 +1314,6 @@ export function createChatThreadSignals(
     copyMessage$,
     setInputRef$,
     focusInput$,
-    setRuntimeRef$,
     scheduleDraftSync$,
     earliestChatMessageId$,
     latestChatMessageId$,

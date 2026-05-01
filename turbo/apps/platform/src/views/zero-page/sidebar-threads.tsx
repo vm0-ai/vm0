@@ -53,7 +53,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   chatSidebarThreadId$,
   navigateMainChatPreservingSidebar$,
-  openChatSidebar$,
+  openOrSwitchSidebarThread$,
 } from "../../signals/chat-page/chat-sidebar.ts";
 import {
   createNewChatThreadOptimistically$,
@@ -158,20 +158,29 @@ function handleChatThreadClick(
     closeSidebarOnSelect,
     isHighlighted,
     navigateMainChatPreservingSidebar,
-    openChatSidebar,
+    openOrSwitchSidebarThread,
+    pageSignal,
     threadId,
   }: {
     canOpenSidebar: boolean;
     closeSidebarOnSelect: () => void;
     isHighlighted: boolean;
     navigateMainChatPreservingSidebar: (threadId: string) => void;
-    openChatSidebar: (threadId: string) => void;
+    openOrSwitchSidebarThread: (
+      threadId: string,
+      signal: AbortSignal,
+    ) => Promise<void>;
+    pageSignal: AbortSignal;
     threadId: string;
   },
 ) {
   if (e.altKey && canOpenSidebar) {
     e.preventDefault();
-    openChatSidebar(threadId);
+    detach(
+      openOrSwitchSidebarThread(threadId, pageSignal),
+      Reason.DomCallback,
+      "openOrSwitchSidebarThread",
+    );
     if (!isHighlighted) {
       closeSidebarOnSelect();
     }
@@ -385,10 +394,11 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarThreadId = useGet(chatSidebarThreadId$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
-  const openChatSidebar = useSet(openChatSidebar$);
+  const openOrSwitchSidebarThread = useSet(openOrSwitchSidebarThread$);
   const navigateMainChatPreservingSidebar = useSet(
     navigateMainChatPreservingSidebar$,
   );
+  const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
   const pinEnabled = features?.[FeatureSwitchKey.ChatThreadPin] ?? false;
   const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
@@ -428,7 +438,8 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
             closeSidebarOnSelect,
             isHighlighted,
             navigateMainChatPreservingSidebar,
-            openChatSidebar,
+            openOrSwitchSidebarThread,
+            pageSignal,
             threadId: session.id,
           });
         }}

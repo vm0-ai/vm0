@@ -3,7 +3,7 @@ import { chatThreads$, currentChatThreadId$ } from "../agent-chat.ts";
 import {
   chatSidebarThreadId$,
   navigateMainChatPreservingSidebar$,
-  openChatSidebar$,
+  openOrSwitchSidebarThread$,
 } from "./chat-sidebar.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import type { ChatThreadSignals } from "./create-chat-thread.ts";
@@ -56,7 +56,7 @@ export const navigateToAdjacentThread$ = command(
     if (inMainPane) {
       set(navigateMainChatPreservingSidebar$, targetThreadId);
     } else {
-      set(openChatSidebar$, targetThreadId);
+      await set(openOrSwitchSidebarThread$, targetThreadId, signal);
     }
   },
 );

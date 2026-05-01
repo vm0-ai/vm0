@@ -1,6 +1,5 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { animationFrame } from "signal-timers";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -15,14 +14,18 @@ import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { idbMessageEnabled$ } from "../external/feature-switch.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { setAblyLoop$ } from "../realtime.ts";
+import {
+  chatSidebarThreadId$,
+  openOrSwitchSidebarThread$,
+} from "./chat-sidebar.ts";
 import {
   clearMatchingOptimisticChatThread$,
   optimisticChatThread$,
 } from "./optimistic-chat-thread-page.ts";
+import { setupChatThreadSignals$ } from "./setup-chat-thread-signals.ts";
 import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
@@ -44,7 +47,9 @@ export const setupChatPage$ = command(
     }
 
     const { draft, isNew } = set(ensureDraft$, threadId);
-    const dataSource = isFeatureEnabled(FeatureSwitchKey.IdbMessage)
+    const idbEnabled = await get(idbMessageEnabled$);
+    signal.throwIfAborted();
+    const dataSource = idbEnabled
       ? createIdbCachedDataSource(threadId)
       : createRemoteChatThreadDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
@@ -126,14 +131,6 @@ export const setupChatPage$ = command(
       set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
     }
 
-    animationFrame(
-      () => {
-        set(thread.scrollToBottom$);
-        set(thread.hideSkeleton$);
-      },
-      { signal },
-    );
-
     const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
       const data = await get(thread.threadData$);
       sig.throwIfAborted();
@@ -143,15 +140,19 @@ export const setupChatPage$ = command(
       return false;
     });
 
+    const sidebarThreadId = get(chatSidebarThreadId$);
+
     await Promise.all([
-      set(thread.runPhraseLoop$, signal),
-      set(thread.loadPagedMessages$, signal),
+      set(setupChatThreadSignals$, thread, signal),
       set(
         setAblyLoop$,
         `chatThreadRunUpdated:${threadId}`,
         onThreadUpdated$,
         signal,
       ),
+      sidebarThreadId
+        ? set(openOrSwitchSidebarThread$, sidebarThreadId, signal)
+        : Promise.resolve(),
     ]);
   },
 );
