@@ -303,6 +303,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.IdbMessage]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Cache chat thread messages in IndexedDB for instant cold open. " +
+      "When off, every thread open fetches messages from the server.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {
