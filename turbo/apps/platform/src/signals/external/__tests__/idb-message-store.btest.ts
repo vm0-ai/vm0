@@ -23,8 +23,8 @@ const ORG = "test-org";
 describe("idb-message-store", () => {
   it("upserts and reads latest messages", async () => {
     const { readStore$, writeStore$ } = createIdbMessageStores(USER, ORG);
-    const writeStore = writeStore$.read();
-    const readStore = readStore$.read();
+    const writeStore = writeStore$;
+    const readStore = readStore$;
 
     await writeStore.upsertMessages(THREAD, [
       makeMsg("m1", THREAD, "2026-01-01T00:00:00Z"),
@@ -42,8 +42,8 @@ describe("idb-message-store", () => {
       USER + "-limit",
       ORG,
     );
-    const writeStore = writeStore$.read();
-    const readStore = readStore$.read();
+    const writeStore = writeStore$;
+    const readStore = readStore$;
 
     await writeStore.upsertMessages(THREAD, [
       makeMsg("a1", THREAD, "2026-01-01T00:00:00Z"),
@@ -63,8 +63,8 @@ describe("idb-message-store", () => {
       USER + "-before",
       ORG,
     );
-    const writeStore = writeStore$.read();
-    const readStore = readStore$.read();
+    const writeStore = writeStore$;
+    const readStore = readStore$;
 
     const messages = [
       makeMsg("b1", THREAD, "2026-02-01T00:00:00Z"),
@@ -86,8 +86,8 @@ describe("idb-message-store", () => {
       USER + "-same-time",
       ORG,
     );
-    const writeStore = writeStore$.read();
-    const readStore = readStore$.read();
+    const writeStore = writeStore$;
+    const readStore = readStore$;
 
     // Multiple messages with the same createdAt — P1 fix ensures correct skip
     const messages = [
@@ -107,7 +107,7 @@ describe("idb-message-store", () => {
       USER + "-invalid",
       ORG,
     );
-    const writeStore = writeStore$.read();
+    const writeStore = writeStore$;
 
     // Initialize the DB with a valid write first so the store exists
     await writeStore.upsertMessages(THREAD, [
@@ -127,7 +127,7 @@ describe("idb-message-store", () => {
     });
 
     // Reading should fail on schema validation
-    const readStore = readStore$.read();
+    const readStore = readStore$;
 
     await expect(readStore.readLatest(THREAD, 10)).rejects.toThrow();
   });
@@ -136,15 +136,11 @@ describe("idb-message-store", () => {
     const storesA = createIdbMessageStores("user-a", "org-a");
     const storesB = createIdbMessageStores("user-b", "org-b");
 
-    await storesA.writeStore$
-      .read()
-      .upsertMessages(THREAD, [makeMsg("da1", THREAD, "2026-04-01T00:00:00Z")]);
-    await storesB.writeStore$
-      .read()
-      .upsertMessages(THREAD, [makeMsg("db1", THREAD, "2026-04-01T00:00:00Z")]);
+    await storesA.writeStore$.upsertMessages(THREAD, [makeMsg("da1", THREAD, "2026-04-01T00:00:00Z")]);
+    await storesB.writeStore$.upsertMessages(THREAD, [makeMsg("db1", THREAD, "2026-04-01T00:00:00Z")]);
 
-    const msgsA = await storesA.readStore$.read().readLatest(THREAD, 10);
-    const msgsB = await storesB.readStore$.read().readLatest(THREAD, 10);
+    const msgsA = await storesA.readStore$.readLatest(THREAD, 10);
+    const msgsB = await storesB.readStore$.readLatest(THREAD, 10);
 
     expect(msgsA).toHaveLength(1);
     expect(msgsA[0].id).toBe("da1");

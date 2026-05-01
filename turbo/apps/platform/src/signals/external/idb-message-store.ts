@@ -1,4 +1,3 @@
-import { computed } from "ccstate";
 import { openDB, type IDBPDatabase } from "idb";
 import {
   pagedChatMessageSchema,
@@ -115,14 +114,10 @@ function createIdbMessageStores(userId: string, orgId: string) {
     },
   };
 
-  const readStore$ = computed((): ChatMessageReadStore => {
-    return readStore;
+  return Object.freeze({
+    readStore$: readStore,
+    writeStore$: writeStore,
   });
-  const writeStore$ = computed((): ChatMessageWriteStore => {
-    return writeStore;
-  });
-
-  return Object.freeze({ readStore$, writeStore$ });
 }
 
 export { createIdbMessageStores };
