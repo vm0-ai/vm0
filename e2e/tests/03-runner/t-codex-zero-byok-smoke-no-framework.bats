@@ -1,9 +1,10 @@
 #!/usr/bin/env bats
 
-# BYOK codex via zero web layer — production-shaped path (no compose framework
-# declaration). Sibling of t-codex-zero-byok-smoke.bats with the
-# `framework: codex` line dropped, so the compose defaults to claude-code while
-# the agent's eager-pinned openai-api-key provider must drive dispatch.
+# BYOK codex via zero web layer — production-shaped path (compose declares
+# framework: claude-code while the agent is eager-pinned to an openai-api-key
+# provider whose framework is codex). Sibling of t-codex-zero-byok-smoke.bats
+# which declares framework: codex on the compose; here the compose's framework
+# disagrees with the provider's, and the provider must win at dispatch.
 #
 # Covers the regression from issue #11645: pre-fix the runner would launch
 # claude-code despite the openai-api-key eager-pin, because resolvedFramework
@@ -32,15 +33,19 @@ setup_file() {
     # 2. Org-level openai-api-key provider — picked up as default by eager-pin
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
 
-    # 3. Compose intentionally OMITS framework: codex. This is the
-    # production-shape from #11645 — the web composer creates composes
-    # with the default framework (claude-code). With the fix in place,
-    # the openai-api-key eager-pin's framework drives dispatch.
+    # 3. Compose declares framework: claude-code — the production shape
+    # from #11645 (the web composer's default). The agent's eager-pinned
+    # openai-api-key provider declares framework: codex; with the fix in
+    # place, the provider's framework wins over the compose's at dispatch
+    # time. Pre-fix, this thread launched claude-code despite the pin.
+    # framework is required by agentDefinitionSchema (composes.ts:169),
+    # so we declare it explicitly rather than omitting it.
     cat > "$TEST_DIR/vm0-basic.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
-    description: "BYOK codex zero web smoke (no framework declaration)"
+    description: "BYOK codex zero web smoke (claude-code compose, codex provider)"
+    framework: claude-code
     working_dir: /home/user/workspace
 EOF
 
@@ -69,7 +74,7 @@ teardown_file() {
     fi
 }
 
-@test "t-codex-zero-byok-smoke-no-framework: provider framework drives dispatch when compose omits framework: codex" {
+@test "t-codex-zero-byok-smoke-no-framework: provider framework drives dispatch when compose declares framework: claude-code" {
     # Trigger a real run via the unified chat endpoint. The helper exports
     # LAST_RUN_ID + LAST_THREAD_ID; called without `run` so the exports
     # propagate (see sibling smoke for full rationale).
