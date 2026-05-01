@@ -51,6 +51,7 @@ import {
 } from "../../signals/chat-page/chat-message.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
+  SIDEBAR_PARAM,
   currentLeftThread$,
   currentRightThread$,
   loadLeftThread$,
@@ -64,7 +65,7 @@ import {
   pendingOptimisticChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { pathParams$ } from "../../signals/route.ts";
+import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   threadSearchOpen$,
@@ -410,11 +411,25 @@ function ChatThreadSideDecorator({
 }
 
 function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
+  // Highlight / pane indicator are driven by the URL so they update
+  // synchronously on click; load* commands update state on a microtask
+  // (and may await idbMessageEnabled$ on cold start), which would lag the
+  // selected highlight noticeably.
   const pathParams = useGet(pathParams$);
-  const selectedThreadId =
+  const searchParams = useGet(searchParams$);
+  const urlMainThreadId =
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
+  const sidebarParam = searchParams.get(SIDEBAR_PARAM);
+  const urlSidebarThreadId =
+    sidebarParam && sidebarParam !== urlMainThreadId ? sidebarParam : null;
+
+  // Click-handler decisions use the rendered state — they need to know what
+  // is actually loaded, not just what the URL claims.
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
+  const currentLeftId = leftThread?.threadId ?? null;
+  const currentRightId = rightThread?.threadId ?? null;
+
   const setSidebarExpanded = useSet(setSidebarExpanded$);
   const loadLeftThread = useSet(loadLeftThread$);
   const loadRightThread = useSet(loadRightThread$);
@@ -425,14 +440,12 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
   const isPinned =
     pinEnabled && session.pinnedAt !== null && session.pinnedAt !== undefined;
-  const currentLeftId = leftThread?.threadId ?? null;
-  const currentRightId = rightThread?.threadId ?? null;
-  const onChatPage = selectedThreadId !== null;
-  const isCurrentPage = currentLeftId === session.id;
-  const isHighlighted = isCurrentPage || currentRightId === session.id;
+  const onChatPage = urlMainThreadId !== null;
+  const isCurrentPage = urlMainThreadId === session.id;
+  const isHighlighted = isCurrentPage || urlSidebarThreadId === session.id;
   const paneIndicator = getChatThreadPaneIndicator({
     isCurrentPage,
-    sidebarThreadId: currentRightId,
+    sidebarThreadId: urlSidebarThreadId,
     threadId: session.id,
   });
   const isRunning = session.running;

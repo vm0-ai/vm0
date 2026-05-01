@@ -7,6 +7,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { searchParams$ } from "../route.ts";
 import {
+  SIDEBAR_PARAM,
   loadLeftThread$,
   loadRightThread$,
   unloadRightThread$,
@@ -15,8 +16,6 @@ import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
-
-const SIDEBAR_PARAM = "sidebar";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {

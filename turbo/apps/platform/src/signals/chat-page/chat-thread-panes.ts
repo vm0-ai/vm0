@@ -29,7 +29,7 @@ import {
 } from "./optimistic-chat-thread-page.ts";
 import { setupChatThreadSignals$ } from "./setup-chat-thread-signals.ts";
 
-const SIDEBAR_PARAM = "sidebar";
+export const SIDEBAR_PARAM = "sidebar";
 
 const internalLeftThread$ = state<ChatThreadSignals | null>(null);
 const internalRightThread$ = state<ChatThreadSignals | null>(null);
