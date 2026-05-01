@@ -92,7 +92,14 @@ self.addEventListener("fetch", (event) => {
 // --- Web Push Notifications ---
 
 self.addEventListener("push", (event) => {
-  const data = event.data?.json() ?? {};
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data = { body: event.data.text() };
+    }
+  }
 
   const options = {
     body: data.body ?? "",
