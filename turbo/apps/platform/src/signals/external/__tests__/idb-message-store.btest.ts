@@ -109,7 +109,7 @@ describe("idb-message-store", () => {
 
     // Write a malformed row directly via the raw store (bypassing type safety)
     const { openDB } = await import("idb");
-    const db = await openDB(`vm0-chat-${USER}-invalid-${ORG}`, 1);
+    const db = await openDB(`vm0-chat-${USER}-invalid-${ORG}`, 2);
     // Put an object with threadId so it matches the index, but missing required
     // fields (role) so schema validation rejects it
     await db.put("chat_messages", {
