@@ -36,7 +36,7 @@ export function createIdbCachedDataSource(
     }
 
     const stores = getStores(userId, orgId);
-    const readStore = get(stores.readStore$);
+    const readStore = stores.readStore$;
     const cached = await readStore.readLatest(threadId, 50);
 
     if (cached.length > 0) {
@@ -46,7 +46,7 @@ export function createIdbCachedDataSource(
 
     initialPageFromCache = false;
     const page = await get(remote.initialPage$);
-    const writeStore = get(stores.writeStore$);
+    const writeStore = stores.writeStore$;
     await writeStore.upsertMessages(threadId, page.messages);
 
     return page;
@@ -72,7 +72,7 @@ export function createIdbCachedDataSource(
       }
 
       const stores = getStores(userId, orgId);
-      const readStore = get(stores.readStore$);
+      const readStore = stores.readStore$;
       const cached = await readStore.readBefore(tid, beforeId, 50, signal);
 
       if (cached.length > 0) {
@@ -85,7 +85,7 @@ export function createIdbCachedDataSource(
         signal,
       );
 
-      const writeStore = get(stores.writeStore$);
+      const writeStore = stores.writeStore$;
       await writeStore.upsertMessages(tid, result.messages, signal);
 
       return result;
@@ -111,7 +111,7 @@ export function createIdbCachedDataSource(
 
       if (userId && orgId && result.messages.length > 0) {
         const stores = getStores(userId, orgId);
-        const writeStore = get(stores.writeStore$);
+        const writeStore = stores.writeStore$;
         await writeStore.upsertMessages(tid, result.messages, signal);
       }
 

@@ -136,8 +136,12 @@ describe("idb-message-store", () => {
     const storesA = createIdbMessageStores("user-a", "org-a");
     const storesB = createIdbMessageStores("user-b", "org-b");
 
-    await storesA.writeStore$.upsertMessages(THREAD, [makeMsg("da1", THREAD, "2026-04-01T00:00:00Z")]);
-    await storesB.writeStore$.upsertMessages(THREAD, [makeMsg("db1", THREAD, "2026-04-01T00:00:00Z")]);
+    await storesA.writeStore$.upsertMessages(THREAD, [
+      makeMsg("da1", THREAD, "2026-04-01T00:00:00Z"),
+    ]);
+    await storesB.writeStore$.upsertMessages(THREAD, [
+      makeMsg("db1", THREAD, "2026-04-01T00:00:00Z"),
+    ]);
 
     const msgsA = await storesA.readStore$.readLatest(THREAD, 10);
     const msgsB = await storesB.readStore$.readLatest(THREAD, 10);
