@@ -144,8 +144,6 @@ export const setupChatPage$ = command(
     });
 
     await Promise.all([
-      set(thread.runPhraseLoop$, signal),
-      set(thread.loadPagedMessages$, signal),
       set(
         setAblyLoop$,
         `chatThreadRunUpdated:${threadId}`,
