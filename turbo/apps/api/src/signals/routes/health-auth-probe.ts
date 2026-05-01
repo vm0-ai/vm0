@@ -22,9 +22,17 @@ const probeRoute = c.router({
       authorization: z.string().optional(),
       cookie: z.string().optional(),
     }),
+    query: z.object({
+      acceptAnySandboxCapability: z.string().optional(),
+      requiredCapability: z.string().optional(),
+      accept: z.string().optional(),
+    }),
     responses: {
       200: z.unknown(),
       401: z.object({
+        error: z.object({ message: z.string(), code: z.string() }),
+      }),
+      403: z.object({
         error: z.object({ message: z.string(), code: z.string() }),
       }),
     },

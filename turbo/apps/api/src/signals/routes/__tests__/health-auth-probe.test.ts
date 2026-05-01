@@ -568,11 +568,14 @@ describe("GET /health/auth", () => {
       const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
-        [401],
+        [403],
       );
 
       expect(response.body).toStrictEqual({
-        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        error: {
+          message: "This endpoint is not available for sandbox tokens",
+          code: "FORBIDDEN",
+        },
       });
     });
   });
@@ -990,11 +993,14 @@ describe("GET /health/auth", () => {
       })(noOptionContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
-        [401],
+        [403],
       );
 
       expect(response.body).toStrictEqual({
-        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+        error: {
+          message: "This endpoint is not available for sandbox tokens",
+          code: "FORBIDDEN",
+        },
       });
     });
   });
