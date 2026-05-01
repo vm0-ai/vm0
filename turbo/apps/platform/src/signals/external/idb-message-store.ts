@@ -1,6 +1,5 @@
 import { computed } from "ccstate";
-import { openDB } from "idb";
-import type { IDBPDatabase } from "idb";
+import { openDB, type IDBPDatabase } from "idb";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
 interface ChatMessageReadStore {
@@ -65,7 +64,9 @@ function createIdbMessageStores(userId: string, orgId: string) {
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readonly");
       const anchor = await tx.store.get(beforeId);
-      if (!anchor) return [];
+      if (!anchor) {
+        return [];
+      }
       signal?.throwIfAborted();
 
       const index = tx.store.index("byThreadAndTime");
@@ -76,7 +77,9 @@ function createIdbMessageStores(userId: string, orgId: string) {
       const messages: PagedChatMessage[] = [];
       let cursor = await index.openCursor(range, "prev");
       // Skip the anchor row itself
-      if (cursor) cursor = await cursor.continue();
+      if (cursor) {
+        cursor = await cursor.continue();
+      }
       while (cursor && messages.length < limit) {
         signal?.throwIfAborted();
         messages.push(cursor.value as PagedChatMessage);

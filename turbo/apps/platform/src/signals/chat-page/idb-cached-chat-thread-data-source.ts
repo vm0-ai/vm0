@@ -2,8 +2,8 @@ import { command, computed } from "ccstate";
 import { clerk$ } from "../auth.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
-import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
 import type {
+  ChatThreadDataSource,
   InitialPage,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
