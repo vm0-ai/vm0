@@ -192,7 +192,9 @@ describe("credit expires service", () => {
     it("returns summary for active records", async () => {
       const { orgId } = await context.setupUser({ prefix: "summary" });
 
-      const expiryDate = new Date("2026-05-01T00:00:00Z");
+      const expiryDate = new Date();
+      expiryDate.setMonth(expiryDate.getMonth() + 1);
+      expiryDate.setHours(0, 0, 0, 0);
       await insertCreditExpiresRecord({
         orgId,
         amount: 10000,
