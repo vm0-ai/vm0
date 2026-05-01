@@ -103,6 +103,12 @@ const chatThreadListItemSchema = z.object({
    * the field.
    */
   pinnedAt: z.string().nullable().optional(),
+  /**
+   * ISO timestamp at which the user manually renamed this thread. Null/undefined
+   * means never renamed. When set, automated title generation is suppressed.
+   * Optional for back-compat with fixtures that predate the field.
+   */
+  renamedAt: z.string().nullable().optional(),
 });
 
 const toolSummaryEntrySchema = z.object({
@@ -172,6 +178,12 @@ const chatThreadDetailSchema = z.object({
    */
   modelProviderId: z.string().nullable().optional(),
   selectedModel: z.string().nullable().optional(),
+  /**
+   * ISO timestamp at which the user manually renamed this thread. Null/undefined
+   * means never renamed. When set, automated title generation is suppressed.
+   * Optional for back-compat with fixtures that predate the field.
+   */
+  renamedAt: z.string().nullable().optional(),
 });
 
 /**
@@ -336,6 +348,31 @@ export const chatThreadUnpinContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Remove the pin from a chat thread",
+  },
+});
+
+/**
+ * Rename a chat thread POST endpoint. Sets both the title and the
+ * `renamed_at` timestamp, which suppresses future automated title
+ * generation for this thread.
+ *
+ * Split into a dedicated contract/route so any POST body widening
+ * (e.g. future `{ icon, folder }` fields) stays invisible to the
+ * unrelated draft PATCH on chatThreadByIdContract.
+ */
+export const chatThreadRenameContract = c.router({
+  rename: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/rename",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: z.object({ title: z.string().min(1) }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Rename a chat thread (suppresses automated title generation)",
   },
 });
 
@@ -551,6 +588,7 @@ export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
+export type ChatThreadRenameContract = typeof chatThreadRenameContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;

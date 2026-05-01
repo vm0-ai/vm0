@@ -82,6 +82,12 @@ export const chatThreads = pgTable(
      * already carry `user_id` + `agent_compose_id`.
      */
     pinnedAt: timestamp("pinned_at"),
+    /**
+     * Timestamp at which the user manually renamed this thread.
+     * NULL means the thread has never been renamed.
+     * When set, automated title generation is suppressed.
+     */
+    renamedAt: timestamp("renamed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

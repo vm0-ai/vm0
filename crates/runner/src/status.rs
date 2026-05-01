@@ -182,14 +182,6 @@ impl StatusTracker {
         removed
     }
 
-    /// Replace the idle VM list in the status file with `idle_vms`.
-    #[cfg(test)]
-    pub async fn set_idle_info(&self, idle_vms: Vec<IdleVm>) {
-        let mut state = self.state.lock().await;
-        state.idle_vms = idle_vms;
-        self.write_status(&state).await;
-    }
-
     /// Replace the idle VM list only if the snapshot is at least as new as the
     /// last applied idle-pool mutation revision.
     ///
@@ -421,7 +413,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_idle_info_round_trip() {
+    async fn set_idle_info_at_revision_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
@@ -433,18 +425,23 @@ mod tests {
 
         let sb1 = SandboxId::new_v4();
         let sb2 = SandboxId::new_v4();
-        tracker
-            .set_idle_info(vec![
-                IdleVm {
-                    session_id: "sess-1".into(),
-                    sandbox_id: sb1,
-                },
-                IdleVm {
-                    session_id: "sess-2".into(),
-                    sandbox_id: sb2,
-                },
-            ])
-            .await;
+        assert!(
+            tracker
+                .set_idle_info_at_revision(
+                    1,
+                    vec![
+                        IdleVm {
+                            session_id: "sess-1".into(),
+                            sandbox_id: sb1,
+                        },
+                        IdleVm {
+                            session_id: "sess-2".into(),
+                            sandbox_id: sb2,
+                        },
+                    ],
+                )
+                .await
+        );
 
         let status = read_status(&path);
         let vms = status["idle_vms"].as_array().unwrap();
@@ -594,12 +591,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn set_idle_info_empty_omitted() {
+    async fn set_idle_info_at_revision_empty_omitted() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("status.json");
         let tracker = StatusTracker::new(path.clone(), 4, None, None);
 
-        tracker.set_idle_info(vec![]).await;
+        assert!(tracker.set_idle_info_at_revision(1, vec![]).await);
 
         let status = read_status(&path);
         assert!(

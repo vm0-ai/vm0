@@ -11,6 +11,7 @@
 //! - No recycling (COW files have dirty data after VM use)
 
 use std::collections::VecDeque;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use tracing::{error, info, warn};
@@ -55,6 +56,22 @@ impl PrewarmedSlot {
     fn cow_file(&self) -> PathBuf {
         self.workspace.join("cow.img")
     }
+
+    fn remove_workspace(&self) {
+        match std::fs::remove_dir_all(&self.workspace) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => {
+                warn!(id = %self.id, error = %e, "failed to delete pool workspace dir");
+            }
+        }
+    }
+}
+
+impl Drop for PrewarmedSlot {
+    fn drop(&mut self) {
+        self.remove_workspace();
+    }
 }
 
 impl std::fmt::Debug for PrewarmedSlot {
@@ -63,6 +80,23 @@ impl std::fmt::Debug for PrewarmedSlot {
             .field("id", &self.id)
             .field("workspace", &self.workspace)
             .finish_non_exhaustive()
+    }
+}
+
+struct SlotCapacityGuard<'a> {
+    next_slot_idx: &'a mut u32,
+}
+
+impl<'a> SlotCapacityGuard<'a> {
+    fn reserve(next_slot_idx: &'a mut u32) -> Self {
+        *next_slot_idx += 1;
+        Self { next_slot_idx }
+    }
+}
+
+impl Drop for SlotCapacityGuard<'_> {
+    fn drop(&mut self) {
+        *self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
     }
 }
 
@@ -114,16 +148,13 @@ impl CowPool {
     /// but do not prevent the pool from operating (acquire falls back to
     /// on-demand creation).
     pub async fn warmup(&mut self) {
-        let mut set = tokio::task::JoinSet::new();
-        for _ in 0..BUFFER_SIZE {
-            if self.next_slot_idx >= MAX_SLOTS {
+        let missing = BUFFER_SIZE.saturating_sub(self.queue.len() + self.pending.len());
+        for _ in 0..missing {
+            if !self.spawn_slot_creation() {
                 break;
             }
-            self.next_slot_idx += 1;
-            let config = self.config.clone();
-            set.spawn_blocking(move || create_slot(&config));
         }
-        while let Some(result) = set.join_next().await {
+        while let Some(result) = self.pending.join_next().await {
             match result {
                 Ok(Ok(slot)) => self.queue.push_back(slot),
                 Ok(Err(e)) => {
@@ -193,28 +224,23 @@ impl CowPool {
         if self.next_slot_idx >= MAX_SLOTS {
             return Err(CowPoolError::SlotLimitReached { max: MAX_SLOTS });
         }
-        self.next_slot_idx += 1;
         let config = self.config.clone();
-        match tokio::task::spawn_blocking(move || create_slot(&config)).await {
+        let reservation = SlotCapacityGuard::reserve(&mut self.next_slot_idx);
+        let result = tokio::task::spawn_blocking(move || create_slot(&config)).await;
+        drop(reservation);
+        match result {
             Ok(Ok(slot)) => {
-                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
                 self.maybe_replenish();
                 Ok(slot)
             }
-            Ok(Err(e)) => {
-                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                Err(e)
-            }
-            Err(e) => {
-                self.next_slot_idx = self.next_slot_idx.saturating_sub(1);
-                Err(CowPoolError::CowFileCreation(format!("join: {e}")))
-            }
+            Ok(Err(e)) => Err(e),
+            Err(e) => Err(CowPoolError::CowFileCreation(format!("join: {e}"))),
         }
     }
 
     /// Shut down the pool: wait for pending tasks, destroy all queued slots.
     pub async fn cleanup(&mut self) {
-        if !self.active {
+        if !self.active && self.pending.is_empty() && self.queue.is_empty() {
             return;
         }
         self.active = false;
@@ -270,12 +296,17 @@ impl CowPool {
 
     /// Spawn one background replenishment task if the queue is below threshold.
     fn maybe_replenish(&mut self) {
+        self.spawn_slot_creation();
+    }
+
+    fn spawn_slot_creation(&mut self) -> bool {
         if self.queue.len() + self.pending.len() >= BUFFER_SIZE || self.next_slot_idx >= MAX_SLOTS {
-            return;
+            return false;
         }
         self.next_slot_idx += 1;
         let config = self.config.clone();
         self.pending.spawn_blocking(move || create_slot(&config));
+        true
     }
 }
 
@@ -346,9 +377,7 @@ fn sparse_copy(src: &Path, dst: &Path) -> Result<(), CowPoolError> {
 ///
 /// Removes the workspace directory (which contains the COW file).
 pub(crate) fn destroy_slot(slot: PrewarmedSlot) {
-    if let Err(e) = std::fs::remove_dir_all(&slot.workspace) {
-        warn!(id = %slot.id, error = %e, "failed to delete pool workspace dir");
-    }
+    drop(slot);
 }
 
 // ---------------------------------------------------------------------------
@@ -392,6 +421,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_cleanup_can_retry_after_pool_marked_inactive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let ws = tmp.path().join("cleanup-retry-slot");
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let mut pool = CowPool::new(config);
+        pool.next_slot_idx = 1;
+        pool.pending.spawn_blocking({
+            let ws = ws.clone();
+            move || {
+                std::fs::create_dir_all(&ws).unwrap();
+                std::fs::write(ws.join("cow.img"), b"cow").unwrap();
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(PrewarmedSlot {
+                    id: "pending".into(),
+                    workspace: ws,
+                })
+            }
+        });
+
+        {
+            let cleanup = pool.cleanup();
+            tokio::pin!(cleanup);
+            tokio::select! {
+                result = &mut cleanup => panic!("cleanup completed before pending slot was released: {result:?}"),
+                result = entered_rx => result.expect("pending slot creation should enter"),
+            }
+        }
+
+        assert!(!pool.active);
+        assert_eq!(
+            pool.pending.len(),
+            1,
+            "cancelled cleanup must leave pending slot owned by the pool"
+        );
+        release_tx.send(()).unwrap();
+        pool.cleanup().await;
+
+        assert_eq!(pool.next_slot_idx, 0);
+        assert!(pool.pending.is_empty());
+        assert!(pool.queue.is_empty());
+        assert!(!ws.exists(), "retried cleanup should remove pending slot");
+    }
+
+    #[tokio::test]
     async fn warmup_with_bad_config_does_not_panic() {
         // Point to a nonexistent golden COW file — all pre-warm tasks will
         // fail, but warmup must handle errors gracefully.
@@ -409,6 +485,60 @@ mod tests {
         assert_eq!(pool.next_slot_idx, 0);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelled_warmup_keeps_pending_slots_for_cleanup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let fifo = tmp.path().join("golden.fifo");
+        nix::unistd::mkfifo(
+            &fifo,
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces.clone(),
+            base_size: 64 * 1024 * 1024,
+            golden_cow: Some(fifo.clone()),
+        };
+        let mut pool = CowPool::new(config);
+        pool.next_slot_idx = MAX_SLOTS - 1;
+
+        {
+            let warmup = pool.warmup();
+            tokio::pin!(warmup);
+            tokio::select! {
+                result = &mut warmup => panic!("warmup completed before cancellation: {result:?}"),
+                () = wait_for_workspace_entry(&workspaces) => {}
+            }
+        }
+
+        assert!(
+            !pool.pending.is_empty(),
+            "cancelled warmup must leave pending slots owned by the pool"
+        );
+        assert_eq!(pool.next_slot_idx, MAX_SLOTS);
+
+        let writer = tokio::task::spawn_blocking(move || {
+            use std::io::Write;
+
+            let mut fifo = std::fs::OpenOptions::new().write(true).open(fifo).unwrap();
+            fifo.write_all(b"cow").unwrap();
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(1), writer)
+            .await
+            .expect("fifo writer should not block forever")
+            .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(1), pool.cleanup())
+            .await
+            .expect("cleanup should drain cancelled warmup slots");
+
+        assert_eq!(pool.next_slot_idx, MAX_SLOTS - 1);
+        assert!(pool.pending.is_empty());
+        assert!(pool.queue.is_empty());
+        assert!(!workspace_entry_exists(&workspaces));
+    }
+
     #[tokio::test]
     async fn acquire_exhausted_with_bad_config_returns_error() {
         let tmp = tempfile::tempdir().unwrap();
@@ -421,6 +551,106 @@ mod tests {
         // Don't warmup — go straight to acquire.
         let result = pool.acquire().await;
         assert!(result.is_err());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancelled_on_demand_acquire_reclaims_slot_capacity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspaces = tmp.path().join("workspaces");
+        let fifo = tmp.path().join("golden.fifo");
+        nix::unistd::mkfifo(
+            &fifo,
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        let config = CowPoolConfig {
+            workspaces_dir: workspaces.clone(),
+            base_size: 64 * 1024 * 1024,
+            golden_cow: Some(fifo.clone()),
+        };
+        let mut pool = CowPool::new(config);
+        pool.next_slot_idx = MAX_SLOTS - 1;
+
+        {
+            let acquire = pool.acquire();
+            tokio::pin!(acquire);
+            tokio::select! {
+                result = &mut acquire => panic!("on-demand acquire completed before cancellation: {result:?}"),
+                () = wait_for_workspace_entry(&workspaces) => {}
+            }
+        }
+
+        assert_eq!(
+            pool.next_slot_idx,
+            MAX_SLOTS - 1,
+            "cancelled on-demand acquire must reclaim reserved capacity"
+        );
+
+        let writer = tokio::task::spawn_blocking(move || {
+            use std::io::Write;
+
+            let mut fifo = std::fs::OpenOptions::new().write(true).open(fifo).unwrap();
+            fifo.write_all(b"cow").unwrap();
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(1), writer)
+            .await
+            .expect("fifo writer should not block forever")
+            .unwrap();
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while workspace_entry_exists(&workspaces) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("detached on-demand slot should be dropped after creation");
+    }
+
+    #[tokio::test]
+    async fn cancelled_pending_acquire_keeps_slot_for_cleanup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let ws = tmp.path().join("pending-acquire-slot");
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let mut pool = CowPool::new(config);
+        pool.next_slot_idx = 1;
+        pool.pending.spawn_blocking({
+            let ws = ws.clone();
+            move || {
+                std::fs::create_dir_all(&ws).unwrap();
+                std::fs::write(ws.join("cow.img"), b"cow").unwrap();
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(PrewarmedSlot {
+                    id: "pending".into(),
+                    workspace: ws,
+                })
+            }
+        });
+
+        {
+            let acquire = pool.acquire();
+            tokio::pin!(acquire);
+            tokio::select! {
+                result = &mut acquire => panic!("pending acquire completed before cancellation: {result:?}"),
+                result = entered_rx => result.expect("pending slot creation should enter"),
+            }
+        }
+
+        assert_eq!(
+            pool.pending.len(),
+            1,
+            "cancelled join_next must leave pending slot owned by the pool"
+        );
+        release_tx.send(()).unwrap();
+        pool.cleanup().await;
+
+        assert_eq!(pool.next_slot_idx, 0);
+        assert!(pool.pending.is_empty());
+        assert!(pool.queue.is_empty());
+        assert!(!ws.exists(), "cleanup should remove pending acquire slot");
     }
 
     #[tokio::test]
@@ -479,5 +709,91 @@ mod tests {
         assert!(ws.exists());
         destroy_slot(slot);
         assert!(!ws.exists(), "workspace should be removed");
+    }
+
+    #[test]
+    fn dropped_slot_removes_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let slot = create_slot(&config).unwrap();
+        let ws = slot.workspace.clone();
+        assert!(ws.exists());
+        drop(slot);
+        assert!(!ws.exists(), "workspace should be removed on slot drop");
+    }
+
+    #[test]
+    fn dropped_pool_removes_queued_slots() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let slot = create_slot(&config).unwrap();
+        let ws = slot.workspace.clone();
+        assert!(ws.exists());
+
+        let mut pool = CowPool::new(config);
+        pool.queue.push_back(slot);
+        drop(pool);
+
+        assert!(!ws.exists(), "queued slot should be removed on pool drop");
+    }
+
+    fn workspace_entry_exists(path: &Path) -> bool {
+        match std::fs::read_dir(path) {
+            Ok(mut entries) => entries.next().is_some(),
+            Err(e) if e.kind() == ErrorKind::NotFound => false,
+            Err(e) => panic!("read workspace dir {}: {e}", path.display()),
+        }
+    }
+
+    async fn wait_for_workspace_entry(path: &Path) {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(1);
+        while !workspace_entry_exists(path) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "workspace entry was not created under {}",
+                path.display()
+            );
+            tokio::task::yield_now().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn dropped_pool_removes_late_pending_slot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config = test_config(tmp.path());
+        let ws = tmp.path().join("pending-slot");
+        let (entered_tx, entered_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let mut pool = CowPool::new(config);
+
+        pool.pending.spawn_blocking({
+            let ws = ws.clone();
+            move || {
+                std::fs::create_dir_all(&ws).unwrap();
+                std::fs::write(ws.join("cow.img"), b"cow").unwrap();
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+                Ok(PrewarmedSlot {
+                    id: "pending".into(),
+                    workspace: ws,
+                })
+            }
+        });
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), entered_rx)
+            .await
+            .expect("pending slot creation should enter")
+            .unwrap();
+        assert!(ws.exists());
+        drop(pool);
+        release_tx.send(()).unwrap();
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while ws.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("late pending slot workspace should be removed after pool drop");
     }
 }

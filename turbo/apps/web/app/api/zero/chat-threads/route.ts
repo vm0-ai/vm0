@@ -129,6 +129,7 @@ const router = tsr.router(chatThreadsContract, {
             running: t.running,
             hasDraft: t.hasDraft,
             pinnedAt: t.pinnedAt ? t.pinnedAt.toISOString() : null,
+            renamedAt: t.renamedAt ? t.renamedAt.toISOString() : null,
           };
         }),
       },

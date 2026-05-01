@@ -8,6 +8,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 use tokio_tungstenite::tungstenite;
+use tokio_tungstenite::tungstenite::protocol::CloseFrame;
 
 use crate::Error;
 use crate::TokenRequest;
@@ -15,7 +16,7 @@ use crate::protocol::{
     AuthDetails, ErrorInfo, ProtocolMessage, action, build_attach_msg, decode_msg, encode_msg,
     error_code, flags,
 };
-use crate::types::{Event, Message, TimingConfig, TokenDetails, TokenFuture};
+use crate::types::{Event, Message, TimingConfig, TokenDetails, TokenFuture, redact_access_token};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -125,14 +126,14 @@ async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Err
                     let err = error_or_unknown(msg.error);
                     return Err(Error::Protocol {
                         code: err.code,
-                        message: err.message,
+                        message: protocol_error_message(err.message),
                     });
                 }
                 action::DISCONNECTED => {
                     let err = error_or_unknown(msg.error);
                     return Err(Error::Protocol {
                         code: err.code,
-                        message: err.message,
+                        message: protocol_error_message(err.message),
                     });
                 }
                 _ => {
@@ -162,14 +163,14 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Protoc
                     let err = error_or_unknown(msg.error);
                     return Err(Error::Protocol {
                         code: err.code,
-                        message: err.message,
+                        message: protocol_error_message(err.message),
                     });
                 }
                 action::DETACHED => {
                     let err = error_or_unknown(msg.error);
                     return Err(Error::Protocol {
                         code: err.code,
-                        message: format!("Channel detached: {}", err.message),
+                        message: channel_detached_message(&err.message),
                     });
                 }
                 _ => {
@@ -289,8 +290,7 @@ impl ConnState {
 // ---------------------------------------------------------------------------
 
 pub(crate) struct EventLoopState {
-    pub ws_read: WsRead,
-    pub ws_write: WsWrite,
+    pub transport: Option<WsTransport>,
     pub event_tx: mpsc::Sender<Event>,
     pub conn_state: ConnState,
     pub channel: String,
@@ -304,25 +304,191 @@ pub(crate) struct EventLoopState {
     pub dropped_messages: u64,
 }
 
+pub(crate) struct WsTransport {
+    ws_read: WsRead,
+    ws_write: WsWrite,
+}
+
+impl WsTransport {
+    pub(crate) fn new(ws_read: WsRead, ws_write: WsWrite) -> Self {
+        Self { ws_read, ws_write }
+    }
+}
+
+fn websocket_close_reason(frame: Option<&CloseFrame>) -> String {
+    match frame {
+        Some(frame) if frame.reason.is_empty() => {
+            format!("websocket closed code={}", frame.code)
+        }
+        Some(frame) => {
+            let reason = websocket_close_frame_reason(frame);
+            format!("websocket closed code={} reason={}", frame.code, reason)
+        }
+        None => "websocket closed without close frame".to_string(),
+    }
+}
+
+fn websocket_close_frame_reason(frame: &CloseFrame) -> String {
+    redact_access_token(frame.reason.as_ref())
+}
+
+fn websocket_error_reason(error: &tungstenite::Error) -> String {
+    format!(
+        "websocket error: {}",
+        redact_access_token(&error.to_string())
+    )
+}
+
+fn protocol_disconnect_reason(error: Option<ErrorInfo>) -> String {
+    match error {
+        Some(error) if !error.message.is_empty() => redact_access_token(&error.message),
+        Some(error) => {
+            let status = error
+                .status_code
+                .map(|status_code| format!(" status={status_code}"))
+                .unwrap_or_default();
+            format!("server sent DISCONNECTED code={}{}", error.code, status)
+        }
+        None => "server sent DISCONNECTED without error details".to_string(),
+    }
+}
+
+fn protocol_error_message(message: String) -> String {
+    redact_access_token(&message)
+}
+
+fn channel_detached_message(message: &str) -> String {
+    format!("Channel detached: {}", redact_access_token(message))
+}
+
+fn reconnect_spacing_delay(last_attempt: Option<Instant>, min_interval: Duration) -> Duration {
+    last_attempt.map_or(Duration::ZERO, |attempt| {
+        min_interval.saturating_sub(attempt.elapsed())
+    })
+}
+
+// Caller-requested shutdown should send Ably CLOSE before closing the WebSocket
+// so the connection state is explicitly terminated.
+async fn send_close_message(p: &mut EventLoopState) {
+    let Some(transport) = p.transport.take() else {
+        return;
+    };
+    let WsTransport {
+        ws_read: _ws_read,
+        mut ws_write,
+    } = transport;
+    let close_timeout = p.timing.close_timeout;
+    let result = tokio::time::timeout(close_timeout, async move {
+        let close_msg = ProtocolMessage {
+            action: action::CLOSE,
+            ..Default::default()
+        };
+        if let Ok(data) = encode_msg(&close_msg) {
+            let _ = ws_write
+                .send(tungstenite::Message::Binary(data.into()))
+                .await;
+        }
+        let _ = ws_write.close().await;
+    })
+    .await;
+    if result.is_err() {
+        tracing::warn!(
+            timeout_ms = close_timeout.as_millis(),
+            "Timed out while closing websocket"
+        );
+    }
+}
+
+// Reconnect paths should only close the current WebSocket transport. Sending
+// Ably CLOSE here would terminate the resumable connection state on the server.
+async fn close_websocket_transport(p: &mut EventLoopState) {
+    let Some(transport) = p.transport.take() else {
+        return;
+    };
+    let WsTransport {
+        ws_read: _ws_read,
+        mut ws_write,
+    } = transport;
+    let close_timeout = p.timing.close_timeout;
+    let result = tokio::time::timeout(close_timeout, async move {
+        let _ = ws_write.close().await;
+    })
+    .await;
+    if result.is_err() {
+        tracing::warn!(
+            timeout_ms = close_timeout.as_millis(),
+            "Timed out while closing websocket transport"
+        );
+    }
+}
+
+async fn send_status_event(
+    p: &mut EventLoopState,
+    close_rx: &mut oneshot::Receiver<()>,
+    event: Event,
+    status_event: &'static str,
+) -> bool {
+    tokio::select! {
+        biased;
+        _ = &mut *close_rx => {
+            tracing::info!(status_event, "Close requested while sending status event");
+            send_close_message(p).await;
+            false
+        }
+        result = p.event_tx.send(event) => result.is_ok(),
+    }
+}
+
 pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiver<()>) {
     let mut retry_count: u32 = 0;
+    let mut last_reconnect_attempt: Option<Instant> = None;
 
     'outer: loop {
         let mut disconnected_sent = false;
         let mut immediate_retry = false;
+        let mut disconnect_reason = None;
+        let mut close_before_reconnect = false;
         // Main message processing loop
         loop {
+            let Some(transport) = p.transport.as_mut() else {
+                tracing::warn!("WebSocket transport missing before receive loop");
+                break;
+            };
             let idle_timeout = p.conn_state.max_idle_interval + p.timing.heartbeat_margin;
             let idle_deadline = Instant::now() + idle_timeout;
 
             tokio::select! {
-                frame = p.ws_read.next() => {
+                biased;
+
+                _ = &mut close_rx => {
+                    tracing::info!("Close requested");
+                    send_close_message(&mut p).await;
+                    return;
+                }
+
+                _ = tokio::time::sleep_until(p.conn_state.token_renewal_at) => {
+                    let connect_timeout = p.timing.connect_timeout;
+                    let result = tokio::select! {
+                        biased;
+                        _ = &mut close_rx => {
+                            tracing::info!("Close requested during token renewal");
+                            send_close_message(&mut p).await;
+                            return;
+                        }
+                        result = tokio::time::timeout(connect_timeout, renew_token(&mut p)) => result,
+                    };
+                    if handle_renewal_result(&mut p, &mut close_rx, result).await {
+                        return;
+                    }
+                }
+
+                frame = transport.ws_read.next() => {
                     match frame {
                         Some(Ok(tungstenite::Message::Binary(data))) => {
                             retry_count = 0;
                             match decode_msg(&data) {
                                 Ok(msg) => {
-                                    match handle_message(&mut p, msg).await {
+                                    match handle_message(&mut p, msg, &mut close_rx).await {
                                         LoopAction::Stop => return,
                                         LoopAction::Reconnect => {
                                             disconnected_sent = true;
@@ -337,54 +503,46 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                             }
                         }
                         Some(Ok(tungstenite::Message::Close(frame))) => {
+                            let reason = websocket_close_reason(frame.as_ref());
                             if let Some(ref f) = frame {
+                                let close_reason = websocket_close_frame_reason(f);
                                 tracing::info!(
                                     code = %f.code,
-                                    reason = %f.reason,
+                                    reason = %close_reason,
                                     "WebSocket Close frame received",
                                 );
                             } else {
-                                tracing::info!("WebSocket Close frame received (no reason)");
+                                tracing::info!("WebSocket Close frame received without close frame");
                             }
+                            disconnect_reason = Some(reason);
                             immediate_retry = true;
+                            close_before_reconnect = true;
                             break; // → reconnect
                         }
                         Some(Ok(_)) => {
                             // Ignore text, ping, pong frames
                         }
                         Some(Err(e)) => {
-                            tracing::warn!("WebSocket error: {e}");
+                            let reason = websocket_error_reason(&e);
+                            tracing::warn!(%reason, "WebSocket error");
+                            disconnect_reason = Some(reason);
+                            close_before_reconnect = true;
                             break; // → reconnect
                         }
                         None => {
+                            disconnect_reason = Some("websocket stream ended".to_string());
                             tracing::info!("WebSocket stream ended");
+                            close_before_reconnect = true;
                             break; // → reconnect
                         }
                     }
                 }
 
                 _ = tokio::time::sleep_until(idle_deadline) => {
+                    disconnect_reason = Some(format!("heartbeat timeout after {idle_timeout:?}"));
+                    close_before_reconnect = true;
                     tracing::warn!("Heartbeat timeout");
                     break; // → reconnect
-                }
-
-                _ = tokio::time::sleep_until(p.conn_state.token_renewal_at) => {
-                    let result = tokio::time::timeout(p.timing.connect_timeout, renew_token(&mut p)).await;
-                    if handle_renewal_result(&mut p, result).await {
-                        return;
-                    }
-                }
-
-                _ = &mut close_rx => {
-                    tracing::info!("Close requested");
-                    let close_msg = ProtocolMessage {
-                        action: action::CLOSE,
-                        ..Default::default()
-                    };
-                    if let Ok(data) = encode_msg(&close_msg) {
-                        let _ = p.ws_write.send(tungstenite::Message::Binary(data.into())).await;
-                    }
-                    return;
                 }
             }
         }
@@ -392,30 +550,48 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
         // --- Reconnection ---
         p.conn_state.disconnected_at = Some(Instant::now());
         if !disconnected_sent {
-            let _ = p.event_tx.send(Event::Disconnected { reason: None }).await;
+            let event = Event::Disconnected {
+                reason: disconnect_reason,
+            };
+            if !send_status_event(&mut p, &mut close_rx, event, "disconnected").await {
+                return;
+            }
+        }
+        if close_before_reconnect {
+            close_websocket_transport(&mut p).await;
         }
 
         loop {
             retry_count += 1;
             if retry_count > p.timing.max_retry_attempts {
-                let _ = p
-                    .event_tx
-                    .send(Event::Error {
-                        code: error_code::FAILED,
-                        message: format!(
-                            "Connection failed after {} attempts",
-                            p.timing.max_retry_attempts
-                        ),
-                    })
-                    .await;
+                let event = Event::Error {
+                    code: error_code::FAILED,
+                    message: format!(
+                        "Connection failed after {} attempts",
+                        p.timing.max_retry_attempts
+                    ),
+                };
+                let _ = send_status_event(&mut p, &mut close_rx, event, "error").await;
                 return;
             }
 
-            // Skip backoff on first attempt after a clean close (server
-            // closed the connection gracefully — reconnect immediately).
+            // Skip backoff on the first attempt after a transport close frame,
+            // but keep a small minimum gap between repeated reconnect attempts
+            // to avoid tight close loops.
             let backoff_duration = if retry_count == 1 && immediate_retry {
-                tracing::info!("Reconnecting immediately after clean close");
-                Duration::ZERO
+                let delay = reconnect_spacing_delay(
+                    last_reconnect_attempt,
+                    p.timing.min_reconnect_interval,
+                );
+                if delay == Duration::ZERO {
+                    tracing::info!("Reconnecting immediately after close frame");
+                } else {
+                    tracing::info!(
+                        delay_ms = delay.as_millis(),
+                        "Delaying reconnect after repeated close frame"
+                    );
+                }
+                delay
             } else {
                 // Exponential backoff: 1s, 2s, 4s, 8s, 15s, 15s, ...
                 let exp = retry_count.saturating_sub(1).min(30);
@@ -433,19 +609,36 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 backoff + jitter
             };
             tokio::select! {
-                _ = tokio::time::sleep(backoff_duration) => {}
+                biased;
                 _ = &mut close_rx => {
                     tracing::info!("Close requested during reconnect");
+                    send_close_message(&mut p).await;
                     return;
                 }
+                _ = tokio::time::sleep(backoff_duration) => {}
             }
 
-            match tokio::time::timeout(p.timing.reconnect_timeout, attempt_reconnect(&mut p)).await
-            {
+            last_reconnect_attempt = Some(Instant::now());
+            let reconnect_timeout = p.timing.reconnect_timeout;
+            let reconnect_result = tokio::select! {
+                biased;
+                _ = &mut close_rx => {
+                    tracing::info!("Close requested during reconnect attempt");
+                    send_close_message(&mut p).await;
+                    return;
+                }
+                result = tokio::time::timeout(reconnect_timeout, attempt_reconnect(&mut p)) => result,
+            };
+
+            match reconnect_result {
                 Ok(Ok(())) => {
                     retry_count = 0;
                     p.token_renewal_failures = 0;
-                    let _ = p.event_tx.send(Event::Connected).await;
+                    if !send_status_event(&mut p, &mut close_rx, Event::Connected, "connected")
+                        .await
+                    {
+                        return;
+                    }
                     continue 'outer;
                 }
                 Ok(Err(e)) => {
@@ -547,7 +740,11 @@ fn decode_data(data: serde_json::Value, encoding: Option<&str>) -> serde_json::V
     result
 }
 
-async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAction {
+async fn handle_message(
+    p: &mut EventLoopState,
+    msg: ProtocolMessage,
+    close_rx: &mut oneshot::Receiver<()>,
+) -> LoopAction {
     match msg.action {
         action::HEARTBEAT => {
             tracing::trace!("Heartbeat received");
@@ -597,19 +794,21 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             // of retriability. The server may send DISCONNECTED with a non-
             // retriable error (e.g. 429 rate limit) but still expect the client
             // to reconnect after backoff. Only connection-level ERROR is fatal.
-            let reason = msg.error.map(|e| e.message);
-            let _ = p.event_tx.send(Event::Disconnected { reason }).await;
+            let reason = Some(protocol_disconnect_reason(msg.error));
+            if !send_status_event(p, close_rx, Event::Disconnected { reason }, "disconnected").await
+            {
+                return LoopAction::Stop;
+            }
+            close_websocket_transport(p).await;
             return LoopAction::Reconnect;
         }
         action::ERROR => {
             let err = error_or_unknown(msg.error);
-            let _ = p
-                .event_tx
-                .send(Event::Error {
-                    code: err.code,
-                    message: err.message,
-                })
-                .await;
+            let event = Event::Error {
+                code: err.code,
+                message: protocol_error_message(err.message),
+            };
+            let _ = send_status_event(p, close_rx, event, "error").await;
             return LoopAction::Stop;
         }
         action::DETACHED => {
@@ -617,13 +816,11 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                 && !is_retriable(err)
             {
                 p.conn_state.channel_serial = None; // RTP5a1
-                let _ = p
-                    .event_tx
-                    .send(Event::Error {
-                        code: err.code,
-                        message: format!("Channel detached: {}", err.message),
-                    })
-                    .await;
+                let event = Event::Error {
+                    code: err.code,
+                    message: channel_detached_message(&err.message),
+                };
+                let _ = send_status_event(p, close_rx, event, "error").await;
                 return LoopAction::Stop;
             }
             if p.conn_state
@@ -631,6 +828,7 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
                 .is_some_and(|t| t.elapsed() < p.timing.reattach_window)
             {
                 tracing::warn!("Channel detached again within retry window, reconnecting");
+                close_websocket_transport(p).await;
                 return LoopAction::Reconnect;
             }
             tracing::warn!(channel = ?msg.channel, "Channel detached, re-attaching");
@@ -642,17 +840,40 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
             );
             match encode_msg(&attach) {
                 Ok(data) => {
-                    if p.ws_write
-                        .send(tungstenite::Message::Binary(data.into()))
-                        .await
-                        .is_err()
-                    {
-                        tracing::warn!("Failed to send re-attach, triggering reconnect");
+                    let connect_timeout = p.timing.connect_timeout;
+                    let Some(transport) = p.transport.as_mut() else {
+                        tracing::warn!("Missing websocket transport for re-attach");
                         return LoopAction::Reconnect;
+                    };
+                    let send_result = tokio::select! {
+                        biased;
+                        _ = &mut *close_rx => {
+                            tracing::info!("Close requested during channel re-attach");
+                            send_close_message(p).await;
+                            return LoopAction::Stop;
+                        }
+                        result = tokio::time::timeout(
+                            connect_timeout,
+                            transport.ws_write.send(tungstenite::Message::Binary(data.into())),
+                        ) => result,
+                    };
+                    match send_result {
+                        Ok(Ok(())) => {}
+                        Ok(Err(_)) => {
+                            tracing::warn!("Failed to send re-attach, triggering reconnect");
+                            close_websocket_transport(p).await;
+                            return LoopAction::Reconnect;
+                        }
+                        Err(_) => {
+                            tracing::warn!("Timed out sending re-attach, triggering reconnect");
+                            close_websocket_transport(p).await;
+                            return LoopAction::Reconnect;
+                        }
                     }
                 }
                 Err(e) => {
                     tracing::warn!("Failed to encode re-attach message: {e}");
+                    close_websocket_transport(p).await;
                     return LoopAction::Reconnect;
                 }
             }
@@ -683,8 +904,17 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
         }
         action::AUTH => {
             tracing::info!("Server requested reauthentication");
-            let result = tokio::time::timeout(p.timing.connect_timeout, renew_token(p)).await;
-            if handle_renewal_result(p, result).await {
+            let connect_timeout = p.timing.connect_timeout;
+            let result = tokio::select! {
+                biased;
+                _ = &mut *close_rx => {
+                    tracing::info!("Close requested during server-requested token renewal");
+                    send_close_message(p).await;
+                    return LoopAction::Stop;
+                }
+                result = tokio::time::timeout(connect_timeout, renew_token(p)) => result,
+            };
+            if handle_renewal_result(p, close_rx, result).await {
                 return LoopAction::Stop;
             }
         }
@@ -703,6 +933,7 @@ async fn handle_message(p: &mut EventLoopState, msg: ProtocolMessage) -> LoopAct
 /// is fatal (caller should terminate).
 async fn handle_renewal_result(
     p: &mut EventLoopState,
+    close_rx: &mut oneshot::Receiver<()>,
     result: Result<Result<(), Error>, tokio::time::error::Elapsed>,
 ) -> bool {
     let failure_reason = match result {
@@ -722,16 +953,14 @@ async fn handle_renewal_result(
     );
 
     if p.token_renewal_failures >= p.timing.max_token_renewal_failures {
-        let _ = p
-            .event_tx
-            .send(Event::Error {
-                code: error_code::FAILED,
-                message: format!(
-                    "Token renewal failed {} consecutive times",
-                    p.timing.max_token_renewal_failures
-                ),
-            })
-            .await;
+        let event = Event::Error {
+            code: error_code::FAILED,
+            message: format!(
+                "Token renewal failed {} consecutive times",
+                p.timing.max_token_renewal_failures
+            ),
+        };
+        let _ = send_status_event(p, close_rx, event, "error").await;
         return true;
     }
 
@@ -754,7 +983,14 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
         ..Default::default()
     };
     let data = encode_msg(&auth_msg)?;
-    p.ws_write
+    let Some(transport) = p.transport.as_mut() else {
+        return Err(Error::Protocol {
+            code: error_code::FAILED,
+            message: "WebSocket transport missing during token renewal".to_string(),
+        });
+    };
+    transport
+        .ws_write
         .send(tungstenite::Message::Binary(data.into()))
         .await?;
 
@@ -845,8 +1081,7 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
         p.conn_state.token_renewal_at =
             ConnState::compute_renewal_at(&p.conn_state.token, p.timing.token_renewal_margin);
     }
-    p.ws_read = ws_read;
-    p.ws_write = ws_write;
+    p.transport = Some(WsTransport::new(ws_read, ws_write));
     p.conn_state.disconnected_at = None;
     p.conn_state.last_reattach_at = None;
 
@@ -961,6 +1196,80 @@ mod tests {
         // No connection key → cannot resume
         state.connection_key = None;
         assert!(!state.can_resume());
+    }
+
+    #[test]
+    fn websocket_close_reason_redacts_access_token_from_reason() {
+        let frame = CloseFrame {
+            code: tungstenite::protocol::frame::coding::CloseCode::Normal,
+            reason: "url=wss://example/?access_token=close-secret&format=msgpack".into(),
+        };
+
+        let reason = websocket_close_reason(Some(&frame));
+        let log_reason = websocket_close_frame_reason(&frame);
+
+        assert_eq!(
+            reason,
+            "websocket closed code=1000 reason=url=wss://example/?access_token=<redacted>&format=msgpack"
+        );
+        assert_eq!(
+            log_reason,
+            "url=wss://example/?access_token=<redacted>&format=msgpack"
+        );
+        assert!(!reason.contains("close-secret"));
+        assert!(!log_reason.contains("close-secret"));
+    }
+
+    #[test]
+    fn websocket_error_reason_redacts_access_token() {
+        let err = tungstenite::Error::Url(tungstenite::error::UrlError::UnableToConnect(
+            "wss://example/?access_token=error-secret&format=msgpack".to_string(),
+        ));
+
+        let reason = websocket_error_reason(&err);
+
+        assert_eq!(
+            reason,
+            "websocket error: URL error: Unable to connect to wss://example/?access_token=<redacted>&format=msgpack"
+        );
+        assert!(!reason.contains("error-secret"));
+    }
+
+    #[test]
+    fn protocol_disconnect_reason_redacts_access_token_from_message() {
+        let reason = protocol_disconnect_reason(Some(ErrorInfo {
+            code: 80003,
+            status_code: Some(500),
+            message: "failed url=wss://example/?access_token=protocol-secret&format=msgpack"
+                .to_string(),
+        }));
+
+        assert_eq!(
+            reason,
+            "failed url=wss://example/?access_token=<redacted>&format=msgpack"
+        );
+        assert!(!reason.contains("protocol-secret"));
+    }
+
+    #[test]
+    fn event_error_helpers_redact_access_token() {
+        let protocol_message = protocol_error_message(
+            "failed url=wss://example/?access_token=event-secret&format=msgpack".to_string(),
+        );
+        let detached_message = channel_detached_message(
+            "failed url=wss://example/?access_token=detached-secret&format=msgpack",
+        );
+
+        assert_eq!(
+            protocol_message,
+            "failed url=wss://example/?access_token=<redacted>&format=msgpack"
+        );
+        assert_eq!(
+            detached_message,
+            "Channel detached: failed url=wss://example/?access_token=<redacted>&format=msgpack"
+        );
+        assert!(!protocol_message.contains("event-secret"));
+        assert!(!detached_message.contains("detached-secret"));
     }
 
     #[test]
