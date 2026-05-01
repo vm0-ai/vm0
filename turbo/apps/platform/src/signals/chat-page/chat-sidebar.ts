@@ -57,6 +57,14 @@ export const chatSidebarThread$ = computed((get): ChatThreadSignals | null => {
   return inner;
 });
 
+/**
+ * Ensure the sidebar shows `threadId`. Idempotent — if state already holds
+ * signals for this thread (e.g. on route refresh) the bootstrap is skipped.
+ *
+ * Does NOT close the sidebar when called with the current thread id; that
+ * toggle behaviour belongs to user click handlers and lives in
+ * toggleSidebarThread$.
+ */
 export const openOrSwitchSidebarThread$ = command(
   async (
     { get, set },
@@ -69,12 +77,6 @@ export const openOrSwitchSidebarThread$ = command(
     }
 
     const currentSidebarThreadId = get(chatSidebarThreadId$);
-    if (threadId === currentSidebarThreadId) {
-      // Same thread re-clicked → toggle close.
-      set(closeChatSidebar$);
-      return;
-    }
-
     if (currentSidebarThreadId !== threadId) {
       const next = new URLSearchParams(get(searchParams$));
       next.set(SIDEBAR_PARAM, threadId);
@@ -85,6 +87,13 @@ export const openOrSwitchSidebarThread$ = command(
     if (optimisticThread?.threadId === threadId) {
       // Optimistic thread carries its own setup; chatSidebarThread$ surfaces
       // it directly without our state.
+      return;
+    }
+
+    const existing = get(internalSidebarThread$);
+    if (existing?.threadId === threadId) {
+      // Already bootstrapped (e.g. main thread route changed but sidebar
+      // stayed put); nothing to do.
       return;
     }
 
@@ -102,6 +111,25 @@ export const openOrSwitchSidebarThread$ = command(
     set(internalSidebarThread$, thread);
 
     await set(setupChatThreadSignals$, thread, signal);
+  },
+);
+
+/**
+ * Click-handler entry point: open the sidebar at `threadId`, or close it if
+ * `threadId` is already the current sidebar thread.
+ */
+export const toggleSidebarThread$ = command(
+  async (
+    { get, set },
+    threadId: string,
+    parentSignal: AbortSignal,
+  ): Promise<void> => {
+    const currentSidebarThreadId = get(chatSidebarThreadId$);
+    if (currentSidebarThreadId === threadId) {
+      set(closeChatSidebar$);
+      return;
+    }
+    await set(openOrSwitchSidebarThread$, threadId, parentSignal);
   },
 );
 

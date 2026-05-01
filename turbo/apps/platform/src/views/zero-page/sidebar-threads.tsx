@@ -53,7 +53,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   chatSidebarThreadId$,
   navigateMainChatPreservingSidebar$,
-  openOrSwitchSidebarThread$,
+  toggleSidebarThread$,
 } from "../../signals/chat-page/chat-sidebar.ts";
 import {
   createNewChatThreadOptimistically$,
@@ -158,7 +158,7 @@ function handleChatThreadClick(
     closeSidebarOnSelect,
     isHighlighted,
     navigateMainChatPreservingSidebar,
-    openOrSwitchSidebarThread,
+    toggleSidebarThread,
     pageSignal,
     threadId,
   }: {
@@ -166,7 +166,7 @@ function handleChatThreadClick(
     closeSidebarOnSelect: () => void;
     isHighlighted: boolean;
     navigateMainChatPreservingSidebar: (threadId: string) => void;
-    openOrSwitchSidebarThread: (
+    toggleSidebarThread: (
       threadId: string,
       signal: AbortSignal,
     ) => Promise<void>;
@@ -177,9 +177,9 @@ function handleChatThreadClick(
   if (e.altKey && canOpenSidebar) {
     e.preventDefault();
     detach(
-      openOrSwitchSidebarThread(threadId, pageSignal),
+      toggleSidebarThread(threadId, pageSignal),
       Reason.DomCallback,
-      "openOrSwitchSidebarThread",
+      "toggleSidebarThread",
     );
     if (!isHighlighted) {
       closeSidebarOnSelect();
@@ -394,7 +394,7 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
   const sidebarThreadId = useGet(chatSidebarThreadId$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
-  const openOrSwitchSidebarThread = useSet(openOrSwitchSidebarThread$);
+  const toggleSidebarThread = useSet(toggleSidebarThread$);
   const navigateMainChatPreservingSidebar = useSet(
     navigateMainChatPreservingSidebar$,
   );
@@ -438,7 +438,7 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
             closeSidebarOnSelect,
             isHighlighted,
             navigateMainChatPreservingSidebar,
-            openOrSwitchSidebarThread,
+            toggleSidebarThread,
             pageSignal,
             threadId: session.id,
           });
