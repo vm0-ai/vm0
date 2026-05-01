@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.6](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.5...guest-download-v0.20.6) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
 ## [0.20.5](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.4...guest-download-v0.20.5) (2026-04-29)
 
 

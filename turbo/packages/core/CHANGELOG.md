@@ -1,5 +1,18 @@
 # Changelog
 
+## [8.253.0](https://github.com/vm0-ai/vm0/compare/core-v8.252.0...core-v8.253.0) (2026-05-01)
+
+
+### Features
+
+* enable idb message cache for staff org ([#11659](https://github.com/vm0-ai/vm0/issues/11659)) ([92280b2](https://github.com/vm0-ai/vm0/commit/92280b297b15a9f01c66c2bfbdd516142f56a3cf))
+
+
+### Refactoring
+
+* drive chat thread panes via load commands; fix idb cache ([#11670](https://github.com/vm0-ai/vm0/issues/11670)) ([adcacaf](https://github.com/vm0-ai/vm0/commit/adcacaf89afc76bc90bfaf038af1e80d002dff01))
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
 ## [8.252.0](https://github.com/vm0-ai/vm0/compare/core-v8.251.0...core-v8.252.0) (2026-05-01)
 
 

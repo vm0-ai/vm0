@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.13](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.12...guest-init-v0.16.13) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
 ## [0.16.12](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.11...guest-init-v0.16.12) (2026-04-27)
 
 ## [0.16.11](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.10...guest-init-v0.16.11) (2026-04-25)
