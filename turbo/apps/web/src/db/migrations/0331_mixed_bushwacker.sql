@@ -1,0 +1,2 @@
+ALTER TABLE "chat_threads" ADD COLUMN "pinned_at" timestamp;--> statement-breakpoint
+CREATE INDEX "idx_chat_threads_user_compose_pinned" ON "chat_threads" USING btree ("user_id","agent_compose_id") WHERE "chat_threads"."pinned_at" IS NOT NULL;

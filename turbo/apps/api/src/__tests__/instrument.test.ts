@@ -48,7 +48,7 @@ describe("instrument", () => {
         "SENTRY_DSN",
         "https://examplePublicKey@o0.ingest.sentry.io/0",
       );
-      envModule.mockEnv("SENTRY_ENV", "production");
+      envModule.mockEnv("ENV", "production");
       envModule.mockEnv("GIT_COMMIT_SHA", "abc123");
     });
 

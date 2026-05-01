@@ -119,7 +119,7 @@ runs:
           app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
           api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
           axiom_dataset_suffix="prod"
-          sentry_env="production"
+          deploy_env="production"
           runner_default_group="vm0/production"
           concurrent_run_limit_cap="10"
           slack_redirect_base_url="$(repo_var SLACK_REDIRECT_BASE_URL)"
@@ -130,7 +130,7 @@ runs:
           app_url="$INPUT_APP_URL"
           api_url="$INPUT_API_URL"
           axiom_dataset_suffix="dev"
-          sentry_env="preview"
+          deploy_env="preview"
           runner_default_group="vm0/development-${INPUT_JOB_REF}"
           concurrent_run_limit_cap="0"
           slack_redirect_base_url="$INPUT_WEB_URL"
@@ -141,7 +141,7 @@ runs:
         add_env VM0_API_URL "$api_url"
         if [[ "$INPUT_APP" == "api" ]]; then
           add_env VM0_WEB_URL "$web_url"
-          add_env SENTRY_ENV "$sentry_env"
+          add_env ENV "$deploy_env"
         fi
         # Inject the workflow head commit explicitly so OTel / Sentry can tag
         # service.version and release on every deploy. Vercel CLI prebuilt

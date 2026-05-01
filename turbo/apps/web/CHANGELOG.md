@@ -1,5 +1,63 @@
 # Changelog
 
+## [12.330.1](https://github.com/vm0-ai/vm0/compare/web-v12.330.0...web-v12.330.1) (2026-05-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.252.0
+
+## [12.330.0](https://github.com/vm0-ai/vm0/compare/web-v12.329.1...web-v12.330.0) (2026-05-01)
+
+
+### Features
+
+* **zero:** add chat thread rename behind ChatThreadRename feature switch ([#11648](https://github.com/vm0-ai/vm0/issues/11648)) ([bf4abcc](https://github.com/vm0-ai/vm0/commit/bf4abcc6fe9a8459dd008a7500577018c6ee7fac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.251.0
+
+## [12.329.1](https://github.com/vm0-ai/vm0/compare/web-v12.329.0...web-v12.329.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* remove permissive auth probe default to eliminate shadow mismatches ([#11646](https://github.com/vm0-ai/vm0/issues/11646)) ([3a49158](https://github.com/vm0-ai/vm0/commit/3a491586c1242f81590eadf5a46b2dc5a3d8cbe6))
+
+## [12.329.0](https://github.com/vm0-ai/vm0/compare/web-v12.328.0...web-v12.329.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** pin chat threads in platform sidebar ([#11636](https://github.com/vm0-ai/vm0/issues/11636)) ([7190949](https://github.com/vm0-ai/vm0/commit/719094992e2a7e13f1086b2bd8b5219759ac8c86))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.250.0
+
+## [12.328.0](https://github.com/vm0-ai/vm0/compare/web-v12.327.0...web-v12.328.0) (2026-04-30)
+
+
+### Features
+
+* **api:** add cors middleware for cross-origin browser access ([#11633](https://github.com/vm0-ai/vm0/issues/11633)) ([ca50728](https://github.com/vm0-ai/vm0/commit/ca50728186ca1d0619d41bf29f357bf62bde1ab3))
+
+
+### Bug Fixes
+
+* add missing display flex to nav-center CSS ([#11626](https://github.com/vm0-ai/vm0/issues/11626)) ([50057bb](https://github.com/vm0-ai/vm0/commit/50057bbe033d772b64c7a734cf507bd6293168eb))
+* respect dark mode in rankings table background ([#11628](https://github.com/vm0-ai/vm0/issues/11628)) ([fee3c9a](https://github.com/vm0-ai/vm0/commit/fee3c9a844b96cf3a2703c176e1304a739d75f5d))
+* stabilize landing nav dropdown clicks ([#11625](https://github.com/vm0-ai/vm0/issues/11625)) ([17f92ca](https://github.com/vm0-ai/vm0/commit/17f92ca2ac9b2bb3265a2c0e7b30c66fdbdd03b1))
+
 ## [12.327.0](https://github.com/vm0-ai/vm0/compare/web-v12.326.0...web-v12.327.0) (2026-04-30)
 
 

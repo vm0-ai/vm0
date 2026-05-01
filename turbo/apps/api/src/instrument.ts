@@ -39,7 +39,7 @@ function setupSentry() {
 
   init({
     dsn,
-    environment: env("SENTRY_ENV"),
+    environment: env("ENV"),
     initialScope: {
       tags: {
         app: "api",

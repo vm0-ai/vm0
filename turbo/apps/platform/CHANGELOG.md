@@ -1,5 +1,66 @@
 # Changelog
 
+## [0.321.0](https://github.com/vm0-ai/vm0/compare/app-v0.320.0...app-v0.321.0) (2026-05-01)
+
+
+### Features
+
+* add IndexedDB message cache behind idbMessage feature switch ([#11647](https://github.com/vm0-ai/vm0/issues/11647)) ([d53d15b](https://github.com/vm0-ai/vm0/commit/d53d15b36d01a9354b2ab990e4ac3d56bf325314))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.252.0
+
+## [0.320.0](https://github.com/vm0-ai/vm0/compare/app-v0.319.1...app-v0.320.0) (2026-05-01)
+
+
+### Features
+
+* **zero:** add chat thread rename behind ChatThreadRename feature switch ([#11648](https://github.com/vm0-ai/vm0/issues/11648)) ([bf4abcc](https://github.com/vm0-ai/vm0/commit/bf4abcc6fe9a8459dd008a7500577018c6ee7fac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.251.0
+
+## [0.319.1](https://github.com/vm0-ai/vm0/compare/app-v0.319.0...app-v0.319.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* remove permissive auth probe default to eliminate shadow mismatches ([#11646](https://github.com/vm0-ai/vm0/issues/11646)) ([3a49158](https://github.com/vm0-ai/vm0/commit/3a491586c1242f81590eadf5a46b2dc5a3d8cbe6))
+
+## [0.319.0](https://github.com/vm0-ai/vm0/compare/app-v0.318.0...app-v0.319.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** pin chat threads in platform sidebar ([#11636](https://github.com/vm0-ai/vm0/issues/11636)) ([7190949](https://github.com/vm0-ai/vm0/commit/719094992e2a7e13f1086b2bd8b5219759ac8c86))
+
+
+### Refactoring
+
+* collapse LocalChatThreadSnapshot into polymorphic ChatThreadDataSource ([#11637](https://github.com/vm0-ai/vm0/issues/11637)) ([d590af1](https://github.com/vm0-ai/vm0/commit/d590af152f9f75c6cab2708d3721ad3d2319cdf2)), closes [#11632](https://github.com/vm0-ai/vm0/issues/11632)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.250.0
+
+## [0.318.0](https://github.com/vm0-ai/vm0/compare/app-v0.317.0...app-v0.318.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** soft chat style for cancelled runs ([#11622](https://github.com/vm0-ai/vm0/issues/11622)) ([cf0cd29](https://github.com/vm0-ai/vm0/commit/cf0cd2973cf5aeede5d6145e7bdce7edbce87be2))
+
 ## [0.317.0](https://github.com/vm0-ai/vm0/compare/app-v0.316.1...app-v0.317.0) (2026-04-30)
 
 

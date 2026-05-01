@@ -222,6 +222,18 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
   },
+  [FeatureSwitchKey.ChatThreadPin]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace the sidebar's per-thread trash button with a kebab/pin menu that exposes Pin/Unpin and Delete. Pinned threads sort to the top of the agent's chat list. Mobile shows the menu trigger always; desktop shows it on hover.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ChatThreadRename]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
+    enabled: false,
+  },
   [FeatureSwitchKey.FreshdeskConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Freshdesk helpdesk connector",
@@ -294,6 +306,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "When off, the openai-api-key tile is hidden in the add-provider " +
       "dialog and POST /api/zero/model-providers with type=openai-api-key " +
       "returns 404. Staff-only during rollout; per-user toggle via Lab.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.IdbMessage]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Cache chat thread messages in IndexedDB for instant cold open. " +
+      "When off, every thread open fetches messages from the server.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

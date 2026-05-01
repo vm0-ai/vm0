@@ -344,4 +344,69 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
     });
   });
+
+  describe("cors", () => {
+    it("echoes allowed cross-origin on registered route responses", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://app.vm0.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://app.vm0.ai",
+      );
+      expect(response.headers.get("access-control-allow-credentials")).toBe(
+        "true",
+      );
+    });
+
+    it("answers preflight without invoking the route handler", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/zero/org", {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://app.vm0.ai",
+          "access-control-request-method": "GET",
+          "access-control-request-headers": "authorization",
+        },
+      });
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://app.vm0.ai",
+      );
+      expect(response.headers.get("access-control-allow-methods")).toContain(
+        "GET",
+      );
+    });
+
+    it("rejects disallowed origins by omitting the allow-origin header", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://evil.example.com" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
+    it("allows *.vm7.ai over http only in development", async () => {
+      mockEnv("ENV", "development");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://app.vm7.ai:8443" },
+      });
+
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://app.vm7.ai:8443",
+      );
+    });
+  });
 });

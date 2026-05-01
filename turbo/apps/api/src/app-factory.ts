@@ -10,6 +10,7 @@ import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import { request as undiciRequest, type Dispatcher } from "undici";
 
+import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
 import { logger } from "./lib/log";
 import { honoSignalHandler } from "./signals/context/route";
@@ -171,6 +172,11 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
   // `http.route` for direct slicing without trace_id joins.
   app.use("*", httpInstrumentationMiddleware({ serviceName: "vm0-api" }));
   app.use("*", httpRouteBaggage);
+  // Browser cross-origin requests (e.g. https://app.vm0.ai → api.vm0.ai). Must
+  // run before the route handlers so OPTIONS preflight short-circuits without
+  // matching a registered method, and so registered route responses receive
+  // Access-Control-Allow-Origin without relying on the legacy web proxy.
+  app.use("*", corsMiddleware);
 
   for (const { route, handler } of routes) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));

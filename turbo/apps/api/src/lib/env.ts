@@ -12,7 +12,7 @@ const SCHEMA = {
   OPENAI_API_KEY: z.string().min(1),
   SENTRY_DSN: z.url().optional(),
   GIT_COMMIT_SHA: z.string(),
-  SENTRY_ENV: z.enum(["production", "preview", "development"]),
+  ENV: z.enum(["production", "preview", "development"]),
   VITEST: z.enum(["true", "false"]).default("false"),
   VM0_DEBUG: z.string().default(""),
   VM0_API_URL: z.url(),

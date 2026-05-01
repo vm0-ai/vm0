@@ -90,6 +90,7 @@ const router = tsr.router(chatThreadByIdContract, {
           draftAttachments: thread.draftAttachments,
           modelProviderId: thread.modelProviderId,
           selectedModel: thread.selectedModel,
+          renamedAt: thread.renamedAt ? thread.renamedAt.toISOString() : null,
         },
       };
     } catch (error) {

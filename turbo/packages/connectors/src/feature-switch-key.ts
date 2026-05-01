@@ -41,6 +41,8 @@ export enum FeatureSwitchKey {
 
   ChatManualHistory = "chatManualHistory",
   ChatMessageStartButton = "chatMessageStartButton",
+  ChatThreadPin = "chatThreadPin",
+  ChatThreadRename = "chatThreadRename",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
@@ -53,4 +55,5 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   GumroadConnector = "gumroadConnector",
   CodexBeta = "codexBeta",
+  IdbMessage = "idbMessage",
 }
