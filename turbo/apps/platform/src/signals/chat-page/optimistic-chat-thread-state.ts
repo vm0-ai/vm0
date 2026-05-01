@@ -18,6 +18,7 @@ interface OptimisticChatThreads {
   sidebar: PendingChatThread | null;
 }
 
+// eslint-disable-next-line ccstate/no-export-state -- shared with optimistic-chat-thread-page.ts, internal is the intent
 export const internalOptimisticChatThreads$ = state<OptimisticChatThreads>({
   main: null,
   sidebar: null,

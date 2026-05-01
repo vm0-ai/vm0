@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   chatMessagesContract,
@@ -25,16 +25,13 @@ import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 import {
   clearMatchingOptimisticChatThread$,
   internalOptimisticChatThreads$,
+  optimisticChatThread$,
   type OptimisticChatPane,
   type PendingChatThread,
 } from "./optimistic-chat-thread-state.ts";
 
 export type { OptimisticChatPane, PendingChatThread };
-export {
-  clearMatchingOptimisticChatThread$,
-  optimisticChatThread$,
-  sidebarOptimisticChatThread$,
-};
+export { optimisticChatThread$ };
 
 const SIDEBAR_PARAM = "sidebar";
 

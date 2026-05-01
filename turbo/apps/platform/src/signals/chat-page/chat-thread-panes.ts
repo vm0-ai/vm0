@@ -100,13 +100,13 @@ const resolvePaneThread$ = command(
     args: {
       spec: PaneSpec;
       threadId: string;
-      signal: AbortSignal;
       thread: ReturnType<typeof createChatThreadSignals>;
       isNew: boolean;
       matchingOptimistic: PendingChatThread | null;
     },
+    signal: AbortSignal,
   ): Promise<void> => {
-    const { spec, threadId, signal, thread, isNew, matchingOptimistic } = args;
+    const { spec, threadId, thread, isNew, matchingOptimistic } = args;
 
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
@@ -232,14 +232,17 @@ const setupPaneThread$ = command(
       signal.throwIfAborted();
     }
 
-    await set(resolvePaneThread$, {
-      spec,
-      threadId,
+    await set(
+      resolvePaneThread$,
+      {
+        spec,
+        threadId,
+        thread,
+        isNew,
+        matchingOptimistic,
+      },
       signal,
-      thread,
-      isNew,
-      matchingOptimistic,
-    });
+    );
   },
 );
 

@@ -98,31 +98,28 @@ describe("chat skeleton on switch", () => {
     let initialFetchCount = 0;
 
     server.use(
-      mockApi(
-        chatThreadMessagesContract.list,
-        async ({ params, query, respond }) => {
-          if (query.sinceId) {
-            return respond(200, { messages: [] });
-          }
-          initialFetchCount++;
-          return respond(200, {
-            messages: [
-              {
-                id: `msg-${params.threadId}-1`,
-                role: "user" as const,
-                content: `Question for ${params.threadId}`,
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                id: `msg-${params.threadId}-2`,
-                role: "assistant" as const,
-                content: `Answer for ${params.threadId}`,
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
-          });
-        },
-      ),
+      mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        initialFetchCount++;
+        return respond(200, {
+          messages: [
+            {
+              id: `msg-${params.threadId}-1`,
+              role: "user" as const,
+              content: `Question for ${params.threadId}`,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: `msg-${params.threadId}-2`,
+              role: "assistant" as const,
+              content: `Answer for ${params.threadId}`,
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+        });
+      }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         return respond(200, {
           id: params.id,
