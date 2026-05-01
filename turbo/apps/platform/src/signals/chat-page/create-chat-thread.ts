@@ -623,12 +623,7 @@ function createAppendDelta(deltaMessages$: DeltaMessages$) {
   });
 }
 
-function createInitialPage$(dataSource: ChatThreadDataSource) {
-  // Delegates straight to the dataSource. We intentionally do NOT gate this
-  // behind threadData$ so the messages fetch races chat-threads/:id rather
-  // than waiting for it. The remote initialPage$ resolves a 404 to an empty
-  // page so the rare missing-thread case still terminates cleanly; the
-  // pane setup catches that via threadData$ being null and routes home.
+function createInitialPage(dataSource: ChatThreadDataSource) {
   return dataSource.initialPage$;
 }
 
@@ -639,7 +634,7 @@ function createPagedMessages(
 ) {
   const loadedHistoryHasMore$ = state<boolean | null>(null);
   const historyMessages$ = state<PagedChatMessage[]>([]);
-  const initialPage$ = createInitialPage$(dataSource);
+  const initialPage$ = createInitialPage(dataSource);
 
   const deltaMessages$ = state<PagedChatMessage[]>([]);
   const appendDeltaMessages$ = createAppendDelta(deltaMessages$);
@@ -681,12 +676,6 @@ function createPagedMessages(
   });
 
   const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const thread = await get(threadData$);
-    signal.throwIfAborted();
-    if (!thread) {
-      return true;
-    }
-
     const sinceId = await get(latestChatMessageId$);
     signal.throwIfAborted();
     const result = await set(

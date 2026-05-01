@@ -74,7 +74,7 @@ describe("idb-thread-agent-store", () => {
 
   it("coexists with the chat_messages store under the same DB", async () => {
     const stores = createIdbMessageStores(USER + "-coexist", ORG);
-    await stores.writeStore$.upsertMessages("thread-coexist", [
+    await stores.writeStore.upsertMessages("thread-coexist", [
       {
         id: "m1",
         role: "user",
@@ -89,7 +89,7 @@ describe("idb-thread-agent-store", () => {
       "agent-coexist",
     );
 
-    const messages = await stores.readStore$.readLatest("thread-coexist", 10);
+    const messages = await stores.readStore.readLatest("thread-coexist", 10);
     expect(messages).toHaveLength(1);
     expect(messages[0]?.id).toBe("m1");
 

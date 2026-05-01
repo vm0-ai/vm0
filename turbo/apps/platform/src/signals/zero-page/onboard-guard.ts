@@ -29,9 +29,6 @@ export const onboardGuard$ = command(
       return false;
     }
 
-    // If the backend couldn't resolve the org (deleted / stale JWT) but the
-    // user still has memberships in other orgs, send them to org selection
-    // instead of onboarding.
     const status = await get(zeroOnboardingStatus$);
     signal.throwIfAborted();
     if (!status.hasOrg) {

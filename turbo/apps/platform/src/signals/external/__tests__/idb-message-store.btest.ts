@@ -22,7 +22,8 @@ const ORG = "test-org";
 
 describe("idb-message-store", () => {
   it("upserts and reads latest messages", async () => {
-    const { readStore$, writeStore$ } = createIdbMessageStores(USER, ORG);
+    const { readStore: readStore$, writeStore: writeStore$ } =
+      createIdbMessageStores(USER, ORG);
     const writeStore = writeStore$;
     const readStore = readStore$;
 
@@ -38,10 +39,8 @@ describe("idb-message-store", () => {
   });
 
   it("readLatest respects limit", async () => {
-    const { readStore$, writeStore$ } = createIdbMessageStores(
-      USER + "-limit",
-      ORG,
-    );
+    const { readStore: readStore$, writeStore: writeStore$ } =
+      createIdbMessageStores(USER + "-limit", ORG);
     const writeStore = writeStore$;
     const readStore = readStore$;
 
@@ -59,10 +58,8 @@ describe("idb-message-store", () => {
   });
 
   it("readBefore paginates before an anchor", async () => {
-    const { readStore$, writeStore$ } = createIdbMessageStores(
-      USER + "-before",
-      ORG,
-    );
+    const { readStore: readStore$, writeStore: writeStore$ } =
+      createIdbMessageStores(USER + "-before", ORG);
     const writeStore = writeStore$;
     const readStore = readStore$;
 
@@ -82,10 +79,8 @@ describe("idb-message-store", () => {
   });
 
   it("readBefore skips anchor row when messages share createdAt", async () => {
-    const { readStore$, writeStore$ } = createIdbMessageStores(
-      USER + "-same-time",
-      ORG,
-    );
+    const { readStore: readStore$, writeStore: writeStore$ } =
+      createIdbMessageStores(USER + "-same-time", ORG);
     const writeStore = writeStore$;
     const readStore = readStore$;
 
@@ -103,10 +98,8 @@ describe("idb-message-store", () => {
   });
 
   it("rejects invalid data from IDB", async () => {
-    const { readStore$, writeStore$ } = createIdbMessageStores(
-      USER + "-invalid",
-      ORG,
-    );
+    const { readStore: readStore$, writeStore: writeStore$ } =
+      createIdbMessageStores(USER + "-invalid", ORG);
     const writeStore = writeStore$;
 
     // Initialize the DB with a valid write first so the store exists
@@ -136,15 +129,15 @@ describe("idb-message-store", () => {
     const storesA = createIdbMessageStores("user-a", "org-a");
     const storesB = createIdbMessageStores("user-b", "org-b");
 
-    await storesA.writeStore$.upsertMessages(THREAD, [
+    await storesA.writeStore.upsertMessages(THREAD, [
       makeMsg("da1", THREAD, "2026-04-01T00:00:00Z"),
     ]);
-    await storesB.writeStore$.upsertMessages(THREAD, [
+    await storesB.writeStore.upsertMessages(THREAD, [
       makeMsg("db1", THREAD, "2026-04-01T00:00:00Z"),
     ]);
 
-    const msgsA = await storesA.readStore$.readLatest(THREAD, 10);
-    const msgsB = await storesB.readStore$.readLatest(THREAD, 10);
+    const msgsA = await storesA.readStore.readLatest(THREAD, 10);
+    const msgsB = await storesB.readStore.readLatest(THREAD, 10);
 
     expect(msgsA).toHaveLength(1);
     expect(msgsA[0].id).toBe("da1");

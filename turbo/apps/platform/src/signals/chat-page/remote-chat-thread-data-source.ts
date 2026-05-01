@@ -213,10 +213,8 @@ export function createRemoteChatThreadDataSource(
     const result = await accept(
       client.list({ params: { threadId }, query: { limit: 50 } }),
       [200, 404],
-      { toast: false },
     );
     if (result.status === 404) {
-      // Thread does not exist (or the caller lost access). The pane setup
       // detects this via threadData$ being null and routes home; returning
       // an empty page keeps the messages stream from rejecting in parallel.
       return { messages: [], hasHistoryBefore: false };

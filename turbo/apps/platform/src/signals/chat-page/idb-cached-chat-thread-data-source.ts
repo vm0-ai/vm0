@@ -40,7 +40,7 @@ function createListMessagesBefore(
       }
 
       const stores = getStores(userId, orgId);
-      const readStore = stores.readStore$;
+      const readStore = stores.readStore;
       const cached = await readStore.readBefore(tid, beforeId, 50, signal);
 
       if (cached.length > 0) {
@@ -59,7 +59,7 @@ function createListMessagesBefore(
         signal,
       );
 
-      const writeStore = stores.writeStore$;
+      const writeStore = stores.writeStore;
       await writeStore.upsertMessages(tid, result.messages, signal);
       L.debug("listBefore:cacheFilled", {
         threadId: tid,
@@ -95,7 +95,7 @@ function createListMessagesAfter(
 
       if (userId && orgId && result.messages.length > 0) {
         const stores = getStores(userId, orgId);
-        const writeStore = stores.writeStore$;
+        const writeStore = stores.writeStore;
         await writeStore.upsertMessages(tid, result.messages, signal);
         L.debug("listAfter:cacheFilled", {
           threadId: tid,
@@ -181,7 +181,7 @@ export function createIdbCachedDataSource(
     }
 
     const stores = getStores(userId, orgId);
-    const readStore = stores.readStore$;
+    const readStore = stores.readStore;
     const cached = await readStore.readLatest(threadId, 50);
 
     if (cached.length > 0) {
@@ -193,7 +193,7 @@ export function createIdbCachedDataSource(
     L.debug("initialPage:cacheMiss", { threadId });
     cacheFlags.current = false;
     const page = await get(remote.initialPage$);
-    const writeStore = stores.writeStore$;
+    const writeStore = stores.writeStore;
     await writeStore.upsertMessages(threadId, page.messages);
     L.debug("initialPage:cacheFilled", {
       threadId,

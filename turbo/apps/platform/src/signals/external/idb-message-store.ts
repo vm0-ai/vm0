@@ -145,8 +145,8 @@ function createIdbMessageStores(userId: string, orgId: string) {
   };
 
   return Object.freeze({
-    readStore$: readStore,
-    writeStore$: writeStore,
+    readStore,
+    writeStore,
   });
 }
 

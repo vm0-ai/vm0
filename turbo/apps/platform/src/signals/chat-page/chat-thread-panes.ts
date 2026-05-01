@@ -73,23 +73,13 @@ interface PaneSpec {
   resetSetupSignal$: ReturnType<typeof resetSignal>;
 }
 
-/**
- * Second half of pane thread setup — called after the threadData$ resolves.
- * Owns: draft seeding, message page warm-up, optimistic swap, and the inner
- * setup loops. Extracted to keep cyclomatic complexity under the lint cap.
- */
-const resolvePaneThread$ = command(
+const loadDraft$ = command(
   async (
     { get, set },
-    args: {
-      spec: PaneSpec;
-      thread: ReturnType<typeof createChatThreadSignals>;
-      isNew: boolean;
-      matchingOptimistic: PendingChatThread | null;
-    },
+    thread: ChatThreadSignals,
+    isNew: boolean,
     signal: AbortSignal,
-  ): Promise<void> => {
-    const { spec, thread, isNew, matchingOptimistic } = args;
+  ) => {
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
 
@@ -111,6 +101,25 @@ const resolvePaneThread$ = command(
         restoredAttachments,
       );
     }
+  },
+);
+/**
+ * Second half of pane thread setup — called after the threadData$ resolves.
+ * Owns: draft seeding, message page warm-up, optimistic swap, and the inner
+ * setup loops. Extracted to keep cyclomatic complexity under the lint cap.
+ */
+const resolvePaneThread$ = command(
+  async (
+    { set },
+    args: {
+      spec: PaneSpec;
+      thread: ReturnType<typeof createChatThreadSignals>;
+      isNew: boolean;
+      matchingOptimistic: PendingChatThread | null;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const { spec, thread, isNew, matchingOptimistic } = args;
 
     if (matchingOptimistic) {
       await thread.groupedChatMessages$;
@@ -121,6 +130,7 @@ const resolvePaneThread$ = command(
     }
 
     await Promise.all([
+      set(loadDraft$, thread, isNew, signal),
       set(setupChatThreadInitScroll$, thread, signal),
       set(thread.runPhraseLoop$, signal),
       set(thread.subscribeChatThread$, signal),
