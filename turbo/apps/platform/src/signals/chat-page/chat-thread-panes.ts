@@ -109,13 +109,38 @@ const resolvePaneThread$ = command(
   ): Promise<void> => {
     const { spec, threadId, thread, isNew, matchingOptimistic } = args;
 
+    // Fire all three thread-load requests in parallel:
+    //   - chat-threads/:id           (via threadData$)
+    //   - messages initial page      (via groupedChatMessages$ → initialPage$)
+    //   - messages catch-up + Ably   (via loadPagedMessages$)
+    // None of these depend on each other any more, so triggering them up
+    // front lets them race rather than cascade.
+    //
+    // loadPagedMessages$ owns a forever-running Ably subscription that only
+    // resolves when the parent signal aborts. We hand it to the final
+    // Promise.all (or the missing-path drain below) so its rejection is
+    // observed there rather than left floating.
+    const groupedPromise = get(thread.groupedChatMessages$);
+    const loadPagedPromise = set(thread.loadPagedMessages$, signal);
+
     const threadData = await get(thread.threadData$);
-    signal.throwIfAborted();
+    if (signal.aborted) {
+      // Drain in-flight pipelines so their abort surfaces here rather than
+      // floating, then propagate.
+      await Promise.all([groupedPromise, loadPagedPromise]);
+      signal.throwIfAborted();
+    }
+
     if (!threadData) {
       if (matchingOptimistic) {
         set(clearMatchingOptimisticChatThread$, matchingOptimistic);
       }
       set(spec.onMissing$);
+      // spec.onMissing$ navigates away, which aborts the parent signal.
+      // Drain both pipelines so the AbortError propagates through this
+      // command rather than being left as an unhandled rejection.
+      await Promise.all([groupedPromise, loadPagedPromise]);
+      signal.throwIfAborted();
       return;
     }
 
@@ -146,17 +171,23 @@ const resolvePaneThread$ = command(
       );
     }
 
-    await get(thread.groupedChatMessages$);
-    signal.throwIfAborted();
-
     if (matchingOptimistic) {
+      // Optimistic swap needs the initial page rendered before swapping the
+      // pane, otherwise the user sees a flash of empty thread.
+      await groupedPromise;
+      signal.throwIfAborted();
       set(thread.hideSkeleton$);
       set(spec.setPaneThread$, thread);
       set(clearMatchingOptimisticChatThread$, matchingOptimistic);
     }
 
     const tasks: Promise<unknown>[] = [
+      // Non-optimistic path waits on initial messages alongside the rest.
+      // Optimistic path already awaited groupedPromise above; including it
+      // again is free (resolved) and keeps the single drain point.
+      groupedPromise,
       set(setupChatThreadSignals$, thread, signal),
+      loadPagedPromise,
     ];
 
     if (spec.subscribeAblyTitleUpdates) {
