@@ -28,7 +28,7 @@ function isCacheableAssetResponse(response) {
   );
 }
 
-self.addEventListener("install", (event) => {
+self.addEventListener("install", (_event) => {
   self.skipWaiting();
 });
 

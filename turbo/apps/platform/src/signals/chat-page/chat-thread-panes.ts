@@ -31,8 +31,8 @@ import { setupChatThreadSignals$ } from "./setup-chat-thread-signals.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
 
-const internalLeftThread$ = state<ChatThreadSignals | null>(null);
-const internalRightThread$ = state<ChatThreadSignals | null>(null);
+export const internalLeftThread$ = state<ChatThreadSignals | null>(null);
+export const internalRightThread$ = state<ChatThreadSignals | null>(null);
 
 export const currentLeftThread$ = computed((get): ChatThreadSignals | null => {
   return get(internalLeftThread$);

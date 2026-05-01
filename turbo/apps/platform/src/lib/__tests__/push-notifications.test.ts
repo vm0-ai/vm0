@@ -16,7 +16,7 @@ const { setEnabled, getEnabled } = vi.hoisted(() => {
 vi.mock("../../signals/external/feature-switch.ts", async () => {
   const { computed } = await import("ccstate");
   return {
-    pwaOfflineCacheEnabled$: computed(async () => {
+    pwaOfflineCacheEnabled$: computed(() => {
       return getEnabled();
     }),
   };

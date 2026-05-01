@@ -19,6 +19,7 @@ import {
   searchParams$,
   updateSearchParams$,
 } from "../route.ts";
+import { internalLeftThread$, internalRightThread$ } from "./chat-thread-panes.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
@@ -102,6 +103,8 @@ const routeSidebarOptimisticChatThread$ = command(
     if (!get(currentChatThreadId$)) {
       return;
     }
+
+    set(internalRightThread$, pending.pendingThread);
 
     const next = new URLSearchParams(get(searchParams$));
     next.set(SIDEBAR_PARAM, pending.threadId);

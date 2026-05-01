@@ -410,11 +410,7 @@ function ChatThreadSideDecorator({
   );
 }
 
-function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
-  // Highlight / pane indicator are driven by the URL so they update
-  // synchronously on click; load* commands update state on a microtask
-  // (and may await idbMessageEnabled$ on cold start), which would lag the
-  // selected highlight noticeably.
+function useChatThreadItemState(session: ChatThreadListItem) {
   const pathParams = useGet(pathParams$);
   const searchParams = useGet(searchParams$);
   const urlMainThreadId =
@@ -423,8 +419,6 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   const urlSidebarThreadId =
     sidebarParam && sidebarParam !== urlMainThreadId ? sidebarParam : null;
 
-  // Click-handler decisions use the rendered state — they need to know what
-  // is actually loaded, not just what the URL claims.
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const currentLeftId = leftThread?.threadId ?? null;
@@ -438,6 +432,7 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   const features = useLastResolved(featureSwitch$);
   const pinEnabled = features?.[FeatureSwitchKey.ChatThreadPin] ?? false;
   const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
+
   const isPinned =
     pinEnabled && session.pinnedAt !== null && session.pinnedAt !== undefined;
   const onChatPage = urlMainThreadId !== null;
@@ -448,61 +443,95 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
     sidebarThreadId: urlSidebarThreadId,
     threadId: session.id,
   });
-  const isRunning = session.running;
-  const isUnread = !session.isRead && !isHighlighted;
-  const hasDraft = (session.hasDraft ?? false) && !isHighlighted;
   const indicatorState = getIndicatorState({
-    hasDraft,
-    isRunning,
-    isUnread,
+    hasDraft: (session.hasDraft ?? false) && !isHighlighted,
+    isRunning: session.running,
+    isUnread: !session.isRead && !isHighlighted,
   });
 
-  function closeSidebarOnSelect() {
-    setSidebarExpanded(false);
-  }
+  return {
+    currentLeftId,
+    currentRightId,
+    isCurrentPage,
+    isHighlighted,
+    isPinned,
+    isUnread: !session.isRead && !isHighlighted,
+    loadLeftThread,
+    loadRightThread,
+    onChatPage,
+    pageSignal,
+    paneIndicator,
+    pinEnabled,
+    renameEnabled,
+    setSidebarExpanded,
+    unloadRightThread,
+    indicatorState,
+  } as const;
+}
+
+function ChatThreadItemLink({
+  session,
+  state,
+}: {
+  session: ChatThreadListItem;
+  state: ReturnType<typeof useChatThreadItemState>;
+}) {
+  const closeSidebarOnSelect = () => {
+    state.setSidebarExpanded(false);
+  };
+
+  return (
+    <Link
+      pathname="/chats/:threadId"
+      options={{ pathParams: { threadId: session.id } }}
+      aria-current={state.isCurrentPage ? "page" : undefined}
+      data-chat-thread-id={session.id}
+      onClick={(e) => {
+        handleChatThreadClick(e, {
+          closeSidebarOnSelect,
+          currentLeftId: state.currentLeftId,
+          currentRightId: state.currentRightId,
+          loadLeftThread: state.loadLeftThread,
+          loadRightThread: state.loadRightThread,
+          onChatPage: state.onChatPage,
+          pageSignal: state.pageSignal,
+          threadId: session.id,
+          unloadRightThread: state.unloadRightThread,
+        });
+      }}
+      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
+        state.isHighlighted
+          ? "bg-gray-200 text-gray-900 font-medium"
+          : state.isUnread
+            ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
+            : "text-sidebar-foreground hover:bg-sidebar-accent"
+      }`}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        {state.paneIndicator && (
+          <ChatThreadListPaneIcon pane={state.paneIndicator} />
+        )}
+        <span className="min-w-0 truncate">
+          {session.title ?? "New chat"}
+        </span>
+      </span>
+    </Link>
+  );
+}
+
+function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
+  const state = useChatThreadItemState(session);
 
   return (
     <div className="group relative">
-      <Link
-        pathname="/chats/:threadId"
-        options={{ pathParams: { threadId: session.id } }}
-        aria-current={isCurrentPage ? "page" : undefined}
-        data-chat-thread-id={session.id}
-        onClick={(e) => {
-          handleChatThreadClick(e, {
-            closeSidebarOnSelect,
-            currentLeftId,
-            currentRightId,
-            loadLeftThread,
-            loadRightThread,
-            onChatPage,
-            pageSignal,
-            threadId: session.id,
-            unloadRightThread,
-          });
-        }}
-        className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
-          isHighlighted
-            ? "bg-gray-200 text-gray-900 font-medium"
-            : isUnread
-              ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
-              : "text-sidebar-foreground hover:bg-sidebar-accent"
-        }`}
-      >
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          {paneIndicator && <ChatThreadListPaneIcon pane={paneIndicator} />}
-          <span className="min-w-0 truncate">
-            {session.title ?? "New chat"}
-          </span>
-        </span>
-      </Link>
+      <ChatThreadItemLink session={session} state={state} />
       <ChatThreadSideDecorator
         threadId={session.id}
-        isPinned={isPinned}
-        isHighlighted={isHighlighted}
-        pinEnabled={pinEnabled}
-        renameEnabled={renameEnabled}
-        indicatorState={indicatorState}
+        isPinned={state.isPinned}
+        isHighlighted={state.isHighlighted}
+        pinEnabled={state.pinEnabled}
+        renameEnabled={state.renameEnabled}
+        indicatorState={state.indicatorState}
       />
     </div>
   );
