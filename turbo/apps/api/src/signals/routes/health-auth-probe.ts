@@ -57,15 +57,6 @@ const probe$ = command(
       options.accept = query.accept.split(",") as AuthTokenType[];
     }
 
-    // Backward-compat: no params defaults to the old permissive behaviour
-    if (
-      !options.acceptAnySandboxCapability &&
-      !options.requiredCapability &&
-      !options.accept
-    ) {
-      options.acceptAnySandboxCapability = true;
-    }
-
     const result = await set(requiredAuthContext$, options, signal);
     if ("status" in result) {
       // PAT-only routes: rewrite 401 message to match requireApiKeyAuth phrasing

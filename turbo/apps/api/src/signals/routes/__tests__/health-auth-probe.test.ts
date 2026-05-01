@@ -555,7 +555,7 @@ describe("GET /health/auth", () => {
   });
 
   describe("Sandbox bearer", () => {
-    it("resolves a sandbox bearer token", async () => {
+    it("rejects a sandbox bearer token without capability opt-in", async () => {
       const token = signSandboxJwtForTests({
         scope: "sandbox",
         userId: "user_sandbox",
@@ -568,14 +568,11 @@ describe("GET /health/auth", () => {
       const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
-        [200],
+        [401],
       );
 
       expect(response.body).toStrictEqual({
-        tokenType: "sandbox",
-        userId: "user_sandbox",
-        orgId: "org_sandbox",
-        runId: "run_sandbox",
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
       });
     });
   });
@@ -597,7 +594,10 @@ describe("GET /health/auth", () => {
 
       const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
-        client.check({ headers: { authorization: `Bearer ${token}` } }),
+        client.check({
+          headers: { authorization: `Bearer ${token}` },
+          query: { acceptAnySandboxCapability: "true" },
+        }),
         [200],
       );
 
@@ -627,7 +627,10 @@ describe("GET /health/auth", () => {
 
       const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
-        client.check({ headers: { authorization: `Bearer ${token}` } }),
+        client.check({
+          headers: { authorization: `Bearer ${token}` },
+          query: { acceptAnySandboxCapability: "true" },
+        }),
         [200],
       );
 
@@ -660,7 +663,10 @@ describe("GET /health/auth", () => {
 
       const client = setupApp({ context })(healthAuthProbeContract);
       const response = await accept(
-        client.check({ headers: { authorization: `Bearer ${token}` } }),
+        client.check({
+          headers: { authorization: `Bearer ${token}` },
+          query: { acceptAnySandboxCapability: "true" },
+        }),
         [200],
       );
 
@@ -957,10 +963,11 @@ describe("GET /health/auth", () => {
     });
 
     // authRoute with no options — matches the default route auth pattern
-    // that most routes use. Zero tokens must still authenticate here.
+    // that most routes use. Zero tokens without capability opt-in are
+    // rejected, matching web's authenticateSandboxToken behavior.
     const noOptionRoute$ = authRoute({}, noOptionHandler$);
 
-    it("resolves a zero token on a route with no auth options", async () => {
+    it("rejects a zero token on a route with no auth options", async () => {
       const fixture = await seedPatFixture({ role: "admin" });
       fixtures.push(fixture);
       const nowSeconds = currentSecond();
@@ -983,16 +990,11 @@ describe("GET /health/auth", () => {
       })(noOptionContract);
       const response = await accept(
         client.check({ headers: { authorization: `Bearer ${token}` } }),
-        [200],
+        [401],
       );
 
       expect(response.body).toStrictEqual({
-        tokenType: "zero",
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        orgRole: "admin",
-        runId: "run_zero",
-        capabilities: ["file:read"],
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
       });
     });
   });
