@@ -478,7 +478,7 @@ mod tests {
 
         assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
         let pid = read_pid_file(pid_file).await;
-        assert_pid_exits(pid).await;
+        assert_pid_not_running(pid).await;
         assert!(!std::path::Path::new(marker).exists());
     }
 
@@ -505,7 +505,7 @@ mod tests {
 
         assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
         let pid = read_pid_file(pid_file).await;
-        assert_pid_exits(pid).await;
+        assert_pid_not_running(pid).await;
         assert!(!std::path::Path::new(marker).exists());
     }
 
@@ -532,7 +532,7 @@ mod tests {
 
         assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
         let pid = read_pid_file(pid_file).await;
-        assert_pid_exits(pid).await;
+        assert_pid_not_running(pid).await;
         assert!(!std::path::Path::new(marker).exists());
     }
 
@@ -567,7 +567,7 @@ mod tests {
         command.abort();
         let _ = command.await;
 
-        assert_pid_exits(pid).await;
+        assert_pid_not_running(pid).await;
         assert!(!std::path::Path::new(&marker).exists());
     }
 
@@ -591,19 +591,30 @@ mod tests {
         }
     }
 
-    async fn assert_pid_exits(pid: u32) {
+    async fn assert_pid_not_running(pid: u32) {
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-        while process_exists(pid) {
+        while process_is_running(pid) {
             assert!(
                 tokio::time::Instant::now() < deadline,
-                "process {pid} was not killed by command timeout"
+                "process {pid} was still running after command timeout"
             );
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }
 
-    #[cfg(unix)]
-    fn process_exists(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    fn process_is_running(pid: u32) -> bool {
+        let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+            return false;
+        };
+        let Some((_, after_comm)) = stat.rsplit_once(") ") else {
+            return false;
+        };
+        !after_comm.starts_with('Z')
+    }
+
+    #[cfg(all(unix, not(target_os = "linux")))]
+    fn process_is_running(pid: u32) -> bool {
         let pid = nix::unistd::Pid::from_raw(i32::try_from(pid).expect("pid fits in i32"));
         match nix::sys::signal::kill(pid, None) {
             Ok(()) => true,
@@ -613,7 +624,7 @@ mod tests {
     }
 
     #[cfg(not(unix))]
-    fn process_exists(_pid: u32) -> bool {
+    fn process_is_running(_pid: u32) -> bool {
         false
     }
 }
