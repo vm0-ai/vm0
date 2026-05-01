@@ -15,7 +15,8 @@ import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
-import { idbMessageEnabled$ } from "../external/feature-switch.ts";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import {
@@ -43,9 +44,7 @@ export const setupChatPage$ = command(
     }
 
     const { draft, isNew } = set(ensureDraft$, threadId);
-    const idbMessageEnabled = await get(idbMessageEnabled$);
-    signal.throwIfAborted();
-    const dataSource = idbMessageEnabled
+    const dataSource = isFeatureEnabled(FeatureSwitchKey.IdbMessage)
       ? createIdbCachedDataSource(threadId)
       : createRemoteChatThreadDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
