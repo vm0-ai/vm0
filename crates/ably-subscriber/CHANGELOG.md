@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.3...ably-subscriber-v0.7.4) (2026-05-01)
+
+
+### Bug Fixes
+
+* harden ably disconnect handling ([#11656](https://github.com/vm0-ai/vm0/issues/11656)) ([c0c50d8](https://github.com/vm0-ai/vm0/commit/c0c50d88154f7ad74af791fc2df9e5a8db609418))
+
 ## [0.7.3](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.2...ably-subscriber-v0.7.3) (2026-04-22)
 
 

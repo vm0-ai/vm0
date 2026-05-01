@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.252.0](https://github.com/vm0-ai/vm0/compare/core-v8.251.0...core-v8.252.0) (2026-05-01)
+
+
+### Features
+
+* add IndexedDB message cache behind idbMessage feature switch ([#11647](https://github.com/vm0-ai/vm0/issues/11647)) ([d53d15b](https://github.com/vm0-ai/vm0/commit/d53d15b36d01a9354b2ab990e4ac3d56bf325314))
+
 ## [8.251.0](https://github.com/vm0-ai/vm0/compare/core-v8.250.0...core-v8.251.0) (2026-05-01)
 
 

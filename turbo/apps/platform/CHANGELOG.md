@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.321.0](https://github.com/vm0-ai/vm0/compare/app-v0.320.0...app-v0.321.0) (2026-05-01)
+
+
+### Features
+
+* add IndexedDB message cache behind idbMessage feature switch ([#11647](https://github.com/vm0-ai/vm0/issues/11647)) ([d53d15b](https://github.com/vm0-ai/vm0/commit/d53d15b36d01a9354b2ab990e4ac3d56bf325314))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.252.0
+
 ## [0.320.0](https://github.com/vm0-ai/vm0/compare/app-v0.319.1...app-v0.320.0) (2026-05-01)
 
 

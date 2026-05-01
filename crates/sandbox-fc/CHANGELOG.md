@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.5...sandbox-fc-v0.27.6) (2026-05-01)
+
+
+### Refactoring
+
+* **sandbox-fc:** avoid shared netns pool lock waits ([#11598](https://github.com/vm0-ai/vm0/issues/11598)) ([2dc1c57](https://github.com/vm0-ai/vm0/commit/2dc1c57ff13d56c28ebcbe152d20a9f4ac1f0bd7))
+
 ## [0.27.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.4...sandbox-fc-v0.27.5) (2026-04-30)
 
 
