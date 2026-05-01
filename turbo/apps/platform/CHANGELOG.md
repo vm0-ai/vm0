@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.319.1](https://github.com/vm0-ai/vm0/compare/app-v0.319.0...app-v0.319.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* remove permissive auth probe default to eliminate shadow mismatches ([#11646](https://github.com/vm0-ai/vm0/issues/11646)) ([3a49158](https://github.com/vm0-ai/vm0/commit/3a491586c1242f81590eadf5a46b2dc5a3d8cbe6))
+
 ## [0.319.0](https://github.com/vm0-ai/vm0/compare/app-v0.318.0...app-v0.319.0) (2026-04-30)
 
 
