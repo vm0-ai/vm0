@@ -31,7 +31,7 @@ const SIDEBAR_PARAM = "sidebar";
 
 export type OptimisticChatPane = "main" | "sidebar";
 
-interface PendingChatThread {
+export interface PendingChatThread {
   pane: OptimisticChatPane;
   threadId: string;
   agentId: string;

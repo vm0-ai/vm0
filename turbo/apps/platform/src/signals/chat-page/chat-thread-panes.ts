@@ -1,4 +1,11 @@
-import { command, computed, state } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 import {
   currentChatAgentId$,
   currentChatThreadId$,
@@ -26,6 +33,7 @@ import {
   clearMatchingOptimisticChatThread$,
   optimisticChatThread$,
   sidebarOptimisticChatThread$,
+  type PendingChatThread,
 } from "./optimistic-chat-thread-page.ts";
 import { setupChatThreadSignals$ } from "./setup-chat-thread-signals.ts";
 
@@ -45,37 +53,61 @@ export const currentRightThread$ = computed((get): ChatThreadSignals | null => {
 const resetLeftSetupSignal$ = resetSignal();
 const resetRightSetupSignal$ = resetSignal();
 
+const unloadLeftThreadGoHome$ = command(({ set }) => {
+  set(internalLeftThread$, null);
+  set(detachedNavigateTo$, "/", { replace: true });
+});
+
+export const unloadRightThread$ = command(({ get, set }) => {
+  set(resetRightSetupSignal$);
+  set(internalRightThread$, null);
+  const next = new URLSearchParams(get(searchParams$));
+  if (next.has(SIDEBAR_PARAM)) {
+    next.delete(SIDEBAR_PARAM);
+    set(updateSearchParams$, next);
+  }
+});
+
 /**
- * Make the left (primary) chat pane show `threadId`. Idempotent — re-loading
- * the current left thread is a no-op. Updates the URL pathname silently so
- * subsequent route re-entries (browser back / link share) replay correctly.
- *
- * If the requested thread is currently the right pane, the right pane is
- * unloaded first (a thread cannot occupy both panes).
+ * Per-pane wiring + the side-effects that differ between left (primary) and
+ * right (sidebar). The shared body lives in `setupPaneThread$`; this spec
+ * captures everything that varies so the two `loadX$` commands stay parallel.
  */
-export const loadLeftThread$ = command(
+interface PaneSpec {
+  paneState$: State<ChatThreadSignals | null>;
+  optimisticSource$: Computed<PendingChatThread | null>;
+  resetSetupSignal$: ReturnType<typeof resetSignal>;
+  /** Title to set when the pane first publishes; `null` to leave untouched. */
+  initialDocumentTitle: ((isOptimistic: boolean) => string) | null;
+  /** When the thread resolves: align the global agent context to it. */
+  syncAgentContextOnResolved: boolean;
+  /** When the thread resolves: push its title into the document title. */
+  syncDocumentTitleFromThread: boolean;
+  /** Subscribe to Ably run-updates to keep the document title in sync. */
+  subscribeAblyTitleUpdates: boolean;
+  /** Cleanup when threadData$ resolves to null (404). */
+  onMissing$: Command<void, []>;
+}
+
+/**
+ * Shared body for `loadLeftThread$` / `loadRightThread$`. Owns: data-source
+ * selection, optimistic publish + settle dance, threadData$ resolution, draft
+ * seeding, message page warm-up, optimistic swap, and the inner setup loops.
+ *
+ * Per-pane variations are routed through `spec` so the two callers reduce to
+ * tiny preambles that only express what's actually different (URL shape,
+ * conflict policy with the opposite pane).
+ */
+const setupPaneThread$ = command(
   async (
     { get, set },
+    spec: PaneSpec,
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    const existing = get(internalLeftThread$);
-    if (existing?.threadId === threadId) {
-      return;
-    }
+    const signal = set(spec.resetSetupSignal$, parentSignal);
 
-    const currentRight = get(internalRightThread$);
-    if (currentRight?.threadId === threadId) {
-      set(unloadRightThread$);
-    }
-
-    if (get(currentChatThreadId$) !== threadId) {
-      set(pushPathSilently$, "/chats/:threadId", { threadId });
-    }
-
-    const signal = set(resetLeftSetupSignal$, parentSignal);
-
-    const optimisticThread = get(optimisticChatThread$);
+    const optimisticThread = get(spec.optimisticSource$);
     const matchingOptimistic =
       optimisticThread?.threadId === threadId ? optimisticThread : null;
 
@@ -89,9 +121,14 @@ export const loadLeftThread$ = command(
 
     // Publish: optimistic thread renders immediately while we wait for the
     // server confirmation; the real thread takes over after the swap below.
-    set(internalLeftThread$, matchingOptimistic?.pendingThread ?? thread);
+    set(spec.paneState$, matchingOptimistic?.pendingThread ?? thread);
 
-    set(updateDocumentTitle$, matchingOptimistic ? "New chat" : "Chat");
+    if (spec.initialDocumentTitle) {
+      set(
+        updateDocumentTitle$,
+        spec.initialDocumentTitle(matchingOptimistic !== null),
+      );
+    }
 
     if (matchingOptimistic) {
       await matchingOptimistic.settleResult;
@@ -104,18 +141,21 @@ export const loadLeftThread$ = command(
       if (matchingOptimistic) {
         set(clearMatchingOptimisticChatThread$, matchingOptimistic);
       }
-      set(internalLeftThread$, null);
-      set(detachedNavigateTo$, "/", { replace: true });
+      set(spec.onMissing$);
       return;
     }
 
-    const currentAgentId = await get(currentChatAgentId$);
-    signal.throwIfAborted();
-    if (currentAgentId !== threadData.agentId) {
-      set(setChatAgentId$, threadData.agentId);
+    if (spec.syncAgentContextOnResolved) {
+      const currentAgentId = await get(currentChatAgentId$);
+      signal.throwIfAborted();
+      if (currentAgentId !== threadData.agentId) {
+        set(setChatAgentId$, threadData.agentId);
+      }
     }
 
-    set(updateDocumentTitle$, threadData.title ?? "New chat");
+    if (spec.syncDocumentTitleFromThread) {
+      set(updateDocumentTitle$, threadData.title ?? "New chat");
+    }
 
     if (
       isNew &&
@@ -138,28 +178,82 @@ export const loadLeftThread$ = command(
 
     if (matchingOptimistic) {
       set(thread.hideSkeleton$);
-      set(internalLeftThread$, thread);
+      set(spec.paneState$, thread);
       set(clearMatchingOptimisticChatThread$, matchingOptimistic);
     }
 
-    const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
-      const data = await get(thread.threadData$);
-      sig.throwIfAborted();
-      if (data) {
-        set(updateDocumentTitle$, data.title ?? "New chat");
-      }
-      return false;
-    });
-
-    await Promise.all([
+    const tasks: Promise<unknown>[] = [
       set(setupChatThreadSignals$, thread, signal),
-      set(
-        setAblyLoop$,
-        `chatThreadRunUpdated:${threadId}`,
-        onThreadUpdated$,
-        signal,
-      ),
-    ]);
+    ];
+
+    if (spec.subscribeAblyTitleUpdates) {
+      const onThreadUpdated$ = command(
+        async ({ get, set }, sig: AbortSignal) => {
+          const data = await get(thread.threadData$);
+          sig.throwIfAborted();
+          if (data) {
+            set(updateDocumentTitle$, data.title ?? "New chat");
+          }
+          return false;
+        },
+      );
+      tasks.push(
+        set(
+          setAblyLoop$,
+          `chatThreadRunUpdated:${threadId}`,
+          onThreadUpdated$,
+          signal,
+        ),
+      );
+    }
+
+    await Promise.all(tasks);
+  },
+);
+
+/**
+ * Make the left (primary) chat pane show `threadId`. Idempotent — re-loading
+ * the current left thread is a no-op. Updates the URL pathname silently so
+ * subsequent route re-entries (browser back / link share) replay correctly.
+ *
+ * If the requested thread is currently the right pane, the right pane is
+ * unloaded first (a thread cannot occupy both panes).
+ */
+export const loadLeftThread$ = command(
+  async (
+    { get, set },
+    threadId: string,
+    parentSignal: AbortSignal,
+  ): Promise<void> => {
+    if (get(internalLeftThread$)?.threadId === threadId) {
+      return;
+    }
+
+    if (get(internalRightThread$)?.threadId === threadId) {
+      set(unloadRightThread$);
+    }
+
+    if (get(currentChatThreadId$) !== threadId) {
+      set(pushPathSilently$, "/chats/:threadId", { threadId });
+    }
+
+    await set(
+      setupPaneThread$,
+      {
+        paneState$: internalLeftThread$,
+        optimisticSource$: optimisticChatThread$,
+        resetSetupSignal$: resetLeftSetupSignal$,
+        initialDocumentTitle: (isOptimistic) => {
+          return isOptimistic ? "New chat" : "Chat";
+        },
+        syncAgentContextOnResolved: true,
+        syncDocumentTitleFromThread: true,
+        subscribeAblyTitleUpdates: true,
+        onMissing$: unloadLeftThreadGoHome$,
+      },
+      threadId,
+      parentSignal,
+    );
   },
 );
 
@@ -167,6 +261,9 @@ export const loadLeftThread$ = command(
  * Make the right (sidebar) chat pane show `threadId`. Idempotent — re-loading
  * the current right thread is a no-op. Refuses to load the same thread that's
  * already in the left pane.
+ *
+ * Mirrors `loadLeftThread$` except: this pane does not own the document
+ * title, the global agent context, or the Ably title-sync subscription.
  */
 export const loadRightThread$ = command(
   async (
@@ -174,13 +271,11 @@ export const loadRightThread$ = command(
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    const currentLeft = get(internalLeftThread$);
-    if (currentLeft?.threadId === threadId) {
+    if (get(internalLeftThread$)?.threadId === threadId) {
       return;
     }
 
-    const existing = get(internalRightThread$);
-    if (existing?.threadId === threadId) {
+    if (get(internalRightThread$)?.threadId === threadId) {
       return;
     }
 
@@ -190,33 +285,20 @@ export const loadRightThread$ = command(
       set(updateSearchParams$, next);
     }
 
-    const signal = set(resetRightSetupSignal$, parentSignal);
-
-    const optimisticThread = get(sidebarOptimisticChatThread$);
-    if (optimisticThread?.threadId === threadId) {
-      set(internalRightThread$, optimisticThread.pendingThread);
-      return;
-    }
-
-    const { draft } = set(ensureDraft$, threadId);
-    const idbEnabled = await get(idbMessageEnabled$);
-    signal.throwIfAborted();
-    const dataSource = idbEnabled
-      ? createIdbCachedDataSource(threadId)
-      : createRemoteChatThreadDataSource(threadId);
-    const thread = createChatThreadSignals(threadId, draft, dataSource);
-    set(internalRightThread$, thread);
-
-    await set(setupChatThreadSignals$, thread, signal);
+    await set(
+      setupPaneThread$,
+      {
+        paneState$: internalRightThread$,
+        optimisticSource$: sidebarOptimisticChatThread$,
+        resetSetupSignal$: resetRightSetupSignal$,
+        initialDocumentTitle: null,
+        syncAgentContextOnResolved: false,
+        syncDocumentTitleFromThread: false,
+        subscribeAblyTitleUpdates: false,
+        onMissing$: unloadRightThread$,
+      },
+      threadId,
+      parentSignal,
+    );
   },
 );
-
-export const unloadRightThread$ = command(({ get, set }) => {
-  set(resetRightSetupSignal$);
-  set(internalRightThread$, null);
-  const next = new URLSearchParams(get(searchParams$));
-  if (next.has(SIDEBAR_PARAM)) {
-    next.delete(SIDEBAR_PARAM);
-    set(updateSearchParams$, next);
-  }
-});
