@@ -34,7 +34,7 @@ import {
   optimisticChatThread$,
   sidebarOptimisticChatThread$,
   type PendingChatThread,
-} from "./optimistic-chat-thread-page.ts";
+} from "./optimistic-chat-thread-state.ts";
 import { setupChatThreadSignals$ } from "./setup-chat-thread-signals.ts";
 
 export const SIDEBAR_PARAM = "sidebar";
@@ -90,56 +90,23 @@ interface PaneSpec {
 }
 
 /**
- * Shared body for `loadLeftThread$` / `loadRightThread$`. Owns: data-source
- * selection, optimistic publish + settle dance, threadData$ resolution, draft
- * seeding, message page warm-up, optimistic swap, and the inner setup loops.
- *
- * Per-pane variations are routed through `spec` so the two callers reduce to
- * tiny preambles that only express what's actually different (URL shape,
- * conflict policy with the opposite pane).
+ * Second half of pane thread setup — called after the threadData$ resolves.
+ * Owns: draft seeding, message page warm-up, optimistic swap, and the inner
+ * setup loops. Extracted to keep cyclomatic complexity under the lint cap.
  */
-const setupPaneThread$ = command(
+const resolvePaneThread$ = command(
   async (
     { get, set },
-    spec: PaneSpec,
-    threadId: string,
-    parentSignal: AbortSignal,
+    args: {
+      spec: PaneSpec;
+      threadId: string;
+      signal: AbortSignal;
+      thread: ReturnType<typeof createChatThreadSignals>;
+      isNew: boolean;
+      matchingOptimistic: PendingChatThread | null;
+    },
   ): Promise<void> => {
-    const signal = set(spec.resetSetupSignal$, parentSignal);
-
-    const optimisticThread = get(spec.optimisticSource$);
-    const matchingOptimistic =
-      optimisticThread?.threadId === threadId ? optimisticThread : null;
-
-    // Publish optimistic pendingThread synchronously up front — before any
-    // await — so the pane renders the pending UI without a microtask gap.
-    // The real thread is created below and swapped in after settleResult.
-    if (matchingOptimistic) {
-      set(spec.paneState$, matchingOptimistic.pendingThread);
-    }
-    if (spec.initialDocumentTitle) {
-      set(
-        updateDocumentTitle$,
-        spec.initialDocumentTitle(matchingOptimistic !== null),
-      );
-    }
-
-    const { draft, isNew } = set(ensureDraft$, threadId);
-    const idbEnabled = await get(idbMessageEnabled$);
-    signal.throwIfAborted();
-    const dataSource = idbEnabled
-      ? createIdbCachedDataSource(threadId)
-      : createRemoteChatThreadDataSource(threadId);
-    const thread = createChatThreadSignals(threadId, draft, dataSource);
-
-    if (!matchingOptimistic) {
-      set(spec.paneState$, thread);
-    }
-
-    if (matchingOptimistic) {
-      await matchingOptimistic.settleResult;
-      signal.throwIfAborted();
-    }
+    const { spec, threadId, signal, thread, isNew, matchingOptimistic } = args;
 
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
@@ -163,13 +130,12 @@ const setupPaneThread$ = command(
       set(updateDocumentTitle$, threadData.title ?? "New chat");
     }
 
-    if (
-      isNew &&
-      (threadData.draftContent !== null ||
-        (threadData.draftAttachments !== null &&
-          threadData.draftAttachments.length > 0))
-    ) {
-      const restoredAttachments = (threadData.draftAttachments ?? []).map(
+    const hasDraftContent = threadData.draftContent !== null;
+    const draftAttachments = threadData.draftAttachments;
+    const hasDraftAttachments =
+      draftAttachments !== null && draftAttachments.length > 0;
+    if (isNew && (hasDraftContent || hasDraftAttachments)) {
+      const restoredAttachments = (draftAttachments ?? []).map(
         createRestoredAttachment,
       );
       set(
@@ -214,6 +180,66 @@ const setupPaneThread$ = command(
     }
 
     await Promise.all(tasks);
+  },
+);
+
+/**
+ * Shared body for `loadLeftThread$` / `loadRightThread$`. Owns: data-source
+ * selection, optimistic publish + settle dance, then delegates the second
+ * half to `resolvePaneThread$`.
+ *
+ * Per-pane variations are routed through `spec` so the two callers reduce to
+ * tiny preambles that only express what's actually different (URL shape,
+ * conflict policy with the opposite pane).
+ */
+const setupPaneThread$ = command(
+  async (
+    { get, set },
+    spec: PaneSpec,
+    threadId: string,
+    parentSignal: AbortSignal,
+  ): Promise<void> => {
+    const signal = set(spec.resetSetupSignal$, parentSignal);
+
+    const optimisticThread = get(spec.optimisticSource$);
+    const matchingOptimistic =
+      optimisticThread?.threadId === threadId ? optimisticThread : null;
+
+    if (matchingOptimistic) {
+      set(spec.paneState$, matchingOptimistic.pendingThread);
+    }
+    if (spec.initialDocumentTitle) {
+      set(
+        updateDocumentTitle$,
+        spec.initialDocumentTitle(matchingOptimistic !== null),
+      );
+    }
+
+    const { draft, isNew } = set(ensureDraft$, threadId);
+    const idbEnabled = await get(idbMessageEnabled$);
+    signal.throwIfAborted();
+    const dataSource = idbEnabled
+      ? createIdbCachedDataSource(threadId)
+      : createRemoteChatThreadDataSource(threadId);
+    const thread = createChatThreadSignals(threadId, draft, dataSource);
+
+    if (!matchingOptimistic) {
+      set(spec.paneState$, thread);
+    }
+
+    if (matchingOptimistic) {
+      await matchingOptimistic.settleResult;
+      signal.throwIfAborted();
+    }
+
+    await set(resolvePaneThread$, {
+      spec,
+      threadId,
+      signal,
+      thread,
+      isNew,
+      matchingOptimistic,
+    });
   },
 );
 

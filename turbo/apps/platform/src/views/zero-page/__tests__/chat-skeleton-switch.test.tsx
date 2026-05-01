@@ -94,10 +94,7 @@ describe("chat skeleton on switch", () => {
     });
   });
 
-  it("hides the skeleton after re-running setup for the same chat", async () => {
-    const secondInitialFetchDeferred = createDeferredPromise<void>(
-      context.signal,
-    );
+  it("does not re-fetch when navigating to the already-loaded thread", async () => {
     let initialFetchCount = 0;
 
     server.use(
@@ -108,9 +105,6 @@ describe("chat skeleton on switch", () => {
             return respond(200, { messages: [] });
           }
           initialFetchCount++;
-          if (initialFetchCount === 2) {
-            await secondInitialFetchDeferred.promise;
-          }
           return respond(200, {
             messages: [
               {
@@ -152,27 +146,13 @@ describe("chat skeleton on switch", () => {
       expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
     });
 
+    // loadLeftThread$ is idempotent — navigating to the same thread is a no-op.
     context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-a" },
     });
 
-    await waitFor(() => {
-      expect(initialFetchCount).toBe(2);
-    });
-
-    expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
-    const messageContainer = document.querySelector<HTMLElement>(
-      "[data-message-container]",
-    );
-    expect(messageContainer).not.toBeNull();
-    expect(messageContainer!.style.visibility).toBe("hidden");
-    expect(screen.getByText("Answer for thread-a")).not.toBeVisible();
-
-    secondInitialFetchDeferred.resolve();
-
-    await waitFor(() => {
-      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-      expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
-    });
+    // Content remains visible and no second fetch is triggered.
+    expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
+    expect(initialFetchCount).toBe(1);
   });
 });

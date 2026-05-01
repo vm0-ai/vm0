@@ -511,9 +511,7 @@ function ChatThreadItemLink({
         {state.paneIndicator && (
           <ChatThreadListPaneIcon pane={state.paneIndicator} />
         )}
-        <span className="min-w-0 truncate">
-          {session.title ?? "New chat"}
-        </span>
+        <span className="min-w-0 truncate">{session.title ?? "New chat"}</span>
       </span>
     </Link>
   );

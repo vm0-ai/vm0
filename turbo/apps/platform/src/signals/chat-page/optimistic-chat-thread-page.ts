@@ -22,20 +22,21 @@ import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
+import {
+  clearMatchingOptimisticChatThread$,
+  internalOptimisticChatThreads$,
+  type OptimisticChatPane,
+  type PendingChatThread,
+} from "./optimistic-chat-thread-state.ts";
+
+export type { OptimisticChatPane, PendingChatThread };
+export {
+  clearMatchingOptimisticChatThread$,
+  optimisticChatThread$,
+  sidebarOptimisticChatThread$,
+};
 
 const SIDEBAR_PARAM = "sidebar";
-
-export type OptimisticChatPane = "main" | "sidebar";
-
-export interface PendingChatThread {
-  pane: OptimisticChatPane;
-  threadId: string;
-  agentId: string;
-  createdAt: string;
-  running: boolean;
-  pendingThread: ReturnType<typeof createChatThreadSignals>;
-  settleResult: Promise<void>;
-}
 
 interface SendNewThreadMessageRequest {
   agentId: string;
@@ -51,35 +52,6 @@ interface SendNewThreadMessageResult {
 interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
 }
-
-interface OptimisticChatThreads {
-  main: PendingChatThread | null;
-  sidebar: PendingChatThread | null;
-}
-
-const internalOptimisticChatThreads$ = state<OptimisticChatThreads>({
-  main: null,
-  sidebar: null,
-});
-
-export const optimisticChatThread$ = computed((get) => {
-  return get(internalOptimisticChatThreads$).main;
-});
-
-export const sidebarOptimisticChatThread$ = computed((get) => {
-  return get(internalOptimisticChatThreads$).sidebar;
-});
-
-export const clearMatchingOptimisticChatThread$ = command(
-  ({ set }, pending: PendingChatThread) => {
-    set(internalOptimisticChatThreads$, (current) => {
-      if (current[pending.pane] !== pending) {
-        return current;
-      }
-      return { ...current, [pending.pane]: null };
-    });
-  },
-);
 
 const routeMainOptimisticChatThread$ = command(
   ({ get, set }, pending: PendingChatThread) => {
