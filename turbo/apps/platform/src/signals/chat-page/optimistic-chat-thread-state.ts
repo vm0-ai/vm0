@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { createChatThreadSignals } from "./create-chat-thread.ts";
+import type { createChatThreadSignals } from "./create-chat-thread.ts";
 
 export type OptimisticChatPane = "main" | "sidebar";
 
@@ -18,8 +18,7 @@ interface OptimisticChatThreads {
   sidebar: PendingChatThread | null;
 }
 
-// eslint-disable-next-line ccstate/no-export-state -- shared with optimistic-chat-thread-page.ts, internal is the intent
-export const internalOptimisticChatThreads$ = state<OptimisticChatThreads>({
+const internalOptimisticChatThreads$ = state<OptimisticChatThreads>({
   main: null,
   sidebar: null,
 });
@@ -31,6 +30,28 @@ export const optimisticChatThread$ = computed((get) => {
 export const sidebarOptimisticChatThread$ = computed((get) => {
   return get(internalOptimisticChatThreads$).sidebar;
 });
+
+export const optimisticChatThreadByPane$ = computed((get) => {
+  return (pane: OptimisticChatPane): PendingChatThread | null => {
+    return get(internalOptimisticChatThreads$)[pane];
+  };
+});
+
+export const allPendingChatThreads$ = computed((get): PendingChatThread[] => {
+  return Object.values(get(internalOptimisticChatThreads$)).filter(
+    (thread): thread is PendingChatThread => {
+      return thread !== null;
+    },
+  );
+});
+
+export const registerOptimisticChatThread$ = command(
+  ({ set }, pending: PendingChatThread) => {
+    set(internalOptimisticChatThreads$, (current) => {
+      return { ...current, [pending.pane]: pending };
+    });
+  },
+);
 
 export const clearMatchingOptimisticChatThread$ = command(
   ({ set }, pending: PendingChatThread) => {

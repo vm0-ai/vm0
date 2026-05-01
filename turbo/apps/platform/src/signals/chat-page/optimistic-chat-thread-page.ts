@@ -23,14 +23,16 @@ import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
 import {
+  allPendingChatThreads$,
   clearMatchingOptimisticChatThread$,
-  internalOptimisticChatThreads$,
   optimisticChatThread$,
+  optimisticChatThreadByPane$,
+  registerOptimisticChatThread$,
   type OptimisticChatPane,
   type PendingChatThread,
 } from "./optimistic-chat-thread-state.ts";
 
-export type { OptimisticChatPane, PendingChatThread };
+export type { OptimisticChatPane };
 export { optimisticChatThread$ };
 
 const SIDEBAR_PARAM = "sidebar";
@@ -108,9 +110,7 @@ const routeOptimisticChatThread$ = command(
     signal.addEventListener("abort", () => {
       set(clearMatchingOptimisticChatThread$, pending);
     });
-    set(internalOptimisticChatThreads$, (current) => {
-      return { ...current, [pending.pane]: pending };
-    });
+    set(registerOptimisticChatThread$, pending);
 
     if (pending.pane === "main") {
       set(routeMainOptimisticChatThread$, pending);
@@ -217,7 +217,7 @@ export const createNewChatThreadOptimistically$ = command(
   ) => {
     const targetPane =
       pane === "sidebar" && get(currentChatThreadId$) ? "sidebar" : "main";
-    const optimisticThread = get(internalOptimisticChatThreads$)[targetPane];
+    const optimisticThread = get(optimisticChatThreadByPane$)(targetPane);
     if (optimisticThread) {
       await set(showExistingOptimisticChatThread$, optimisticThread, signal);
       return;
@@ -239,11 +239,7 @@ export const createNewChatThreadOptimistically$ = command(
 
 export const pendingOptimisticChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    const optimisticThreads = Object.values(
-      get(internalOptimisticChatThreads$),
-    ).filter((thread): thread is PendingChatThread => {
-      return thread !== null;
-    });
+    const optimisticThreads = get(allPendingChatThreads$);
     if (optimisticThreads.length === 0) {
       return [];
     }

@@ -1,11 +1,4 @@
-import {
-  command,
-  computed,
-  state,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import {
   currentChatAgentId$,
   currentChatThreadId$,
@@ -50,6 +43,14 @@ export const currentRightThread$ = computed((get): ChatThreadSignals | null => {
   return get(internalRightThread$);
 });
 
+const setLeftThread$ = command(({ set }, thread: ChatThreadSignals | null) => {
+  set(internalLeftThread$, thread);
+});
+
+const setRightThread$ = command(({ set }, thread: ChatThreadSignals | null) => {
+  set(internalRightThread$, thread);
+});
+
 const resetLeftSetupSignal$ = resetSignal();
 const resetRightSetupSignal$ = resetSignal();
 
@@ -74,7 +75,7 @@ export const unloadRightThread$ = command(({ get, set }) => {
  * captures everything that varies so the two `loadX$` commands stay parallel.
  */
 interface PaneSpec {
-  paneState$: State<ChatThreadSignals | null>;
+  setPaneThread$: Command<void, [ChatThreadSignals | null]>;
   optimisticSource$: Computed<PendingChatThread | null>;
   resetSetupSignal$: ReturnType<typeof resetSignal>;
   /** Title to set when the pane first publishes; `null` to leave untouched. */
@@ -150,7 +151,7 @@ const resolvePaneThread$ = command(
 
     if (matchingOptimistic) {
       set(thread.hideSkeleton$);
-      set(spec.paneState$, thread);
+      set(spec.setPaneThread$, thread);
       set(clearMatchingOptimisticChatThread$, matchingOptimistic);
     }
 
@@ -206,7 +207,7 @@ const setupPaneThread$ = command(
       optimisticThread?.threadId === threadId ? optimisticThread : null;
 
     if (matchingOptimistic) {
-      set(spec.paneState$, matchingOptimistic.pendingThread);
+      set(spec.setPaneThread$, matchingOptimistic.pendingThread);
     }
     if (spec.initialDocumentTitle) {
       set(
@@ -224,7 +225,7 @@ const setupPaneThread$ = command(
     const thread = createChatThreadSignals(threadId, draft, dataSource);
 
     if (!matchingOptimistic) {
-      set(spec.paneState$, thread);
+      set(spec.setPaneThread$, thread);
     }
 
     if (matchingOptimistic) {
@@ -275,7 +276,7 @@ export const loadLeftThread$ = command(
     await set(
       setupPaneThread$,
       {
-        paneState$: internalLeftThread$,
+        setPaneThread$: setLeftThread$,
         optimisticSource$: optimisticChatThread$,
         resetSetupSignal$: resetLeftSetupSignal$,
         initialDocumentTitle: (isOptimistic) => {
@@ -323,7 +324,7 @@ export const loadRightThread$ = command(
     await set(
       setupPaneThread$,
       {
-        paneState$: internalRightThread$,
+        setPaneThread$: setRightThread$,
         optimisticSource$: sidebarOptimisticChatThread$,
         resetSetupSignal$: resetRightSetupSignal$,
         initialDocumentTitle: null,
