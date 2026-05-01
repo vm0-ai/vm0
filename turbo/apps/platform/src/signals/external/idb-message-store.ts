@@ -1,6 +1,9 @@
 import { computed } from "ccstate";
 import { openDB, type IDBPDatabase } from "idb";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  pagedChatMessageSchema,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 interface ChatMessageReadStore {
   readLatest(
@@ -42,6 +45,10 @@ function createIdbMessageStores(userId: string, orgId: string) {
     return dbPromise;
   }
 
+  function validateMessage(raw: unknown): PagedChatMessage {
+    return pagedChatMessageSchema.parse(raw);
+  }
+
   const readStore: ChatMessageReadStore = {
     async readLatest(threadId, limit, signal) {
       const db = await getDb();
@@ -53,7 +60,7 @@ function createIdbMessageStores(userId: string, orgId: string) {
       let cursor = await index.openCursor(range, "prev");
       while (cursor && messages.length < limit) {
         signal?.throwIfAborted();
-        messages.push(cursor.value as PagedChatMessage);
+        messages.push(validateMessage(cursor.value));
         cursor = await cursor.continue();
       }
       return messages.reverse();
@@ -67,22 +74,22 @@ function createIdbMessageStores(userId: string, orgId: string) {
       if (!anchor) {
         return [];
       }
+      const anchorMsg = validateMessage(anchor);
       signal?.throwIfAborted();
 
       const index = tx.store.index("byThreadAndTime");
       const range = IDBKeyRange.bound(
         [threadId, ""],
-        [threadId, (anchor as PagedChatMessage).createdAt],
+        [threadId, anchorMsg.createdAt],
       );
       const messages: PagedChatMessage[] = [];
       let cursor = await index.openCursor(range, "prev");
-      // Skip the anchor row itself
-      if (cursor) {
+      while (cursor && validateMessage(cursor.value).id === beforeId) {
         cursor = await cursor.continue();
       }
       while (cursor && messages.length < limit) {
         signal?.throwIfAborted();
-        messages.push(cursor.value as PagedChatMessage);
+        messages.push(validateMessage(cursor.value));
         cursor = await cursor.continue();
       }
       return messages.reverse();
