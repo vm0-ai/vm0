@@ -1727,24 +1727,24 @@ impl NetnsPool {
             );
         }
 
-        self.drain_completed(true);
+        let mut namespaces = self.drain_completed(true);
         let mut wait_for_pending = if self.pending_plain.is_empty() && self.pending_proxy.is_empty()
         {
             None
         } else {
             Some(self.completion_wake_tx.subscribe())
         };
-        self.drain_completed(true);
+        namespaces.extend(self.drain_completed(true));
         if self.pending_plain.is_empty() && self.pending_proxy.is_empty() {
             wait_for_pending = None;
         }
 
-        let namespaces = self
-            .plain_queue
-            .iter()
-            .chain(self.proxy_queue.iter())
-            .cloned()
-            .collect::<Vec<_>>();
+        namespaces.extend(
+            self.plain_queue
+                .iter()
+                .chain(self.proxy_queue.iter())
+                .cloned(),
+        );
         CleanupPlan {
             done: namespaces.is_empty() && wait_for_pending.is_none(),
             namespaces,
@@ -2506,6 +2506,37 @@ mod tests {
             .await;
 
         assert_eq!(deleted.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn cleanup_deletes_unknown_completed_namespace() {
+        let deleted = Arc::new(AtomicUsize::new(0));
+        let mut pool = NetnsPool::inactive_for_test();
+        pool.active = true;
+        let deleted_for_ops = Arc::clone(&deleted);
+        pool.ops = NetnsLifecycleOps {
+            flush_conntrack: Arc::new(|_| Box::pin(async { ConntrackFlushOutcome::Trusted })),
+            delete_namespace: Arc::new(move |_| {
+                let deleted = Arc::clone(&deleted_for_ops);
+                Box::pin(async move {
+                    deleted.fetch_add(1, Ordering::SeqCst);
+                    NamespaceDeleteOutcome::Deleted
+                })
+            }),
+        };
+        pool.completion_tx
+            .send(CreationCompletion {
+                id: PendingId(999),
+                kind: PendingKind::Plain,
+                result: Ok(test_info("unknown-ns")),
+            })
+            .unwrap();
+
+        pool.cleanup().await.unwrap();
+
+        assert_eq!(deleted.load(Ordering::SeqCst), 1);
+        assert!(pool.plain_queue.is_empty());
+        assert!(pool.proxy_queue.is_empty());
     }
 
     #[tokio::test]
