@@ -391,8 +391,7 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   );
   const features = useLastResolved(featureSwitch$);
   const pinEnabled = features?.[FeatureSwitchKey.ChatThreadPin] ?? false;
-  const renameEnabled =
-    features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
+  const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
   const isPinned =
     pinEnabled && session.pinnedAt !== null && session.pinnedAt !== undefined;
   const isCurrentPage = selectedThreadId === session.id;

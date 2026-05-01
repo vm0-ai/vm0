@@ -1421,7 +1421,7 @@
         },
         "renamed_at": {
           "name": "renamed_at",
-          "type": "timestamp with time zone",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         }
