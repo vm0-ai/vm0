@@ -3,6 +3,9 @@ import {
   pagedChatMessageSchema,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { logger } from "../log.ts";
+
+const L = logger("ChatIdbCache");
 
 interface ChatMessageReadStore {
   readLatest(
@@ -34,8 +37,10 @@ function createIdbMessageStores(userId: string, orgId: string) {
 
   function getDb(): Promise<IDBPDatabase> {
     if (!dbPromise) {
+      L.debug("openDB", { dbName, storeName });
       dbPromise = openDB(dbName, 1, {
         upgrade(db) {
+          L.debug("openDB:upgrade", { dbName, storeName });
           const store = db.createObjectStore(storeName, { keyPath: "id" });
           store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
         },
@@ -50,6 +55,7 @@ function createIdbMessageStores(userId: string, orgId: string) {
 
   const readStore: ChatMessageReadStore = {
     async readLatest(threadId, limit, signal) {
+      L.debug("readLatest:start", { threadId, limit });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readonly");
@@ -62,15 +68,18 @@ function createIdbMessageStores(userId: string, orgId: string) {
         messages.push(validateMessage(cursor.value));
         cursor = await cursor.continue();
       }
+      L.debug("readLatest:done", { threadId, count: messages.length });
       return messages.reverse();
     },
 
     async readBefore(threadId, beforeId, limit, signal) {
+      L.debug("readBefore:start", { threadId, beforeId, limit });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readonly");
       const anchor = await tx.store.get(beforeId);
       if (!anchor) {
+        L.debug("readBefore:anchorMiss", { threadId, beforeId });
         return [];
       }
       const anchorMsg = validateMessage(anchor);
@@ -97,20 +106,32 @@ function createIdbMessageStores(userId: string, orgId: string) {
         messages.push(validateMessage(cursor.value));
         cursor = await cursor.continue();
       }
+      L.debug("readBefore:done", {
+        threadId,
+        beforeId,
+        count: messages.length,
+      });
       return messages.reverse();
     },
   };
 
   const writeStore: ChatMessageWriteStore = {
-    async upsertMessages(_threadId, messages, signal) {
+    async upsertMessages(threadId, messages, signal) {
+      L.debug("upsertMessages:start", {
+        threadId,
+        count: messages.length,
+      });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readwrite");
       for (const msg of messages) {
         signal?.throwIfAborted();
-        await tx.store.put(msg);
+        // Stitch threadId onto the stored value so the byThreadAndTime
+        // index can find it. PagedChatMessage from the API has no threadId.
+        await tx.store.put({ ...msg, threadId });
       }
       await tx.done;
+      L.debug("upsertMessages:done", { threadId, count: messages.length });
     },
   };
 

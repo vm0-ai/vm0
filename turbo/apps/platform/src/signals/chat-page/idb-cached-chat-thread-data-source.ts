@@ -1,7 +1,10 @@
 import { command, computed } from "ccstate";
 import { clerk$ } from "../auth.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
+import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
+
+const L = logger("ChatIdbCache");
 import type {
   ChatThreadDataSource,
   InitialPage,
@@ -31,6 +34,7 @@ export function createIdbCachedDataSource(
     const orgId = clerk.organization?.id;
 
     if (!userId || !orgId) {
+      L.debug("initialPage:noAuth", { threadId });
       initialPageFromCache = false;
       return get(remote.initialPage$);
     }
@@ -40,14 +44,20 @@ export function createIdbCachedDataSource(
     const cached = await readStore.readLatest(threadId, 50);
 
     if (cached.length > 0) {
+      L.debug("initialPage:cacheHit", { threadId, count: cached.length });
       initialPageFromCache = true;
       return { messages: cached, hasHistoryBefore: true };
     }
 
+    L.debug("initialPage:cacheMiss", { threadId });
     initialPageFromCache = false;
     const page = await get(remote.initialPage$);
     const writeStore = stores.writeStore$;
     await writeStore.upsertMessages(threadId, page.messages);
+    L.debug("initialPage:cacheFilled", {
+      threadId,
+      count: page.messages.length,
+    });
 
     return page;
   });
@@ -64,6 +74,7 @@ export function createIdbCachedDataSource(
       const orgId = clerk.organization?.id;
 
       if (!userId || !orgId) {
+        L.debug("listBefore:noAuth", { threadId: tid, beforeId });
         return set(
           remote.listMessagesBefore$,
           { threadId: tid, beforeId },
@@ -76,9 +87,15 @@ export function createIdbCachedDataSource(
       const cached = await readStore.readBefore(tid, beforeId, 50, signal);
 
       if (cached.length > 0) {
+        L.debug("listBefore:cacheHit", {
+          threadId: tid,
+          beforeId,
+          count: cached.length,
+        });
         return { messages: cached, hasMore: true };
       }
 
+      L.debug("listBefore:cacheMiss", { threadId: tid, beforeId });
       const result = await set(
         remote.listMessagesBefore$,
         { threadId: tid, beforeId },
@@ -87,6 +104,11 @@ export function createIdbCachedDataSource(
 
       const writeStore = stores.writeStore$;
       await writeStore.upsertMessages(tid, result.messages, signal);
+      L.debug("listBefore:cacheFilled", {
+        threadId: tid,
+        beforeId,
+        count: result.messages.length,
+      });
 
       return result;
     },
@@ -113,6 +135,18 @@ export function createIdbCachedDataSource(
         const stores = getStores(userId, orgId);
         const writeStore = stores.writeStore$;
         await writeStore.upsertMessages(tid, result.messages, signal);
+        L.debug("listAfter:cacheFilled", {
+          threadId: tid,
+          sinceId,
+          count: result.messages.length,
+        });
+      } else {
+        L.debug("listAfter:skipCache", {
+          threadId: tid,
+          sinceId,
+          hasAuth: Boolean(userId && orgId),
+          count: result.messages.length,
+        });
       }
 
       return result;
@@ -130,6 +164,10 @@ export function createIdbCachedDataSource(
         signal.throwIfAborted();
         const latestMessageId = page.messages[page.messages.length - 1]?.id;
         if (latestMessageId) {
+          L.debug("subscribeRealtime:catchUp", {
+            threadId: tid,
+            sinceId: latestMessageId,
+          });
           await set(
             listMessagesAfter$,
             { threadId: tid, sinceId: latestMessageId },
