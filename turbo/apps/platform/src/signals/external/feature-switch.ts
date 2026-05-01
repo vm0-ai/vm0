@@ -101,6 +101,11 @@ export const resetFeatureSwitches$ = command(
   },
 );
 
+export const idbMessageEnabled$ = computed(async (get) => {
+  const features = await get(featureSwitch$);
+  return features[FeatureSwitchKey.IdbMessage] ?? false;
+});
+
 export const trinityEnabled$ = computed(async (get) => {
   const features = await get(featureSwitch$);
   return features[FeatureSwitchKey.Trinity] ?? false;

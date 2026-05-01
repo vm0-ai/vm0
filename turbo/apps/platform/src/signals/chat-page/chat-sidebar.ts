@@ -9,6 +9,10 @@ import {
   createChatThreadSignals,
   type ChatThreadSignals,
 } from "./create-chat-thread.ts";
+import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
+import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { createDraftSignals } from "../zero-page/chat-draft.ts";
 import { sidebarOptimisticChatThread$ } from "./optimistic-chat-thread-page.ts";
 
@@ -28,6 +32,12 @@ export const chatSidebarThreadId$ = computed((get): string | null => {
   return sidebarThreadId;
 });
 
+function defaultDataSource(threadId: string) {
+  return isFeatureEnabled(FeatureSwitchKey.IdbMessage)
+    ? createIdbCachedDataSource(threadId)
+    : createRemoteChatThreadDataSource(threadId);
+}
+
 export const chatSidebarThread$ = computed((get): ChatThreadSignals | null => {
   const sidebarThreadId = get(chatSidebarThreadId$);
   if (!sidebarThreadId) {
@@ -39,7 +49,11 @@ export const chatSidebarThread$ = computed((get): ChatThreadSignals | null => {
     return optimisticThread.pendingThread;
   }
 
-  return createChatThreadSignals(sidebarThreadId, createDraftSignals());
+  return createChatThreadSignals(
+    sidebarThreadId,
+    createDraftSignals(),
+    defaultDataSource(sidebarThreadId),
+  );
 });
 
 export const openChatSidebar$ = command(({ get, set }, threadId: string) => {
