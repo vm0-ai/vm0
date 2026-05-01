@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.99.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.3...runner-rs-v0.99.4) (2026-05-01)
+
+
+### Documentation
+
+* document runner executor module ([#11608](https://github.com/vm0-ai/vm0/issues/11608)) ([9838b83](https://github.com/vm0-ai/vm0/commit/9838b8395a9dddd523fb37e366210c64ee2b1cfe))
+
 ## [0.99.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.2...runner-rs-v0.99.3) (2026-04-30)
 
 

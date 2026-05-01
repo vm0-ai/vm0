@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.251.0](https://github.com/vm0-ai/vm0/compare/core-v8.250.0...core-v8.251.0) (2026-05-01)
+
+
+### Features
+
+* **zero:** add chat thread rename behind ChatThreadRename feature switch ([#11648](https://github.com/vm0-ai/vm0/issues/11648)) ([bf4abcc](https://github.com/vm0-ai/vm0/commit/bf4abcc6fe9a8459dd008a7500577018c6ee7fac))
+
 ## [8.250.0](https://github.com/vm0-ai/vm0/compare/core-v8.249.0...core-v8.250.0) (2026-04-30)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.330.0](https://github.com/vm0-ai/vm0/compare/web-v12.329.1...web-v12.330.0) (2026-05-01)
+
+
+### Features
+
+* **zero:** add chat thread rename behind ChatThreadRename feature switch ([#11648](https://github.com/vm0-ai/vm0/issues/11648)) ([bf4abcc](https://github.com/vm0-ai/vm0/commit/bf4abcc6fe9a8459dd008a7500577018c6ee7fac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.251.0
+
 ## [12.329.1](https://github.com/vm0-ai/vm0/compare/web-v12.329.0...web-v12.329.1) (2026-05-01)
 
 
