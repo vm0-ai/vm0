@@ -168,7 +168,8 @@ impl JobProvider for ApiProvider {
                     match event {
                         Some(ably_subscriber::Event::Message(msg)) => {
                             if let Some(run_id) = parse_cancel_notification(&msg) {
-                                if let Some(token) = self.cancel_tokens.lock().await.get(&run_id) {
+                                let token = self.cancel_tokens.lock().await.get(&run_id).cloned();
+                                if let Some(token) = token {
                                     info!(run_id = %run_id, "ably: cancel notification, killing job");
                                     token.cancel();
                                 }
@@ -192,6 +193,9 @@ impl JobProvider for ApiProvider {
                                     }
                                     continue;
                                 }
+                                if self.cancel.is_cancelled() {
+                                    return None;
+                                }
                                 // Fall back to default profile when server doesn't send one
                                 // (backwards compat with pre-profile API).
                                 let profile = notif.profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
@@ -208,10 +212,8 @@ impl JobProvider for ApiProvider {
                         }
                         Some(ably_subscriber::Event::Disconnected { reason }) => {
                             *ably_connected = false;
-                            warn!(
-                                reason = reason.as_deref().unwrap_or("unknown"),
-                                "ably disconnected, switching to fast poll"
-                            );
+                            let reason = reason.as_deref().unwrap_or("unknown");
+                            warn!(reason = %reason, "ably disconnected, switching to fast poll");
                         }
                         Some(ably_subscriber::Event::Error { code, message }) => {
                             error!(code, message = %message, "ably fatal error, will reconnect");
@@ -233,8 +235,18 @@ impl JobProvider for ApiProvider {
                     *poll_now = false;
                     *deferred_poll_at = None;
                     let sessions = self.held_sessions.lock().await.clone();
-                    match self.api.poll(&self.group, &self.profiles, &sessions).await {
+                    let poll_result = tokio::select! {
+                        biased;
+                        () = self.cancel.cancelled() => {
+                            return None;
+                        }
+                        result = self.api.poll(&self.group, &self.profiles, &sessions) => result,
+                    };
+                    match poll_result {
                         Ok(Some(job)) => {
+                            if self.cancel.is_cancelled() {
+                                return None;
+                            }
                             // Fall back to default profile when server doesn't send one
                             // (backwards compat with pre-profile API).
                             let profile = job.experimental_profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
@@ -300,13 +312,17 @@ impl JobProvider for ApiProvider {
     /// 2. The main loop breaks (e.g. on `Draining` mode) and explicitly
     ///    drops the pinned future, which releases the lock.
     async fn shutdown(&self) {
-        let mut state = self.discovery.lock().await;
-        // Drop Ably subscription to close WebSocket
-        state.ably = None;
-        state.ably_connected = false;
-        // Abort in-flight reconnection task
-        if let Some(h) = state.ably_retry.handle.take() {
+        let reconnect_handle = {
+            let mut state = self.discovery.lock().await;
+            // Drop Ably subscription to close WebSocket
+            state.ably = None;
+            state.ably_connected = false;
+            // Take the in-flight reconnection task before awaiting its abort.
+            state.ably_retry.handle.take()
+        };
+        if let Some(h) = reconnect_handle {
             h.abort();
+            let _ = h.await;
         }
     }
 
@@ -671,6 +687,18 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::AsyncReadExt;
+    use tokio::net::TcpListener;
+
+    struct DropSignal(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for DropSignal {
+        fn drop(&mut self) {
+            if let Some(tx) = self.0.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -680,6 +708,111 @@ mod tests {
             client_id: None,
             timestamp: None,
         }
+    }
+
+    #[tokio::test]
+    async fn shutdown_aborts_and_awaits_in_flight_ably_reconnect() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+        let mut ably_retry = RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None);
+        ably_retry.handle = Some(tokio::spawn(async move {
+            let _drop_signal = DropSignal(Some(dropped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<Result<ably_subscriber::Subscription, ably_subscriber::Error>>()
+                .await
+        }));
+
+        let provider = ApiProvider {
+            api: ApiClient::new(
+                HttpClient::new("https://api.vm0.dev".to_string()).unwrap(),
+                "runner-token".to_string(),
+            ),
+            group: "default".to_string(),
+            profiles: Vec::new(),
+            runner_id: "runner-1".to_string(),
+            discovery: tokio::sync::Mutex::new(DiscoveryState {
+                ably: None,
+                ably_retry,
+                ably_connected: true,
+                poll_now: false,
+                deferred_poll_at: None,
+            }),
+            tokens: tokio::sync::Mutex::new(HashMap::new()),
+            cancel_tokens: std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            held_sessions: tokio::sync::Mutex::new(Vec::new()),
+            cancel: CancellationToken::new(),
+        };
+
+        tokio::time::timeout(Duration::from_secs(1), started_rx)
+            .await
+            .expect("Ably reconnect task should start")
+            .unwrap();
+
+        provider.shutdown().await;
+
+        tokio::time::timeout(Duration::from_secs(1), dropped_rx)
+            .await
+            .expect("shutdown should await aborted Ably reconnect task")
+            .unwrap();
+
+        let state = provider.discovery.lock().await;
+        assert!(state.ably_retry.handle.is_none());
+        assert!(!state.ably_connected);
+    }
+
+    #[tokio::test]
+    async fn discover_cancel_aborts_in_flight_poll() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0_u8; 1024];
+            let _ = socket.read(&mut buf).await;
+            let _ = accepted_tx.send(());
+            std::future::pending::<()>().await;
+        });
+
+        let cancel = CancellationToken::new();
+        let provider = Arc::new(ApiProvider {
+            api: ApiClient::new(
+                HttpClient::new(api_url).unwrap(),
+                "runner-token".to_string(),
+            ),
+            group: "default".to_string(),
+            profiles: Vec::new(),
+            runner_id: "runner-1".to_string(),
+            discovery: tokio::sync::Mutex::new(DiscoveryState {
+                ably: None,
+                ably_retry: RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None),
+                ably_connected: false,
+                poll_now: true,
+                deferred_poll_at: None,
+            }),
+            tokens: tokio::sync::Mutex::new(HashMap::new()),
+            cancel_tokens: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            held_sessions: tokio::sync::Mutex::new(Vec::new()),
+            cancel: cancel.clone(),
+        });
+
+        let provider_for_discover = Arc::clone(&provider);
+        let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
+
+        tokio::time::timeout(Duration::from_secs(1), accepted_rx)
+            .await
+            .expect("poll request should reach the server")
+            .unwrap();
+
+        cancel.cancel();
+
+        let result = tokio::time::timeout(Duration::from_secs(1), discover_task)
+            .await
+            .expect("discover should not wait for the HTTP poll timeout")
+            .unwrap();
+        assert!(result.is_none());
+
+        server_task.abort();
+        let _ = server_task.await;
     }
 
     #[test]
