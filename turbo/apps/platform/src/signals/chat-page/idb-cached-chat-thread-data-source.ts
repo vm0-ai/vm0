@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import { clerk$ } from "../auth.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
 import { logger } from "../log.ts";
@@ -118,9 +118,9 @@ function createListMessagesAfter(
 
 function createSubscribeRealtime(
   remote: ChatThreadDataSource,
-  initialPage$: ReturnType<typeof computed>,
+  initialPage$: Computed<Promise<InitialPage>>,
   initialPageFromCache: { current: boolean },
-  listMessagesAfter$: ReturnType<typeof command>,
+  listMessagesAfter$: ChatThreadDataSource["listMessagesAfter$"],
 ) {
   return command(
     async (
