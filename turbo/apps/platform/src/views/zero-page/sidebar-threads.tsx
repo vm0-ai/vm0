@@ -235,11 +235,13 @@ function ChatThreadMenu({
   threadId,
   isPinned,
   isHighlighted,
+  pinEnabled,
   renameEnabled,
 }: {
   threadId: string;
   isPinned: boolean;
   isHighlighted: boolean;
+  pinEnabled: boolean;
   renameEnabled: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
@@ -292,19 +294,21 @@ function ChatThreadMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
-        <DropdownMenuItem onSelect={handleTogglePin}>
-          {isPinned ? (
-            <>
-              <IconPinnedOff size={16} stroke={2} className="mr-2" />
-              Unpin chat
-            </>
-          ) : (
-            <>
-              <IconPin size={16} stroke={2} className="mr-2" />
-              Pin chat
-            </>
-          )}
-        </DropdownMenuItem>
+        {pinEnabled && (
+          <DropdownMenuItem onSelect={handleTogglePin}>
+            {isPinned ? (
+              <>
+                <IconPinnedOff size={16} stroke={2} className="mr-2" />
+                Unpin chat
+              </>
+            ) : (
+              <>
+                <IconPin size={16} stroke={2} className="mr-2" />
+                Pin chat
+              </>
+            )}
+          </DropdownMenuItem>
+        )}
         {renameEnabled && (
           <DropdownMenuItem onSelect={openRenameDialog}>
             <IconPencil size={16} stroke={2} className="mr-2" />
@@ -362,6 +366,7 @@ function ChatThreadSideDecorator({
           threadId={threadId}
           isPinned={isPinned}
           isHighlighted={isHighlighted}
+          pinEnabled={pinEnabled}
           renameEnabled={renameEnabled}
         />
       ) : (
