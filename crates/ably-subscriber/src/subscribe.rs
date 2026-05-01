@@ -102,6 +102,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             transport: Some(WsTransport::new(ws_read, ws_write)),
             event_tx,
             conn_state,
+            lifecycle: crate::connection::RealtimeStateMachine::connected(),
             channel: config.channel,
             channel_params: config.channel_params,
             realtime_host,
