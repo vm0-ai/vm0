@@ -1,6 +1,7 @@
 import { getValidatedFramework } from "@vm0/core/frameworks";
 import { badRequest } from "@vm0/api-services/errors";
 import {
+  getFrameworkForType,
   getSecretNameForType,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
@@ -32,7 +33,14 @@ export function validateFrameworkApiKey(
   const agent = agents[0];
   if (!agent) return;
 
-  const framework = getValidatedFramework(agent.framework);
+  // Provider's framework wins (Epic #11520 design intent); compose
+  // framework is fallback for CLI/no-provider paths. Without this, a
+  // compose=claude-code + provider=openai-api-key (codex) thread would
+  // exit early on the claude-code branch and skip OPENAI_API_KEY checks.
+  const resolvedFrameworkName = providerType
+    ? getFrameworkForType(providerType)
+    : agent.framework;
+  const framework = getValidatedFramework(resolvedFrameworkName);
   if (framework === "claude-code") return;
 
   const requiredVar = resolveFrameworkApiKeyEnvVar(framework);

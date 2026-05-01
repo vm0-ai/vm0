@@ -81,9 +81,13 @@ export async function prepareForExecution(
   const orgId = context.orgId;
   log.debug(`Preparing execution context for run ${context.runId}...`);
 
-  // Extract configuration from agent compose
+  // Extract configuration from agent compose. resolvedFramework wins over
+  // the compose-declared framework so a thread eager-pinned to a provider
+  // whose framework differs from compose (e.g., compose=claude-code +
+  // provider=openai-api-key → codex) actually launches the right binary.
   const workingDir = extractWorkingDir(context.agentCompose);
-  const cliAgentType = extractCliAgentType(context.agentCompose);
+  const cliAgentType =
+    context.resolvedFramework ?? extractCliAgentType(context.agentCompose);
   const runnerGroup = resolveRunnerGroup(context.agentCompose);
   const profile = resolveRunnerProfile(context.agentCompose);
 

@@ -9,6 +9,7 @@ import {
   deleteTestModelProvider,
   setTestZeroAgentModelProvider,
   findTestCallbacksByRunId,
+  findTestRunnerJobEntry,
   getTestRun,
   getTestChatMessagesByThread,
   countUserRows,
@@ -1176,6 +1177,79 @@ describe("POST /api/zero/chat/messages", () => {
         const after = await getTestChatThreadModelOverride(threadId);
         expect(after.modelProviderId).toBeNull();
         expect(after.selectedModel).toBeNull();
+      });
+    });
+
+    describe("dispatch framework derivation (Issue #11645)", () => {
+      // Production-shape regression: thread eager-pinned to an
+      // openai-api-key provider on a compose that says framework:
+      // claude-code (the default) and has no explicit env block — the
+      // production case where the org provider injects the auth secret
+      // at runtime. Pre-fix, the dispatched runner_job_queue entry
+      // carried cliAgentType="claude-code" and launched the wrong
+      // binary. The fix wires resolvedFramework through
+      // ExecutionContext so the provider's framework wins.
+      it("dispatches cliAgentType=codex when pinned to openai-api-key provider on a claude-code compose", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("codex-pin"),
+          { noEnvironmentBlock: true },
+        );
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          composeAgentId,
+          providerId,
+          "gpt-5",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "kick off codex",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { runId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
+      });
+
+      it("dispatches cliAgentType=claude-code when no provider override forces a different framework", async () => {
+        // Default agent (no eager-pin) on a compose with no explicit
+        // env block — org default anthropic-api-key (from beforeEach)
+        // resolves to claude-code, matching the compose's framework.
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("default-cc"),
+          { noEnvironmentBlock: true },
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "default claude-code",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { runId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("claude-code");
       });
     });
 
