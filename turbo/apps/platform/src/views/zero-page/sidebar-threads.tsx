@@ -51,10 +51,12 @@ import {
 } from "../../signals/chat-page/chat-message.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
-  chatSidebarThreadId$,
-  navigateMainChatPreservingSidebar$,
-  toggleSidebarThread$,
-} from "../../signals/chat-page/chat-sidebar.ts";
+  currentLeftThread$,
+  currentRightThread$,
+  loadLeftThread$,
+  loadRightThread$,
+  unloadRightThread$,
+} from "../../signals/chat-page/chat-thread-panes.ts";
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
@@ -154,49 +156,68 @@ function getIndicatorState({
 function handleChatThreadClick(
   e: React.MouseEvent<HTMLAnchorElement>,
   {
-    canOpenSidebar,
     closeSidebarOnSelect,
-    isHighlighted,
-    navigateMainChatPreservingSidebar,
-    toggleSidebarThread,
+    currentLeftId,
+    currentRightId,
+    loadLeftThread,
+    loadRightThread,
+    onChatPage,
     pageSignal,
     threadId,
+    unloadRightThread,
   }: {
-    canOpenSidebar: boolean;
     closeSidebarOnSelect: () => void;
-    isHighlighted: boolean;
-    navigateMainChatPreservingSidebar: (threadId: string) => void;
-    toggleSidebarThread: (
-      threadId: string,
-      signal: AbortSignal,
-    ) => Promise<void>;
+    currentLeftId: string | null;
+    currentRightId: string | null;
+    loadLeftThread: (threadId: string, signal: AbortSignal) => Promise<void>;
+    loadRightThread: (threadId: string, signal: AbortSignal) => Promise<void>;
+    onChatPage: boolean;
     pageSignal: AbortSignal;
     threadId: string;
+    unloadRightThread: () => void;
   },
 ) {
-  if (e.altKey && canOpenSidebar) {
-    e.preventDefault();
-    detach(
-      toggleSidebarThread(threadId, pageSignal),
-      Reason.DomCallback,
-      "toggleSidebarThread",
-    );
-    if (!isHighlighted) {
-      closeSidebarOnSelect();
-    }
-    return;
-  }
   if (e.metaKey || e.ctrlKey || e.shiftKey) {
+    // Modified click → let the browser handle it (open in new tab, etc.).
     return;
   }
-  if (isHighlighted) {
-    e.preventDefault();
+
+  if (!onChatPage) {
+    // Not on a chat thread page yet — let <Link> navigate normally so the
+    // route system bootstraps the chat page from scratch.
     return;
   }
-  if (canOpenSidebar) {
-    e.preventDefault();
-    navigateMainChatPreservingSidebar(threadId);
+
+  e.preventDefault();
+
+  if (e.altKey) {
+    // Alt-click → drive the right (sidebar) pane.
+    if (threadId === currentLeftId) {
+      // Refuse to put the left thread into the right pane.
+      return;
+    }
+    if (threadId === currentRightId) {
+      // Same thread already in right → toggle close.
+      unloadRightThread();
+    } else {
+      detach(
+        loadRightThread(threadId, pageSignal),
+        Reason.DomCallback,
+        "loadRightThread",
+      );
+    }
+  } else {
+    // Plain click → drive the left pane.
+    if (threadId === currentLeftId) {
+      return;
+    }
+    detach(
+      loadLeftThread(threadId, pageSignal),
+      Reason.DomCallback,
+      "loadLeftThread",
+    );
   }
+
   closeSidebarOnSelect();
 }
 
@@ -392,26 +413,28 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   const pathParams = useGet(pathParams$);
   const selectedThreadId =
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
-  const sidebarThreadId = useGet(chatSidebarThreadId$);
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
-  const toggleSidebarThread = useSet(toggleSidebarThread$);
-  const navigateMainChatPreservingSidebar = useSet(
-    navigateMainChatPreservingSidebar$,
-  );
+  const loadLeftThread = useSet(loadLeftThread$);
+  const loadRightThread = useSet(loadRightThread$);
+  const unloadRightThread = useSet(unloadRightThread$);
   const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
   const pinEnabled = features?.[FeatureSwitchKey.ChatThreadPin] ?? false;
   const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
   const isPinned =
     pinEnabled && session.pinnedAt !== null && session.pinnedAt !== undefined;
-  const isCurrentPage = selectedThreadId === session.id;
-  const isHighlighted = isCurrentPage || sidebarThreadId === session.id;
+  const currentLeftId = leftThread?.threadId ?? null;
+  const currentRightId = rightThread?.threadId ?? null;
+  const onChatPage = selectedThreadId !== null;
+  const isCurrentPage = currentLeftId === session.id;
+  const isHighlighted = isCurrentPage || currentRightId === session.id;
   const paneIndicator = getChatThreadPaneIndicator({
     isCurrentPage,
-    sidebarThreadId,
+    sidebarThreadId: currentRightId,
     threadId: session.id,
   });
-  const canOpenSidebar = selectedThreadId !== null;
   const isRunning = session.running;
   const isUnread = !session.isRead && !isHighlighted;
   const hasDraft = (session.hasDraft ?? false) && !isHighlighted;
@@ -434,13 +457,15 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
         data-chat-thread-id={session.id}
         onClick={(e) => {
           handleChatThreadClick(e, {
-            canOpenSidebar,
             closeSidebarOnSelect,
-            isHighlighted,
-            navigateMainChatPreservingSidebar,
-            toggleSidebarThread,
+            currentLeftId,
+            currentRightId,
+            loadLeftThread,
+            loadRightThread,
+            onChatPage,
             pageSignal,
             threadId: session.id,
+            unloadRightThread,
           });
         }}
         className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${

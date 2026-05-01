@@ -1,35 +1,22 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
-import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import {
-  currentChatAgentId$,
-  setChatAgentId$,
-  currentChatThreadId$,
-} from "../agent-chat.ts";
+import { currentChatThreadId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { detachedNavigateTo$, searchParams$ } from "../route.ts";
-import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
-import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
-import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
-import { idbMessageEnabled$ } from "../external/feature-switch.ts";
-import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { searchParams$ } from "../route.ts";
 import {
-  chatSidebarThreadId$,
-  openOrSwitchSidebarThread$,
-} from "./chat-sidebar.ts";
-import {
-  clearMatchingOptimisticChatThread$,
-  optimisticChatThread$,
-} from "./optimistic-chat-thread-page.ts";
-import { setupChatThreadSignals$ } from "./setup-chat-thread-signals.ts";
+  loadLeftThread$,
+  loadRightThread$,
+  unloadRightThread$,
+} from "./chat-thread-panes.ts";
 import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
+
+const SIDEBAR_PARAM = "sidebar";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -38,121 +25,31 @@ export const setupChatPage$ = command(
     if (!threadId) {
       throw new Error("threadId is required to load chat page");
     }
-    const initialSearchParams = new URLSearchParams(get(searchParams$));
-
-    set(updateDocumentTitle$, "Chat");
 
     if (await set(onboardGuard$, signal)) {
       return;
     }
 
-    const { draft, isNew } = set(ensureDraft$, threadId);
-    const idbEnabled = await get(idbMessageEnabled$);
-    signal.throwIfAborted();
-    const dataSource = idbEnabled
-      ? createIdbCachedDataSource(threadId)
-      : createRemoteChatThreadDataSource(threadId);
-    const thread = createChatThreadSignals(threadId, draft, dataSource);
-
-    const optimisticThread = get(optimisticChatThread$);
-    const matchingOptimisticThread =
-      optimisticThread?.threadId === threadId ? optimisticThread : null;
-
-    set(
-      updatePage$,
-      createElement(ZeroChatThreadPage, {
-        key: threadId,
-        thread: matchingOptimisticThread?.pendingThread ?? thread,
-      }),
-      "sidebar",
-    );
+    set(updatePage$, createElement(ZeroChatThreadPage), "sidebar");
     await set(hideAppSkeleton$, signal);
+    signal.throwIfAborted();
     set(captureNavigationTiming$);
 
-    if (matchingOptimisticThread) {
-      set(updateDocumentTitle$, "New chat");
-      await matchingOptimisticThread.settleResult;
-      signal.throwIfAborted();
-    }
-
-    const threadData = await get(thread.threadData$);
-    signal.throwIfAborted();
-    if (!threadData) {
-      if (matchingOptimisticThread) {
-        set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
-      }
-
-      set(detachedNavigateTo$, "/", {
-        searchParams: initialSearchParams,
-        replace: true,
-      });
-
-      return;
-    }
-
-    const currentChatAgentId = await get(currentChatAgentId$);
-    signal.throwIfAborted();
-    if (currentChatAgentId !== threadData.agentId) {
-      set(setChatAgentId$, threadData.agentId);
-    }
-
-    const sessionTitle = threadData.title ?? "New chat";
-    set(updateDocumentTitle$, sessionTitle);
-
-    if (
-      isNew &&
-      (threadData.draftContent !== null ||
-        (threadData.draftAttachments !== null &&
-          threadData.draftAttachments.length > 0))
-    ) {
-      const restoredAttachments = (threadData.draftAttachments ?? []).map(
-        createRestoredAttachment,
-      );
-      set(
-        thread.draft.seed$,
-        threadData.draftContent ?? "",
-        restoredAttachments,
-      );
-    }
-
-    await get(thread.groupedChatMessages$);
-    signal.throwIfAborted();
-
-    if (matchingOptimisticThread) {
-      set(thread.hideSkeleton$);
-      set(
-        updatePage$,
-        createElement(ZeroChatThreadPage, {
-          key: threadId,
-          thread,
-        }),
-        "sidebar",
-      );
-      set(clearMatchingOptimisticChatThread$, matchingOptimisticThread);
-    }
-
-    const onThreadUpdated$ = command(async ({ get, set }, sig: AbortSignal) => {
-      const data = await get(thread.threadData$);
-      sig.throwIfAborted();
-      if (data) {
-        set(updateDocumentTitle$, data.title ?? "New chat");
-      }
-      return false;
-    });
-
-    const sidebarThreadId = get(chatSidebarThreadId$);
+    const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
+    const shouldLoadRight = sidebarThreadId && sidebarThreadId !== threadId;
 
     await Promise.all([
-      set(setupChatThreadSignals$, thread, signal),
-      set(
-        setAblyLoop$,
-        `chatThreadRunUpdated:${threadId}`,
-        onThreadUpdated$,
-        signal,
-      ),
-      sidebarThreadId
-        ? set(openOrSwitchSidebarThread$, sidebarThreadId, signal)
+      set(loadLeftThread$, threadId, signal),
+      shouldLoadRight
+        ? set(loadRightThread$, sidebarThreadId, signal)
         : Promise.resolve(),
     ]);
+    signal.throwIfAborted();
+
+    if (sidebarThreadId && !shouldLoadRight) {
+      // URL referenced sidebar thread that matched the primary thread —
+      // strip it to keep state coherent.
+      set(unloadRightThread$);
+    }
   },
 );
