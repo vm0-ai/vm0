@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useGet,
   useSet,
@@ -72,6 +71,10 @@ import {
   setThreadSearchTerm$,
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
+  renameDialogThreadId$,
+  renameDialogInput$,
+  setRenameDialogThreadId$,
+  setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
@@ -242,10 +245,9 @@ function ChatThreadMenu({
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
-  const renameChatThread = useSet(renameChatThread$);
+  const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
+  const setRenameDialogInput = useSet(setRenameDialogInput$);
   const pageSignal = useGet(pageSignal$);
-  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
-  const [renameInput, setRenameInput] = useState("");
 
   function handleTogglePin(e: Event) {
     e.preventDefault();
@@ -256,21 +258,6 @@ function ChatThreadMenu({
     }
   }
 
-  function handleRename() {
-    if (!renameInput.trim()) {
-      return;
-    }
-    detach(
-      renameChatThread(
-        { threadId, title: renameInput.trim() },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
-    setRenameDialogOpen(false);
-    setRenameInput("");
-  }
-
   function handleMenuTriggerClick(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -278,115 +265,112 @@ function ChatThreadMenu({
 
   function openRenameDialog(e: Event) {
     e.preventDefault();
-    setRenameInput("");
-    setRenameDialogOpen(true);
+    setRenameDialogInput("");
+    setRenameDialogThreadId(threadId);
   }
 
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            onClick={handleMenuTriggerClick}
-            className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
-              isHighlighted
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-            }`}
-            aria-label="Open chat menu"
-            data-testid="chat-thread-menu-trigger"
-            data-pinned={isPinned ? "true" : "false"}
-          >
-            {isPinned ? (
-              <IconPin size={16} stroke={2} />
-            ) : (
-              <IconDots size={16} stroke={2} />
-            )}
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40">
-          <DropdownMenuItem onSelect={handleTogglePin}>
-            {isPinned ? (
-              <>
-                <IconPinnedOff size={16} stroke={2} className="mr-2" />
-                Unpin chat
-              </>
-            ) : (
-              <>
-                <IconPin size={16} stroke={2} className="mr-2" />
-                Pin chat
-              </>
-            )}
-          </DropdownMenuItem>
-          {renameEnabled && (
-            <DropdownMenuItem onSelect={openRenameDialog}>
-              <IconPencil size={16} stroke={2} className="mr-2" />
-              Rename chat
-            </DropdownMenuItem>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          onClick={handleMenuTriggerClick}
+          className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
+            isHighlighted
+              ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+              : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+          }`}
+          aria-label="Open chat menu"
+          data-testid="chat-thread-menu-trigger"
+          data-pinned={isPinned ? "true" : "false"}
+        >
+          {isPinned ? (
+            <IconPin size={16} stroke={2} />
+          ) : (
+            <IconDots size={16} stroke={2} />
           )}
-          <DropdownMenuItem
-            onSelect={(e) => {
-              e.preventDefault();
-              setPendingDeleteThreadId(threadId);
-            }}
-            className="text-destructive focus:text-destructive"
-          >
-            <IconTrash size={16} stroke={2} className="mr-2" />
-            Delete chat
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-40">
+        <DropdownMenuItem onSelect={handleTogglePin}>
+          {isPinned ? (
+            <>
+              <IconPinnedOff size={16} stroke={2} className="mr-2" />
+              Unpin chat
+            </>
+          ) : (
+            <>
+              <IconPin size={16} stroke={2} className="mr-2" />
+              Pin chat
+            </>
+          )}
+        </DropdownMenuItem>
+        {renameEnabled && (
+          <DropdownMenuItem onSelect={openRenameDialog}>
+            <IconPencil size={16} stroke={2} className="mr-2" />
+            Rename chat
           </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-      <Dialog
-        open={renameDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRenameDialogOpen(false);
-            setRenameInput("");
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rename chat</DialogTitle>
-            <DialogDescription>
-              Enter a new name for this chat thread.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-2">
-            <input
-              type="text"
-              autoFocus
-              value={renameInput}
-              onChange={(e) => {
-                return setRenameInput(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleRename();
-                }
-              }}
-              placeholder="Chat title"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setRenameDialogOpen(false);
-                setRenameInput("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button disabled={!renameInput.trim()} onClick={handleRename}>
-              Rename
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        )}
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setPendingDeleteThreadId(threadId);
+          }}
+          className="text-destructive focus:text-destructive"
+        >
+          <IconTrash size={16} stroke={2} className="mr-2" />
+          Delete chat
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ChatThreadSideDecorator({
+  threadId,
+  isPinned,
+  isHighlighted,
+  pinEnabled,
+  renameEnabled,
+  indicatorState,
+}: {
+  threadId: string;
+  isPinned: boolean;
+  isHighlighted: boolean;
+  pinEnabled: boolean;
+  renameEnabled: boolean;
+  indicatorState: IndicatorState | null;
+}) {
+  if (indicatorState === "draft") {
+    return (
+      <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+        <span className="flex items-center justify-center">
+          <SessionStateIndicator state={indicatorState} />
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+      {indicatorState !== null && (
+        <span className="flex items-center justify-center group-hover:invisible">
+          <SessionStateIndicator state={indicatorState} />
+        </span>
+      )}
+      {pinEnabled || renameEnabled ? (
+        <ChatThreadMenu
+          threadId={threadId}
+          isPinned={isPinned}
+          isHighlighted={isHighlighted}
+          renameEnabled={renameEnabled}
+        />
+      ) : (
+        <ChatThreadDeleteButton
+          threadId={threadId}
+          isHighlighted={isHighlighted}
+        />
+      )}
+    </div>
   );
 }
 
@@ -459,32 +443,91 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
           </span>
         </span>
       </Link>
-      <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-        {indicatorState !== null && (
-          <span
-            className={`flex items-center justify-center ${
-              indicatorState === "draft" ? "" : "group-hover:invisible"
-            }`}
-          >
-            <SessionStateIndicator state={indicatorState} />
-          </span>
-        )}
-        {indicatorState !== "draft" &&
-          (pinEnabled || renameEnabled ? (
-            <ChatThreadMenu
-              threadId={session.id}
-              isPinned={isPinned}
-              isHighlighted={isHighlighted}
-              renameEnabled={renameEnabled}
-            />
-          ) : (
-            <ChatThreadDeleteButton
-              threadId={session.id}
-              isHighlighted={isHighlighted}
-            />
-          ))}
-      </div>
+      <ChatThreadSideDecorator
+        threadId={session.id}
+        isPinned={isPinned}
+        isHighlighted={isHighlighted}
+        pinEnabled={pinEnabled}
+        renameEnabled={renameEnabled}
+        indicatorState={indicatorState}
+      />
     </div>
+  );
+}
+
+function ChatThreadRenameDialog() {
+  const renameDialogThreadId = useGet(renameDialogThreadId$);
+  const renameDialogInput = useGet(renameDialogInput$);
+  const setRenameDialogInput = useSet(setRenameDialogInput$);
+  const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
+  const renameChatThread = useSet(renameChatThread$);
+  const pageSignal = useGet(pageSignal$);
+
+  function handleRename() {
+    if (!renameDialogThreadId || !renameDialogInput.trim()) {
+      return;
+    }
+    detach(
+      renameChatThread(
+        { threadId: renameDialogThreadId, title: renameDialogInput.trim() },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+    setRenameDialogThreadId(null);
+    setRenameDialogInput("");
+  }
+
+  return (
+    <Dialog
+      open={renameDialogThreadId !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setRenameDialogThreadId(null);
+          setRenameDialogInput("");
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Rename chat</DialogTitle>
+          <DialogDescription>
+            Enter a new name for this chat thread.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2">
+          <input
+            type="text"
+            autoFocus
+            value={renameDialogInput}
+            onChange={(e) => {
+              return setRenameDialogInput(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                handleRename();
+              }
+            }}
+            placeholder="Chat title"
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setRenameDialogThreadId(null);
+              setRenameDialogInput("");
+            }}
+          >
+            Cancel
+          </Button>
+          <Button disabled={!renameDialogInput.trim()} onClick={handleRename}>
+            Rename
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -539,6 +582,7 @@ function ChatThreads() {
       {filteredChatThreads.map((session) => {
         return <ChatThreadItem key={session.id} session={session} />;
       })}
+      <ChatThreadRenameDialog />
       <Dialog
         open={pendingDeleteThreadId !== null}
         onOpenChange={(open) => {

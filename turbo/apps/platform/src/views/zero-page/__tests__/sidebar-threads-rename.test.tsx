@@ -206,7 +206,7 @@ describe("sidebar chat thread rename", () => {
     click(within(dialog).getByText("Rename"));
 
     await waitFor(() => {
-      expect(getLastRenamed()).toEqual({
+      expect(getLastRenamed()).toStrictEqual({
         id: "thread-1",
         title: "Renamed chat",
       });
