@@ -52,8 +52,9 @@ pub(crate) struct LeakedResources {
 /// Owns the leaked-resource cleanup channel and its background drain task.
 ///
 /// Normal factory shutdown signals the drain task to close the receiver, drain
-/// already-queued resources, and finish. `Drop` cannot await, so it signals
-/// shutdown and detaches the task as a best-effort fallback.
+/// already-queued resources, and finish. `Drop` cannot await, so it only
+/// detaches the task; live sandbox sender clones can still report leaked
+/// resources before the channel naturally closes.
 struct LeakCleaner {
     tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
     shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
@@ -119,21 +120,19 @@ impl LeakCleaner {
         }
     }
 
-    fn detach_shutdown(&mut self) {
+    fn detach_for_drop(&mut self) {
         self.tx.take();
-        if let Some(shutdown_tx) = self.shutdown_tx.take() {
-            let _ = shutdown_tx.send(());
-        }
-        // Dropping JoinHandle detaches the task. If the runtime is still
-        // alive, the drain loop can finish queued cleanup without blocking
-        // this synchronous Drop path.
+        self.shutdown_tx.take();
+        // Dropping JoinHandle detaches the task. If the runtime is still alive,
+        // the drain loop can finish queued cleanup and accept leak reports from
+        // live sandbox sender clones without blocking this synchronous Drop path.
         self.handle.take();
     }
 }
 
 impl Drop for LeakCleaner {
     fn drop(&mut self) {
-        self.detach_shutdown();
+        self.detach_for_drop();
     }
 }
 
@@ -534,21 +533,24 @@ async fn drain_leaked_resources(
 
 async fn drain_leaked_resources_with_cleanup<C, Fut>(
     mut rx: tokio::sync::mpsc::UnboundedReceiver<LeakedResources>,
-    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     mut cleanup: C,
 ) where
     C: FnMut(LeakedResources) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
+    let mut shutdown_rx = Some(shutdown_rx);
     loop {
         tokio::select! {
             biased;
-            _ = &mut shutdown_rx => {
-                rx.close();
-                while let Some(leaked) = rx.recv().await {
-                    cleanup(leaked).await;
+            shutdown = wait_for_leak_cleaner_shutdown(&mut shutdown_rx) => {
+                if shutdown {
+                    rx.close();
+                    while let Some(leaked) = rx.recv().await {
+                        cleanup(leaked).await;
+                    }
+                    break;
                 }
-                break;
             }
             maybe_leaked = rx.recv() => {
                 let Some(leaked) = maybe_leaked else {
@@ -556,6 +558,22 @@ async fn drain_leaked_resources_with_cleanup<C, Fut>(
                 };
                 cleanup(leaked).await;
             }
+        }
+    }
+}
+
+async fn wait_for_leak_cleaner_shutdown(
+    shutdown_rx: &mut Option<tokio::sync::oneshot::Receiver<()>>,
+) -> bool {
+    let Some(rx) = shutdown_rx.as_mut() else {
+        return std::future::pending::<bool>().await;
+    };
+
+    match rx.await {
+        Ok(()) => true,
+        Err(_) => {
+            *shutdown_rx = None;
+            false
         }
     }
 }
@@ -2019,7 +2037,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn leak_cleaner_drop_signals_shutdown_and_detaches_drain() {
+    async fn leak_cleaner_drop_detaches_drain_and_keeps_live_senders_usable() {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let live_sender_clone = tx.clone();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
@@ -2046,16 +2064,19 @@ mod tests {
             .send(test_leaked_resource("queued"))
             .unwrap();
         drop(cleaner);
+        live_sender_clone
+            .send(test_leaked_resource("late"))
+            .unwrap();
+        drop(live_sender_clone);
 
         tokio::time::timeout(std::time::Duration::from_secs(1), done_rx)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(*cleaned.lock().await, vec!["queued".to_string()]);
-        assert!(matches!(
-            live_sender_clone.send(test_leaked_resource("late")),
-            Err(tokio::sync::mpsc::error::SendError(_))
-        ));
+        assert_eq!(
+            *cleaned.lock().await,
+            vec!["queued".to_string(), "late".to_string()]
+        );
     }
 
     #[test]
