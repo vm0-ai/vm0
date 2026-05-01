@@ -80,12 +80,18 @@ function createIdbMessageStores(userId: string, orgId: string) {
       const index = tx.store.index("byThreadAndTime");
       const range = IDBKeyRange.bound(
         [threadId, ""],
-        [threadId, anchorMsg.createdAt, beforeId],
+        [threadId, anchorMsg.createdAt],
       );
       const messages: PagedChatMessage[] = [];
       let cursor = await index.openCursor(range, "prev");
-      while (cursor && validateMessage(cursor.value).id === beforeId) {
-        cursor = await cursor.continue();
+      // Skip the anchor and any rows with the same createdAt that sort after it
+      while (cursor) {
+        const msg = validateMessage(cursor.value);
+        if (msg.createdAt === anchorMsg.createdAt && msg.id >= beforeId) {
+          cursor = await cursor.continue();
+        } else {
+          break;
+        }
       }
       while (cursor && messages.length < limit) {
         signal?.throwIfAborted();
