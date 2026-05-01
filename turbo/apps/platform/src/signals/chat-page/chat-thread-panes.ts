@@ -40,7 +40,7 @@ import { setupChatThreadSignals$ } from "./setup-chat-thread-signals.ts";
 export const SIDEBAR_PARAM = "sidebar";
 
 const internalLeftThread$ = state<ChatThreadSignals | null>(null);
-export const internalRightThread$ = state<ChatThreadSignals | null>(null);
+const internalRightThread$ = state<ChatThreadSignals | null>(null);
 
 export const currentLeftThread$ = computed((get): ChatThreadSignals | null => {
   return get(internalLeftThread$);
@@ -111,6 +111,19 @@ const setupPaneThread$ = command(
     const matchingOptimistic =
       optimisticThread?.threadId === threadId ? optimisticThread : null;
 
+    // Publish optimistic pendingThread synchronously up front — before any
+    // await — so the pane renders the pending UI without a microtask gap.
+    // The real thread is created below and swapped in after settleResult.
+    if (matchingOptimistic) {
+      set(spec.paneState$, matchingOptimistic.pendingThread);
+    }
+    if (spec.initialDocumentTitle) {
+      set(
+        updateDocumentTitle$,
+        spec.initialDocumentTitle(matchingOptimistic !== null),
+      );
+    }
+
     const { draft, isNew } = set(ensureDraft$, threadId);
     const idbEnabled = await get(idbMessageEnabled$);
     signal.throwIfAborted();
@@ -119,15 +132,8 @@ const setupPaneThread$ = command(
       : createRemoteChatThreadDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
 
-    // Publish: optimistic thread renders immediately while we wait for the
-    // server confirmation; the real thread takes over after the swap below.
-    set(spec.paneState$, matchingOptimistic?.pendingThread ?? thread);
-
-    if (spec.initialDocumentTitle) {
-      set(
-        updateDocumentTitle$,
-        spec.initialDocumentTitle(matchingOptimistic !== null),
-      );
+    if (!matchingOptimistic) {
+      set(spec.paneState$, thread);
     }
 
     if (matchingOptimistic) {
