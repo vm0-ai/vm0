@@ -427,6 +427,23 @@ export async function setTestChatThreadPinnedAt(
 }
 
 /**
+ * Set renamed_at on a chat thread directly in the database.
+ *
+ * @why-db-direct Tests that need to seed a user-renamed state to assert
+ * the automated-title-generation suppression logic require direct access.
+ */
+export async function setTestChatThreadRenamedAt(
+  threadId: string,
+  renamedAt: Date | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ renamedAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
  * Set last_read_message_id on a chat thread directly in the database.
  *
  * @why-db-direct Tests need to seed exact read state without invoking the

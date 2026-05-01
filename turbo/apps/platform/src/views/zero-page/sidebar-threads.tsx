@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   useGet,
   useSet,
@@ -47,6 +48,7 @@ import {
   deleteChatThread$,
   pinChatThread$,
   unpinChatThread$,
+  renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -230,15 +232,20 @@ function ChatThreadMenu({
   threadId,
   isPinned,
   isHighlighted,
+  renameEnabled,
 }: {
   threadId: string;
   isPinned: boolean;
   isHighlighted: boolean;
+  renameEnabled: boolean;
 }) {
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
+  const renameChatThread = useSet(renameChatThread$);
   const pageSignal = useGet(pageSignal$);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameInput, setRenameInput] = useState("");
 
   function handleTogglePin(e: Event) {
     e.preventDefault();
@@ -249,59 +256,137 @@ function ChatThreadMenu({
     }
   }
 
+  function handleRename() {
+    if (!renameInput.trim()) {
+      return;
+    }
+    detach(
+      renameChatThread(
+        { threadId, title: renameInput.trim() },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+    setRenameDialogOpen(false);
+    setRenameInput("");
+  }
+
   function handleMenuTriggerClick(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
   }
 
+  function openRenameDialog(e: Event) {
+    e.preventDefault();
+    setRenameInput("");
+    setRenameDialogOpen(true);
+  }
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          onClick={handleMenuTriggerClick}
-          className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
-            isHighlighted
-              ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-              : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-          }`}
-          aria-label="Open chat menu"
-          data-testid="chat-thread-menu-trigger"
-          data-pinned={isPinned ? "true" : "false"}
-        >
-          {isPinned ? (
-            <IconPin size={16} stroke={2} />
-          ) : (
-            <IconDots size={16} stroke={2} />
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            onClick={handleMenuTriggerClick}
+            className={`pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md visible md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
+              isHighlighted
+                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
+            }`}
+            aria-label="Open chat menu"
+            data-testid="chat-thread-menu-trigger"
+            data-pinned={isPinned ? "true" : "false"}
+          >
+            {isPinned ? (
+              <IconPin size={16} stroke={2} />
+            ) : (
+              <IconDots size={16} stroke={2} />
+            )}
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40">
+          <DropdownMenuItem onSelect={handleTogglePin}>
+            {isPinned ? (
+              <>
+                <IconPinnedOff size={16} stroke={2} className="mr-2" />
+                Unpin chat
+              </>
+            ) : (
+              <>
+                <IconPin size={16} stroke={2} className="mr-2" />
+                Pin chat
+              </>
+            )}
+          </DropdownMenuItem>
+          {renameEnabled && (
+            <DropdownMenuItem onSelect={openRenameDialog}>
+              <IconPencil size={16} stroke={2} className="mr-2" />
+              Rename chat
+            </DropdownMenuItem>
           )}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40">
-        <DropdownMenuItem onSelect={handleTogglePin}>
-          {isPinned ? (
-            <>
-              <IconPinnedOff size={16} stroke={2} className="mr-2" />
-              Unpin chat
-            </>
-          ) : (
-            <>
-              <IconPin size={16} stroke={2} className="mr-2" />
-              Pin chat
-            </>
-          )}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(e) => {
-            e.preventDefault();
-            setPendingDeleteThreadId(threadId);
-          }}
-          className="text-destructive focus:text-destructive"
-        >
-          <IconTrash size={16} stroke={2} className="mr-2" />
-          Delete chat
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault();
+              setPendingDeleteThreadId(threadId);
+            }}
+            className="text-destructive focus:text-destructive"
+          >
+            <IconTrash size={16} stroke={2} className="mr-2" />
+            Delete chat
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Dialog
+        open={renameDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRenameDialogOpen(false);
+            setRenameInput("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename chat</DialogTitle>
+            <DialogDescription>
+              Enter a new name for this chat thread.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <input
+              type="text"
+              autoFocus
+              value={renameInput}
+              onChange={(e) => {
+                return setRenameInput(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  handleRename();
+                }
+              }}
+              placeholder="Chat title"
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRenameDialogOpen(false);
+                setRenameInput("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button disabled={!renameInput.trim()} onClick={handleRename}>
+              Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -317,6 +402,8 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   );
   const features = useLastResolved(featureSwitch$);
   const pinEnabled = features?.[FeatureSwitchKey.ChatThreadPin] ?? false;
+  const renameEnabled =
+    features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
   const isPinned =
     pinEnabled && session.pinnedAt !== null && session.pinnedAt !== undefined;
   const isCurrentPage = selectedThreadId === session.id;
@@ -383,11 +470,12 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
           </span>
         )}
         {indicatorState !== "draft" &&
-          (pinEnabled ? (
+          (pinEnabled || renameEnabled ? (
             <ChatThreadMenu
               threadId={session.id}
               isPinned={isPinned}
               isHighlighted={isHighlighted}
+              renameEnabled={renameEnabled}
             />
           ) : (
             <ChatThreadDeleteButton

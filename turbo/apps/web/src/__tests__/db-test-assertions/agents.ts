@@ -190,6 +190,25 @@ export async function getTestChatThreadPinnedAt(
 }
 
 /**
+ * Read the renamed_at value for a chat thread.
+ *
+ * @why-db-direct The rename endpoint test needs raw DB state to assert the
+ * column was set and reset.
+ */
+export async function getTestChatThreadRenamedAt(
+  threadId: string,
+): Promise<Date | null | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ renamedAt: chatThreads.renamedAt })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  if (!row) return undefined;
+  return row.renamedAt;
+}
+
+/**
  * Read the last_read_message_id value for a chat thread.
  *
  * @why-db-direct No API route exposes last_read_message_id directly. Tests

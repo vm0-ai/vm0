@@ -12,6 +12,7 @@ import {
   chatThreadByIdContract,
   chatThreadPinContract,
   chatThreadUnpinContract,
+  chatThreadRenameContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
@@ -101,6 +102,30 @@ export const unpinChatThread$ = command(
     const client = get(zeroClient$)(chatThreadUnpinContract);
     await accept(
       client.unpin({ params: { id: threadId }, fetchOptions: { signal } }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(reloadChatThreads$);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Rename thread
+// ---------------------------------------------------------------------------
+
+export const renameChatThread$ = command(
+  async (
+    { get, set },
+    { threadId, title }: { threadId: string; title: string },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatThreadRenameContract);
+    await accept(
+      client.rename({
+        params: { id: threadId },
+        body: { title },
+        fetchOptions: { signal },
+      }),
       [204],
     );
     signal.throwIfAborted();
