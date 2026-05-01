@@ -112,6 +112,10 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             timing,
             token_renewal_failures: 0,
             dropped_messages: 0,
+            channel_retry_at: None,
+            channel_retry_count: 0,
+            channel_operation_deadline: None,
+            connected_event_pending: false,
         },
         close_rx,
     ));

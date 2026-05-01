@@ -148,7 +148,23 @@ async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Err
     })
 }
 
-async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<ProtocolMessage, Error> {
+enum AttachOutcome {
+    Attached { channel_serial: Option<String> },
+    Detached(ErrorInfo),
+}
+
+fn detached_error_or_default(error: Option<ErrorInfo>) -> ErrorInfo {
+    error.unwrap_or_else(|| ErrorInfo {
+        code: error_code::CHANNEL_OPERATION_FAILED,
+        status_code: Some(404),
+        message: "Channel detached".to_string(),
+    })
+}
+
+async fn wait_for_attach_outcome(
+    ws_read: &mut WsRead,
+    channel: &str,
+) -> Result<AttachOutcome, Error> {
     while let Some(frame) = ws_read.next().await {
         let frame = frame?;
         if let tungstenite::Message::Binary(data) = frame {
@@ -156,7 +172,9 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Protoc
             match msg.action {
                 action::ATTACHED => {
                     if msg.channel.as_deref() == Some(channel) {
-                        return Ok(msg);
+                        return Ok(AttachOutcome::Attached {
+                            channel_serial: msg.channel_serial,
+                        });
                     }
                 }
                 action::ERROR => {
@@ -167,11 +185,11 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Protoc
                     });
                 }
                 action::DETACHED => {
-                    let err = error_or_unknown(msg.error);
-                    return Err(Error::Protocol {
-                        code: err.code,
-                        message: channel_detached_message(&err.message),
-                    });
+                    if msg.channel.as_deref() == Some(channel) {
+                        return Ok(AttachOutcome::Detached(detached_error_or_default(
+                            msg.error,
+                        )));
+                    }
                 }
                 _ => {
                     tracing::debug!(action = msg.action, "Ignoring pre-ATTACHED message");
@@ -183,6 +201,16 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Protoc
         code: error_code::CHANNEL_OPERATION_FAILED,
         message: "Connection closed before ATTACHED received".to_string(),
     })
+}
+
+async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Option<String>, Error> {
+    match wait_for_attach_outcome(ws_read, channel).await? {
+        AttachOutcome::Attached { channel_serial } => Ok(channel_serial),
+        AttachOutcome::Detached(err) => Err(Error::Protocol {
+            code: err.code,
+            message: channel_detached_message(&err.message),
+        }),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -205,8 +233,7 @@ pub(crate) async fn connect_and_attach(
     ws_write
         .send(tungstenite::Message::Binary(encoded.into()))
         .await?;
-    let attached_msg = wait_for_attached(&mut ws_read, channel).await?;
-    conn_state.channel_serial = attached_msg.channel_serial;
+    conn_state.channel_serial = wait_for_attached(&mut ws_read, channel).await?;
     Ok((ws_write, ws_read, conn_state))
 }
 
@@ -221,7 +248,6 @@ pub(crate) struct ConnState {
     pub connection_state_ttl: Duration,
     pub max_idle_interval: Duration,
     pub disconnected_at: Option<Instant>,
-    pub last_reattach_at: Option<Instant>,
     pub token: TokenDetails,
     pub token_renewal_at: Instant,
 }
@@ -235,7 +261,6 @@ impl ConnState {
             connection_state_ttl: timing.default_connection_state_ttl,
             max_idle_interval: timing.default_max_idle_interval,
             disconnected_at: None,
-            last_reattach_at: None,
             token_renewal_at: Self::compute_renewal_at(&token, timing.token_renewal_margin),
             token,
         };
@@ -273,12 +298,13 @@ impl ConnState {
         Instant::now() + renew_in
     }
 
-    /// RTN15h: resume is allowed when elapsed time since disconnect is less
-    /// than `connection_state_ttl + max_idle_interval` and we have a key.
+    /// Resume is allowed while the Ably connection state is still retained and
+    /// we have a connection key. This mirrors ably-js' suspend timer: once a
+    /// connection has been detected as disconnected, the resumable window is
+    /// `connection_state_ttl`.
     fn can_resume(&self) -> bool {
         if let Some(disconnected_at) = self.disconnected_at {
-            disconnected_at.elapsed() < self.connection_state_ttl + self.max_idle_interval
-                && self.connection_key.is_some()
+            disconnected_at.elapsed() < self.connection_state_ttl && self.connection_key.is_some()
         } else {
             false
         }
@@ -303,6 +329,10 @@ pub(crate) struct EventLoopState {
     pub timing: TimingConfig,
     pub token_renewal_failures: u32,
     pub dropped_messages: u64,
+    pub channel_retry_at: Option<Instant>,
+    pub channel_retry_count: u32,
+    pub channel_operation_deadline: Option<Instant>,
+    pub connected_event_pending: bool,
 }
 
 pub(crate) struct WsTransport {
@@ -321,6 +351,7 @@ enum ConnectionLifecycleState {
     Connecting,
     Connected,
     Disconnected,
+    Suspended,
     Closing,
     Closed,
     Failed,
@@ -377,14 +408,23 @@ impl RealtimeStateMachine {
         }
     }
 
-    fn notify_connected(&mut self) {
+    fn notify_transport_connected(&mut self) {
         self.transition_connection(ConnectionLifecycleState::Connected);
         self.on_transport_active();
+    }
+
+    fn notify_connected(&mut self) {
+        self.notify_transport_connected();
         self.notify_channel_attached();
     }
 
     fn notify_disconnected(&mut self) {
         self.transition_connection(ConnectionLifecycleState::Disconnected);
+    }
+
+    fn notify_suspended(&mut self) {
+        self.transition_connection(ConnectionLifecycleState::Suspended);
+        self.notify_channel_suspended();
     }
 
     fn request_closing(&mut self) {
@@ -464,6 +504,14 @@ impl RealtimeStateMachine {
     }
 }
 
+impl ConnState {
+    fn clear_resume_state(&mut self) {
+        self.connection_id = None;
+        self.connection_key = None;
+        self.channel_serial = None;
+    }
+}
+
 fn websocket_close_reason(frame: Option<&CloseFrame>) -> String {
     match frame {
         Some(frame) if frame.reason.is_empty() => {
@@ -514,6 +562,82 @@ fn reconnect_spacing_delay(last_attempt: Option<Instant>, min_interval: Duration
     last_attempt.map_or(Duration::ZERO, |attempt| {
         min_interval.saturating_sub(attempt.elapsed())
     })
+}
+
+fn retry_delay(initial_timeout: Duration, retry_attempt: u32) -> Duration {
+    // Mirrors ably-js Utils.getRetryTime(): base * min((attempt + 2) / 3, 2)
+    // with jitter in [0.8, 1.0). Use wall-clock subsecond nanos as a cheap
+    // process-local jitter source; cryptographic randomness is unnecessary.
+    let backoff_num = (retry_attempt + 2).min(6) as u128;
+    let base_ms = initial_timeout.as_millis();
+    let upper_ms = base_ms.saturating_mul(backoff_num) / 3;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos() as u128;
+    let jitter_per_mille = 800 + (nanos % 200);
+    Duration::from_millis(upper_ms.saturating_mul(jitter_per_mille) as u64 / 1000)
+}
+
+async fn sleep_until_optional(deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending().await,
+    }
+}
+
+fn message_targets_channel(msg: &ProtocolMessage, channel: &str) -> bool {
+    msg.channel
+        .as_deref()
+        .is_none_or(|msg_channel| msg_channel == channel)
+}
+
+fn request_channel_attach(p: &mut EventLoopState) -> bool {
+    p.lifecycle.request_channel_attaching();
+    if p.lifecycle.channel != ChannelLifecycleState::Attaching
+        || !p.lifecycle.connection.send_events()
+    {
+        return false;
+    }
+
+    p.channel_retry_at = None;
+    p.channel_operation_deadline = Some(Instant::now() + p.timing.realtime_request_timeout);
+    true
+}
+
+fn schedule_channel_retry(p: &mut EventLoopState) {
+    p.channel_operation_deadline = None;
+    if p.lifecycle.channel == ChannelLifecycleState::Suspended
+        && p.lifecycle.connection.send_events()
+    {
+        p.channel_retry_count += 1;
+        p.channel_retry_at = Some(
+            Instant::now() + retry_delay(p.timing.channel_retry_timeout, p.channel_retry_count),
+        );
+    } else {
+        p.channel_retry_at = None;
+    }
+}
+
+fn notify_channel_suspended(p: &mut EventLoopState) {
+    p.conn_state.channel_serial = None;
+    p.lifecycle.notify_channel_suspended();
+    schedule_channel_retry(p);
+}
+
+fn notify_channel_attached(p: &mut EventLoopState) {
+    p.lifecycle.notify_channel_attached();
+    p.channel_retry_at = None;
+    p.channel_retry_count = 0;
+    p.channel_operation_deadline = None;
+}
+
+fn notify_channel_failed(p: &mut EventLoopState) {
+    p.conn_state.channel_serial = None;
+    p.lifecycle.notify_channel_failed();
+    p.channel_retry_at = None;
+    p.channel_operation_deadline = None;
+    p.connected_event_pending = false;
 }
 
 // Caller-requested shutdown should send Ably CLOSE before closing the WebSocket
@@ -592,7 +716,6 @@ async fn send_status_event(
 }
 
 pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiver<()>) {
-    let mut retry_count: u32 = 0;
     let mut last_reconnect_attempt: Option<Instant> = None;
 
     'outer: loop {
@@ -602,6 +725,39 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
         let mut close_before_reconnect = false;
         // Main message processing loop
         loop {
+            if p.channel_operation_deadline
+                .is_some_and(|deadline| deadline <= Instant::now())
+            {
+                p.channel_operation_deadline = None;
+                if p.lifecycle.channel == ChannelLifecycleState::Attaching {
+                    tracing::warn!(
+                        timeout_ms = p.timing.realtime_request_timeout.as_millis(),
+                        "Channel attach timed out, entering suspended channel retry"
+                    );
+                    notify_channel_suspended(&mut p);
+                }
+                continue;
+            }
+
+            if p.channel_retry_at
+                .is_some_and(|deadline| deadline <= Instant::now())
+            {
+                p.channel_retry_at = None;
+                if p.lifecycle.channel == ChannelLifecycleState::Suspended
+                    && request_channel_attach(&mut p)
+                {
+                    match send_attach(&mut p, &mut close_rx).await {
+                        LoopAction::Stop => return,
+                        LoopAction::Reconnect => {
+                            immediate_retry = true;
+                            break;
+                        }
+                        LoopAction::Continue => {}
+                    }
+                }
+                continue;
+            }
+
             let Some(transport) = p.transport.as_mut() else {
                 tracing::warn!("WebSocket transport missing before receive loop");
                 break;
@@ -634,16 +790,20 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     }
                 }
 
+                _ = sleep_until_optional(p.channel_operation_deadline), if p.channel_operation_deadline.is_some() => {}
+
+                _ = sleep_until_optional(p.channel_retry_at), if p.channel_retry_at.is_some() => {}
+
                 frame = transport.ws_read.next() => {
                     match frame {
                         Some(Ok(tungstenite::Message::Binary(data))) => {
-                            retry_count = 0;
                             match decode_msg(&data) {
                                 Ok(msg) => {
                                     match handle_message(&mut p, msg, &mut close_rx).await {
                                         LoopAction::Stop => return,
                                         LoopAction::Reconnect => {
                                             disconnected_sent = true;
+                                            immediate_retry = true;
                                             break;
                                         }
                                         LoopAction::Continue => {}
@@ -678,12 +838,14 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                             let reason = websocket_error_reason(&e);
                             tracing::warn!(%reason, "WebSocket error");
                             disconnect_reason = Some(reason);
+                            immediate_retry = true;
                             close_before_reconnect = true;
                             break; // → reconnect
                         }
                         None => {
                             disconnect_reason = Some("websocket stream ended".to_string());
                             tracing::info!("WebSocket stream ended");
+                            immediate_retry = true;
                             close_before_reconnect = true;
                             break; // → reconnect
                         }
@@ -692,6 +854,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
                 _ = tokio::time::sleep_until(idle_deadline) => {
                     disconnect_reason = Some(format!("heartbeat timeout after {idle_timeout:?}"));
+                    immediate_retry = true;
                     close_before_reconnect = true;
                     tracing::warn!("Heartbeat timeout");
                     break; // → reconnect
@@ -714,53 +877,55 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             close_websocket_transport(&mut p).await;
         }
 
+        let mut retry_immediately = immediate_retry;
+        let mut disconnected_retry_count: u32 = 0;
+        let mut suspended_retry_count: u32 = 0;
         loop {
-            retry_count += 1;
-            if retry_count > p.timing.max_retry_attempts {
-                p.lifecycle.notify_failed();
-                let event = Event::Error {
-                    code: error_code::FAILED,
-                    message: format!(
-                        "Connection failed after {} attempts",
-                        p.timing.max_retry_attempts
-                    ),
+            if !p.conn_state.can_resume()
+                && p.lifecycle.connection != ConnectionLifecycleState::Suspended
+            {
+                p.conn_state.clear_resume_state();
+                p.lifecycle.notify_suspended();
+                p.conn_state.channel_serial = None;
+                p.channel_retry_at = None;
+                p.channel_operation_deadline = None;
+                disconnected_retry_count = 0;
+                let event = Event::Disconnected {
+                    reason: Some("connection state expired; entering suspended retry".to_string()),
                 };
-                let _ = send_status_event(&mut p, &mut close_rx, event, "error").await;
-                return;
+                if !send_status_event(&mut p, &mut close_rx, event, "suspended").await {
+                    return;
+                }
             }
 
-            // Skip backoff on the first attempt after a transport close frame,
-            // but keep a small minimum gap between repeated reconnect attempts
-            // to avoid tight close loops.
-            let backoff_duration = if retry_count == 1 && immediate_retry {
+            // ably-js retries immediately when an active connection becomes
+            // disconnected, with a one-second guard against tight reconnect
+            // loops. Subsequent disconnected/suspended retries use the state's
+            // retry timeout and jitter.
+            let backoff_duration = if retry_immediately {
+                retry_immediately = false;
                 let delay = reconnect_spacing_delay(
                     last_reconnect_attempt,
                     p.timing.min_reconnect_interval,
                 );
                 if delay == Duration::ZERO {
-                    tracing::info!("Reconnecting immediately after close frame");
+                    tracing::info!("Reconnecting immediately after connection interruption");
                 } else {
                     tracing::info!(
                         delay_ms = delay.as_millis(),
-                        "Delaying reconnect after repeated close frame"
+                        "Delaying reconnect after repeated connection interruption"
                     );
                 }
                 delay
+            } else if p.lifecycle.connection == ConnectionLifecycleState::Suspended {
+                suspended_retry_count += 1;
+                retry_delay(p.timing.suspended_retry_timeout, suspended_retry_count)
             } else {
-                // Exponential backoff: 1s, 2s, 4s, 8s, 15s, 15s, ...
-                let exp = retry_count.saturating_sub(1).min(30);
-                let backoff = p
-                    .timing
-                    .initial_retry_interval
-                    .saturating_mul(1u32 << exp)
-                    .min(p.timing.max_retry_interval);
-                // Use subsecond nanos from wall clock for non-deterministic jitter
-                let nanos = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .subsec_nanos() as u64;
-                let jitter = Duration::from_millis(nanos % 1000);
-                backoff + jitter
+                disconnected_retry_count += 1;
+                retry_delay(
+                    p.timing.disconnected_retry_timeout,
+                    disconnected_retry_count,
+                )
             };
             tokio::select! {
                 biased;
@@ -786,9 +951,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             };
 
             match reconnect_result {
-                Ok(Ok(())) => {
-                    retry_count = 0;
+                Ok(Ok(ReconnectOutcome::Attached)) => {
                     p.token_renewal_failures = 0;
+                    p.connected_event_pending = false;
                     p.lifecycle.notify_connected();
                     if !send_status_event(&mut p, &mut close_rx, Event::Connected, "connected")
                         .await
@@ -797,12 +962,22 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     }
                     continue 'outer;
                 }
+                Ok(Ok(ReconnectOutcome::ChannelSuspended)) => {
+                    p.token_renewal_failures = 0;
+                    p.lifecycle.notify_transport_connected();
+                    notify_channel_suspended(&mut p);
+                    p.connected_event_pending = true;
+                    continue 'outer;
+                }
                 Ok(Err(e)) => {
-                    tracing::warn!("Reconnect attempt {retry_count} failed: {e}");
+                    tracing::warn!("Reconnect attempt failed: {e}");
                 }
                 Err(_) => {
-                    tracing::warn!("Reconnect attempt {retry_count} timed out");
+                    tracing::warn!("Reconnect attempt timed out");
                 }
+            }
+            if p.lifecycle.connection != ConnectionLifecycleState::Suspended {
+                p.lifecycle.notify_disconnected();
             }
         }
     }
@@ -814,27 +989,55 @@ enum LoopAction {
     Reconnect,
 }
 
-/// Mirrors ably-js `isRetriable()` from `connectionerrors.ts`.
-///
-/// An error is retriable when it has no status code, no error code, is a
-/// server error (5xx), or carries a well-known connection error code even
-/// at 4xx.
-fn is_retriable(err: &ErrorInfo) -> bool {
-    const CONNECTION_ERROR_CODES: &[i32] = &[
-        80003, // DISCONNECTED
-        80002, // SUSPENDED
-        80000, // FAILED
-        80017, // CLOSING / CLOSED
-        50002, // UNKNOWN_CONNECTION_ERR
-        50001, // UNKNOWN_CHANNEL_ERR
-    ];
-    if err.code == 0 {
-        return true;
-    }
-    match err.status_code {
-        None => true,
-        Some(sc) if sc >= 500 => true,
-        Some(_) => CONNECTION_ERROR_CODES.contains(&err.code),
+enum ReconnectOutcome {
+    Attached,
+    ChannelSuspended,
+}
+
+async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()>) -> LoopAction {
+    let attach = build_attach_msg(
+        &p.channel,
+        p.channel_params.as_ref(),
+        p.conn_state.channel_serial.as_deref(),
+    );
+    let data = match encode_msg(&attach) {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::warn!("Failed to encode attach message: {e}");
+            close_websocket_transport(p).await;
+            return LoopAction::Reconnect;
+        }
+    };
+
+    let connect_timeout = p.timing.connect_timeout;
+    let Some(transport) = p.transport.as_mut() else {
+        tracing::warn!("Missing websocket transport for attach");
+        return LoopAction::Reconnect;
+    };
+    let send_result = tokio::select! {
+        biased;
+        _ = &mut *close_rx => {
+            tracing::info!("Close requested during channel attach");
+            send_close_message(p).await;
+            return LoopAction::Stop;
+        }
+        result = tokio::time::timeout(
+            connect_timeout,
+            transport.ws_write.send(tungstenite::Message::Binary(data.into())),
+        ) => result,
+    };
+    match send_result {
+        Ok(Ok(())) => LoopAction::Continue,
+        Ok(Err(_)) => {
+            tracing::warn!("Failed to send attach, triggering reconnect");
+            close_websocket_transport(p).await;
+            LoopAction::Reconnect
+        }
+        Err(_) => {
+            tracing::warn!("Timed out sending attach, triggering reconnect");
+            close_websocket_transport(p).await;
+            LoopAction::Reconnect
+        }
     }
 }
 
@@ -906,6 +1109,16 @@ async fn handle_message(
             tracing::trace!("Heartbeat received");
         }
         action::MESSAGE => {
+            if !message_targets_channel(&msg, &p.channel) {
+                return LoopAction::Continue;
+            }
+            if p.lifecycle.channel != ChannelLifecycleState::Attached {
+                tracing::debug!(
+                    channel_state = ?p.lifecycle.channel,
+                    "Skipping message while channel is not attached"
+                );
+                return LoopAction::Continue;
+            }
             if let Some(serial) = msg.channel_serial {
                 p.conn_state.channel_serial = Some(serial);
             }
@@ -961,7 +1174,25 @@ async fn handle_message(
         }
         action::ERROR => {
             let err = error_or_unknown(msg.error);
-            p.lifecycle.notify_failed();
+            if let Some(channel) = msg.channel.as_deref() {
+                if channel != p.channel {
+                    return LoopAction::Continue;
+                }
+
+                if err.code == 80016 {
+                    if request_channel_attach(p) {
+                        return send_attach(p, close_rx).await;
+                    }
+                    return LoopAction::Continue;
+                }
+
+                notify_channel_failed(p);
+            } else {
+                p.lifecycle.notify_failed();
+                p.conn_state.channel_serial = None;
+                p.channel_retry_at = None;
+                p.channel_operation_deadline = None;
+            }
             let event = Event::Error {
                 code: err.code,
                 message: protocol_error_message(err.message),
@@ -970,81 +1201,42 @@ async fn handle_message(
             return LoopAction::Stop;
         }
         action::DETACHED => {
-            if let Some(ref err) = msg.error
-                && !is_retriable(err)
-            {
-                p.conn_state.channel_serial = None; // RTP5a1
-                p.lifecycle.notify_channel_failed();
-                let event = Event::Error {
-                    code: err.code,
-                    message: channel_detached_message(&err.message),
-                };
-                let _ = send_status_event(p, close_rx, event, "error").await;
-                return LoopAction::Stop;
+            if !message_targets_channel(&msg, &p.channel) {
+                return LoopAction::Continue;
             }
-            if p.conn_state
-                .last_reattach_at
-                .is_some_and(|t| t.elapsed() < p.timing.reattach_window)
-            {
-                tracing::warn!("Channel detached again within retry window, reconnecting");
-                p.lifecycle.notify_channel_suspended();
-                close_websocket_transport(p).await;
-                return LoopAction::Reconnect;
-            }
-            tracing::warn!(channel = ?msg.channel, "Channel detached, re-attaching");
-            p.conn_state.last_reattach_at = Some(Instant::now());
-            p.lifecycle.request_channel_attaching();
-            let attach = build_attach_msg(
-                &p.channel,
-                p.channel_params.as_ref(),
-                p.conn_state.channel_serial.as_deref(),
+
+            let reason = msg.error.as_ref().map_or_else(
+                || "Channel detached".to_string(),
+                |err| channel_detached_message(&err.message),
             );
-            match encode_msg(&attach) {
-                Ok(data) => {
-                    let connect_timeout = p.timing.connect_timeout;
-                    let Some(transport) = p.transport.as_mut() else {
-                        tracing::warn!("Missing websocket transport for re-attach");
-                        return LoopAction::Reconnect;
-                    };
-                    let send_result = tokio::select! {
-                        biased;
-                        _ = &mut *close_rx => {
-                            tracing::info!("Close requested during channel re-attach");
-                            send_close_message(p).await;
-                            return LoopAction::Stop;
-                        }
-                        result = tokio::time::timeout(
-                            connect_timeout,
-                            transport.ws_write.send(tungstenite::Message::Binary(data.into())),
-                        ) => result,
-                    };
-                    match send_result {
-                        Ok(Ok(())) => {}
-                        Ok(Err(_)) => {
-                            tracing::warn!("Failed to send re-attach, triggering reconnect");
-                            close_websocket_transport(p).await;
-                            return LoopAction::Reconnect;
-                        }
-                        Err(_) => {
-                            tracing::warn!("Timed out sending re-attach, triggering reconnect");
-                            close_websocket_transport(p).await;
-                            return LoopAction::Reconnect;
-                        }
+            match p.lifecycle.channel {
+                ChannelLifecycleState::Attaching => {
+                    // Mirrors ably-js RealtimeChannel.processMessage(DETACHED):
+                    // a detach while an attach is in progress moves the
+                    // channel to suspended and starts the channel retry timer.
+                    tracing::warn!(channel = ?msg.channel, %reason, "Channel detached while attaching");
+                    notify_channel_suspended(p);
+                }
+                ChannelLifecycleState::Attached | ChannelLifecycleState::Suspended => {
+                    // RTL13a in ably-js: attached/suspended channels request
+                    // attaching again immediately on DETACHED, independent of
+                    // the error's retriability.
+                    tracing::warn!(channel = ?msg.channel, %reason, "Channel detached, re-attaching");
+                    if request_channel_attach(p) {
+                        return send_attach(p, close_rx).await;
                     }
                 }
-                Err(e) => {
-                    tracing::warn!("Failed to encode re-attach message: {e}");
-                    close_websocket_transport(p).await;
-                    return LoopAction::Reconnect;
-                }
+                ChannelLifecycleState::Detached | ChannelLifecycleState::Failed => {}
             }
         }
         action::ATTACHED => {
+            if !message_targets_channel(&msg, &p.channel) {
+                return LoopAction::Continue;
+            }
             if let Some(serial) = msg.channel_serial {
                 p.conn_state.channel_serial = Some(serial);
             }
-            p.conn_state.last_reattach_at = None;
-            p.lifecycle.notify_channel_attached();
+            notify_channel_attached(p);
             let f = msg.flags.unwrap_or(0);
             let resumed = f & flags::HAS_CHANNEL_RESUMED != 0;
             let has_backlog = f & flags::HAS_BACKLOG != 0;
@@ -1056,6 +1248,12 @@ async fn handle_message(
                 has_presence,
                 "Channel attached",
             );
+            if p.connected_event_pending {
+                p.connected_event_pending = false;
+                if !send_status_event(p, close_rx, Event::Connected, "connected").await {
+                    return LoopAction::Stop;
+                }
+            }
         }
         action::CONNECTED => {
             p.conn_state.update_from_connected(&msg);
@@ -1172,10 +1370,11 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 /// Attempt a single reconnect (resume or fresh). Callers are responsible for
 /// applying an outer timeout (e.g. `timing.reconnect_timeout`).
 ///
-/// All mutations to `p` are deferred until every step (connect, handshake,
-/// channel attach) has succeeded. This prevents a partial reconnect from
-/// corrupting state and causing a subsequent resume to skip channel attach.
-async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
+/// Connection mutations are deferred until the transport is connected and the
+/// channel attach attempt has produced a definitive outcome. If the server
+/// responds DETACHED to the ATTACH, the connected transport is kept and the
+/// caller moves the channel into suspended retry, matching ably-js.
+async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, Error> {
     let use_resume = p.conn_state.can_resume();
 
     // For fresh connects, obtain a new token up front (kept in a local until
@@ -1232,14 +1431,26 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     ws_write
         .send(tungstenite::Message::Binary(data.into()))
         .await?;
-    let attached_msg = wait_for_attached(&mut ws_read, &p.channel).await?;
-    let new_channel_serial = attached_msg.channel_serial;
+    let attach_outcome = wait_for_attach_outcome(&mut ws_read, &p.channel).await?;
 
     // Commit state only after all steps succeeded.
     p.conn_state.update_from_connected(&connected_msg);
-    if let Some(serial) = new_channel_serial {
-        p.conn_state.channel_serial = Some(serial);
-    }
+    let reconnect_outcome = match attach_outcome {
+        AttachOutcome::Attached { channel_serial } => {
+            if let Some(serial) = channel_serial {
+                p.conn_state.channel_serial = Some(serial);
+            }
+            ReconnectOutcome::Attached
+        }
+        AttachOutcome::Detached(err) => {
+            tracing::warn!(
+                reason = %channel_detached_message(&err.message),
+                "Channel detached while re-attaching after reconnect",
+            );
+            p.conn_state.channel_serial = None;
+            ReconnectOutcome::ChannelSuspended
+        }
+    };
     if let Some(token) = new_token {
         p.conn_state.token = token;
         p.conn_state.token_renewal_at =
@@ -1247,9 +1458,11 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<(), Error> {
     }
     p.transport = Some(WsTransport::new(ws_read, ws_write));
     p.conn_state.disconnected_at = None;
-    p.conn_state.last_reattach_at = None;
+    p.channel_retry_at = None;
+    p.channel_retry_count = 0;
+    p.channel_operation_deadline = None;
 
-    Ok(())
+    Ok(reconnect_outcome)
 }
 
 // ---------------------------------------------------------------------------
@@ -1339,7 +1552,6 @@ mod tests {
             connection_state_ttl: Duration::from_secs(120),
             max_idle_interval: Duration::from_secs(15),
             disconnected_at: None,
-            last_reattach_at: None,
             token: TokenDetails {
                 token: "t".to_string(),
                 expires: i64::MAX,
@@ -1356,6 +1568,11 @@ mod tests {
         // Just disconnected → can resume
         state.disconnected_at = Some(Instant::now());
         assert!(state.can_resume());
+
+        // Expired connection state TTL → cannot resume
+        state.disconnected_at = Some(Instant::now() - Duration::from_secs(121));
+        assert!(!state.can_resume());
+        state.disconnected_at = Some(Instant::now());
 
         // No connection key → cannot resume
         state.connection_key = None;
@@ -1523,66 +1740,6 @@ mod tests {
         let data = serde_json::json!("encoded-data");
         let result = decode_data(data.clone(), Some("cipher+aes-256-cbc"));
         assert_eq!(result, data);
-    }
-
-    #[test]
-    fn is_retriable_no_status_code() {
-        let err = ErrorInfo {
-            code: 12345,
-            status_code: None,
-            message: String::new(),
-        };
-        assert!(is_retriable(&err));
-    }
-
-    #[test]
-    fn is_retriable_server_error() {
-        let err = ErrorInfo {
-            code: 50000,
-            status_code: Some(500),
-            message: String::new(),
-        };
-        assert!(is_retriable(&err));
-    }
-
-    #[test]
-    fn is_retriable_connection_error_code_with_4xx() {
-        let err = ErrorInfo {
-            code: 80003, // DISCONNECTED connection error
-            status_code: Some(400),
-            message: String::new(),
-        };
-        assert!(is_retriable(&err));
-    }
-
-    #[test]
-    fn is_retriable_auth_error_not_retriable() {
-        let err = ErrorInfo {
-            code: 40142, // token expired
-            status_code: Some(401),
-            message: String::new(),
-        };
-        assert!(!is_retriable(&err));
-    }
-
-    #[test]
-    fn is_retriable_rate_limit_not_retriable() {
-        let err = ErrorInfo {
-            code: 42910,
-            status_code: Some(429),
-            message: String::new(),
-        };
-        assert!(!is_retriable(&err));
-    }
-
-    #[test]
-    fn is_retriable_zero_code() {
-        let err = ErrorInfo {
-            code: 0,
-            status_code: Some(400),
-            message: String::new(),
-        };
-        assert!(is_retriable(&err));
     }
 
     #[test]
