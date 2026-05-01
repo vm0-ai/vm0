@@ -12,6 +12,7 @@ function makeMsg(
     role: "user" as const,
     content: content ?? `msg ${id}`,
     createdAt,
+    threadId,
   };
 }
 
@@ -102,8 +103,16 @@ describe("idb-message-store", () => {
   });
 
   it("rejects invalid data from IDB", async () => {
-    const { writeStore$ } = createIdbMessageStores(USER + "-invalid", ORG);
+    const { readStore$, writeStore$ } = createIdbMessageStores(
+      USER + "-invalid",
+      ORG,
+    );
     const writeStore = writeStore$.read();
+
+    // Initialize the DB with a valid write first so the store exists
+    await writeStore.upsertMessages(THREAD, [
+      makeMsg("valid-1", THREAD, "2026-05-01T00:00:00Z"),
+    ]);
 
     // Write a malformed row directly via the raw store (bypassing type safety)
     const { openDB } = await import("idb");
@@ -115,7 +124,6 @@ describe("idb-message-store", () => {
     });
 
     // Reading should fail on schema validation
-    const { readStore$ } = createIdbMessageStores(USER + "-invalid", ORG);
     const readStore = readStore$.read();
 
     await expect(readStore.readLatest(THREAD, 10)).rejects.toThrow();
@@ -125,12 +133,12 @@ describe("idb-message-store", () => {
     const storesA = createIdbMessageStores("user-a", "org-a");
     const storesB = createIdbMessageStores("user-b", "org-b");
 
-    await storesA.writeStore$.read().upsertMessages(THREAD, [
-      makeMsg("da1", THREAD, "2026-04-01T00:00:00Z"),
-    ]);
-    await storesB.writeStore$.read().upsertMessages(THREAD, [
-      makeMsg("db1", THREAD, "2026-04-01T00:00:00Z"),
-    ]);
+    await storesA.writeStore$
+      .read()
+      .upsertMessages(THREAD, [makeMsg("da1", THREAD, "2026-04-01T00:00:00Z")]);
+    await storesB.writeStore$
+      .read()
+      .upsertMessages(THREAD, [makeMsg("db1", THREAD, "2026-04-01T00:00:00Z")]);
 
     const msgsA = await storesA.readStore$.read().readLatest(THREAD, 10);
     const msgsB = await storesB.readStore$.read().readLatest(THREAD, 10);
