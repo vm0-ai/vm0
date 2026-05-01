@@ -65,5 +65,4 @@ export interface ChatThreadDataSource {
     Promise<void>,
     [SubscribeRealtimeArgs, AbortSignal]
   >;
-  isCancelRequested$: Computed<boolean>;
 }

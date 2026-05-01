@@ -38,11 +38,20 @@ function createIdbMessageStores(userId: string, orgId: string) {
   function getDb(): Promise<IDBPDatabase> {
     if (!dbPromise) {
       L.debug("openDB", { dbName, storeName });
-      dbPromise = openDB(dbName, 1, {
+      // Schema is shared with idb-thread-agent-store.ts: both modules open
+      // the same DB at version 2. The upgrade callback creates every store
+      // the schema currently defines, idempotently, so whichever module
+      // triggers the version bump leaves a complete schema for the other.
+      dbPromise = openDB(dbName, 2, {
         upgrade(db) {
           L.debug("openDB:upgrade", { dbName, storeName });
-          const store = db.createObjectStore(storeName, { keyPath: "id" });
-          store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
+          if (!db.objectStoreNames.contains(storeName)) {
+            const store = db.createObjectStore(storeName, { keyPath: "id" });
+            store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
+          }
+          if (!db.objectStoreNames.contains("chat_thread_agents")) {
+            db.createObjectStore("chat_thread_agents", { keyPath: "threadId" });
+          }
         },
       });
     }

@@ -1,5 +1,8 @@
 import { command, computed } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { clerk$ } from "../auth.ts";
+import { idbMessageEnabled$ } from "../external/feature-switch.ts";
+import { writeThreadAgentId$ } from "../external/idb-thread-agent-store.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
@@ -36,6 +39,33 @@ export type { OptimisticChatPane };
 export { optimisticChatThread$ };
 
 const SIDEBAR_PARAM = "sidebar";
+
+/**
+ * Persist the (threadId, agentId) pairing into the IDB cache the moment the
+ * client mints a new threadId. Lets `agentId$` resolve from cache on the
+ * very first render of the new thread page, before chat-threads/:id returns.
+ */
+const writeThreadAgentToCache$ = command(
+  async (
+    { get },
+    threadId: string,
+    agentId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!(await get(idbMessageEnabled$))) {
+      return;
+    }
+    signal.throwIfAborted();
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const userId = clerk.user?.id;
+    const orgId = clerk.organization?.id;
+    if (!userId || !orgId) {
+      return;
+    }
+    await writeThreadAgentId$(userId, orgId, threadId, agentId, signal);
+  },
+);
 
 interface SendNewThreadMessageRequest {
   agentId: string;
@@ -171,6 +201,7 @@ const createNewChatThread$ = command(
     }
 
     const threadId = crypto.randomUUID();
+    await set(writeThreadAgentToCache$, threadId, resolvedComposeId, signal);
     const createdAt = new Date().toISOString();
     const dataSource = createLocalChatThreadDataSource({
       threadData: createPendingChatThread(threadId, resolvedComposeId),
@@ -297,6 +328,7 @@ const sendNewThreadMessage$ = command(
     }
 
     const threadId = crypto.randomUUID();
+    await set(writeThreadAgentToCache$, threadId, agentId, signal);
     const clientMessageId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
     const dataSource = createLocalChatThreadDataSource({

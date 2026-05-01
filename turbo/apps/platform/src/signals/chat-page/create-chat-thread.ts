@@ -38,6 +38,12 @@ import type { GroupedChatMessageGroup } from "./chat-message.ts";
 import { logger } from "../log.ts";
 import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
+import { idbMessageEnabled$ } from "../external/feature-switch.ts";
+import { clerk$ } from "../auth.ts";
+import {
+  readThreadAgentId$,
+  writeThreadAgentId$,
+} from "../external/idb-thread-agent-store.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -183,7 +189,7 @@ export interface ChatThreadSignals {
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadHistory$: Command<Promise<void>, [AbortSignal]>;
-  loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
+  subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
   // ── Thinking indicator ───────────────────────────────────────────────────
   blockColors$: Computed<[string, string, string]>;
   rotatingPhrase$: Computed<string>;
@@ -306,11 +312,33 @@ function createComposerFileInput() {
 // ---------------------------------------------------------------------------
 
 function createAgentInfoSignals(
+  threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
 ) {
+  // agentId$ is read by avatar / pinned / model-default UI on first paint.
+  // Resolving it via threadData$ blocks the avatar render on the
+  // chat-threads/:id round-trip, even though the agentId rarely changes
+  // for a given thread. Consult the IDB cache first; on miss, fall back
+  // to threadData$ and backfill so the next visit hits the cache.
   const agentId$ = computed(async (get): Promise<string | null> => {
+    const cacheEnabled = await get(idbMessageEnabled$);
+    const clerk = cacheEnabled ? await get(clerk$) : null;
+    const userId = clerk?.user?.id ?? null;
+    const orgId = clerk?.organization?.id ?? null;
+    const cacheActive = cacheEnabled && userId !== null && orgId !== null;
+
+    if (cacheActive && userId !== null && orgId !== null) {
+      const cached = await readThreadAgentId$(userId, orgId, threadId);
+      if (cached) {
+        return cached;
+      }
+    }
     const thread = await get(threadData$);
-    return thread?.agentId ?? null;
+    const agentId = thread?.agentId ?? null;
+    if (agentId && cacheActive && userId !== null && orgId !== null) {
+      await writeThreadAgentId$(userId, orgId, threadId, agentId);
+    }
+    return agentId;
   });
 
   const agentDisplayName$ = computed(async (get): Promise<string | null> => {
@@ -946,9 +974,6 @@ function createRunTracking({
   const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
 
   const allFinished$ = computed(async (get) => {
-    if (get(dataSource.isCancelRequested$)) {
-      return true;
-    }
     const thread = await get(threadData$);
     if (!thread) {
       return false;
@@ -964,65 +989,36 @@ function createRunTracking({
     dataSource,
   });
 
-  const loadPagedMessages$ = command(
-    async ({ get, set }, signal: AbortSignal) => {
-      const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
-        await set(fetchNextPage$, sig);
-        // Advance read marker when a new message arrives while focused.
-        if (document.visibilityState === "visible") {
-          await set(markThreadReadIfNeeded$, sig);
-        }
-        animationFrame(
-          () => {
-            set(autoScroll$);
-          },
-          { signal },
-        );
-        return false;
-      });
+  const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
+    L.debug("subscribeChatThread$ start", { threadId });
 
-      const onRunChanged$ = command(({ set }) => {
-        set(reloadThread$);
-        return false;
-      });
+    const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+      await set(fetchNextPage$, sig);
+      await set(markThreadReadIfNeeded$, sig);
+      animationFrame(
+        () => {
+          set(autoScroll$);
+        },
+        { signal },
+      );
+      return false;
+    });
 
-      // `chatThreadReadCursorUpdated:<id>` used to bump `patchThreadRead$`
-      // here; dropped because `threadListChanged` already fans out to the
-      // sidebar, and the extra reload blocks keyboard navigation.
+    const onRunChanged$ = command(({ set }) => {
+      set(reloadThread$);
+      return false;
+    });
 
-      // Bail before subscribing to Ably if the thread doesn't exist. The
-      // caller fires this command in parallel with chat-threads/:id, so we
-      // can't gate the call site on the metadata; instead we let
-      // threadData$ resolve here and short-circuit on null. Without this
-      // check, the missing-thread path leaves a forever-running subscribe
-      // loop attached until the parent navigation aborts the signal —
-      // surfacing as an unhandled AbortError.
-      const thread = await get(threadData$);
-      signal.throwIfAborted();
-      if (!thread) {
-        return;
-      }
-      L.debug("loadPagedMessages$ start", {
-        threadId,
-        activeRunIds: thread.activeRunIds,
-      });
-
-      // Run mark-read and realtime subscribe in parallel. subscribeRealtime$
-      // owns the IDB cache catch-up; gating it behind mark-read serialised
-      // those into back-to-back round trips. markThreadReadIfNeeded$ does
-      // its own threadData$ wait, so the only outer wait is the existence
-      // check above.
-      await Promise.all([
-        set(markThreadReadIfNeeded$, signal),
-        set(
-          dataSource.subscribeRealtime$,
-          { threadId, handlers: { onMessageCreated$, onRunChanged$ } },
-          signal,
-        ),
-      ]);
-      signal.throwIfAborted();
-    },
-  );
+    await Promise.all([
+      set(markThreadReadIfNeeded$, signal),
+      set(
+        dataSource.subscribeRealtime$,
+        { threadId, handlers: { onMessageCreated$, onRunChanged$ } },
+        signal,
+      ),
+    ]);
+    signal.throwIfAborted();
+  });
 
   const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
     const thread = await get(threadData$);
@@ -1038,7 +1034,7 @@ function createRunTracking({
     signal.throwIfAborted();
   });
 
-  return { allFinished$, loadPagedMessages$, cancelRun$ };
+  return { allFinished$, subscribeChatThread$, cancelRun$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -1230,7 +1226,7 @@ export function createChatThreadSignals(
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentModelDefault$, agentPinned$ } =
-    createAgentInfoSignals(threadData$);
+    createAgentInfoSignals(threadId, threadData$);
   const {
     timelineExpandedIds$,
     toggleTimelineExpanded$,
@@ -1254,7 +1250,7 @@ export function createChatThreadSignals(
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
     createDraftSync(threadId, draft, dataSource);
-  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking({
+  const { allFinished$, subscribeChatThread$, cancelRun$ } = createRunTracking({
     threadId,
     reloadThread$,
     threadData$,
@@ -1323,7 +1319,7 @@ export function createChatThreadSignals(
     allFinished$,
     fetchNextPage$,
     loadHistory$,
-    loadPagedMessages$,
+    subscribeChatThread$,
     blockColors$,
     rotatingPhrase$,
     donePhrase$,

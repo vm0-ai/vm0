@@ -220,6 +220,5 @@ export function createIdbCachedDataSource(
       cacheFlags,
       listMessagesAfter$,
     ),
-    isCancelRequested$: remote.isCancelRequested$,
   };
 }

@@ -25,11 +25,17 @@ export const setupChatPage$ = command(
       throw new Error("threadId is required to load chat page");
     }
 
+    // Mount the page shell synchronously so the sidebar can start its own
+    // ccstate fetches (team / billing / slack / org / user-prefs / chat
+    // threads list) in parallel with onboardGuard$ + hideAppSkeleton$.
+    // Everything visible is still covered by the AppSkeleton overlay until
+    // hideAppSkeleton$ resolves, so no flash even if the guard redirects.
+    set(updatePage$, createElement(ZeroChatThreadPage), "sidebar");
+
     if (await set(onboardGuard$, signal)) {
       return;
     }
 
-    set(updatePage$, createElement(ZeroChatThreadPage), "sidebar");
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();
     set(captureNavigationTiming$);

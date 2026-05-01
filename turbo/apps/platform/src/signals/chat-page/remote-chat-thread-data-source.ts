@@ -23,10 +23,6 @@ import type {
 
 const L = logger("ChatThread");
 
-const remoteIsCancelRequested$ = computed(() => {
-  return false;
-});
-
 const patchDraft$ = command(
   async (
     { get },
@@ -244,6 +240,5 @@ export function createRemoteChatThreadDataSource(
     cancelRuns$,
     markRead$,
     subscribeRealtime$,
-    isCancelRequested$: remoteIsCancelRequested$,
   };
 }
