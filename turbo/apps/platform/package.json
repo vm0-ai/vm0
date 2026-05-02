@@ -26,7 +26,7 @@
     "@tiptap/markdown": "^3.20.4",
     "@tiptap/pm": "^3.20.4",
     "@tiptap/react": "^3.20.4",
-    "@tiptap/starter-kit": "^3.20.4",
+    "@tiptap/starter-kit": "^3.22.5",
     "@ts-rest/core": "3.53.0-rc.1",
     "@uiw/react-markdown-preview": "^5.1.5",
     "@vm0/api-contracts": "workspace:*",
