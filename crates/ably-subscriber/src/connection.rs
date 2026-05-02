@@ -592,9 +592,7 @@ async fn sleep_until_optional(deadline: Option<Instant>) {
 }
 
 fn message_targets_channel(msg: &ProtocolMessage, channel: &str) -> bool {
-    msg.channel
-        .as_deref()
-        .is_none_or(|msg_channel| msg_channel == channel)
+    msg.channel.as_deref() == Some(channel)
 }
 
 fn request_channel_attach(p: &mut EventLoopState) -> bool {

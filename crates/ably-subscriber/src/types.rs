@@ -131,6 +131,9 @@ pub struct TimingConfig {
     /// Matches ably-js `channelRetryTimeout`.
     pub channel_retry_timeout: Duration,
     /// Timeout for an in-flight realtime channel ATTACH operation.
+    /// Initial subscribe connect+attach is bounded by
+    /// [`connect_timeout`](Self::connect_timeout); this timeout applies after
+    /// the subscription is established.
     ///
     /// Matches ably-js `realtimeRequestTimeout`.
     pub realtime_request_timeout: Duration,

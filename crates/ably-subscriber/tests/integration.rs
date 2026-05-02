@@ -324,6 +324,54 @@ async fn connect_and_receive_message() {
 }
 
 #[tokio::test]
+async fn message_without_channel_is_ignored() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        let missing_channel = ProtocolMessage {
+            action: action::MESSAGE,
+            channel: None,
+            channel_serial: Some("serial-missing-channel".into()),
+            messages: Some(vec![AblyMessage {
+                name: Some("wrong".into()),
+                data: Some(serde_json::json!("ignored")),
+                timestamp: Some(now_ms()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&missing_channel).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+        send_message(&mut conn, "ch", "expected", serde_json::json!("ok"))
+            .await
+            .unwrap();
+    });
+
+    let mut sub = subscribe(test_config(ws_port, http.port(), "ch"))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for matching-channel message")
+        .unwrap();
+    match event {
+        Event::Message(msg) => assert_eq!(msg.name.as_deref(), Some("expected")),
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn zero_event_channel_capacity_uses_minimum_capacity() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
