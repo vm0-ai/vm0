@@ -1,5 +1,18 @@
 import "@testing-library/jest-dom/vitest";
-import { indexedDB, IDBKeyRange } from "fake-indexeddb";
+import {
+  IDBCursor,
+  IDBCursorWithValue,
+  IDBDatabase,
+  IDBFactory,
+  IDBIndex,
+  IDBKeyRange,
+  IDBObjectStore,
+  IDBOpenDBRequest,
+  IDBRequest,
+  IDBTransaction,
+  IDBVersionChangeEvent,
+  indexedDB,
+} from "fake-indexeddb";
 import { server } from "../mocks/server.ts";
 import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
@@ -19,7 +32,17 @@ vi.hoisted(() => {
 });
 
 globalThis.indexedDB = indexedDB;
+globalThis.IDBCursor = IDBCursor;
+globalThis.IDBCursorWithValue = IDBCursorWithValue;
+globalThis.IDBDatabase = IDBDatabase;
+globalThis.IDBFactory = IDBFactory;
+globalThis.IDBIndex = IDBIndex;
 globalThis.IDBKeyRange = IDBKeyRange;
+globalThis.IDBObjectStore = IDBObjectStore;
+globalThis.IDBOpenDBRequest = IDBOpenDBRequest;
+globalThis.IDBRequest = IDBRequest;
+globalThis.IDBTransaction = IDBTransaction;
+globalThis.IDBVersionChangeEvent = IDBVersionChangeEvent;
 
 beforeAll(() => {
   // Disable CSS animations/transitions so Radix UI dialog open/close
