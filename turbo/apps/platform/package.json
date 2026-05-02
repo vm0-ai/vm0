@@ -62,6 +62,7 @@
     "eslint": "^9.34.0",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.9.0",
     "msw": "^2.13.2",
     "oxlint": "^1.57.0",

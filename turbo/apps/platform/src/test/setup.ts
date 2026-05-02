@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { indexedDB, IDBKeyRange } from "fake-indexeddb";
 import { server } from "../mocks/server.ts";
 import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
@@ -16,6 +17,9 @@ vi.hoisted(() => {
   vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", "test_key");
   vi.stubEnv("VITE_API_URL", "http://localhost:3000");
 });
+
+globalThis.indexedDB = indexedDB;
+globalThis.IDBKeyRange = IDBKeyRange;
 
 beforeAll(() => {
   // Disable CSS animations/transitions so Radix UI dialog open/close
