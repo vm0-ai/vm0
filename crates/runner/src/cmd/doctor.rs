@@ -16,6 +16,7 @@ use serde::Deserialize;
 // CLI args
 // ---------------------------------------------------------------------------
 
+/// CLI arguments for the `doctor` subcommand.
 #[derive(Args)]
 pub struct DoctorArgs {
     /// Only check the runner with this name (matches config `name` field)
@@ -346,6 +347,10 @@ struct StoppedInfo {
 // Entry point
 // ---------------------------------------------------------------------------
 
+/// Run runtime health diagnostics for runner processes on this host.
+///
+/// Returns `ExitCode::FAILURE` when any per-runner or global anomaly still
+/// persists after targeted rechecks; otherwise returns `ExitCode::SUCCESS`.
 pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
     // Phase 1: Discover running processes (single /proc scan)
     let discovered = process::discover_all().await;
