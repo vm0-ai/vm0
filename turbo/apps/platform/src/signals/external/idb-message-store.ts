@@ -91,7 +91,10 @@ function createIdbMessageStores(userId: string, orgId: string) {
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readonly");
       const msg = await tx.store.get(messageId);
-      return msg !== undefined && (msg as { threadId?: string }).threadId === threadId;
+      return (
+        msg !== undefined &&
+        (msg as { threadId?: string }).threadId === threadId
+      );
     },
 
     async readBefore(threadId, beforeId, limit, signal) {

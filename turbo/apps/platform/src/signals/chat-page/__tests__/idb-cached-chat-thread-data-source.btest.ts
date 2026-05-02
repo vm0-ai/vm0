@@ -34,10 +34,7 @@ const USER_ID = "test-idb-cache-user";
 const ORG_ID = "test-idb-cache-org";
 
 function setupAuth() {
-  mockUser(
-    { id: USER_ID, fullName: "Test User" },
-    { token: "test-token" },
-  );
+  mockUser({ id: USER_ID, fullName: "Test User" }, { token: "test-token" });
   mockOrganization({
     activeOrg: { id: ORG_ID, name: "Test Org" },
   });
@@ -86,11 +83,13 @@ describe("createIdbCachedDataSource.listMessagesAfter$", () => {
     // Anchor existed → messages should be cached
     const cached = await stores.readStore.readLatest(threadId, 10);
     expect(cached).toHaveLength(3); // anchor + new-1 + new-2
-    expect(cached.map((m) => m.id).sort()).toStrictEqual([
-      "anchor-1",
-      "new-1",
-      "new-2",
-    ]);
+    expect(
+      cached
+        .map((m) => {
+          return m.id;
+        })
+        .sort(),
+    ).toStrictEqual(["anchor-1", "new-1", "new-2"]);
   });
 
   it("skips caching when sinceId anchor is missing from local IDB", async () => {
