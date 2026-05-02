@@ -151,6 +151,7 @@ async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Err
 enum AttachOutcome {
     Attached { channel_serial: Option<String> },
     Detached(ErrorInfo),
+    TimedOut,
 }
 
 fn detached_error_or_default(error: Option<ErrorInfo>) -> ErrorInfo {
@@ -209,6 +210,10 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Option
         AttachOutcome::Detached(err) => Err(Error::Protocol {
             code: err.code,
             message: channel_detached_message(&err.message),
+        }),
+        AttachOutcome::TimedOut => Err(Error::Protocol {
+            code: error_code::TIMEOUT,
+            message: "Channel attach timed out".to_string(),
         }),
     }
 }
@@ -640,6 +645,39 @@ fn notify_channel_failed(p: &mut EventLoopState) {
     p.connected_event_pending = false;
 }
 
+fn suspend_deadline(p: &EventLoopState) -> Option<Instant> {
+    if p.lifecycle.connection == ConnectionLifecycleState::Suspended
+        || p.conn_state.connection_key.is_none()
+    {
+        return None;
+    }
+    p.conn_state
+        .disconnected_at
+        .map(|disconnected_at| disconnected_at + p.conn_state.connection_state_ttl)
+}
+
+fn should_enter_suspended_retry(p: &EventLoopState) -> bool {
+    p.lifecycle.connection != ConnectionLifecycleState::Suspended
+        && p.conn_state.disconnected_at.is_some()
+        && !p.conn_state.can_resume()
+}
+
+async fn enter_suspended_retry(
+    p: &mut EventLoopState,
+    close_rx: &mut oneshot::Receiver<()>,
+) -> bool {
+    p.conn_state.clear_resume_state();
+    p.lifecycle.notify_suspended();
+    p.conn_state.channel_serial = None;
+    p.channel_retry_at = None;
+    p.channel_operation_deadline = None;
+    p.connected_event_pending = false;
+    let event = Event::Disconnected {
+        reason: Some("connection state expired; entering suspended retry".to_string()),
+    };
+    send_status_event(p, close_rx, event, "suspended").await
+}
+
 // Caller-requested shutdown should send Ably CLOSE before closing the WebSocket
 // so the connection state is explicitly terminated.
 async fn send_close_message(p: &mut EventLoopState) {
@@ -879,29 +917,17 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
 
         let mut retry_immediately = immediate_retry;
         let mut disconnected_retry_count: u32 = 0;
-        let mut suspended_retry_count: u32 = 0;
         loop {
-            if !p.conn_state.can_resume()
-                && p.lifecycle.connection != ConnectionLifecycleState::Suspended
+            if should_enter_suspended_retry(&p)
+                && !enter_suspended_retry(&mut p, &mut close_rx).await
             {
-                p.conn_state.clear_resume_state();
-                p.lifecycle.notify_suspended();
-                p.conn_state.channel_serial = None;
-                p.channel_retry_at = None;
-                p.channel_operation_deadline = None;
-                disconnected_retry_count = 0;
-                let event = Event::Disconnected {
-                    reason: Some("connection state expired; entering suspended retry".to_string()),
-                };
-                if !send_status_event(&mut p, &mut close_rx, event, "suspended").await {
-                    return;
-                }
+                return;
             }
 
             // ably-js retries immediately when an active connection becomes
             // disconnected, with a one-second guard against tight reconnect
-            // loops. Subsequent disconnected/suspended retries use the state's
-            // retry timeout and jitter.
+            // loops. Subsequent disconnected retries use jittered retry time;
+            // suspended retries use the fixed suspendedRetryTimeout.
             let backoff_duration = if retry_immediately {
                 retry_immediately = false;
                 let delay = reconnect_spacing_delay(
@@ -918,8 +944,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                 }
                 delay
             } else if p.lifecycle.connection == ConnectionLifecycleState::Suspended {
-                suspended_retry_count += 1;
-                retry_delay(p.timing.suspended_retry_timeout, suspended_retry_count)
+                p.timing.suspended_retry_timeout
             } else {
                 disconnected_retry_count += 1;
                 retry_delay(
@@ -927,6 +952,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     disconnected_retry_count,
                 )
             };
+            let suspend_at = suspend_deadline(&p);
             tokio::select! {
                 biased;
                 _ = &mut close_rx => {
@@ -934,12 +960,18 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     send_close_message(&mut p).await;
                     return;
                 }
+                _ = sleep_until_optional(suspend_at), if suspend_at.is_some() => {
+                    if !enter_suspended_retry(&mut p, &mut close_rx).await {
+                        return;
+                    }
+                    continue;
+                }
                 _ = tokio::time::sleep(backoff_duration) => {}
             }
 
             last_reconnect_attempt = Some(Instant::now());
             p.lifecycle.request_connecting();
-            let reconnect_timeout = p.timing.reconnect_timeout;
+            let suspend_at = suspend_deadline(&p);
             let reconnect_result = tokio::select! {
                 biased;
                 _ = &mut close_rx => {
@@ -947,11 +979,17 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     send_close_message(&mut p).await;
                     return;
                 }
-                result = tokio::time::timeout(reconnect_timeout, attempt_reconnect(&mut p)) => result,
+                _ = sleep_until_optional(suspend_at), if suspend_at.is_some() => {
+                    if !enter_suspended_retry(&mut p, &mut close_rx).await {
+                        return;
+                    }
+                    continue;
+                }
+                result = attempt_reconnect(&mut p) => result,
             };
 
             match reconnect_result {
-                Ok(Ok(ReconnectOutcome::Attached)) => {
+                Ok(ReconnectOutcome::Attached) => {
                     p.token_renewal_failures = 0;
                     p.connected_event_pending = false;
                     p.lifecycle.notify_connected();
@@ -962,18 +1000,15 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     }
                     continue 'outer;
                 }
-                Ok(Ok(ReconnectOutcome::ChannelSuspended)) => {
+                Ok(ReconnectOutcome::ChannelSuspended) => {
                     p.token_renewal_failures = 0;
                     p.lifecycle.notify_transport_connected();
                     notify_channel_suspended(&mut p);
                     p.connected_event_pending = true;
                     continue 'outer;
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
                     tracing::warn!("Reconnect attempt failed: {e}");
-                }
-                Err(_) => {
-                    tracing::warn!("Reconnect attempt timed out");
                 }
             }
             if p.lifecycle.connection != ConnectionLifecycleState::Suspended {
@@ -1375,63 +1410,84 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 /// responds DETACHED to the ATTACH, the connected transport is kept and the
 /// caller moves the channel into suspended retry, matching ably-js.
 async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, Error> {
-    let use_resume = p.conn_state.can_resume();
+    let reconnect_timeout = p.timing.reconnect_timeout;
+    let (connected_msg, mut ws_read, ws_write, new_token) =
+        tokio::time::timeout(reconnect_timeout, async {
+            let use_resume = p.conn_state.can_resume();
 
-    // For fresh connects, obtain a new token up front (kept in a local until
-    // we know the full reconnect succeeded).
-    let new_token = if !use_resume {
-        let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
-        Some(exchange_token(&p.http, &token_request, &p.rest_host).await?)
-    } else {
-        None
+            // For fresh connects, obtain a new token up front (kept in a local until
+            // we know the transport connected).
+            let new_token = if !use_resume {
+                let token_request = (p.get_token)().await.map_err(Error::TokenFetch)?;
+                Some(exchange_token(&p.http, &token_request, &p.rest_host).await?)
+            } else {
+                None
+            };
+
+            let active_token = new_token
+                .as_ref()
+                .map_or_else(|| p.conn_state.token.token.clone(), |t| t.token.clone());
+
+            let resume = if use_resume {
+                p.conn_state.connection_key.as_deref()
+            } else {
+                None
+            };
+
+            let ws_url = build_ws_url(&p.realtime_host, &active_token, resume)?;
+            let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
+
+            let connected_msg = wait_for_connected(&mut ws_read).await?;
+
+            let resumed = use_resume
+                && connected_msg.connection_id == p.conn_state.connection_id
+                && connected_msg.error.is_none();
+
+            // Always re-attach the channel, even after a successful connection resume.
+            // The server may silently lose channel state without sending DETACHED,
+            // creating a "zombie subscription" where messages stop being delivered.
+            // ATTACH is idempotent — the server responds with ATTACHED regardless.
+            //
+            // This matches ably-js behavior: `Channels.onTransportActive()` calls
+            // `channel.requestState('attaching')` for every attached channel whenever
+            // a transport becomes active, including after resume.
+            // See: ably-js/src/common/lib/client/baserealtime.ts
+            if resumed {
+                tracing::info!(
+                    channel_serial = ?p.conn_state.channel_serial,
+                    "Connection resumed, re-attaching channel to verify state",
+                );
+            } else {
+                tracing::info!("Fresh connect, attaching channel");
+            }
+            let attach = build_attach_msg(
+                &p.channel,
+                p.channel_params.as_ref(),
+                p.conn_state.channel_serial.as_deref(),
+            );
+            let data = encode_msg(&attach)?;
+            ws_write
+                .send(tungstenite::Message::Binary(data.into()))
+                .await?;
+
+            Ok::<_, Error>((connected_msg, ws_read, ws_write, new_token))
+        })
+        .await
+        .map_err(|_| Error::Protocol {
+            code: error_code::TIMEOUT,
+            message: "Reconnect attempt timed out".to_string(),
+        })??;
+
+    let attach_outcome = match tokio::time::timeout(
+        p.timing.realtime_request_timeout,
+        wait_for_attach_outcome(&mut ws_read, &p.channel),
+    )
+    .await
+    {
+        Ok(Ok(outcome)) => outcome,
+        Ok(Err(e)) => return Err(e),
+        Err(_) => AttachOutcome::TimedOut,
     };
-
-    let active_token = new_token
-        .as_ref()
-        .map_or(&p.conn_state.token.token, |t| &t.token);
-
-    let resume = if use_resume {
-        p.conn_state.connection_key.as_deref()
-    } else {
-        None
-    };
-
-    let ws_url = build_ws_url(&p.realtime_host, active_token, resume)?;
-    let (mut ws_write, mut ws_read) = connect_and_split(&ws_url).await?;
-
-    let connected_msg = wait_for_connected(&mut ws_read).await?;
-
-    let resumed = use_resume
-        && connected_msg.connection_id == p.conn_state.connection_id
-        && connected_msg.error.is_none();
-
-    // Always re-attach the channel, even after a successful connection resume.
-    // The server may silently lose channel state without sending DETACHED,
-    // creating a "zombie subscription" where messages stop being delivered.
-    // ATTACH is idempotent — the server responds with ATTACHED regardless.
-    //
-    // This matches ably-js behavior: `Channels.onTransportActive()` calls
-    // `channel.requestState('attaching')` for every attached channel whenever
-    // a transport becomes active, including after resume.
-    // See: ably-js/src/common/lib/client/baserealtime.ts
-    if resumed {
-        tracing::info!(
-            channel_serial = ?p.conn_state.channel_serial,
-            "Connection resumed, re-attaching channel to verify state",
-        );
-    } else {
-        tracing::info!("Fresh connect, attaching channel");
-    }
-    let attach = build_attach_msg(
-        &p.channel,
-        p.channel_params.as_ref(),
-        p.conn_state.channel_serial.as_deref(),
-    );
-    let data = encode_msg(&attach)?;
-    ws_write
-        .send(tungstenite::Message::Binary(data.into()))
-        .await?;
-    let attach_outcome = wait_for_attach_outcome(&mut ws_read, &p.channel).await?;
 
     // Commit state only after all steps succeeded.
     p.conn_state.update_from_connected(&connected_msg);
@@ -1446,6 +1502,14 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             tracing::warn!(
                 reason = %channel_detached_message(&err.message),
                 "Channel detached while re-attaching after reconnect",
+            );
+            p.conn_state.channel_serial = None;
+            ReconnectOutcome::ChannelSuspended
+        }
+        AttachOutcome::TimedOut => {
+            tracing::warn!(
+                timeout_ms = p.timing.realtime_request_timeout.as_millis(),
+                "Channel attach timed out while re-attaching after reconnect",
             );
             p.conn_state.channel_serial = None;
             ReconnectOutcome::ChannelSuspended

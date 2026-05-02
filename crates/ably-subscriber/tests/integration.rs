@@ -3126,22 +3126,20 @@ async fn expired_ttl_skips_resume() {
     let (resume_tx, resume_rx) = tokio::sync::oneshot::channel::<bool>();
 
     tokio::spawn(async move {
-        // First connection with a tiny connection_state_ttl (1ms).
+        // First connection with an already-expired connection_state_ttl.
         // The server-provided TTL overrides the TimingConfig default, so we
-        // set it here to ensure can_resume() sees a short TTL.
+        // set it here to ensure can_resume() is false on reconnect.
         let conn = ws
             .accept_and_handshake_with_opts(
                 "ch",
                 "conn-1",
                 HandshakeOptions {
-                    connection_state_ttl_ms: 1,
+                    connection_state_ttl_ms: 0,
                     ..Default::default()
                 },
             )
             .await
             .unwrap();
-        // Small delay so the 1ms TTL expires before the reconnect attempt.
-        tokio::time::sleep(Duration::from_millis(50)).await;
         drop(conn);
 
         // Second connection — send CONNECTED with the *same* conn_id.
@@ -3166,6 +3164,7 @@ async fn expired_ttl_skips_resume() {
 
     let mut timing = TimingConfig::default();
     timing.disconnected_retry_timeout = Duration::from_millis(10);
+    timing.suspended_retry_timeout = Duration::from_millis(10);
     let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
         .await
         .unwrap();
@@ -3179,11 +3178,17 @@ async fn expired_ttl_skips_resume() {
         .unwrap();
     assert!(matches!(event, Event::Disconnected { .. }));
 
-    let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
-        .await
-        .expect("timed out waiting for Connected")
-        .unwrap();
-    assert!(matches!(event, Event::Connected));
+    loop {
+        let event = tokio::time::timeout(Duration::from_secs(10), sub.next())
+            .await
+            .expect("timed out waiting for Connected")
+            .unwrap();
+        match event {
+            Event::Connected => break,
+            Event::Disconnected { .. } => {}
+            other => panic!("expected Connected, got {other:?}"),
+        }
+    }
 
     // Message after fresh connect
     let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
@@ -3443,6 +3448,118 @@ async fn detached_during_reconnect_attach_retries_channel_on_same_transport() {
     match event {
         Event::Message(msg) => {
             assert_eq!(msg.name.as_deref(), Some("after-reconnect-channel-retry"));
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn reconnect_attach_timeout_retries_channel_on_same_transport() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    tokio::spawn(async move {
+        let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        drop(conn);
+
+        let (tcp, _) = ws.listener.accept().await.unwrap();
+        let mut conn2 = tokio_tungstenite::accept_async(tcp).await.unwrap();
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-2".into()),
+            connection_key: Some("conn-2!key".into()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-2!key".into()),
+                connection_state_ttl: Some(120_000),
+                max_idle_interval: Some(15_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&connected).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+            .await
+            .expect("timed out waiting for reconnect ATTACH")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+
+        // Do not answer the first ATTACH. The client should treat this as a
+        // channel attach timeout, keep conn-2 connected, and retry ATTACH on
+        // the same websocket instead of opening conn-3.
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+            .await
+            .expect("timed out waiting for channel retry ATTACH")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+
+        let attached = ProtocolMessage {
+            action: action::ATTACHED,
+            channel: Some("ch".into()),
+            channel_serial: Some("serial-retry".into()),
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&attached).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+        send_message(
+            &mut conn2,
+            "ch",
+            "after-reconnect-attach-timeout",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.disconnected_retry_timeout = Duration::from_millis(10);
+    timing.channel_retry_timeout = Duration::from_millis(10);
+    timing.realtime_request_timeout = Duration::from_millis(20);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for Disconnected")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Disconnected { .. }),
+        "expected Disconnected, got {event:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for Connected after channel retry")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Connected),
+        "expected Connected after channel retry, got {event:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after channel retry")
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(msg.name.as_deref(), Some("after-reconnect-attach-timeout"));
         }
         other => panic!("expected Message, got {other:?}"),
     }
