@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.321.2](https://github.com/vm0-ai/vm0/compare/app-v0.321.1...app-v0.321.2) (2026-05-02)
+
+
+### Performance Improvements
+
+* parallelise thread-load pipelines on the chat page ([#11671](https://github.com/vm0-ai/vm0/issues/11671)) ([b745a01](https://github.com/vm0-ai/vm0/commit/b745a01b14e9ae747d6d2b4c7963e4972f6f7fbc))
+
 ## [0.321.1](https://github.com/vm0-ai/vm0/compare/app-v0.321.0...app-v0.321.1) (2026-05-01)
 
 
