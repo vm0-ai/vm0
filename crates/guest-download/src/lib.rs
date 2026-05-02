@@ -74,9 +74,9 @@ const LOG_TAG: &str = "sandbox:download";
 #[serde(rename_all = "camelCase")]
 struct Manifest {
     #[serde(default)]
-    storages: Vec<Storage>,
+    storages: Vec<ManifestEntry>,
     #[serde(default)]
-    artifacts: Vec<Artifact>,
+    artifacts: Vec<ManifestEntry>,
     /// Paths to clean before downloading (stale file cleanup on VM reuse).
     #[serde(default)]
     cleanup_paths: Vec<String>,
@@ -89,16 +89,7 @@ fn is_valid_url(url: &Option<String>) -> bool {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Storage {
-    mount_path: String,
-    archive_url: Option<String>,
-    #[serde(default)]
-    cached: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Artifact {
+struct ManifestEntry {
     mount_path: String,
     archive_url: Option<String>,
     #[serde(default)]
@@ -170,34 +161,22 @@ pub fn run(manifest_path: &str) -> bool {
     let mut tasks: Vec<DownloadTask> = Vec::new();
 
     // Storages: 404 is fatal
-    for (i, s) in manifest.storages.iter().enumerate() {
-        if is_valid_url(&s.archive_url)
-            && let Some(url) = s.archive_url.clone()
-        {
-            tasks.push(DownloadTask {
-                label: format!("storage {}", i + 1),
-                op_name: "storage_download",
-                url,
-                mount_path: s.mount_path.clone(),
-                allow_404: false,
-            });
-        }
-    }
+    append_download_tasks(
+        &mut tasks,
+        &manifest.storages,
+        "storage",
+        "storage_download",
+        false,
+    );
 
     // Artifacts: 404 is non-fatal (may not exist on first run)
-    for (idx, artifact) in manifest.artifacts.iter().enumerate() {
-        if is_valid_url(&artifact.archive_url)
-            && let Some(url) = artifact.archive_url.clone()
-        {
-            tasks.push(DownloadTask {
-                label: format!("artifact {}", idx + 1),
-                op_name: "artifact_download",
-                url,
-                mount_path: artifact.mount_path.clone(),
-                allow_404: true,
-            });
-        }
-    }
+    append_download_tasks(
+        &mut tasks,
+        &manifest.artifacts,
+        "artifact",
+        "artifact_download",
+        true,
+    );
 
     // Pre-create all target directories before parallel downloads.
     // This avoids races between parent-child mount paths (e.g. /home/user/.claude
@@ -294,6 +273,28 @@ struct DownloadTask {
     mount_path: String,
     /// When true, HTTP 404 is treated as success (artifact/memory may not exist on first run).
     allow_404: bool,
+}
+
+fn append_download_tasks(
+    tasks: &mut Vec<DownloadTask>,
+    entries: &[ManifestEntry],
+    label_prefix: &str,
+    op_name: &'static str,
+    allow_404: bool,
+) {
+    for (idx, entry) in entries.iter().enumerate() {
+        if is_valid_url(&entry.archive_url)
+            && let Some(url) = entry.archive_url.clone()
+        {
+            tasks.push(DownloadTask {
+                label: format!("{} {}", label_prefix, idx + 1),
+                op_name,
+                url,
+                mount_path: entry.mount_path.clone(),
+                allow_404,
+            });
+        }
+    }
 }
 
 /// Download all tasks in parallel using std::thread.
@@ -813,48 +814,80 @@ mod tests {
 
     #[test]
     fn manifest_defaults_cached_to_false() {
-        let json = r#"{"storages": [{"mountPath": "/data"}]}"#;
+        let json = r#"{
+            "storages": [{"mountPath": "/data"}],
+            "artifacts": [{"mountPath": "/workspace"}]
+        }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert!(!manifest.storages[0].cached);
+        assert!(!manifest.artifacts[0].cached);
     }
 
     #[test]
-    fn manifest_multi_artifacts_yield_two_tasks() {
+    fn manifest_ignores_runner_entry_metadata() {
         let json = r#"{
-            "storages": [],
+            "storages": [{
+                "mountPath": "/data",
+                "archiveUrl": "https://s3/storage.tar.gz",
+                "vasStorageName": "storage",
+                "vasVersionId": "v1"
+            }],
+            "artifacts": [{
+                "mountPath": "/workspace",
+                "archiveUrl": "https://s3/artifact.tar.gz",
+                "vasStorageName": "artifact",
+                "vasStorageId": "artifact-id",
+                "vasVersionId": "v2"
+            }]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.storages[0].mount_path, "/data");
+        assert_eq!(manifest.artifacts[0].mount_path, "/workspace");
+    }
+
+    #[test]
+    fn manifest_entries_yield_storage_and_artifact_tasks() {
+        let json = r#"{
+            "storages": [
+                {"mountPath": "/data", "archiveUrl": "https://s3/storage.tar.gz"}
+            ],
             "artifacts": [
                 {"mountPath": "/workspace/a", "archiveUrl": "https://s3/a.tar.gz"},
                 {"mountPath": "/workspace/b", "archiveUrl": "https://s3/b.tar.gz"}
             ]
         }"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.storages.len(), 1);
         assert_eq!(manifest.artifacts.len(), 2);
 
-        let tasks: Vec<DownloadTask> = manifest
-            .artifacts
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, a)| {
-                if is_valid_url(&a.archive_url)
-                    && let Some(url) = a.archive_url.clone()
-                {
-                    Some(DownloadTask {
-                        label: format!("artifact {}", idx + 1),
-                        op_name: "artifact_download",
-                        url,
-                        mount_path: a.mount_path.clone(),
-                        allow_404: true,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut tasks = Vec::new();
+        append_download_tasks(
+            &mut tasks,
+            &manifest.storages,
+            "storage",
+            "storage_download",
+            false,
+        );
+        append_download_tasks(
+            &mut tasks,
+            &manifest.artifacts,
+            "artifact",
+            "artifact_download",
+            true,
+        );
 
-        assert_eq!(tasks.len(), 2);
-        assert_eq!(tasks[0].label, "artifact 1");
-        assert_eq!(tasks[0].mount_path, "/workspace/a");
-        assert_eq!(tasks[1].label, "artifact 2");
-        assert_eq!(tasks[1].mount_path, "/workspace/b");
+        assert_eq!(tasks.len(), 3);
+        assert_eq!(tasks[0].label, "storage 1");
+        assert_eq!(tasks[0].op_name, "storage_download");
+        assert_eq!(tasks[0].mount_path, "/data");
+        assert!(!tasks[0].allow_404);
+        assert_eq!(tasks[1].label, "artifact 1");
+        assert_eq!(tasks[1].op_name, "artifact_download");
+        assert_eq!(tasks[1].mount_path, "/workspace/a");
+        assert!(tasks[1].allow_404);
+        assert_eq!(tasks[2].label, "artifact 2");
+        assert_eq!(tasks[2].op_name, "artifact_download");
+        assert_eq!(tasks[2].mount_path, "/workspace/b");
+        assert!(tasks[2].allow_404);
     }
 }
