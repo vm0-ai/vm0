@@ -999,6 +999,11 @@ function createRunTracking({
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
 
+    // Catch up any messages that arrived since the initial page was loaded.
+    // On IDB cache hit this fetches messages that arrived after the cache
+    // was written; on cache miss fetchNextPage$ hits reachedEnd (no-op).
+    await set(fetchNextPage$, signal);
+
     const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
       await set(fetchNextPage$, sig);
       await set(markThreadReadIfNeeded$, sig);
