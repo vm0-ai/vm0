@@ -1378,6 +1378,55 @@ async fn server_sends_disconnected_without_message_reports_reason() {
     server_task.await.unwrap();
 }
 
+#[tokio::test]
+async fn disconnected_event_is_not_delayed_by_transport_close() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (event_seen_tx, event_seen_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        let disconnected = ProtocolMessage {
+            action: action::DISCONNECTED,
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "server going away".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&disconnected).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        event_seen_rx.await.unwrap();
+        expect_websocket_close_frame(&mut conn).await.unwrap();
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.close_timeout = Duration::from_secs(5);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+    let event = tokio::time::timeout(Duration::from_millis(250), sub.next())
+        .await
+        .expect("Disconnected should not wait for transport close")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Disconnected { .. }),
+        "expected Disconnected, got {event:?}"
+    );
+    event_seen_tx.send(()).unwrap();
+    sub.close();
+    server_task.await.unwrap();
+}
+
 // ---------------------------------------------------------------------------
 // Test 11: server sends DETACHED, client re-attaches
 // ---------------------------------------------------------------------------

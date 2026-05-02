@@ -758,7 +758,11 @@ async fn send_close_message(p: &mut EventLoopState) {
 
 // Reconnect paths should only close the current WebSocket transport. Sending
 // Ably CLOSE here would terminate the resumable connection state on the server.
-async fn close_websocket_transport(p: &mut EventLoopState) {
+//
+// The transport is detached synchronously so status events and reconnects are
+// not delayed by a slow close handshake. The bounded background close still
+// releases the socket without keeping it in `EventLoopState`.
+fn close_websocket_transport(p: &mut EventLoopState) {
     let Some(transport) = p.transport.take() else {
         return;
     };
@@ -767,16 +771,19 @@ async fn close_websocket_transport(p: &mut EventLoopState) {
         mut ws_write,
     } = transport;
     let close_timeout = p.timing.close_timeout;
-    let result = tokio::time::timeout(close_timeout, async move {
-        let _ = ws_write.close().await;
-    })
-    .await;
-    if result.is_err() {
-        tracing::warn!(
-            timeout_ms = close_timeout.as_millis(),
-            "Timed out while closing websocket transport"
-        );
-    }
+    let close_task = tokio::spawn(async move {
+        let result = tokio::time::timeout(close_timeout, async move {
+            let _ = ws_write.close().await;
+        })
+        .await;
+        if result.is_err() {
+            tracing::warn!(
+                timeout_ms = close_timeout.as_millis(),
+                "Timed out while closing websocket transport"
+            );
+        }
+    });
+    drop(close_task);
 }
 
 async fn send_status_event(
@@ -804,7 +811,7 @@ async fn send_terminal_status_event(
 ) -> bool {
     // Terminal status events can be backpressured by a slow consumer. Release
     // the socket first so an unpolled Subscription cannot keep it alive.
-    close_websocket_transport(p).await;
+    close_websocket_transport(p);
     send_status_event(p, close_rx, event, status_event).await
 }
 
@@ -959,7 +966,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
         p.conn_state.disconnected_at = Some(Instant::now());
         p.lifecycle.notify_disconnected();
         if close_before_reconnect {
-            close_websocket_transport(&mut p).await;
+            close_websocket_transport(&mut p);
         }
         if !disconnected_sent {
             let event = Event::Disconnected {
@@ -1098,7 +1105,7 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()
         Ok(data) => data,
         Err(e) => {
             tracing::warn!("Failed to encode attach message: {e}");
-            close_websocket_transport(p).await;
+            close_websocket_transport(p);
             return LoopAction::Reconnect;
         }
     };
@@ -1124,12 +1131,12 @@ async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()
         Ok(Ok(())) => LoopAction::Continue,
         Ok(Err(_)) => {
             tracing::warn!("Failed to send attach, triggering reconnect");
-            close_websocket_transport(p).await;
+            close_websocket_transport(p);
             LoopAction::Reconnect
         }
         Err(_) => {
             tracing::warn!("Timed out sending attach, triggering reconnect");
-            close_websocket_transport(p).await;
+            close_websocket_transport(p);
             LoopAction::Reconnect
         }
     }
@@ -1259,7 +1266,7 @@ async fn handle_message(
             // to reconnect after backoff. Only connection-level ERROR is fatal.
             let reason = Some(protocol_disconnect_reason(msg.error));
             p.lifecycle.notify_disconnected();
-            close_websocket_transport(p).await;
+            close_websocket_transport(p);
             if !send_status_event(p, close_rx, Event::Disconnected { reason }, "disconnected").await
             {
                 return LoopAction::Stop;
