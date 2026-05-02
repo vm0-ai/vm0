@@ -30,6 +30,11 @@ async fn stuck_tool_reap_escalates_to_sigkill_when_sigterm_ignored()
     .await
     .expect("execute_cli did not return within 15s - forced SIGKILL escalation likely broken");
 
+    assert!(
+        tmp.path().join(".vm0-mock-sigterm-ignored").exists(),
+        "mock did not install SIGTERM ignore marker"
+    );
+
     let err = match result {
         Ok(_) => return Err("stuck tool timeout should fail the run".into()),
         Err(err) => err,
