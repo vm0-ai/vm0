@@ -151,6 +151,7 @@ async fn wait_for_connected(ws_read: &mut WsRead) -> Result<ProtocolMessage, Err
 enum AttachOutcome {
     Attached { channel_serial: Option<String> },
     Detached(ErrorInfo),
+    RetryAttach(ErrorInfo),
     TimedOut,
 }
 
@@ -180,6 +181,14 @@ async fn wait_for_attach_outcome(
                 }
                 action::ERROR => {
                     let err = error_or_unknown(msg.error);
+                    if let Some(msg_channel) = msg.channel.as_deref() {
+                        if msg_channel != channel {
+                            continue;
+                        }
+                        if err.code == 80016 {
+                            return Ok(AttachOutcome::RetryAttach(err));
+                        }
+                    }
                     return Err(Error::Protocol {
                         code: err.code,
                         message: protocol_error_message(err.message),
@@ -210,6 +219,10 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Option
         AttachOutcome::Detached(err) => Err(Error::Protocol {
             code: err.code,
             message: channel_detached_message(&err.message),
+        }),
+        AttachOutcome::RetryAttach(err) => Err(Error::Protocol {
+            code: err.code,
+            message: protocol_error_message(err.message),
         }),
         AttachOutcome::TimedOut => Err(Error::Protocol {
             code: error_code::TIMEOUT,
@@ -593,6 +606,15 @@ async fn sleep_until_optional(deadline: Option<Instant>) {
 
 fn message_targets_channel(msg: &ProtocolMessage, channel: &str) -> bool {
     msg.channel.as_deref() == Some(channel)
+}
+
+fn encode_attach_for_channel(
+    channel: &str,
+    channel_params: Option<&HashMap<String, String>>,
+    channel_serial: Option<&str>,
+) -> Result<Vec<u8>, Error> {
+    let attach = build_attach_msg(channel, channel_params, channel_serial);
+    encode_msg(&attach)
 }
 
 fn request_channel_attach(p: &mut EventLoopState) -> bool {
@@ -1028,12 +1050,11 @@ enum ReconnectOutcome {
 }
 
 async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()>) -> LoopAction {
-    let attach = build_attach_msg(
+    let data = match encode_attach_for_channel(
         &p.channel,
         p.channel_params.as_ref(),
         p.conn_state.channel_serial.as_deref(),
-    );
-    let data = match encode_msg(&attach) {
+    ) {
         Ok(data) => data,
         Err(e) => {
             tracing::warn!("Failed to encode attach message: {e}");
@@ -1409,7 +1430,7 @@ async fn renew_token(p: &mut EventLoopState) -> Result<(), Error> {
 /// caller moves the channel into suspended retry, matching ably-js.
 async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, Error> {
     let reconnect_timeout = p.timing.reconnect_timeout;
-    let (connected_msg, mut ws_read, ws_write, new_token) =
+    let (connected_msg, mut ws_read, mut ws_write, new_token) =
         tokio::time::timeout(reconnect_timeout, async {
             let use_resume = p.conn_state.can_resume();
 
@@ -1458,12 +1479,11 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             } else {
                 tracing::info!("Fresh connect, attaching channel");
             }
-            let attach = build_attach_msg(
+            let data = encode_attach_for_channel(
                 &p.channel,
                 p.channel_params.as_ref(),
                 p.conn_state.channel_serial.as_deref(),
-            );
-            let data = encode_msg(&attach)?;
+            )?;
             ws_write
                 .send(tungstenite::Message::Binary(data.into()))
                 .await?;
@@ -1476,10 +1496,28 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             message: "Reconnect attempt timed out".to_string(),
         })??;
 
-    let attach_outcome = match tokio::time::timeout(
-        p.timing.realtime_request_timeout,
-        wait_for_attach_outcome(&mut ws_read, &p.channel),
-    )
+    let attach_outcome = match tokio::time::timeout(p.timing.realtime_request_timeout, async {
+        loop {
+            match wait_for_attach_outcome(&mut ws_read, &p.channel).await? {
+                AttachOutcome::RetryAttach(err) => {
+                    tracing::warn!(
+                        code = err.code,
+                        message = %protocol_error_message(err.message),
+                        "Channel attach was superseded while re-attaching after reconnect; retrying attach",
+                    );
+                    let data = encode_attach_for_channel(
+                        &p.channel,
+                        p.channel_params.as_ref(),
+                        p.conn_state.channel_serial.as_deref(),
+                    )?;
+                    ws_write
+                        .send(tungstenite::Message::Binary(data.into()))
+                        .await?;
+                }
+                outcome => return Ok::<_, Error>(outcome),
+            }
+        }
+    })
     .await
     {
         Ok(Ok(outcome)) => outcome,
@@ -1487,8 +1525,6 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
         Err(_) => AttachOutcome::TimedOut,
     };
 
-    // Commit state only after all steps succeeded.
-    p.conn_state.update_from_connected(&connected_msg);
     let reconnect_outcome = match attach_outcome {
         AttachOutcome::Attached { channel_serial } => {
             if let Some(serial) = channel_serial {
@@ -1504,6 +1540,12 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             p.conn_state.channel_serial = None;
             ReconnectOutcome::ChannelSuspended
         }
+        AttachOutcome::RetryAttach(err) => {
+            return Err(Error::Protocol {
+                code: err.code,
+                message: protocol_error_message(err.message),
+            });
+        }
         AttachOutcome::TimedOut => {
             tracing::warn!(
                 timeout_ms = p.timing.realtime_request_timeout.as_millis(),
@@ -1513,6 +1555,10 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
             ReconnectOutcome::ChannelSuspended
         }
     };
+
+    // Commit connection state only after all reconnect steps have produced a
+    // definitive channel outcome.
+    p.conn_state.update_from_connected(&connected_msg);
     if let Some(token) = new_token {
         p.conn_state.token = token;
         p.conn_state.token_renewal_at =
