@@ -8,6 +8,8 @@
 //! Special test prefixes:
 //!   @fail:<message>           - Output message to stderr and exit with code 1
 //!   @stuck-tool               - Emit WebFetch tool_use then hang (test stuck-tool watchdog)
+//!   @stuck-tool-deaf          - Same, but ignores SIGTERM so only SIGKILL
+//!                               can terminate it
 //!   @orphan-pipe              - Emit events, spawn child holding stdout, then exit
 //!   @hang-after-result        - Emit result event, then hang the process
 //!                               (SIGTERM kills it → exits with 143; tests
@@ -357,6 +359,17 @@ fn main() -> ExitCode {
             // Flush stdout so guest-agent receives the events before we hang.
             // When piped, stdout is fully buffered and println! may not flush.
             let _ = std::io::stdout().flush();
+
+            if parsed.prompt.starts_with("@stuck-tool-deaf") {
+                // SAFETY: signal(SIGTERM, SIG_IGN) is async-signal-safe and
+                // has no data-race concerns before the mock parks forever.
+                unsafe {
+                    libc::signal(libc::SIGTERM, libc::SIG_IGN);
+                }
+                if let Ok(home) = std::env::var("HOME") {
+                    let _ = std::fs::write(format!("{home}/.vm0-mock-sigterm-ignored"), b"");
+                }
+            }
 
             // Hang forever — simulates a stuck WebFetch
             std::thread::sleep(std::time::Duration::from_secs(3600));
