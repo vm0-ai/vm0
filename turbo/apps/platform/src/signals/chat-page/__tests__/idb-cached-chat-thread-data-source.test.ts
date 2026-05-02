@@ -3,7 +3,7 @@ import {
   mockUser,
   mockOrganization,
   clearMockedAuth,
-} from "../../__tests__/mock-auth.ts";
+} from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { server } from "../../../mocks/server.ts";
@@ -19,7 +19,7 @@ const mockApi = createMockApi(context);
 
 function makeMsg(
   id: string,
-  threadId: string,
+  _threadId: string,
   createdAt: string,
 ): PagedChatMessage {
   return {
@@ -86,7 +86,7 @@ describe("createIdbCachedDataSource.listMessagesAfter$", () => {
     // Anchor existed → messages should be cached
     const cached = await stores.readStore.readLatest(threadId, 10);
     expect(cached).toHaveLength(3); // anchor + new-1 + new-2
-    expect(cached.map((m) => m.id).sort()).toEqual([
+    expect(cached.map((m) => m.id).sort()).toStrictEqual([
       "anchor-1",
       "new-1",
       "new-2",

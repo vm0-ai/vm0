@@ -136,7 +136,7 @@ describe("idb-message-store", () => {
     ]);
 
     const exists = await readStore.messageExists(THREAD, "e1");
-    expect(exists).toBe(true);
+    expect(exists).toBeTruthy();
   });
 
   it("messageExists returns false when message does not exist", async () => {
@@ -150,7 +150,7 @@ describe("idb-message-store", () => {
     ]);
 
     const exists = await readStore.messageExists(THREAD, "nonexistent");
-    expect(exists).toBe(false);
+    expect(exists).toBeFalsy();
   });
 
   it("messageExists returns false when message exists but threadId differs", async () => {
@@ -164,7 +164,7 @@ describe("idb-message-store", () => {
     ]);
 
     const exists = await readStore.messageExists("other-thread", "g1");
-    expect(exists).toBe(false);
+    expect(exists).toBeFalsy();
   });
 
   it("scopes messages by user and org", async () => {
