@@ -99,7 +99,17 @@ async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
     }
   }
 
-  return new Response(Readable.toWeb(upstream.body) as ReadableStream, {
+  // Buffer the upstream body to avoid losing it when the undici Readable
+  // stream is re-wrapped in a new Response. In Vercel's Node.js runtime the
+  // ReadableStream wrapper may silently drop chunks beyond the first one,
+  // just as it does with the fetch-based code path.
+  const chunks: Buffer[] = [];
+  for await (const chunk of upstream.body) {
+    chunks.push(chunk);
+  }
+  const body = Buffer.concat(chunks);
+
+  return new Response(body, {
     status: upstream.statusCode,
     headers: responseHeaders,
   });
