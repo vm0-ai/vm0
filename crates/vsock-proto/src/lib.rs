@@ -418,7 +418,7 @@ fn decode_exec_inner(
     ))
 }
 
-/// Decode exec payload. Returns `(timeout_ms, command, env, sudo)`.
+/// Decode exec payload into a [`DecodedExec`] struct.
 pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
     decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|(d, _)| d)
 }
