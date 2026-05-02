@@ -1464,7 +1464,34 @@ exit 1
         .unwrap_or_else(|_| panic!("timed out waiting for {}", path.display()));
     }
 
-    fn process_group_exists(pgid_file: &Path) -> bool {
+    #[cfg(target_os = "linux")]
+    fn process_group_has_live_members(pgid_file: &Path) -> bool {
+        let raw_pgid = std::fs::read_to_string(pgid_file).expect("read test pgid");
+        let pgid: i32 = raw_pgid.parse().expect("parse test pgid");
+        let entries = std::fs::read_dir("/proc").expect("read /proc");
+        for entry in entries.flatten() {
+            let Ok(pid) = entry.file_name().to_string_lossy().parse::<i32>() else {
+                continue;
+            };
+            let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+                continue;
+            };
+            let Some((_, fields)) = stat.rsplit_once(") ") else {
+                continue;
+            };
+            let mut fields = fields.split_whitespace();
+            let state = fields.next().and_then(|value| value.chars().next());
+            let _ppid = fields.next();
+            let pgrp = fields.next().and_then(|value| value.parse::<i32>().ok());
+            if pgrp == Some(pgid) && state != Some('Z') {
+                return true;
+            }
+        }
+        false
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    fn process_group_has_live_members(pgid_file: &Path) -> bool {
         let raw_pgid = std::fs::read_to_string(pgid_file).expect("read test pgid");
         let pgid = nix::unistd::Pid::from_raw(raw_pgid.parse().expect("parse test pgid"));
         match nix::sys::signal::killpg(pgid, None) {
@@ -1481,7 +1508,7 @@ exit 1
         wait_for_file(pgid_file).await;
         tokio::time::timeout(std::time::Duration::from_secs(2), async {
             loop {
-                if !process_group_exists(pgid_file) {
+                if !process_group_has_live_members(pgid_file) {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
