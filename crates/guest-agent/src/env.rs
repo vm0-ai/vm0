@@ -174,12 +174,23 @@ static POST_RESULT_SIGKILL_GRACE: LazyLock<u64> = LazyLock::new(|| {
 // mounted at boot. If the env var is unset or empty, there are no artifacts.
 // ---------------------------------------------------------------------------
 
+/// One artifact mount described by the runner-provided `VM0_ARTIFACTS` JSON array.
+///
+/// The environment value is encoded as camelCase JSON, so this struct expects
+/// `mountPath`, `storageId`, and `versionId` keys at the guest-agent boundary.
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactEnv {
+    /// VAS storage name for the mounted artifact. This is also the artifact
+    /// name reported in checkpoint snapshot payloads.
     pub name: String,
+    /// Absolute path inside the guest where the artifact archive was mounted
+    /// and where the guest-agent walks files during checkpointing.
     pub mount_path: String,
+    /// VAS storage id used when recomputing the mounted artifact's content hash.
     pub storage_id: String,
+    /// VAS version id mounted at startup. This is the expected content hash used
+    /// to skip unchanged snapshots and the parent version for new snapshots.
     pub version_id: String,
 }
 
