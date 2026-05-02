@@ -744,6 +744,17 @@ impl SandboxControl for MockSandboxControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    fn test_sandbox_config() -> SandboxConfig {
+        SandboxConfig {
+            id: sandbox::SandboxId::new_v4(),
+            resources: ResourceLimits {
+                cpu_count: 2,
+                memory_mb: 1024,
+            },
+        }
+    }
 
     #[tokio::test]
     async fn sandbox_default_exec_succeeds() {
@@ -805,17 +816,105 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn overrides_count_park_and_unpark_calls_across_factory_sandboxes() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        factory.startup().await.unwrap();
+
+        let mut first = factory.create(test_sandbox_config()).await.unwrap();
+        let mut second = factory.create(test_sandbox_config()).await.unwrap();
+
+        first.park().await.unwrap();
+        first.park().await.unwrap();
+        second.park().await.unwrap();
+
+        first.unpark().await.unwrap();
+        second.unpark().await.unwrap();
+
+        assert_eq!(overrides.park_call_count(), 3);
+        assert_eq!(overrides.unpark_call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn overrides_count_destroy_calls_across_factory_sandboxes() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        factory.startup().await.unwrap();
+
+        let first = factory.create(test_sandbox_config()).await.unwrap();
+        let second = factory.create(test_sandbox_config()).await.unwrap();
+
+        factory.destroy(first).await;
+        factory.destroy(second).await;
+
+        assert_eq!(overrides.destroy_call_count(), 2);
+    }
+
+    #[tokio::test]
+    async fn overrides_record_spawn_watch_output_modes_in_order() {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        let mut factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        factory.startup().await.unwrap();
+        let sandbox = factory.create(test_sandbox_config()).await.unwrap();
+        let request = ExecRequest {
+            cmd: "agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+        };
+
+        let buffered = sandbox
+            .spawn_watch(&request, SpawnOutputMode::Buffered)
+            .await
+            .unwrap();
+        assert!(buffered.stdout_rx.is_none());
+
+        let streamed = sandbox
+            .spawn_watch(
+                &request,
+                SpawnOutputMode::Stream {
+                    guest_log_path: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(streamed.stdout_rx.is_some());
+
+        let tee = sandbox
+            .spawn_watch(
+                &request,
+                SpawnOutputMode::Stream {
+                    guest_log_path: Some("/tmp/guest.log"),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(tee.stdout_rx.is_some());
+
+        assert_eq!(
+            overrides.spawn_watch_calls(),
+            vec![
+                SpawnWatchCall {
+                    streams_stdout: false,
+                    guest_log_path: None,
+                },
+                SpawnWatchCall {
+                    streams_stdout: true,
+                    guest_log_path: None,
+                },
+                SpawnWatchCall {
+                    streams_stdout: true,
+                    guest_log_path: Some("/tmp/guest.log".to_string()),
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn factory_creates_sandbox() {
         let mut factory = MockSandboxFactory::new();
         factory.startup().await.unwrap();
-        let config = SandboxConfig {
-            id: sandbox::SandboxId::new_v4(),
-            resources: ResourceLimits {
-                cpu_count: 2,
-                memory_mb: 1024,
-            },
-        };
-        let sandbox = factory.create(config).await.unwrap();
+        let sandbox = factory.create(test_sandbox_config()).await.unwrap();
         assert!(!sandbox.id().is_empty());
         factory.destroy(sandbox).await;
         factory.shutdown().await;
@@ -896,25 +995,11 @@ mod tests {
             message: "out of resources".into(),
         }));
 
-        let config = SandboxConfig {
-            id: sandbox::SandboxId::new_v4(),
-            resources: ResourceLimits {
-                cpu_count: 2,
-                memory_mb: 1024,
-            },
-        };
-        let result = factory.create(config).await;
+        let result = factory.create(test_sandbox_config()).await;
         assert!(result.is_err());
 
         // Next create falls back to default success.
-        let config2 = SandboxConfig {
-            id: sandbox::SandboxId::new_v4(),
-            resources: ResourceLimits {
-                cpu_count: 2,
-                memory_mb: 1024,
-            },
-        };
-        factory.create(config2).await.unwrap();
+        factory.create(test_sandbox_config()).await.unwrap();
     }
 
     #[tokio::test]
