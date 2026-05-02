@@ -393,6 +393,16 @@ struct DownloadError {
     status_code: Option<u16>,
 }
 
+impl DownloadError {
+    fn fatal(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            retriable: false,
+            status_code: None,
+        }
+    }
+}
+
 impl std::fmt::Display for DownloadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
@@ -419,18 +429,12 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError
         }
     }
 
-    Err(last_error.unwrap_or_else(|| DownloadError {
-        message: "download failed with no error".into(),
-        retriable: false,
-        status_code: None,
-    }))
+    Err(last_error.unwrap_or_else(|| DownloadError::fatal("download failed with no error")))
 }
 
 fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadError> {
-    fs::create_dir_all(target_path).map_err(|e| DownloadError {
-        message: format!("Failed to create directory {target_path}: {e}"),
-        retriable: false,
-        status_code: None,
+    fs::create_dir_all(target_path).map_err(|e| {
+        DownloadError::fatal(format!("Failed to create directory {target_path}: {e}"))
     })?;
 
     // Obtain a reader for the archive bytes. HTTP is the production path today;
@@ -438,10 +442,8 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
     // host-staged tarballs that were pushed into the guest over vsock.
     let reader: Box<dyn Read> = if let Some(path) = url.strip_prefix("file://") {
         log_info!(LOG_TAG, "Reading local archive from {path}");
-        let file = fs::File::open(path).map_err(|e| DownloadError {
-            message: format!("Failed to open local archive {path}: {e}"),
-            retriable: false,
-            status_code: None,
+        let file = fs::File::open(path).map_err(|e| {
+            DownloadError::fatal(format!("Failed to open local archive {path}: {e}"))
         })?;
         Box::new(file)
     } else {
@@ -465,32 +467,22 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
     let mut archive = tar::Archive::new(decoder);
 
     // Extract entries one by one, validating paths to prevent symlink path traversal.
-    let target = Path::new(target_path)
-        .canonicalize()
-        .map_err(|e| DownloadError {
-            message: format!("Failed to canonicalize target path {target_path}: {e}"),
-            retriable: false,
-            status_code: None,
-        })?;
+    let target = Path::new(target_path).canonicalize().map_err(|e| {
+        DownloadError::fatal(format!(
+            "Failed to canonicalize target path {target_path}: {e}"
+        ))
+    })?;
 
-    for entry in archive.entries().map_err(|e| DownloadError {
-        message: format!("Failed to read archive entries: {e}"),
-        retriable: false,
-        status_code: None,
-    })? {
-        let mut entry = entry.map_err(|e| DownloadError {
-            message: format!("Failed to read archive entry: {e}"),
-            retriable: false,
-            status_code: None,
-        })?;
+    for entry in archive
+        .entries()
+        .map_err(|e| DownloadError::fatal(format!("Failed to read archive entries: {e}")))?
+    {
+        let mut entry = entry
+            .map_err(|e| DownloadError::fatal(format!("Failed to read archive entry: {e}")))?;
 
         let entry_path = entry
             .path()
-            .map_err(|e| DownloadError {
-                message: format!("Failed to read entry path: {e}"),
-                retriable: false,
-                status_code: None,
-            })?
+            .map_err(|e| DownloadError::fatal(format!("Failed to read entry path: {e}")))?
             .into_owned();
 
         let entry_type = entry.header().entry_type();
@@ -575,10 +567,11 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
         // TOCTOU is not a concern here: entries are processed sequentially from a single
         // archive stream, so no external actor can modify the filesystem between our checks
         // and the extraction below.
-        entry.unpack_in(&target).map_err(|e| DownloadError {
-            message: format!("Failed to extract entry {}: {e}", entry_path.display()),
-            retriable: false,
-            status_code: None,
+        entry.unpack_in(&target).map_err(|e| {
+            DownloadError::fatal(format!(
+                "Failed to extract entry {}: {e}",
+                entry_path.display()
+            ))
         })?;
     }
 
