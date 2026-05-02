@@ -1,21 +1,15 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { command, computed } from "ccstate";
 import {
   mockUser,
   mockOrganization,
   clearMockedAuth,
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { createMockApi } from "../../../mocks/msw-contract.ts";
-import { server } from "../../../mocks/server.ts";
-import {
-  chatThreadMessagesContract,
-  type PagedChatMessage,
-} from "@vm0/api-contracts/contracts/chat-threads";
-import { createIdbCachedDataSource } from "../idb-cached-chat-thread-data-source.ts";
+import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import { createIdbMessageStores } from "../../external/idb-message-store.ts";
 
 const context = testContext();
-const mockApi = createMockApi(context);
 
 function makeMsg(
   id: string,
@@ -40,10 +34,46 @@ function setupAuth() {
   });
 }
 
+// Mock the remote data source to avoid importing MSW, which pulls in
+// node:http (unavailable in real browser test environments).
+const { remoteMessages } = vi.hoisted(() => ({
+  remoteMessages: [] as PagedChatMessage[],
+}));
+
+vi.mock("../remote-chat-thread-data-source", () => ({
+  createRemoteChatThreadDataSource: () => ({
+    getThread$: computed(async () => null),
+    reloadThread$: command((_ctx: unknown) => {}),
+    initialPage$: computed(async () => ({
+      messages: [],
+      hasHistoryBefore: false,
+    })),
+    listMessagesAfter$: command(async () => ({
+      messages: remoteMessages,
+      reachedEnd: false,
+    })),
+    listMessagesBefore$: command(async () => ({
+      messages: [],
+      hasMore: false,
+    })),
+    patchDraft$: command(async (_ctx: unknown) => {}),
+    cancelRuns$: command(async (_ctx: unknown) => {}),
+    markRead$: command(async () => ""),
+    subscribeRealtime$: command(async (_ctx: unknown) => {}),
+  }),
+}));
+
+// Import the module under test after the mock is registered (vi.mock is
+// hoisted, so the import order doesn't matter, but keeping it after is
+// clearer about dependencies).
+const { createIdbCachedDataSource } =
+  await import("../idb-cached-chat-thread-data-source");
+
 describe("createIdbCachedDataSource.listMessagesAfter$", () => {
   beforeEach(() => {
     clearMockedAuth();
     setupAuth();
+    remoteMessages.splice(0, remoteMessages.length);
   });
 
   it("caches remote messages when sinceId anchor exists in local IDB", async () => {
@@ -55,19 +85,10 @@ describe("createIdbCachedDataSource.listMessagesAfter$", () => {
       makeMsg("anchor-1", threadId, "2026-01-01T00:00:00Z"),
     ]);
 
-    // Set up remote to return messages after the anchor
-    server.use(
-      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
-        if (query.sinceId === "anchor-1") {
-          return respond(200, {
-            messages: [
-              makeMsg("new-1", threadId, "2026-01-02T00:00:00Z"),
-              makeMsg("new-2", threadId, "2026-01-03T00:00:00Z"),
-            ],
-          });
-        }
-        return respond(200, { messages: [] });
-      }),
+    // Configure the mock remote to return messages after the anchor
+    remoteMessages.push(
+      makeMsg("new-1", threadId, "2026-01-02T00:00:00Z"),
+      makeMsg("new-2", threadId, "2026-01-03T00:00:00Z"),
     );
 
     const ds = createIdbCachedDataSource(threadId);
@@ -97,19 +118,10 @@ describe("createIdbCachedDataSource.listMessagesAfter$", () => {
 
     // Do NOT pre-populate IDB — anchor will be missing
 
-    // Set up remote to return messages even though anchor doesn't exist locally
-    server.use(
-      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
-        if (query.sinceId === "missing-anchor") {
-          return respond(200, {
-            messages: [
-              makeMsg("gap-1", threadId, "2026-02-01T00:00:00Z"),
-              makeMsg("gap-2", threadId, "2026-02-02T00:00:00Z"),
-            ],
-          });
-        }
-        return respond(200, { messages: [] });
-      }),
+    // Configure the mock remote to return messages for the missing anchor
+    remoteMessages.push(
+      makeMsg("gap-1", threadId, "2026-02-01T00:00:00Z"),
+      makeMsg("gap-2", threadId, "2026-02-02T00:00:00Z"),
     );
 
     const ds = createIdbCachedDataSource(threadId);
@@ -132,15 +144,9 @@ describe("createIdbCachedDataSource.listMessagesAfter$", () => {
   it("caches remote messages when sinceId is undefined (bootstrap)", async () => {
     const threadId = "thread-bootstrap";
 
-    server.use(
-      mockApi(chatThreadMessagesContract.list, ({ respond }) => {
-        return respond(200, {
-          messages: [
-            makeMsg("boot-1", threadId, "2026-03-01T00:00:00Z"),
-            makeMsg("boot-2", threadId, "2026-03-02T00:00:00Z"),
-          ],
-        });
-      }),
+    remoteMessages.push(
+      makeMsg("boot-1", threadId, "2026-03-01T00:00:00Z"),
+      makeMsg("boot-2", threadId, "2026-03-02T00:00:00Z"),
     );
 
     const ds = createIdbCachedDataSource(threadId);
