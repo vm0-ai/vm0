@@ -796,6 +796,18 @@ async fn send_status_event(
     }
 }
 
+async fn send_terminal_status_event(
+    p: &mut EventLoopState,
+    close_rx: &mut oneshot::Receiver<()>,
+    event: Event,
+    status_event: &'static str,
+) -> bool {
+    // Terminal status events can be backpressured by a slow consumer. Release
+    // the socket first so an unpolled Subscription cannot keep it alive.
+    close_websocket_transport(p).await;
+    send_status_event(p, close_rx, event, status_event).await
+}
+
 pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot::Receiver<()>) {
     let mut last_reconnect_attempt: Option<Instant> = None;
 
@@ -946,6 +958,9 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
         // --- Reconnection ---
         p.conn_state.disconnected_at = Some(Instant::now());
         p.lifecycle.notify_disconnected();
+        if close_before_reconnect {
+            close_websocket_transport(&mut p).await;
+        }
         if !disconnected_sent {
             let event = Event::Disconnected {
                 reason: disconnect_reason,
@@ -953,9 +968,6 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
             if !send_status_event(&mut p, &mut close_rx, event, "disconnected").await {
                 return;
             }
-        }
-        if close_before_reconnect {
-            close_websocket_transport(&mut p).await;
         }
 
         let mut retry_immediately = immediate_retry;
@@ -1247,11 +1259,11 @@ async fn handle_message(
             // to reconnect after backoff. Only connection-level ERROR is fatal.
             let reason = Some(protocol_disconnect_reason(msg.error));
             p.lifecycle.notify_disconnected();
+            close_websocket_transport(p).await;
             if !send_status_event(p, close_rx, Event::Disconnected { reason }, "disconnected").await
             {
                 return LoopAction::Stop;
             }
-            close_websocket_transport(p).await;
             return LoopAction::Reconnect;
         }
         action::ERROR => {
@@ -1279,7 +1291,7 @@ async fn handle_message(
                 code: err.code,
                 message: protocol_error_message(err.message),
             };
-            let _ = send_status_event(p, close_rx, event, "error").await;
+            let _ = send_terminal_status_event(p, close_rx, event, "error").await;
             return LoopAction::Stop;
         }
         action::DETACHED => {
@@ -1404,7 +1416,7 @@ async fn handle_renewal_result(
                 p.timing.max_token_renewal_failures
             ),
         };
-        let _ = send_status_event(p, close_rx, event, "error").await;
+        let _ = send_terminal_status_event(p, close_rx, event, "error").await;
         return true;
     }
 
