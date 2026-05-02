@@ -42,24 +42,24 @@ const { remoteMessages } = vi.hoisted(() => ({
 
 vi.mock("../remote-chat-thread-data-source", () => ({
   createRemoteChatThreadDataSource: () => ({
-    getThread$: computed(async () => null),
+    getThread$: computed(() => null),
     reloadThread$: command((_ctx: unknown) => {}),
-    initialPage$: computed(async () => ({
+    initialPage$: computed(() => ({
       messages: [],
       hasHistoryBefore: false,
     })),
-    listMessagesAfter$: command(async () => ({
+    listMessagesAfter$: command(() => ({
       messages: remoteMessages,
       reachedEnd: false,
     })),
-    listMessagesBefore$: command(async () => ({
+    listMessagesBefore$: command(() => ({
       messages: [],
       hasMore: false,
     })),
-    patchDraft$: command(async (_ctx: unknown) => {}),
-    cancelRuns$: command(async (_ctx: unknown) => {}),
-    markRead$: command(async () => ""),
-    subscribeRealtime$: command(async (_ctx: unknown) => {}),
+    patchDraft$: command((_ctx: unknown) => {}),
+    cancelRuns$: command((_ctx: unknown) => {}),
+    markRead$: command(() => ""),
+    subscribeRealtime$: command((_ctx: unknown) => {}),
   }),
 }));
 
