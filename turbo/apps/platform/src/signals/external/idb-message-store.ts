@@ -3,6 +3,9 @@ import {
   pagedChatMessageSchema,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { logger } from "../log.ts";
+
+const L = logger("ChatIdbCache");
 
 interface ChatMessageReadStore {
   readLatest(
@@ -34,10 +37,21 @@ function createIdbMessageStores(userId: string, orgId: string) {
 
   function getDb(): Promise<IDBPDatabase> {
     if (!dbPromise) {
-      dbPromise = openDB(dbName, 1, {
+      L.debug("openDB", { dbName, storeName });
+      // Schema is shared with idb-thread-agent-store.ts: both modules open
+      // the same DB at version 2. The upgrade callback creates every store
+      // the schema currently defines, idempotently, so whichever module
+      // triggers the version bump leaves a complete schema for the other.
+      dbPromise = openDB(dbName, 2, {
         upgrade(db) {
-          const store = db.createObjectStore(storeName, { keyPath: "id" });
-          store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
+          L.debug("openDB:upgrade", { dbName, storeName });
+          if (!db.objectStoreNames.contains(storeName)) {
+            const store = db.createObjectStore(storeName, { keyPath: "id" });
+            store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
+          }
+          if (!db.objectStoreNames.contains("chat_thread_agents")) {
+            db.createObjectStore("chat_thread_agents", { keyPath: "threadId" });
+          }
         },
       });
     }
@@ -50,6 +64,7 @@ function createIdbMessageStores(userId: string, orgId: string) {
 
   const readStore: ChatMessageReadStore = {
     async readLatest(threadId, limit, signal) {
+      L.debug("readLatest:start", { threadId, limit });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readonly");
@@ -62,15 +77,18 @@ function createIdbMessageStores(userId: string, orgId: string) {
         messages.push(validateMessage(cursor.value));
         cursor = await cursor.continue();
       }
+      L.debug("readLatest:done", { threadId, count: messages.length });
       return messages.reverse();
     },
 
     async readBefore(threadId, beforeId, limit, signal) {
+      L.debug("readBefore:start", { threadId, beforeId, limit });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readonly");
       const anchor = await tx.store.get(beforeId);
       if (!anchor) {
+        L.debug("readBefore:anchorMiss", { threadId, beforeId });
         return [];
       }
       const anchorMsg = validateMessage(anchor);
@@ -97,26 +115,38 @@ function createIdbMessageStores(userId: string, orgId: string) {
         messages.push(validateMessage(cursor.value));
         cursor = await cursor.continue();
       }
+      L.debug("readBefore:done", {
+        threadId,
+        beforeId,
+        count: messages.length,
+      });
       return messages.reverse();
     },
   };
 
   const writeStore: ChatMessageWriteStore = {
-    async upsertMessages(_threadId, messages, signal) {
+    async upsertMessages(threadId, messages, signal) {
+      L.debug("upsertMessages:start", {
+        threadId,
+        count: messages.length,
+      });
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readwrite");
       for (const msg of messages) {
         signal?.throwIfAborted();
-        await tx.store.put(msg);
+        // Stitch threadId onto the stored value so the byThreadAndTime
+        // index can find it. PagedChatMessage from the API has no threadId.
+        await tx.store.put({ ...msg, threadId });
       }
       await tx.done;
+      L.debug("upsertMessages:done", { threadId, count: messages.length });
     },
   };
 
   return Object.freeze({
-    readStore$: readStore,
-    writeStore$: writeStore,
+    readStore,
+    writeStore,
   });
 }
 

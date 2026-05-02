@@ -51,10 +51,13 @@ import {
 } from "../../signals/chat-page/chat-message.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
-  chatSidebarThreadId$,
-  navigateMainChatPreservingSidebar$,
-  openChatSidebar$,
-} from "../../signals/chat-page/chat-sidebar.ts";
+  SIDEBAR_PARAM,
+  currentLeftThread$,
+  currentRightThread$,
+  loadLeftThread$,
+  loadRightThread$,
+  unloadRightThread$,
+} from "../../signals/chat-page/chat-thread-panes.ts";
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
@@ -62,7 +65,7 @@ import {
   pendingOptimisticChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { pathParams$ } from "../../signals/route.ts";
+import { pathParams$, searchParams$ } from "../../signals/route.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   threadSearchOpen$,
@@ -154,40 +157,68 @@ function getIndicatorState({
 function handleChatThreadClick(
   e: React.MouseEvent<HTMLAnchorElement>,
   {
-    canOpenSidebar,
     closeSidebarOnSelect,
-    isHighlighted,
-    navigateMainChatPreservingSidebar,
-    openChatSidebar,
+    currentLeftId,
+    currentRightId,
+    loadLeftThread,
+    loadRightThread,
+    onChatPage,
+    pageSignal,
     threadId,
+    unloadRightThread,
   }: {
-    canOpenSidebar: boolean;
     closeSidebarOnSelect: () => void;
-    isHighlighted: boolean;
-    navigateMainChatPreservingSidebar: (threadId: string) => void;
-    openChatSidebar: (threadId: string) => void;
+    currentLeftId: string | null;
+    currentRightId: string | null;
+    loadLeftThread: (threadId: string, signal: AbortSignal) => Promise<void>;
+    loadRightThread: (threadId: string, signal: AbortSignal) => Promise<void>;
+    onChatPage: boolean;
+    pageSignal: AbortSignal;
     threadId: string;
+    unloadRightThread: () => void;
   },
 ) {
-  if (e.altKey && canOpenSidebar) {
-    e.preventDefault();
-    openChatSidebar(threadId);
-    if (!isHighlighted) {
-      closeSidebarOnSelect();
-    }
-    return;
-  }
   if (e.metaKey || e.ctrlKey || e.shiftKey) {
+    // Modified click → let the browser handle it (open in new tab, etc.).
     return;
   }
-  if (isHighlighted) {
-    e.preventDefault();
+
+  if (!onChatPage) {
+    // Not on a chat thread page yet — let <Link> navigate normally so the
+    // route system bootstraps the chat page from scratch.
     return;
   }
-  if (canOpenSidebar) {
-    e.preventDefault();
-    navigateMainChatPreservingSidebar(threadId);
+
+  e.preventDefault();
+
+  if (e.altKey) {
+    // Alt-click → drive the right (sidebar) pane.
+    if (threadId === currentLeftId) {
+      // Refuse to put the left thread into the right pane.
+      return;
+    }
+    if (threadId === currentRightId) {
+      // Same thread already in right → toggle close.
+      unloadRightThread();
+    } else {
+      detach(
+        loadRightThread(threadId, pageSignal),
+        Reason.DomCallback,
+        "loadRightThread",
+      );
+    }
+  } else {
+    // Plain click → drive the left pane.
+    if (threadId === currentLeftId) {
+      return;
+    }
+    detach(
+      loadLeftThread(threadId, pageSignal),
+      Reason.DomCallback,
+      "loadLeftThread",
+    );
   }
+
   closeSidebarOnSelect();
 }
 
@@ -379,81 +410,126 @@ function ChatThreadSideDecorator({
   );
 }
 
-function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
+function useChatThreadItemState(session: ChatThreadListItem) {
   const pathParams = useGet(pathParams$);
-  const selectedThreadId =
+  const searchParams = useGet(searchParams$);
+  const urlMainThreadId =
     typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
-  const sidebarThreadId = useGet(chatSidebarThreadId$);
+  const sidebarParam = searchParams.get(SIDEBAR_PARAM);
+  const urlSidebarThreadId =
+    sidebarParam && sidebarParam !== urlMainThreadId ? sidebarParam : null;
+
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
+  const currentLeftId = leftThread?.threadId ?? null;
+  const currentRightId = rightThread?.threadId ?? null;
+
   const setSidebarExpanded = useSet(setSidebarExpanded$);
-  const openChatSidebar = useSet(openChatSidebar$);
-  const navigateMainChatPreservingSidebar = useSet(
-    navigateMainChatPreservingSidebar$,
-  );
+  const loadLeftThread = useSet(loadLeftThread$);
+  const loadRightThread = useSet(loadRightThread$);
+  const unloadRightThread = useSet(unloadRightThread$);
+  const pageSignal = useGet(pageSignal$);
   const features = useLastResolved(featureSwitch$);
   const pinEnabled = features?.[FeatureSwitchKey.ChatThreadPin] ?? false;
   const renameEnabled = features?.[FeatureSwitchKey.ChatThreadRename] ?? false;
+
   const isPinned =
     pinEnabled && session.pinnedAt !== null && session.pinnedAt !== undefined;
-  const isCurrentPage = selectedThreadId === session.id;
-  const isHighlighted = isCurrentPage || sidebarThreadId === session.id;
+  const onChatPage = urlMainThreadId !== null;
+  const isCurrentPage = urlMainThreadId === session.id;
+  const isHighlighted = isCurrentPage || urlSidebarThreadId === session.id;
   const paneIndicator = getChatThreadPaneIndicator({
     isCurrentPage,
-    sidebarThreadId,
+    sidebarThreadId: urlSidebarThreadId,
     threadId: session.id,
   });
-  const canOpenSidebar = selectedThreadId !== null;
-  const isRunning = session.running;
-  const isUnread = !session.isRead && !isHighlighted;
-  const hasDraft = (session.hasDraft ?? false) && !isHighlighted;
   const indicatorState = getIndicatorState({
-    hasDraft,
-    isRunning,
-    isUnread,
+    hasDraft: (session.hasDraft ?? false) && !isHighlighted,
+    isRunning: session.running,
+    isUnread: !session.isRead && !isHighlighted,
   });
 
-  function closeSidebarOnSelect() {
-    setSidebarExpanded(false);
-  }
+  return {
+    currentLeftId,
+    currentRightId,
+    isCurrentPage,
+    isHighlighted,
+    isPinned,
+    isUnread: !session.isRead && !isHighlighted,
+    loadLeftThread,
+    loadRightThread,
+    onChatPage,
+    pageSignal,
+    paneIndicator,
+    pinEnabled,
+    renameEnabled,
+    setSidebarExpanded,
+    unloadRightThread,
+    indicatorState,
+  } as const;
+}
+
+function ChatThreadItemLink({
+  session,
+  state,
+}: {
+  session: ChatThreadListItem;
+  state: ReturnType<typeof useChatThreadItemState>;
+}) {
+  const closeSidebarOnSelect = () => {
+    state.setSidebarExpanded(false);
+  };
+
+  return (
+    <Link
+      pathname="/chats/:threadId"
+      options={{ pathParams: { threadId: session.id } }}
+      aria-current={state.isCurrentPage ? "page" : undefined}
+      data-chat-thread-id={session.id}
+      onClick={(e) => {
+        handleChatThreadClick(e, {
+          closeSidebarOnSelect,
+          currentLeftId: state.currentLeftId,
+          currentRightId: state.currentRightId,
+          loadLeftThread: state.loadLeftThread,
+          loadRightThread: state.loadRightThread,
+          onChatPage: state.onChatPage,
+          pageSignal: state.pageSignal,
+          threadId: session.id,
+          unloadRightThread: state.unloadRightThread,
+        });
+      }}
+      className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
+        state.isHighlighted
+          ? "bg-gray-200 text-gray-900 font-medium"
+          : state.isUnread
+            ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
+            : "text-sidebar-foreground hover:bg-sidebar-accent"
+      }`}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2">
+        {state.paneIndicator && (
+          <ChatThreadListPaneIcon pane={state.paneIndicator} />
+        )}
+        <span className="min-w-0 truncate">{session.title ?? "New chat"}</span>
+      </span>
+    </Link>
+  );
+}
+
+function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
+  const state = useChatThreadItemState(session);
 
   return (
     <div className="group relative">
-      <Link
-        pathname="/chats/:threadId"
-        options={{ pathParams: { threadId: session.id } }}
-        aria-current={isCurrentPage ? "page" : undefined}
-        data-chat-thread-id={session.id}
-        onClick={(e) => {
-          handleChatThreadClick(e, {
-            canOpenSidebar,
-            closeSidebarOnSelect,
-            isHighlighted,
-            navigateMainChatPreservingSidebar,
-            openChatSidebar,
-            threadId: session.id,
-          });
-        }}
-        className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
-          isHighlighted
-            ? "bg-gray-200 text-gray-900 font-medium"
-            : isUnread
-              ? "text-sidebar-foreground font-medium hover:bg-sidebar-accent"
-              : "text-sidebar-foreground hover:bg-sidebar-accent"
-        }`}
-      >
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          {paneIndicator && <ChatThreadListPaneIcon pane={paneIndicator} />}
-          <span className="min-w-0 truncate">
-            {session.title ?? "New chat"}
-          </span>
-        </span>
-      </Link>
+      <ChatThreadItemLink session={session} state={state} />
       <ChatThreadSideDecorator
         threadId={session.id}
-        isPinned={isPinned}
-        isHighlighted={isHighlighted}
-        pinEnabled={pinEnabled}
-        renameEnabled={renameEnabled}
-        indicatorState={indicatorState}
+        isPinned={state.isPinned}
+        isHighlighted={state.isHighlighted}
+        pinEnabled={state.pinEnabled}
+        renameEnabled={state.renameEnabled}
+        indicatorState={state.indicatorState}
       />
     </div>
   );

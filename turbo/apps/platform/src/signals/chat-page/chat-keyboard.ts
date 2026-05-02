@@ -1,10 +1,11 @@
 import { command } from "ccstate";
-import { chatThreads$, currentChatThreadId$ } from "../agent-chat.ts";
+import { chatThreads$ } from "../agent-chat.ts";
 import {
-  chatSidebarThreadId$,
-  navigateMainChatPreservingSidebar$,
-  openChatSidebar$,
-} from "./chat-sidebar.ts";
+  currentLeftThread$,
+  currentRightThread$,
+  loadLeftThread$,
+  loadRightThread$,
+} from "./chat-thread-panes.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import type { ChatThreadSignals } from "./create-chat-thread.ts";
 
@@ -17,17 +18,17 @@ export const navigateToAdjacentThread$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const mainThreadId = get(currentChatThreadId$);
-    const sidebarThreadId = get(chatSidebarThreadId$);
-    const inMainPane = args.currentThreadId === mainThreadId;
-    const inSidebarPane = args.currentThreadId === sidebarThreadId;
+    const leftThreadId = get(currentLeftThread$)?.threadId ?? null;
+    const rightThreadId = get(currentRightThread$)?.threadId ?? null;
+    const inMainPane = args.currentThreadId === leftThreadId;
+    const inSidebarPane = args.currentThreadId === rightThreadId;
     if (!inMainPane && !inSidebarPane) {
       return;
     }
 
     const threads = await get(chatThreads$);
     signal.throwIfAborted();
-    const excludedThreadId = inMainPane ? sidebarThreadId : mainThreadId;
+    const excludedThreadId = inMainPane ? rightThreadId : leftThreadId;
     const availableThreads = threads.filter((thread) => {
       return thread.id !== excludedThreadId;
     });
@@ -54,9 +55,9 @@ export const navigateToAdjacentThread$ = command(
     }
     const targetThreadId = availableThreads[targetIdx]!.id;
     if (inMainPane) {
-      set(navigateMainChatPreservingSidebar$, targetThreadId);
+      await set(loadLeftThread$, targetThreadId, signal);
     } else {
-      set(openChatSidebar$, targetThreadId);
+      await set(loadRightThread$, targetThreadId, signal);
     }
   },
 );

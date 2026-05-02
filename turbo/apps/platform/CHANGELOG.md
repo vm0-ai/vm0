@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.321.2](https://github.com/vm0-ai/vm0/compare/app-v0.321.1...app-v0.321.2) (2026-05-02)
+
+
+### Performance Improvements
+
+* parallelise thread-load pipelines on the chat page ([#11671](https://github.com/vm0-ai/vm0/issues/11671)) ([b745a01](https://github.com/vm0-ai/vm0/commit/b745a01b14e9ae747d6d2b4c7963e4972f6f7fbc))
+
+## [0.321.1](https://github.com/vm0-ai/vm0/compare/app-v0.321.0...app-v0.321.1) (2026-05-01)
+
+
+### Refactoring
+
+* drive chat thread panes via load commands; fix idb cache ([#11670](https://github.com/vm0-ai/vm0/issues/11670)) ([adcacaf](https://github.com/vm0-ai/vm0/commit/adcacaf89afc76bc90bfaf038af1e80d002dff01))
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.253.0
+
 ## [0.321.0](https://github.com/vm0-ai/vm0/compare/app-v0.320.0...app-v0.321.0) (2026-05-01)
 
 

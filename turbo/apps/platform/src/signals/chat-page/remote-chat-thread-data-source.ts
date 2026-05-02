@@ -23,10 +23,6 @@ import type {
 
 const L = logger("ChatThread");
 
-const remoteIsCancelRequested$ = computed(() => {
-  return false;
-});
-
 const patchDraft$ = command(
   async (
     { get },
@@ -216,8 +212,13 @@ export function createRemoteChatThreadDataSource(
     const client = get(zeroClient$)(chatThreadMessagesContract);
     const result = await accept(
       client.list({ params: { threadId }, query: { limit: 50 } }),
-      [200],
+      [200, 404],
     );
+    if (result.status === 404) {
+      // detects this via threadData$ being null and routes home; returning
+      // an empty page keeps the messages stream from rejecting in parallel.
+      return { messages: [], hasHistoryBefore: false };
+    }
     const hasHistoryBefore = result.body.hasHistoryBefore ?? false;
     L.debug("initialPage$", {
       threadId,
@@ -237,6 +238,5 @@ export function createRemoteChatThreadDataSource(
     cancelRuns$,
     markRead$,
     subscribeRealtime$,
-    isCancelRequested$: remoteIsCancelRequested$,
   };
 }

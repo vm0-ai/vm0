@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatThread } from "../agent-chat.ts";
 import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
@@ -38,7 +38,6 @@ export function createLocalChatThreadDataSource(input: {
   messages: PagedChatMessage[];
 }): ChatThreadDataSource {
   const { threadData, messages } = input;
-  const cancelRequested$ = state(false);
 
   const getThread$ = computed((): Promise<ChatThread | null> => {
     return Promise.resolve(threadData);
@@ -48,13 +47,8 @@ export function createLocalChatThreadDataSource(input: {
     return Promise.resolve({ messages, hasHistoryBefore: false });
   });
 
-  const cancelRuns$ = command(({ set }): Promise<void> => {
-    set(cancelRequested$, true);
+  const cancelRuns$ = command((): Promise<void> => {
     return Promise.resolve();
-  });
-
-  const isCancelRequested$ = computed((get) => {
-    return get(cancelRequested$);
   });
 
   return {
@@ -67,6 +61,5 @@ export function createLocalChatThreadDataSource(input: {
     cancelRuns$,
     markRead$: localMarkRead$,
     subscribeRealtime$: localSubscribeRealtime$,
-    isCancelRequested$,
   };
 }

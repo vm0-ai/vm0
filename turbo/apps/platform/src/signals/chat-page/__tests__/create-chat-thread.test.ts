@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { command, computed } from "ccstate";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -12,7 +13,14 @@ import {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ChatThreadDataSource,
+  PatchDraftArgs,
+  CancelRunsArgs,
+  SubscribeRealtimeArgs,
+} from "../chat-thread-data-source.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -189,5 +197,101 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
         draftAttachments: null,
       });
     });
+  });
+});
+
+describe("fetchNextPage$ cursor", () => {
+  it("uses the last server-validated message ID, not the optimistic message ID", async () => {
+    const threadId = "thread-cursor-test";
+    const serverMessages: PagedChatMessage[] = [
+      {
+        id: "server-msg-1",
+        role: "user",
+        content: "hello",
+        createdAt: "2026-05-01T00:00:00Z",
+      },
+      {
+        id: "server-msg-2",
+        role: "assistant",
+        content: "hi there",
+        createdAt: "2026-05-01T00:00:01Z",
+      },
+    ];
+
+    let capturedSinceId: string | undefined;
+
+    const mockDataSource: ChatThreadDataSource = {
+      getThread$: computed(() => {
+        return Promise.resolve({
+          id: threadId,
+          title: null,
+          agentId: "agent-1",
+          latestSessionId: null,
+          lastReadMessageId: null,
+          latestSessionProviderType: null,
+          activeRunIds: [],
+          activeRuns: [],
+          isLegacySession: false,
+          draftContent: null,
+          draftAttachments: null,
+          modelProviderId: null,
+          selectedModel: null,
+        });
+      }),
+      reloadThread$: command(() => {}),
+      initialPage$: computed(() => {
+        return Promise.resolve({
+          messages: serverMessages,
+          hasHistoryBefore: false,
+        });
+      }),
+      patchDraft$: command(
+        (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+      listMessagesAfter$: command((_, args) => {
+        capturedSinceId = args.sinceId;
+        return Promise.resolve({ messages: [], reachedEnd: true });
+      }),
+      listMessagesBefore$: command(() => {
+        return Promise.resolve({
+          messages: [],
+          hasMore: false,
+        });
+      }),
+      cancelRuns$: command(
+        (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+      markRead$: command(() => {
+        return Promise.resolve(null);
+      }),
+      subscribeRealtime$: command(
+        (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+    };
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    // Insert an optimistic message with a client-generated UUID
+    context.store.set(thread.insertOptimisticMessage$, {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: "optimistic message",
+      createdAt: new Date().toISOString(),
+    });
+
+    // Call fetchNextPage$ — this triggers listMessagesAfter$ with a sinceId
+    await context.store.set(thread.fetchNextPage$, context.signal);
+
+    // The sinceId must be the last server-validated ID, not the optimistic UUID.
+    // If optimistic IDs leak into the cursor, the server can't resolve them
+    // and returns empty, so the real server message never reaches the client.
+    expect(capturedSinceId).toBe("server-msg-2");
   });
 });

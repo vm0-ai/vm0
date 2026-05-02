@@ -43,6 +43,30 @@ export const replaceSearchParams$ = command(
   },
 );
 
+/**
+ * Update the address bar to point at a different path without firing
+ * route setup. Existing search params are preserved.
+ *
+ * Use this for in-page swaps where the page itself has already loaded
+ * the new content into state — the URL just needs to catch up so
+ * sharing/bookmarking and browser back work. Going through `navigate$`
+ * instead would re-run the route setup command, which would re-bootstrap
+ * page-level signals from scratch.
+ */
+export const pushPathSilently$ = command(
+  (
+    { set },
+    pathnameTemplate: Parameters<typeof generateRouterPath>[0],
+    pathParams?: Parameters<typeof generateRouterPath>[1],
+  ) => {
+    const newPath = generateRouterPath(pathnameTemplate, pathParams);
+    pushState({}, "", `${newPath}${search()}`);
+    set(reloadPathname$, (x) => {
+      return x + 1;
+    });
+  },
+);
+
 interface Route {
   path: string;
   setup: Command<Promise<void> | void, [AbortSignal]>;

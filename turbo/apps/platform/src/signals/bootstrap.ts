@@ -330,6 +330,7 @@ export const bootstrap$ = command(
     set(handleSlackRedirect$);
 
     await Promise.all([
+      set(setupRoutes$, signal),
       set(startSkeletonCycling$, signal),
       set(setupRealtime$, signal),
       set(setupGlobalMethod$, signal),
@@ -339,7 +340,6 @@ export const bootstrap$ = command(
       set(setupSidebarShortcut$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
-      set(setupRoutes$, signal),
     ]);
 
     signal.throwIfAborted();

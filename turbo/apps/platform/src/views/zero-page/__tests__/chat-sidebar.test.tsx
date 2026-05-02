@@ -459,7 +459,7 @@ describe("chat sidebar", () => {
     });
   });
 
-  it("highlights the sidebar query thread and ignores normal clicks on highlighted chats", async () => {
+  it("highlights the sidebar query thread and moves it to the left pane on plain click", async () => {
     mockChatSidebarApis();
 
     detachedSetupPage({
@@ -477,19 +477,19 @@ describe("chat sidebar", () => {
     fireEvent.click(chatThreadLink("Sidebar conversation"));
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/thread-main");
-      expect(search()).toBe("?sidebar=thread-sidebar");
-      expect(chatThreadContainer("thread-main")).toBeInTheDocument();
+      expect(pathname()).toBe("/chats/thread-sidebar");
+      expect(search()).toBe("");
       expect(chatThreadContainer("thread-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("Sidebar thread answer")).toBeInTheDocument();
     });
 
     fireEvent.click(chatThreadLink("Main conversation"));
 
     await waitFor(() => {
       expect(pathname()).toBe("/chats/thread-main");
-      expect(search()).toBe("?sidebar=thread-sidebar");
+      expect(search()).toBe("");
       expect(chatThreadContainer("thread-main")).toBeInTheDocument();
-      expect(chatThreadContainer("thread-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("Primary thread answer")).toBeInTheDocument();
     });
   });
 

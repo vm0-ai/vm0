@@ -94,41 +94,32 @@ describe("chat skeleton on switch", () => {
     });
   });
 
-  it("hides the skeleton after re-running setup for the same chat", async () => {
-    const secondInitialFetchDeferred = createDeferredPromise<void>(
-      context.signal,
-    );
+  it("does not re-fetch when navigating to the already-loaded thread", async () => {
     let initialFetchCount = 0;
 
     server.use(
-      mockApi(
-        chatThreadMessagesContract.list,
-        async ({ params, query, respond }) => {
-          if (query.sinceId) {
-            return respond(200, { messages: [] });
-          }
-          initialFetchCount++;
-          if (initialFetchCount === 2) {
-            await secondInitialFetchDeferred.promise;
-          }
-          return respond(200, {
-            messages: [
-              {
-                id: `msg-${params.threadId}-1`,
-                role: "user" as const,
-                content: `Question for ${params.threadId}`,
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                id: `msg-${params.threadId}-2`,
-                role: "assistant" as const,
-                content: `Answer for ${params.threadId}`,
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
-          });
-        },
-      ),
+      mockApi(chatThreadMessagesContract.list, ({ params, query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        initialFetchCount++;
+        return respond(200, {
+          messages: [
+            {
+              id: `msg-${params.threadId}-1`,
+              role: "user" as const,
+              content: `Question for ${params.threadId}`,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: `msg-${params.threadId}-2`,
+              role: "assistant" as const,
+              content: `Answer for ${params.threadId}`,
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ],
+        });
+      }),
       mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         return respond(200, {
           id: params.id,
@@ -152,27 +143,13 @@ describe("chat skeleton on switch", () => {
       expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
     });
 
+    // loadLeftThread$ is idempotent — navigating to the same thread is a no-op.
     context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-a" },
     });
 
-    await waitFor(() => {
-      expect(initialFetchCount).toBe(2);
-    });
-
-    expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
-    const messageContainer = document.querySelector<HTMLElement>(
-      "[data-message-container]",
-    );
-    expect(messageContainer).not.toBeNull();
-    expect(messageContainer!.style.visibility).toBe("hidden");
-    expect(screen.getByText("Answer for thread-a")).not.toBeVisible();
-
-    secondInitialFetchDeferred.resolve();
-
-    await waitFor(() => {
-      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
-      expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
-    });
+    // Content remains visible and no second fetch is triggered.
+    expect(screen.getByText("Answer for thread-a")).toBeInTheDocument();
+    expect(initialFetchCount).toBe(1);
   });
 });

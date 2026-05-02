@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.140.6](https://github.com/vm0-ai/vm0/compare/cli-v9.140.5...cli-v9.140.6) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.253.0
+
 ## [9.140.5](https://github.com/vm0-ai/vm0/compare/cli-v9.140.4...cli-v9.140.5) (2026-05-01)
 
 

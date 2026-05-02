@@ -129,9 +129,9 @@ import {
   setImageLoadStatus$,
 } from "../../signals/view-component-state.ts";
 import {
-  chatSidebarThread$,
-  chatSidebarThreadId$,
-} from "../../signals/chat-page/chat-sidebar.ts";
+  currentLeftThread$,
+  currentRightThread$,
+} from "../../signals/chat-page/chat-thread-panes.ts";
 import {
   navigateToAdjacentThread$,
   scrollCurrentThread$,
@@ -290,13 +290,13 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const displayName = useLastResolved(thread.agentDisplayName$);
   const threadData = useLastResolved(thread.threadData$);
-  const sidebarThreadId = useGet(chatSidebarThreadId$);
+  const rightThread = useGet(currentRightThread$);
   const autoRead = useGet(autoReadEnabled$);
   const toggleAutoReadFn = useSet(toggleAutoRead$);
   const features = useLastResolved(featureSwitch$);
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const threadTitle = threadData?.title?.trim() ?? "";
-  const showThreadTitle = sidebarThreadId !== null && threadTitle.length > 0;
+  const showThreadTitle = rightThread !== null && threadTitle.length > 0;
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -352,10 +352,6 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
       </div>
     </header>
   );
-}
-
-interface ZeroChatThreadPageProps {
-  thread: ChatThreadSignals;
 }
 
 function formatBytes(bytes: number): string {
@@ -1442,12 +1438,10 @@ function ChatArtifactsDrawer({ thread }: { thread: ChatThreadSignals }) {
 // ---------------------------------------------------------------------------
 
 function ChatThread({ thread }: { thread: ChatThreadSignals }) {
-  const setRuntimeRef = useSet(thread.setRuntimeRef$);
   const onKeyDown = useChatThreadKeyDown(thread);
 
   return (
     <section
-      ref={setRuntimeRef}
       aria-label="Chat thread"
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
@@ -1459,29 +1453,29 @@ function ChatThread({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-export function ZeroChatThreadPage({ thread }: ZeroChatThreadPageProps) {
+export function ZeroChatThreadPage() {
   const shortcutHelpOpen = useGet(chatShortcutHelpOpen$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
-  const sidebarThread = useGet(chatSidebarThread$);
+  const leftThread = useGet(currentLeftThread$);
+  const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 
   return (
     <>
       <div className="flex flex-1 min-h-0 bg-transparent">
-        <ChatThread key={thread.threadId} thread={thread} />
-        {sidebarThread && (
+        {leftThread && (
+          <ChatThread key={leftThread.threadId} thread={leftThread} />
+        )}
+        {rightThread && (
           <>
             <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-            <ChatThread key={sidebarThread.threadId} thread={sidebarThread} />
+            <ChatThread key={rightThread.threadId} thread={rightThread} />
           </>
         )}
       </div>
-      <ChatArtifactsDrawer thread={thread} />
-      {sidebarThread && (
-        <ChatArtifactsDrawer
-          key={sidebarThread.threadId}
-          thread={sidebarThread}
-        />
+      {leftThread && <ChatArtifactsDrawer thread={leftThread} />}
+      {rightThread && (
+        <ChatArtifactsDrawer key={rightThread.threadId} thread={rightThread} />
       )}
       {lightboxUrl && <AttachmentLightbox />}
       <ShortcutHelpDialog

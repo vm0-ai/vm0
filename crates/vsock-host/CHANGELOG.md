@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.7](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.6...vsock-host-v0.9.7) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
 ## [0.9.6](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.9.5...vsock-host-v0.9.6) (2026-04-27)
 
 
