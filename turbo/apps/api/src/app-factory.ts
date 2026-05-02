@@ -50,6 +50,22 @@ function isProxyRequestHeader(name: string): boolean {
   return Object.hasOwn(PROXY_REQUEST_HEADERS, name.toLowerCase());
 }
 
+// Statuses for which the WHATWG Response constructor rejects a non-null body
+// argument (fetch spec: "null body status"). Even an empty stream is a
+// non-null body object, so we must hand `null` to `new Response` here — and
+// drain the upstream stream separately so undici can release the connection.
+const NULL_BODY_STATUSES: Readonly<Record<number, true>> = {
+  101: true,
+  103: true,
+  204: true,
+  205: true,
+  304: true,
+};
+
+function isNullBodyStatus(status: number): boolean {
+  return Object.hasOwn(NULL_BODY_STATUSES, status);
+}
+
 async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
   const incoming = new URL(context.req.url);
   const target = new URL(`${incoming.pathname}${incoming.search}`, webUrl);
@@ -97,6 +113,14 @@ async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
     for (const cookie of list) {
       responseHeaders.append("set-cookie", cookie);
     }
+  }
+
+  if (isNullBodyStatus(upstream.statusCode)) {
+    upstream.body.resume();
+    return new Response(null, {
+      status: upstream.statusCode,
+      headers: responseHeaders,
+    });
   }
 
   return new Response(Readable.toWeb(upstream.body) as ReadableStream, {

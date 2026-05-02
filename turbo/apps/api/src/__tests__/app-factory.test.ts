@@ -343,6 +343,30 @@ describe("createApp", () => {
 
       expect(response.status).toBe(200);
     });
+
+    it.each([204, 205, 304])(
+      "forwards null-body status %s without constructing a Response with a stream",
+      async (statusCode) => {
+        mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+        useUndiciMock()
+          .get("https://www.vm0.ai")
+          .intercept({
+            path: "/api/zero/chat-threads/abc",
+            method: "PATCH",
+          })
+          .reply(statusCode, "");
+
+        const app = createApp({ signal: context.signal });
+        const response = await app.request("/api/zero/chat-threads/abc", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: '{"draftContent":"hello"}',
+        });
+
+        expect(response.status).toBe(statusCode);
+        await expect(response.text()).resolves.toBe("");
+      },
+    );
   });
 
   describe("cors", () => {
