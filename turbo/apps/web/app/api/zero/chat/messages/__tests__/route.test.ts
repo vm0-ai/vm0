@@ -1253,6 +1253,81 @@ describe("POST /api/zero/chat/messages", () => {
       });
     });
 
+    describe("admission cross-framework default (Issue #11684)", () => {
+      // Admission-layer regression for Epic #11520's residual gap:
+      // a claude-code compose with no env block, served by an org whose
+      // only isDefault provider is openai-api-key (codex framework). The
+      // request body carries no modelProviderId or modelSelection — the
+      // path the Web UI takes when the org has no claude-code default.
+      // Pre-fix, admission threw noModelProvider() and the UI rendered
+      // "Oops, something went wrong". Post-fix, admission falls back to
+      // the org's cross-framework default and the provider's framework
+      // propagates downstream via resolvedFramework.
+      it("admits a claude-code compose when the org's only default is openai-api-key (codex)", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("admit-cross-framework"),
+          { noEnvironmentBlock: true },
+        );
+
+        // Wipe the beforeEach-seeded anthropic provider so the org has
+        // only an openai-api-key (codex) provider as its default.
+        const anthropicId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await deleteTestModelProvider(anthropicId);
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "claude-code compose, codex provider",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { runId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
+      });
+
+      it("returns 422 NO_MODEL_PROVIDER when org has no default provider at all", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("no-default-provider"),
+          { noEnvironmentBlock: true },
+        );
+
+        // Wipe the beforeEach-seeded anthropic provider so the org has
+        // no isDefault: true provider for any framework — the genuine
+        // "no provider configured at all" failure mode.
+        const anthropicId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await deleteTestModelProvider(anthropicId);
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "should fail",
+            }),
+          }),
+        );
+        expect(response.status).toBe(422);
+        const data = await response.json();
+        expect(data.error.code).toBe("NO_MODEL_PROVIDER");
+      });
+    });
+
     describe("user info source", () => {
       it("short-circuits getCachedUser when sessionClaims carry email + name", async () => {
         const email = `${user.userId}@claims.example.com`;

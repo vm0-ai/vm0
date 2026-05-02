@@ -916,6 +916,53 @@ async function getDefaultModelProvider(
   });
 }
 
+/**
+ * Get the default model provider regardless of framework. Returns the first
+ * `isDefault: true` provider for the (orgId, userId) scope. Used as the
+ * cross-framework fallback in admission (see Epic #11520 — provider's
+ * framework wins over compose's once admission resolves a provider).
+ */
+async function getAnyDefaultModelProvider(
+  orgId: string,
+  userId: string,
+): Promise<ModelProviderInfo | null> {
+  const allProviders = await globalThis.services.db
+    .select({
+      id: modelProviders.id,
+      type: modelProviders.type,
+      isDefault: modelProviders.isDefault,
+      selectedModel: modelProviders.selectedModel,
+      authMethod: modelProviders.authMethod,
+      secretName: secrets.name,
+      createdAt: modelProviders.createdAt,
+      updatedAt: modelProviders.updatedAt,
+    })
+    .from(modelProviders)
+    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+    .where(
+      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
+    );
+
+  const defaultProvider = allProviders.find((p) => {
+    return p.isDefault && p.type in MODEL_PROVIDER_TYPES;
+  });
+
+  if (!defaultProvider) {
+    return null;
+  }
+
+  return toModelProviderInfo({
+    id: defaultProvider.id,
+    type: defaultProvider.type as ModelProviderType,
+    secretName: defaultProvider.secretName,
+    authMethod: defaultProvider.authMethod,
+    isDefault: defaultProvider.isDefault,
+    selectedModel: defaultProvider.selectedModel,
+    createdAt: defaultProvider.createdAt,
+    updatedAt: defaultProvider.updatedAt,
+  });
+}
+
 // ============================================================================
 // Org-Level Model Provider Functions
 //
@@ -1069,6 +1116,48 @@ export async function getOrgDefaultModelProviderType(
         eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
         eq(modelProviders.isDefault, true),
         inArray(modelProviders.type, frameworkTypes),
+      ),
+    )
+    .limit(1);
+
+  return row?.type ?? null;
+}
+
+/**
+ * Get the org-level default model provider regardless of framework.
+ *
+ * Used as the cross-framework fallback by admission (Stage B) when
+ * `getOrgDefaultModelProvider(orgId, composeFramework)` returns null. Per
+ * Epic #11520, the provider's framework wins; admission accepts any default
+ * and downstream stages route via `resolvedFramework`.
+ *
+ * Returns null only when the org has no `isDefault: true` provider for any
+ * framework. Telegram / Slack / chat-title callers keep using the strict
+ * framework-scoped variant — they want the claude-code default specifically.
+ */
+export function getOrgAnyDefaultModelProvider(
+  orgId: string,
+): Promise<ModelProviderInfo | null> {
+  return getAnyDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID);
+}
+
+/**
+ * Type-only variant of `getOrgAnyDefaultModelProvider`, mirroring the shape
+ * of `getOrgDefaultModelProviderType`. Accepts a db handle so callers inside
+ * queue-drain transactions can keep the read in the same boundary.
+ */
+export async function getOrgAnyDefaultModelProviderType(
+  orgId: string,
+  db: Database = globalThis.services.db,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
       ),
     )
     .limit(1);
