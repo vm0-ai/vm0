@@ -221,8 +221,8 @@ describe("fetchNextPage$ cursor", () => {
     let capturedSinceId: string | undefined;
 
     const mockDataSource: ChatThreadDataSource = {
-      getThread$: computed(() =>
-        Promise.resolve({
+      getThread$: computed(() => {
+        return Promise.resolve({
           id: threadId,
           title: null,
           agentId: "agent-1",
@@ -236,15 +236,15 @@ describe("fetchNextPage$ cursor", () => {
           draftAttachments: null,
           modelProviderId: null,
           selectedModel: null,
-        }),
-      ),
+        });
+      }),
       reloadThread$: command(() => {}),
-      initialPage$: computed(() =>
-        Promise.resolve({
+      initialPage$: computed(() => {
+        return Promise.resolve({
           messages: serverMessages,
           hasHistoryBefore: false,
-        }),
-      ),
+        });
+      }),
       patchDraft$: command(
         (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {},
       ),
@@ -252,16 +252,18 @@ describe("fetchNextPage$ cursor", () => {
         capturedSinceId = args.sinceId;
         return Promise.resolve({ messages: [], reachedEnd: true });
       }),
-      listMessagesBefore$: command(() =>
-        Promise.resolve({
+      listMessagesBefore$: command(() => {
+        return Promise.resolve({
           messages: [],
           hasMore: false,
-        }),
-      ),
+        });
+      }),
       cancelRuns$: command(
         (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {},
       ),
-      markRead$: command(() => Promise.resolve(null)),
+      markRead$: command(() => {
+        return Promise.resolve(null);
+      }),
       subscribeRealtime$: command(
         (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {},
       ),

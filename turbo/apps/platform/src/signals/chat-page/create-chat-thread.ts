@@ -686,6 +686,7 @@ function createPagedMessages(
     let sinceId = get(nextCursorId$);
     if (!sinceId) {
       const initial = await get(initialPage$);
+      signal.throwIfAborted();
       sinceId = initial.messages[initial.messages.length - 1]?.id;
       if (sinceId) {
         set(nextCursorId$, sinceId);
