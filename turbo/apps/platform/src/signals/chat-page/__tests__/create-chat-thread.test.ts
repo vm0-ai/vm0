@@ -15,7 +15,12 @@ import {
   chatThreadMessagesContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ChatThreadDataSource } from "../chat-thread-data-source.ts";
+import type {
+  ChatThreadDataSource,
+  PatchDraftArgs,
+  CancelRunsArgs,
+  SubscribeRealtimeArgs,
+} from "../chat-thread-data-source.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -240,7 +245,9 @@ describe("fetchNextPage$ cursor", () => {
           hasHistoryBefore: false,
         }),
       ),
-      patchDraft$: command(() => {}),
+      patchDraft$: command(
+        (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {},
+      ),
       listMessagesAfter$: command((_, args) => {
         capturedSinceId = args.sinceId;
         return Promise.resolve({ messages: [], reachedEnd: true });
@@ -251,9 +258,13 @@ describe("fetchNextPage$ cursor", () => {
           hasMore: false,
         }),
       ),
-      cancelRuns$: command(() => {}),
+      cancelRuns$: command(
+        (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {},
+      ),
       markRead$: command(() => Promise.resolve(null)),
-      subscribeRealtime$: command(() => {}),
+      subscribeRealtime$: command(
+        (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {},
+      ),
     };
 
     const { draft } = context.store.set(ensureDraft$, threadId);

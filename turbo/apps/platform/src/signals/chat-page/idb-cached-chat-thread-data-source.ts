@@ -118,7 +118,7 @@ function createListMessagesAfter(
 
 function createSubscribeRealtime(remote: ChatThreadDataSource) {
   return command(
-    async (
+    (
       { set },
       { threadId: tid, handlers }: SubscribeRealtimeArgs,
       signal: AbortSignal,
