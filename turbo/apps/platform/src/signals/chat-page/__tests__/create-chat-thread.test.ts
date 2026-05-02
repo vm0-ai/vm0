@@ -246,7 +246,9 @@ describe("fetchNextPage$ cursor", () => {
         });
       }),
       patchDraft$: command(
-        (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {},
+        (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
       ),
       listMessagesAfter$: command((_, args) => {
         capturedSinceId = args.sinceId;
@@ -259,13 +261,17 @@ describe("fetchNextPage$ cursor", () => {
         });
       }),
       cancelRuns$: command(
-        (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {},
+        (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
       ),
       markRead$: command(() => {
         return Promise.resolve(null);
       }),
       subscribeRealtime$: command(
-        (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {},
+        (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
       ),
     };
 
