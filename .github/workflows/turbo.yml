@@ -1414,8 +1414,9 @@ jobs:
           save-if: false
 
       # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match release-please.yml so rootfs_hash is
-      # identical across pipelines and R2 cache hits on deploy. See #9192.
+      # custom RUSTFLAGS) must match release-please.yml so guest binary bytes
+      # and rootfs_hash are identical across pipelines. The shared R2
+      # template cache intentionally ignores guest binaries. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
@@ -1575,11 +1576,11 @@ jobs:
           warm_rootfs_cache() {
             local HOST=$1
             local REMOTE="${METAL_USER}@${HOST}"
-            echo "=== Warming shared rootfs cache on ${HOST} ==="
+            echo "=== Warming shared template cache on ${HOST} ==="
 
             # Warm exactly once before the per-host snapshot build fan-out. This
             # prevents every metal host from racing into the slow local rootfs
-            # build path when a PR introduces a new rootfs_hash.
+            # template build path when a PR introduces a new template_hash.
             # shellcheck disable=SC2029
             if ! ssh "$REMOTE" "sudo \
               R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
@@ -1589,7 +1590,7 @@ jobs:
               ${BIN_DIR}/runner build --profile vm0/default --warm-rootfs-cache"; then
               return 1
             fi
-            echo "=== Done warming shared rootfs cache on ${HOST} ==="
+            echo "=== Done warming shared template cache on ${HOST} ==="
           }
 
           build_snapshot_on_host() {
@@ -1640,7 +1641,7 @@ jobs:
           WARM_HOST="${HOSTS[0]}"
           WARM_LOG="${LOG_DIR}/warm-rootfs-cache.log"
           if ! warm_rootfs_cache "$WARM_HOST" 2>&1 | tee "$WARM_LOG"; then
-            echo "::error::Shared rootfs cache warm failed on ${WARM_HOST}"
+            echo "::error::Shared template cache warm failed on ${WARM_HOST}"
             rm -rf "$LOG_DIR"
             exit 1
           fi
@@ -1665,8 +1666,9 @@ jobs:
             exit 1
           fi
 
-          # Extract per-host build hashes — rootfs hash is shared (R2 cached),
-          # snapshot hash may differ across hosts.
+          # Extract per-host build hashes. The shared R2 cache is keyed by
+          # template_hash; rootfs and snapshot hashes may differ across
+          # hosts because they include host-local customization.
           ROOTFS_MAP=$(jq -n '{}')
           SNAPSHOT_MAP=$(jq -n '{}')
           for HOST in "${HOSTS[@]}"; do

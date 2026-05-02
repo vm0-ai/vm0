@@ -414,8 +414,9 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match release-please.yml so rootfs_hash is
-      # identical across pipelines and R2 cache hits on deploy. See #9192.
+      # custom RUSTFLAGS) must match release-please.yml so guest binary bytes
+      # and rootfs_hash are identical across pipelines. The shared R2
+      # template cache intentionally ignores guest binaries. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
@@ -503,7 +504,7 @@ jobs:
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
 
-          # Run build (rootfs via Docker + snapshot via Firecracker).
+          # Run build (template + rootfs customization + snapshot).
           # R2_* env vars are inlined after `sudo` so they reach the runner
           # process — sudo's default `env_reset` would otherwise strip them.
           # Use tee to stream output in real-time while capturing for hash extraction
@@ -766,7 +767,7 @@ jobs:
           echo "PASS: runtime availability"
 
           # Test 6: verify /etc/environment is loaded for both user and root
-          # [sync:etc-environment] Keep in sync with: crates/runner/scripts/build-rootfs.sh
+          # [sync:etc-environment] Keep in sync with: crates/runner/scripts/customize-rootfs.sh
           echo "--- Test: environment variables ---"
           EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
           declare -A EXPECTED_ENV=(

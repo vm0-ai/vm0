@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# build-rootfs.sh — Build an ext4 rootfs image for Firecracker VMs.
+# build-template.sh — Build a reusable ext4 template image.
 #
 # This script is called by the Rust runner binary. Its content is hashed as
-# part of the build-input hash, so any change here automatically invalidates
-# the rootfs cache.
+# part of the template build-input hash, so any change here automatically
+# invalidates the shared template cache.
 #
 # Uses debootstrap + chroot instead of Docker to avoid the Docker daemon
 # dependency and eliminate multiple I/O round-trips (tar export, tar extract,
@@ -25,18 +25,11 @@
 # runner can operate on it without sudo (matches pre-unshare ownership).
 #
 # Usage:
-#   bash build-rootfs.sh \
+#   bash build-template.sh \
 #     --output-dir /path/to/output \
-#     --ca-dir /path/to/ca \
 #     --debootstrap-dir /path/to/cache \
 #     --hash <input-hash> \
 #     --disk-mb 16384 \
-#     --dns-nameserver 8.8.8.8 \
-#     --guest-agent /path/to/guest-agent \
-#     --guest-download /path/to/guest-download \
-#     --guest-init /path/to/guest-init \
-#     --guest-mock-claude /path/to/guest-mock-claude \
-#     --guest-mock-codex /path/to/guest-mock-codex \
 #     [--mirror http://archive.ubuntu.com/ubuntu]
 
 set -euo pipefail
@@ -66,17 +59,9 @@ shift
 # ---------------------------------------------------------------------------
 
 OUTPUT_DIR=""
-CA_DIR=""
 DEBOOTSTRAP_DIR=""
 INPUT_HASH=""
 DISK_MB=""
-GUEST_AGENT=""
-GUEST_DOWNLOAD=""
-GUEST_INIT=""
-GUEST_MOCK_CLAUDE=""
-GUEST_MOCK_CODEX=""
-GUEST_RESEED=""
-DNS_NAMESERVER=""
 # Default mirror: archive.ubuntu.com only hosts amd64/i386;
 # arm64 and other ports use ports.ubuntu.com.
 if [[ "$(dpkg --print-architecture 2>/dev/null)" == "arm64" ]]; then
@@ -88,23 +73,15 @@ fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir)        OUTPUT_DIR="$2";        shift 2 ;;
-    --ca-dir)            CA_DIR="$2";            shift 2 ;;
     --debootstrap-dir)   DEBOOTSTRAP_DIR="$2";   shift 2 ;;
     --hash)              INPUT_HASH="$2";        shift 2 ;;
     --disk-mb)           DISK_MB="$2";           shift 2 ;;
-    --guest-agent)       GUEST_AGENT="$2";       shift 2 ;;
-    --guest-download)    GUEST_DOWNLOAD="$2";    shift 2 ;;
-    --guest-init)        GUEST_INIT="$2";        shift 2 ;;
-    --guest-mock-claude) GUEST_MOCK_CLAUDE="$2"; shift 2 ;;
-    --guest-mock-codex)  GUEST_MOCK_CODEX="$2";  shift 2 ;;
-    --guest-reseed)      GUEST_RESEED="$2";      shift 2 ;;
-    --dns-nameserver)    DNS_NAMESERVER="$2";    shift 2 ;;
     --mirror)            MIRROR="$2";            shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for var in OUTPUT_DIR CA_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE GUEST_MOCK_CODEX GUEST_RESEED DNS_NAMESERVER; do
+for var in OUTPUT_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -115,25 +92,20 @@ done
 # Constants
 # ---------------------------------------------------------------------------
 
-ROOTFS_FILE="rootfs.ext4"
-# [sync:ca-constants] Keep in sync with: crates/runner/scripts/inject-ca.sh
-# and verify-rootfs.sh. Enforced by the `ca_constants_in_sync_across_scripts`
-# test in cmd/build.rs at compile time.
-CA_CERT_FILE="mitmproxy-ca-cert.pem"
-CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+TEMPLATE_FILE="template.ext4"
 
 # `$$` here is the *inner* (post-re-exec) bash PID — sudo forks, so the
 # inner PID differs from any outer bash that may have invoked the script
 # without the UNSHARE_SENTINEL. Do not read `$$` above the re-exec gate
 # and expect the same value here.
-TMP_ROOTFS="${ROOTFS_FILE}.tmp.$$"
+TMP_TEMPLATE="${TEMPLATE_FILE}.tmp.$$"
 
 # Paths derived from arguments
-ROOTFS_PATH="${OUTPUT_DIR}/${ROOTFS_FILE}"
-TMP_ROOTFS_PATH="${OUTPUT_DIR}/${TMP_ROOTFS}"
+TEMPLATE_PATH="${OUTPUT_DIR}/${TEMPLATE_FILE}"
+TMP_TEMPLATE_PATH="${OUTPUT_DIR}/${TMP_TEMPLATE}"
 ROOTFS_DIR=""
 
-# Pinned versions (changes here invalidate the rootfs cache via script hash)
+# Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.2"
 CLAUDE_CODE_VERSION="2.1.126"
 CODEX_CLI_VERSION="0.128.0"
@@ -177,7 +149,7 @@ cleanup_chroot() {
   # like /dev/shm, /dev/mqueue, /dev/hugepages that must be removed first.
   # Retry handles transient EBUSY from chroot subprocesses that haven't
   # fully exited yet. We buffer every attempt's stderr and dump all of
-  # them on final failure so diagnostic output covers the full sequence
+  # them on failure so diagnostic output covers the full sequence
   # (attempt 1 EPERM vs attempt 3 EBUSY etc.) rather than just the last.
   local target attempt err_log attempt_err
   local any_failure=0
@@ -205,16 +177,22 @@ cleanup_chroot() {
     fi
   done
   # Non-zero return aborts via set -e in the pre-mkfs call (polluted ext4
-  # is worse than a failed build); the EXIT trap wraps in `|| true` so
-  # this does not interrupt the remainder of cleanup.
+  # is worse than a failed build). The EXIT trap records this as a cleanup
+  # failure but still attempts the remainder of cleanup.
   return "$any_failure"
 }
 
 cleanup() {
+  local status=$?
+  local cleanup_failed=0
+
   echo "cleaning up..."
-  # Best-effort umount on the failure path. Errors surface to stderr but
-  # `|| true` keeps the rest of cleanup running under set -e.
-  cleanup_chroot || true
+  # Always attempt every cleanup step. Preserve the original failing status,
+  # but if the build itself succeeded, surface cleanup failures so a successful
+  # run cannot leave a multi-GB debootstrap tree behind silently.
+  if ! cleanup_chroot; then
+    cleanup_failed=1
+  fi
   if [[ -n "$ROOTFS_DIR" ]]; then
     # `--one-file-system`: if cleanup_chroot failed, $ROOTFS_DIR/{dev,sys,proc}
     # still bind-mount host devtmpfs/procfs/sysfs. Because bind mounts share
@@ -224,9 +202,19 @@ cleanup() {
     # leaked tmp dir for guaranteed host safety. The leak itself is bounded:
     # the private mount namespace dies with this script and the kernel
     # reclaims both the mounts and (via systemd-tmpfiles) the /tmp entry.
-    sudo rm -rf --one-file-system "$ROOTFS_DIR" || true
+    if ! sudo rm -rf --one-file-system "$ROOTFS_DIR"; then
+      cleanup_failed=1
+    fi
   fi
-  rm -f "$TMP_ROOTFS_PATH" || true
+  if ! rm -f "$TMP_TEMPLATE_PATH"; then
+    cleanup_failed=1
+  fi
+
+  if [[ "$cleanup_failed" -ne 0 && "$status" -eq 0 ]]; then
+    echo "error: template build cleanup failed" >&2
+    status=1
+  fi
+  exit "$status"
 }
 
 trap cleanup EXIT
@@ -269,7 +257,9 @@ debootstrap_build() {
   sudo mount --bind /sys "$ROOTFS_DIR/sys"
   sudo mount --bind /dev "$ROOTFS_DIR/dev"
 
-  # Copy host DNS for build-time package downloads (overwritten by inject_files)
+  # Copy host DNS for build-time package downloads. This is removed before
+  # the reusable template is materialized so host-specific resolver state
+  # never lands in the shared R2 template cache.
   sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
   sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
@@ -441,90 +431,6 @@ install_runtimes() {
 }
 
 # ---------------------------------------------------------------------------
-# Inject guest binaries, CA certificates, and configuration files
-# ---------------------------------------------------------------------------
-
-inject_files() {
-  echo "injecting guest binaries and CA..."
-
-  # Final resolv.conf for the VM (single nameserver — UDP 53 redirected to dnsmasq)
-  sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
-  echo "nameserver ${DNS_NAMESERVER}" | sudo tee "$ROOTFS_DIR/etc/resolv.conf" > /dev/null
-
-  # Write /etc/hosts — the VM has no mDNS and resolv.conf only lists
-  # external nameservers, so "localhost" would fail to resolve without this.
-  printf '%s\n' \
-    "127.0.0.1 localhost" \
-    "::1 localhost" \
-    | sudo tee "$ROOTFS_DIR/etc/hosts" > /dev/null
-
-  # Install guest binaries
-  local -a bins=(
-    "${GUEST_AGENT}:/usr/local/bin/guest-agent"
-    "${GUEST_DOWNLOAD}:/usr/local/bin/guest-download"
-    "${GUEST_INIT}:/sbin/guest-init"
-    "${GUEST_MOCK_CLAUDE}:/usr/local/bin/guest-mock-claude"
-    "${GUEST_MOCK_CODEX}:/usr/local/bin/guest-mock-codex"
-    "${GUEST_RESEED}:/sbin/guest-reseed"
-  )
-  for entry in "${bins[@]}"; do
-    local src="${entry%%:*}"
-    local dest="${entry#*:}"
-    local target="${ROOTFS_DIR}${dest}"
-    sudo cp "$src" "$target"
-    sudo chmod 755 "$target"
-    echo "[OK] installed ${dest}"
-  done
-
-  # Install proxy CA certificate (generated by `runner build` in CA_DIR)
-  local ca_cert="${CA_DIR}/${CA_CERT_FILE}"
-  if [[ ! -f "$ca_cert" ]]; then
-    echo "error: proxy CA cert not found at ${ca_cert} — run 'runner build' (not this script directly)" >&2
-    exit 1
-  fi
-
-  local ca_target="${ROOTFS_DIR}/${CA_ROOTFS_DEST}"
-  sudo mkdir -p "$(dirname "$ca_target")"
-  sudo cp "$ca_cert" "$ca_target"
-  sudo chmod 644 "$ca_target"
-
-  # Update system CA bundle (OpenSSL/NSS).
-  # proc/sys/dev are still mounted from debootstrap_build.
-  sudo chroot "$ROOTFS_DIR" update-ca-certificates
-
-  # Import proxy CA into Java's separate trust store (cacerts keystore).
-  # Java does not read the system CA bundle — it has its own PKCS12 keystore.
-  # keytool finds libjli.so via its baked-in RPATH [$ORIGIN:$ORIGIN/../lib];
-  # $ORIGIN resolves because debootstrap_build bind-mounts /proc into the
-  # chroot (glibc reads /proc/self/exe for $ORIGIN).
-  sudo chroot "$ROOTFS_DIR" keytool -importcert -trustcacerts \
-    -keystore /etc/ssl/certs/java/cacerts \
-    -storepass changeit -noprompt \
-    -alias vm0-proxy-ca \
-    -file "/${CA_ROOTFS_DEST}"
-
-  # Write /etc/environment (read by PAM for all login sessions).
-  # [sync:etc-environment] Keep in sync with: .github/workflows/crates.yml (runner-exec Test 5)
-  # - LANG: locale
-  # - NPM_CONFIG_UPDATE_NOTIFIER: suppress npm update nags
-  # - NODE_EXTRA_CA_CERTS: Node.js uses its own root CAs, not the system bundle
-  # - SSL_CERT_FILE: Python (certifi/pip/requests), Go, Rust (native-tls)
-  # - REQUESTS_CA_BUNDLE: Python requests library
-  # - CARGO_HTTP_CAINFO: Rust cargo (rustls backend ignores system CAs)
-  printf '%s\n' \
-    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-    "LANG=C.UTF-8" \
-    "NPM_CONFIG_UPDATE_NOTIFIER=false" \
-    "NODE_EXTRA_CA_CERTS=/${CA_ROOTFS_DEST}" \
-    "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" \
-    "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt" \
-    "CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt" \
-    | sudo tee "${ROOTFS_DIR}/etc/environment" > /dev/null
-
-  echo "[OK] proxy CA installed and system bundle updated"
-}
-
-# ---------------------------------------------------------------------------
 # ext4 image creation
 # ---------------------------------------------------------------------------
 
@@ -550,8 +456,8 @@ create_ext4() {
   sudo chmod 755 "$ROOTFS_DIR"
 
   # Create ext4 image populated directly from directory (no loopback mount needed)
-  truncate -s "$image_bytes" "$TMP_ROOTFS_PATH"
-  mkfs.ext4 -F -q -U "$fs_uuid" -d "$ROOTFS_DIR" "$TMP_ROOTFS_PATH"
+  truncate -s "$image_bytes" "$TMP_TEMPLATE_PATH"
+  mkfs.ext4 -F -q -U "$fs_uuid" -d "$ROOTFS_DIR" "$TMP_TEMPLATE_PATH"
 
   echo "[OK] ext4 image created"
 }
@@ -564,17 +470,22 @@ check_dependencies
 debootstrap_build
 install_packages
 install_runtimes
-inject_files
+
+# Remove build-time host resolver state before producing the reusable rootfs
+# template. The VM resolver config is injected by customize-rootfs.sh.
+sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
+sudo touch "$ROOTFS_DIR/etc/resolv.conf"
+sudo chmod 644 "$ROOTFS_DIR/etc/resolv.conf"
 
 # Unmount virtual filesystems before creating ext4 image
 cleanup_chroot
 
 create_ext4
 
-# Move into final place
-mv "$TMP_ROOTFS_PATH" "$ROOTFS_PATH"
+# Move into place
+mv "$TMP_TEMPLATE_PATH" "$TEMPLATE_PATH"
 
-# The unshare re-exec escalates to root, so the rootfs file was created
+# The unshare re-exec escalates to root, so the template file was created
 # as root. Restore ownership to the invoking user so downstream callers
 # (runner reading/replacing the file) don't need sudo. SUDO_USER is set
 # by the outer sudo at re-exec time; if it is missing or "root" the
@@ -584,11 +495,11 @@ mv "$TMP_ROOTFS_PATH" "$ROOTFS_PATH"
 # mode 644 makes it world-readable, so a mis-ownership is cosmetic — the
 # runner can still consume it. Warn instead so operators can investigate.
 if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]]; then
-  chown "$SUDO_USER" "$ROOTFS_PATH" \
-    || echo "warning: chown $SUDO_USER $ROOTFS_PATH failed; file remains root-owned" >&2
+  chown "$SUDO_USER" "$TEMPLATE_PATH" \
+    || echo "warning: chown $SUDO_USER $TEMPLATE_PATH failed; file remains root-owned" >&2
 fi
 
 # Report size
-SIZE=$(stat -c%s "$ROOTFS_PATH")
+SIZE=$(stat -c%s "$TEMPLATE_PATH")
 SIZE_MB=$((SIZE / 1024 / 1024))
-echo "[OK] rootfs built: ${ROOTFS_PATH} (${SIZE_MB} MiB)"
+echo "[OK] template built: ${TEMPLATE_PATH} (${SIZE_MB} MiB)"

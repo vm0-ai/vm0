@@ -1,26 +1,28 @@
-//! R2 cache for `runner build` rootfs artifacts.
+//! R2 cache for `runner build` template artifacts.
 //!
-//! Single-key bundle per rootfs hash: `runner-images/{rootfs_hash}.tar.zst` in
-//! the existing `R2_USER_STORAGES_BUCKET_NAME` bucket. Only rootfs.ext4 is
-//! cached in R2; snapshot files are always created locally because they
-//! contain host-specific state (page cache, kernel metadata).
+//! The current shared cache stores reusable template objects at
+//! `runner-templates/{template_hash}.tar.zst` in the existing
+//! `R2_USER_STORAGES_BUCKET_NAME` bucket. Rootfs images are customized locally
+//! because they contain guest binaries and host-local CA material.
+//! Snapshot files are always created locally because they contain host-specific
+//! state (page cache, kernel metadata).
 //!
 //! ## Lifecycle
 //!
-//! 1. `runner build` computes a rootfs-only hash and checks local cache.
-//! 2. On miss, after acquiring `rootfs_lock(hash)`, it tries `try_download`.
-//! 3. On download hit, the caller injects the local CA into the rootfs and
-//!    creates a snapshot locally.
-//! 4. On download miss, it does the local rootfs build, then `upload`s the
-//!    rootfs, then creates a snapshot locally.
+//! 1. `runner build` computes a `template_hash` for the shared R2 object and
+//!    a separate `rootfs_hash` for local images.
+//! 2. `--warm-rootfs-cache` ensures only the template R2 object exists.
+//! 3. Normal builds materialize the template object into `rootfs.ext4.staging`
+//!    (or build/upload it on miss), customize the staging image locally, verify
+//!    it, and then atomically commit the rootfs.
 //!
 //! Atomicity guarantees:
 //! - Multipart upload is atomic from consumer POV (object only appears after
 //!   `CompleteMultipartUpload`); abandoned segments are auto-cleaned by R2's
 //!   default 7-day lifecycle.
-//! - Download unpacks into a `{hash}.tmp/` staging directory then `rename`s
-//!   to `{hash}/` — partial unpack from a crash never produces a directory
-//!   that looks like a successful download.
+//! - Template download unpacks into a sibling staging directory and only renames
+//!   `template.ext4` into the caller's destination after the archive is fully
+//!   decoded and validated.
 //!
 //! Configuration semantics: `from_env` returns `Ok(None)` only when **all four**
 //! `R2_*` env vars are unset or empty (dev/test path). Setting 1-3 of 4 is a
@@ -40,9 +42,9 @@
 //!
 //! ## R2-side cleanup
 //!
-//! Completed objects (`runner-images/{hash}.tar.zst`) are **never deleted on
-//! upload**. Each `ROOTFS_CACHE_VERSION` bump, build-script change, or guest
-//! binary rebuild produces a new rootfs hash and orphans the previous object.
+//! Completed objects are **never deleted on upload**. Each template cache version
+//! bump or template build script change produces a new template hash and
+//! orphans the previous object.
 //!
 //! Cleanup happens via `gc_older_than`, called from `runner gc` (which the
 //! deploy playbook runs after every release). Default TTL is 7 days. Each
@@ -65,10 +67,10 @@
 //! All operations in this module are safe to cancel (drop the future) at any
 //! await point — no permanent state is left in an inconsistent way:
 //!
-//! - **Local staging directory**: a hard-killed `try_download` may leave
-//!   `images/{hash}.tmp/` on disk. The next `try_download` removes it as
-//!   the first action, so the leak is bounded to one stale dir per hash
-//!   and self-heals on next attempt.
+//! - **Local staging directory**: a hard-killed template download may leave a
+//!   `*.download.tmp/` directory beside the destination. The next download
+//!   removes it as the first action, so the leak is bounded to one stale dir
+//!   per destination and self-heals on next attempt.
 //! - **R2 multipart upload session**: a cancelled `upload` after
 //!   `create_multipart_upload` returned but before `Complete` runs leaks
 //!   the `upload_id` server-side (Drop can't `.await` to call
@@ -81,19 +83,16 @@
 //!
 //! ## Corrupt-object eviction
 //!
-//! A structurally-valid archive whose extracted content lacks rootfs.ext4
+//! A structurally-valid archive whose extracted content lacks template.ext4
 //! (e.g. uploaded by an old/buggy producer, or attacker-controlled IAM
 //! key writing a bogus tar to a predicted hash key) would otherwise
-//! dead-lock the fleet's cache for that hash: every host downloads →
-//! unpacks → finds no rootfs → rebuilds locally → `upload`'s `exists()`
-//! dedup-skips → the bad object stays, forever.
+//! dead-lock the fleet's cache for that hash: every host downloads → unpacks
+//! → finds no template → rebuilds locally → dedup-skips upload because the bad
+//! object already exists.
 //!
-//! `cmd::build::run_build` defends by passing `force = true` to `upload`
-//! whenever it observes "download Ok(true) but rootfs missing" or a
-//! successfully-fetched object that cannot be unpacked. That bypasses the
-//! dedup check and atomically overwrites the bad object in a single PUT —
-//! robust against `s3:DeleteObject` permission being revoked or transiently
-//! failing (which a `delete + retry-upload` sequence would not be).
+//! `cmd::build::run_build` defends by passing `force = true` to upload
+//! whenever template download classifies an object as invalid. That bypasses the
+//! dedup check and atomically overwrites the bad object in a single PUT.
 //!
 //! ## Tar entry security
 //!
@@ -102,9 +101,8 @@
 //!
 //! 1. **Path traversal (`..` components) is silently dropped**. Verified by
 //!    `unpack_rejects_path_traversal`. The malicious entry is skipped; the
-//!    staging dir ends up missing rootfs.ext4; the caller's post-download
-//!    check (rootfs presence) rejects the result and falls back to local
-//!    build. Safe.
+//!    staging dir ends up missing template.ext4; the template download helper
+//!    rejects that as an invalid object and the caller rebuilds locally. Safe.
 //!
 //! 2. **Symlink and hardlink entries are rejected**. `unpack_from_reader`
 //!    iterates entries and rejects any whose type is not `Regular`,
@@ -113,14 +111,14 @@
 //!    immediate error, preventing an attacker with R2 write access from
 //!    crafting a tar where expected filenames are symlinks to host paths.
 //!    (`GNUSparse` is retained for forward compatibility with any future
-//!    sparse file in the archive; rootfs.ext4 itself is packed as a
+//!    sparse file in the archive; template.ext4 itself is packed as a
 //!    regular file.)
 //!
-//! **Maintenance note**: the caller (`cmd::build::run_build`) checks
-//! rootfs presence after a structurally-valid download and sets
-//! `force_reupload = true` if it is missing. If you add a new file to the
-//! R2 archive, you MUST extend that check accordingly — otherwise an
-//! attacker-controlled tar that omits the new file would go undetected.
+//! **Maintenance note**: `try_download_template_file_by_key` verifies that the
+//! archive contains `template.ext4` and classifies a missing file as an invalid
+//! object. If you add a new required member to the template R2 archive, extend that
+//! validation accordingly — otherwise an attacker-controlled tar that omits the
+//! new file would go undetected.
 
 use std::path::{Path, PathBuf};
 
@@ -131,7 +129,9 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart, Delete, ObjectIdentifier};
 use tokio::io::AsyncReadExt;
 
-const KEY_PREFIX: &str = "runner-images/";
+const LEGACY_ROOTFS_KEY_PREFIX: &str = "runner-images/";
+const TEMPLATE_KEY_PREFIX: &str = "runner-templates/";
+const TEMPLATE_FILE: &str = "template.ext4";
 const ZSTD_LEVEL: i32 = 3;
 
 /// Multipart part size. R2 minimum is 5 MiB (except last part); 16 MiB
@@ -253,14 +253,19 @@ impl R2ImageCache {
         Ok(Some(Self { client, bucket }))
     }
 
-    /// Returns `Ok(true)` if `runner-images/{hash}.tar.zst` exists.
+    /// Returns `Ok(true)` if the legacy `runner-images/{hash}.tar.zst` object exists.
+    #[cfg(test)]
     pub async fn exists(&self, hash: &str) -> Result<bool, R2Error> {
         let key = key_for_hash(hash);
+        self.exists_key(&key).await
+    }
+
+    async fn exists_key(&self, key: &str) -> Result<bool, R2Error> {
         match self
             .client
             .head_object()
             .bucket(&self.bucket)
-            .key(&key)
+            .key(key)
             .send()
             .await
         {
@@ -268,7 +273,7 @@ impl R2ImageCache {
             Err(SdkError::ServiceError(e)) if matches!(e.err(), HeadObjectError::NotFound(_)) => {
                 Ok(false)
             }
-            Err(e) => Err(R2Error::S3(format!("head_object: {e:?}"))),
+            Err(e) => Err(R2Error::S3(format!("head_object {key}: {e:?}"))),
         }
     }
 
@@ -277,8 +282,10 @@ impl R2ImageCache {
     /// then atomic rename to `final_dir`. No temp file — bounded memory
     /// regardless of image size.
     ///
-    /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
-    /// outer call sites (CI/systemd) bound total wall time.
+    /// The client is built from explicit R2 credentials, so it avoids AWS
+    /// credential/endpoint discovery stalls. Outer call sites (CI/systemd)
+    /// bound total wall time.
+    #[cfg(test)]
     pub async fn try_download(
         &self,
         hash: &str,
@@ -335,6 +342,111 @@ impl R2ImageCache {
         Ok(true)
     }
 
+    /// Try to download `runner-templates/{hash}.tar.zst` and materialize its
+    /// `template.ext4` member directly at `destination`. The archive is unpacked
+    /// into a sibling staging directory first; only the template file is moved
+    /// into place, and extra archive members are discarded with the staging dir.
+    pub async fn try_download_template_to_file(
+        &self,
+        hash: &str,
+        destination: &Path,
+    ) -> Result<bool, R2DownloadError> {
+        let key = key_for_template_hash(hash);
+        self.try_download_template_file_by_key(&key, destination)
+            .await
+    }
+
+    async fn try_download_template_file_by_key(
+        &self,
+        key: &str,
+        destination: &Path,
+    ) -> Result<bool, R2DownloadError> {
+        let staging = file_staging_dir(destination);
+        // Clean stale residue from a previously crashed download even if this
+        // attempt later turns into a cache miss or request error. Successful
+        // downloads also recreate this directory from scratch below.
+        remove_dir_all_if_exists(&staging)
+            .await
+            .map_err(R2DownloadError::Local)?;
+
+        let resp = match self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(SdkError::ServiceError(e))
+                if matches!(
+                    e.err(),
+                    aws_sdk_s3::operation::get_object::GetObjectError::NoSuchKey(_)
+                ) =>
+            {
+                return Ok(false);
+            }
+            Err(e) => {
+                return Err(R2DownloadError::Request(R2Error::S3(format!(
+                    "get_object {key}: {e:?}"
+                ))));
+            }
+        };
+
+        let Some(parent) = destination.parent() else {
+            return Err(R2DownloadError::Local(R2Error::Io(io_other(format!(
+                "destination has no parent: {}",
+                destination.display()
+            )))));
+        };
+        tokio::fs::create_dir_all(parent)
+            .await
+            .map_err(|e| R2DownloadError::Local(R2Error::Io(e)))?;
+
+        let body_reader = resp.body.into_async_read();
+
+        if let Err(e) = tokio::fs::create_dir_all(&staging).await {
+            return Err(finish_file_staging_error(
+                &staging,
+                R2DownloadError::Local(R2Error::Io(e)),
+            )
+            .await);
+        }
+
+        if let Err(e) = unpack_into_staging(body_reader, &staging).await {
+            return Err(
+                finish_file_staging_error(&staging, R2DownloadError::InvalidObject(e)).await,
+            );
+        }
+
+        let unpacked_template = staging.join(TEMPLATE_FILE);
+        if !tokio::fs::try_exists(&unpacked_template)
+            .await
+            .unwrap_or(false)
+        {
+            return Err(finish_file_staging_error(
+                &staging,
+                R2DownloadError::InvalidObject(R2Error::Io(io_other(
+                    "template archive missing template.ext4",
+                ))),
+            )
+            .await);
+        }
+
+        if let Err(e) = tokio::fs::rename(&unpacked_template, destination).await {
+            return Err(finish_file_staging_error(
+                &staging,
+                R2DownloadError::Local(R2Error::Io(e)),
+            )
+            .await);
+        }
+        remove_dir_all_if_exists(&staging)
+            .await
+            .map_err(R2DownloadError::Local)?;
+
+        Ok(true)
+    }
+
     /// Pack `files` into `tar.zst` and stream-upload to `runner-images/{hash}.tar.zst`.
     /// No temp file: a tokio duplex pipe couples the synchronous tar+zstd
     /// producer (running on a blocking thread) to the async multipart consumer.
@@ -345,26 +457,43 @@ impl R2ImageCache {
     ///
     /// **`force = true`**: skip the dedup check and always upload, atomically
     /// replacing whatever is currently at the key. Used by `cmd::build` after
-    /// detecting a corrupt prior upload (download succeeded but rootfs.ext4
+    /// detecting a corrupt prior upload (download succeeded but template.ext4
     /// is missing). Going through `delete + dedup-upload` would deadlock the
     /// fleet's cache if `DeleteObject` permission is missing or transiently
     /// failing — `force` is a single-round-trip atomic overwrite that doesn't
     /// depend on `s3:DeleteObject`.
     ///
-    /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
-    /// outer call sites (CI/systemd) bound total wall time.
+    /// The client is built from explicit R2 credentials, so it avoids AWS
+    /// credential/endpoint discovery stalls. Outer call sites (CI/systemd)
+    /// bound total wall time.
+    #[cfg(test)]
     pub async fn upload(&self, hash: &str, files: &[PathBuf], force: bool) -> Result<(), R2Error> {
-        if !force && self.exists(hash).await? {
-            tracing::info!("R2 already has {hash}, skipping upload");
+        let key = key_for_hash(hash);
+        self.upload_key(&key, files, force).await
+    }
+
+    /// Upload a reusable template object under `runner-templates/`.
+    pub async fn upload_template(
+        &self,
+        hash: &str,
+        rootfs: &Path,
+        force: bool,
+    ) -> Result<(), R2Error> {
+        let key = key_for_template_hash(hash);
+        self.upload_key(&key, &[rootfs.to_path_buf()], force).await
+    }
+
+    async fn upload_key(&self, key: &str, files: &[PathBuf], force: bool) -> Result<(), R2Error> {
+        if !force && self.exists_key(key).await? {
+            tracing::info!("R2 already has {key}, skipping upload");
             return Ok(());
         }
 
-        let key = key_for_hash(hash);
         let create = self
             .client
             .create_multipart_upload()
             .bucket(&self.bucket)
-            .key(&key)
+            .key(key)
             .send()
             .await?;
         let upload_id = create
@@ -375,14 +504,14 @@ impl R2ImageCache {
         // Run the full pack→stream→complete pipeline, then abort if anything
         // failed (including Complete itself — server-side validation errors
         // can fail Complete after all parts uploaded successfully).
-        let result = self.do_multipart_upload(&key, &upload_id, files).await;
+        let result = self.do_multipart_upload(key, &upload_id, files).await;
         if result.is_err() {
             // Best-effort abort; R2's 7-day default lifecycle catches misses.
             let _ = self
                 .client
                 .abort_multipart_upload()
                 .bucket(&self.bucket)
-                .key(&key)
+                .key(key)
                 .upload_id(&upload_id)
                 .send()
                 .await;
@@ -390,17 +519,28 @@ impl R2ImageCache {
         result
     }
 
-    /// Delete `runner-images/*` objects older than `max_age`. Returns
-    /// `(deleted_count, freed_bytes)`. Idempotent under concurrent fleet
-    /// execution: every host runs the same scan and `DeleteObjects` returns
-    /// success for already-absent keys (S3 spec). Each invocation costs ~1
-    /// LIST + 1 batched DELETE per page (max 1000 objects/page).
+    /// Delete legacy rootfs objects and shared template objects older
+    /// than `max_age`. Returns `(deleted_count, freed_bytes)`. Idempotent under
+    /// concurrent fleet execution: every host runs the same scan and
+    /// `DeleteObjects` returns success for already-absent keys (S3 spec). Each
+    /// invocation costs ~1 LIST + 1 batched DELETE per non-empty page.
     ///
     /// Per-key errors (e.g. AccessDenied — NOT NoSuchKey) are surfaced via
     /// `tracing::warn!` and excluded from `deleted_count`.
     pub async fn gc_older_than(&self, max_age: std::time::Duration) -> Result<(u64, u64), R2Error> {
         let cutoff = cutoff_unix_secs(std::time::SystemTime::now(), max_age)?;
 
+        let mut total_deleted = 0u64;
+        let mut total_freed = 0u64;
+        for prefix in [LEGACY_ROOTFS_KEY_PREFIX, TEMPLATE_KEY_PREFIX] {
+            let (deleted, freed) = self.gc_prefix_older_than(prefix, cutoff).await?;
+            total_deleted = total_deleted.saturating_add(deleted);
+            total_freed = total_freed.saturating_add(freed);
+        }
+        Ok((total_deleted, total_freed))
+    }
+
+    async fn gc_prefix_older_than(&self, prefix: &str, cutoff: i64) -> Result<(u64, u64), R2Error> {
         let mut continuation_token: Option<String> = None;
         let mut total_deleted = 0u64;
         let mut total_freed = 0u64;
@@ -409,7 +549,7 @@ impl R2ImageCache {
                 .client
                 .list_objects_v2()
                 .bucket(&self.bucket)
-                .prefix(KEY_PREFIX);
+                .prefix(prefix);
             if let Some(token) = continuation_token.as_ref() {
                 req = req.continuation_token(token);
             }
@@ -637,8 +777,13 @@ impl R2ImageCache {
     }
 }
 
+#[cfg(test)]
 fn key_for_hash(hash: &str) -> String {
-    format!("{KEY_PREFIX}{hash}.tar.zst")
+    format!("{LEGACY_ROOTFS_KEY_PREFIX}{hash}.tar.zst")
+}
+
+fn key_for_template_hash(hash: &str) -> String {
+    format!("{TEMPLATE_KEY_PREFIX}{hash}.tar.zst")
 }
 
 /// Filter a single ListObjectsV2 page down to the keys that should be
@@ -778,6 +923,7 @@ where
 
 /// Finish the unpack: atomic rename `staging` to `final_dir`. Same-parent
 /// rename is atomic on ext4/xfs.
+#[cfg(test)]
 async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Error> {
     if let Err(e) = tokio::fs::rename(staging, final_dir).await {
         // Expected recovery path: a previous `runner build` for this hash
@@ -800,6 +946,7 @@ async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Erro
 }
 
 /// `images/{hash}` -> `images/{hash}.tmp` (sibling, same parent → atomic rename).
+#[cfg(test)]
 fn staging_dir(final_dir: &Path) -> PathBuf {
     let mut name = final_dir
         .file_name()
@@ -807,6 +954,36 @@ fn staging_dir(final_dir: &Path) -> PathBuf {
         .unwrap_or_default();
     name.push(".tmp");
     final_dir.with_file_name(name)
+}
+
+fn file_staging_dir(destination: &Path) -> PathBuf {
+    let mut name = destination
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(".download.tmp");
+    destination.with_file_name(name)
+}
+
+async fn remove_dir_all_if_exists(path: &Path) -> Result<(), R2Error> {
+    match tokio::fs::remove_dir_all(path).await {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(R2Error::Io(e)),
+    }
+}
+
+async fn finish_file_staging_error(staging: &Path, original: R2DownloadError) -> R2DownloadError {
+    match remove_dir_all_if_exists(staging).await {
+        Ok(()) => original,
+        Err(cleanup_err) => {
+            tracing::warn!(
+                "failed to remove download staging {} after an earlier error ({original}): {cleanup_err}",
+                staging.display()
+            );
+            original
+        }
+    }
 }
 
 fn io_other<E: std::fmt::Display>(e: E) -> std::io::Error {
@@ -863,6 +1040,10 @@ mod tests {
     #[test]
     fn key_format() {
         assert_eq!(key_for_hash("abc123"), "runner-images/abc123.tar.zst");
+        assert_eq!(
+            key_for_template_hash("abc123"),
+            "runner-templates/abc123.tar.zst"
+        );
     }
 
     // ---- cutoff math (gc_older_than helper) -----------------------------
@@ -1650,6 +1831,37 @@ mod tests {
         assert_eq!(complete.num_calls(), 1);
     }
 
+    #[tokio::test]
+    async fn upload_template_uses_template_prefix() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadOutput;
+        use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
+        use aws_sdk_s3::operation::upload_part::UploadPartOutput;
+
+        let create = mock!(Client::create_multipart_upload)
+            .match_requests(|req| {
+                req.bucket() == Some("test-bucket")
+                    && req.key() == Some("runner-templates/abc.tar.zst")
+            })
+            .then_output(|| {
+                CreateMultipartUploadOutput::builder()
+                    .upload_id("test-upload-id")
+                    .build()
+            });
+        let upload_part = mock!(Client::upload_part)
+            .then_output(|| UploadPartOutput::builder().e_tag("\"etag-123\"").build());
+        let complete = mock!(Client::complete_multipart_upload)
+            .then_output(|| CompleteMultipartUploadOutput::builder().build());
+        let cache = mock_cache("test-bucket", &[&create, &upload_part, &complete]);
+
+        let (_dir, path) = small_src_file().await;
+        cache.upload_template("abc", &path, true).await.unwrap();
+
+        assert_eq!(create.num_calls(), 1);
+        assert_eq!(upload_part.num_calls(), 1);
+        assert_eq!(complete.num_calls(), 1);
+    }
+
     /// `complete_multipart_upload` failure (server-side validation after all
     /// parts uploaded) MUST trigger `abort_multipart_upload`. Without this,
     /// the abandoned upload_id lingers until R2's 7-day lifecycle sweeps it.
@@ -1798,6 +2010,444 @@ mod tests {
         })
         .await
         .unwrap()
+    }
+
+    async fn build_template_archive_bytes() -> Vec<u8> {
+        let src = tempfile::tempdir().unwrap();
+        let name = src.path().join(TEMPLATE_FILE);
+        tokio::fs::write(&name, b"hello").await.unwrap();
+        let files = vec![name];
+        tokio::task::spawn_blocking(move || {
+            let mut buf: Vec<u8> = Vec::new();
+            pack_to_writer(&mut buf, &files).unwrap();
+            buf
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn build_template_archive_bytes_with_extra() -> Vec<u8> {
+        let src = tempfile::tempdir().unwrap();
+        let template = src.path().join(TEMPLATE_FILE);
+        let extra = src.path().join("extra.txt");
+        tokio::fs::write(&template, b"hello").await.unwrap();
+        tokio::fs::write(&extra, b"discard me").await.unwrap();
+        let files = vec![template, extra];
+        tokio::task::spawn_blocking(move || {
+            let mut buf: Vec<u8> = Vec::new();
+            pack_to_writer(&mut buf, &files).unwrap();
+            buf
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn build_empty_archive_bytes() -> Vec<u8> {
+        tokio::task::spawn_blocking(move || {
+            let mut buf: Vec<u8> = Vec::new();
+            pack_to_writer(&mut buf, &[]).unwrap();
+            buf
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn zstd_bytes(raw_tar: Vec<u8>) -> Vec<u8> {
+        tokio::task::spawn_blocking(move || {
+            let mut out = Vec::new();
+            let mut encoder = zstd::stream::write::Encoder::new(&mut out, 1).unwrap();
+            std::io::Write::write_all(&mut encoder, &raw_tar).unwrap();
+            encoder.finish().unwrap();
+            out
+        })
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn try_download_template_materializes_template_file() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_template_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object)
+            .match_requests(|req| {
+                req.bucket() == Some("test-bucket")
+                    && req.key() == Some("runner-templates/hash.tar.zst")
+            })
+            .then_output(move || {
+                GetObjectOutput::builder()
+                    .body(ByteStream::from((*archive_for_closure).clone()))
+                    .build()
+            });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+
+        let result = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap();
+
+        assert!(result, "valid template body → Ok(true)");
+        assert_eq!(tokio::fs::read(&destination).await.unwrap(), b"hello");
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_replaces_existing_destination_on_valid_archive() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_template_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+        tokio::fs::write(&destination, b"old-rootfs").await.unwrap();
+
+        let result = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap();
+
+        assert!(result, "valid template body -> Ok(true)");
+        assert_eq!(tokio::fs::read(&destination).await.unwrap(), b"hello");
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_rejects_path_traversal_archive() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(zstd_bytes(craft_tar_with_path(b"../escaped.txt", b"bad")).await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+
+        let err = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::InvalidObject(_)),
+            "path traversal archive must be classified as invalid cache object, got {err:?}"
+        );
+        assert!(!dst.path().join("escaped.txt").exists());
+        assert!(!destination.exists());
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_discards_extra_archive_members() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_template_archive_bytes_with_extra().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+
+        let result = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap();
+
+        assert!(result, "valid template body -> Ok(true)");
+        assert_eq!(tokio::fs::read(&destination).await.unwrap(), b"hello");
+        assert!(
+            !dst.path().join("extra.txt").exists(),
+            "extra archive members must be discarded with download staging"
+        );
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_rejects_archive_missing_template() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_empty_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+
+        let err = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::InvalidObject(_)),
+            "archive missing template.ext4 must be treated as corrupt template cache, got {err:?}"
+        );
+        assert!(!destination.exists());
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_preserves_destination_until_archive_validates() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_empty_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+        tokio::fs::write(&destination, b"existing-rootfs")
+            .await
+            .unwrap();
+
+        let err = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::InvalidObject(_)),
+            "archive missing template.ext4 must be treated as corrupt template cache, got {err:?}"
+        );
+        assert_eq!(
+            tokio::fs::read(&destination).await.unwrap(),
+            b"existing-rootfs"
+        );
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_classifies_destination_failure_as_local() {
+        use std::sync::Arc;
+
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let archive = Arc::new(build_template_archive_bytes().await);
+        let archive_for_closure = Arc::clone(&archive);
+        let get = mock!(Client::get_object).then_output(move || {
+            GetObjectOutput::builder()
+                .body(ByteStream::from((*archive_for_closure).clone()))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+        tokio::fs::create_dir_all(&destination).await.unwrap();
+
+        let err = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::Local(R2Error::Io(_))),
+            "local destination failure must not be treated as corrupt R2 cache, got {err:?}"
+        );
+        assert!(
+            destination.is_dir(),
+            "local destination directory should remain for operator inspection"
+        );
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging directory must be cleaned after destination failures"
+        );
+    }
+
+    #[tokio::test]
+    async fn finish_file_staging_error_preserves_original_error_when_cleanup_fails() {
+        let dst = tempfile::tempdir().unwrap();
+        let staging = dst.path().join("rootfs.ext4.download.tmp");
+        tokio::fs::write(&staging, b"not a directory")
+            .await
+            .unwrap();
+
+        let err = finish_file_staging_error(
+            &staging,
+            R2DownloadError::InvalidObject(R2Error::Io(io_other("bad archive"))),
+        )
+        .await;
+
+        assert!(
+            matches!(err, R2DownloadError::InvalidObject(_)),
+            "cleanup failure must not mask invalid-object classification, got {err:?}"
+        );
+        assert!(
+            staging.exists(),
+            "test setup should leave the uncleanable staging path in place"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_wipes_download_staging_on_unpack_error() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let get = mock!(Client::get_object).then_output(|| {
+            GetObjectOutput::builder()
+                .body(ByteStream::from_static(b"not a valid zstd stream"))
+                .build()
+        });
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+
+        let err = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::InvalidObject(_)),
+            "bad body must be classified as invalid cache object, got {err:?}"
+        );
+        assert!(!destination.exists(), "destination MUST remain absent");
+        assert!(
+            !file_staging_dir(&destination).exists(),
+            "download staging MUST be wiped on unpack errors"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_miss_cleans_prior_download_staging() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectError;
+        use aws_sdk_s3::types::error::NoSuchKey;
+
+        let get = mock!(Client::get_object)
+            .then_error(|| GetObjectError::NoSuchKey(NoSuchKey::builder().build()));
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+        let stale_download = file_staging_dir(&destination);
+        tokio::fs::create_dir_all(&stale_download).await.unwrap();
+        tokio::fs::write(stale_download.join("partial"), b"crash residue")
+            .await
+            .unwrap();
+
+        let result = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap();
+
+        assert!(!result, "NoSuchKey -> Ok(false)");
+        assert!(
+            !destination.exists(),
+            "cache miss must not create destination"
+        );
+        assert!(
+            !stale_download.exists(),
+            "prior download staging must be removed even on cache miss"
+        );
+    }
+
+    #[tokio::test]
+    async fn try_download_template_errors_when_prior_download_staging_cannot_be_cleaned() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectError;
+        use aws_sdk_s3::types::error::NoSuchKey;
+
+        let get = mock!(Client::get_object)
+            .then_error(|| GetObjectError::NoSuchKey(NoSuchKey::builder().build()));
+        let cache = mock_cache("test-bucket", &[&get]);
+
+        let dst = tempfile::tempdir().unwrap();
+        let destination = dst.path().join("rootfs.ext4.staging");
+        let stale_download = file_staging_dir(&destination);
+        tokio::fs::write(&stale_download, b"not a directory")
+            .await
+            .unwrap();
+
+        let err = cache
+            .try_download_template_to_file("hash", &destination)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, R2DownloadError::Local(R2Error::Io(_))),
+            "uncleanable prior download staging must be surfaced, got {err:?}"
+        );
+        assert!(
+            stale_download.exists(),
+            "failed cleanup should leave evidence for operator inspection"
+        );
     }
 
     /// Download body is not a valid zstd stream → unpack fails → the
@@ -1962,11 +2612,13 @@ mod tests {
                     .build(),
             )
             .build();
+        let empty_template_page = ListObjectsV2Output::builder().is_truncated(false).build();
 
         let list = mock!(Client::list_objects_v2)
             .sequence()
             .output(move || page1.clone())
             .output(move || page2.clone())
+            .output(move || empty_template_page.clone())
             .build();
         // Quiet-mode delete responses don't echo successes; no `errors`.
         let delete =
@@ -1981,8 +2633,56 @@ mod tests {
 
         assert_eq!(deleted, 3, "2 objects from page1 + 1 from page2");
         assert_eq!(freed, 600, "100 + 200 + 300");
-        assert_eq!(list.num_calls(), 2, "pagination followed next_token");
+        assert_eq!(
+            list.num_calls(),
+            3,
+            "pagination followed next_token and template prefix was scanned"
+        );
         assert_eq!(delete.num_calls(), 2, "one delete per non-empty page");
+    }
+
+    /// `gc_older_than` must also clean the shared template prefix. A
+    /// regression here would leave the new cache family unbounded even though
+    /// legacy `runner-images/` objects continue to be swept.
+    #[tokio::test]
+    async fn gc_deletes_shared_template_objects() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::delete_objects::DeleteObjectsOutput;
+        use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
+        use aws_sdk_s3::primitives::DateTime;
+        use aws_sdk_s3::types::Object;
+
+        let empty_legacy_page = ListObjectsV2Output::builder().is_truncated(false).build();
+        let template_page = ListObjectsV2Output::builder()
+            .is_truncated(false)
+            .contents(
+                Object::builder()
+                    .key("runner-templates/template.tar.zst")
+                    .last_modified(DateTime::from_secs(0))
+                    .size(123)
+                    .build(),
+            )
+            .build();
+
+        let list = mock!(Client::list_objects_v2)
+            .sequence()
+            .output(move || empty_legacy_page.clone())
+            .output(move || template_page.clone())
+            .build();
+        let delete =
+            mock!(Client::delete_objects).then_output(|| DeleteObjectsOutput::builder().build());
+
+        let cache = mock_cache("test-bucket", &[&list, &delete]);
+
+        let (deleted, freed) = cache
+            .gc_older_than(std::time::Duration::from_secs(1))
+            .await
+            .unwrap();
+
+        assert_eq!(deleted, 1);
+        assert_eq!(freed, 123);
+        assert_eq!(list.num_calls(), 2, "legacy and template prefixes scanned");
+        assert_eq!(delete.num_calls(), 1, "template object delete issued");
     }
 
     /// `gc_older_than` MUST exclude per-key failures from `deleted_count` so
@@ -2021,6 +2721,7 @@ mod tests {
                     .build(),
             )
             .build();
+        let empty_template_page = ListObjectsV2Output::builder().is_truncated(false).build();
         let delete_resp = DeleteObjectsOutput::builder()
             .errors(
                 S3Error::builder()
@@ -2031,7 +2732,11 @@ mod tests {
             )
             .build();
 
-        let list = mock!(Client::list_objects_v2).then_output(move || page.clone());
+        let list = mock!(Client::list_objects_v2)
+            .sequence()
+            .output(move || page.clone())
+            .output(move || empty_template_page.clone())
+            .build();
         let delete = mock!(Client::delete_objects).then_output(move || delete_resp.clone());
 
         let cache = mock_cache("test-bucket", &[&list, &delete]);

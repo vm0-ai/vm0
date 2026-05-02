@@ -26,9 +26,9 @@
 #   - official_runner_secret: Runner authentication secret (baked into config)
 #   - api_url: vm0 API URL (baked into config)
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Shared rootfs image cache credentials. Required so the pre-fan-out
+#       Shared template cache credentials. Required so the pre-fan-out
 #       warm step can fail visibly instead of allowing every host to rebuild
-#       the same rootfs locally.
+#       the same template locally.
 
 - name: Build VM0 Runner
   hosts: all
@@ -63,7 +63,7 @@
     - name: Download dependencies (Firecracker, kernel, mitmproxy)
       command: "{{ bin_dir }}/runner setup"
 
-    - name: Warm shared rootfs cache
+    - name: Warm shared template cache
       run_once: true
       command: >
         {{ bin_dir }}/runner build
@@ -72,7 +72,7 @@
       environment:
         # Fail visibly if the shared R2 cache cannot be warmed. This prevents
         # every production host from stampeding into the slow local rootfs
-        # build path during a new rootfs_hash deploy.
+        # template build path during a new template_hash deploy.
         R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
         R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
         R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
@@ -84,11 +84,10 @@
         {{ bin_dir }}/runner build
         --profile vm0/default
       environment:
-        # R2 credentials so `runner build` can pull the rootfs.ext4 warmed
-        # above instead of rebuilding it from scratch. Only rootfs is cached;
-        # the snapshot is always created locally because it contains
-        # host-specific state. Host CA is swapped in via inject-ca.sh after
-        # download.
+        # R2 credentials so `runner build` can pull the warmed template
+        # above instead of rebuilding it from scratch. The rootfs and
+        # snapshot are created locally because they include guest binaries,
+        # host CA, and host-specific snapshot state.
         R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
         R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
         R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"

@@ -46,7 +46,8 @@ pub struct GcArgs {
     #[arg(long)]
     keep_latest: Option<usize>,
     /// TTL for R2 image cache objects (in days). Objects older than this
-    /// are deleted from `runner-images/` on R2. Default: 7 days.
+    /// are deleted from the legacy `runner-images/` prefix and the shared
+    /// `runner-templates/` prefix on R2. Default: 7 days.
     /// Minimum: 1 — `0` would wipe even the just-uploaded image.
     #[arg(long, default_value_t = R2_DEFAULT_KEEP_DAYS, value_parser = clap::value_parser!(u64).range(1..))]
     r2_keep_days: u64,
@@ -181,18 +182,16 @@ struct GcCandidate {
     _lock: Flock<std::fs::File>,
 }
 
-/// Per-rootfs state carried through the two-phase global GC: first we walk
-/// every rootfs and record whether we hold its exclusive lock plus whether
-/// any locked / recent snapshot already forces it to survive; then we prune
-/// snapshots globally and, for each rootfs with no surviving snapshot, try
-/// to delete the rootfs dir itself.
+/// Per-rootfs state carried through the two-phase global GC for rootfs
+/// directories whose exclusive lock we hold: first we walk snapshots and record
+/// whether any locked / recent snapshot already forces the rootfs to survive;
+/// then we prune snapshots globally and, for each rootfs with no surviving
+/// snapshot, try to delete the rootfs dir itself.
 struct RootfsState {
     path: PathBuf,
     hash: String,
-    /// `Some(_)` = we hold the exclusive rootfs lock and may delete the rootfs
-    /// directory if it ends up with no surviving snapshots. `None` = another
-    /// process holds it; we can only touch unlocked snapshots inside.
-    rootfs_lock: Option<Flock<std::fs::File>>,
+    /// Exclusive rootfs lock held until this GC pass finishes.
+    _rootfs_lock: Flock<std::fs::File>,
     /// True once any snapshot under this rootfs is known to survive GC
     /// (in-use, too recent, kept by top-N, or a deletion failure). Blocks
     /// rootfs-dir deletion in the final pass.
@@ -241,6 +240,63 @@ async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run
         );
     }
     rootfs_size
+}
+
+fn template_warm_hash(name: &str) -> Option<&str> {
+    name.strip_prefix("template-")
+        .and_then(|rest| rest.strip_suffix(".warm.tmp"))
+        .filter(|hash| !hash.is_empty())
+}
+
+/// Try to delete an abandoned `runner build --warm-rootfs-cache` working dir.
+///
+/// The directory intentionally lives under `images/` so the warm download/build
+/// uses the same data volume as normal rootfs builds. It is a template
+/// warm dir, so it is guarded by the template lock rather than `image-*`.
+async fn gc_template_warm_dir(
+    home: &HomePaths,
+    warm_path: &Path,
+    warm_name: &str,
+    template_hash: &str,
+    dry_run: bool,
+) -> u64 {
+    let lock_path = home.template_lock(template_hash);
+    let _lock = match probe_lock(&lock_path) {
+        LockProbe::Free(lock) => lock,
+        LockProbe::Held => {
+            info!("images/{warm_name}: template warm dir in use, skipping");
+            return 0;
+        }
+        LockProbe::Error(e) => {
+            info!("images/{warm_name}: template lock probe failed ({e}), skipping");
+            return 0;
+        }
+    };
+
+    let (size, mtime) = dir_stats(warm_path).await;
+    let age = SystemTime::now().duration_since(mtime).unwrap_or_default();
+    if age < GC_MIN_AGE {
+        info!(
+            "images/{warm_name}: template warm dir too recent ({}s), keeping",
+            age.as_secs()
+        );
+        return 0;
+    }
+    if dry_run {
+        info!(
+            "[dry-run] would delete template warm dir images/{warm_name} ({})",
+            human_bytes(size)
+        );
+    } else if let Err(e) = tokio::fs::remove_dir_all(warm_path).await {
+        warn!("failed to remove template warm dir images/{warm_name}: {e}");
+        return 0;
+    } else {
+        info!(
+            "deleted template warm dir images/{warm_name} ({})",
+            human_bytes(size)
+        );
+    }
+    size
 }
 
 /// GC for the nested image layout: `<images>/<rootfs>/snapshots/<snapshot>/`.
@@ -292,32 +348,36 @@ async fn gc_nested_images(
             continue;
         }
 
-        // Probe rootfs lock. If held (by start/build), we can still GC
-        // individual snapshots (guarded by their own locks), but must NOT
-        // delete the rootfs directory itself.
+        if let Some(template_hash) = template_warm_hash(&rootfs_hash) {
+            total_freed +=
+                gc_template_warm_dir(home, &rootfs_path, &rootfs_hash, template_hash, dry_run)
+                    .await;
+            continue;
+        }
+
+        // Probe rootfs lock. If held (by start/build), skip the whole rootfs.
+        // `runner start` acquires shared rootfs before shared snapshot; cleaning
+        // snapshots while only the rootfs lock is held can race that acquisition
+        // window and delete a snapshot the runner is about to lock.
         let rootfs_lock_path = home.rootfs_lock(&rootfs_hash);
         let rootfs_lock = match probe_lock(&rootfs_lock_path) {
-            LockProbe::Free(lock) => Some(lock),
+            LockProbe::Free(lock) => lock,
             LockProbe::Held => {
-                info!("images/{rootfs_hash}: rootfs in use, will only GC unlocked snapshots");
-                None
+                info!("images/{rootfs_hash}: rootfs in use, skipping");
+                continue;
             }
             LockProbe::Error(e) => {
                 info!("images/{rootfs_hash}: lock probe failed ({e}), skipping");
                 continue;
             }
         };
-        let can_delete_rootfs = rootfs_lock.is_some();
 
         let snapshots_dir = rootfs_path.join("snapshots");
         let mut snapshot_entries = match tokio::fs::read_dir(&snapshots_dir).await {
             Ok(rd) => rd,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // No snapshots/ subdirectory — orphaned rootfs, handle inline.
-                if can_delete_rootfs {
-                    total_freed +=
-                        try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
-                }
+                total_freed += try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
                 continue;
             }
             Err(e) => {
@@ -330,7 +390,7 @@ async fn gc_nested_images(
         rootfs_states.push(RootfsState {
             path: rootfs_path.clone(),
             hash: rootfs_hash.clone(),
-            rootfs_lock,
+            _rootfs_lock: rootfs_lock,
             any_snapshot_survives: false,
         });
 
@@ -453,7 +513,7 @@ async fn gc_nested_images(
     // subdirs we already counted (dry-run leaves them on disk), so subtract
     // that overlap to match the real-mode total.
     for (idx, state) in rootfs_states.iter().enumerate() {
-        if !state.any_snapshot_survives && state.rootfs_lock.is_some() {
+        if !state.any_snapshot_survives {
             let rootfs_bytes = try_delete_orphan_rootfs(&state.path, &state.hash, dry_run).await;
             let overlap = if dry_run {
                 dry_run_snapshot_bytes.get(idx).copied().unwrap_or(0)
@@ -2010,6 +2070,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_nested_images_keeps_locked_template_warm_dir() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&warm_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let lock_file = lock::open_lock_file(&home.template_lock("abc123")).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(warm_dir.exists(), "active warm rootfs dir must survive GC");
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_keeps_recent_template_warm_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            warm_dir.exists(),
+            "recent warm rootfs dir must survive the GC grace window"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_removes_stale_template_warm_dir() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&warm_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert!(
+            !warm_dir.exists(),
+            "stale warm rootfs dir should be removed"
+        );
+        assert!(freed > 0);
+    }
+
+    #[tokio::test]
     async fn gc_nested_images_keeps_latest_single_rootfs() {
         use std::fs::FileTimes;
         use std::time::Duration;
@@ -2579,10 +2706,11 @@ mod tests {
         assert_eq!(freed, 0);
     }
 
-    /// When the rootfs lock is held, GC can still delete unlocked snapshots
-    /// but must NOT delete the rootfs directory itself.
+    /// When the rootfs lock is held, GC skips the whole rootfs. This avoids
+    /// racing `runner start`, which acquires shared rootfs before shared
+    /// snapshot and may be between those two locks.
     #[tokio::test]
-    async fn gc_nested_images_locked_rootfs_still_cleans_unlocked_snapshots() {
+    async fn gc_nested_images_locked_rootfs_keeps_all_snapshots() {
         use std::fs::FileTimes;
 
         let dir = tempfile::tempdir().unwrap();
@@ -2616,12 +2744,12 @@ mod tests {
 
         let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
         assert!(
-            !snap_old.exists(),
-            "unlocked old snapshot should be deleted"
+            snap_old.exists(),
+            "unlocked old snapshot should survive while rootfs lock is held"
         );
         assert!(snap_used.exists(), "locked snapshot must survive");
         assert!(rootfs_dir.exists(), "rootfs must survive (lock held)");
-        assert!(freed > 0);
+        assert_eq!(freed, 0);
     }
 
     /// A locked snapshot must survive even with keep_latest=0 and old mtime.
