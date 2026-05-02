@@ -36,10 +36,12 @@ function setupAuth() {
 
 // Mock the remote data source to avoid importing MSW, which pulls in
 // node:http (unavailable in real browser test environments).
+// eslint-disable-next-line arrow-body-style
 const { remoteMessages } = vi.hoisted(() => ({
   remoteMessages: [] as PagedChatMessage[],
 }));
 
+/* eslint-disable arrow-body-style, ccstate/computed-const-args-package-scope */
 vi.mock("../remote-chat-thread-data-source", () => ({
   createRemoteChatThreadDataSource: () => ({
     getThread$: computed(() => null),
@@ -62,6 +64,7 @@ vi.mock("../remote-chat-thread-data-source", () => ({
     subscribeRealtime$: command((_ctx: unknown) => {}),
   }),
 }));
+/* eslint-enable arrow-body-style, ccstate/computed-const-args-package-scope */
 
 // Import the module under test after the mock is registered (vi.mock is
 // hoisted, so the import order doesn't matter, but keeping it after is
