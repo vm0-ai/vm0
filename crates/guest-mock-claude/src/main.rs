@@ -133,10 +133,10 @@ fn create_session_history(session_id: &str, cwd: &str) -> Option<String> {
     build_session_history_path(session_id, cwd, &home)
 }
 
-/// Emit the init + result JSONL pair that the `*-after-result` test
-/// prefixes share, flush stdout so guest-agent sees them, and write
-/// the session history checkpoint file. Caller decides what happens
-/// after (hang / exit / ignore SIGTERM).
+/// Emit the init + result JSONL pair shared by post-result mock test
+/// prefixes, flush stdout so guest-agent sees them, and write the
+/// session history checkpoint file. Caller decides which post-result
+/// behavior follows (hang / exit / ignore SIGTERM / orphan stdout).
 fn emit_post_result_pair() {
     let session_id = generate_session_id();
     let cwd = std::env::current_dir()
@@ -369,46 +369,10 @@ fn main() -> ExitCode {
     // guest-agent from seeing EOF on the CLI's stdout pipe.
     if parsed.prompt.starts_with("@orphan-pipe") {
         if parsed.output_format == "stream-json" {
-            let session_id = generate_session_id();
-            let cwd = std::env::current_dir()
-                .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|_| "/".to_string());
+            emit_post_result_pair();
 
-            let init_event = json!({
-                "type": "system",
-                "subtype": "init",
-                "cwd": cwd,
-                "session_id": session_id,
-                "tools": ["Bash"],
-                "model": "mock-claude"
-            });
-            println!("{}", init_event);
-
-            let result_event = json!({
-                "type": "result",
-                "subtype": "success",
-                "session_id": session_id,
-                "is_error": false,
-                "duration_ms": 100,
-                "num_turns": 1,
-                "result": "Done.",
-                "total_cost_usd": 0,
-                "usage": {"input_tokens": 0, "output_tokens": 0}
-            });
-            println!("{}", result_event);
-
-            // Write session history file — checkpoint requires it.
-            if let Some(path) = create_session_history(&session_id, &cwd)
-                && let Ok(mut file) = std::fs::File::create(&path)
-            {
-                let _ = writeln!(file, "{init_event}");
-                let _ = writeln!(file, "{result_event}");
-            }
-
-            let _ = std::io::stdout().flush();
-
-            // Spawn a child that inherits stdout and sleeps forever.
-            // This keeps the stdout pipe open after this process exits.
+            // Spawn a child after flushing the completed stream. It inherits
+            // stdout and keeps the pipe open after this process exits.
             let _ = Command::new("sleep").arg("3600").spawn();
         }
         return ExitCode::SUCCESS;
