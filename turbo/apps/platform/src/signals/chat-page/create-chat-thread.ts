@@ -639,6 +639,12 @@ function createPagedMessages(
   const deltaMessages$ = state<PagedChatMessage[]>([]);
   const appendDeltaMessages$ = createAppendDelta(deltaMessages$);
 
+  // Tracks the last known server-validated message ID so optimistic
+  // (client-generated) IDs never leak into sinceId calls.
+  // Lazy-init from initialPage$ on first fetchNextPage$ call, then
+  // advanced after each successful fetch to the last returned message.
+  const nextCursorId$ = state<string | undefined>(undefined);
+
   const allMessages$ = computed(async (get): Promise<PagedChatMessage[]> => {
     const initial = await get(initialPage$);
     const history = get(historyMessages$);
@@ -676,8 +682,18 @@ function createPagedMessages(
   });
 
   const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const sinceId = await get(latestChatMessageId$);
+    let sinceId = get(nextCursorId$);
+    if (!sinceId) {
+      const initial = await get(initialPage$);
+      sinceId = initial.messages[initial.messages.length - 1]?.id;
+      if (sinceId) {
+        set(nextCursorId$, sinceId);
+      }
+    }
     signal.throwIfAborted();
+    if (!sinceId) {
+      return true;
+    }
     const result = await set(
       dataSource.listMessagesAfter$,
       { threadId, sinceId },
@@ -688,6 +704,7 @@ function createPagedMessages(
       return true;
     }
     set(appendDeltaMessages$, result.messages);
+    set(nextCursorId$, result.messages[result.messages.length - 1].id);
     return false;
   });
 
