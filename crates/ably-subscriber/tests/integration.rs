@@ -3053,6 +3053,48 @@ async fn drop_while_protocol_disconnected_backpressure_closes_socket() {
 }
 
 #[tokio::test]
+async fn heartbeat_backpressure_closes_socket_before_subscription_close() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (closed_tx, closed_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws
+            .accept_and_handshake_with_opts(
+                "ch",
+                "conn-1",
+                HandshakeOptions {
+                    max_idle_interval_ms: 25,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        expect_websocket_close_frame(&mut conn).await.unwrap();
+        closed_tx.send(()).unwrap();
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.event_channel_capacity = 1;
+    timing.heartbeat_margin = Duration::from_millis(25);
+    let sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    // Do not consume the initial Connected event. The heartbeat Disconnected
+    // status event is backpressured, but the stale socket must still close.
+    tokio::time::timeout(Duration::from_secs(5), closed_rx)
+        .await
+        .expect("timed out waiting for heartbeat socket close")
+        .unwrap();
+    sub.close();
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn close_while_connected_event_send_is_backpressured_closes_reconnected_socket() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
@@ -3166,6 +3208,52 @@ async fn error_event_backpressure_closes_socket_before_subscription_close() {
     tokio::time::timeout(Duration::from_secs(5), closed_rx)
         .await
         .expect("timed out waiting for socket close before subscription close")
+        .unwrap();
+    sub.close();
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn channel_error_backpressure_closes_socket_before_subscription_close() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let (closed_tx, closed_rx) = tokio::sync::oneshot::channel::<()>();
+    let server_task = tokio::spawn(async move {
+        let mut conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        let error = ProtocolMessage {
+            action: action::ERROR,
+            channel: Some("ch".into()),
+            error: Some(ErrorInfo {
+                code: 40001,
+                status_code: Some(400),
+                message: "channel failed".into(),
+            }),
+            ..Default::default()
+        };
+        conn.send(tungstenite::Message::Binary(
+            encode_msg(&error).unwrap().into(),
+        ))
+        .await
+        .unwrap();
+
+        expect_websocket_close_frame(&mut conn).await.unwrap();
+        closed_tx.send(()).unwrap();
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.event_channel_capacity = 1;
+    let sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    // Do not consume the initial Connected event. The channel-scoped fatal
+    // Error status event is backpressured, but the socket must close anyway.
+    tokio::time::timeout(Duration::from_secs(5), closed_rx)
+        .await
+        .expect("timed out waiting for channel error socket close")
         .unwrap();
     sub.close();
     server_task.await.unwrap();
