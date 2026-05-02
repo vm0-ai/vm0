@@ -240,18 +240,20 @@ describe("fetchNextPage$ cursor", () => {
           hasHistoryBefore: false,
         }),
       ),
-      patchDraft$: command(async () => {}),
-      listMessagesAfter$: command(async (_, args) => {
+      patchDraft$: command(() => {}),
+      listMessagesAfter$: command((_, args) => {
         capturedSinceId = args.sinceId;
-        return { messages: [], reachedEnd: true };
+        return Promise.resolve({ messages: [], reachedEnd: true });
       }),
-      listMessagesBefore$: command(async () => ({
-        messages: [],
-        hasMore: false,
-      })),
-      cancelRuns$: command(async () => {}),
-      markRead$: command(async () => null),
-      subscribeRealtime$: command(async () => {}),
+      listMessagesBefore$: command(() =>
+        Promise.resolve({
+          messages: [],
+          hasMore: false,
+        }),
+      ),
+      cancelRuns$: command(() => {}),
+      markRead$: command(() => Promise.resolve(null)),
+      subscribeRealtime$: command(() => {}),
     };
 
     const { draft } = context.store.set(ensureDraft$, threadId);

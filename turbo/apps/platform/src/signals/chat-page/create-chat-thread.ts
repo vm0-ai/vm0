@@ -190,6 +190,7 @@ export interface ChatThreadSignals {
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadHistory$: Command<Promise<void>, [AbortSignal]>;
   subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
+  insertOptimisticMessage$: Command<void, [PagedChatMessage]>;
   // ── Thinking indicator ───────────────────────────────────────────────────
   blockColors$: Computed<[string, string, string]>;
   rotatingPhrase$: Computed<string>;
@@ -1326,6 +1327,7 @@ export function createChatThreadSignals(
     fetchNextPage$,
     loadHistory$,
     subscribeChatThread$,
+    insertOptimisticMessage$,
     blockColors$,
     rotatingPhrase$,
     donePhrase$,
