@@ -152,6 +152,7 @@ enum AttachOutcome {
     Attached { channel_serial: Option<String> },
     Detached(ErrorInfo),
     RetryAttach(ErrorInfo),
+    Closed(ErrorInfo),
     TimedOut,
 }
 
@@ -160,6 +161,14 @@ fn detached_error_or_default(error: Option<ErrorInfo>) -> ErrorInfo {
         code: error_code::CHANNEL_OPERATION_FAILED,
         status_code: Some(404),
         message: "Channel detached".to_string(),
+    })
+}
+
+fn closed_error_or_default(error: Option<ErrorInfo>) -> ErrorInfo {
+    error.unwrap_or_else(|| ErrorInfo {
+        code: error_code::FAILED,
+        status_code: None,
+        message: "Connection closed by server".to_string(),
     })
 }
 
@@ -201,6 +210,16 @@ async fn wait_for_attach_outcome(
                         )));
                     }
                 }
+                action::DISCONNECTED => {
+                    let err = error_or_unknown(msg.error.clone());
+                    return Err(Error::Protocol {
+                        code: err.code,
+                        message: protocol_disconnect_reason(msg.error),
+                    });
+                }
+                action::CLOSED => {
+                    return Ok(AttachOutcome::Closed(closed_error_or_default(msg.error)));
+                }
                 _ => {
                     tracing::debug!(action = msg.action, "Ignoring pre-ATTACHED message");
                 }
@@ -221,6 +240,10 @@ async fn wait_for_attached(ws_read: &mut WsRead, channel: &str) -> Result<Option
             message: channel_detached_message(&err.message),
         }),
         AttachOutcome::RetryAttach(err) => Err(Error::Protocol {
+            code: err.code,
+            message: protocol_error_message(err.message),
+        }),
+        AttachOutcome::Closed(err) => Err(Error::Protocol {
             code: err.code,
             message: protocol_error_message(err.message),
         }),
@@ -1027,6 +1050,10 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     p.connected_event_pending = true;
                     continue 'outer;
                 }
+                Ok(ReconnectOutcome::Closed) => {
+                    p.lifecycle.notify_closed();
+                    return;
+                }
                 Err(e) => {
                     tracing::warn!("Reconnect attempt failed: {e}");
                 }
@@ -1047,6 +1074,7 @@ enum LoopAction {
 enum ReconnectOutcome {
     Attached,
     ChannelSuspended,
+    Closed,
 }
 
 async fn send_attach(p: &mut EventLoopState, close_rx: &mut oneshot::Receiver<()>) -> LoopAction {
@@ -1545,6 +1573,15 @@ async fn attempt_reconnect(p: &mut EventLoopState) -> Result<ReconnectOutcome, E
                 code: err.code,
                 message: protocol_error_message(err.message),
             });
+        }
+        AttachOutcome::Closed(err) => {
+            tracing::info!(
+                code = err.code,
+                message = %protocol_error_message(err.message),
+                "Connection closed while re-attaching after reconnect",
+            );
+            p.conn_state.channel_serial = None;
+            return Ok(ReconnectOutcome::Closed);
         }
         AttachOutcome::TimedOut => {
             tracing::warn!(

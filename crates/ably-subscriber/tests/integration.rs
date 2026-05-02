@@ -3750,6 +3750,203 @@ async fn other_channel_error_during_reconnect_attach_is_ignored() {
 }
 
 #[tokio::test]
+async fn disconnected_during_reconnect_attach_retries_with_new_connection() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        drop(conn);
+
+        let (tcp, _) = ws.listener.accept().await.unwrap();
+        let mut conn2 = tokio_tungstenite::accept_async(tcp).await.unwrap();
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-2".into()),
+            connection_key: Some("conn-2!key".into()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-2!key".into()),
+                connection_state_ttl: Some(120_000),
+                max_idle_interval: Some(15_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&connected).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+            .await
+            .expect("timed out waiting for reconnect ATTACH")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+
+        let disconnected = ProtocolMessage {
+            action: action::DISCONNECTED,
+            error: Some(ErrorInfo {
+                code: 80003,
+                status_code: Some(500),
+                message: "server disconnected during attach".into(),
+            }),
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&disconnected).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        let mut conn3 = tokio::time::timeout(
+            Duration::from_secs(5),
+            ws.accept_and_handshake("ch", "conn-3"),
+        )
+        .await
+        .expect("timed out waiting for reconnect after DISCONNECTED during attach")
+        .unwrap();
+        send_message(
+            &mut conn3,
+            "ch",
+            "after-disconnected-during-attach",
+            serde_json::json!("ok"),
+        )
+        .await
+        .unwrap();
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.disconnected_retry_timeout = Duration::from_millis(10);
+    timing.realtime_request_timeout = Duration::from_secs(30);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for Disconnected")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Disconnected { .. }),
+        "expected Disconnected, got {event:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for Connected after reconnect attach DISCONNECTED")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Connected),
+        "expected Connected after reconnect attach DISCONNECTED, got {event:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for message after reconnect attach DISCONNECTED")
+        .unwrap();
+    match event {
+        Event::Message(msg) => {
+            assert_eq!(
+                msg.name.as_deref(),
+                Some("after-disconnected-during-attach")
+            );
+        }
+        other => panic!("expected Message, got {other:?}"),
+    }
+
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn closed_during_reconnect_attach_stops_subscription() {
+    let http = MockServer::start();
+    let ws = MockAblyServer::start().await.unwrap();
+    mock_token_endpoint(&http, "testKey.testId");
+
+    let ws_port = ws.port;
+    let server_task = tokio::spawn(async move {
+        let conn = ws.accept_and_handshake("ch", "conn-1").await.unwrap();
+        drop(conn);
+
+        let (tcp, _) = ws.listener.accept().await.unwrap();
+        let mut conn2 = tokio_tungstenite::accept_async(tcp).await.unwrap();
+        let connected = ProtocolMessage {
+            action: action::CONNECTED,
+            connection_id: Some("conn-2".into()),
+            connection_key: Some("conn-2!key".into()),
+            connection_details: Some(ConnectionDetails {
+                connection_key: Some("conn-2!key".into()),
+                connection_state_ttl: Some(120_000),
+                max_idle_interval: Some(15_000),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&connected).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+
+        let msg = tokio::time::timeout(Duration::from_secs(5), read_protocol_msg(&mut conn2))
+            .await
+            .expect("timed out waiting for reconnect ATTACH")
+            .unwrap();
+        assert_eq!(msg.action, action::ATTACH);
+        assert_eq!(msg.channel.as_deref(), Some("ch"));
+
+        let closed = ProtocolMessage {
+            action: action::CLOSED,
+            ..Default::default()
+        };
+        conn2
+            .send(tungstenite::Message::Binary(
+                encode_msg(&closed).unwrap().into(),
+            ))
+            .await
+            .unwrap();
+        expect_websocket_closed(&mut conn2).await.unwrap();
+    });
+
+    let mut timing = TimingConfig::default();
+    timing.disconnected_retry_timeout = Duration::from_millis(10);
+    timing.realtime_request_timeout = Duration::from_secs(30);
+    let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
+        .await
+        .unwrap();
+
+    assert!(matches!(sub.next().await.unwrap(), Event::Connected));
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for Disconnected")
+        .unwrap();
+    assert!(
+        matches!(event, Event::Disconnected { .. }),
+        "expected Disconnected, got {event:?}"
+    );
+
+    let event = tokio::time::timeout(Duration::from_secs(5), sub.next())
+        .await
+        .expect("timed out waiting for subscription to end after CLOSED during attach");
+    assert!(
+        event.is_none(),
+        "expected stream end after CLOSED, got {event:?}"
+    );
+
+    server_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn superseded_reconnect_attach_timeout_retries_channel_on_same_transport() {
     let http = MockServer::start();
     let ws = MockAblyServer::start().await.unwrap();
