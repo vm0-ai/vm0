@@ -18,6 +18,7 @@ import {
   getOrgDefaultModelProvider,
   getOrgAnyDefaultModelProvider,
   getModelProviderByIdForOrg,
+  getOrgModelProviderByType,
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
@@ -315,21 +316,28 @@ export async function resolveModelProviderSecrets(
     defaultProvider,
     explicitModelProvider,
   );
-  // Only borrow `selectedModel` / `authMethod` from the workspace default when
-  // its `type` matches the resolved `providerType`. When an explicit
+  // Only borrow `selectedModel` / `authMethod` from a provider row that
+  // actually matches the resolved `providerType`. When an explicit
   // `modelProvider` request differs from the workspace default's type (e.g.
   // workspace default is `claude-code-oauth-token` with selectedModel
   // `claude-sonnet-4-5`, request asks for `openai-api-key`), passing the
   // foreign selectedModel through would inject `OPENAI_MODEL=claude-sonnet-4-5`
-  // and the codex CLI would refuse to run. Falls back to
-  // `getDefaultModel(providerType)` inside `resolveEnvironmentMapping`.
-  const matchingDefault =
-    defaultProvider && defaultProvider.type === providerType
-      ? defaultProvider
-      : null;
+  // and the codex CLI would refuse to run.
+  //
+  // When defaultProvider is for the wrong type AND we have an explicit type
+  // override (no modelProviderId pin), look up the explicit provider's row
+  // by type so vm0/multi-auth flows still see their stored selectedModel/
+  // authMethod. Falls back to undefined when no row exists, in which case
+  // `resolveEnvironmentMapping` uses `getDefaultModel(providerType)`.
+  let matchingProvider: typeof defaultProvider = null;
+  if (defaultProvider && defaultProvider.type === providerType) {
+    matchingProvider = defaultProvider;
+  } else if (explicitModelProvider && !modelProviderId) {
+    matchingProvider = await getOrgModelProviderByType(orgId, providerType);
+  }
   // selectedModelOverride (from agent/schedule config) takes precedence over provider's stored model
   const selectedModel =
-    selectedModelOverride ?? matchingDefault?.selectedModel ?? undefined;
+    selectedModelOverride ?? matchingProvider?.selectedModel ?? undefined;
 
   // Handle VM0 managed provider (meta-provider resolution)
   if (providerType === "vm0") {
@@ -347,7 +355,7 @@ export async function resolveModelProviderSecrets(
       orgId,
       secretUserId,
       providerType,
-      matchingDefault?.authMethod,
+      matchingProvider?.authMethod,
       selectedModel,
     );
     return (

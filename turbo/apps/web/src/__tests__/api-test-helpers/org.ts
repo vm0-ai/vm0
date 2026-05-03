@@ -8,6 +8,7 @@ export {
   deleteOrgCacheEntry,
   insertOrgMembersEntry,
   insertOrgDefaultModelProvider,
+  insertOrgNonDefaultModelProvider,
   deleteTestModelProvider,
   setOrgCredits,
   lockOrgAndSetCredits,

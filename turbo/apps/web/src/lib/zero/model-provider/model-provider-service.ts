@@ -1130,6 +1130,59 @@ export async function getOrgAnyDefaultModelProviderType(
  * Get a specific model provider by ID, scoped to an org.
  * Returns null if the provider doesn't belong to the org.
  */
+/**
+ * Get the org-level model provider row for a specific type.
+ *
+ * Used by `resolveModelProviderSecrets` when the request explicitly overrides
+ * `modelProvider` with a type that differs from the workspace default — we
+ * need the explicit provider's `selectedModel` / `authMethod` rather than
+ * borrowing them from the unrelated default.
+ *
+ * Returns null when the org has no row of that type, in which case downstream
+ * resolution falls back to `getDefaultModel(providerType)` for the model and
+ * skips multi-auth resolution (consistent with no-secret-set behavior).
+ */
+export async function getOrgModelProviderByType(
+  orgId: string,
+  type: ModelProviderType,
+): Promise<ModelProviderInfo | null> {
+  const [row] = await globalThis.services.db
+    .select({
+      id: modelProviders.id,
+      type: modelProviders.type,
+      isDefault: modelProviders.isDefault,
+      selectedModel: modelProviders.selectedModel,
+      authMethod: modelProviders.authMethod,
+      secretName: secrets.name,
+      createdAt: modelProviders.createdAt,
+      updatedAt: modelProviders.updatedAt,
+    })
+    .from(modelProviders)
+    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.type, type),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+  if (!(row.type in MODEL_PROVIDER_TYPES)) return null;
+
+  return toModelProviderInfo({
+    id: row.id,
+    type: row.type as ModelProviderType,
+    secretName: row.secretName,
+    authMethod: row.authMethod,
+    isDefault: row.isDefault,
+    selectedModel: row.selectedModel,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
 export async function getModelProviderByIdForOrg(
   orgId: string,
   providerId: string,

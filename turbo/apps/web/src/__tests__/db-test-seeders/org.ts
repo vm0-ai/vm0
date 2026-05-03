@@ -233,6 +233,35 @@ export async function insertOrgDefaultModelProvider(
 }
 
 /**
+ * Insert an org-level non-default model provider directly in the database.
+ *
+ * Companion to `insertOrgDefaultModelProvider` for tests that need to seed
+ * a coexisting provider row that the workspace's single-default invariant
+ * (#11743) precludes from being marked default. Used by resolver tests that
+ * exercise the explicit-modelProvider override path: the request's
+ * `modelProvider` differs from the workspace default's type and the resolver
+ * must look up the explicit row by type to surface its `selectedModel` /
+ * `authMethod`.
+ *
+ * @why-db-direct Tests need a non-default org-level provider; the public
+ * `setup` API marks the inserted row as default when none exists.
+ */
+export async function insertOrgNonDefaultModelProvider(
+  orgId: string,
+  type: string,
+  selectedModel?: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(modelProviders).values({
+    type,
+    userId: ORG_SENTINEL_USER_ID,
+    orgId,
+    isDefault: false,
+    selectedModel: selectedModel ?? null,
+  });
+}
+
+/**
  * Delete a model provider row by id. Used by tests that need to simulate
  * a provider deletion after rows referencing it (e.g. chat threads with an
  * eager-pinned modelProviderId) have already been created.

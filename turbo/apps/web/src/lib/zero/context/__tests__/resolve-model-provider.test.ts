@@ -5,6 +5,7 @@ import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestOrg,
   insertOrgDefaultModelProvider,
+  insertOrgNonDefaultModelProvider,
 } from "../../../../__tests__/api-test-helpers";
 import { getTestModelProviderIdByType } from "../../../../__tests__/db-test-assertions/org";
 import { mockClerk } from "../../../../__tests__/clerk-mock";
@@ -117,6 +118,39 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     // Post-fix it must be undefined so resolveEnvironmentMapping falls back
     // to getDefaultModel("openai-api-key") = "gpt-5.5".
     expect(result.selectedModel).toBeUndefined();
+  });
+
+  it("uses explicit provider's stored selectedModel when its type differs from workspace default (#11743)", async () => {
+    // Companion to the leak test above: when the workspace default is one
+    // type but the explicit override has its own non-default row in the same
+    // org, the resolver MUST surface that row's selectedModel — otherwise
+    // vm0 (which throws without selectedModel) and explicit BYOK overrides
+    // lose their per-provider model pin. Regression observed in t54-1
+    // (vm0 meta-provider — firewall billable) after the workspace-scoping
+    // change.
+    const userId = uniqueId("explicit-row-lookup");
+    const orgId = await setupOrg(userId);
+    await insertOrgDefaultModelProvider(
+      orgId,
+      "claude-code-oauth-token",
+      "claude-sonnet-4-6",
+    );
+    await insertOrgNonDefaultModelProvider(
+      orgId,
+      "openai-api-key",
+      "gpt-5.4-mini",
+    );
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      "codex",
+      false,
+      "openai-api-key",
+    );
+
+    expect(result.resolvedModelProvider).toBe("openai-api-key");
+    expect(result.framework).toBe("codex");
+    expect(result.selectedModel).toBe("gpt-5.4-mini");
   });
 
   it("provider's framework wins when modelProviderId pin disagrees with compose framework (#11616)", async () => {
