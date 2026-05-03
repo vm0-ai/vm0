@@ -466,6 +466,41 @@ fn streaming_monitor_normal_exit() {
     let _ = handle.join();
 }
 
+/// A cleanly exiting streaming process should not wait for the timeout watchdog
+/// before reporting `MSG_PROCESS_EXIT`.
+#[test]
+fn streaming_monitor_clean_exit_returns_before_long_timeout() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+    use std::time::Instant;
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    read_and_discard_message(&mut host_stream); // MSG_READY
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let start = Instant::now();
+    send_spawn_watch(&mut host_stream, 1, "printf clean-exit", None, 60_000);
+    let (pid, stdout_data, exit_code, stderr) = read_streaming_result(&mut host_stream, 1);
+    let elapsed = start.elapsed();
+
+    assert!(pid > 0);
+    assert_eq!(exit_code, 0);
+    assert_eq!(String::from_utf8_lossy(&stdout_data), "clean-exit");
+    assert_eq!(stderr, b"");
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "clean exit should not wait for 60s watchdog timeout, took {elapsed:?}",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
 /// `MSG_SPAWN_WATCH_RESULT` must arrive before stdout chunks for that pid.
 /// The host only registers the stdout stream after processing the spawn
 /// result, so a chunk sent first would be dropped by older host code.
@@ -779,6 +814,55 @@ fn exec_returns_when_orphaned_grandchild_holds_stdout() {
     let _ = std::process::Command::new("pkill")
         .args(["-f", "sleep 30"])
         .status();
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+/// Output written by an inherited-fd grandchild within the drain deadline must
+/// still be included after the foreground shell exits.
+#[test]
+fn exec_captures_grandchild_output_before_drain_deadline() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+    use std::time::Instant;
+
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    read_and_discard_message(&mut host_reader); // MSG_READY
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(8)))
+        .unwrap();
+
+    let start = Instant::now();
+    let (code, stdout, stderr) = send_exec_and_read_result(
+        &mut host_writer,
+        &mut host_reader,
+        1,
+        "echo stdout-early; echo stderr-early >&2; { sleep 1; echo stdout-late; echo stderr-late >&2; } &",
+        0,
+    );
+    let elapsed = start.elapsed();
+
+    assert_eq!(code, 0);
+    assert_eq!(
+        String::from_utf8_lossy(&stdout),
+        "stdout-early\nstdout-late\n"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&stderr),
+        "stderr-early\nstderr-late\n"
+    );
+    assert!(
+        elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS),
+        "late output should be captured before drain deadline, took {elapsed:?}",
+    );
+
     drop(host_writer);
     drop(host_reader);
     let _ = handle.join();
