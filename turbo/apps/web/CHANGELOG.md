@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.330.4](https://github.com/vm0-ai/vm0/compare/web-v12.330.3...web-v12.330.4) (2026-05-03)
+
+
+### Bug Fixes
+
+* **zero:** respect resolved framework on session continue ([#11728](https://github.com/vm0-ai/vm0/issues/11728)) ([#11730](https://github.com/vm0-ai/vm0/issues/11730)) ([f924611](https://github.com/vm0-ai/vm0/commit/f924611fd5eb86ed10d19be8195c0e0f6b335fb8))
+
 ## [12.330.3](https://github.com/vm0-ai/vm0/compare/web-v12.330.2...web-v12.330.3) (2026-05-03)
 
 

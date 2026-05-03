@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.6](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.5...vsock-proto-v0.9.6) (2026-05-03)
+
+
+### Refactoring
+
+* **vsock-proto:** carry exec flags through decode ([#11712](https://github.com/vm0-ai/vm0/issues/11712)) ([0518e37](https://github.com/vm0-ai/vm0/commit/0518e37c7f8f7def316abd857be74201d5c268ed))
+
 ## [0.9.5](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.4...vsock-proto-v0.9.5) (2026-05-03)
 
 

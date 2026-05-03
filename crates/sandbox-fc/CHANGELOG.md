@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.8...sandbox-fc-v0.27.9) (2026-05-03)
+
+
+### Documentation
+
+* **sandbox-fc:** document network errors ([#11724](https://github.com/vm0-ai/vm0/issues/11724)) ([ab92ae8](https://github.com/vm0-ai/vm0/commit/ab92ae8c69d2c99cad1c204d3c569e909f7dfdc9))
+
 ## [0.27.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.7...sandbox-fc-v0.27.8) (2026-05-03)
 
 ## [0.27.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.6...sandbox-fc-v0.27.7) (2026-05-01)

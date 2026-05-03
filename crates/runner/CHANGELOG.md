@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.99.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.7...runner-rs-v0.99.8) (2026-05-03)
+
+
+### Bug Fixes
+
+* suppress runner debug logs ([#11727](https://github.com/vm0-ai/vm0/issues/11727)) ([2c47f5c](https://github.com/vm0-ai/vm0/commit/2c47f5cc1cd1b4906984adb3f0615f7edb622979))
+
+
+### Refactoring
+
+* dedupe guest download manifest conversion ([#11731](https://github.com/vm0-ai/vm0/issues/11731)) ([e1f5cb4](https://github.com/vm0-ai/vm0/commit/e1f5cb464bb4d9fdb6352ff9d3de20896536b471))
+* **runner:** share api client response handling ([#11725](https://github.com/vm0-ai/vm0/issues/11725)) ([006e356](https://github.com/vm0-ai/vm0/commit/006e356bdf484bb9321a47330abac7dd168943c2))
+
 ## [0.99.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.6...runner-rs-v0.99.7) (2026-05-03)
 
 
