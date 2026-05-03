@@ -425,7 +425,10 @@ function SidebarNavContent() {
         className="zero-nav hidden md:flex data-[sidebar-off]:md:hidden data-[sidebar-expanded]:max-md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl"
       >
         {/* Organization switcher */}
-        <div className="shrink-0 px-2 pt-1.5 pb-0">
+        <div
+          className="shrink-0 px-2 pb-0"
+          style={{ paddingTop: "calc(0.375rem + env(safe-area-inset-top))" }}
+        >
           <div className="flex items-center justify-between gap-2 rounded-lg py-0.5">
             <div className="min-w-0 flex-1">
               <ZeroOrgSwitcher />
