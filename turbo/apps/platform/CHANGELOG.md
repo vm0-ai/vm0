@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.321.4](https://github.com/vm0-ai/vm0/compare/app-v0.321.3...app-v0.321.4) (2026-05-03)
+
+
+### Performance Improvements
+
+* **platform:** cache feature switches via swr local storage ([#11729](https://github.com/vm0-ai/vm0/issues/11729)) ([adcc8a7](https://github.com/vm0-ai/vm0/commit/adcc8a7cbbce72257228baf076418438d8c1475e))
+
 ## [0.321.3](https://github.com/vm0-ai/vm0/compare/app-v0.321.2...app-v0.321.3) (2026-05-03)
 
 
