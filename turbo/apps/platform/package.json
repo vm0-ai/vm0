@@ -26,7 +26,7 @@
     "@tiptap/markdown": "^3.20.4",
     "@tiptap/pm": "^3.20.4",
     "@tiptap/react": "^3.20.4",
-    "@tiptap/starter-kit": "^3.20.4",
+    "@tiptap/starter-kit": "^3.22.5",
     "@ts-rest/core": "3.53.0-rc.1",
     "@uiw/react-markdown-preview": "^5.1.5",
     "@vm0/api-contracts": "workspace:*",
@@ -54,8 +54,8 @@
     "@testing-library/user-event": "^14.6.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@typescript-eslint/rule-tester": "^8.59.0",
-    "@typescript-eslint/utils": "^8.59.0",
+    "@typescript-eslint/rule-tester": "^8.59.1",
+    "@typescript-eslint/utils": "^8.59.1",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/browser-playwright": "4.1.5",
     "@vm0/eslint-config": "workspace:*",
@@ -70,7 +70,7 @@
     "playwright": "1.59.1",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.59.0",
+    "typescript-eslint": "^8.59.1",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"
   }
