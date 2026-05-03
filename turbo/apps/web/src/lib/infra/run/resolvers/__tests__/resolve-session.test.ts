@@ -55,4 +55,14 @@ describe("resolveSession — artifacts passthrough", () => {
 
     expect(resolution.artifacts).toEqual([]);
   });
+
+  it("populates sessionFramework from conversation.cliAgentType", async () => {
+    const { runId } = await createTestRun(composeId, "framework field run");
+    const { agentSessionId } = await completeTestRun(user.userId, runId);
+    await setTestSessionFramework(agentSessionId, "codex");
+
+    const resolution = await resolveSession(agentSessionId, user.userId);
+
+    expect(resolution.sessionFramework).toBe("codex");
+  });
 });

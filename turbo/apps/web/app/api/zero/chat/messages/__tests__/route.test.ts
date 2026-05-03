@@ -13,7 +13,9 @@ import {
   getTestRun,
   getTestChatMessagesByThread,
   countUserRows,
+  completeTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { setTestSessionFramework } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
   getTestChatThreadModelOverride,
   getTestModelProviderIdByType,
@@ -1250,6 +1252,143 @@ describe("POST /api/zero/chat/messages", () => {
         const job = await findTestRunnerJobEntry(runId);
         expect(job).toBeDefined();
         expect(job!.executionContext.cliAgentType).toBe("claude-code");
+      });
+    });
+
+    describe("session continue framework derivation (Issue #11728)", () => {
+      // Production regression: chat thread eager-pinned to an
+      // openai-api-key provider on a compose declaring framework:
+      // claude-code. The first message dispatches cliAgentType=codex
+      // (from #11649), which the runner persists onto
+      // conversation.cliAgentType. Pre-fix, the second message failed
+      // because resolveSession compared the compose's literal framework
+      // ("claude-code") against the conversation's recorded framework
+      // ("codex"). Post-fix, the framework-compatibility check moved
+      // to build-zero-context and uses resolvedFramework.
+      it("dispatches cliAgentType=codex on the second message of an openai-pinned thread", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("continue-codex"),
+          { noEnvironmentBlock: true },
+        );
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          composeAgentId,
+          providerId,
+          "gpt-5",
+        );
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "first",
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId, runId } = await first.json();
+        await context.mocks.flushAfter();
+
+        // Fake the runner completion: creates conversation +
+        // agent_session. Stamp cliAgentType=codex on the conversation
+        // to mirror the post-#11649 webhook behavior (the
+        // createTestCheckpoint helper defaults to "test-agent").
+        const { agentSessionId } = await completeTestRun(user.userId, runId);
+        await setTestSessionFramework(agentSessionId, "codex");
+
+        const second = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "second",
+              threadId,
+            }),
+          }),
+        );
+        expect(second.status).toBe(201);
+        const { runId: secondRunId } = await second.json();
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(secondRunId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
+      });
+
+      it("fails the second-message run when resolvedFramework no longer matches the conversation's framework", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("continue-codex-mismatch"),
+          { noEnvironmentBlock: true },
+        );
+
+        // Force the cross-framework fallback path (no eager-pin on the
+        // agent or thread, so the route relies on the org default). On
+        // the first message the only default is openai-api-key (codex);
+        // on the second message we flip it back to anthropic-api-key
+        // (claude-code) to surface the framework mismatch against the
+        // conversation's persisted cliAgentType=codex.
+        const anthropicId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await deleteTestModelProvider(anthropicId);
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "first",
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId, runId } = await first.json();
+        await context.mocks.flushAfter();
+
+        const { agentSessionId } = await completeTestRun(user.userId, runId);
+        await setTestSessionFramework(agentSessionId, "codex");
+
+        // Flip the org default back to anthropic-api-key so the
+        // resolved framework for the second message is claude-code.
+        const codexId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+        await deleteTestModelProvider(codexId);
+        await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+
+        const second = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "second",
+              threadId,
+            }),
+          }),
+        );
+        // Phase 1 admits the run; the framework-compat check runs in
+        // Phase 2 (deferred dispatch) and surfaces as a failed run.
+        expect(second.status).toBe(201);
+        const { runId: secondRunId } = await second.json();
+        await context.mocks.flushAfter();
+
+        const failedRun = await getTestRun(secondRunId);
+        expect(failedRun.status).toBe("failed");
+        expect(failedRun.error).toMatch(
+          /framework changed from "codex" to "claude-code"/,
+        );
       });
     });
 

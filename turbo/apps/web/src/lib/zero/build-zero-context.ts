@@ -50,6 +50,7 @@ import {
   verifyOrgAccessForResume,
   resolveComposeFromId,
   checkProviderCompatibility,
+  checkFrameworkCompatibility,
   applyResolutionDefaults,
 } from "./context/resolve-source";
 
@@ -554,6 +555,7 @@ export async function resolveCliRunContext(
     environment,
     secretConnectorMap,
     resolvedModelProvider,
+    resolvedFramework,
     modelProviderConfig,
     selectedModel,
     connectorPermissionConfigs,
@@ -563,8 +565,9 @@ export async function resolveCliRunContext(
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
-  // Step 5: Provider compatibility check for session continues.
+  // Step 5: Compatibility checks for session continues.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
+  checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
 
   // Build permission manifest
   const permissionResult = mergePermissions(
@@ -735,10 +738,14 @@ export async function buildZeroExecutionContext(
   const userTimezone =
     params.preloadedUserTimezone ?? userPrefs?.timezone ?? undefined;
 
-  // Step 5: Provider compatibility check for session continues.
-  // When resuming a session, verify the new provider is compatible with the
-  // original provider to avoid mid-conversation base URL mismatches.
+  // Step 5: Compatibility checks for session continues.
+  // - Provider: avoid mid-conversation base URL mismatches.
+  // - Framework: persisted cliAgentSessionHistory is in the previous
+  //   framework's format; switching binaries mid-thread can't replay it.
+  //   resolvedFramework is the source of truth (provider-derived since
+  //   #11649); the compose's `framework` field is no longer authoritative.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
+  checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
 
   // Build permission manifest (base + auth entries for the runner).
   const permissionResult = mergePermissions(

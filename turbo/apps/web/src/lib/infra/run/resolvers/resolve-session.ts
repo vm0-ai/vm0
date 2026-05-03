@@ -8,7 +8,7 @@ import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";
-import { extractWorkingDir, extractCliAgentType } from "../utils";
+import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
 
 const log = logger("run:resolve-session");
@@ -22,7 +22,7 @@ const log = logger("run:resolve-session");
  * @returns ConversationResolution with all data needed to build execution context
  * @throws NotFoundError if session or related data not found
  * @throws UnauthorizedError if session doesn't belong to user
- * @throws BadRequestError if session data is invalid or framework changed
+ * @throws BadRequestError if session data is invalid
  */
 export async function resolveSession(
   sessionId: string,
@@ -55,11 +55,11 @@ export async function resolveSession(
   const conversation = session.conversation;
 
   // Run independent operations in parallel:
-  // - Compose → version → framework check chain (needs session.agentComposeId)
+  // - Compose → version chain (needs session.agentComposeId)
   // - Session history from R2 (needs session.conversation)
   // - Last run vars (needs conversation.runId)
   const [composeResult, sessionHistory, lastRunResult] = await Promise.all([
-    // Compose → version → framework check (serial chain)
+    // Compose → version (serial chain)
     (async () => {
       const [compose] = await globalThis.services.db
         .select()
@@ -87,16 +87,6 @@ export async function resolveSession(
 
       if (!version) {
         throw notFound(`Agent compose version ${versionId} not found`);
-      }
-
-      // Framework compatibility check: block continue if framework changed
-      const headFramework = extractCliAgentType(version.content);
-      const sessionFramework = conversation.cliAgentType;
-      if (headFramework !== sessionFramework) {
-        throw badRequest(
-          `Cannot continue session: framework changed from "${sessionFramework}" to "${headFramework}". ` +
-            `Start a new run instead.`,
-        );
       }
 
       return { versionId, version };
@@ -135,5 +125,6 @@ export async function resolveSession(
     vars: lastRunVars,
     volumeVersions: undefined,
     previousRunId: conversation.runId,
+    sessionFramework: conversation.cliAgentType,
   };
 }

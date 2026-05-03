@@ -136,5 +136,6 @@ export async function resolveCheckpoint(
     vars: agentComposeSnapshot.vars || {},
     volumeVersions: checkpointVolumeVersions?.versions,
     additionalVolumes: checkpointAdditionalVolumes,
+    sessionFramework: conversation.cliAgentType,
   };
 }

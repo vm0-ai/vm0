@@ -79,5 +79,6 @@ export async function resolveDirectConversation(
     },
     // No defaults for artifact/vars/secrets/volumeVersions - use params directly
     artifacts: [],
+    sessionFramework: conversation.cliAgentType,
   };
 }
