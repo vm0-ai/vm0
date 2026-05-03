@@ -29,7 +29,6 @@ export enum FeatureSwitchKey {
   ResendConnector = "resendConnector",
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
-  UsageAnalytics = "usageAnalytics",
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
   Lab = "lab",
@@ -53,7 +52,6 @@ export enum FeatureSwitchKey {
 
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
-  GumroadConnector = "gumroadConnector",
   CodexBeta = "codexBeta",
   IdbMessage = "idbMessage",
   SkeletonNoPreload = "skeletonNoPreload",

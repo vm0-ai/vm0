@@ -1,4 +1,3 @@
-import { FeatureSwitchKey } from "../feature-switch-key";
 import type { ConnectorConfig } from "../connectors";
 
 export const gumroad = {
@@ -9,7 +8,6 @@ export const gumroad = {
     environmentMapping: {
       GUMROAD_TOKEN: "$secrets.GUMROAD_ACCESS_TOKEN",
     },
-    featureFlag: FeatureSwitchKey.GumroadConnector,
     helpText:
       "Connect your Gumroad account to manage products, retrieve sales data, handle customers, and verify license keys",
     authMethods: {

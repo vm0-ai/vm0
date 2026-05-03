@@ -160,12 +160,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the data export option in account menu",
     enabled: false,
   },
-  [FeatureSwitchKey.UsageAnalytics]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show admin-only daily credits chart and per-run records on Usage page",
-    enabled: true,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -293,12 +287,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.GumroadConnector]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable the Gumroad creator commerce connector (api-token + OAuth).",
-    enabled: true,
-  },
   [FeatureSwitchKey.CodexBeta]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -314,8 +302,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Cache chat thread messages in IndexedDB for instant cold open. " +
       "When off, every thread open fetches messages from the server.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.SkeletonNoPreload]: {
     maintainer: "ethan@vm0.ai",
@@ -323,8 +310,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Hide the app skeleton without awaiting agents/avatar prefetch. " +
       "When on, the skeleton hides as soon as the route resolves, " +
       "letting components render with their own loading states.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
 };
 
