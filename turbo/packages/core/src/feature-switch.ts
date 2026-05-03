@@ -302,8 +302,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Cache chat thread messages in IndexedDB for instant cold open. " +
       "When off, every thread open fetches messages from the server.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.SkeletonNoPreload]: {
     maintainer: "ethan@vm0.ai",
@@ -311,7 +310,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Hide the app skeleton without awaiting agents/avatar prefetch. " +
       "When on, the skeleton hides as soon as the route resolves, " +
       "letting components render with their own loading states.",
-    enabled: true,
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 
