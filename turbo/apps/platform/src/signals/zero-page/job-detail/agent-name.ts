@@ -6,7 +6,7 @@ import { search } from "../../location.ts";
 // ---------------------------------------------------------------------------
 
 const internalAgentName$ = state<string | null>(null);
-export const setZeroJobAgentName$ = command(({ set }, name: string | null) => {
+export const setAgentName$ = command(({ set }, name: string | null) => {
   set(internalAgentName$, name);
 });
 
@@ -36,11 +36,11 @@ function getInitialTab(): string {
 
 const internalActiveTab$ = state("authorization");
 
-export const zeroJobActiveTab$ = computed((get) => {
+export const agentActiveTab$ = computed((get) => {
   return get(internalActiveTab$);
 });
 
-export const setZeroJobActiveTab$ = command(({ set }, tab: string) => {
+export const setAgentActiveTab$ = command(({ set }, tab: string) => {
   set(internalActiveTab$, tab);
   const url = new URL(location.href);
   if (tab === "authorization") {

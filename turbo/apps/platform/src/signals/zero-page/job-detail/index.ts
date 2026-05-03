@@ -1,48 +1,48 @@
 import { command } from "ccstate";
 
-import { setZeroJobAgentName$, resetActiveTab$ } from "./agent-name.ts";
-import { discardZeroJobEdit$ } from "./instructions.ts";
-import { discardJobConnectorsDraft$ } from "./connectors.ts";
+import { setAgentName$, resetActiveTab$ } from "./agent-name.ts";
+import { discardAgentEdit$ } from "./instructions.ts";
+import { discardAgentConnectorsDraft$ } from "./connectors.ts";
 
 // ---------------------------------------------------------------------------
 // Public re-exports
 // ---------------------------------------------------------------------------
 
-export { zeroJobActiveTab$, setZeroJobActiveTab$ } from "./agent-name.ts";
+export { agentActiveTab$, setAgentActiveTab$ } from "./agent-name.ts";
 
-export { zeroJobDetail$, reloadJobDetail$ } from "./detail.ts";
+export { agentDetail$, reloadAgentDetail$ } from "./detail.ts";
 
 export {
-  zeroJobInstructions$,
-  zeroJobEditedContent$,
-  zeroJobInstructionsDirty$,
-  setZeroJobEditedContent$,
-  discardZeroJobEdit$,
-  buildZeroJobInstructions$,
+  agentInstructions$,
+  agentEditedContent$,
+  agentInstructionsDirty$,
+  setAgentEditedContent$,
+  discardAgentEdit$,
+  buildAgentInstructions$,
 } from "./instructions.ts";
 
-export { zeroJobUpdateSettings$ } from "./settings.ts";
+export { updateAgentSettings$ } from "./settings.ts";
 
 export {
-  zeroJobAuthorizedConnectors$,
-  zeroJobConnectorsDirty$,
-  authorizeJobConnector$,
-  deauthorizeJobConnector$,
-  discardJobConnectorsDraft$,
-  saveJobConnectors$,
+  agentAuthorizedConnectors$,
+  agentConnectorsDirty$,
+  authorizeAgentConnector$,
+  deauthorizeAgentConnector$,
+  discardAgentConnectorsDraft$,
+  saveAgentConnectors$,
 } from "./connectors.ts";
 
 export {
-  zeroJobScheduleEntries$,
-  saveZeroJobSchedule$,
-  toggleZeroJobScheduleEnabled$,
-  deleteZeroJobSchedule$,
+  agentScheduleEntries$,
+  saveAgentSchedule$,
+  toggleAgentScheduleEnabled$,
+  deleteAgentSchedule$,
 } from "./schedule.ts";
-export type { ZeroJobScheduleSaveParams } from "./schedule.ts";
+export type { AgentScheduleSaveParams } from "./schedule.ts";
 
-export { zeroJobPermissionPolicies$ } from "./permissions.ts";
+export { agentPermissionPolicies$ } from "./permissions.ts";
 
-export { deleteZeroJobAgent$ } from "./delete.ts";
+export { deleteAgent$ } from "./delete.ts";
 
 // ---------------------------------------------------------------------------
 // Set active agent — sets the agent name and resets draft states.
@@ -51,8 +51,8 @@ export { deleteZeroJobAgent$ } from "./delete.ts";
 // ---------------------------------------------------------------------------
 
 export const setActiveAgent$ = command(({ set }, agentName: string) => {
-  set(setZeroJobAgentName$, agentName);
+  set(setAgentName$, agentName);
   set(resetActiveTab$);
-  set(discardZeroJobEdit$);
-  set(discardJobConnectorsDraft$);
+  set(discardAgentEdit$);
+  set(discardAgentConnectorsDraft$);
 });
