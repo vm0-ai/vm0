@@ -8,6 +8,24 @@
       // total white-screen duration up to the first `hideAppSkeleton$` call.
       window.__appBootstrapStart = performance.now();
     </script>
+    <script>
+      // Preconnect to the Clerk Frontend API host so the DNS+TCP+TLS
+      // handshake overlaps with bundle download. The publishable key is
+      // shaped pk_<env>_<base64(host$)>; decoding it here avoids hard-coding
+      // the FAPI domain per environment.
+      (function () {
+        var k = "%VITE_CLERK_PUBLISHABLE_KEY%";
+        var m = /^pk_(?:test|live)_(.+)$/.exec(k);
+        if (!m) return;
+        var host = atob(m[1]).replace(/\$+$/, "");
+        if (!/^[a-z0-9.-]+$/i.test(host)) return;
+        var l = document.createElement("link");
+        l.rel = "preconnect";
+        l.href = "https://" + host;
+        l.crossOrigin = "anonymous";
+        document.head.appendChild(l);
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="manifest" href="/manifest.webmanifest" />
