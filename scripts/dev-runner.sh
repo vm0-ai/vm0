@@ -16,6 +16,23 @@ CRATES_DIR="$PROJECT_ROOT/crates"
 
 log() { echo "[runner] $1" >&2; }
 
+shell_env_assignments() {
+  local output=""
+  local name
+  local value
+
+  while (($#)); do
+    name="$1"
+    value="${2-}"
+    shift 2
+
+    value=${value//\'/\'\\\'\'}
+    output+="$name='$value' "
+  done
+
+  printf "%s" "${output% }"
+}
+
 # --- Load config ---
 ENV_FILE="$SCRIPT_DIR/.env.local"
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -93,7 +110,11 @@ cmd_deploy() {
   # ansible/playbooks/build-runner.yml's R2 env block. Applied to both
   # `gc` (sweeps shared R2 objects older than 7d) and `build` (pulls
   # cached rootfs instead of rebuilding ~3-5min locally).
-  R2_ENV="R2_ACCOUNT_ID='${R2_ACCOUNT_ID:-}' R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID:-}' R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY:-}' R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME:-}'"
+  R2_ENV="$(shell_env_assignments \
+    R2_ACCOUNT_ID "${R2_ACCOUNT_ID:-}" \
+    R2_ACCESS_KEY_ID "${R2_ACCESS_KEY_ID:-}" \
+    R2_SECRET_ACCESS_KEY "${R2_SECRET_ACCESS_KEY:-}" \
+    R2_USER_STORAGES_BUCKET_NAME "${R2_USER_STORAGES_BUCKET_NAME:-}")"
 
   # Clean up old images (keep 3 most recent deploys)
   ssh_cmd "sudo $R2_ENV $REMOTE_BIN_DIR/runner gc --keep-latest 3"
