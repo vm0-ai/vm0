@@ -17,6 +17,10 @@ export default defineConfig({
       // Mock ably in tests so setupRealtime$ creates a fake channel and
       // setAblyLoop$ uses the real subscribe/deferred code path.
       ably: path.resolve(__dirname, "./src/mocks/ably.ts"),
+      // Mock idb in tests so the IdbMessage feature switch doesn't trigger
+      // real IndexedDB operations in happy-dom. The IDB-cached data source
+      // falls through to the remote (MSW-mocked) path on openDB rejection.
+      idb: path.resolve(__dirname, "./src/mocks/idb.ts"),
     },
   },
   define: {
