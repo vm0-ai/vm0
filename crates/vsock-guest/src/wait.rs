@@ -1,8 +1,8 @@
 use std::process::{Child, ExitStatus};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, mpsc};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::drain::drain_into_vec_cancellable;
 use crate::process::{extract_exit_code, kill_process_tree};
@@ -26,6 +26,71 @@ pub(crate) enum WaitOutcome {
     WaitFailed(String),
 }
 
+/// Watchdog that kills a child process tree if it is not stood down before
+/// `timeout` elapses.
+#[must_use = "watchdogs must be stood down and joined so timeout verdicts are observed"]
+pub(crate) struct KillWatchdog {
+    done_tx: Option<mpsc::Sender<()>>,
+    handle: thread::JoinHandle<bool>,
+}
+
+impl KillWatchdog {
+    pub(crate) fn spawn(child_id: u32, timeout: Duration) -> Self {
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        let handle = thread::spawn(move || -> bool {
+            if done_rx.recv_timeout(timeout).is_err() {
+                // SAFETY: child_id is a valid PID from Command::spawn.
+                return unsafe { kill_process_tree(child_id) };
+            }
+            false
+        });
+
+        Self {
+            done_tx: Some(done_tx),
+            handle,
+        }
+    }
+
+    /// Stand the watchdog down without joining it yet.
+    ///
+    /// This lets callers preserve existing timing where the child has exited,
+    /// the watchdog is disarmed immediately, and the join verdict is collected
+    /// after other cleanup work.
+    pub(crate) fn stand_down(&mut self) {
+        if let Some(done_tx) = self.done_tx.take() {
+            let _ = done_tx.send(());
+        }
+    }
+
+    pub(crate) fn join(mut self) -> bool {
+        self.stand_down();
+        self.handle.join().unwrap_or(false)
+    }
+}
+
+/// Wait for drain workers to complete within the shared drain deadline, then
+/// cancel any laggards.
+pub(crate) fn await_drain_deadline(
+    done_rx: &mpsc::Receiver<()>,
+    expected: usize,
+    cancel: &AtomicBool,
+) -> usize {
+    let deadline = Instant::now() + Duration::from_secs(DRAIN_DEADLINE_SECS);
+    let mut completed = 0usize;
+    while completed < expected {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            break;
+        }
+        match done_rx.recv_timeout(remaining) {
+            Ok(()) => completed += 1,
+            Err(_) => break,
+        }
+    }
+    cancel.store(true, Ordering::Release);
+    completed
+}
+
 /// Wait for `child` to exit, optionally killing it after `timeout_ms`.
 /// `timeout_ms == 0` means "no timeout".
 ///
@@ -34,8 +99,6 @@ pub(crate) enum WaitOutcome {
 /// otherwise a child producing more than the kernel pipe buffer (~64 KB) will
 /// deadlock on its next write while we wait.
 pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitOutcome {
-    use std::sync::mpsc;
-
     if timeout_ms == 0 {
         return match child.wait() {
             Ok(s) => WaitOutcome::Exited(s),
@@ -46,22 +109,11 @@ pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitO
     let timeout = Duration::from_millis(u64::from(timeout_ms));
     let child_id = child.id();
 
-    // Channel to signal that the child has exited and the watchdog can stand down.
-    let (tx, rx) = mpsc::channel::<()>();
-
-    // Watchdog: kills the process tree if `recv_timeout` expires before the
-    // child reports exit. Its return value *is* the "did we time out?" verdict.
-    let timeout_handle = thread::spawn(move || -> bool {
-        if rx.recv_timeout(timeout).is_err() {
-            // SAFETY: child_id is a valid PID from Command::spawn.
-            return unsafe { kill_process_tree(child_id) };
-        }
-        false
-    });
-
+    // Watchdog: kills the process tree if the child does not report exit
+    // before the timeout. Its return value is the timeout verdict.
+    let watchdog = KillWatchdog::spawn(child_id, timeout);
     let status = child.wait();
-    let _ = tx.send(());
-    let killed_by_timeout = timeout_handle.join().unwrap_or(false);
+    let killed_by_timeout = watchdog.join();
 
     match status {
         Ok(_) if killed_by_timeout => WaitOutcome::TimedOut,
@@ -85,8 +137,6 @@ pub(crate) fn wait_with_drain_and_timeout(
     mut child: Child,
     timeout_ms: u32,
 ) -> (WaitOutcome, Vec<u8>, Vec<u8>) {
-    use std::sync::mpsc;
-
     // Defensive: if either pipe is missing the caller broke the
     // `spawn_with_pipes` invariant. Reap the child before returning so we
     // don't leave a zombie — `Child`'s `Drop` doesn't wait.
@@ -140,22 +190,7 @@ pub(crate) fn wait_with_drain_and_timeout(
 
     let outcome = wait_with_kill_timeout(child, timeout_ms);
 
-    // Grace period for in-flight bytes — most clean exits finish drain within
-    // a few ms. We bound the wait at DRAIN_DEADLINE_SECS to defang
-    // orphaned grandchildren that still hold the pipe.
-    let deadline = std::time::Instant::now() + Duration::from_secs(DRAIN_DEADLINE_SECS);
-    let mut completed = 0;
-    while completed < 2 {
-        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-        if remaining.is_zero() {
-            break;
-        }
-        match done_rx.recv_timeout(remaining) {
-            Ok(()) => completed += 1,
-            Err(_) => break,
-        }
-    }
-    cancel.store(true, Ordering::Release);
+    let _ = await_drain_deadline(&done_rx, 2, &cancel);
 
     let stdout_buf = stdout_handle.join().unwrap_or_default();
     let stderr_buf = stderr_handle.join().unwrap_or_default();

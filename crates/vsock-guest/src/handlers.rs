@@ -1,9 +1,8 @@
 use std::io::{self, Write};
 use std::process::Stdio;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::thread;
-use std::time::Duration;
 
 use vsock_proto::{
     self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
@@ -17,7 +16,7 @@ use crate::log::log;
 use crate::process::extract_exit_code;
 use crate::shutdown::handle_shutdown;
 use crate::wait::{
-    DRAIN_DEADLINE_SECS, WaitOutcome, finalize_buffered_result, wait_with_drain_and_timeout,
+    WaitOutcome, await_drain_deadline, finalize_buffered_result, wait_with_drain_and_timeout,
     wait_with_kill_timeout,
 };
 
@@ -162,11 +161,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
 
     let outcome = wait_with_kill_timeout(child, WRITE_TIMEOUT_MS);
 
-    // Wait for drain to finish naturally up to the deadline; otherwise cancel
-    // so the drain thread drops its fd and a still-writing grandchild gets
-    // EPIPE on its next write.
-    let _ = done_rx.recv_timeout(Duration::from_secs(DRAIN_DEADLINE_SECS));
-    cancel.store(true, Ordering::Release);
+    let _ = await_drain_deadline(&done_rx, 1, &cancel);
     let stderr = stderr_handle.join().unwrap_or_default();
 
     match outcome {

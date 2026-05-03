@@ -11,9 +11,10 @@ use crate::drain::{drain_into_vec_cancellable, drain_until_eof_or_cancelled};
 use crate::error::to_io_error;
 use crate::exec::{prepend_env, spawn_with_pipes, truncate_preview};
 use crate::log::log;
-use crate::process::{extract_exit_code, kill_process_tree};
+use crate::process::extract_exit_code;
 use crate::wait::{
-    DRAIN_DEADLINE_SECS, EXIT_CODE_TIMEOUT, finalize_buffered_result, wait_with_drain_and_timeout,
+    DRAIN_DEADLINE_SECS, EXIT_CODE_TIMEOUT, KillWatchdog, await_drain_deadline,
+    finalize_buffered_result, wait_with_drain_and_timeout,
 };
 
 pub(crate) struct SpawnWatchRequest<'a> {
@@ -148,19 +149,11 @@ fn spawn_streaming_monitor(
         // Set up timeout BEFORE the stdout loop — if the process runs past the
         // deadline it must be killed even while we are still reading output.
         let child_id = child.id();
-        let (timeout_done_tx, timeout_handle) = if timeout_ms > 0 {
+        let mut watchdog = if timeout_ms > 0 {
             let timeout = Duration::from_millis(u64::from(timeout_ms));
-            let (tx, rx) = std::sync::mpsc::channel::<()>();
-            let handle = thread::spawn(move || -> bool {
-                if rx.recv_timeout(timeout).is_err() {
-                    // SAFETY: child_id is a valid PID.
-                    return unsafe { kill_process_tree(child_id) };
-                }
-                false
-            });
-            (Some(tx), Some(handle))
+            Some(KillWatchdog::spawn(child_id, timeout))
         } else {
-            (None, None)
+            None
         };
 
         let cancel = Arc::new(AtomicBool::new(false));
@@ -251,32 +244,20 @@ fn spawn_streaming_monitor(
         // child.wait() is now UNBLOCKED — no pipe fds held by this thread.
         let status = child.wait();
 
-        // Signal timeout thread that process completed.
-        // Must send() not drop — dropping disconnects the channel, which
-        // recv_timeout treats as an error and would fire the killer.
-        if let Some(tx) = timeout_done_tx {
-            let _ = tx.send(());
+        // Signal timeout thread that process completed. This must happen
+        // before drain cleanup; otherwise a cleanly exited process could be
+        // killed while we are still draining its pipes.
+        if let Some(watchdog) = watchdog.as_mut() {
+            watchdog.stand_down();
         }
 
         // Shared drain deadline: stdout + stderr share a single budget.
         // This matches guest-agent's 5s drain behavior.
         let expected = stdout_handle.is_some() as usize + stderr_handle.is_some() as usize;
-        let deadline = std::time::Instant::now() + Duration::from_secs(DRAIN_DEADLINE_SECS);
-        let mut completed = 0usize;
-        while completed < expected {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-            match drain_done_rx.recv_timeout(remaining) {
-                Ok(()) => completed += 1,
-                Err(_) => break,
-            }
-        }
-        // Cancel either side that's still draining. The thread observes the
-        // flag within ~100 ms (poll cadence), drops its fd, and grandchild
-        // writes start failing with EPIPE.
-        cancel.store(true, Ordering::Release);
+        let completed = await_drain_deadline(&drain_done_rx, expected, &cancel);
+        // await_drain_deadline cancels either side that's still draining. The
+        // thread observes the flag within ~100 ms (poll cadence), drops its fd,
+        // and grandchild writes start failing with EPIPE.
         if completed < expected {
             log(
                 "WARN",
@@ -294,9 +275,7 @@ fn spawn_streaming_monitor(
             let _ = h.join();
         }
 
-        let killed_by_timeout = timeout_handle
-            .map(|h| h.join().unwrap_or(false))
-            .unwrap_or(false);
+        let killed_by_timeout = watchdog.map(KillWatchdog::join).unwrap_or(false);
         let (exit_code, stderr) = if killed_by_timeout {
             (EXIT_CODE_TIMEOUT, b"Timeout".to_vec())
         } else {
