@@ -16,6 +16,7 @@ mod monitor;
 mod process;
 mod shutdown;
 mod wait;
+mod writer;
 
 pub use connection::{connect_unix, connect_vsock, handle_connection, run};
 pub use log::log;

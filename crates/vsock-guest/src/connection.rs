@@ -1,6 +1,5 @@
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
-use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -10,6 +9,7 @@ use crate::error::to_io_error;
 use crate::handlers::{MessageOutcome, handle_exec, handle_message};
 use crate::log::log;
 use crate::monitor::{SpawnWatchRequest, handle_spawn_watch};
+use crate::writer::GuestWriter;
 
 // Vsock constants (only used on Linux)
 #[cfg(target_os = "linux")]
@@ -86,17 +86,14 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while writer sends process_exit
     let mut reader = stream.try_clone()?;
-    let writer = Arc::new(Mutex::new(stream));
+    let writer = GuestWriter::new(stream);
 
     let mut decoder = vsock_proto::Decoder::new();
 
     // Send ready signal
     {
         let ready = vsock_proto::encode(MSG_READY, 0, &[]).map_err(to_io_error)?;
-        // Recover from poisoned mutex: prefer sending ready over propagating a
-        // panic from an unrelated thread.
-        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-        w.write_all(&ready)?;
+        writer.write_frame(&ready)?;
     }
     log("INFO", "Sent ready signal");
 
@@ -132,7 +129,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                         stdout_log_path: d.stdout_log_path,
                     },
                     msg.seq,
-                    Arc::clone(&writer),
+                    writer.clone(),
                 )?;
             } else if msg.msg_type == MSG_EXEC {
                 log(
@@ -149,7 +146,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     .collect();
                 let sudo = d.sudo;
                 let seq = msg.seq;
-                let w = Arc::clone(&writer);
+                let w = writer.clone();
                 thread::spawn(move || {
                     let env_refs: Vec<(&str, &str)> =
                         env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
@@ -163,20 +160,17 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                             return;
                         }
                     };
-                    let mut w = w.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Err(e) = w.write_all(&encoded) {
+                    if let Err(e) = w.write_frame(&encoded) {
                         log("ERROR", &format!("Failed to send exec_result: {}", e));
                     }
                 });
             } else {
                 match handle_message(&msg)? {
                     MessageOutcome::Response(response) => {
-                        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-                        w.write_all(&response)?;
+                        writer.write_frame(&response)?;
                     }
                     MessageOutcome::Shutdown(response) => {
-                        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Err(e) = w.write_all(&response) {
+                        if let Err(e) = writer.write_frame(&response) {
                             log("WARN", &format!("Failed to send shutdown_ack: {e}"));
                         }
                         log("INFO", "Shutdown complete, exiting");

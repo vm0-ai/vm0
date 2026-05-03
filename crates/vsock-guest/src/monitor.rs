@@ -1,7 +1,6 @@
 use std::io::{self, Write};
-use std::os::unix::net::UnixStream;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -16,6 +15,7 @@ use crate::wait::{
     DRAIN_DEADLINE_SECS, EXIT_CODE_TIMEOUT, KillWatchdog, await_drain_deadline,
     finalize_buffered_result, wait_with_drain_and_timeout,
 };
+use crate::writer::GuestWriter;
 
 pub(crate) struct SpawnWatchRequest<'a> {
     pub(crate) timeout_ms: u32,
@@ -43,7 +43,7 @@ pub(crate) struct SpawnWatchRequest<'a> {
 pub(crate) fn handle_spawn_watch(
     request: SpawnWatchRequest<'_>,
     seq: u32,
-    writer: Arc<Mutex<UnixStream>>,
+    writer: GuestWriter,
 ) -> io::Result<()> {
     log(
         "INFO",
@@ -63,8 +63,7 @@ pub(crate) fn handle_spawn_watch(
         Err(e) => {
             let payload = vsock_proto::encode_error(&format!("Failed to spawn: {e}"));
             let response = vsock_proto::encode(MSG_ERROR, seq, &payload).map_err(to_io_error)?;
-            let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-            w.write_all(&response)?;
+            writer.write_frame(&response)?;
             return Ok(());
         }
     };
@@ -90,14 +89,10 @@ pub(crate) fn handle_spawn_watch(
             return Err(to_io_error(e));
         }
     };
-    {
-        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-        if let Err(e) = w.write_all(&response) {
-            drop(w);
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(e);
-        }
+    if let Err(e) = writer.write_frame(&response) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(e);
     }
 
     if request.stream_stdout {
@@ -143,7 +138,7 @@ fn spawn_streaming_monitor(
     timeout_ms: u32,
     stdout_pipe: Option<std::process::ChildStdout>,
     log_path: Option<String>,
-    writer: Arc<Mutex<UnixStream>>,
+    writer: GuestWriter,
 ) {
     thread::spawn(move || {
         // Set up timeout BEFORE the stdout loop — if the process runs past the
@@ -182,7 +177,7 @@ fn spawn_streaming_monitor(
         let stdout_handle = if let Some(stdout) = stdout_pipe {
             let cancel = cancel.clone();
             let tx = drain_done_tx.clone();
-            let stdout_writer = Arc::clone(&writer);
+            let stdout_writer = writer.clone();
             Some(thread::spawn(move || {
                 let mut log_file = match log_path.as_deref() {
                     Some(path) => match std::fs::OpenOptions::new()
@@ -223,15 +218,14 @@ fn spawn_streaming_monitor(
                     // is itself unreachable, so retaining bytes we cannot
                     // deliver buys nothing.
                     let payload = vsock_proto::encode_stdout_chunk(pid, chunk);
-                    if let Ok(msg) = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &payload) {
-                        let mut w = stdout_writer.lock().unwrap_or_else(|e| e.into_inner());
-                        if let Err(e) = w.write_all(&msg) {
-                            log(
-                                "WARN",
-                                &format!("spawn_watch: failed to send stdout chunk: {e}"),
-                            );
-                            cancel.store(true, Ordering::Release);
-                        }
+                    if let Ok(msg) = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &payload)
+                        && let Err(e) = stdout_writer.write_frame(&msg)
+                    {
+                        log(
+                            "WARN",
+                            &format!("spawn_watch: failed to send stdout chunk: {e}"),
+                        );
+                        cancel.store(true, Ordering::Release);
                     }
                 });
                 let _ = tx.send(());
@@ -305,7 +299,7 @@ fn spawn_buffered_monitor(
     pid: u32,
     child: std::process::Child,
     timeout_ms: u32,
-    writer: Arc<Mutex<UnixStream>>,
+    writer: GuestWriter,
 ) {
     thread::spawn(move || {
         let (outcome, stdout, stderr_buf) = wait_with_drain_and_timeout(child, timeout_ms);
@@ -327,13 +321,7 @@ fn spawn_buffered_monitor(
 }
 
 /// Send a process_exit notification over vsock (best-effort).
-fn send_process_exit(
-    pid: u32,
-    exit_code: i32,
-    stdout: &[u8],
-    stderr: &[u8],
-    writer: &Arc<Mutex<UnixStream>>,
-) {
+fn send_process_exit(pid: u32, exit_code: i32, stdout: &[u8], stderr: &[u8], writer: &GuestWriter) {
     let payload = vsock_proto::encode_process_exit(pid, exit_code, stdout, stderr);
     let exit_msg = match vsock_proto::encode(MSG_PROCESS_EXIT, 0, &payload) {
         Ok(msg) => msg,
@@ -342,8 +330,7 @@ fn send_process_exit(
             return;
         }
     };
-    let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-    if let Err(e) = w.write_all(&exit_msg) {
+    if let Err(e) = writer.write_frame(&exit_msg) {
         log("ERROR", &format!("Failed to send process_exit: {}", e));
     }
 }
