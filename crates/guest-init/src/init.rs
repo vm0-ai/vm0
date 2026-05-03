@@ -204,9 +204,10 @@ mod tests {
 
     #[test]
     fn parse_env_value_with_equals() {
-        let content = "NODE_EXTRA_CA_CERTS=/etc/ssl/ca.pem";
+        // Values may legitimately contain `=`; only the first one separates key/value.
+        let content = "TOKEN=abc=def==";
         let pairs = parse_env_content(content);
-        assert_eq!(pairs, vec![("NODE_EXTRA_CA_CERTS", "/etc/ssl/ca.pem")]);
+        assert_eq!(pairs, vec![("TOKEN", "abc=def==")]);
     }
 
     #[test]
