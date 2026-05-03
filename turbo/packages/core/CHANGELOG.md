@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.255.0](https://github.com/vm0-ai/vm0/compare/core-v8.254.0...core-v8.255.0) (2026-05-03)
+
+
+### Features
+
+* remove UsageAnalytics/GumroadConnector switches, promote IdbMessage/SkeletonNoPreload to full rollout ([#11758](https://github.com/vm0-ai/vm0/issues/11758)) ([361ee81](https://github.com/vm0-ai/vm0/commit/361ee8142dd7f17f054c478833e188b174b19c5d))
+
 ## [8.254.0](https://github.com/vm0-ai/vm0/compare/core-v8.253.0...core-v8.254.0) (2026-05-03)
 
 

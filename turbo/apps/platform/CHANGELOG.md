@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.323.0](https://github.com/vm0-ai/vm0/compare/app-v0.322.1...app-v0.323.0) (2026-05-03)
+
+
+### Features
+
+* remove UsageAnalytics/GumroadConnector switches, promote IdbMessage/SkeletonNoPreload to full rollout ([#11758](https://github.com/vm0-ai/vm0/issues/11758)) ([361ee81](https://github.com/vm0-ai/vm0/commit/361ee8142dd7f17f054c478833e188b174b19c5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.255.0
+
 ## [0.322.1](https://github.com/vm0-ai/vm0/compare/app-v0.322.0...app-v0.322.1) (2026-05-03)
 
 

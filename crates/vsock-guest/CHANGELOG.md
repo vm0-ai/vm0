@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.10.10](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.9...vsock-guest-v0.10.10) (2026-05-03)
+
+
+### Bug Fixes
+
+* stop vsock reconnect after shutdown ([#11762](https://github.com/vm0-ai/vm0/issues/11762)) ([36ee68a](https://github.com/vm0-ai/vm0/commit/36ee68a72715d3e39a76ce77c7fda8346ea76488))
+* **vsock-guest:** bound guest frame writes ([#11764](https://github.com/vm0-ai/vm0/issues/11764)) ([c63a08e](https://github.com/vm0-ai/vm0/commit/c63a08e454225c7a4701b1684bf1f7324cfa9ca4))
+* **vsock-guest:** define timeout wait outcome semantics ([#11766](https://github.com/vm0-ai/vm0/issues/11766)) ([f540059](https://github.com/vm0-ai/vm0/commit/f540059e48c13ec6824e2412120ef8ca6fbbb27b))
+
+
+### Refactoring
+
+* **vsock-guest:** deduplicate concurrency helpers ([#11763](https://github.com/vm0-ai/vm0/issues/11763)) ([2e123b6](https://github.com/vm0-ai/vm0/commit/2e123b60264332114616ecc33abd3c54e270d025))
+* **vsock-guest:** split lib into focused modules ([#11744](https://github.com/vm0-ai/vm0/issues/11744)) ([e4ba7f2](https://github.com/vm0-ai/vm0/commit/e4ba7f255b82d82f4f917c87ba4c8f3477980b01))
+
 ## [0.10.9](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.8...vsock-guest-v0.10.9) (2026-05-03)
 
 ## [0.10.8](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.7...vsock-guest-v0.10.8) (2026-05-03)

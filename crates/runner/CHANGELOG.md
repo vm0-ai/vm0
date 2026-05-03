@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.99.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.9...runner-rs-v0.99.10) (2026-05-03)
+
+
+### Bug Fixes
+
+* stabilize teardown timer tracing test ([#11767](https://github.com/vm0-ai/vm0/issues/11767)) ([ae279fc](https://github.com/vm0-ai/vm0/commit/ae279fc2786df436f6a41019610e162f6b6334d8))
+
 ## [0.99.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.8...runner-rs-v0.99.9) (2026-05-03)
 
 
