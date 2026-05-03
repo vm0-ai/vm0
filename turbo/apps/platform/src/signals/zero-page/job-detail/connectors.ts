@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
-import { zeroJobDetail$ } from "./detail.ts";
+import { agentDetail$ } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
 // Authorized connectors: User↔Agent↔Connector (per-agent grant)
@@ -13,7 +13,7 @@ import { zeroJobDetail$ } from "./detail.ts";
 
 const authorizedConnectorsReload$ = state(0);
 
-const reloadJobConnectors$ = command(({ set }) => {
+const reloadAgentConnectors$ = command(({ set }) => {
   set(authorizedConnectorsReload$, (prev) => {
     return prev + 1;
   });
@@ -21,7 +21,7 @@ const reloadJobConnectors$ = command(({ set }) => {
 
 const authorizedConnectors$ = computed(async (get): Promise<string[]> => {
   get(authorizedConnectorsReload$);
-  const detail = await get(zeroJobDetail$);
+  const detail = await get(agentDetail$);
   if (!detail?.agentId) {
     return [];
   }
@@ -35,7 +35,7 @@ const authorizedConnectors$ = computed(async (get): Promise<string[]> => {
 
 const internalAuthorizedConnectors$ = state<string[] | null>(null);
 
-export const zeroJobAuthorizedConnectors$ = computed(
+export const agentAuthorizedConnectors$ = computed(
   async (get): Promise<string[]> => {
     const local = get(internalAuthorizedConnectors$);
     if (local !== null) {
@@ -45,7 +45,7 @@ export const zeroJobAuthorizedConnectors$ = computed(
   },
 );
 
-export const zeroJobConnectorsDirty$ = computed(async (get) => {
+export const agentConnectorsDirty$ = computed(async (get) => {
   const local = get(internalAuthorizedConnectors$);
   if (local === null) {
     return false;
@@ -61,7 +61,7 @@ export const zeroJobConnectorsDirty$ = computed(async (get) => {
   });
 });
 
-export const authorizeJobConnector$ = command(
+export const authorizeAgentConnector$ = command(
   async ({ get, set }, name: string, _signal: AbortSignal) => {
     if (get(internalAuthorizedConnectors$) === null) {
       set(internalAuthorizedConnectors$, await get(authorizedConnectors$));
@@ -72,7 +72,7 @@ export const authorizeJobConnector$ = command(
   },
 );
 
-export const deauthorizeJobConnector$ = command(
+export const deauthorizeAgentConnector$ = command(
   async ({ get, set }, name: string, _signal: AbortSignal) => {
     if (get(internalAuthorizedConnectors$) === null) {
       set(internalAuthorizedConnectors$, await get(authorizedConnectors$));
@@ -85,13 +85,13 @@ export const deauthorizeJobConnector$ = command(
   },
 );
 
-export const discardJobConnectorsDraft$ = command(({ set }) => {
+export const discardAgentConnectorsDraft$ = command(({ set }) => {
   set(internalAuthorizedConnectors$, null);
 });
 
-export const saveJobConnectors$ = command(
+export const saveAgentConnectors$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const detail = await get(zeroJobDetail$);
+    const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail?.agentId) {
       throw new Error("No agent detail loaded");
@@ -109,6 +109,6 @@ export const saveJobConnectors$ = command(
     signal.throwIfAborted();
 
     set(internalAuthorizedConnectors$, null);
-    set(reloadJobConnectors$);
+    set(reloadAgentConnectors$);
   },
 );

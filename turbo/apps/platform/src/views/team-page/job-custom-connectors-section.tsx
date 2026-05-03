@@ -10,10 +10,10 @@ import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
-  addZeroJobCustomConnector$,
-  removeZeroJobCustomConnector$,
-  saveZeroJobCustomConnectors$,
-  zeroJobAddedCustomConnectors$,
+  addAgentCustomConnector$,
+  removeAgentCustomConnector$,
+  saveAgentCustomConnectors$,
+  agentAddedCustomConnectors$,
 } from "../../signals/zero-page/job-detail/custom-connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -69,12 +69,12 @@ function CustomConnectorPermissionRow({
 
 export function JobCustomConnectorsSection() {
   const connectors = useLastResolved(customConnectors$);
-  const addedLoadable = useLastLoadable(zeroJobAddedCustomConnectors$);
+  const addedLoadable = useLastLoadable(agentAddedCustomConnectors$);
   const added = addedLoadable.state === "hasData" ? addedLoadable.data : [];
   const addedSet = new Set(added);
-  const addCustom = useSet(addZeroJobCustomConnector$);
-  const removeCustom = useSet(removeZeroJobCustomConnector$);
-  const [saveLoadable, save] = useLoadableSet(saveZeroJobCustomConnectors$);
+  const addCustom = useSet(addAgentCustomConnector$);
+  const removeCustom = useSet(removeAgentCustomConnector$);
+  const [saveLoadable, save] = useLoadableSet(saveAgentCustomConnectors$);
   const pageSignal = useGet(pageSignal$);
   const saving = saveLoadable.state === "loading";
 

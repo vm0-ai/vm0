@@ -20,27 +20,27 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { detachedSetupPage } from "../../../__tests__/page-helper";
 import {
-  zeroJobDetail$,
-  zeroJobInstructions$,
-  zeroJobScheduleEntries$,
+  agentDetail$,
+  agentInstructions$,
+  agentScheduleEntries$,
   setActiveAgent$,
-  saveZeroJobSchedule$,
-  deleteZeroJobSchedule$,
-  toggleZeroJobScheduleEnabled$,
-  setZeroJobEditedContent$,
-  zeroJobEditedContent$,
-  zeroJobInstructionsDirty$,
-  discardZeroJobEdit$,
-  buildZeroJobInstructions$,
-  zeroJobUpdateSettings$,
-  zeroJobAuthorizedConnectors$,
-  zeroJobConnectorsDirty$,
-  authorizeJobConnector$,
-  deauthorizeJobConnector$,
-  saveJobConnectors$,
-  discardJobConnectorsDraft$,
-  zeroJobPermissionPolicies$,
-  type ZeroJobScheduleSaveParams,
+  saveAgentSchedule$,
+  deleteAgentSchedule$,
+  toggleAgentScheduleEnabled$,
+  setAgentEditedContent$,
+  agentEditedContent$,
+  agentInstructionsDirty$,
+  discardAgentEdit$,
+  buildAgentInstructions$,
+  updateAgentSettings$,
+  agentAuthorizedConnectors$,
+  agentConnectorsDirty$,
+  authorizeAgentConnector$,
+  deauthorizeAgentConnector$,
+  saveAgentConnectors$,
+  discardAgentConnectorsDraft$,
+  agentPermissionPolicies$,
+  type AgentScheduleSaveParams,
 } from "../zero-job-detail";
 
 const context = testContext();
@@ -160,13 +160,13 @@ describe("zero-job-detail signals", () => {
       detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
 
-      const detail = await context.store.get(zeroJobDetail$);
+      const detail = await context.store.get(agentDetail$);
       expect(detail).toStrictEqual(agentResponse);
 
-      const instructions = await context.store.get(zeroJobInstructions$);
+      const instructions = await context.store.get(agentInstructions$);
       expect(instructions).toStrictEqual(mockInstructions());
 
-      const entries = await context.store.get(zeroJobScheduleEntries$);
+      const entries = await context.store.get(agentScheduleEntries$);
       expect(entries).toHaveLength(1);
       expect(entries[0]!.name).toBe("daily-run");
       expect(entries[0]!.time).toBe("Every day at 9:00 AM");
@@ -195,7 +195,7 @@ describe("zero-job-detail signals", () => {
       detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-org/sub-agent");
 
-      const detail = await context.store.get(zeroJobDetail$);
+      const detail = await context.store.get(agentDetail$);
       expect(detail).not.toBeNull();
       // Verify the agent name was included in the URL (percent-encoded)
       expect(capturedUrl).toContain("my-org");
@@ -218,32 +218,32 @@ describe("zero-job-detail signals", () => {
       detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
 
-      const permissions = await context.store.get(zeroJobPermissionPolicies$);
+      const permissions = await context.store.get(agentPermissionPolicies$);
       expect(permissions).toStrictEqual(policies);
     });
 
     it("should reset draft states on agent switch", async () => {
       await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
 
       // Make edits
-      context.store.set(setZeroJobEditedContent$, "some edit");
-      expect(context.store.get(zeroJobEditedContent$)).toBe("some edit");
+      context.store.set(setAgentEditedContent$, "some edit");
+      expect(context.store.get(agentEditedContent$)).toBe("some edit");
 
       // Switch agent
       context.store.set(setActiveAgent$, "my-agent");
 
       // Edits should be cleared
-      expect(context.store.get(zeroJobEditedContent$)).toBeNull();
+      expect(context.store.get(agentEditedContent$)).toBeNull();
     });
   });
 
-  describe("saveZeroJobSchedule$", () => {
+  describe("saveAgentSchedule$", () => {
     it("should save a cron schedule with every_day frequency", async () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
 
       setMockSchedules([]);
       server.use(
@@ -253,7 +253,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      const params: ZeroJobScheduleSaveParams = {
+      const params: AgentScheduleSaveParams = {
         prompt: "Run daily task",
         freq: "every_day",
         date: "2030-01-01",
@@ -263,7 +263,7 @@ describe("zero-job-detail signals", () => {
         intervalSeconds: 0,
       };
 
-      await context.store.set(saveZeroJobSchedule$, params, context.signal);
+      await context.store.set(saveAgentSchedule$, params, context.signal);
 
       expect(capturedBody).toMatchObject({
         agentId: "c0000000-0000-4000-a000-000000000002",
@@ -279,7 +279,7 @@ describe("zero-job-detail signals", () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
 
       setMockSchedules([]);
       server.use(
@@ -289,7 +289,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      const params: ZeroJobScheduleSaveParams = {
+      const params: AgentScheduleSaveParams = {
         prompt: "Run daily task",
         description: "  A daily task description  ",
         freq: "every_day",
@@ -300,7 +300,7 @@ describe("zero-job-detail signals", () => {
         intervalSeconds: 0,
       };
 
-      await context.store.set(saveZeroJobSchedule$, params, context.signal);
+      await context.store.set(saveAgentSchedule$, params, context.signal);
 
       expect(capturedBody).toMatchObject({
         prompt: "Run daily task",
@@ -312,7 +312,7 @@ describe("zero-job-detail signals", () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
 
       setMockSchedules([]);
       server.use(
@@ -322,7 +322,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      const params: ZeroJobScheduleSaveParams = {
+      const params: AgentScheduleSaveParams = {
         prompt: "Run daily task",
         freq: "every_day",
         date: "2030-01-01",
@@ -332,7 +332,7 @@ describe("zero-job-detail signals", () => {
         intervalSeconds: 0,
       };
 
-      await context.store.set(saveZeroJobSchedule$, params, context.signal);
+      await context.store.set(saveAgentSchedule$, params, context.signal);
 
       expect(capturedBody).not.toHaveProperty("description");
     });
@@ -341,7 +341,7 @@ describe("zero-job-detail signals", () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
 
       setMockSchedules([]);
       server.use(
@@ -351,7 +351,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      const params: ZeroJobScheduleSaveParams = {
+      const params: AgentScheduleSaveParams = {
         prompt: "Poll every 5 min",
         freq: "every_n_minutes",
         date: "2030-01-01",
@@ -361,7 +361,7 @@ describe("zero-job-detail signals", () => {
         intervalSeconds: 300,
       };
 
-      await context.store.set(saveZeroJobSchedule$, params, context.signal);
+      await context.store.set(saveAgentSchedule$, params, context.signal);
 
       expect(capturedBody).toMatchObject({
         agentId: "c0000000-0000-4000-a000-000000000002",
@@ -374,12 +374,12 @@ describe("zero-job-detail signals", () => {
     });
   });
 
-  describe("deleteZeroJobSchedule$", () => {
+  describe("deleteAgentSchedule$", () => {
     it("should send DELETE request with correct URL", async () => {
       let capturedUrl = "";
 
       await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
 
       setMockSchedules([]);
       server.use(
@@ -390,7 +390,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await context.store.set(
-        deleteZeroJobSchedule$,
+        deleteAgentSchedule$,
         "daily-run",
         context.signal,
       );
@@ -400,18 +400,18 @@ describe("zero-job-detail signals", () => {
         "agentId=c0000000-0000-4000-a000-000000000002",
       );
 
-      const entries = await context.store.get(zeroJobScheduleEntries$);
+      const entries = await context.store.get(agentScheduleEntries$);
       expect(entries).toStrictEqual([]);
     });
   });
 
-  describe("toggleZeroJobScheduleEnabled$", () => {
+  describe("toggleAgentScheduleEnabled$", () => {
     it("should send enable request with agentId in body", async () => {
       let capturedUrl = "";
       let capturedBody: Record<string, unknown> | null = null;
 
       await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
 
       setMockSchedules(mockSchedules().schedules);
       server.use(
@@ -426,7 +426,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await context.store.set(
-        toggleZeroJobScheduleEnabled$,
+        toggleAgentScheduleEnabled$,
         {
           name: "daily-run",
           enabled: true,
@@ -446,7 +446,7 @@ describe("zero-job-detail signals", () => {
       let capturedUrl = "";
 
       await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
 
       setMockSchedules(mockSchedules().schedules);
       server.use(
@@ -457,7 +457,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await context.store.set(
-        toggleZeroJobScheduleEnabled$,
+        toggleAgentScheduleEnabled$,
         {
           name: "daily-run",
           enabled: false,
@@ -484,39 +484,39 @@ describe("zero-job-detail signals", () => {
       detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
       // Wait for data to load
-      await context.store.get(zeroJobDetail$);
-      await context.store.get(zeroJobInstructions$);
+      await context.store.get(agentDetail$);
+      await context.store.get(agentInstructions$);
     }
 
     it("should track edited content and dirty state", async () => {
       await setupWithInstructions();
 
-      expect(context.store.get(zeroJobEditedContent$)).toBeNull();
+      expect(context.store.get(agentEditedContent$)).toBeNull();
       await expect(
-        context.store.get(zeroJobInstructionsDirty$),
+        context.store.get(agentInstructionsDirty$),
       ).resolves.toBeFalsy();
 
-      context.store.set(setZeroJobEditedContent$, "New instructions");
+      context.store.set(setAgentEditedContent$, "New instructions");
 
-      expect(context.store.get(zeroJobEditedContent$)).toBe("New instructions");
+      expect(context.store.get(agentEditedContent$)).toBe("New instructions");
       await expect(
-        context.store.get(zeroJobInstructionsDirty$),
+        context.store.get(agentInstructionsDirty$),
       ).resolves.toBeTruthy();
     });
 
     it("should reset edited content on discard", async () => {
       await setupWithInstructions();
 
-      context.store.set(setZeroJobEditedContent$, "New instructions");
+      context.store.set(setAgentEditedContent$, "New instructions");
       await expect(
-        context.store.get(zeroJobInstructionsDirty$),
+        context.store.get(agentInstructionsDirty$),
       ).resolves.toBeTruthy();
 
-      context.store.set(discardZeroJobEdit$);
+      context.store.set(discardAgentEdit$);
 
-      expect(context.store.get(zeroJobEditedContent$)).toBeNull();
+      expect(context.store.get(agentEditedContent$)).toBeNull();
       await expect(
-        context.store.get(zeroJobInstructionsDirty$),
+        context.store.get(agentInstructionsDirty$),
       ).resolves.toBeFalsy();
     });
 
@@ -550,18 +550,18 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      context.store.set(setZeroJobEditedContent$, "Updated instructions");
-      await context.store.set(buildZeroJobInstructions$, context.signal);
+      context.store.set(setAgentEditedContent$, "Updated instructions");
+      await context.store.set(buildAgentInstructions$, context.signal);
 
       // Should have sent the edited content via zero agents instructions API
       expect(capturedBody).toBeTruthy();
       expect(capturedBody!.content).toBe("Updated instructions");
 
       // After build, edited content should be cleared
-      expect(context.store.get(zeroJobEditedContent$)).toBeNull();
+      expect(context.store.get(agentEditedContent$)).toBeNull();
 
       // Instructions should be updated after reload
-      const instructions = await context.store.get(zeroJobInstructions$);
+      const instructions = await context.store.get(agentInstructions$);
       expect(instructions?.content).toBe("Updated instructions");
     });
 
@@ -586,12 +586,12 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(buildZeroJobInstructions$, context.signal);
+      await context.store.set(buildAgentInstructions$, context.signal);
       expect(apiCalled).toBeFalsy();
     });
   });
 
-  describe("zeroJobUpdateSettings$", () => {
+  describe("updateAgentSettings$", () => {
     async function setupSettings() {
       setMockSchedules([]);
       server.use(
@@ -605,7 +605,7 @@ describe("zero-job-detail signals", () => {
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
     }
 
     it("should update settings via PATCH agents API and refetch", async () => {
@@ -628,7 +628,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await context.store.set(
-        zeroJobUpdateSettings$,
+        updateAgentSettings$,
         {
           displayName: "New Name",
           sound: "friendly",
@@ -656,7 +656,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(zeroJobUpdateSettings$, {}, context.signal);
+      await context.store.set(updateAgentSettings$, {}, context.signal);
 
       // The PATCH is always sent — idempotency is handled server-side
       expect(patchCalled).toBeTruthy();
@@ -678,7 +678,7 @@ describe("zero-job-detail signals", () => {
       );
 
       await context.store.set(
-        zeroJobUpdateSettings$,
+        updateAgentSettings$,
         { displayName: "Just a rename" },
         context.signal,
       );
@@ -691,7 +691,7 @@ describe("zero-job-detail signals", () => {
     });
   });
 
-  describe("zeroJobDetail$ model provider fields", () => {
+  describe("agentDetail$ model provider fields", () => {
     it("should expose modelProviderId and selectedModel from the agent response", async () => {
       setMockSchedules([]);
       server.use(
@@ -709,7 +709,7 @@ describe("zero-job-detail signals", () => {
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
-      const detail = await context.store.get(zeroJobDetail$);
+      const detail = await context.store.get(agentDetail$);
 
       // Regression: the AgentDetail type must preserve these fields so the
       // profile tab can render the saved selection instead of "from org
@@ -738,60 +738,68 @@ describe("zero-job-detail signals", () => {
 
       detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
-      await context.store.get(zeroJobDetail$);
+      await context.store.get(agentDetail$);
     }
 
     it("should seed connectors from user-connectors api", async () => {
       await setupWithConnectors();
 
-      const connectors = await context.store.get(zeroJobAuthorizedConnectors$);
+      const connectors = await context.store.get(agentAuthorizedConnectors$);
       expect(connectors).toStrictEqual(["search"]);
       await expect(
-        context.store.get(zeroJobConnectorsDirty$),
+        context.store.get(agentConnectorsDirty$),
       ).resolves.toBeFalsy();
     });
 
     it("should add and remove connectors with dirty tracking", async () => {
       await setupWithConnectors();
 
-      await context.store.set(authorizeJobConnector$, "gmail", context.signal);
+      await context.store.set(
+        authorizeAgentConnector$,
+        "gmail",
+        context.signal,
+      );
 
       await expect(
-        context.store.get(zeroJobAuthorizedConnectors$),
+        context.store.get(agentAuthorizedConnectors$),
       ).resolves.toStrictEqual(["search", "gmail"]);
       await expect(
-        context.store.get(zeroJobConnectorsDirty$),
+        context.store.get(agentConnectorsDirty$),
       ).resolves.toBeTruthy();
 
       await context.store.set(
-        deauthorizeJobConnector$,
+        deauthorizeAgentConnector$,
         "search",
         context.signal,
       );
 
       await expect(
-        context.store.get(zeroJobAuthorizedConnectors$),
+        context.store.get(agentAuthorizedConnectors$),
       ).resolves.toStrictEqual(["gmail"]);
       await expect(
-        context.store.get(zeroJobConnectorsDirty$),
+        context.store.get(agentConnectorsDirty$),
       ).resolves.toBeTruthy();
     });
 
     it("should discard connector changes", async () => {
       await setupWithConnectors();
 
-      await context.store.set(authorizeJobConnector$, "gmail", context.signal);
+      await context.store.set(
+        authorizeAgentConnector$,
+        "gmail",
+        context.signal,
+      );
       await expect(
-        context.store.get(zeroJobConnectorsDirty$),
+        context.store.get(agentConnectorsDirty$),
       ).resolves.toBeTruthy();
 
-      context.store.set(discardJobConnectorsDraft$);
+      context.store.set(discardAgentConnectorsDraft$);
 
       await expect(
-        context.store.get(zeroJobAuthorizedConnectors$),
+        context.store.get(agentAuthorizedConnectors$),
       ).resolves.toStrictEqual(["search"]);
       await expect(
-        context.store.get(zeroJobConnectorsDirty$),
+        context.store.get(agentConnectorsDirty$),
       ).resolves.toBeFalsy();
     });
 
@@ -801,8 +809,12 @@ describe("zero-job-detail signals", () => {
       await setupWithConnectors();
 
       // Add "gmail" before registering the PUT handler to avoid the GET
-      // override affecting the seed data used by authorizeJobConnector$
-      await context.store.set(authorizeJobConnector$, "gmail", context.signal);
+      // override affecting the seed data used by authorizeAgentConnector$
+      await context.store.set(
+        authorizeAgentConnector$,
+        "gmail",
+        context.signal,
+      );
 
       server.use(
         mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
@@ -814,7 +826,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(saveJobConnectors$, context.signal);
+      await context.store.set(saveAgentConnectors$, context.signal);
 
       // Verify connectors were sent as enabledTypes
       expect(capturedBody).toBeTruthy();
@@ -822,7 +834,7 @@ describe("zero-job-detail signals", () => {
 
       // After save, dirty state should be reset
       await expect(
-        context.store.get(zeroJobConnectorsDirty$),
+        context.store.get(agentConnectorsDirty$),
       ).resolves.toBeFalsy();
     });
   });

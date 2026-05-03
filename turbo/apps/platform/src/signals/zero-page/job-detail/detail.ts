@@ -11,13 +11,13 @@ import { agentName$ } from "./agent-name.ts";
 
 const internalDetailReload$ = state(0);
 
-export const reloadJobDetail$ = command(({ set }) => {
+export const reloadAgentDetail$ = command(({ set }) => {
   set(internalDetailReload$, (prev) => {
     return prev + 1;
   });
 });
 
-export const zeroJobDetail$ = computed(
+export const agentDetail$ = computed(
   async (get): Promise<AgentDetail | null> => {
     get(internalDetailReload$);
     const name = get(agentName$);
