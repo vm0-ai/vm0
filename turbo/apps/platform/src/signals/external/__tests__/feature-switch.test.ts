@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../__tests__/test-helpers";
 import { detachedSetupPage, setupPage } from "../../../__tests__/page-helper";
+import { featureSwitch$ } from "../feature-switch";
 import {
-  featureSwitch$,
   reloadFeatureSwitch$,
   setFeatureSwitch$,
   resetFeatureSwitches$,
-} from "../feature-switch";
+} from "../update-feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers";

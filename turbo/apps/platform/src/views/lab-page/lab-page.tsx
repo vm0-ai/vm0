@@ -3,11 +3,11 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { getFeatureSwitchDescriptions } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { Switch, Button } from "@vm0/ui";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
-  featureSwitch$,
   setFeatureSwitch$,
   resetFeatureSwitches$,
-} from "../../signals/external/feature-switch.ts";
+} from "../../signals/external/update-feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 

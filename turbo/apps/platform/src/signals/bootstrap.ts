@@ -53,7 +53,7 @@ import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page
 import { setupRealtime$ } from "./realtime.ts";
 import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
-import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
+import { reloadFeatureSwitch$ } from "./external/update-feature-switch.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
