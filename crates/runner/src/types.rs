@@ -233,37 +233,6 @@ impl From<&StorageManifest> for GuestDownloadManifest {
     }
 }
 
-impl From<StorageManifest> for GuestDownloadManifest {
-    fn from(manifest: StorageManifest) -> Self {
-        Self {
-            storages: manifest
-                .storages
-                .into_iter()
-                .map(|storage| GuestDownloadStorageEntry {
-                    mount_path: storage.mount_path,
-                    archive_url: Some(storage.archive_url),
-                    cached: false,
-                    vas_storage_name: storage.vas_storage_name,
-                    vas_version_id: storage.vas_version_id,
-                })
-                .collect(),
-            artifacts: manifest
-                .artifacts
-                .into_iter()
-                .map(|artifact| GuestDownloadArtifactEntry {
-                    mount_path: artifact.mount_path,
-                    archive_url: Some(artifact.archive_url),
-                    cached: false,
-                    vas_storage_name: artifact.vas_storage_name,
-                    vas_storage_id: artifact.vas_storage_id,
-                    vas_version_id: artifact.vas_version_id,
-                })
-                .collect(),
-            cleanup_paths: Vec::new(),
-        }
-    }
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResumeSession {
