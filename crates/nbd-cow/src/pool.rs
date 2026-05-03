@@ -945,6 +945,16 @@ mod tests {
     }
 
     #[test]
+    fn scan_and_claim_skips_unopenable_lock_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::create_dir(dir.path().join("vm0-nbd-0.lock")).expect("create lock path dir");
+
+        let result = scan_and_claim_with(1, &[], dir.path(), always_free);
+
+        assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
+    }
+
+    #[test]
     fn scan_and_claim_releases_lock_when_post_lock_recheck_fails() {
         static CALLS: AtomicUsize = AtomicUsize::new(0);
         fn free_once(_: u32) -> bool {
@@ -1000,6 +1010,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cleanup_with_outstanding_handle_lease_releases_lock_after_drop() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool(1, Duration::from_secs(60), dir.path(), always_free);
+        queue_scan_result(&mut pool, Ok(claim(0, dir.path())));
+        let handle = DevicePoolHandle::from_pool(pool);
+
+        let lease = handle.acquire().await.expect("acquire lease");
+        handle.cleanup().await;
+        assert!(
+            device_lock::try_acquire_device_claim_in(0, dir.path())
+                .expect("lock probe")
+                .is_none()
+        );
+
+        drop(lease);
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                if device_lock::try_acquire_device_claim_in(0, dir.path())
+                    .expect("lock probe")
+                    .is_some()
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("dropped lease did not release lock after cleanup");
+    }
+
+    #[tokio::test]
     async fn cleanup_rejects_acquire() {
         let dir = tempfile::tempdir().expect("tempdir");
         let handle = DevicePoolHandle::from_pool(test_pool_for_pending_scan(dir.path()));
@@ -1008,6 +1049,21 @@ mod tests {
 
         let result = handle.acquire().await;
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
+    }
+
+    #[tokio::test]
+    async fn cleanup_drops_completed_pending_scan_claim() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
+        queue_scan_result(&mut pool, Ok(claim(4, dir.path())));
+
+        pool.cleanup().await;
+
+        assert!(
+            device_lock::try_acquire_device_claim_in(4, dir.path())
+                .expect("lock probe")
+                .is_some()
+        );
     }
 
     #[tokio::test]

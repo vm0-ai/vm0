@@ -114,6 +114,26 @@ mod tests {
     }
 
     #[test]
+    fn orphan_disconnect_reports_lock_error() {
+        let result = disconnect_orphan_if_still_dead_with(
+            3,
+            123,
+            |_| Err::<Option<()>, std::io::Error>(std::io::Error::other("boom")),
+            |_| Some(123),
+            |_| false,
+            |_| panic!("disconnect should not run without lock"),
+        );
+
+        match result {
+            NbdOrphanDisconnect::Failed(message) => {
+                assert!(message.contains("lock failed"));
+                assert!(message.contains("boom"));
+            }
+            other => panic!("expected lock failure, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn orphan_disconnect_rechecks_pid_after_lock() {
         let result = disconnect_orphan_if_still_dead_with(
             3,
