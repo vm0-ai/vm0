@@ -2,7 +2,7 @@ import { command } from "ccstate";
 
 import { setZeroJobAgentName$, resetActiveTab$ } from "./agent-name.ts";
 import { discardZeroJobEdit$ } from "./instructions.ts";
-import { discardZeroJobConnectors$ } from "./connectors.ts";
+import { discardJobConnectorsDraft$ } from "./connectors.ts";
 
 // ---------------------------------------------------------------------------
 // Public re-exports
@@ -24,12 +24,12 @@ export {
 export { zeroJobUpdateSettings$ } from "./settings.ts";
 
 export {
-  zeroJobAddedConnectors$,
+  zeroJobAuthorizedConnectors$,
   zeroJobConnectorsDirty$,
-  addZeroJobConnector$,
-  removeZeroJobConnector$,
-  discardZeroJobConnectors$,
-  saveZeroJobConnectors$,
+  authorizeJobConnector$,
+  deauthorizeJobConnector$,
+  discardJobConnectorsDraft$,
+  saveJobConnectors$,
 } from "./connectors.ts";
 
 export {
@@ -54,5 +54,5 @@ export const setActiveAgent$ = command(({ set }, agentName: string) => {
   set(setZeroJobAgentName$, agentName);
   set(resetActiveTab$);
   set(discardZeroJobEdit$);
-  set(discardZeroJobConnectors$);
+  set(discardJobConnectorsDraft$);
 });

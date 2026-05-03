@@ -33,12 +33,12 @@ import {
   discardZeroJobEdit$,
   buildZeroJobInstructions$,
   zeroJobUpdateSettings$,
-  zeroJobAddedConnectors$,
+  zeroJobAuthorizedConnectors$,
   zeroJobConnectorsDirty$,
-  addZeroJobConnector$,
-  removeZeroJobConnector$,
-  saveZeroJobConnectors$,
-  discardZeroJobConnectors$,
+  authorizeJobConnector$,
+  deauthorizeJobConnector$,
+  saveJobConnectors$,
+  discardJobConnectorsDraft$,
   zeroJobPermissionPolicies$,
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
@@ -744,7 +744,7 @@ describe("zero-job-detail signals", () => {
     it("should seed connectors from user-connectors api", async () => {
       await setupWithConnectors();
 
-      const connectors = await context.store.get(zeroJobAddedConnectors$);
+      const connectors = await context.store.get(zeroJobAuthorizedConnectors$);
       expect(connectors).toStrictEqual(["search"]);
       await expect(
         context.store.get(zeroJobConnectorsDirty$),
@@ -754,23 +754,23 @@ describe("zero-job-detail signals", () => {
     it("should add and remove connectors with dirty tracking", async () => {
       await setupWithConnectors();
 
-      await context.store.set(addZeroJobConnector$, "gmail", context.signal);
+      await context.store.set(authorizeJobConnector$, "gmail", context.signal);
 
       await expect(
-        context.store.get(zeroJobAddedConnectors$),
+        context.store.get(zeroJobAuthorizedConnectors$),
       ).resolves.toStrictEqual(["search", "gmail"]);
       await expect(
         context.store.get(zeroJobConnectorsDirty$),
       ).resolves.toBeTruthy();
 
       await context.store.set(
-        removeZeroJobConnector$,
+        deauthorizeJobConnector$,
         "search",
         context.signal,
       );
 
       await expect(
-        context.store.get(zeroJobAddedConnectors$),
+        context.store.get(zeroJobAuthorizedConnectors$),
       ).resolves.toStrictEqual(["gmail"]);
       await expect(
         context.store.get(zeroJobConnectorsDirty$),
@@ -780,15 +780,15 @@ describe("zero-job-detail signals", () => {
     it("should discard connector changes", async () => {
       await setupWithConnectors();
 
-      await context.store.set(addZeroJobConnector$, "gmail", context.signal);
+      await context.store.set(authorizeJobConnector$, "gmail", context.signal);
       await expect(
         context.store.get(zeroJobConnectorsDirty$),
       ).resolves.toBeTruthy();
 
-      context.store.set(discardZeroJobConnectors$);
+      context.store.set(discardJobConnectorsDraft$);
 
       await expect(
-        context.store.get(zeroJobAddedConnectors$),
+        context.store.get(zeroJobAuthorizedConnectors$),
       ).resolves.toStrictEqual(["search"]);
       await expect(
         context.store.get(zeroJobConnectorsDirty$),
@@ -801,8 +801,8 @@ describe("zero-job-detail signals", () => {
       await setupWithConnectors();
 
       // Add "gmail" before registering the PUT handler to avoid the GET
-      // override affecting the seed data used by addZeroJobConnector$
-      await context.store.set(addZeroJobConnector$, "gmail", context.signal);
+      // override affecting the seed data used by authorizeJobConnector$
+      await context.store.set(authorizeJobConnector$, "gmail", context.signal);
 
       server.use(
         mockApi(zeroUserConnectorsContract.update, ({ body, respond }) => {
@@ -814,7 +814,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await context.store.set(saveZeroJobConnectors$, context.signal);
+      await context.store.set(saveJobConnectors$, context.signal);
 
       // Verify connectors were sent as enabledTypes
       expect(capturedBody).toBeTruthy();

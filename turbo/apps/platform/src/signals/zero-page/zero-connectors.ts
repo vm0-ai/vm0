@@ -5,24 +5,19 @@ import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgent$ } from "../agent-chat.ts";
 import { accept } from "../../lib/accept.ts";
 
-// ---------------------------------------------------------------------------
-// Agent name resolution
-// ---------------------------------------------------------------------------
-
-const internalComposeReload$ = state(0);
-
-const zeroAgent$ = computed(async (get) => {
-  get(internalComposeReload$);
-  return await get(currentChatAgent$);
-});
+const authorizedConnectorsReload$ = state(0);
 
 // ---------------------------------------------------------------------------
-// Connectors list: derived from user-connectors API
+// Authorized connectors: User↔Agent↔Connector (per-agent grant)
+//  - GET/PUT /api/zero/agents/:id/user-connectors
+//  - Data: { enabledTypes: string[] } — connector types this user authorized
+//    for the current agent
 // ---------------------------------------------------------------------------
 
-/** User connector permissions for this agent from the user-connectors API. */
-const seededConnectors$ = computed(async (get) => {
-  const agent = await get(zeroAgent$);
+/** Connectors the current user has authorized for the current agent. */
+const authorizedConnectors$ = computed(async (get) => {
+  get(authorizedConnectorsReload$);
+  const agent = await get(currentChatAgent$);
   if (!agent) {
     return [];
   }
@@ -34,30 +29,29 @@ const seededConnectors$ = computed(async (get) => {
   return result.body.enabledTypes;
 });
 
-/** Connectors enabled for the current agent. */
-export const zeroAddedConnectors$ = computed(async (get) => {
-  return await get(seededConnectors$);
+export const zeroAuthorizedConnectors$ = computed(async (get) => {
+  return await get(authorizedConnectors$);
 });
 
-/** Add a connector and save via the user-connectors API. */
-export const addZeroConnector$ = command(
+/** Grant the current agent access to a connector. */
+export const authorizeConnector$ = command(
   async ({ get, set }, name: string, signal: AbortSignal) => {
-    const current = await get(seededConnectors$);
+    const current = await get(authorizedConnectors$);
     signal.throwIfAborted();
     if (current.includes(name)) {
       return;
     }
-    await set(syncConnectorsToCompose$, [...current, name], signal);
+    await set(syncAuthorizedConnectors$, [...current, name], signal);
   },
 );
 
-/** Remove a connector and save via the user-connectors API. */
-export const removeZeroConnector$ = command(
+/** Revoke the current agent's access to a connector. */
+export const deauthorizeConnector$ = command(
   async ({ get, set }, name: string, signal: AbortSignal) => {
-    const current = await get(seededConnectors$);
+    const current = await get(authorizedConnectors$);
     signal.throwIfAborted();
     await set(
-      syncConnectorsToCompose$,
+      syncAuthorizedConnectors$,
       current.filter((n) => {
         return n !== name;
       }),
@@ -66,10 +60,10 @@ export const removeZeroConnector$ = command(
   },
 );
 
-/** Sync the connectors list via user-connectors API. */
-const syncConnectorsToCompose$ = command(
+/** Persist the authorized connectors list to the server. */
+const syncAuthorizedConnectors$ = command(
   async ({ get, set }, connectorValues: string[], signal: AbortSignal) => {
-    const agent = await get(zeroAgent$);
+    const agent = await get(currentChatAgent$);
     signal.throwIfAborted();
     if (!agent) {
       throw new Error("No agent available");
@@ -87,7 +81,7 @@ const syncConnectorsToCompose$ = command(
 
     await set(reloadOnboardingStatus$);
     signal.throwIfAborted();
-    set(internalComposeReload$, (x) => {
+    set(authorizedConnectorsReload$, (x) => {
       return x + 1;
     });
   },

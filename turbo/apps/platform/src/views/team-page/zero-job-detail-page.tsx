@@ -60,10 +60,10 @@ import {
   buildZeroJobInstructions$,
   zeroJobUpdateSettings$,
   deleteZeroJobAgent$,
-  zeroJobAddedConnectors$,
-  addZeroJobConnector$,
-  removeZeroJobConnector$,
-  saveZeroJobConnectors$,
+  zeroJobAuthorizedConnectors$,
+  authorizeJobConnector$,
+  deauthorizeJobConnector$,
+  saveJobConnectors$,
   zeroJobActiveTab$,
   setZeroJobActiveTab$,
   zeroJobPermissionPolicies$,
@@ -414,12 +414,12 @@ function JobPermissionsTab({
   // signal refetches after a toggle/save or a permission-policy reload. This
   // prevents the entire list from flickering to the skeleton on each change
   // (issue #9141).
-  const connectorsLoadable = useLastLoadable(zeroJobAddedConnectors$);
-  const addedConnectors =
+  const connectorsLoadable = useLastLoadable(zeroJobAuthorizedConnectors$);
+  const authorizedConnectors =
     connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
-  const addConnector = useSet(addZeroJobConnector$);
-  const removeConnector = useSet(removeZeroJobConnector$);
-  const saveConnectors = useSet(saveZeroJobConnectors$);
+  const authorizeFn = useSet(authorizeJobConnector$);
+  const deauthorizeFn = useSet(deauthorizeJobConnector$);
+  const saveConnectors = useSet(saveJobConnectors$);
   const pageSignal = useGet(pageSignal$);
   const permissionPolicies =
     useLastResolved(zeroJobPermissionPolicies$) ?? null;
@@ -451,15 +451,15 @@ function JobPermissionsTab({
   const filteredConnectors = connectedConnectors.filter((c) => {
     return matchesConnectorSearch(search, c);
   });
-  const addedSet = new Set(addedConnectors);
+  const authorizedSet = new Set(authorizedConnectors);
 
   const handleToggle = (type: string, checked: boolean) => {
     if (savingType !== null) {
       return;
     }
     const modify = checked
-      ? addConnector(type, pageSignal)
-      : removeConnector(type, pageSignal);
+      ? authorizeFn(type, pageSignal)
+      : deauthorizeFn(type, pageSignal);
     setSavingType(type);
     detach(
       modify
@@ -597,7 +597,7 @@ function JobPermissionsTab({
                   <PermissionRow
                     key={c.type}
                     connector={c}
-                    enabled={addedSet.has(c.type)}
+                    enabled={authorizedSet.has(c.type)}
                     onToggle={(checked) => {
                       return handleToggle(c.type, checked);
                     }}
