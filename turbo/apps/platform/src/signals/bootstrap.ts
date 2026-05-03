@@ -51,7 +51,7 @@ import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { setupRealtime$ } from "./realtime.ts";
-import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
+
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 
@@ -337,7 +337,7 @@ export const bootstrap$ = command(
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
-      set(setupPwaEdgeSwipe$, signal),
+
       set(setupSidebarShortcut$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
