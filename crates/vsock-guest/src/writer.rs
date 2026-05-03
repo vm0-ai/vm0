@@ -200,8 +200,9 @@ mod tests {
     #[test]
     fn write_frame_sends_complete_frame() {
         let (guest, mut peer) = UnixStream::pair().unwrap();
+        set_send_buffer(&guest, 4096).unwrap();
         let writer = GuestWriter::new(guest);
-        let frame = vec![7u8; 64 * 1024];
+        let frame = vec![7u8; 1024 * 1024];
         let expected = frame.clone();
 
         let reader = std::thread::spawn(move || {
@@ -211,11 +212,27 @@ mod tests {
         });
 
         writer
-            .write_frame_with_deadline(&frame, Duration::from_secs(1))
+            .write_frame_with_deadline(&frame, Duration::from_secs(5))
             .unwrap();
         drop(writer);
 
         assert_eq!(reader.join().unwrap(), expected);
+    }
+
+    #[test]
+    fn write_frame_fails_when_peer_is_closed() {
+        let (guest, peer) = UnixStream::pair().unwrap();
+        drop(peer);
+        let writer = GuestWriter::new(guest);
+
+        let err = writer
+            .write_frame_with_deadline(&[1, 2, 3, 4], Duration::from_secs(1))
+            .unwrap_err();
+
+        assert!(matches!(
+            err.kind(),
+            io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+        ));
     }
 
     #[test]
