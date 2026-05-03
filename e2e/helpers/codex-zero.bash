@@ -144,10 +144,14 @@ send_chat_run_message() {
     # crates/guest-mock-codex/src/main.rs:233-245. The chat/messages contract
     # exposes this flag via chatMessagesContract.body.debugNoMockCodex, mirroring
     # the same passthrough on /api/zero/runs.
+    # `modelProvider: "openai-api-key"` overrides workspace-default resolution
+    # in resolveModelProviderSecrets — required because the shared e2e
+    # workspace may already have a different-framework default after
+    # #11743's single-default constraint.
     payload=$(jq -nc \
         --arg agentId "$agent_id" \
         --arg prompt "$prompt" \
-        '{agentId: $agentId, prompt: $prompt, hasTextContent: true, debugNoMockCodex: true}')
+        '{agentId: $agentId, prompt: $prompt, modelProvider: "openai-api-key", hasTextContent: true, debugNoMockCodex: true}')
     body=$(_codex_zero_curl "/api/zero/chat/messages" \
         -X POST \
         -d "$payload")

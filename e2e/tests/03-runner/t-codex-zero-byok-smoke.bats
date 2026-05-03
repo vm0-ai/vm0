@@ -30,14 +30,13 @@ setup_file() {
     # 1. Feature switch on (also fails the file early if not yet wired)
     enable_codex_beta
 
-    # 2. Org-level openai-api-key provider — picked up as default by eager-pin.
-    # `setup` only assigns is_default when no default exists in the workspace
-    # (assignDefaultIfFirst is workspace-scoped after #11743's single-default
-    # constraint). Other tests in the same e2e chunk may leave a default
-    # provider behind, so explicitly promote openai-api-key as the workspace
-    # default to make this test self-sufficient.
+    # 2. Org-level openai-api-key provider — passed explicitly to chat/messages
+    # via the `modelProvider` body field (see send_chat_run_message). After
+    # #11743's single-default constraint, `setup` only marks the new row as
+    # default when the workspace has none, and we cannot promote it here
+    # because the e2e workspace is shared with other tests that depend on
+    # their own seeded default.
     $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
-    $ZERO_CLI org model-provider set-default "openai-api-key" >/dev/null
 
     # 3. Compose declares framework: codex explicitly. The framework is
     # matched at admission (zero-run-policy.ts:213-238 calls
