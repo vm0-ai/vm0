@@ -315,9 +315,21 @@ export async function resolveModelProviderSecrets(
     defaultProvider,
     explicitModelProvider,
   );
+  // Only borrow `selectedModel` / `authMethod` from the workspace default when
+  // its `type` matches the resolved `providerType`. When an explicit
+  // `modelProvider` request differs from the workspace default's type (e.g.
+  // workspace default is `claude-code-oauth-token` with selectedModel
+  // `claude-sonnet-4-5`, request asks for `openai-api-key`), passing the
+  // foreign selectedModel through would inject `OPENAI_MODEL=claude-sonnet-4-5`
+  // and the codex CLI would refuse to run. Falls back to
+  // `getDefaultModel(providerType)` inside `resolveEnvironmentMapping`.
+  const matchingDefault =
+    defaultProvider && defaultProvider.type === providerType
+      ? defaultProvider
+      : null;
   // selectedModelOverride (from agent/schedule config) takes precedence over provider's stored model
   const selectedModel =
-    selectedModelOverride ?? defaultProvider?.selectedModel ?? undefined;
+    selectedModelOverride ?? matchingDefault?.selectedModel ?? undefined;
 
   // Handle VM0 managed provider (meta-provider resolution)
   if (providerType === "vm0") {
@@ -335,7 +347,7 @@ export async function resolveModelProviderSecrets(
       orgId,
       secretUserId,
       providerType,
-      defaultProvider?.authMethod,
+      matchingDefault?.authMethod,
       selectedModel,
     );
     return (

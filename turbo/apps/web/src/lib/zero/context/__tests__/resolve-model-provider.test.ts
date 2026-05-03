@@ -85,6 +85,40 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     expect(result.framework).toBe("claude-code");
   });
 
+  it("does not borrow workspace default's selectedModel when explicit modelProvider type differs (#11743)", async () => {
+    // After #11743's single-default constraint, an org has at most one
+    // is_default row across all provider types. When a request explicitly
+    // passes `modelProvider` (e.g. POST /api/zero/chat/messages with
+    // modelProvider="openai-api-key") and the workspace default is a
+    // different type carrying its own selectedModel, the resolver MUST NOT
+    // pass that selectedModel through — otherwise the codex CLI receives
+    // OPENAI_MODEL=claude-sonnet-4-5 (a claude model) and refuses to run.
+    // Regression observed in t-codex-zero-byok-smoke after the e2e helper
+    // started overriding modelProvider in the request body.
+    const userId = uniqueId("cross-type-default");
+    const orgId = await setupOrg(userId);
+    await insertOrgDefaultModelProvider(
+      orgId,
+      "claude-code-oauth-token",
+      "claude-sonnet-4-5",
+    );
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      "codex",
+      false,
+      "openai-api-key",
+    );
+
+    expect(result.resolvedModelProvider).toBe("openai-api-key");
+    expect(result.framework).toBe("codex");
+    // The leak that #11743 surfaced: prior to the fix `selectedModel` would
+    // be `claude-sonnet-4-5` (borrowed from the unrelated workspace default).
+    // Post-fix it must be undefined so resolveEnvironmentMapping falls back
+    // to getDefaultModel("openai-api-key") = "gpt-5.5".
+    expect(result.selectedModel).toBeUndefined();
+  });
+
   it("provider's framework wins when modelProviderId pin disagrees with compose framework (#11616)", async () => {
     // Production-shaped path: compose declares (or defaults to) framework:
     // claude-code, but the thread is eager-pinned (#11528) to a modelProviderId
