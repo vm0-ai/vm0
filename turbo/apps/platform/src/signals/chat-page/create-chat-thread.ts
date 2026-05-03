@@ -151,10 +151,11 @@ export interface ChatThreadSignals {
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
   // ── Initial-load skeleton ────────────────────────────────────────────────
-  // True until the page setup has fetched messages and scrolled into place.
-  // Keeps the list mounted (visibility:hidden) while the skeleton covers the
-  // viewport, so the first paint the user sees is already at the bottom.
+  // Starts hidden — `setupChatThreadInitScroll$` flips it on only when the
+  // IDB cache misses, so cache hits skip the skeleton entirely. Flipped off
+  // once messages resolve and the viewport is scrolled into place.
   skeletonVisible$: Computed<boolean>;
+  showSkeleton$: Command<void, []>;
   hideSkeleton$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
@@ -866,14 +867,17 @@ export const ensureDraft$ = command(
 );
 
 function createSkeletonSignals() {
-  const internalSkeletonVisible$ = state(true);
+  const internalSkeletonVisible$ = state(false);
   const skeletonVisible$ = computed((get) => {
     return get(internalSkeletonVisible$);
+  });
+  const showSkeleton$ = command(({ set }) => {
+    set(internalSkeletonVisible$, true);
   });
   const hideSkeleton$ = command(({ set }) => {
     set(internalSkeletonVisible$, false);
   });
-  return { skeletonVisible$, hideSkeleton$ };
+  return { skeletonVisible$, showSkeleton$, hideSkeleton$ };
 }
 
 function createInputRef() {
@@ -1235,7 +1239,8 @@ export function createChatThreadSignals(
     scrollToTop$,
     recordScrollHeightForPrepend$,
   } = createScrollSignals(threadId);
-  const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
+  const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
+    createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentModelDefault$, agentPinned$ } =
@@ -1309,6 +1314,7 @@ export function createChatThreadSignals(
     scrollToBottom$,
     scrollToTop$,
     skeletonVisible$,
+    showSkeleton$,
     hideSkeleton$,
     draft,
     composerFileInput$,

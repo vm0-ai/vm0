@@ -163,10 +163,23 @@ const setupPaneThread$ = command(
     const { draft, isNew } = set(ensureDraft$, threadId);
     const idbEnabled = await get(idbMessageEnabled$);
     signal.throwIfAborted();
+    // Forward-reference so the data source can flip the skeleton on at the
+    // moment it discovers a cache miss, before the network fetch starts.
+    let onIdbMiss: () => void = () => {};
     const dataSource = idbEnabled
-      ? createIdbCachedDataSource(threadId)
+      ? createIdbCachedDataSource(threadId, () => {
+          onIdbMiss();
+        })
       : createRemoteChatThreadDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
+    onIdbMiss = () => {
+      set(thread.showSkeleton$);
+    };
+    if (!idbEnabled) {
+      // No local cache — every load goes to the network, so the skeleton is
+      // unconditional.
+      set(thread.showSkeleton$);
+    }
 
     if (!matchingOptimistic) {
       set(spec.setPaneThread$, thread);
