@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 bitvec = { workspace = true }
 libc = { workspace = true }
+nix = { workspace = true, features = ["fs"] }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 tokio-util = { workspace = true }

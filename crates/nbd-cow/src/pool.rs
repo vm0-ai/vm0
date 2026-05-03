@@ -1,31 +1,41 @@
-//! Device pool for pre-validated NBD device indices.
+//! Device pool for host-global NBD device claims.
 //!
-//! Instead of scanning sysfs on every pooled COW device creation, this pool
-//! maintains a queue of pre-validated device indices ready for immediate use.
-//! Released devices enter a cooldown period before becoming available again,
-//! preventing the "size stuck at 0" flake caused by reusing a device before
-//! the kernel finishes cleanup.
+//! Allocation is demand-only: each acquire scans for a free `/dev/nbdN`,
+//! acquires the per-index host `flock`, and re-checks sysfs before returning a
+//! lease. Released devices keep their lock through a short cooldown period so
+//! kernel teardown cannot race a different runner process.
 
 use std::collections::{HashSet, VecDeque};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use crate::device_lock::{self, NbdDeviceClaim};
 use crate::error::{NbdCowError, Result};
 use crate::netlink;
 use tokio::sync::{mpsc, oneshot};
 
-/// Number of pre-validated device indices to maintain in the ready queue.
-const BUFFER_SIZE: usize = 4;
-
-/// Maximum background validation tasks running concurrently.
+/// Maximum blocking NBD scans running concurrently.
 const MAX_PENDING: usize = 4;
 
 /// Default cooldown period (milliseconds) after disconnecting a device.
 const DEFAULT_COOLDOWN_MS: u64 = 500;
 
-/// A device index with a timestamp marking when it was released.
+type DeviceFreeCheck = fn(u32) -> bool;
+
+/// A device claim with a timestamp marking when it was released.
 struct CooldownSlot {
-    index: u32,
+    claim: NbdDeviceClaim,
     released_at: Instant,
+}
+
+impl CooldownSlot {
+    fn index(&self) -> u32 {
+        self.claim.index()
+    }
+
+    fn deadline(&self, cooldown: Duration) -> Instant {
+        self.released_at + cooldown
+    }
 }
 
 /// Owned authority for a checked-out NBD device index.
@@ -34,27 +44,35 @@ struct CooldownSlot {
 /// to the pool must consume the lease, not copied diagnostic metadata.
 pub struct DeviceLease {
     index: u32,
+    claim: Option<NbdDeviceClaim>,
     return_to: Option<mpsc::UnboundedSender<DevicePoolCommand>>,
 }
 
 impl DeviceLease {
-    fn new(index: u32) -> Self {
+    fn new(claim: NbdDeviceClaim) -> Self {
+        let index = claim.index();
         Self {
             index,
+            claim: Some(claim),
             return_to: None,
         }
     }
 
-    fn with_return(index: u32, return_to: mpsc::UnboundedSender<DevicePoolCommand>) -> Self {
+    fn with_return(
+        claim: NbdDeviceClaim,
+        return_to: mpsc::UnboundedSender<DevicePoolCommand>,
+    ) -> Self {
+        let index = claim.index();
         Self {
             index,
+            claim: Some(claim),
             return_to: Some(return_to),
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn new_for_test(index: u32) -> Self {
-        Self::new(index)
+    pub(crate) fn new_for_test(index: u32, lock_dir: &Path) -> Self {
+        Self::new(NbdDeviceClaim::new_for_test(index, lock_dir))
     }
 
     /// NBD device index (N in `/dev/nbdN`).
@@ -62,9 +80,9 @@ impl DeviceLease {
         self.index
     }
 
-    fn into_index(mut self) -> u32 {
+    fn into_claim(mut self) -> Option<NbdDeviceClaim> {
         self.return_to.take();
-        self.index
+        self.claim.take()
     }
 }
 
@@ -73,16 +91,17 @@ impl Drop for DeviceLease {
         let Some(return_to) = self.return_to.take() else {
             return;
         };
+        let Some(claim) = self.claim.take() else {
+            return;
+        };
+        let index = claim.index();
         let (done, _done_rx) = oneshot::channel();
         if return_to
-            .send(DevicePoolCommand::RetireUncertain {
-                index: self.index,
-                done,
-            })
+            .send(DevicePoolCommand::RetireUncertain { claim, done })
             .is_err()
         {
             tracing::warn!(
-                device_index = self.index,
+                device_index = index,
                 "device pool actor stopped before dropped lease could be retired"
             );
         }
@@ -117,15 +136,15 @@ enum DevicePoolCommand {
         respond_to: oneshot::Sender<Result<DeviceLease>>,
     },
     ReleaseClean {
-        index: u32,
+        claim: NbdDeviceClaim,
         done: oneshot::Sender<()>,
     },
     Discard {
-        index: u32,
+        claim: NbdDeviceClaim,
         done: oneshot::Sender<()>,
     },
     RetireUncertain {
-        index: u32,
+        claim: NbdDeviceClaim,
         done: oneshot::Sender<()>,
     },
     Cleanup {
@@ -142,22 +161,10 @@ struct DevicePoolActor {
     commands: mpsc::UnboundedReceiver<DevicePoolCommand>,
 }
 
-#[derive(Clone, Copy)]
-enum ValidationPurpose {
-    Background,
-    Demand,
-}
-
-struct ValidationResult {
-    purpose: ValidationPurpose,
-    result: Result<u32>,
-}
-
 #[cfg(test)]
 #[derive(Debug)]
 struct DevicePoolSnapshot {
     cooldown: Vec<u32>,
-    ready: Vec<u32>,
     in_flight: HashSet<u32>,
     waiting_acquires: usize,
 }
@@ -184,7 +191,7 @@ impl DevicePoolHandle {
         Self { commands }
     }
 
-    /// Pre-warm the underlying pool.
+    /// Compatibility hook for older callers. Allocation is demand-only.
     pub async fn warmup(&self) {
         let (done, done_rx) = oneshot::channel();
         if self
@@ -221,56 +228,84 @@ impl DevicePoolHandle {
     }
 
     pub(crate) async fn release_clean(&self, lease: DeviceLease) {
-        let index = lease.into_index();
+        let Some(claim) = lease.into_claim() else {
+            tracing::warn!("device lease missing claim before clean release");
+            return;
+        };
+        let index = claim.index();
         let (done, done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::ReleaseClean { index, done })
+            .send(DevicePoolCommand::ReleaseClean { claim, done })
             .is_err()
         {
-            tracing::warn!("device pool actor stopped before clean release");
+            tracing::warn!(
+                device_index = index,
+                "device pool actor stopped before clean release"
+            );
             return;
         }
         let _ = done_rx.await;
     }
 
     pub(crate) async fn discard(&self, lease: DeviceLease) {
-        let index = lease.into_index();
+        let Some(claim) = lease.into_claim() else {
+            tracing::warn!("device lease missing claim before discard");
+            return;
+        };
+        let index = claim.index();
         let (done, done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::Discard { index, done })
+            .send(DevicePoolCommand::Discard { claim, done })
             .is_err()
         {
-            tracing::warn!("device pool actor stopped before discard");
+            tracing::warn!(
+                device_index = index,
+                "device pool actor stopped before discard"
+            );
             return;
         }
         let _ = done_rx.await;
     }
 
     pub(crate) async fn retire_uncertain(&self, lease: DeviceLease) {
-        let index = lease.into_index();
+        let Some(claim) = lease.into_claim() else {
+            tracing::warn!("device lease missing claim before uncertain retire");
+            return;
+        };
+        let index = claim.index();
         let (done, done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::RetireUncertain { index, done })
+            .send(DevicePoolCommand::RetireUncertain { claim, done })
             .is_err()
         {
-            tracing::warn!("device pool actor stopped before uncertain retire");
+            tracing::warn!(
+                device_index = index,
+                "device pool actor stopped before uncertain retire"
+            );
             return;
         }
         let _ = done_rx.await;
     }
 
     pub(crate) fn retire_uncertain_detached(&self, lease: DeviceLease) {
-        let index = lease.into_index();
+        let Some(claim) = lease.into_claim() else {
+            tracing::warn!("device lease missing claim before detached uncertain retire");
+            return;
+        };
+        let index = claim.index();
         let (done, _done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::RetireUncertain { index, done })
+            .send(DevicePoolCommand::RetireUncertain { claim, done })
             .is_err()
         {
-            tracing::warn!("device pool actor stopped before detached uncertain retire");
+            tracing::warn!(
+                device_index = index,
+                "device pool actor stopped before detached uncertain retire"
+            );
         }
     }
 
@@ -287,22 +322,55 @@ impl DevicePoolHandle {
 impl DevicePoolActor {
     async fn run(mut self) {
         loop {
-            if self.pool.pending.is_empty() {
-                let Some(command) = self.commands.recv().await else {
-                    break;
-                };
-                self.handle_command(command).await;
-            } else {
-                tokio::select! {
-                    command = self.commands.recv() => {
-                        let Some(command) = command else {
-                            break;
-                        };
-                        self.handle_command(command).await;
+            self.pool.process_expired_cooldown();
+            let deadline = self.pool.next_cooldown_deadline();
+
+            match (!self.pool.pending.is_empty(), deadline) {
+                (false, None) => {
+                    let Some(command) = self.commands.recv().await else {
+                        break;
+                    };
+                    self.handle_command(command).await;
+                }
+                (true, None) => {
+                    tokio::select! {
+                        command = self.commands.recv() => {
+                            let Some(command) = command else {
+                                break;
+                            };
+                            self.handle_command(command).await;
+                        }
+                        scan = self.pool.pending.join_next() => {
+                            self.pool.handle_scan_join(scan);
+                        }
                     }
-                    validation = self.pool.pending.join_next() => {
-                        if let Some(validation) = validation {
-                            self.pool.handle_validation_join(validation);
+                }
+                (false, Some(deadline)) => {
+                    tokio::select! {
+                        command = self.commands.recv() => {
+                            let Some(command) = command else {
+                                break;
+                            };
+                            self.handle_command(command).await;
+                        }
+                        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
+                            self.handle_cooldown_deadline();
+                        }
+                    }
+                }
+                (true, Some(deadline)) => {
+                    tokio::select! {
+                        command = self.commands.recv() => {
+                            let Some(command) = command else {
+                                break;
+                            };
+                            self.handle_command(command).await;
+                        }
+                        scan = self.pool.pending.join_next() => {
+                            self.pool.handle_scan_join(scan);
+                        }
+                        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
+                            self.handle_cooldown_deadline();
                         }
                     }
                 }
@@ -316,31 +384,25 @@ impl DevicePoolActor {
     async fn handle_command(&mut self, command: DevicePoolCommand) {
         match command {
             DevicePoolCommand::Warmup { done } => {
-                self.pool.warmup().await;
+                self.pool.warmup();
                 let _ = done.send(());
             }
             DevicePoolCommand::Acquire { respond_to } => {
                 self.pool.handle_acquire(respond_to);
             }
-            DevicePoolCommand::ReleaseClean { index, done } => {
-                self.pool.release_index(index);
-                self.pool.ensure_waiting_progress();
-                if self.pool.waiting_acquires.is_empty() {
-                    self.pool.maybe_replenish();
-                }
-                let _ = done.send(());
-            }
-            DevicePoolCommand::Discard { index, done } => {
-                self.pool.discard_index(index);
+            DevicePoolCommand::ReleaseClean { claim, done } => {
+                self.pool.release_claim(claim);
                 self.pool.ensure_waiting_progress();
                 let _ = done.send(());
             }
-            DevicePoolCommand::RetireUncertain { index, done } => {
-                self.pool.retire_uncertain_index(index);
+            DevicePoolCommand::Discard { claim, done } => {
+                self.pool.discard_claim(claim);
                 self.pool.ensure_waiting_progress();
-                if self.pool.waiting_acquires.is_empty() {
-                    self.pool.maybe_replenish();
-                }
+                let _ = done.send(());
+            }
+            DevicePoolCommand::RetireUncertain { claim, done } => {
+                self.pool.retire_uncertain_claim(claim);
+                self.pool.ensure_waiting_progress();
                 let _ = done.send(());
             }
             DevicePoolCommand::Cleanup { done } => {
@@ -353,47 +415,63 @@ impl DevicePoolActor {
             }
         }
     }
+
+    fn handle_cooldown_deadline(&mut self) {
+        self.pool.process_expired_cooldown();
+        self.pool.ensure_waiting_progress();
+    }
 }
 
-/// Pre-validated NBD device index pool.
+/// Demand-only NBD device claim pool.
 ///
-/// Manages device indices as a host-level resource. Production callers should
-/// share it through [`DevicePoolHandle`] so pool release authority stays tied to
-/// owned device leases.
+/// Production callers should share it through [`DevicePoolHandle`] so pool
+/// release authority stays tied to owned device leases.
 pub struct DevicePool {
     active: bool,
-    /// Validated free device indices ready for immediate acquire.
-    ready: VecDeque<u32>,
-    /// Recently released devices waiting for cooldown to expire.
+    /// Recently released device claims waiting for cooldown to expire.
     cooldown: VecDeque<CooldownSlot>,
-    /// Background sysfs validation tasks.
-    pending: tokio::task::JoinSet<ValidationResult>,
+    /// Blocking demand scans.
+    pending: tokio::task::JoinSet<Result<NbdDeviceClaim>>,
     /// Weak sender used to embed a strong return path in assigned leases.
     lease_return: Option<mpsc::WeakUnboundedSender<DevicePoolCommand>>,
-    /// Acquire errors that raced with still-pending validation tasks.
+    /// Acquire errors that raced with still-pending scans.
     deferred_acquire_errors: VecDeque<NbdCowError>,
-    /// Acquire requests waiting for validation or a released device.
+    /// Acquire requests waiting for a scan or an expired cooldown claim.
     waiting_acquires: VecDeque<oneshot::Sender<Result<DeviceLease>>>,
     /// Total number of NBD devices (from sysfs nbds_max).
     max_devices: u32,
     /// Pool configuration.
     config: DevicePoolConfig,
-    /// Indices returned by `acquire()` but not yet `release()`d or `discard()`ed.
-    /// Prevents background scans from rediscovering devices that are in use.
+    /// Indices returned by `acquire()` but not yet released or discarded.
     in_flight: HashSet<u32>,
+    /// Directory containing per-index lock files.
+    lock_dir: PathBuf,
+    /// Device free predicate, injected in unit tests.
+    device_appears_free: DeviceFreeCheck,
 }
 
 impl DevicePool {
     /// Create a new device pool.
     ///
     /// Reads `nbds_max` from sysfs to determine the device range.
-    /// Call [`warmup()`](Self::warmup) before first use to pre-populate
-    /// the ready queue and avoid a synchronous sysfs scan on first use.
     pub fn new(config: DevicePoolConfig) -> Self {
         let max_devices = netlink::nbds_max();
+        Self::new_with_options(
+            config,
+            max_devices,
+            device_lock::default_lock_dir(),
+            netlink::device_appears_free,
+        )
+    }
+
+    fn new_with_options(
+        config: DevicePoolConfig,
+        max_devices: u32,
+        lock_dir: PathBuf,
+        device_appears_free: DeviceFreeCheck,
+    ) -> Self {
         Self {
             active: true,
-            ready: VecDeque::with_capacity(BUFFER_SIZE),
             cooldown: VecDeque::new(),
             pending: tokio::task::JoinSet::new(),
             lease_return: None,
@@ -402,6 +480,8 @@ impl DevicePool {
             max_devices,
             config,
             in_flight: HashSet::new(),
+            lock_dir,
+            device_appears_free,
         }
     }
 
@@ -409,59 +489,27 @@ impl DevicePool {
         self.lease_return = Some(return_to);
     }
 
-    fn lease_for(&self, index: u32) -> DeviceLease {
+    fn lease_for(&self, claim: NbdDeviceClaim) -> DeviceLease {
         match self
             .lease_return
             .as_ref()
             .and_then(|return_to| return_to.upgrade())
         {
-            Some(return_to) => DeviceLease::with_return(index, return_to),
-            None => DeviceLease::new(index),
+            Some(return_to) => DeviceLease::with_return(claim, return_to),
+            None => DeviceLease::new(claim),
         }
     }
 
-    /// Pre-warm the pool by scanning for free devices.
-    pub async fn warmup(&mut self) {
-        if !self.active {
-            return;
+    /// Compatibility no-op. Allocation happens on demand.
+    fn warmup(&mut self) {
+        if self.active {
+            tracing::debug!(max_devices = self.max_devices, "device pool warmup skipped");
         }
-
-        self.spawn_background_batch();
-
-        while self.ready.len() < BUFFER_SIZE {
-            let Some(validation) = self.pending.join_next().await else {
-                break;
-            };
-            self.handle_validation_join(validation);
-        }
-
-        tracing::info!(
-            ready = self.ready.len(),
-            max_devices = self.max_devices,
-            "device pool warmed up"
-        );
     }
 
     fn handle_acquire(&mut self, respond_to: oneshot::Sender<Result<DeviceLease>>) {
         if !self.active {
             let _ = respond_to.send(Err(NbdCowError::NoFreeDevice));
-            return;
-        }
-
-        self.promote_cooled_down();
-        if let Some(index) = self.ready.pop_front() {
-            match respond_to.send(Ok(self.lease_for(index))) {
-                Ok(()) => {
-                    self.in_flight.insert(index);
-                    self.maybe_replenish();
-                }
-                Err(Ok(lease)) => {
-                    self.ready.push_front(lease.into_index());
-                }
-                Err(Err(_)) => {
-                    self.ready.push_front(index);
-                }
-            }
             return;
         }
 
@@ -475,23 +523,27 @@ impl DevicePool {
             return;
         }
 
-        self.promote_cooled_down();
-        let assigned = self.satisfy_waiters_from_ready();
+        self.process_expired_cooldown();
+
         if self.waiting_acquires.is_empty() {
             self.deferred_acquire_errors.clear();
-            if assigned {
-                self.maybe_replenish();
-            }
             return;
         }
 
-        if self.pending.is_empty() {
+        if self.pending.is_empty()
+            && !self.deferred_acquire_errors.is_empty()
+            && self.cooldown.is_empty()
+        {
             self.fail_deferred_acquire_errors();
         }
-        if !self.waiting_acquires.is_empty() && self.deferred_acquire_errors.is_empty() {
+
+        if self.waiting_acquires.is_empty() {
+            self.deferred_acquire_errors.clear();
+            return;
+        }
+
+        if self.deferred_acquire_errors.is_empty() {
             self.spawn_demand_batch();
-        } else if self.waiting_acquires.is_empty() && assigned {
-            self.maybe_replenish();
         }
     }
 
@@ -500,93 +552,71 @@ impl DevicePool {
             && self.pending.len() < MAX_PENDING
             && self.pending.len() < self.waiting_acquires.len()
         {
-            self.spawn_validation(ValidationPurpose::Demand);
+            self.spawn_scan();
         }
     }
 
-    fn handle_validation_join(
+    fn spawn_scan(&mut self) {
+        let max = self.max_devices;
+        let exclude = self.tracked_indices();
+        let lock_dir = self.lock_dir.clone();
+        let device_appears_free = self.device_appears_free;
+        self.pending.spawn_blocking(move || {
+            scan_and_claim_with(max, &exclude, &lock_dir, device_appears_free)
+        });
+    }
+
+    fn handle_scan_join(
         &mut self,
-        validation: std::result::Result<ValidationResult, tokio::task::JoinError>,
+        scan: Option<std::result::Result<Result<NbdDeviceClaim>, tokio::task::JoinError>>,
     ) {
-        match validation {
-            Ok(ValidationResult {
-                purpose: _,
-                result: Ok(index),
-            }) => {
-                let assigned = self.assign_candidate(index);
-                self.ensure_waiting_progress();
-                if assigned && self.waiting_acquires.is_empty() {
-                    self.maybe_replenish();
+        match scan {
+            Some(Ok(Ok(claim))) => {
+                if self.is_tracked(claim.index()) {
+                    tracing::debug!(
+                        device_index = claim.index(),
+                        "dropping scan result because index is already tracked"
+                    );
+                } else {
+                    self.assign_claim_to_waiter(claim);
                 }
+                self.ensure_waiting_progress();
             }
-            Ok(ValidationResult {
-                purpose: ValidationPurpose::Demand,
-                result: Err(e),
-            }) => {
+            Some(Ok(Err(e))) => {
                 self.defer_acquire_error(e);
                 self.ensure_waiting_progress();
             }
-            Ok(ValidationResult {
-                purpose: ValidationPurpose::Background,
-                result: Err(_),
-            }) => {
-                self.ensure_waiting_progress();
-            }
-            Err(e) => {
+            Some(Err(e)) => {
                 if !self.waiting_acquires.is_empty() {
                     self.defer_acquire_error(NbdCowError::Io(std::io::Error::other(format!(
-                        "device validation task failed: {e}"
+                        "device scan task failed: {e}"
                     ))));
                 }
                 self.ensure_waiting_progress();
             }
+            None => {}
         }
     }
 
-    fn satisfy_waiters_from_ready(&mut self) -> bool {
-        let mut assigned = false;
+    fn assign_claim_to_waiter(&mut self, mut claim: NbdDeviceClaim) -> bool {
+        let index = claim.index();
         while let Some(respond_to) = self.waiting_acquires.pop_front() {
-            let Some(index) = self.ready.pop_front() else {
-                self.waiting_acquires.push_front(respond_to);
-                break;
-            };
-
-            match respond_to.send(Ok(self.lease_for(index))) {
-                Ok(()) => {
-                    self.in_flight.insert(index);
-                    assigned = true;
-                }
-                Err(Ok(lease)) => {
-                    self.ready.push_front(lease.into_index());
-                }
-                Err(Err(_)) => {
-                    self.ready.push_front(index);
-                }
-            }
-        }
-        assigned
-    }
-
-    fn assign_candidate(&mut self, index: u32) -> bool {
-        if self.is_tracked(index) {
-            return false;
-        }
-
-        let mut index = index;
-        while let Some(respond_to) = self.waiting_acquires.pop_front() {
-            match respond_to.send(Ok(self.lease_for(index))) {
+            match respond_to.send(Ok(self.lease_for(claim))) {
                 Ok(()) => {
                     self.in_flight.insert(index);
                     return true;
                 }
                 Err(Ok(lease)) => {
-                    index = lease.into_index();
+                    let Some(returned_claim) = lease.into_claim() else {
+                        return false;
+                    };
+                    claim = returned_claim;
                 }
-                Err(Err(_)) => {}
+                Err(Err(_)) => {
+                    return false;
+                }
             }
         }
-
-        self.ready.push_back(index);
         false
     }
 
@@ -595,10 +625,7 @@ impl DevicePool {
             match respond_to.send(Err(error)) {
                 Ok(()) => return true,
                 Err(Err(e)) => error = e,
-                Err(Ok(lease)) => {
-                    self.ready.push_front(lease.into_index());
-                    return false;
-                }
+                Err(Ok(_lease)) => return false,
             }
         }
         false
@@ -629,19 +656,22 @@ impl DevicePool {
         }
     }
 
-    /// Release a device index back to the pool after disconnect.
+    /// Release a device claim back to the pool after disconnect.
     ///
-    /// The device enters a cooldown period before it can be reused,
-    /// giving the kernel time to finish teardown.
+    /// The claim enters cooldown before the lock can be released, giving the
+    /// kernel time to finish teardown.
     #[cfg(test)]
     fn release(&mut self, lease: DeviceLease) {
-        self.release_index(lease.into_index());
+        if let Some(claim) = lease.into_claim() {
+            self.release_claim(claim);
+        }
     }
 
-    fn release_index(&mut self, index: u32) {
+    fn release_claim(&mut self, claim: NbdDeviceClaim) {
         if !self.active {
             return;
         }
+        let index = claim.index();
         if !self.in_flight.remove(&index) {
             tracing::warn!(
                 device_index = index,
@@ -650,34 +680,41 @@ impl DevicePool {
             return;
         }
         self.cooldown.push_back(CooldownSlot {
-            index,
+            claim,
             released_at: Instant::now(),
         });
     }
 
-    /// Stop tracking an in-flight index without returning it to the pool.
+    /// Stop tracking an in-flight claim without returning it to cooldown.
     ///
     /// Used when `connect_device` fails with EBUSY — the device belongs to
-    /// another process and should not enter cooldown. Background scans will
-    /// rediscover it later if it becomes free.
-    fn discard_index(&mut self, index: u32) {
-        self.in_flight.remove(&index);
+    /// another process or non-cooperating owner and should not remain locked by us.
+    fn discard_claim(&mut self, claim: NbdDeviceClaim) {
+        let index = claim.index();
+        if !self.in_flight.remove(&index) {
+            tracing::warn!(
+                device_index = index,
+                "device discard ignored because index is not in flight"
+            );
+        }
     }
 
     /// Retire a device whose post-owner state is uncertain.
     ///
-    /// This is intentionally conservative: the index must still pass through
-    /// cooldown and sysfs validation before it can become ready again.
+    /// This is intentionally conservative: the claim stays locked through
+    /// cooldown before it can be reused or released.
     #[cfg(test)]
     fn retire_uncertain(&mut self, lease: DeviceLease) {
-        self.retire_uncertain_index(lease.into_index());
+        if let Some(claim) = lease.into_claim() {
+            self.retire_uncertain_claim(claim);
+        }
     }
 
-    fn retire_uncertain_index(&mut self, index: u32) {
-        self.release_index(index);
+    fn retire_uncertain_claim(&mut self, claim: NbdDeviceClaim) {
+        self.release_claim(claim);
     }
 
-    /// Clean up the pool: cancel pending tasks and clear queues.
+    /// Clean up the pool: cancel pending scans and clear queues.
     pub async fn cleanup(&mut self) {
         self.active = false;
         if !self.in_flight.is_empty() {
@@ -689,7 +726,6 @@ impl DevicePool {
         self.fail_all_waiters();
         self.deferred_acquire_errors.clear();
         self.abort_pending().await;
-        self.ready.clear();
         self.cooldown.clear();
         self.in_flight.clear();
         tracing::info!("device pool cleanup complete");
@@ -700,86 +736,59 @@ impl DevicePool {
         while self.pending.join_next().await.is_some() {}
     }
 
-    /// Move expired cooldown slots to the ready queue.
-    fn promote_cooled_down(&mut self) {
+    fn process_expired_cooldown(&mut self) {
         let now = Instant::now();
-        while let Some(front) = self.cooldown.front() {
-            if now.duration_since(front.released_at) >= self.config.cooldown {
-                let Some(slot) = self.cooldown.pop_front() else {
-                    break;
-                };
-                // Re-validate via sysfs before promoting
-                if netlink::device_appears_free(slot.index) {
-                    self.push_ready_if_untracked(slot.index);
-                }
-                // If not free (recycled by another process), just drop it
-            } else {
-                break; // Cooldown queue is ordered by time
+        while let Some(slot) = self.cooldown.front() {
+            if slot.deadline(self.config.cooldown) > now {
+                break;
             }
+            let Some(slot) = self.cooldown.pop_front() else {
+                break;
+            };
+            self.handle_expired_cooldown(slot);
         }
     }
 
-    /// Spawn background validation tasks if the ready queue needs replenishment.
-    fn maybe_replenish(&mut self) {
-        if !self.active || !self.waiting_acquires.is_empty() {
+    fn handle_expired_cooldown(&mut self, slot: CooldownSlot) {
+        let index = slot.index();
+        if self.waiting_acquires.is_empty() {
             return;
         }
-        self.spawn_background_batch();
-    }
-
-    fn spawn_background_batch(&mut self) {
-        if !self.active {
+        if !(self.device_appears_free)(index) {
+            tracing::debug!(
+                device_index = index,
+                "dropping expired NBD cooldown claim because device is not free"
+            );
             return;
         }
-
-        while self.pending.len() < MAX_PENDING
-            && self.ready.len() + self.pending.len() < BUFFER_SIZE
-        {
-            self.spawn_validation(ValidationPurpose::Background);
-        }
+        self.assign_claim_to_waiter(slot.claim);
     }
 
-    /// Spawn a validation task to scan for a free device.
-    fn spawn_validation(&mut self, purpose: ValidationPurpose) {
-        let max = self.max_devices;
-        let exclude = self.tracked_indices();
-        self.pending.spawn_blocking(move || {
-            let result = scan_free_device(max, &exclude);
-            ValidationResult { purpose, result }
-        });
+    fn next_cooldown_deadline(&self) -> Option<Instant> {
+        self.cooldown
+            .front()
+            .map(|slot| slot.deadline(self.config.cooldown))
     }
 
-    /// Collect all indices currently tracked by the pool (ready + cooldown + in-flight)
-    /// to exclude from background scanning. Prevents duplicate indices in
-    /// the ready queue from concurrent scan tasks.
+    /// Collect all indices currently tracked by the pool (cooldown + in-flight)
+    /// to exclude from demand scans. Concurrent scans are still safe because the
+    /// host-global per-index lock serializes claims across tasks and processes.
     fn tracked_indices(&self) -> Vec<u32> {
-        self.ready
+        self.cooldown
             .iter()
-            .copied()
-            .chain(self.cooldown.iter().map(|s| s.index))
+            .map(CooldownSlot::index)
             .chain(self.in_flight.iter().copied())
             .collect()
     }
 
     fn is_tracked(&self, index: u32) -> bool {
-        self.ready.contains(&index)
-            || self.in_flight.contains(&index)
-            || self.cooldown.iter().any(|slot| slot.index == index)
-    }
-
-    fn push_ready_if_untracked(&mut self, index: u32) -> bool {
-        if self.is_tracked(index) {
-            return false;
-        }
-        self.ready.push_back(index);
-        true
+        self.in_flight.contains(&index) || self.cooldown.iter().any(|slot| slot.index() == index)
     }
 
     #[cfg(test)]
     fn snapshot(&self) -> DevicePoolSnapshot {
         DevicePoolSnapshot {
-            cooldown: self.cooldown.iter().map(|slot| slot.index).collect(),
-            ready: self.ready.iter().copied().collect(),
+            cooldown: self.cooldown.iter().map(CooldownSlot::index).collect(),
             in_flight: self.in_flight.clone(),
             waiting_acquires: self.waiting_acquires.len(),
         }
@@ -794,10 +803,20 @@ impl Drop for DevicePool {
     }
 }
 
-/// Scan sysfs for a single free device, excluding given indices.
+/// Scan sysfs for a single free device and acquire its per-index lock.
 ///
-/// Starts from a random offset to distribute usage across runners.
-fn scan_free_device(max_devices: u32, exclude: &[u32]) -> Result<u32> {
+/// Starts from a random offset to distribute usage across runners. The first
+/// sysfs check is a cheap precheck; the post-lock sysfs check is the correctness
+/// gate that prevents stale observations from becoming leases.
+fn scan_and_claim_with<F>(
+    max_devices: u32,
+    exclude: &[u32],
+    lock_dir: &Path,
+    device_appears_free: F,
+) -> Result<NbdDeviceClaim>
+where
+    F: Fn(u32) -> bool,
+{
     if max_devices == 0 {
         return Err(NbdCowError::NoFreeDevice);
     }
@@ -809,8 +828,23 @@ fn scan_free_device(max_devices: u32, exclude: &[u32]) -> Result<u32> {
         if exclude.contains(&i) {
             continue;
         }
-        if netlink::device_appears_free(i) {
-            return Ok(i);
+        if !device_appears_free(i) {
+            continue;
+        }
+        match device_lock::try_acquire_device_claim_in(i, lock_dir) {
+            Ok(Some(claim)) => {
+                if device_appears_free(i) {
+                    return Ok(claim);
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::debug!(
+                    device_index = i,
+                    error = %e,
+                    "cannot acquire NBD device lock, skipping index"
+                );
+            }
         }
     }
 
@@ -824,24 +858,40 @@ fn actor_stopped_error() -> NbdCowError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    fn queue_validation_result(pool: &mut DevicePool, result: Result<u32>) {
-        pool.pending.spawn(async move {
-            ValidationResult {
-                purpose: ValidationPurpose::Background,
-                result,
-            }
-        });
+    fn always_free(_: u32) -> bool {
+        true
     }
 
-    fn queue_controlled_validation(pool: &mut DevicePool) -> oneshot::Sender<Result<u32>> {
+    fn never_free(_: u32) -> bool {
+        false
+    }
+
+    fn test_pool(
+        max_devices: u32,
+        cooldown: Duration,
+        lock_dir: &Path,
+        device_appears_free: DeviceFreeCheck,
+    ) -> DevicePool {
+        DevicePool::new_with_options(
+            DevicePoolConfig { cooldown },
+            max_devices,
+            lock_dir.to_path_buf(),
+            device_appears_free,
+        )
+    }
+
+    fn queue_validation_result(pool: &mut DevicePool, result: Result<NbdDeviceClaim>) {
+        pool.pending.spawn(async move { result });
+    }
+
+    fn queue_controlled_validation(
+        pool: &mut DevicePool,
+    ) -> oneshot::Sender<Result<NbdDeviceClaim>> {
         let (complete, complete_rx) = oneshot::channel();
-        pool.pending.spawn(async move {
-            ValidationResult {
-                purpose: ValidationPurpose::Background,
-                result: complete_rx.await.unwrap_or(Err(NbdCowError::NoFreeDevice)),
-            }
-        });
+        pool.pending
+            .spawn(async move { complete_rx.await.unwrap_or(Err(NbdCowError::NoFreeDevice)) });
         complete
     }
 
@@ -858,63 +908,92 @@ mod tests {
         .expect("acquire did not wait for validation");
     }
 
-    fn test_pool_with_in_flight(index: u32) -> DevicePool {
-        DevicePool {
-            active: true,
-            // Keep the ready queue full so `release()` does not spawn host
-            // sysfs validation tasks in this unit test.
-            ready: VecDeque::from([0, 1, 2, 4]),
-            cooldown: VecDeque::new(),
-            pending: tokio::task::JoinSet::new(),
-            lease_return: None,
-            deferred_acquire_errors: VecDeque::new(),
-            waiting_acquires: VecDeque::new(),
-            max_devices: 8,
-            config: DevicePoolConfig::default(),
-            in_flight: HashSet::from([index]),
-        }
+    fn claim(index: u32, lock_dir: &Path) -> NbdDeviceClaim {
+        NbdDeviceClaim::new_for_test(index, lock_dir)
     }
 
-    fn test_pool_for_pending_scan() -> DevicePool {
-        DevicePool {
-            active: true,
-            ready: VecDeque::new(),
-            cooldown: VecDeque::new(),
-            pending: tokio::task::JoinSet::new(),
-            lease_return: None,
-            deferred_acquire_errors: VecDeque::new(),
-            waiting_acquires: VecDeque::new(),
-            max_devices: 0,
-            config: DevicePoolConfig::default(),
-            in_flight: HashSet::new(),
-        }
+    fn lease(index: u32, lock_dir: &Path) -> DeviceLease {
+        DeviceLease::new_for_test(index, lock_dir)
+    }
+
+    fn test_pool_with_in_flight(index: u32, lock_dir: &Path) -> DevicePool {
+        let mut pool = test_pool(
+            8,
+            DevicePoolConfig::default().cooldown,
+            lock_dir,
+            always_free,
+        );
+        pool.in_flight.insert(index);
+        pool
+    }
+
+    fn test_pool_for_pending_scan(lock_dir: &Path) -> DevicePool {
+        test_pool(
+            0,
+            DevicePoolConfig::default().cooldown,
+            lock_dir,
+            always_free,
+        )
     }
 
     #[test]
-    fn release_consumes_lease_and_enters_cooldown() {
-        let mut pool = test_pool_with_in_flight(3);
+    fn scan_and_claim_skips_held_lock() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let _held = claim(0, dir.path());
 
-        pool.release(DeviceLease::new(3));
+        let result = scan_and_claim_with(1, &[], dir.path(), always_free);
+
+        assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
+    }
+
+    #[test]
+    fn scan_and_claim_releases_lock_when_post_lock_recheck_fails() {
+        static CALLS: AtomicUsize = AtomicUsize::new(0);
+        fn free_once(_: u32) -> bool {
+            CALLS.fetch_add(1, Ordering::SeqCst) == 0
+        }
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let result = scan_and_claim_with(1, &[], dir.path(), free_once);
+
+        assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
+        assert!(claim(0, dir.path()).index() == 0);
+        CALLS.store(0, Ordering::SeqCst);
+    }
+
+    #[test]
+    fn release_consumes_lease_and_enters_cooldown_with_lock_held() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_with_in_flight(3, dir.path());
+
+        pool.release(lease(3, dir.path()));
 
         assert_eq!(pool.cooldown.len(), 1);
-        assert_eq!(pool.cooldown.front().map(|slot| slot.index), Some(3));
+        assert_eq!(pool.cooldown.front().map(CooldownSlot::index), Some(3));
         assert!(pool.in_flight.is_empty());
+        assert!(
+            device_lock::try_acquire_device_claim_in(3, dir.path())
+                .expect("lock probe")
+                .is_none()
+        );
     }
 
     #[test]
     fn retire_uncertain_enters_cooldown() {
-        let mut pool = test_pool_with_in_flight(3);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_with_in_flight(3, dir.path());
 
-        pool.retire_uncertain(DeviceLease::new(3));
+        pool.retire_uncertain(lease(3, dir.path()));
 
         assert_eq!(pool.cooldown.len(), 1);
-        assert_eq!(pool.cooldown.front().map(|slot| slot.index), Some(3));
+        assert_eq!(pool.cooldown.front().map(CooldownSlot::index), Some(3));
         assert!(pool.in_flight.is_empty());
     }
 
     #[tokio::test]
     async fn cleanup_with_outstanding_lease_does_not_panic() {
-        let mut pool = test_pool_with_in_flight(3);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_with_in_flight(3, dir.path());
 
         pool.cleanup().await;
 
@@ -924,7 +1003,8 @@ mod tests {
 
     #[tokio::test]
     async fn cleanup_rejects_acquire() {
-        let handle = DevicePoolHandle::from_pool(test_pool_for_pending_scan());
+        let dir = tempfile::tempdir().expect("tempdir");
+        let handle = DevicePoolHandle::from_pool(test_pool_for_pending_scan(dir.path()));
 
         handle.cleanup().await;
 
@@ -933,21 +1013,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dropping_last_handle_closes_actor_command_channel() {
-        let handle = DevicePoolHandle::from_pool(test_pool_for_pending_scan());
-        let weak_commands = handle.commands.downgrade();
-
-        assert!(weak_commands.upgrade().is_some());
-        drop(handle);
-        tokio::task::yield_now().await;
-
-        assert!(weak_commands.upgrade().is_none());
-    }
-
-    #[tokio::test]
-    async fn checked_out_lease_keeps_return_channel_until_dropped() {
-        let mut pool = test_pool_for_pending_scan();
-        pool.ready.push_back(3);
+    async fn dropping_last_handle_closes_actor_command_channel_after_lease_drops() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool(1, Duration::from_secs(60), dir.path(), always_free);
+        queue_validation_result(&mut pool, Ok(claim(0, dir.path())));
         let handle = DevicePoolHandle::from_pool(pool);
         let weak_commands = handle.commands.downgrade();
 
@@ -959,37 +1028,25 @@ mod tests {
         assert!(weak_commands.upgrade().is_none());
     }
 
-    #[test]
-    fn cancelled_ready_acquire_returns_index_to_ready() {
-        let mut pool = test_pool_for_pending_scan();
-        pool.ready.push_back(3);
-        let (respond_to, response) = oneshot::channel();
-        drop(response);
-
-        pool.handle_acquire(respond_to);
-
-        assert_eq!(pool.ready.iter().copied().collect::<Vec<_>>(), vec![3]);
-        assert!(pool.in_flight.is_empty());
-        assert!(pool.waiting_acquires.is_empty());
-    }
-
     #[tokio::test]
     async fn warmup_after_cleanup_does_not_restart_pool() {
-        let mut pool = test_pool_for_pending_scan();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
 
         pool.cleanup().await;
-        pool.warmup().await;
+        pool.warmup();
 
         assert!(!pool.active);
         assert!(pool.pending.is_empty());
-        assert!(pool.ready.is_empty());
+        assert!(pool.cooldown.is_empty());
     }
 
     #[tokio::test]
-    async fn acquire_rejects_duplicate_pending_validation_result() {
-        let mut pool = test_pool_for_pending_scan();
+    async fn acquire_rejects_duplicate_pending_scan_result() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
         pool.in_flight.insert(3);
-        queue_validation_result(&mut pool, Ok(3));
+        queue_validation_result(&mut pool, Ok(claim(3, dir.path())));
         let handle = DevicePoolHandle::from_pool(pool);
 
         let result = handle.acquire().await;
@@ -997,13 +1054,13 @@ mod tests {
         assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
         let snapshot = handle.snapshot().await;
         assert!(snapshot.in_flight.contains(&3));
-        assert!(snapshot.ready.is_empty());
         handle.cleanup().await;
     }
 
     #[tokio::test]
-    async fn waiting_acquires_spawn_demand_validations_up_to_limit() {
-        let mut pool = test_pool_for_pending_scan();
+    async fn waiting_acquires_spawn_demand_scans_up_to_limit() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
         let mut responses = Vec::new();
 
         for _ in 0..(MAX_PENDING + 2) {
@@ -1018,8 +1075,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn single_waiting_acquire_spawns_single_demand_validation() {
-        let mut pool = test_pool_for_pending_scan();
+    async fn single_waiting_acquire_spawns_single_demand_scan() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
         let (respond_to, _response) = oneshot::channel();
 
         pool.handle_acquire(respond_to);
@@ -1031,9 +1089,10 @@ mod tests {
 
     #[tokio::test]
     async fn detached_retire_returns_in_flight_lease_to_cooldown() {
-        let handle = DevicePoolHandle::from_pool(test_pool_with_in_flight(3));
+        let dir = tempfile::tempdir().expect("tempdir");
+        let handle = DevicePoolHandle::from_pool(test_pool_with_in_flight(3, dir.path()));
 
-        handle.retire_uncertain_detached(DeviceLease::new(3));
+        handle.retire_uncertain_detached(lease(3, dir.path()));
 
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
@@ -1050,18 +1109,19 @@ mod tests {
 
     #[tokio::test]
     async fn dropped_assigned_lease_retires_to_cooldown() {
-        let mut pool = test_pool_for_pending_scan();
-        pool.ready.push_back(3);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool(1, Duration::from_secs(60), dir.path(), always_free);
+        queue_validation_result(&mut pool, Ok(claim(0, dir.path())));
         let handle = DevicePoolHandle::from_pool(pool);
 
         let lease = handle.acquire().await.expect("acquire lease");
-        assert_eq!(lease.index(), 3);
+        assert_eq!(lease.index(), 0);
         drop(lease);
 
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
                 let snapshot = handle.snapshot().await;
-                if snapshot.cooldown == vec![3] && !snapshot.in_flight.contains(&3) {
+                if snapshot.cooldown == vec![0] && !snapshot.in_flight.contains(&0) {
                     break;
                 }
                 tokio::task::yield_now().await;
@@ -1074,26 +1134,24 @@ mod tests {
 
     #[tokio::test]
     async fn demand_error_waits_for_pending_success_before_failing_waiter() {
-        let mut pool = test_pool_for_pending_scan();
-        let complete_validation = queue_controlled_validation(&mut pool);
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
+        let complete_scan = queue_controlled_validation(&mut pool);
         let (first_tx, mut first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
         pool.waiting_acquires.push_back(first_tx);
         pool.waiting_acquires.push_back(second_tx);
 
-        pool.handle_validation_join(Ok(ValidationResult {
-            purpose: ValidationPurpose::Demand,
-            result: Err(NbdCowError::NoFreeDevice),
-        }));
+        pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
 
         assert!(matches!(
             first_rx.try_recv(),
             Err(oneshot::error::TryRecvError::Empty)
         ));
 
-        complete_validation.send(Ok(4)).unwrap();
-        let validation = pool.pending.join_next().await.unwrap();
-        pool.handle_validation_join(validation);
+        complete_scan.send(Ok(claim(4, dir.path()))).unwrap();
+        let scan = pool.pending.join_next().await.unwrap();
+        pool.handle_scan_join(Some(scan));
 
         let first_lease = first_rx.await.unwrap().unwrap();
         assert_eq!(first_lease.index(), 4);
@@ -1105,16 +1163,14 @@ mod tests {
 
     #[tokio::test]
     async fn deferred_error_starts_new_demand_scan_for_remaining_waiter() {
-        let mut pool = test_pool_for_pending_scan();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
         let (first_tx, first_rx) = oneshot::channel();
         let (second_tx, mut second_rx) = oneshot::channel();
         pool.waiting_acquires.push_back(first_tx);
         pool.waiting_acquires.push_back(second_tx);
 
-        pool.handle_validation_join(Ok(ValidationResult {
-            purpose: ValidationPurpose::Demand,
-            result: Err(NbdCowError::NoFreeDevice),
-        }));
+        pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
 
         assert!(matches!(
             first_rx.await.unwrap(),
@@ -1130,59 +1186,53 @@ mod tests {
     }
 
     #[test]
-    fn ready_assignment_skips_cancelled_waiter() {
-        let mut pool = test_pool_for_pending_scan();
-        pool.ready.push_back(4);
+    fn validation_success_skips_cancelled_waiter_without_leaking_lock() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
         let (cancelled_tx, cancelled_rx) = oneshot::channel();
         let (active_tx, mut active_rx) = oneshot::channel();
         drop(cancelled_rx);
         pool.waiting_acquires.push_back(cancelled_tx);
         pool.waiting_acquires.push_back(active_tx);
 
-        assert!(pool.satisfy_waiters_from_ready());
+        pool.handle_scan_join(Some(Ok(Ok(claim(4, dir.path())))));
 
         let lease = active_rx.try_recv().unwrap().unwrap();
         assert_eq!(lease.index(), 4);
         assert!(pool.waiting_acquires.is_empty());
-        assert!(pool.ready.is_empty());
         assert!(pool.in_flight.contains(&4));
     }
 
     #[test]
-    fn validation_success_skips_cancelled_waiter() {
-        let mut pool = test_pool_for_pending_scan();
-        pool.ready.extend([0, 1, 2, 3]);
+    fn cancelled_waiter_after_scan_completion_drops_claim() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
         let (cancelled_tx, cancelled_rx) = oneshot::channel();
-        let (active_tx, mut active_rx) = oneshot::channel();
         drop(cancelled_rx);
         pool.waiting_acquires.push_back(cancelled_tx);
-        pool.waiting_acquires.push_back(active_tx);
 
-        pool.handle_validation_join(Ok(ValidationResult {
-            purpose: ValidationPurpose::Demand,
-            result: Ok(4),
-        }));
+        pool.handle_scan_join(Some(Ok(Ok(claim(4, dir.path())))));
 
-        let lease = active_rx.try_recv().unwrap().unwrap();
-        assert_eq!(lease.index(), 4);
         assert!(pool.waiting_acquires.is_empty());
-        assert!(pool.in_flight.contains(&4));
-        assert!(pool.pending.is_empty());
+        assert!(pool.in_flight.is_empty());
+        assert!(
+            device_lock::try_acquire_device_claim_in(4, dir.path())
+                .expect("lock probe")
+                .is_some()
+        );
     }
 
     #[tokio::test]
     async fn deferred_error_skips_cancelled_waiter() {
-        let mut pool = test_pool_for_pending_scan();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
         let (cancelled_tx, cancelled_rx) = oneshot::channel();
         let (active_tx, active_rx) = oneshot::channel();
         drop(cancelled_rx);
         pool.waiting_acquires.push_back(cancelled_tx);
         pool.waiting_acquires.push_back(active_tx);
 
-        pool.handle_validation_join(Ok(ValidationResult {
-            purpose: ValidationPurpose::Demand,
-            result: Err(NbdCowError::NoFreeDevice),
-        }));
+        pool.handle_scan_join(Some(Ok(Err(NbdCowError::NoFreeDevice))));
 
         assert!(matches!(
             active_rx.await.unwrap(),
@@ -1193,10 +1243,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_acquire_waiting_for_validation_does_not_block_release() {
-        let mut pool = test_pool_for_pending_scan();
+    async fn handle_acquire_waiting_for_scan_does_not_block_release() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
         pool.in_flight.insert(3);
-        let complete_validation = queue_controlled_validation(&mut pool);
+        let complete_scan = queue_controlled_validation(&mut pool);
         let handle = DevicePoolHandle::from_pool(pool);
         let acquire_task = tokio::spawn({
             let handle = handle.clone();
@@ -1206,16 +1257,16 @@ mod tests {
         wait_for_validation_waiter(&handle).await;
         tokio::time::timeout(
             Duration::from_secs(1),
-            handle.release_clean(DeviceLease::new(3)),
+            handle.release_clean(lease(3, dir.path())),
         )
         .await
         .expect("release blocked behind pending acquire");
         assert_eq!(handle.snapshot().await.cooldown, vec![3]);
 
-        complete_validation.send(Ok(4)).unwrap();
+        complete_scan.send(Ok(claim(4, dir.path()))).unwrap();
         let lease = tokio::time::timeout(Duration::from_secs(1), acquire_task)
             .await
-            .expect("acquire did not finish after validation")
+            .expect("acquire did not finish after scan")
             .expect("acquire task panicked")
             .expect("acquire failed");
         assert_eq!(lease.index(), 4);
@@ -1224,9 +1275,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cleanup_wakes_handle_acquire_waiting_for_validation() {
-        let mut pool = test_pool_for_pending_scan();
-        let _complete_validation = queue_controlled_validation(&mut pool);
+    async fn cleanup_wakes_handle_acquire_waiting_for_scan() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
+        let _complete_scan = queue_controlled_validation(&mut pool);
         let handle = DevicePoolHandle::from_pool(pool);
         let acquire_task = tokio::spawn({
             let handle = handle.clone();
@@ -1246,24 +1298,81 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn warmup_skips_already_tracked_validation_results() {
-        let mut pool = test_pool_for_pending_scan();
-        pool.ready.push_back(4);
-        pool.cooldown.push_back(CooldownSlot {
-            index: 5,
-            released_at: Instant::now(),
-        });
+    async fn cooldown_timer_releases_expired_claim_without_waiter() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let handle = DevicePoolHandle::from_pool(test_pool_with_in_flight(3, dir.path()));
+
+        handle.release_clean(lease(3, dir.path())).await;
+        assert!(
+            device_lock::try_acquire_device_claim_in(3, dir.path())
+                .expect("lock probe")
+                .is_none()
+        );
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            loop {
+                let snapshot = handle.snapshot().await;
+                if snapshot.cooldown.is_empty()
+                    && device_lock::try_acquire_device_claim_in(3, dir.path())
+                        .expect("lock probe")
+                        .is_some()
+                {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("cooldown timer did not release claim");
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn expired_cooldown_with_waiter_hands_off_same_claim() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool(0, Duration::from_millis(20), dir.path(), always_free);
         pool.in_flight.insert(3);
-        queue_validation_result(&mut pool, Ok(3));
-        queue_validation_result(&mut pool, Ok(4));
-        queue_validation_result(&mut pool, Ok(5));
-        queue_validation_result(&mut pool, Ok(6));
+        let handle = DevicePoolHandle::from_pool(pool);
 
-        pool.warmup().await;
+        handle.release_clean(lease(3, dir.path())).await;
+        let acquire_task = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
 
-        let ready: Vec<u32> = pool.ready.iter().copied().collect();
-        assert_eq!(ready, vec![4, 6]);
-        assert_eq!(pool.cooldown.front().map(|slot| slot.index), Some(5));
-        assert!(pool.in_flight.contains(&3));
+        let lease = tokio::time::timeout(Duration::from_secs(1), acquire_task)
+            .await
+            .expect("cooldown handoff timed out")
+            .expect("acquire task panicked")
+            .expect("acquire failed");
+        assert_eq!(lease.index(), 3);
+        handle.discard(lease).await;
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn expired_cooldown_with_failed_recheck_drops_claim_and_scans() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool(0, Duration::from_millis(1), dir.path(), never_free);
+        pool.in_flight.insert(3);
+        let handle = DevicePoolHandle::from_pool(pool);
+
+        handle.release_clean(lease(3, dir.path())).await;
+        let acquire_task = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+
+        let result = tokio::time::timeout(Duration::from_secs(1), acquire_task)
+            .await
+            .expect("acquire timed out")
+            .expect("acquire task panicked");
+        assert!(matches!(result, Err(NbdCowError::NoFreeDevice)));
+        assert!(
+            device_lock::try_acquire_device_claim_in(3, dir.path())
+                .expect("lock probe")
+                .is_some()
+        );
+        handle.cleanup().await;
     }
 }

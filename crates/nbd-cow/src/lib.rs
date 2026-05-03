@@ -23,6 +23,7 @@
 //! writes that were not flushed.
 
 pub mod cow;
+pub mod device_lock;
 pub mod error;
 pub mod netlink;
 pub mod pool;
@@ -1024,8 +1025,12 @@ mod tests {
             }
         }
 
+        let lock_dir = tempfile::tempdir().expect("tempdir");
         let pool = pool::DevicePoolHandle::new(pool::DevicePoolConfig::default());
-        let mut guard = CreateAttemptGuard::new(pool.clone(), pool::DeviceLease::new_for_test(3));
+        let mut guard = CreateAttemptGuard::new(
+            pool.clone(),
+            pool::DeviceLease::new_for_test(3, lock_dir.path()),
+        );
         let token = guard.shutdown_token();
         let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();

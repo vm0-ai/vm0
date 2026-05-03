@@ -968,46 +968,41 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
             );
             cleaned += 1;
         } else {
-            // Re-check before disconnect: between the scan and now, the device
-            // could have been freed and re-acquired by another runner. Only
-            // disconnect if the PID is unchanged and still dead.
+            // Re-check before disconnect while holding the same per-index lock
+            // the allocator uses. Between the scan and now, the device could
+            // have been freed and re-acquired by another runner.
             let result = match tokio::task::spawn_blocking(move || {
-                match super::nbd::read_nbd_pid(device_index) {
-                    Some(current_pid) if current_pid == pid
-                        && !Path::new(&format!("/proc/{pid}")).exists() =>
-                    {
-                        Some(nbd_cow::netlink::disconnect(device_index))
-                    }
-                    _ => {
-                        tracing::debug!(
-                            "nbd{device_index}: skipping disconnect, device state changed since scan"
-                        );
-                        None
-                    }
-                }
+                super::nbd::disconnect_orphan_if_still_dead(device_index, pid)
             })
             .await
             {
                 Ok(result) => result,
                 Err(e) => {
-                    tracing::warn!(
-                        "nbd disconnect task failed for /dev/nbd{device_index}: {e}"
-                    );
+                    tracing::warn!("nbd disconnect task failed for /dev/nbd{device_index}: {e}");
                     continue;
                 }
             };
 
             match result {
-                Some(Ok(())) => {
+                super::nbd::NbdOrphanDisconnect::Disconnected => {
                     info!(
                         "disconnected orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
                     );
                     cleaned += 1;
                 }
-                Some(Err(e)) => {
+                super::nbd::NbdOrphanDisconnect::Locked => {
+                    tracing::debug!(
+                        "nbd{device_index}: skipping disconnect, NBD device lock is held"
+                    );
+                }
+                super::nbd::NbdOrphanDisconnect::Changed => {
+                    tracing::debug!(
+                        "nbd{device_index}: skipping disconnect, device state changed since scan"
+                    );
+                }
+                super::nbd::NbdOrphanDisconnect::Failed(e) => {
                     info!("failed to disconnect orphan NBD device /dev/nbd{device_index}: {e}");
                 }
-                None => {} // skipped — already logged at debug level
             }
         }
     }
