@@ -336,14 +336,17 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 // Decode
 // ---------------------------------------------------------------------------
 
-/// Decode exec/spawn_watch shared fields. Returns `(decoded, consumed_offset)`.
+struct DecodedExecInner<'a> {
+    exec: DecodedExec<'a>,
+    offset: usize,
+    raw_flags: u8,
+}
+
+/// Decode exec/spawn_watch shared fields.
 ///
 /// The env section is optional: if the payload ends right after the command,
 /// an empty vec is returned (backward-compatible with old encoders).
-fn decode_exec_inner(
-    payload: &[u8],
-    sudo_flag: u8,
-) -> Result<(DecodedExec<'_>, usize), ProtocolError> {
+fn decode_exec_inner(payload: &[u8], sudo_flag: u8) -> Result<DecodedExecInner<'_>, ProtocolError> {
     let timeout_ms =
         read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
     let flags =
@@ -360,15 +363,16 @@ fn decode_exec_inner(
 
     let env_start = 9 + cmd_len;
     if env_start >= payload.len() {
-        return Ok((
-            DecodedExec {
+        return Ok(DecodedExecInner {
+            exec: DecodedExec {
                 timeout_ms,
                 command,
                 env: Vec::new(),
                 sudo,
             },
-            env_start,
-        ));
+            offset: env_start,
+            raw_flags: flags,
+        });
     }
 
     let env_count = read_u32_at(payload, env_start)
@@ -407,20 +411,21 @@ fn decode_exec_inner(
         env.push((key, val));
     }
 
-    Ok((
-        DecodedExec {
+    Ok(DecodedExecInner {
+        exec: DecodedExec {
             timeout_ms,
             command,
             env,
             sudo,
         },
         offset,
-    ))
+        raw_flags: flags,
+    })
 }
 
 /// Decode exec payload into a [`DecodedExec`] struct.
 pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
-    decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|(d, _)| d)
+    decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|d| d.exec)
 }
 
 /// Decode spawn_watch payload. Extends exec fields with streaming metadata.
@@ -429,10 +434,12 @@ pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
 /// The log_path section is optional — if the payload ends after the exec
 /// fields, `stdout_log_path` is `None`.
 pub fn decode_spawn_watch(payload: &[u8]) -> Result<DecodedSpawnWatch<'_>, ProtocolError> {
-    let (exec, offset) = decode_exec_inner(payload, SPAWN_WATCH_FLAG_SUDO)?;
-    let flags =
-        read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
-    let stream_flag = (flags & SPAWN_WATCH_FLAG_STREAM_STDOUT) != 0;
+    let DecodedExecInner {
+        exec,
+        offset,
+        raw_flags,
+    } = decode_exec_inner(payload, SPAWN_WATCH_FLAG_SUDO)?;
+    let stream_flag = (raw_flags & SPAWN_WATCH_FLAG_STREAM_STDOUT) != 0;
     let stdout_log_path = if offset == payload.len() {
         None
     } else if offset + 2 <= payload.len() {
