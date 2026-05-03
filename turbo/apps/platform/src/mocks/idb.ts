@@ -7,10 +7,6 @@
  * (.btest.ts) against a real Chromium browser with fake-indexeddb.
  */
 
-function fakeCursor(): null {
-  return null;
-}
-
 function fakeIndex() {
   return {
     openCursor: () => Promise.resolve(null),
