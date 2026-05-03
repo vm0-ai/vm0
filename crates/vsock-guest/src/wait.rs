@@ -303,4 +303,17 @@ mod tests {
         assert_eq!(code, 1);
         assert_eq!(stderr, b"Failed to wait: wait failed".to_vec());
     }
+
+    #[test]
+    fn finalize_buffered_result_timeout_preserves_stdout() {
+        let (code, stdout, stderr) = finalize_buffered_result(
+            WaitOutcome::TimedOut,
+            b"partial stdout".to_vec(),
+            b"real stderr".to_vec(),
+        );
+
+        assert_eq!(code, EXIT_CODE_TIMEOUT);
+        assert_eq!(stdout, b"partial stdout".to_vec());
+        assert_eq!(stderr, b"Timeout".to_vec());
+    }
 }
