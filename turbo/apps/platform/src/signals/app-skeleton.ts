@@ -1,10 +1,12 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { currentChatAgent$ } from "./agent-chat.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 import { resetSignal, bestEffort, setLoop } from "./utils.ts";
 import { agents$ } from "./agent.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
 import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
+import { featureSwitch$ } from "./external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -125,14 +127,17 @@ const prefetchAvatar$ = command(async ({ get }, signal: AbortSignal) => {
 });
 
 export const hideAppSkeleton$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     set(resetSkeletonCycling$);
 
-    await Promise.all([
-      set(prefetch$, prefetchAvatar$, signal),
-      set(prefetch$, agents$, signal),
-    ]);
-    signal.throwIfAborted();
+    const noPreload = get(featureSwitch$)[FeatureSwitchKey.SkeletonNoPreload];
+    if (!noPreload) {
+      await Promise.all([
+        set(prefetch$, prefetchAvatar$, signal),
+        set(prefetch$, agents$, signal),
+      ]);
+      signal.throwIfAborted();
+    }
 
     set(internalVisible$, false);
     set(captureFirstSkeletonHide$);

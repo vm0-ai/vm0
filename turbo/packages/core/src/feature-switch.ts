@@ -317,6 +317,15 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SkeletonNoPreload]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Hide the app skeleton without awaiting agents/avatar prefetch. " +
+      "When on, the skeleton hides as soon as the route resolves, " +
+      "letting components render with their own loading states.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

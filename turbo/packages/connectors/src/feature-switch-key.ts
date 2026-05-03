@@ -56,4 +56,5 @@ export enum FeatureSwitchKey {
   GumroadConnector = "gumroadConnector",
   CodexBeta = "codexBeta",
   IdbMessage = "idbMessage",
+  SkeletonNoPreload = "skeletonNoPreload",
 }
