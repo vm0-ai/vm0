@@ -8,7 +8,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use api_contracts::generated::routes;
-use reqwest::StatusCode;
+use reqwest::{RequestBuilder, Response, StatusCode};
+use serde::de::DeserializeOwned;
 
 use super::JobProvider;
 use crate::error::{RunnerError, RunnerResult};
@@ -539,24 +540,16 @@ impl ApiClient {
         {
             obj.insert("heldSessions".to_string(), serde_json::json!(held_sessions));
         }
-        let resp = self
-            .http
-            .request_route(routes::runners::poll::POLL, &self.token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("poll: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_route(routes::runners::poll::POLL, &self.token)
+                .json(&body),
+            "poll",
+        )
+        .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RunnerError::Api(format!("poll {status}: {body}")));
-        }
-
-        let poll: PollResponse = resp
-            .json()
-            .await
-            .map_err(|e| RunnerError::Api(format!("poll decode: {e}")))?;
+        let resp = check_api_status(resp, "poll").await?;
+        let poll: PollResponse = decode_api_json(resp, "poll").await?;
 
         Ok(poll.job)
     }
@@ -564,20 +557,16 @@ impl ApiClient {
     /// Send a heartbeat with runner state. Uses a short timeout (3s) to
     /// avoid blocking the main loop.
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
-        let resp = self
-            .http
-            .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
-            .timeout(Duration::from_secs(3))
-            .json(state)
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("heartbeat: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
+                .timeout(Duration::from_secs(3))
+                .json(state),
+            "heartbeat",
+        )
+        .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RunnerError::Api(format!("heartbeat {status}: {body}")));
-        }
+        check_api_status(resp, "heartbeat").await?;
 
         Ok(())
     }
@@ -589,35 +578,27 @@ impl ApiClient {
     /// for the same job.
     async fn claim(&self, run_id: RunId) -> RunnerResult<ExecutionContext> {
         let run_id = run_id.to_string();
-        let resp = self
-            .http
-            .request_resolved_route(
-                routes::runners::jobs::by_id::claim::route(
-                    routes::runners::jobs::by_id::claim::Params {
-                        id: run_id.as_str(),
-                    },
-                ),
-                &self.token,
-            )
-            .json(&serde_json::json!({}))
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("claim: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_resolved_route(
+                    routes::runners::jobs::by_id::claim::route(
+                        routes::runners::jobs::by_id::claim::Params {
+                            id: run_id.as_str(),
+                        },
+                    ),
+                    &self.token,
+                )
+                .json(&serde_json::json!({})),
+            "claim",
+        )
+        .await?;
 
         if matches!(resp.status(), StatusCode::CONFLICT | StatusCode::NOT_FOUND) {
             return Err(RunnerError::AlreadyClaimed);
         }
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RunnerError::Api(format!("claim {status}: {body}")));
-        }
-
-        let ctx: ExecutionContext = resp
-            .json()
-            .await
-            .map_err(|e| RunnerError::Api(format!("claim decode: {e}")))?;
+        let resp = check_api_status(resp, "claim").await?;
+        let ctx: ExecutionContext = decode_api_json(resp, "claim").await?;
 
         Ok(ctx)
     }
@@ -640,19 +621,18 @@ impl ApiClient {
             sandbox_reuse_result: reuse_result,
         };
 
-        let resp = self
-            .http
-            .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("complete: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
+                .json(&body),
+            "complete",
+        )
+        .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
+        if !resp.status().is_success() {
+            let (status, body) = read_api_error(resp).await;
             warn!(status = %status, "complete request failed: {body}");
-            return Err(RunnerError::Api(format!("complete {status}: {body}")));
+            return Err(api_status_error("complete", status, &body));
         }
 
         Ok(())
@@ -660,24 +640,48 @@ impl ApiClient {
 
     /// Fetch an Ably token for subscribing to runner group notifications.
     async fn realtime_token(&self, group: &str) -> RunnerResult<ably_subscriber::TokenRequest> {
-        let resp = self
-            .http
-            .request_route(routes::runners::realtime::token::CREATE, &self.token)
-            .json(&serde_json::json!({ "group": group }))
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("realtime token: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_route(routes::runners::realtime::token::CREATE, &self.token)
+                .json(&serde_json::json!({ "group": group })),
+            "realtime token",
+        )
+        .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RunnerError::Api(format!("realtime token {status}: {body}")));
-        }
-
-        resp.json()
-            .await
-            .map_err(|e| RunnerError::Api(format!("realtime token decode: {e}")))
+        let resp = check_api_status(resp, "realtime token").await?;
+        decode_api_json(resp, "realtime token").await
     }
+}
+
+async fn send_api(req: RequestBuilder, label: &str) -> RunnerResult<Response> {
+    req.send()
+        .await
+        .map_err(|e| RunnerError::Api(format!("{label}: {e}")))
+}
+
+async fn check_api_status(resp: Response, label: &str) -> RunnerResult<Response> {
+    let status = resp.status();
+    if !status.is_success() {
+        let (status, body) = read_api_error(resp).await;
+        return Err(api_status_error(label, status, &body));
+    }
+    Ok(resp)
+}
+
+async fn decode_api_json<T: DeserializeOwned>(resp: Response, label: &str) -> RunnerResult<T> {
+    resp.json()
+        .await
+        .map_err(|e| RunnerError::Api(format!("{label} decode: {e}")))
+}
+
+async fn read_api_error(resp: Response) -> (StatusCode, String) {
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    (status, body)
+}
+
+fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError {
+    RunnerError::Api(format!("{label} {status}: {body}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -687,6 +691,8 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use httpmock::Method::POST;
+    use httpmock::MockServer;
     use tokio::io::AsyncReadExt;
     use tokio::net::TcpListener;
 
@@ -697,6 +703,20 @@ mod tests {
             if let Some(tx) = self.0.take() {
                 let _ = tx.send(());
             }
+        }
+    }
+
+    fn api_client_for_server(server: &MockServer) -> ApiClient {
+        ApiClient::new(
+            HttpClient::new(server.base_url()).unwrap(),
+            "runner-token".to_string(),
+        )
+    }
+
+    fn assert_api_error(err: RunnerError, expected: &str) {
+        match err {
+            RunnerError::Api(message) => assert_eq!(message, expected),
+            other => panic!("expected RunnerError::Api, got {other:?}"),
         }
     }
 
@@ -813,6 +833,88 @@ mod tests {
 
         server_task.abort();
         let _ = server_task.await;
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_non_success_includes_status_and_body() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(503).body("poll unavailable");
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api.poll("default", &[], &[]).await.unwrap_err();
+
+        assert_api_error(err, "poll 503 Service Unavailable: poll unavailable");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_decode_error_keeps_operation_label() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).body("not json");
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api.poll("default", &[], &[]).await.unwrap_err();
+
+        match err {
+            RunnerError::Api(message) => assert!(
+                message.starts_with("poll decode: "),
+                "unexpected error: {message}"
+            ),
+            other => panic!("expected RunnerError::Api, got {other:?}"),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_conflict_or_not_found_is_already_claimed() {
+        for status in [409_u16, 404] {
+            let server = MockServer::start_async().await;
+            let run_id = RunId::nil();
+            let path = format!("/api/runners/jobs/{run_id}/claim");
+            let mock = server
+                .mock_async(|when, then| {
+                    when.method(POST).path(path.as_str());
+                    then.status(status);
+                })
+                .await;
+            let api = api_client_for_server(&server);
+
+            let err = api.claim(run_id).await.unwrap_err();
+
+            assert!(matches!(err, RunnerError::AlreadyClaimed));
+            mock.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn api_client_complete_non_success_includes_status_and_body() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path);
+                then.status(500).body("complete failed");
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .complete("sandbox-token", RunId::nil(), 1, Some("boom"), None, None)
+            .await
+            .unwrap_err();
+
+        assert_api_error(err, "complete 500 Internal Server Error: complete failed");
+        mock.assert_async().await;
     }
 
     #[test]
