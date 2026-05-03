@@ -1,0 +1,214 @@
+use std::io::{self, Write};
+use std::process::Stdio;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::Duration;
+
+use vsock_proto::{
+    self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
+    RawMessage,
+};
+
+use crate::drain::drain_into_vec_cancellable;
+use crate::error::to_io_error;
+use crate::exec::{build_exec_command, prepend_env, spawn_with_pipes, truncate_preview};
+use crate::log::log;
+use crate::process::extract_exit_code;
+use crate::shutdown::handle_shutdown;
+use crate::wait::{
+    DRAIN_DEADLINE_SECS, WaitOutcome, finalize_buffered_result, wait_with_drain_and_timeout,
+    wait_with_kill_timeout,
+};
+
+/// Handle exec message
+pub(crate) fn handle_exec(
+    timeout_ms: u32,
+    command: &str,
+    env: &[(&str, &str)],
+    sudo: bool,
+) -> (i32, Vec<u8>, Vec<u8>) {
+    log(
+        "INFO",
+        &format!(
+            "exec: {} (timeout={}ms, sudo={}, env_count={})",
+            truncate_preview(command),
+            timeout_ms,
+            sudo,
+            env.len(),
+        ),
+    );
+    let command = prepend_env(command, env);
+
+    let child = match spawn_with_pipes(&command, sudo) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                1,
+                Vec::new(),
+                format!("Failed to execute: {e}").into_bytes(),
+            );
+        }
+    };
+
+    let (outcome, stdout, stderr_buf) = wait_with_drain_and_timeout(child, timeout_ms);
+    let result = finalize_buffered_result(outcome, stdout, stderr_buf);
+
+    log(
+        "INFO",
+        &format!(
+            "exec result: exit_code={}, stdout_len={}, stderr_len={}",
+            result.0,
+            result.1.len(),
+            result.2.len()
+        ),
+    );
+    result
+}
+
+/// Handle write_file message
+fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -> (bool, String) {
+    log(
+        "INFO",
+        &format!(
+            "write_file: path={} size={} sudo={} append={}",
+            path,
+            content.len(),
+            use_sudo,
+            append,
+        ),
+    );
+
+    // Execute as 'user' (UID 1000) to match E2B sandbox behavior
+    // Use subprocess instead of direct fs::write to run as user
+    const WRITE_TIMEOUT_MS: u32 = 30_000;
+
+    let escaped_path = path.replace('\'', "'\\''");
+
+    // Build the write command: tee for privileged writes (build_exec_command
+    // handles root elevation), cat for normal writes with parent dir creation.
+    let write_cmd = if use_sudo {
+        let tee_flag = if append { "-a " } else { "" };
+        format!("tee {tee_flag}'{escaped_path}'")
+    } else if append {
+        // Append mode: parent directory already exists from the first chunk.
+        format!("cat >> '{escaped_path}'")
+    } else {
+        // Create parent directory if needed, then write
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                format!(
+                    "mkdir -p '{}' && cat > '{escaped_path}'",
+                    parent.display().to_string().replace('\'', "'\\''"),
+                )
+            } else {
+                format!("cat > '{escaped_path}'")
+            }
+        } else {
+            format!("cat > '{escaped_path}'")
+        }
+    };
+
+    let mut child = match build_exec_command(&write_cmd, use_sudo)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(e) => return (false, format!("Failed to spawn write command: {e}")),
+    };
+
+    // Write content to stdin and close it
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(e) = stdin.write_all(content)
+    {
+        let _ = child.kill();
+        let _ = child.wait(); // Prevent zombie process
+        return (false, format!("Failed to write to stdin: {e}"));
+    }
+    // stdin is dropped here, closing the pipe
+
+    // Drain stderr concurrently with wait via the cancellable helper. Stdout
+    // is `Stdio::null()` so there's no orphan-fd hazard there. After the
+    // child exits, the drain thread either reaches EOF naturally or — if a
+    // grandchild somehow still holds stderr — is cut at the deadline so its
+    // last write returns EPIPE.
+    // Defensive: same invariant as wait_with_drain_and_timeout — reap the
+    // child if its stderr is somehow already gone, so we don't leave a zombie.
+    let stderr_pipe = match child.stderr.take() {
+        Some(p) => p,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return (false, "missing stderr pipe".to_string());
+        }
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let stderr_handle = {
+        let cancel = cancel.clone();
+        thread::spawn(move || {
+            let buf = drain_into_vec_cancellable(stderr_pipe, &cancel);
+            let _ = done_tx.send(());
+            buf
+        })
+    };
+
+    let outcome = wait_with_kill_timeout(child, WRITE_TIMEOUT_MS);
+
+    // Wait for drain to finish naturally up to the deadline; otherwise cancel
+    // so the drain thread drops its fd and a still-writing grandchild gets
+    // EPIPE on its next write.
+    let _ = done_rx.recv_timeout(Duration::from_secs(DRAIN_DEADLINE_SECS));
+    cancel.store(true, Ordering::Release);
+    let stderr = stderr_handle.join().unwrap_or_default();
+
+    match outcome {
+        WaitOutcome::TimedOut => (false, "write timed out".to_string()),
+        WaitOutcome::WaitFailed(msg) => (false, format!("write wait failed: {msg}")),
+        WaitOutcome::Exited(s) => {
+            let exit_code = extract_exit_code(s);
+            if exit_code != 0 {
+                let stderr_str = String::from_utf8_lossy(&stderr);
+                return (false, format!("write failed: {stderr_str}"));
+            }
+            (true, String::new())
+        }
+    }
+}
+
+/// Handle incoming message and return response.
+///
+/// `MSG_EXEC` and `MSG_SPAWN_WATCH` are handled separately in
+/// `handle_connection` because they run in background threads.
+pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
+    log(
+        "INFO",
+        &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+    );
+
+    match msg.msg_type {
+        MSG_PING => Ok(Some(
+            vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
+        )),
+        MSG_WRITE_FILE => {
+            let (path, content, use_sudo, append) =
+                vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
+            let (success, error) = handle_write_file(path, content, use_sudo, append);
+            let payload = vsock_proto::encode_write_file_result(success, &error);
+            Ok(Some(
+                vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload)
+                    .map_err(to_io_error)?,
+            ))
+        }
+        MSG_SHUTDOWN => Ok(Some(handle_shutdown(msg.seq)?)),
+        _ => {
+            let payload =
+                vsock_proto::encode_error(&format!("Unknown message type: 0x{:02X}", msg.msg_type));
+            Ok(Some(
+                vsock_proto::encode(MSG_ERROR, msg.seq, &payload).map_err(to_io_error)?,
+            ))
+        }
+    }
+}
