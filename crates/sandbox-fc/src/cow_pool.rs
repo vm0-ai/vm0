@@ -1,8 +1,8 @@
 //! COW Device Pool for Firecracker VMs
 //!
 //! Pre-warms COW files in the background to reduce sandbox creation latency.
-//! On acquire, only `DevicePoolHandle::create_cow_device()` remains on the hot path (~15ms,
-//! netlink connect — no subprocess calls).
+//! NBD device claims are acquired on demand by
+//! `DevicePoolHandle::create_cow_device()`.
 //!
 //! Follows the [`NetnsPool`](crate::network::NetnsPool) pattern:
 //! - Fixed buffer of pre-warmed slots
@@ -118,7 +118,7 @@ pub(crate) enum CowPoolError {
 /// Pre-warming pool for COW file resources.
 ///
 /// Maintains a buffer of pre-created COW files. On [`acquire`](Self::acquire),
-/// pops a slot and the caller creates the NBD device with
+/// pops a slot and the caller claims and connects an NBD device with
 /// `DevicePoolHandle::create_cow_device()`.
 pub(crate) struct CowPool {
     active: bool,

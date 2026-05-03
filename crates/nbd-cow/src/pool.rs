@@ -882,20 +882,18 @@ mod tests {
         )
     }
 
-    fn queue_validation_result(pool: &mut DevicePool, result: Result<NbdDeviceClaim>) {
+    fn queue_scan_result(pool: &mut DevicePool, result: Result<NbdDeviceClaim>) {
         pool.pending.spawn(async move { result });
     }
 
-    fn queue_controlled_validation(
-        pool: &mut DevicePool,
-    ) -> oneshot::Sender<Result<NbdDeviceClaim>> {
+    fn queue_controlled_scan(pool: &mut DevicePool) -> oneshot::Sender<Result<NbdDeviceClaim>> {
         let (complete, complete_rx) = oneshot::channel();
         pool.pending
             .spawn(async move { complete_rx.await.unwrap_or(Err(NbdCowError::NoFreeDevice)) });
         complete
     }
 
-    async fn wait_for_validation_waiter(handle: &DevicePoolHandle) {
+    async fn wait_for_scan_waiter(handle: &DevicePoolHandle) {
         tokio::time::timeout(Duration::from_secs(1), async {
             loop {
                 if handle.snapshot().await.waiting_acquires > 0 {
@@ -905,7 +903,7 @@ mod tests {
             }
         })
         .await
-        .expect("acquire did not wait for validation");
+        .expect("acquire did not wait for scan");
     }
 
     fn claim(index: u32, lock_dir: &Path) -> NbdDeviceClaim {
@@ -1016,7 +1014,7 @@ mod tests {
     async fn dropping_last_handle_closes_actor_command_channel_after_lease_drops() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut pool = test_pool(1, Duration::from_secs(60), dir.path(), always_free);
-        queue_validation_result(&mut pool, Ok(claim(0, dir.path())));
+        queue_scan_result(&mut pool, Ok(claim(0, dir.path())));
         let handle = DevicePoolHandle::from_pool(pool);
         let weak_commands = handle.commands.downgrade();
 
@@ -1046,7 +1044,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut pool = test_pool_for_pending_scan(dir.path());
         pool.in_flight.insert(3);
-        queue_validation_result(&mut pool, Ok(claim(3, dir.path())));
+        queue_scan_result(&mut pool, Ok(claim(3, dir.path())));
         let handle = DevicePoolHandle::from_pool(pool);
 
         let result = handle.acquire().await;
@@ -1111,7 +1109,7 @@ mod tests {
     async fn dropped_assigned_lease_retires_to_cooldown() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut pool = test_pool(1, Duration::from_secs(60), dir.path(), always_free);
-        queue_validation_result(&mut pool, Ok(claim(0, dir.path())));
+        queue_scan_result(&mut pool, Ok(claim(0, dir.path())));
         let handle = DevicePoolHandle::from_pool(pool);
 
         let lease = handle.acquire().await.expect("acquire lease");
@@ -1136,7 +1134,7 @@ mod tests {
     async fn demand_error_waits_for_pending_success_before_failing_waiter() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut pool = test_pool_for_pending_scan(dir.path());
-        let complete_scan = queue_controlled_validation(&mut pool);
+        let complete_scan = queue_controlled_scan(&mut pool);
         let (first_tx, mut first_rx) = oneshot::channel();
         let (second_tx, second_rx) = oneshot::channel();
         pool.waiting_acquires.push_back(first_tx);
@@ -1186,7 +1184,7 @@ mod tests {
     }
 
     #[test]
-    fn validation_success_skips_cancelled_waiter_without_leaking_lock() {
+    fn scan_success_skips_cancelled_waiter_without_leaking_lock() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut pool = test_pool_for_pending_scan(dir.path());
         let (cancelled_tx, cancelled_rx) = oneshot::channel();
@@ -1247,14 +1245,14 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut pool = test_pool_for_pending_scan(dir.path());
         pool.in_flight.insert(3);
-        let complete_scan = queue_controlled_validation(&mut pool);
+        let complete_scan = queue_controlled_scan(&mut pool);
         let handle = DevicePoolHandle::from_pool(pool);
         let acquire_task = tokio::spawn({
             let handle = handle.clone();
             async move { handle.acquire().await }
         });
 
-        wait_for_validation_waiter(&handle).await;
+        wait_for_scan_waiter(&handle).await;
         tokio::time::timeout(
             Duration::from_secs(1),
             handle.release_clean(lease(3, dir.path())),
@@ -1278,14 +1276,14 @@ mod tests {
     async fn cleanup_wakes_handle_acquire_waiting_for_scan() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut pool = test_pool_for_pending_scan(dir.path());
-        let _complete_scan = queue_controlled_validation(&mut pool);
+        let _complete_scan = queue_controlled_scan(&mut pool);
         let handle = DevicePoolHandle::from_pool(pool);
         let acquire_task = tokio::spawn({
             let handle = handle.clone();
             async move { handle.acquire().await }
         });
 
-        wait_for_validation_waiter(&handle).await;
+        wait_for_scan_waiter(&handle).await;
         tokio::time::timeout(Duration::from_secs(1), handle.cleanup())
             .await
             .expect("cleanup blocked behind pending acquire");

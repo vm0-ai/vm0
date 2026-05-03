@@ -12,7 +12,7 @@
 //!
 //! The layered implementation is split across:
 //! - [`cow`] for COW storage and dirty bitmap persistence.
-//! - [`pool`] for pre-validated `/dev/nbdN` device allocation.
+//! - [`pool`] for host-locked `/dev/nbdN` device claim allocation.
 //! - [`netlink`] for Linux NBD generic netlink setup and disconnect.
 //! - [`server`] for the in-process NBD dispatch loop.
 //! - [`protocol`] for NBD transmission protocol parsing and serialization.
@@ -339,15 +339,16 @@ pub struct NbdCowDevice {
 impl NbdCowDevice {
     /// Create a new NBD COW device.
     ///
-    /// 1. Acquires a pre-validated device index from the pool
+    /// 1. Acquires a host-locked device claim from the pool
     /// 2. Creates socketpairs (NUM_CONNECTIONS connections)
     /// 3. Spawns dispatch tasks for each connection
     /// 4. Connects via netlink to the specific device
     ///
     /// Two retry loops:
-    /// - **Inner (EBUSY):** If another process grabbed the device between pool
-    ///   validation and our connect, try a different device. This has its own
-    ///   budget (up to 16 retries) separate from the size-verification loop.
+    /// - **Inner (EBUSY):** If the kernel reports the claimed device is busy
+    ///   (for example, a non-cooperating owner or stale sysfs observation), try a
+    ///   different device. This has its own budget (up to 16 retries) separate
+    ///   from the size-verification loop.
     /// - **Outer (size-stuck-at-0):** If the kernel hasn't finished tearing down
     ///   a previous connection, disconnect, release with cooldown, and retry
     ///   with fresh sockets. Up to 5 retries with 200ms sleep between attempts.
@@ -428,9 +429,9 @@ impl NbdCowDevice {
                             attempt.discard().await;
                             return Err(error::NbdCowError::NoFreeDevice);
                         }
-                        // Device is owned by another process — stop tracking
-                        // without cooldown. Background scan will rediscover
-                        // if it frees.
+                        // Device is owned by another process or otherwise busy.
+                        // Stop tracking without cooldown; a future demand scan
+                        // will rediscover it once it frees.
                         attempt.discard().await;
                         continue;
                     }
