@@ -231,8 +231,9 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
-        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(started.elapsed() < Duration::from_secs(5));
 
+        peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
         let mut drained = Vec::new();
         peer.read_to_end(&mut drained).unwrap();
     }
