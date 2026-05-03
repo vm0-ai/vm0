@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn write_frame_times_out_when_peer_stops_reading() {
-        let (guest, _peer) = UnixStream::pair().unwrap();
+        let (guest, mut peer) = UnixStream::pair().unwrap();
         set_send_buffer(&guest, 4096).unwrap();
         let writer = GuestWriter::new(guest);
         let frame = vec![0xAB; 8 * 1024 * 1024];
@@ -232,5 +232,8 @@ mod tests {
 
         assert_eq!(err.kind(), io::ErrorKind::TimedOut);
         assert!(started.elapsed() < Duration::from_secs(2));
+
+        let mut drained = Vec::new();
+        peer.read_to_end(&mut drained).unwrap();
     }
 }
