@@ -204,9 +204,9 @@ const setupPaneThread$ = command(
 );
 
 /**
- * Make the left (primary) chat pane show `threadId`. Idempotent — re-loading
- * the current left thread is a no-op. Updates the URL pathname silently so
- * subsequent route re-entries (browser back / link share) replay correctly.
+ * Make the left (primary) chat pane show `threadId`. Updates the URL pathname
+ * silently so subsequent route re-entries (browser back / link share) replay
+ * correctly.
  *
  * If the requested thread is currently the right pane, the right pane is
  * unloaded first (a thread cannot occupy both panes).
@@ -221,10 +221,6 @@ export const loadLeftThread$ = command(
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    if (get(internalLeftThread$)?.threadId === threadId) {
-      return;
-    }
-
     if (get(internalRightThread$)?.threadId === threadId) {
       set(unloadRightThread$);
     }
