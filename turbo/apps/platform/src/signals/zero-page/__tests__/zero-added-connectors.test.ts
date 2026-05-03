@@ -5,7 +5,10 @@ import {
   detachedSetupPage,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
+import {
+  zeroAuthorizedConnectors$,
+  authorizeConnector$,
+} from "../zero-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -34,14 +37,13 @@ function mockAgentApi(connectors: string[]) {
   );
 }
 
-describe("zeroAddedConnectors$", () => {
-  it("should seed connectors from user-connectors api", async () => {
+describe("zeroAuthorizedConnectors$", () => {
+  it("should return authorized connectors from user-connectors api", async () => {
     mockAgentApi(["slack", "github"]);
 
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const connectors = await context.store.get(zeroAddedConnectors$);
-    // Server filters out seed skills, only user connectors remain
+    const connectors = await context.store.get(zeroAuthorizedConnectors$);
     expect(connectors).toStrictEqual(["slack", "github"]);
   });
 
@@ -50,11 +52,11 @@ describe("zeroAddedConnectors$", () => {
 
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const connectors = await context.store.get(zeroAddedConnectors$);
+    const connectors = await context.store.get(zeroAuthorizedConnectors$);
     expect(connectors).toStrictEqual([]);
   });
 
-  it("should seed connectors from sub-agent when chat agent is set", async () => {
+  it("should return authorized connectors from sub-agent when chat agent is set", async () => {
     // Default agent has slack
     mockAgentApi(["slack"]);
 
@@ -76,7 +78,6 @@ describe("zeroAddedConnectors$", () => {
         return respond(200, { enabledTypes: ["github"] });
       }),
     );
-    // Include cycling-coach in the team list so route setup resolves it
     setMockTeam([
       {
         id: "c0000000-0000-4000-a000-000000000001",
@@ -104,14 +105,13 @@ describe("zeroAddedConnectors$", () => {
       withoutRender: true,
     });
 
-    const connectors = await context.store.get(zeroAddedConnectors$);
-    // Only sub-agent connectors (server already filters seed skills)
+    const connectors = await context.store.get(zeroAuthorizedConnectors$);
     expect(connectors).toStrictEqual(["github"]);
   });
 });
 
-describe("addZeroConnector$", () => {
-  it("should add a connector via user-connectors api", async () => {
+describe("authorizeConnector$", () => {
+  it("should authorize a connector via user-connectors api", async () => {
     let capturedBody: { enabledTypes: string[] } | null = null;
 
     mockAgentApi(["slack"]);
@@ -125,15 +125,14 @@ describe("addZeroConnector$", () => {
 
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    // Add connector — saves immediately via user-connectors API
-    await context.store.set(addZeroConnector$, "github", context.signal);
+    await context.store.set(authorizeConnector$, "github", context.signal);
 
     expect(capturedBody).not.toBeNull();
     expect(capturedBody!.enabledTypes).toContain("slack");
     expect(capturedBody!.enabledTypes).toContain("github");
   });
 
-  it("should not fire a PUT when the connector is already enabled", async () => {
+  it("should not fire a PUT when the connector is already authorized", async () => {
     let putCalls = 0;
 
     mockAgentApi(["slack"]);
@@ -147,7 +146,7 @@ describe("addZeroConnector$", () => {
 
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    await context.store.set(addZeroConnector$, "slack", context.signal);
+    await context.store.set(authorizeConnector$, "slack", context.signal);
 
     expect(putCalls).toBe(0);
   });

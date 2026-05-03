@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.26.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.2...guest-agent-v0.26.3) (2026-05-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** escalate forced CLI termination ([#11698](https://github.com/vm0-ai/vm0/issues/11698)) ([ad07a39](https://github.com/vm0-ai/vm0/commit/ad07a39afca3122eb73bd9092a48cbdd07d33766))
+
+
+### Documentation
+
+* **guest-agent:** document artifact env fields ([#11700](https://github.com/vm0-ai/vm0/issues/11700)) ([4fa1127](https://github.com/vm0-ai/vm0/commit/4fa1127ab2e5c189609a05e49abfd9130c6b2df8))
+* **guest-agent:** document env accessors ([#11713](https://github.com/vm0-ai/vm0/issues/11713)) ([cd72661](https://github.com/vm0-ai/vm0/commit/cd726614df33729c72f601e73357ee31b3fa948e))
+
 ## [0.26.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.1...guest-agent-v0.26.2) (2026-05-01)
 
 

@@ -2205,6 +2205,14 @@ function parseBodyRenderBlocks(content: string): {
     }
 
     if (isBodyPreviewKind(kind)) {
+      // Only render platform /f/ file URLs as inline preview cards.
+      // External URLs stay as plain markdown links so the recipient
+      // isn't misled into thinking the file was uploaded to vm0.
+      if (!isPlatformFileUrl(url)) {
+        markdownBuffer.push(line);
+        keptLines.push(line);
+        continue;
+      }
       flushMarkdownBuffer();
       blocks.push({
         type: "preview",

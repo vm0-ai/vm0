@@ -15,9 +15,8 @@
 //!
 //! # Image identity: two content hashes per profile
 //! Each [`ProfileConfig`] carries two hashes with different scopes:
-//! - `rootfs_hash` — content hash of the guest filesystem image. Shared
-//!   across snapshot variants and cacheable on R2, so multiple runners can
-//!   pull the same rootfs by hash.
+//! - `rootfs_hash` — content hash of the bootable guest filesystem image on
+//!   this runner. Shared across snapshot variants on the same host.
 //! - `snapshot_hash` — content hash of the FC/kernel/vcpu/memory/provider
 //!   config used to capture the memory snapshot from that rootfs. Local-only:
 //!   snapshots are produced on each runner by booting the rootfs and
@@ -97,10 +96,10 @@ pub struct FirecrackerConfig {
 /// A bootable image variant: rootfs + snapshot + resource shape.
 ///
 /// See the module-level docs for the two-hash identity scheme
-/// (`rootfs_hash` is R2-cacheable, `snapshot_hash` is local-only).
+/// (`rootfs_hash` covers the local rootfs, `snapshot_hash` is local-only).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProfileConfig {
-    /// Content-addressed rootfs hash (R2-cacheable, shared across snapshot variants).
+    /// Content-addressed rootfs hash (shared across snapshot variants on this host).
     pub rootfs_hash: String,
     /// Content-addressed snapshot hash (local-only, covers FC/kernel/vcpu/memory/provider config).
     pub snapshot_hash: String,

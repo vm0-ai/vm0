@@ -102,6 +102,7 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             transport: Some(WsTransport::new(ws_read, ws_write)),
             event_tx,
             conn_state,
+            lifecycle: crate::connection::RealtimeStateMachine::connected(),
             channel: config.channel,
             channel_params: config.channel_params,
             realtime_host,
@@ -111,6 +112,10 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             timing,
             token_renewal_failures: 0,
             dropped_messages: 0,
+            channel_retry_at: None,
+            channel_retry_count: 0,
+            channel_operation_deadline: None,
+            connected_event_pending: false,
         },
         close_rx,
     ));

@@ -95,8 +95,21 @@ function createListMessagesAfter(
 
       if (userId && orgId && result.messages.length > 0) {
         const stores = getStores(userId, orgId);
-        const writeStore = stores.writeStore;
-        await writeStore.upsertMessages(tid, result.messages, signal);
+        // Only cache when the anchor (sinceId) still exists locally.
+        // If it doesn't, local state has diverged and writing would create
+        // a permanent gap between the last cached message and the new batch.
+        if (sinceId) {
+          const anchorExists = await stores.readStore.messageExists(
+            tid,
+            sinceId,
+            signal,
+          );
+          if (!anchorExists) {
+            L.debug("listAfter:anchorLost", { threadId: tid, sinceId });
+            return result;
+          }
+        }
+        await stores.writeStore.upsertMessages(tid, result.messages, signal);
         L.debug("listAfter:cacheFilled", {
           threadId: tid,
           sinceId,

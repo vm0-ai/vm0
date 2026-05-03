@@ -130,6 +130,12 @@ export interface ExecutionContext {
   // vm0-managed model provider runs; BYOK/custom providers leave it unset.
   modelUsageProvider?: string;
 
+  // Provider-derived framework when zero-layer resolution ran. Source of
+  // truth for downstream framework-aware logic (dispatch + validation).
+  // Falls back to compose framework via extractCliAgentType when undefined
+  // (CLI path, no provider context).
+  resolvedFramework?: string;
+
   // API start time for E2E timing metrics — epoch millis captured at the route
   // handler's first line by the caller (see issue #9936).
   apiStartTime: number;

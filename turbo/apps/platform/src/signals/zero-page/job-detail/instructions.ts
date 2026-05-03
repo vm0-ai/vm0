@@ -3,7 +3,7 @@ import { zeroAgentInstructionsContract } from "@vm0/api-contracts/contracts/zero
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
 import type { AgentInstructions } from "../agent-types.ts";
-import { zeroJobDetail$, reloadJobDetail$ } from "./detail.ts";
+import { agentDetail$, reloadAgentDetail$ } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
 // Agent instructions — reactive async computed
@@ -11,16 +11,16 @@ import { zeroJobDetail$, reloadJobDetail$ } from "./detail.ts";
 
 const internalInstructionsReload$ = state(0);
 
-const reloadJobInstructions$ = command(({ set }) => {
+const reloadAgentInstructions$ = command(({ set }) => {
   set(internalInstructionsReload$, (prev) => {
     return prev + 1;
   });
 });
 
-export const zeroJobInstructions$ = computed(
+export const agentInstructions$ = computed(
   async (get): Promise<AgentInstructions | null> => {
     get(internalInstructionsReload$);
-    const detail = await get(zeroJobDetail$);
+    const detail = await get(agentDetail$);
     if (!detail) {
       return null;
     }
@@ -39,28 +39,28 @@ export const zeroJobInstructions$ = computed(
 
 const editedContent$ = state<string | null>(null);
 
-export const zeroJobEditedContent$ = computed((get) => {
+export const agentEditedContent$ = computed((get) => {
   return get(editedContent$);
 });
 
-export const zeroJobInstructionsDirty$ = computed(async (get) => {
+export const agentInstructionsDirty$ = computed(async (get) => {
   const edited = get(editedContent$);
-  const instructions = await get(zeroJobInstructions$);
+  const instructions = await get(agentInstructions$);
   const savedBody = instructions?.content ?? "";
   return edited !== null && edited.trim() !== savedBody.trim();
 });
 
-export const setZeroJobEditedContent$ = command(({ set }, value: string) => {
+export const setAgentEditedContent$ = command(({ set }, value: string) => {
   set(editedContent$, value);
 });
 
-export const discardZeroJobEdit$ = command(({ set }) => {
+export const discardAgentEdit$ = command(({ set }) => {
   set(editedContent$, null);
 });
 
-export const buildZeroJobInstructions$ = command(
+export const buildAgentInstructions$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const detail = await get(zeroJobDetail$);
+    const detail = await get(agentDetail$);
     signal.throwIfAborted();
     const raw = get(editedContent$);
     if (!detail?.agentId || raw === null) {
@@ -79,7 +79,7 @@ export const buildZeroJobInstructions$ = command(
     signal.throwIfAborted();
 
     set(editedContent$, null);
-    set(reloadJobInstructions$);
-    set(reloadJobDetail$);
+    set(reloadAgentInstructions$);
+    set(reloadAgentDetail$);
   },
 );

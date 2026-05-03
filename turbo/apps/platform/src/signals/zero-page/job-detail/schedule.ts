@@ -7,7 +7,7 @@ import {
   zeroSchedulesEnableContract,
 } from "@vm0/api-contracts/contracts/zero-schedules";
 import { zeroClient$ } from "../../api-client.ts";
-import { zeroJobDetail$ } from "./detail.ts";
+import { agentDetail$ } from "./detail.ts";
 import {
   buildCronExpression,
   buildAtTime,
@@ -109,7 +109,7 @@ function scheduleToTimeString(s: ScheduleItem): string {
 
 const internalScheduleReload$ = state(0);
 
-const reloadJobSchedule$ = command(({ set }) => {
+const reloadAgentSchedule$ = command(({ set }) => {
   set(internalScheduleReload$, (prev) => {
     return prev + 1;
   });
@@ -117,7 +117,7 @@ const reloadJobSchedule$ = command(({ set }) => {
 
 const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
   get(internalScheduleReload$);
-  const detail = await get(zeroJobDetail$);
+  const detail = await get(agentDetail$);
   if (!detail) {
     return [];
   }
@@ -128,7 +128,7 @@ const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
   });
 });
 
-export const zeroJobScheduleEntries$ = computed(
+export const agentScheduleEntries$ = computed(
   async (get): Promise<ScheduleEntry[]> => {
     const items = await get(rawSchedules$);
     return [...items]
@@ -154,7 +154,7 @@ export const zeroJobScheduleEntries$ = computed(
 // Schedule CRUD
 // ---------------------------------------------------------------------------
 
-export interface ZeroJobScheduleSaveParams {
+export interface AgentScheduleSaveParams {
   prompt: string;
   description?: string;
   freq: string;
@@ -168,13 +168,13 @@ export interface ZeroJobScheduleSaveParams {
   editName?: string;
 }
 
-export const saveZeroJobSchedule$ = command(
+export const saveAgentSchedule$ = command(
   async (
     { get, set },
-    params: ZeroJobScheduleSaveParams,
+    params: AgentScheduleSaveParams,
     signal: AbortSignal,
   ) => {
-    const detail = await get(zeroJobDetail$);
+    const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
@@ -235,17 +235,17 @@ export const saveZeroJobSchedule$ = command(
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
-    set(reloadJobSchedule$);
+    set(reloadAgentSchedule$);
   },
 );
 
-export const toggleZeroJobScheduleEnabled$ = command(
+export const toggleAgentScheduleEnabled$ = command(
   async (
     { get, set },
     params: { name: string; enabled: boolean },
     signal: AbortSignal,
   ) => {
-    const detail = await get(zeroJobDetail$);
+    const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
@@ -262,13 +262,13 @@ export const toggleZeroJobScheduleEnabled$ = command(
     );
     signal.throwIfAborted();
 
-    set(reloadJobSchedule$);
+    set(reloadAgentSchedule$);
   },
 );
 
-export const deleteZeroJobSchedule$ = command(
+export const deleteAgentSchedule$ = command(
   async ({ get, set }, scheduleName: string, signal: AbortSignal) => {
-    const detail = await get(zeroJobDetail$);
+    const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
@@ -285,6 +285,6 @@ export const deleteZeroJobSchedule$ = command(
     signal.throwIfAborted();
 
     toast.success("Schedule deleted");
-    set(reloadJobSchedule$);
+    set(reloadAgentSchedule$);
   },
 );

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.6](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.5...ably-subscriber-v0.7.6) (2026-05-03)
+
+
+### Refactoring
+
+* model ably subscriber lifecycle states ([#11672](https://github.com/vm0-ai/vm0/issues/11672)) ([c663ee4](https://github.com/vm0-ai/vm0/commit/c663ee49c6ed92a815e704496e793f3d76949a0d))
+
+
+### Performance Improvements
+
+* **ably-subscriber:** avoid cloning rmpv strings ([#11695](https://github.com/vm0-ai/vm0/issues/11695)) ([1523da8](https://github.com/vm0-ai/vm0/commit/1523da837cd954e7134e31ddd85f9979e4c05342))
+
 ## [0.7.5](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.4...ably-subscriber-v0.7.5) (2026-05-01)
 
 

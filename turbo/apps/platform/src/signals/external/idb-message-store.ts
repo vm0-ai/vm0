@@ -19,6 +19,11 @@ interface ChatMessageReadStore {
     limit: number,
     signal?: AbortSignal,
   ): Promise<PagedChatMessage[]>;
+  messageExists(
+    threadId: string,
+    messageId: string,
+    signal?: AbortSignal,
+  ): Promise<boolean>;
 }
 
 interface ChatMessageWriteStore {
@@ -79,6 +84,17 @@ function createIdbMessageStores(userId: string, orgId: string) {
       }
       L.debug("readLatest:done", { threadId, count: messages.length });
       return messages.reverse();
+    },
+
+    async messageExists(threadId, messageId, signal) {
+      const db = await getDb();
+      signal?.throwIfAborted();
+      const tx = db.transaction(storeName, "readonly");
+      const msg = await tx.store.get(messageId);
+      return (
+        msg !== undefined &&
+        (msg as { threadId?: string }).threadId === threadId
+      );
     },
 
     async readBefore(threadId, beforeId, limit, signal) {

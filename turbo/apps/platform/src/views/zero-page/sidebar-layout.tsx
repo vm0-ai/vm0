@@ -205,7 +205,10 @@ function MobileTopBar() {
   const activeId = useGet(activeRoute$);
 
   return (
-    <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
+    <div
+      className="md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       <button
         type="button"
         onClick={() => {

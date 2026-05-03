@@ -170,8 +170,9 @@ describe("zero chat thread page display - attachment document preview", () => {
 });
 
 describe("zero chat thread page display - body link document preview", () => {
-  it("renders markdown body links inline", async () => {
-    const docUrl = "https://example.com/notes.md";
+  it("renders markdown body links inline for platform file urls", async () => {
+    const docUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/notes.md";
     server.use(
       http.get(docUrl, () => {
         return HttpResponse.text("# Linked PRD\n\nPreview body");
@@ -209,8 +210,33 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders html body links as preview cards", async () => {
-    const htmlUrl = "https://example.com/report.html";
+  it("keeps external markdown links as plain links and does not render preview cards", async () => {
+    const docUrl = "https://example.com/notes.md";
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[notes](${docUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByText("notes")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByTestId("attachment-preview-markdown"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders html body links as preview cards for platform file urls", async () => {
+    const htmlUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.html";
     server.use(
       http.get(htmlUrl, () => {
         return HttpResponse.html("<html><body>report preview</body></html>");
@@ -244,8 +270,9 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders html body links wrapped in markdown formatting and preserves surrounding text", async () => {
-    const htmlUrl = "https://example.com/cute_kitten.html";
+  it("renders html body links wrapped in markdown formatting as preview cards for platform file urls", async () => {
+    const htmlUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/cute_kitten.html";
     server.use(
       http.get(htmlUrl, () => {
         return HttpResponse.html("<html><body>kitten preview</body></html>");
@@ -374,8 +401,9 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders json body links inline and supports collapse", async () => {
-    const jsonUrl = "https://example.com/data.json";
+  it("renders json body links inline and supports collapse for platform file urls", async () => {
+    const jsonUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/data.json";
     server.use(
       http.get(jsonUrl, () => {
         return HttpResponse.text('{"status":"ok","count":2}');
@@ -409,8 +437,9 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders pdf body links as previewable document cards", async () => {
-    const pdfUrl = "https://example.com/document.pdf";
+  it("renders pdf body links as previewable document cards for platform file urls", async () => {
+    const pdfUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/document.pdf";
     server.use(
       http.get(pdfUrl, () => {
         return new HttpResponse("%PDF-1.4", {
@@ -446,8 +475,9 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders csv body links as previewable document cards", async () => {
-    const csvUrl = "https://example.com/report.csv";
+  it("renders csv body links as previewable document cards for platform file urls", async () => {
+    const csvUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.csv";
     server.use(
       http.get(csvUrl, () => {
         return HttpResponse.text("name,count\nkitten,2\npuppy,3", {
@@ -486,16 +516,20 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
-  it("renders text body links inline and supports collapse", async () => {
-    const txtUrl = "https://example.com/readme.txt#summary";
+  it("renders text body links inline and supports collapse for platform file urls", async () => {
+    const txtUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt#summary";
     let requestedUrl = "";
     let requestedRange = "";
     server.use(
-      http.get("https://example.com/readme.txt", ({ request }) => {
-        requestedUrl = request.url;
-        requestedRange = request.headers.get("Range") ?? "";
-        return HttpResponse.text("hello from text preview");
-      }),
+      http.get(
+        "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt",
+        ({ request }) => {
+          requestedUrl = request.url;
+          requestedRange = request.headers.get("Range") ?? "";
+          return HttpResponse.text("hello from text preview");
+        },
+      ),
     );
 
     mockChatLifecycle({
@@ -518,7 +552,7 @@ describe("zero chat thread page display - body link document preview", () => {
     expect(requestedRange).toBe("bytes=0-65535");
     expect(screen.getByLabelText("Download readme.txt")).toHaveAttribute(
       "href",
-      "https://example.com/readme.txt?download=1#summary",
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/readme.txt?download=1#summary",
     );
 
     await userEvent.click(

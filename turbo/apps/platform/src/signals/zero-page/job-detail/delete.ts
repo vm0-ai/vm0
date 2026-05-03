@@ -3,16 +3,16 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
-import { zeroJobDetail$ } from "./detail.ts";
+import { agentDetail$ } from "./detail.ts";
 import { reloadAgentById$, reloadAgents$ } from "../../agent.ts";
 
 // ---------------------------------------------------------------------------
 // Delete agent
 // ---------------------------------------------------------------------------
 
-export const deleteZeroJobAgent$ = command(
+export const deleteAgent$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const detail = await get(zeroJobDetail$);
+    const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");

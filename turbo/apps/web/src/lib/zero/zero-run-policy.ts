@@ -18,6 +18,8 @@ import { checkOrgCredits } from "./credit/check-org-credits";
 import {
   getOrgDefaultModelProvider,
   getOrgDefaultModelProviderType,
+  getOrgAnyDefaultModelProvider,
+  getOrgAnyDefaultModelProviderType,
   getModelProviderByIdForOrg,
 } from "./model-provider/model-provider-service";
 import type { Database } from "../../types/global";
@@ -139,9 +141,14 @@ export async function validateComposeRequirements(
 /**
  * Resolve the provider type that admission checks should treat as the
  * effective key source for this run. Precedence:
- *   explicit override → explicit modelProviderId → org default for framework.
- * Returns null when nothing is configured (admission decides whether that
- * is fatal).
+ *   explicit override → explicit modelProviderId → org default for compose
+ *   framework → any org default (cross-framework fallback).
+ *
+ * The cross-framework fallback implements Epic #11520's "provider's framework
+ * wins" rule at the admission boundary: an org with only a codex provider
+ * still admits a claude-code compose; the provider's framework propagates
+ * downstream via `resolvedFramework` so dispatch launches the right binary.
+ * Returns null only when the org has no `isDefault: true` provider at all.
  */
 export async function resolveProviderTypeForAdmission(params: {
   orgId: string;
@@ -159,10 +166,9 @@ export async function resolveProviderTypeForAdmission(params: {
     );
     return row?.type ?? null;
   }
-  const def = await getOrgDefaultModelProvider(
-    params.orgId,
-    params.composeFramework,
-  );
+  const def =
+    (await getOrgDefaultModelProvider(params.orgId, params.composeFramework)) ??
+    (await getOrgAnyDefaultModelProvider(params.orgId));
   return def?.type ?? null;
 }
 
@@ -227,10 +233,13 @@ export async function checkModelProviderConfigured(
   });
   if (hasExplicitConfig) return;
 
-  const defaultProviderType = await getOrgDefaultModelProviderType(
-    orgId,
-    framework,
-  );
+  // Framework-scoped default first; fall back to any org default so a
+  // codex-only org still admits a claude-code compose. Mirrors the
+  // cross-framework fallback in resolveProviderTypeForAdmission — see
+  // Epic #11520 for the provider-framework-wins design intent.
+  const defaultProviderType =
+    (await getOrgDefaultModelProviderType(orgId, framework)) ??
+    (await getOrgAnyDefaultModelProviderType(orgId));
 
   if (!defaultProviderType) {
     throw noModelProvider();

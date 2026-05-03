@@ -16,6 +16,7 @@ import { logger } from "../../shared/logger";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import {
   getOrgDefaultModelProvider,
+  getOrgAnyDefaultModelProvider,
   getModelProviderByIdForOrg,
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
@@ -293,12 +294,19 @@ export async function resolveModelProviderSecrets(
     };
   }
 
-  // Resolve provider: specific ID override → org default
+  // Resolve provider: specific ID override → framework-scoped org default →
+  // cross-framework fallback. The cross-framework fallback mirrors admission
+  // (zero-run-policy.ts) and implements Epic #11520's "provider's framework
+  // wins" rule at the dispatch boundary: an org with only a codex provider
+  // still resolves secrets for a claude-code compose; the provider's
+  // framework propagates downstream via `resolvedFramework`.
   let defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
   if (modelProviderId) {
     defaultProvider = await getModelProviderByIdForOrg(orgId, modelProviderId);
   } else {
-    defaultProvider = await getOrgDefaultModelProvider(orgId, framework);
+    defaultProvider =
+      (await getOrgDefaultModelProvider(orgId, framework)) ??
+      (await getOrgAnyDefaultModelProvider(orgId));
   }
 
   const secretUserId = ORG_SENTINEL_USER_ID;

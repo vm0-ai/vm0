@@ -125,6 +125,48 @@ describe("idb-message-store", () => {
     await expect(readStore.readLatest(THREAD, 10)).rejects.toThrow();
   });
 
+  it("messageExists returns true when message exists with matching threadId", async () => {
+    const { readStore, writeStore } = createIdbMessageStores(
+      USER + "-exists",
+      ORG,
+    );
+
+    await writeStore.upsertMessages(THREAD, [
+      makeMsg("e1", THREAD, "2026-05-01T00:00:00Z"),
+    ]);
+
+    const exists = await readStore.messageExists(THREAD, "e1");
+    expect(exists).toBeTruthy();
+  });
+
+  it("messageExists returns false when message does not exist", async () => {
+    const { readStore, writeStore } = createIdbMessageStores(
+      USER + "-notfound",
+      ORG,
+    );
+
+    await writeStore.upsertMessages(THREAD, [
+      makeMsg("f1", THREAD, "2026-05-01T00:00:00Z"),
+    ]);
+
+    const exists = await readStore.messageExists(THREAD, "nonexistent");
+    expect(exists).toBeFalsy();
+  });
+
+  it("messageExists returns false when message exists but threadId differs", async () => {
+    const { readStore, writeStore } = createIdbMessageStores(
+      USER + "-wrongthread",
+      ORG,
+    );
+
+    await writeStore.upsertMessages(THREAD, [
+      makeMsg("g1", THREAD, "2026-05-01T00:00:00Z"),
+    ]);
+
+    const exists = await readStore.messageExists("other-thread", "g1");
+    expect(exists).toBeFalsy();
+  });
+
   it("scopes messages by user and org", async () => {
     const storesA = createIdbMessageStores("user-a", "org-a");
     const storesB = createIdbMessageStores("user-b", "org-b");

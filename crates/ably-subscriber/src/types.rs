@@ -118,20 +118,49 @@ pub struct TimingConfig {
     pub heartbeat_margin: Duration,
 
     // -- Reconnection retry --------------------------------------------------
-    /// Base interval for the first retry attempt.
+    /// Retry timeout while in the Ably `disconnected` state.
+    ///
+    /// Matches ably-js `disconnectedRetryTimeout`.
+    pub disconnected_retry_timeout: Duration,
+    /// Retry timeout while in the Ably `suspended` state.
+    ///
+    /// Matches ably-js `suspendedRetryTimeout`.
+    pub suspended_retry_timeout: Duration,
+    /// Retry timeout while a channel is `suspended` after an attach failure.
+    ///
+    /// Matches ably-js `channelRetryTimeout`.
+    pub channel_retry_timeout: Duration,
+    /// Timeout for an in-flight realtime channel ATTACH operation.
+    /// Initial subscribe connect+attach is bounded by
+    /// [`connect_timeout`](Self::connect_timeout); this timeout applies after
+    /// the subscription is established.
+    ///
+    /// Matches ably-js `realtimeRequestTimeout`.
+    pub realtime_request_timeout: Duration,
+    /// Legacy base interval for the first retry attempt.
+    ///
+    /// Kept for API compatibility; the Ably-aligned state machine uses
+    /// [`disconnected_retry_timeout`](Self::disconnected_retry_timeout) and
+    /// [`suspended_retry_timeout`](Self::suspended_retry_timeout).
     pub initial_retry_interval: Duration,
-    /// Cap on exponential backoff between retries.
+    /// Legacy cap on exponential backoff between retries.
+    ///
+    /// Kept for API compatibility.
     pub max_retry_interval: Duration,
     /// Minimum spacing between reconnect attempts after transport-level
     /// disconnects. This mirrors ably-js' guard against tight reconnect loops
     /// when a server or proxy repeatedly closes otherwise healthy sockets.
     pub min_reconnect_interval: Duration,
-    /// Maximum number of consecutive reconnection attempts before giving up.
+    /// Legacy maximum number of consecutive reconnection attempts before giving up.
+    ///
+    /// Kept for API compatibility. Ably-js retries disconnected/suspended
+    /// connections indefinitely, so this field is not used by the current state
+    /// machine.
     pub max_retry_attempts: u32,
 
     // -- Channel re-attach ---------------------------------------------------
-    /// If a channel is DETACHED again within this window after a re-attach,
-    /// a full reconnect is triggered instead.
+    /// Legacy re-attach window used by the previous reconnect-on-repeat-detach
+    /// behavior. Kept for API compatibility.
     pub reattach_window: Duration,
 
     // -- Token renewal -------------------------------------------------------
@@ -160,6 +189,10 @@ impl Default for TimingConfig {
             // Heartbeat
             heartbeat_margin: Duration::from_secs(10),
             // Reconnection retry
+            disconnected_retry_timeout: Duration::from_secs(15),
+            suspended_retry_timeout: Duration::from_secs(30),
+            channel_retry_timeout: Duration::from_secs(15),
+            realtime_request_timeout: Duration::from_secs(10),
             initial_retry_interval: Duration::from_secs(1),
             max_retry_interval: Duration::from_secs(15),
             min_reconnect_interval: Duration::from_secs(1),

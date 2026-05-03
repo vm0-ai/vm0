@@ -59,7 +59,7 @@
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Passed to `runner build` for best-effort rootfs cache download/upload
+#       Passed to `runner build` for best-effort template cache download/upload
 #       and to `runner gc` for best-effort R2-side cleanup. Rollback does not
 #       run the newer `--warm-rootfs-cache` path because the target rollback
 #       binary may predate that flag.

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.7](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.6...guest-download-v0.20.7) (2026-05-03)
+
+
+### Refactoring
+
+* **runner:** centralize guest download fatal errors ([#11696](https://github.com/vm0-ai/vm0/issues/11696)) ([8bd362e](https://github.com/vm0-ai/vm0/commit/8bd362edbb932a0ada0e6b021a113a9e5905cd74))
+* **runner:** share guest download manifest entry ([#11693](https://github.com/vm0-ai/vm0/issues/11693)) ([6aa3e3b](https://github.com/vm0-ai/vm0/commit/6aa3e3b942ca58b48a1fb6067e36a6dcf68c192c))
+
 ## [0.20.6](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.5...guest-download-v0.20.6) (2026-05-01)
 
 

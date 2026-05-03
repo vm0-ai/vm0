@@ -17,13 +17,14 @@ use tokio::io::AsyncWriteExt;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// State machine driving the post-`type=result` reap of the CLI process
-/// group. A single pinned deadline is resettable across phases; the enum
-/// value tells the lone select! branch what to do when the deadline fires.
+/// State machine driving forced CLI process-group termination. A single
+/// pinned deadline is resettable across phases; the enum value tells the
+/// lone select! branch what to do when the deadline fires.
 ///
 /// | From             | Trigger        | To              | Action          |
 /// |------------------|----------------|-----------------|-----------------|
-/// | `Idle`           | `type=result`  | `SigtermPending`| arm sigterm grace |
+/// | `Idle`           | `type=result`  | `SigtermPending`| arm delayed sigterm grace |
+/// | `Idle`           | forced kill    | `SigkillPending`| SIGTERM pgid, arm sigkill grace |
 /// | `SigtermPending` | deadline fires | `SigkillPending`| SIGTERM pgid, arm sigkill grace |
 /// | `SigkillPending` | deadline fires | `Done`          | SIGKILL pgid    |
 /// | _any pending_    | `child.wait()` | `Done`          | (no signal)     |
@@ -31,18 +32,40 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// `Done` is sticky: a late second `type=result` on the same run cannot
 /// re-arm the deadline, and any in-flight signalling is one-shot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReapState {
+enum TerminationState {
     Idle,
-    SigtermPending,
-    SigkillPending,
+    SigtermPending { reason: TerminationReason },
+    SigkillPending { reason: TerminationReason },
     Done,
 }
 
-impl ReapState {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminationReason {
+    PostResult,
+    StuckTool,
+    HeartbeatError,
+    HeartbeatPanic,
+}
+
+impl TerminationReason {
+    fn label(self) -> &'static str {
+        match self {
+            TerminationReason::PostResult => "post-result reap",
+            TerminationReason::StuckTool => "stuck-tool watchdog",
+            TerminationReason::HeartbeatError => "heartbeat error",
+            TerminationReason::HeartbeatPanic => "heartbeat panic",
+        }
+    }
+}
+
+impl TerminationState {
     /// True while waiting for an armed SIGTERM or SIGKILL deadline to fire;
     /// used as the select! branch's eligibility guard.
     fn is_pending(self) -> bool {
-        matches!(self, ReapState::SigtermPending | ReapState::SigkillPending)
+        matches!(
+            self,
+            TerminationState::SigtermPending { .. } | TerminationState::SigkillPending { .. }
+        )
     }
 
     /// Whether to arm the reap deadline on an incoming `type=result`
@@ -50,8 +73,8 @@ impl ReapState {
     /// fire — later events (or a result that races a CLI exit) must
     /// not re-arm. Single source of truth consumed by both the
     /// production guard in `execute_cli` and the FSM unit tests.
-    fn should_arm(self, cli_exited: bool) -> bool {
-        matches!(self, ReapState::Idle) && !cli_exited
+    fn should_arm_post_result(self, cli_exited: bool) -> bool {
+        matches!(self, TerminationState::Idle) && !cli_exited
     }
 }
 
@@ -369,6 +392,7 @@ pub async fn execute_cli(
     // See: https://github.com/vm0-ai/vm0/issues/3645
     let mut reader = tokio::io::BufReader::new(stdout).lines();
     let mut seq = 0u32;
+    let mut stdout_eof = false;
 
     // Capture the process group ID before wait() reaps the child, since
     // child.id() returns None after the process has been reaped.
@@ -382,17 +406,18 @@ pub async fn execute_cli(
     let drain_deadline = tokio::time::sleep(Duration::MAX);
     tokio::pin!(drain_deadline);
 
-    // Post-result reap: in --print mode the CLI prints its final `result`
-    // event and then waits for its own backgrounded Bash tasks to drain.
-    // A runaway task (e.g. an xargs-per-file pipeline that can't short-
-    // circuit) can hold the CLI — and therefore the whole sandbox —
-    // alive for tens of minutes. On `type=result` we step through
-    // SigtermPending → SigkillPending → Done, each step resetting this
-    // shared deadline with the next phase's grace window.
+    // Forced termination: some conditions require reaping the CLI process
+    // group before returning. In --print mode, post-result reap arms a
+    // delayed SIGTERM after `type=result`; fatal watchdog/heartbeat paths
+    // send SIGTERM immediately. Both paths share the same SIGKILL escalation
+    // deadline so no forced termination can fall through to an unbounded
+    // child.wait().
     // See: https://github.com/vm0-ai/vm0/issues/10879
-    let reap_deadline = tokio::time::sleep(Duration::MAX);
-    tokio::pin!(reap_deadline);
-    let mut reap_state = ReapState::Idle;
+    // See: https://github.com/vm0-ai/vm0/issues/11667
+    let termination_deadline = tokio::time::sleep(Duration::MAX);
+    tokio::pin!(termination_deadline);
+    let mut termination_state = TerminationState::Idle;
+    let mut termination_error: Option<AgentError> = None;
 
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
@@ -429,9 +454,10 @@ pub async fn execute_cli(
         acked_prefix.last_contiguous()
     });
 
+    let mut heartbeat_done = false;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
-            line_result = reader.next_line() => {
+            line_result = reader.next_line(), if !stdout_eof => {
                 match line_result {
                     Ok(Some(line)) => {
                         // Write to log
@@ -454,11 +480,13 @@ pub async fn execute_cli(
                                 {
                                     println!("{result}");
                                 }
-                                // Arm the post-result reap deadline once
-                                // per run — see `ReapState::should_arm`.
-                                if reap_state.should_arm(cli_status.is_some()) {
-                                    reap_state = ReapState::SigtermPending;
-                                    reap_deadline.as_mut().reset(
+                                // Arm the post-result reap deadline once per
+                                // run — see `TerminationState::should_arm_post_result`.
+                                if termination_state.should_arm_post_result(cli_status.is_some()) {
+                                    termination_state = TerminationState::SigtermPending {
+                                        reason: TerminationReason::PostResult,
+                                    };
+                                    termination_deadline.as_mut().reset(
                                         tokio::time::Instant::now()
                                             + Duration::from_secs(
                                                 env::post_result_sigterm_grace_secs(),
@@ -492,7 +520,12 @@ pub async fn execute_cli(
                             seq += 1;
                         }
                     }
-                    Ok(None) => break Ok(()), // EOF — pipe closed normally
+                    Ok(None) => {
+                        stdout_eof = true;
+                        if cli_status.is_some() {
+                            break Ok(());
+                        }
+                    }
                     Err(e) => break Err(AgentError::Io(e)),
                 }
             }
@@ -502,9 +535,12 @@ pub async fn execute_cli(
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
                         // CLI exited on its own (possibly in response to our
-                        // SIGTERM). Park the reap FSM so it can't re-arm on
-                        // any late `type=result` event.
-                        reap_state = ReapState::Done;
+                        // SIGTERM). Park the termination FSM so it can't
+                        // re-arm on any late `type=result` event.
+                        termination_state = TerminationState::Done;
+                        if stdout_eof {
+                            break Ok(());
+                        }
                         drain_deadline.as_mut().reset(
                             tokio::time::Instant::now()
                                 + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
@@ -513,53 +549,62 @@ pub async fn execute_cli(
                     Err(e) => break Err(AgentError::Io(e)),
                 }
             }
-            () = &mut reap_deadline, if reap_state.is_pending() && cli_status.is_none() => {
+            () = &mut termination_deadline, if termination_state.is_pending() && cli_status.is_none() => {
                 // `libc::kill` return value is intentionally discarded in
                 // both arms: ESRCH (child reaped since the is_pending()
                 // / is_none() check) is racy-but-harmless, and every
                 // other error would be unrecoverable from userspace.
                 // The sigkill_grace deadline is the escalation path if
                 // the signal fails to take effect in time.
-                match reap_state {
-                    ReapState::SigtermPending => {
+                match termination_state {
+                    TerminationState::SigtermPending { reason } => {
                         let grace = env::post_result_sigterm_grace_secs();
                         if let Some(pid) = pgid {
-                            log_warn!(
-                                LOG_TAG,
-                                "CLI still running {grace}s after type=result, SIGTERM pgid={pid} (likely a leaked backgrounded Bash task)"
-                            );
+                            if reason == TerminationReason::PostResult {
+                                log_warn!(
+                                    LOG_TAG,
+                                    "CLI still running {grace}s after type=result, SIGTERM pgid={pid} (likely a leaked backgrounded Bash task)"
+                                );
+                            } else {
+                                log_warn!(
+                                    LOG_TAG,
+                                    "CLI still running after {} sigterm grace {grace}s, SIGTERM pgid={pid}",
+                                    reason.label()
+                                );
+                            }
                             unsafe { libc::kill(-pid, libc::SIGTERM); }
                         }
-                        reap_state = ReapState::SigkillPending;
-                        reap_deadline.as_mut().reset(
+                        termination_state = TerminationState::SigkillPending { reason };
+                        termination_deadline.as_mut().reset(
                             tokio::time::Instant::now()
                                 + Duration::from_secs(env::post_result_sigkill_grace_secs()),
                         );
                     }
-                    ReapState::SigkillPending => {
+                    TerminationState::SigkillPending { reason } => {
                         let grace = env::post_result_sigkill_grace_secs();
                         if let Some(pid) = pgid {
                             log_warn!(
                                 LOG_TAG,
-                                "CLI did not exit after SIGTERM+{grace}s, SIGKILL pgid={pid}"
+                                "CLI did not exit after {} SIGTERM+{grace}s, SIGKILL pgid={pid}",
+                                reason.label()
                             );
                             unsafe { libc::kill(-pid, libc::SIGKILL); }
                         }
-                        reap_state = ReapState::Done;
+                        termination_state = TerminationState::Done;
                     }
                     // Unreachable by the is_pending() guard. Log in
                     // every build so any future FSM regression surfaces
                     // in production runner logs; debug_assert adds a
                     // fail-fast panic under cfg(debug_assertions) so
                     // CI / dev tests abort on the same condition.
-                    ReapState::Idle | ReapState::Done => {
+                    TerminationState::Idle | TerminationState::Done => {
                         log_warn!(
                             LOG_TAG,
-                            "reap_deadline fired in non-pending state {reap_state:?}"
+                            "termination_deadline fired in non-pending state {termination_state:?}"
                         );
                         debug_assert!(
                             false,
-                            "reap_deadline fired in non-pending state {reap_state:?}"
+                            "termination_deadline fired in non-pending state {termination_state:?}"
                         );
                     }
                 }
@@ -583,38 +628,87 @@ pub async fn execute_cli(
                     })
                     .min_by_key(|(_, started)| *started)
                     .map(|(name, started)| (name.clone(), started.elapsed().as_secs()));
-                if let Some((name, elapsed)) = stuck {
+                if let Some((name, elapsed)) = stuck
+                    && termination_error.is_none()
+                {
+                    let timeout_error = AgentError::Execution(format!(
+                        "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
+                    ));
                     log_warn!(
                         LOG_TAG,
-                        "Tool timeout: {name} stuck for {elapsed}s, killing process"
+                        "Tool timeout: {name} stuck for {elapsed}s, SIGTERM pgid={}",
+                        pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                     );
                     if let Some(pid) = pgid {
                         unsafe { libc::kill(-pid, libc::SIGTERM); }
                     }
-                    break Err(AgentError::Execution(format!(
-                        "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
-                    )));
+                    termination_error = Some(timeout_error);
+                    termination_state = TerminationState::SigkillPending {
+                        reason: TerminationReason::StuckTool,
+                    };
+                    termination_deadline.as_mut().reset(
+                        tokio::time::Instant::now()
+                            + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                    );
                 }
             }
-            hb_result = &mut heartbeat_handle => {
+            hb_result = &mut heartbeat_handle, if !heartbeat_done => {
+                heartbeat_done = true;
                 match hb_result {
                     Ok(Err(e)) => {
                         // Heartbeat failed — kill process group
-                        if let Some(pid) = pgid {
-                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        if termination_error.is_none() {
+                            log_warn!(
+                                LOG_TAG,
+                                "Heartbeat failed, SIGTERM pgid={}",
+                                pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                            );
+                            if let Some(pid) = pgid {
+                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            }
+                            termination_error = Some(e);
+                            termination_state = TerminationState::SigkillPending {
+                                reason: TerminationReason::HeartbeatError,
+                            };
+                            termination_deadline.as_mut().reset(
+                                tokio::time::Instant::now()
+                                    + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                            );
                         }
-                        break Err(e);
                     }
                     Ok(Ok(())) => {
                         // Heartbeat shutdown (should not happen before CLI exits)
                         break Ok(());
                     }
                     Err(e) => {
-                        break Err(AgentError::Execution(format!("heartbeat task panicked: {e}")));
+                        let error = AgentError::Execution(format!("heartbeat task panicked: {e}"));
+                        if termination_error.is_none() {
+                            log_warn!(
+                                LOG_TAG,
+                                "Heartbeat task panicked, SIGTERM pgid={}",
+                                pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                            );
+                            if let Some(pid) = pgid {
+                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            }
+                            termination_error = Some(error);
+                            termination_state = TerminationState::SigkillPending {
+                                reason: TerminationReason::HeartbeatPanic,
+                            };
+                            termination_deadline.as_mut().reset(
+                                tokio::time::Instant::now()
+                                    + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                            );
+                        }
                     }
                 }
             }
         }
+    };
+
+    let event_result = match termination_error {
+        Some(err) => Err(err),
+        None => event_result,
     };
 
     // Close the channel so the background sender can finish.
@@ -1043,15 +1137,25 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
-    // ReapState FSM
+    // TerminationState FSM
     // -----------------------------------------------------------------
 
     #[test]
-    fn reap_state_is_pending_only_between_arming_and_done() {
-        assert!(!ReapState::Idle.is_pending());
-        assert!(ReapState::SigtermPending.is_pending());
-        assert!(ReapState::SigkillPending.is_pending());
-        assert!(!ReapState::Done.is_pending());
+    fn termination_state_is_pending_only_between_arming_and_done() {
+        assert!(!TerminationState::Idle.is_pending());
+        assert!(
+            TerminationState::SigtermPending {
+                reason: TerminationReason::PostResult,
+            }
+            .is_pending()
+        );
+        assert!(
+            TerminationState::SigkillPending {
+                reason: TerminationReason::StuckTool,
+            }
+            .is_pending()
+        );
+        assert!(!TerminationState::Done.is_pending());
     }
 
     /// The arming guard must fire exactly once per run, on the first
@@ -1059,21 +1163,32 @@ mod tests {
     /// later state — or a CLI that already exited — must be ignored
     /// (Done is sticky; SigtermPending/SigkillPending already armed).
     ///
-    /// Calls `ReapState::should_arm` directly so the test shares a
-    /// single source of truth with the production `select!` branch.
+    /// Calls `TerminationState::should_arm_post_result` directly so
+    /// the test shares a single source of truth with the production
+    /// `select!` branch.
     #[test]
-    fn reap_state_should_arm_matches_invariant() {
+    fn termination_state_should_arm_post_result_matches_invariant() {
         // Fire only from Idle with CLI still alive.
-        assert!(ReapState::Idle.should_arm(false));
+        assert!(TerminationState::Idle.should_arm_post_result(false));
 
         // CLI already exited → no arm, even from Idle.
-        assert!(!ReapState::Idle.should_arm(true));
+        assert!(!TerminationState::Idle.should_arm_post_result(true));
 
         // Already armed → no re-arm.
-        assert!(!ReapState::SigtermPending.should_arm(false));
-        assert!(!ReapState::SigkillPending.should_arm(false));
+        assert!(
+            !TerminationState::SigtermPending {
+                reason: TerminationReason::PostResult,
+            }
+            .should_arm_post_result(false)
+        );
+        assert!(
+            !TerminationState::SigkillPending {
+                reason: TerminationReason::HeartbeatError,
+            }
+            .should_arm_post_result(false)
+        );
 
         // Done is sticky.
-        assert!(!ReapState::Done.should_arm(false));
+        assert!(!TerminationState::Done.should_arm_post_result(false));
     }
 }

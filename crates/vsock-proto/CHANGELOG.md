@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.5](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.4...vsock-proto-v0.9.5) (2026-05-03)
+
+
+### Documentation
+
+* **vsock-proto:** fix decode_exec return docs ([#11694](https://github.com/vm0-ai/vm0/issues/11694)) ([5ae7202](https://github.com/vm0-ai/vm0/commit/5ae7202333860b36f5c94fc03a7eff2caf8ab490))
+
 ## [0.9.4](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.3...vsock-proto-v0.9.4) (2026-05-01)
 
 

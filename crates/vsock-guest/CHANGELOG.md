@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.8](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.7...vsock-guest-v0.10.8) (2026-05-03)
+
+
+### Performance Improvements
+
+* **runner:** cache rootfs templates in r2 ([#11597](https://github.com/vm0-ai/vm0/issues/11597)) ([136382c](https://github.com/vm0-ai/vm0/commit/136382cbfa2fc1ed8230145edf13ec72f712e770))
+
 ## [0.10.7](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.6...vsock-guest-v0.10.7) (2026-05-01)
 
 

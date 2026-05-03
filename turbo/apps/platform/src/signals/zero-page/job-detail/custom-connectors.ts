@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
-import { zeroJobDetail$ } from "./detail.ts";
+import { agentDetail$ } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
 // Per-agent custom connector authorization — mirrors connectors.ts but keyed
@@ -11,7 +11,7 @@ import { zeroJobDetail$ } from "./detail.ts";
 
 const internalReload$ = state(0);
 
-const reloadJobCustomConnectors$ = command(({ set }) => {
+const reloadAgentCustomConnectors$ = command(({ set }) => {
   set(internalReload$, (prev) => {
     return prev + 1;
   });
@@ -19,7 +19,7 @@ const reloadJobCustomConnectors$ = command(({ set }) => {
 
 const seededCustomConnectors$ = computed(async (get): Promise<string[]> => {
   get(internalReload$);
-  const detail = await get(zeroJobDetail$);
+  const detail = await get(agentDetail$);
   if (!detail?.agentId) {
     return [];
   }
@@ -33,7 +33,7 @@ const seededCustomConnectors$ = computed(async (get): Promise<string[]> => {
 
 const internalAdded$ = state<string[] | null>(null);
 
-export const zeroJobAddedCustomConnectors$ = computed(
+export const agentAddedCustomConnectors$ = computed(
   async (get): Promise<string[]> => {
     const local = get(internalAdded$);
     if (local !== null) {
@@ -43,7 +43,7 @@ export const zeroJobAddedCustomConnectors$ = computed(
   },
 );
 
-export const addZeroJobCustomConnector$ = command(
+export const addAgentCustomConnector$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal) => {
     if (get(internalAdded$) === null) {
       set(internalAdded$, await get(seededCustomConnectors$));
@@ -54,7 +54,7 @@ export const addZeroJobCustomConnector$ = command(
   },
 );
 
-export const removeZeroJobCustomConnector$ = command(
+export const removeAgentCustomConnector$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal) => {
     if (get(internalAdded$) === null) {
       set(internalAdded$, await get(seededCustomConnectors$));
@@ -67,9 +67,9 @@ export const removeZeroJobCustomConnector$ = command(
   },
 );
 
-export const saveZeroJobCustomConnectors$ = command(
+export const saveAgentCustomConnectors$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const detail = await get(zeroJobDetail$);
+    const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail?.agentId) {
       throw new Error("No agent detail loaded");
@@ -87,6 +87,6 @@ export const saveZeroJobCustomConnectors$ = command(
     signal.throwIfAborted();
 
     set(internalAdded$, null);
-    set(reloadJobCustomConnectors$);
+    set(reloadAgentCustomConnectors$);
   },
 );

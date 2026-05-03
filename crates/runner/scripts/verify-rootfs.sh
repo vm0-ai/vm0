@@ -1,24 +1,43 @@
 #!/usr/bin/env bash
-# verify-rootfs.sh — Verify contents of a built ext4 rootfs.
+# verify-rootfs.sh — Verify contents of a template or rootfs ext4 image.
 #
-# This script is called by the Rust runner binary AFTER build-rootfs.sh.
+# This script is called by the Rust runner binary for template validation
+# and again after customize-rootfs.sh for rootfs validation.
 # It is NOT included in the build-input hash, so changes here do not
-# invalidate the rootfs cache.
+# invalidate template or rootfs cache entries.
+#
+# Runs inside a private mount namespace so read-only loop mounts are reclaimed
+# by the kernel if the script is hard-killed before the EXIT trap runs.
 #
 # Usage:
-#   bash verify-rootfs.sh --rootfs /path/to/rootfs.ext4
+#   bash verify-rootfs.sh --rootfs /path/to/image.ext4 [--mode template|rootfs]
 
 set -euo pipefail
+
+readonly UNSHARE_SENTINEL="--__vm0_unshared__"
+if [[ "${1:-}" != "$UNSHARE_SENTINEL" ]]; then
+  for cmd in sudo unshare; do
+    if ! command -v "$cmd" &> /dev/null; then
+      echo "error: $cmd not found (sudo is required to enter a mount namespace; unshare from util-linux)" >&2
+      exit 1
+    fi
+  done
+  exec sudo unshare --mount --propagation private \
+    -- bash "$0" "$UNSHARE_SENTINEL" "$@"
+fi
+shift
 
 # ---------------------------------------------------------------------------
 # Argument parsing
 # ---------------------------------------------------------------------------
 
 ROOTFS=""
+MODE="rootfs"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --rootfs) ROOTFS="$2"; shift 2 ;;
+    --mode)   MODE="$2";   shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -27,13 +46,17 @@ if [[ -z "$ROOTFS" ]]; then
   echo "error: --rootfs is required" >&2
   exit 1
 fi
+if [[ "$MODE" != "template" && "$MODE" != "rootfs" ]]; then
+  echo "error: --mode must be template or rootfs" >&2
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-# [sync:ca-constants] Keep in sync with: crates/runner/scripts/build-rootfs.sh
-# and inject-ca.sh. Enforced by the `ca_constants_in_sync_across_scripts`
+# [sync:ca-constants] Keep in sync with: crates/runner/scripts/customize-rootfs.sh.
+# Enforced by the `ca_constants_in_sync_across_scripts`
 # test in cmd/build.rs at compile time.
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 
@@ -43,11 +66,38 @@ CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 
 MOUNT_DIR=""
 
+unmount_with_retries() {
+  local target="$1"
+  local attempt
+  for attempt in 1 2 3; do
+    if sudo umount "$target" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.5
+  done
+  sudo umount "$target"
+}
+
 cleanup() {
+  local status=$?
+  local cleanup_failed=0
+
   if [[ -n "$MOUNT_DIR" ]]; then
-    sudo umount "$MOUNT_DIR" 2>/dev/null || true
-    rmdir "$MOUNT_DIR" 2>/dev/null || true
+    if mountpoint -q "$MOUNT_DIR" 2>/dev/null; then
+      if ! unmount_with_retries "$MOUNT_DIR"; then
+        cleanup_failed=1
+      fi
+    fi
+    if ! rmdir "$MOUNT_DIR" 2>/dev/null; then
+      cleanup_failed=1
+    fi
   fi
+
+  if [[ "$cleanup_failed" -ne 0 && "$status" -eq 0 ]]; then
+    echo "error: ${MODE} verification cleanup failed" >&2
+    status=1
+  fi
+  exit "$status"
 }
 
 trap cleanup EXIT
@@ -57,7 +107,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 
 missing=()
-for cmd in sudo mount umount stat mktemp sed grep; do
+for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep; do
   if ! command -v "$cmd" &> /dev/null; then
     missing+=("$cmd")
   fi
@@ -72,7 +122,7 @@ fi
 # Verification
 # ---------------------------------------------------------------------------
 
-echo "verifying rootfs..."
+echo "verifying ${MODE} image..."
 
 # Check file size
 size=$(stat -c%s "$ROOTFS")
@@ -101,8 +151,7 @@ else
   errors+=("python3 not found at /usr/bin/python3")
 fi
 
-# Check guest binaries
-dests=(
+guest_dests=(
   "/usr/local/bin/guest-agent"
   "/usr/local/bin/guest-download"
   "/sbin/guest-init"
@@ -110,14 +159,28 @@ dests=(
   "/usr/local/bin/guest-mock-codex"
   "/sbin/guest-reseed"
 )
-for dest in "${dests[@]}"; do
-  check_path="${MOUNT_DIR}${dest}"
-  if [[ -f "$check_path" ]]; then
-    echo "  ${dest}: found"
-  else
-    errors+=("${dest} not found")
+if [[ "$MODE" == "rootfs" ]]; then
+  # Check guest binaries
+  for dest in "${guest_dests[@]}"; do
+    check_path="${MOUNT_DIR}${dest}"
+    if [[ -f "$check_path" ]]; then
+      echo "  ${dest}: found"
+    else
+      errors+=("${dest} not found")
+    fi
+  done
+else
+  guest_contamination=0
+  for dest in "${guest_dests[@]}"; do
+    if [[ -e "${MOUNT_DIR}${dest}" || -L "${MOUNT_DIR}${dest}" ]]; then
+      errors+=("template contains rootfs-only guest binary: ${dest}")
+      guest_contamination=1
+    fi
+  done
+  if [[ "$guest_contamination" -eq 0 ]]; then
+    echo "  rootfs-only guest binaries: absent"
   fi
-done
+fi
 
 # Check CLIs
 if [[ -f "${MOUNT_DIR}/usr/bin/gh" ]]; then
@@ -168,49 +231,72 @@ else
   errors+=("redis-server not found at /usr/bin/redis-server")
 fi
 
-# Check proxy CA certificate file
 ca_path="${MOUNT_DIR}/${CA_ROOTFS_DEST}"
-if [[ -f "$ca_path" ]]; then
-  echo "  proxy CA file: found"
-else
-  errors+=("proxy CA certificate not found")
-fi
+env_path="${MOUNT_DIR}/etc/environment"
+resolv_path="${MOUNT_DIR}/etc/resolv.conf"
 
-# Check proxy CA in system bundle
-bundle_path="${MOUNT_DIR}/etc/ssl/certs/ca-certificates.crt"
-if [[ ! -f "$bundle_path" ]]; then
-  errors+=("system CA bundle not found at /etc/ssl/certs/ca-certificates.crt")
-elif [[ -f "$ca_path" ]]; then
-  # Read second line of CA cert as a unique identifier. Reject an
-  # empty line 2 or a PEM header/footer on line 2 (latter happens
-  # when the source cert has a leading blank line) — matching either
-  # against the bundle with `grep -F` would false-positive because
-  # every cert in the bundle has BEGIN/END framing lines. `-- "$pat"`
-  # also stops option parsing so a pattern starting with `-` can
-  # never be mistaken for a grep flag.
-  ca_line=$(sed -n '2p' "$ca_path")
-  if [[ -z "$ca_line" ]] \
-      || [[ "$ca_line" == -----BEGIN* ]] \
-      || [[ "$ca_line" == -----END* ]]; then
-    errors+=("proxy CA cert appears empty or malformed (line 2 missing or PEM framing)")
-  elif grep -qF -- "$ca_line" "$bundle_path"; then
-    echo "  proxy CA bundle: updated"
+if [[ "$MODE" == "rootfs" ]]; then
+  # Check proxy CA certificate file
+  if [[ -f "$ca_path" ]]; then
+    echo "  proxy CA file: found"
   else
-    errors+=("proxy CA not found in system CA bundle (update-ca-certificates may have failed)")
+    errors+=("proxy CA certificate not found")
+  fi
+
+  # Check proxy CA in system bundle
+  bundle_path="${MOUNT_DIR}/etc/ssl/certs/ca-certificates.crt"
+  if [[ ! -f "$bundle_path" ]]; then
+    errors+=("system CA bundle not found at /etc/ssl/certs/ca-certificates.crt")
+  elif [[ -f "$ca_path" ]]; then
+    # Read second line of CA cert as a unique identifier. Reject an
+    # empty line 2 or a PEM header/footer on line 2 (latter happens
+    # when the source cert has a leading blank line) — matching either
+    # against the bundle with `grep -F` would false-positive because
+    # every cert in the bundle has BEGIN/END framing lines. `-- "$pat"`
+    # also stops option parsing so a pattern starting with `-` can
+    # never be mistaken for a grep flag.
+    ca_line=$(sed -n '2p' "$ca_path")
+    if [[ -z "$ca_line" ]] \
+        || [[ "$ca_line" == -----BEGIN* ]] \
+        || [[ "$ca_line" == -----END* ]]; then
+      errors+=("proxy CA cert appears empty or malformed (line 2 missing or PEM framing)")
+    elif grep -qF -- "$ca_line" "$bundle_path"; then
+      echo "  proxy CA bundle: updated"
+    else
+      errors+=("proxy CA not found in system CA bundle (update-ca-certificates may have failed)")
+    fi
+  fi
+else
+  template_contamination=0
+  if [[ -e "$ca_path" || -L "$ca_path" ]]; then
+    errors+=("template contains rootfs-only proxy CA certificate")
+    template_contamination=1
+  fi
+  if [[ -f "$env_path" ]] \
+      && grep -Eq '^(NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|REQUESTS_CA_BUNDLE|CARGO_HTTP_CAINFO)=' "$env_path"; then
+    errors+=("template contains rootfs-only environment CA settings")
+    template_contamination=1
+  fi
+  if [[ -s "$resolv_path" ]]; then
+    errors+=("template contains rootfs-only resolv.conf content")
+    template_contamination=1
+  fi
+  if [[ "$template_contamination" -eq 0 ]]; then
+    echo "  rootfs-only CA/env/resolver: absent"
   fi
 fi
 
 # Unmount
-sudo umount "$MOUNT_DIR"
+unmount_with_retries "$MOUNT_DIR"
 rmdir "$MOUNT_DIR"
 MOUNT_DIR=""
 
 if [[ ${#errors[@]} -gt 0 ]]; then
-  echo "error: rootfs verification failed:" >&2
+  echo "error: ${MODE} verification failed:" >&2
   for err in "${errors[@]}"; do
     echo "  ${err}" >&2
   done
   exit 1
 fi
 
-echo "[OK] rootfs verification passed"
+echo "[OK] ${MODE} verification passed"

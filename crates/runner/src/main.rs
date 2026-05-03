@@ -36,9 +36,13 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use tracing_subscriber::Layer as _;
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::writer::MakeWriterExt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+
+const RUNNER_FMT_MAX_LEVEL: LevelFilter = LevelFilter::INFO;
 
 #[derive(Parser)]
 #[command(name = "runner", version)]
@@ -154,7 +158,8 @@ fn init_tracing_with_file(
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_writer(writer)
-        .with_ansi(false);
+        .with_ansi(false)
+        .with_filter(RUNNER_FMT_MAX_LEVEL);
     let axiom_layer = axiom_layer.map(axiom_layer::with_ingest_filter);
     tracing_subscriber::registry()
         .with(fmt_layer)
@@ -172,7 +177,9 @@ fn init_tracing_with_file(
 /// interleaved into captured output. The `fmt::layer()` default writer is
 /// stdout, which is the wrong sink for a CLI tool.
 fn init_tracing_stderr(axiom_layer: Option<axiom_layer::AxiomLayer>) {
-    let fmt_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_writer(std::io::stderr)
+        .with_filter(RUNNER_FMT_MAX_LEVEL);
     let axiom_layer = axiom_layer.map(axiom_layer::with_ingest_filter);
     tracing_subscriber::registry()
         .with(fmt_layer)

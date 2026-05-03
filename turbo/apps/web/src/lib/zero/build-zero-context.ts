@@ -785,6 +785,11 @@ export async function buildZeroExecutionContext(
       modelUsageProvider,
       // API start time for E2E timing metrics
       apiStartTime: params.apiStartTime,
+      // Provider-derived framework — source of truth for downstream
+      // dispatch (execution-preparer) and admission validation. Undefined
+      // on the CLI path (no provider context); dispatch falls back to
+      // compose framework via extractCliAgentType.
+      resolvedFramework,
     },
     timings: {
       resolveSourceAndOrg: resolveEnd - resolveStart,
