@@ -198,6 +198,12 @@ export async function insertOrgMembersEntry(entry: {
  * Insert an org-level default model provider directly in the database.
  * Useful for testing credit check behavior with different provider types.
  *
+ * Mirrors production `setModelProviderDefault` semantics — clears any existing
+ * `isDefault=true` row for the same `(orgId, ORG_SENTINEL_USER_ID)` before
+ * inserting, so the partial unique index
+ * `idx_model_providers_one_default_per_user` is never violated when tests
+ * stack multiple defaults during setup.
+ *
  * @why-db-direct Inserts org-level provider bypassing API validation;
  * tests credit check with specific provider types
  */
@@ -207,6 +213,16 @@ export async function insertOrgDefaultModelProvider(
   selectedModel?: string,
 ): Promise<void> {
   initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    );
   await globalThis.services.db.insert(modelProviders).values({
     type,
     userId: ORG_SENTINEL_USER_ID,
