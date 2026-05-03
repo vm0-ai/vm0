@@ -24,7 +24,7 @@ overrides:
   yaml: '>=2.8.3'
   smol-toml: '>=1.6.1'
   '@opentelemetry/instrumentation': '>=0.213.0'
-  zod: 4.3.6
+  zod: 4.4.2
   postcss: '>=8.5.10'
 
 importers:
@@ -99,7 +99,7 @@ importers:
         version: 10.50.0(@opentelemetry/exporter-trace-otlp-http@0.215.0(@opentelemetry/api@1.9.1))
       '@t3-oss/env-core':
         specifier: ^0.13.11
-        version: 0.13.11(typescript@5.9.3)(zod@4.3.6)
+        version: 0.13.11(typescript@5.9.3)(zod@4.4.2)
       '@vercel/functions':
         specifier: ^3.4.4
         version: 3.4.4(@aws-sdk/credential-provider-web-identity@3.972.35)
@@ -137,8 +137,8 @@ importers:
         specifier: ^6.24.1
         version: 6.24.1
       zod:
-        specifier: 4.3.6
-        version: 4.3.6
+        specifier: 4.4.2
+        version: 4.4.2
     devDependencies:
       '@hono/vite-build':
         specifier: ^1.11.1
@@ -271,14 +271,14 @@ importers:
         specifier: '>=2.8.3'
         version: 2.8.3
       zod:
-        specifier: 4.3.6
-        version: 4.3.6
+        specifier: 4.4.2
+        version: 4.4.2
 
   apps/platform:
     dependencies:
       '@clerk/clerk-js':
         specifier: ^5.125.10
-        version: 5.125.10(@types/react@19.2.14)(bs58@6.0.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(zod@4.3.6)
+        version: 5.125.10(@types/react@19.2.14)(bs58@6.0.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(zod@4.4.2)
       '@clerk/clerk-react':
         specifier: ^5.61.6
         version: 5.61.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -492,7 +492,7 @@ importers:
         version: 7.15.0
       '@t3-oss/env-nextjs':
         specifier: ^0.13.8
-        version: 0.13.11(typescript@5.9.3)(zod@4.3.6)
+        version: 0.13.11(typescript@5.9.3)(zod@4.4.2)
       '@tabler/icons-react':
         specifier: ^3.36.1
         version: 3.41.0(react@19.2.4)
@@ -605,8 +605,8 @@ importers:
         specifier: ^3.6.7
         version: 3.6.7
       zod:
-        specifier: 4.3.6
-        version: 4.3.6
+        specifier: 4.4.2
+        version: 4.4.2
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.1.18
@@ -702,8 +702,8 @@ importers:
         specifier: workspace:*
         version: link:../connectors
       zod:
-        specifier: 4.3.6
-        version: 4.3.6
+        specifier: 4.4.2
+        version: 4.4.2
     devDependencies:
       '@types/node':
         specifier: ^24.3.0
@@ -763,8 +763,8 @@ importers:
         specifier: '>=2.8.3'
         version: 2.8.3
       zod:
-        specifier: 4.3.6
-        version: 4.3.6
+        specifier: 4.4.2
+        version: 4.4.2
     devDependencies:
       '@vm0/eslint-config':
         specifier: workspace:*
@@ -4718,7 +4718,7 @@ packages:
       arktype: ^2.1.0
       typescript: '>=5.0.0'
       valibot: ^1.0.0-beta.7 || ^1.0.0
-      zod: 4.3.6
+      zod: 4.4.2
     peerDependenciesMeta:
       arktype:
         optional: true
@@ -4735,7 +4735,7 @@ packages:
       arktype: ^2.1.0
       typescript: '>=5.0.0'
       valibot: ^1.0.0-beta.7 || ^1.0.0
-      zod: 4.3.6
+      zod: 4.4.2
     peerDependenciesMeta:
       arktype:
         optional: true
@@ -5440,7 +5440,7 @@ packages:
     resolution: {integrity: sha512-Ofer5QUnuUdTFsBRwARMoWKOH1ND5ehwYhJ3OJ/BQO+StkwQjHw0XyVh4vDttzHB7QOFhPHa/o413PJ82gU/Tg==}
     peerDependencies:
       typescript: '>=5.0.4'
-      zod: 4.3.6
+      zod: 4.4.2
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -9233,10 +9233,10 @@ packages:
     resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      zod: 4.3.6
+      zod: 4.4.2
 
-  zod@4.3.6:
-    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
+  zod@4.4.2:
+    resolution: {integrity: sha512-IynmDyxsEsb9RKzO3J9+4SxXnl2FTFSzNBaKKaMV6tsSk0rw9gYw9gs+JFCq/qk2LCZ78KDwyj+Z289TijSkUw==}
 
   zustand@5.0.3:
     resolution: {integrity: sha512-14fwWQtU3pH4dE0dOpdMiWjddcH+QzKIgk1cl8epwSE7yag43k/AD/m4L6+K7DytAOr9gGBe3/EXj9g7cdostg==}
@@ -9845,15 +9845,15 @@ snapshots:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
 
-  '@base-org/account@2.0.1(@types/react@19.2.14)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(zod@4.3.6)':
+  '@base-org/account@2.0.1(@types/react@19.2.14)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(zod@4.4.2)':
     dependencies:
       '@noble/hashes': 1.4.0
       clsx: 1.2.1
       eventemitter3: 5.0.1
       idb-keyval: 6.2.1
-      ox: 0.6.9(typescript@5.9.3)(zod@4.3.6)
+      ox: 0.6.9(typescript@5.9.3)(zod@4.4.2)
       preact: 10.24.2
-      viem: 2.47.6(typescript@5.9.3)(zod@4.3.6)
+      viem: 2.47.6(typescript@5.9.3)(zod@4.4.2)
       zustand: 5.0.3(@types/react@19.2.14)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4))
     transitivePeerDependencies:
       - '@types/react'
@@ -9880,9 +9880,9 @@ snapshots:
       - react
       - react-dom
 
-  '@clerk/clerk-js@5.125.10(@types/react@19.2.14)(bs58@6.0.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(zod@4.3.6)':
+  '@clerk/clerk-js@5.125.10(@types/react@19.2.14)(bs58@6.0.0)(fastestsmallesttextencoderdecoder@1.0.22)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(zod@4.4.2)':
     dependencies:
-      '@base-org/account': 2.0.1(@types/react@19.2.14)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(zod@4.3.6)
+      '@base-org/account': 2.0.1(@types/react@19.2.14)(react@19.2.4)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@19.2.4))(zod@4.4.2)
       '@clerk/localizations': 3.37.5(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@clerk/shared': 3.47.5(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@coinbase/wallet-sdk': 4.3.0
@@ -13246,17 +13246,17 @@ snapshots:
     dependencies:
       defer-to-connect: 2.0.1
 
-  '@t3-oss/env-core@0.13.11(typescript@5.9.3)(zod@4.3.6)':
+  '@t3-oss/env-core@0.13.11(typescript@5.9.3)(zod@4.4.2)':
     optionalDependencies:
       typescript: 5.9.3
-      zod: 4.3.6
+      zod: 4.4.2
 
-  '@t3-oss/env-nextjs@0.13.11(typescript@5.9.3)(zod@4.3.6)':
+  '@t3-oss/env-nextjs@0.13.11(typescript@5.9.3)(zod@4.4.2)':
     dependencies:
-      '@t3-oss/env-core': 0.13.11(typescript@5.9.3)(zod@4.3.6)
+      '@t3-oss/env-core': 0.13.11(typescript@5.9.3)(zod@4.4.2)
     optionalDependencies:
       typescript: 5.9.3
-      zod: 4.3.6
+      zod: 4.4.2
 
   '@tabler/icons-react@3.41.0(react@19.2.4)':
     dependencies:
@@ -13357,7 +13357,7 @@ snapshots:
       ajv-formats: 2.1.1
       graphql: 16.13.2
       lodash.get: 4.4.2
-      zod: 4.3.6
+      zod: 4.4.2
 
   '@testing-library/dom@10.4.1':
     dependencies:
@@ -13994,9 +13994,9 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.5(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
     optionalDependencies:
-      '@vitest/browser': 4.1.5(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.5(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.5)
+      '@vitest/browser': 4.1.5(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))(vitest@4.1.5)
 
   '@vitest/expect@4.1.5':
     dependencies:
@@ -14052,7 +14052,7 @@ snapshots:
       sirv: 3.0.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.5(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+      vitest: 4.1.5(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/browser-playwright@4.1.5)(@vitest/coverage-v8@4.1.5)(@vitest/ui@4.1.5)(happy-dom@20.9.0)(msw@2.13.2(@types/node@24.3.0)(typescript@5.9.3))(vite@8.0.10(@types/node@24.3.0)(esbuild@0.27.4)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
 
   '@vitest/utils@4.1.5':
     dependencies:
@@ -14093,10 +14093,10 @@ snapshots:
 
   '@zxcvbn-ts/language-common@3.0.4': {}
 
-  abitype@1.2.3(typescript@5.9.3)(zod@4.3.6):
+  abitype@1.2.3(typescript@5.9.3)(zod@4.4.2):
     optionalDependencies:
       typescript: 5.9.3
-      zod: 4.3.6
+      zod: 4.4.2
 
   ably@2.21.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
     dependencies:
@@ -15032,8 +15032,8 @@ snapshots:
       '@babel/parser': 7.29.2
       eslint: 9.39.4(jiti@2.6.1)
       hermes-parser: 0.25.1
-      zod: 4.3.6
-      zod-validation-error: 4.0.2(zod@4.3.6)
+      zod: 4.4.2
+      zod-validation-error: 4.0.2(zod@4.4.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -15976,7 +15976,7 @@ snapshots:
       typescript: 5.9.3
       unbash: 2.2.0
       yaml: 2.8.3
-      zod: 4.3.6
+      zod: 4.4.2
     transitivePeerDependencies:
       - '@emnapi/core'
       - '@emnapi/runtime'
@@ -16722,7 +16722,7 @@ snapshots:
       object-keys: 1.1.1
       safe-push-apply: 1.0.0
 
-  ox@0.14.7(typescript@5.9.3)(zod@4.3.6):
+  ox@0.14.7(typescript@5.9.3)(zod@4.4.2):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -16730,21 +16730,21 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@4.3.6)
+      abitype: 1.2.3(typescript@5.9.3)(zod@4.4.2)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
       - zod
 
-  ox@0.6.9(typescript@5.9.3)(zod@4.3.6):
+  ox@0.6.9(typescript@5.9.3)(zod@4.4.2):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@4.3.6)
+      abitype: 1.2.3(typescript@5.9.3)(zod@4.4.2)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
@@ -18224,15 +18224,15 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  viem@2.47.6(typescript@5.9.3)(zod@4.3.6):
+  viem@2.47.6(typescript@5.9.3)(zod@4.4.2):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@4.3.6)
+      abitype: 1.2.3(typescript@5.9.3)(zod@4.4.2)
       isows: 1.0.7(ws@8.18.3)
-      ox: 0.14.7(typescript@5.9.3)(zod@4.3.6)
+      ox: 0.14.7(typescript@5.9.3)(zod@4.4.2)
       ws: 8.18.3
     optionalDependencies:
       typescript: 5.9.3
@@ -18500,11 +18500,11 @@ snapshots:
       compress-commons: 6.0.2
       readable-stream: 4.7.0
 
-  zod-validation-error@4.0.2(zod@4.3.6):
+  zod-validation-error@4.0.2(zod@4.4.2):
     dependencies:
-      zod: 4.3.6
+      zod: 4.4.2
 
-  zod@4.3.6: {}
+  zod@4.4.2: {}
 
   zustand@5.0.3(@types/react@19.2.14)(react@19.2.4)(use-sync-external-store@1.6.0(react@19.2.4)):
     optionalDependencies:

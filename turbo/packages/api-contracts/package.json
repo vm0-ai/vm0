@@ -37,7 +37,7 @@
   "dependencies": {
     "@ts-rest/core": "3.53.0-rc.1",
     "@vm0/connectors": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
