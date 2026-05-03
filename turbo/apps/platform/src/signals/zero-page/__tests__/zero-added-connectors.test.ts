@@ -5,7 +5,10 @@ import {
   detachedSetupPage,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
-import { zeroAuthorizedConnectors$, authorizeConnector$ } from "../zero-connectors.ts";
+import {
+  zeroAuthorizedConnectors$,
+  authorizeConnector$,
+} from "../zero-connectors.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";

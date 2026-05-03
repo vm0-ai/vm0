@@ -835,7 +835,9 @@ export function ZeroChatComposer({
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const authorizedConnectorsLoadable = useLastLoadable(zeroAuthorizedConnectors$);
+  const authorizedConnectorsLoadable = useLastLoadable(
+    zeroAuthorizedConnectors$,
+  );
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
   const pendingConnectType = useGet(pendingConnectType$);
