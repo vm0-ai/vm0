@@ -4,6 +4,7 @@ import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 import { resetSignal, bestEffort, setLoop } from "./utils.ts";
 import { agents$ } from "./agent.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
+import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -134,5 +135,6 @@ export const hideAppSkeleton$ = command(
     signal.throwIfAborted();
 
     set(internalVisible$, false);
+    set(captureFirstSkeletonHide$);
   },
 );
