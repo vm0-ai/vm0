@@ -4,13 +4,28 @@ import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-f
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
-import { zeroClient$ } from "../api-client.ts";
+import { resolveApiBase } from "../api-base.ts";
+import { createAuthedTsRestClient } from "../api-client-base.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
 export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
+
+// Pinned to the web backend: feature switches must load before
+// `apiBackendEnabled$` is known, so the transport that fetches them cannot
+// itself depend on it. Going through `zeroClient$` (which routes via
+// `apiBase$` → `apiBackendEnabled$` → `featureSwitch$`) creates a static
+// import cycle even though the runtime read is now sync from localStorage.
+const webFeatureSwitchClient$ = computed((get) => {
+  return createAuthedTsRestClient(zeroFeatureSwitchesContract, {
+    baseUrl: resolveApiBase(false),
+    getClerk: () => {
+      return get(clerk$);
+    },
+  });
+});
 
 function applySwitches(
   result: Record<FeatureSwitchKey, boolean>,
@@ -51,7 +66,7 @@ export const reloadFeatureSwitch$ = command(
       return;
     }
 
-    const client = get(zeroClient$)(zeroFeatureSwitchesContract);
+    const client = get(webFeatureSwitchClient$);
     const result = await accept(
       client.get({ fetchOptions: { signal } }),
       [200],
@@ -75,7 +90,7 @@ export const setFeatureSwitch$ = command(
     overrides: Partial<Record<FeatureSwitchKey, boolean>>,
     signal: AbortSignal,
   ) => {
-    const client = get(zeroClient$)(zeroFeatureSwitchesContract);
+    const client = get(webFeatureSwitchClient$);
     signal.throwIfAborted();
     await accept(
       client.update({
@@ -91,7 +106,7 @@ export const setFeatureSwitch$ = command(
 
 export const resetFeatureSwitches$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(zeroClient$)(zeroFeatureSwitchesContract);
+    const client = get(webFeatureSwitchClient$);
     signal.throwIfAborted();
     await accept(client.delete({ fetchOptions: { signal } }), [200]);
     signal.throwIfAborted();

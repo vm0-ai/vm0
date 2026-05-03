@@ -29,7 +29,7 @@ const createLoggerControl$ = command(({ set }, name: string) => {
 });
 
 export const setupGlobalMethod$ = command(
-  async ({ set, get }, signal: AbortSignal) => {
+  ({ set, get }, signal: AbortSignal) => {
     L.debug("Setting up global method vm0");
 
     window._vm0 = {

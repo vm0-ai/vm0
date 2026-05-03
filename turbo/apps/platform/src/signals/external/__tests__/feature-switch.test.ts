@@ -10,7 +10,7 @@ import {
 } from "../feature-switch";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers";
 import { server } from "../../../mocks/server";
 import { createMockApi } from "../../../mocks/msw-contract";
 
@@ -64,7 +64,7 @@ describe("feature switch", () => {
 
   it("should write a single switch via setFeatureSwitch$", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
-    expect(context.store.get(featureSwitch$).dummy).toBe(true);
+    expect(context.store.get(featureSwitch$).dummy).toBeTruthy();
 
     // Mimic server-side persistence: subsequent GETs return the new state.
     setMockFeatureSwitches({ [FeatureSwitchKey.Dummy]: false });
@@ -75,7 +75,7 @@ describe("feature switch", () => {
       context.signal,
     );
 
-    expect(context.store.get(featureSwitch$).dummy).toBe(false);
+    expect(context.store.get(featureSwitch$).dummy).toBeFalsy();
   });
 
   it("should reset all switches by deleting the server row", async () => {
@@ -85,14 +85,14 @@ describe("feature switch", () => {
       featureSwitches: { dummy: false },
       withoutRender: true,
     });
-    expect(context.store.get(featureSwitch$).dummy).toBe(false);
+    expect(context.store.get(featureSwitch$).dummy).toBeFalsy();
 
     // Mimic server-side reset: subsequent GETs return empty switches.
     setMockFeatureSwitches({});
 
     await context.store.set(resetFeatureSwitches$, context.signal);
 
-    expect(context.store.get(featureSwitch$).dummy).toBe(true);
+    expect(context.store.get(featureSwitch$).dummy).toBeTruthy();
   });
 
   it("should toast on DB sync failure", async () => {
@@ -125,14 +125,14 @@ describe("feature switch", () => {
       featureSwitches: { [FeatureSwitchKey.Dummy]: false },
       withoutRender: true,
     });
-    expect(context.store.get(featureSwitch$).dummy).toBe(false);
+    expect(context.store.get(featureSwitch$).dummy).toBeFalsy();
 
     // Server flips dummy back on after the cache was written.
     setMockFeatureSwitches({ [FeatureSwitchKey.Dummy]: true });
 
     await context.store.set(reloadFeatureSwitch$, context.signal);
 
-    expect(context.store.get(featureSwitch$).dummy).toBe(true);
+    expect(context.store.get(featureSwitch$).dummy).toBeTruthy();
   });
 
   it("should propagate abort without toasting", async () => {

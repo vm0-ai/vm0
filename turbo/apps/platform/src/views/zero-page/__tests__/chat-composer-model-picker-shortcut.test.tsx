@@ -29,7 +29,7 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import { setChatShortcutHelpOpen$ } from "../../../signals/chat-page/chat-shortcut-help.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 

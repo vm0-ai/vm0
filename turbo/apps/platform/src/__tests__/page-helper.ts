@@ -23,7 +23,7 @@ import { updateSearchParams$ } from "../signals/route";
 import { vi } from "vitest";
 import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches";
+import { setMockFeatureSwitches } from "../mocks/handlers/api-feature-switches.helpers";
 import { FEATURE_SWITCH_CACHE_KEY } from "../signals/external/feature-switch";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { detach, Reason } from "../signals/utils";
