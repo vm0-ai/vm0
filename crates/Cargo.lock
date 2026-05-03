@@ -1248,7 +1248,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.26.3"
+version = "0.26.4"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -2060,7 +2060,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.11"
+version = "0.4.12"
 dependencies = [
  "bitvec",
  "libc",
@@ -2558,7 +2558,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.99.8"
+version = "0.99.9"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2771,7 +2771,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.27.9"
+version = "0.27.10"
 dependencies = [
  "async-trait",
  "base64",

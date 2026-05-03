@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.9...sandbox-fc-v0.27.10) (2026-05-03)
+
+
+### Bug Fixes
+
+* **nbd-cow:** lock NBD claims across runners ([#11732](https://github.com/vm0-ai/vm0/issues/11732)) ([16d716e](https://github.com/vm0-ai/vm0/commit/16d716e1f07a77c0d93649f52d077953dd62ff16))
+
 ## [0.27.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.8...sandbox-fc-v0.27.9) (2026-05-03)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.330.5](https://github.com/vm0-ai/vm0/compare/web-v12.330.4...web-v12.330.5) (2026-05-03)
+
+
+### Performance Improvements
+
+* **auth:** preconnect to clerk frontend api host ([#11738](https://github.com/vm0-ai/vm0/issues/11738)) ([3d186e1](https://github.com/vm0-ai/vm0/commit/3d186e1be2a91d52b2330cea4b9d6b794d49f126))
+
 ## [12.330.4](https://github.com/vm0-ai/vm0/compare/web-v12.330.3...web-v12.330.4) (2026-05-03)
 
 

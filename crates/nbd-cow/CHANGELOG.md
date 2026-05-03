@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.12](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.11...nbd-cow-v0.4.12) (2026-05-03)
+
+
+### Bug Fixes
+
+* **nbd-cow:** lock NBD claims across runners ([#11732](https://github.com/vm0-ai/vm0/issues/11732)) ([16d716e](https://github.com/vm0-ai/vm0/commit/16d716e1f07a77c0d93649f52d077953dd62ff16))
+
 ## [0.4.11](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.10...nbd-cow-v0.4.11) (2026-05-01)
 
 

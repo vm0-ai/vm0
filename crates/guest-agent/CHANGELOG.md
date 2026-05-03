@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.3...guest-agent-v0.26.4) (2026-05-03)
+
+
+### Documentation
+
+* document guest agent error variants ([#11735](https://github.com/vm0-ai/vm0/issues/11735)) ([5582bd2](https://github.com/vm0-ai/vm0/commit/5582bd29e15032f24f1f755a407c7824a276356d))
+
 ## [0.26.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.2...guest-agent-v0.26.3) (2026-05-03)
 
 

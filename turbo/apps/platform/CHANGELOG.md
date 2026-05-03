@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.321.5](https://github.com/vm0-ai/vm0/compare/app-v0.321.4...app-v0.321.5) (2026-05-03)
+
+
+### Performance Improvements
+
+* **auth:** preconnect to clerk frontend api host ([#11738](https://github.com/vm0-ai/vm0/issues/11738)) ([3d186e1](https://github.com/vm0-ai/vm0/commit/3d186e1be2a91d52b2330cea4b9d6b794d49f126))
+* **chat:** skip skeleton on idb cache hit ([#11740](https://github.com/vm0-ai/vm0/issues/11740)) ([d253446](https://github.com/vm0-ai/vm0/commit/d25344637b58805cf8778daeb5e3abbfa65af53d))
+
 ## [0.321.4](https://github.com/vm0-ai/vm0/compare/app-v0.321.3...app-v0.321.4) (2026-05-03)
 
 
