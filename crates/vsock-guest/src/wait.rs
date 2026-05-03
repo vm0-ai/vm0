@@ -118,10 +118,7 @@ pub(crate) fn await_drain_deadline(
 /// deadlock on its next write while we wait.
 pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitOutcome {
     if timeout_ms == 0 {
-        return match child.wait() {
-            Ok(s) => WaitOutcome::Exited(s),
-            Err(e) => WaitOutcome::WaitFailed(e.to_string()),
-        };
+        return resolve_wait_outcome(child.wait(), false);
     }
 
     let timeout = Duration::from_millis(u64::from(timeout_ms));
@@ -275,5 +272,35 @@ mod tests {
             WaitOutcome::Exited(_) => panic!("wait error should not produce status"),
             WaitOutcome::TimedOut => panic!("wait error should not be hidden by timeout"),
         }
+    }
+
+    #[test]
+    fn finalize_wait_outcome_preserves_exit_status_and_stderr() {
+        let stderr = b"stderr bytes".to_vec();
+
+        let (code, finalized_stderr) =
+            finalize_wait_outcome(WaitOutcome::Exited(successful_status()), stderr.clone());
+
+        assert_eq!(code, 0);
+        assert_eq!(finalized_stderr, stderr);
+    }
+
+    #[test]
+    fn finalize_wait_outcome_timeout_overrides_stderr() {
+        let (code, stderr) = finalize_wait_outcome(WaitOutcome::TimedOut, b"real stderr".to_vec());
+
+        assert_eq!(code, EXIT_CODE_TIMEOUT);
+        assert_eq!(stderr, b"Timeout".to_vec());
+    }
+
+    #[test]
+    fn finalize_wait_outcome_preserves_wait_failed_message() {
+        let (code, stderr) = finalize_wait_outcome(
+            WaitOutcome::WaitFailed("wait failed".to_string()),
+            b"ignored".to_vec(),
+        );
+
+        assert_eq!(code, 1);
+        assert_eq!(stderr, b"Failed to wait: wait failed".to_vec());
     }
 }
