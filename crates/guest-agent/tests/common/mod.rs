@@ -101,6 +101,7 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
 /// - `@hang-after-result-deaf` → SIGKILL escalation path
 /// - `@exit-after-result` → happy path (no signal ever fires)
 /// - `@stuck-tool-deaf` → forced-termination SIGKILL escalation path
+/// - `@stuck-tool-closed-stdout-deaf` → stdout EOF before forced termination
 ///
 /// `sigterm_grace_secs` / `sigkill_grace_secs` control how long the
 /// FSM waits before each signal escalation. Signal-exit tests want

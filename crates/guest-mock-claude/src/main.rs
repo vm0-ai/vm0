@@ -10,6 +10,8 @@
 //!   @stuck-tool               - Emit WebFetch tool_use then hang (test stuck-tool watchdog)
 //!   @stuck-tool-deaf          - Same, but ignores SIGTERM so only SIGKILL
 //!                               can terminate it
+//!   @stuck-tool-closed-stdout-deaf
+//!                             - Same, but closes stdout before hanging
 //!   @orphan-pipe              - Emit events, spawn child holding stdout, then exit
 //!   @hang-after-result        - Emit result event, then hang the process
 //!                               (SIGTERM kills it → exits with 143; tests
@@ -360,7 +362,9 @@ fn main() -> ExitCode {
             // When piped, stdout is fully buffered and println! may not flush.
             let _ = std::io::stdout().flush();
 
-            if parsed.prompt.starts_with("@stuck-tool-deaf") {
+            let close_stdout_before_hang =
+                parsed.prompt.starts_with("@stuck-tool-closed-stdout-deaf");
+            if parsed.prompt.starts_with("@stuck-tool-deaf") || close_stdout_before_hang {
                 // SAFETY: signal(SIGTERM, SIG_IGN) is async-signal-safe and
                 // has no data-race concerns before the mock parks forever.
                 unsafe {
@@ -368,6 +372,16 @@ fn main() -> ExitCode {
                 }
                 if let Ok(home) = std::env::var("HOME") {
                     let _ = std::fs::write(format!("{home}/.vm0-mock-sigterm-ignored"), b"");
+                }
+            }
+
+            if close_stdout_before_hang {
+                // SAFETY: this mock process has finished writing all test
+                // events and is about to park forever. Closing fd 1 simulates
+                // a CLI that no longer has stdout open while the process is
+                // still alive.
+                unsafe {
+                    libc::close(libc::STDOUT_FILENO);
                 }
             }
 
