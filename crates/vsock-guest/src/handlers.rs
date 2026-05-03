@@ -21,6 +21,11 @@ use crate::wait::{
     wait_with_kill_timeout,
 };
 
+pub(crate) enum MessageOutcome {
+    Response(Vec<u8>),
+    Shutdown(Vec<u8>),
+}
+
 /// Handle exec message
 pub(crate) fn handle_exec(
     timeout_ms: u32,
@@ -178,18 +183,18 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
     }
 }
 
-/// Handle incoming message and return response.
+/// Handle incoming message and return the connection-loop outcome.
 ///
 /// `MSG_EXEC` and `MSG_SPAWN_WATCH` are handled separately in
 /// `handle_connection` because they run in background threads.
-pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
+pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
     log(
         "INFO",
         &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
     );
 
     match msg.msg_type {
-        MSG_PING => Ok(Some(
+        MSG_PING => Ok(MessageOutcome::Response(
             vsock_proto::encode(MSG_PONG, msg.seq, &[]).map_err(to_io_error)?,
         )),
         MSG_WRITE_FILE => {
@@ -197,16 +202,16 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<Option<Vec<u8>>> {
                 vsock_proto::decode_write_file(&msg.payload).map_err(to_io_error)?;
             let (success, error) = handle_write_file(path, content, use_sudo, append);
             let payload = vsock_proto::encode_write_file_result(success, &error);
-            Ok(Some(
+            Ok(MessageOutcome::Response(
                 vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload)
                     .map_err(to_io_error)?,
             ))
         }
-        MSG_SHUTDOWN => Ok(Some(handle_shutdown(msg.seq)?)),
+        MSG_SHUTDOWN => Ok(MessageOutcome::Shutdown(handle_shutdown(msg.seq)?)),
         _ => {
             let payload =
                 vsock_proto::encode_error(&format!("Unknown message type: 0x{:02X}", msg.msg_type));
-            Ok(Some(
+            Ok(MessageOutcome::Response(
                 vsock_proto::encode(MSG_ERROR, msg.seq, &payload).map_err(to_io_error)?,
             ))
         }

@@ -7,10 +7,9 @@ use std::time::Duration;
 use vsock_proto::{self, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY, MSG_SPAWN_WATCH};
 
 use crate::error::to_io_error;
-use crate::handlers::{handle_exec, handle_message};
+use crate::handlers::{MessageOutcome, handle_exec, handle_message};
 use crate::log::log;
 use crate::monitor::{SpawnWatchRequest, handle_spawn_watch};
-use crate::shutdown::shutdown_received;
 
 // Vsock constants (only used on Linux)
 #[cfg(target_os = "linux")]
@@ -18,6 +17,11 @@ const VSOCK_CID_HOST: u32 = 2;
 
 /// Read buffer size for the connection event loop (local tuning constant).
 const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB
+
+enum ConnectionEnd {
+    Closed,
+    Shutdown,
+}
 
 /// Connect to vsock (Linux only - this binary runs inside Firecracker VM)
 #[cfg(target_os = "linux")]
@@ -75,6 +79,10 @@ pub fn connect_unix(path: &str) -> io::Result<UnixStream> {
 /// Handle connection - the main event loop
 /// Uses separate reader/writer to avoid deadlock between main loop and background threads
 pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
+    handle_connection_with_outcome(stream).map(|_| ())
+}
+
+fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEnd> {
     // Clone the stream to get separate reader and writer
     // This avoids deadlock: reader can block while writer sends process_exit
     let mut reader = stream.try_clone()?;
@@ -161,17 +169,26 @@ pub fn handle_connection(stream: UnixStream) -> io::Result<()> {
                     }
                 });
             } else {
-                let response = handle_message(&msg)?;
-                if let Some(response) = response {
-                    let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-                    w.write_all(&response)?;
+                match handle_message(&msg)? {
+                    MessageOutcome::Response(response) => {
+                        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+                        w.write_all(&response)?;
+                    }
+                    MessageOutcome::Shutdown(response) => {
+                        let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
+                        if let Err(e) = w.write_all(&response) {
+                            log("WARN", &format!("Failed to send shutdown_ack: {e}"));
+                        }
+                        log("INFO", "Shutdown complete, exiting");
+                        return Ok(ConnectionEnd::Shutdown);
+                    }
                 }
             }
         }
     }
 
     log("INFO", "Host disconnected");
-    Ok(())
+    Ok(ConnectionEnd::Closed)
 }
 
 /// Maximum reconnection attempts before giving up
@@ -194,7 +211,7 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 log("INFO", "Connected");
                 // Reset attempts on successful connection
                 attempts = 0;
-                handle_connection(stream)
+                handle_connection_with_outcome(stream)
             })
         } else {
             log("INFO", "Connecting to host (CID=2)...");
@@ -202,19 +219,15 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 log("INFO", "Connected");
                 // Reset attempts on successful connection
                 attempts = 0;
-                handle_connection(stream)
+                handle_connection_with_outcome(stream)
             })
         };
 
         attempts += 1;
 
         match result {
-            Ok(()) => {
-                // If shutdown was received, exit gracefully without reconnecting
-                if shutdown_received() {
-                    log("INFO", "Shutdown complete, exiting");
-                    return Ok(());
-                }
+            Ok(ConnectionEnd::Shutdown) => return Ok(()),
+            Ok(ConnectionEnd::Closed) => {
                 // Connection closed gracefully, try to reconnect
                 if attempts >= MAX_RECONNECT_ATTEMPTS {
                     log(

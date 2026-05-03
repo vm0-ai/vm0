@@ -9,14 +9,44 @@ use std::io::{Read, Write};
 use std::thread;
 use std::time::Duration;
 
-use vsock_guest::handle_connection;
+use vsock_guest::{handle_connection, run};
 use vsock_proto::{
-    self, MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT,
-    MSG_STDOUT_CHUNK,
+    self, MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
+    MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
 };
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
 const DRAIN_DEADLINE_SECS: u64 = 5;
+
+struct SocketPathGuard(String);
+
+impl SocketPathGuard {
+    fn new(path: String) -> Self {
+        let _ = std::fs::remove_file(&path);
+        Self(path)
+    }
+
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Drop for SocketPathGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn unique_socket_path(label: &str) -> SocketPathGuard {
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    SocketPathGuard::new(format!(
+        "/tmp/vsock-test-{label}-{}-{nonce}.sock",
+        std::process::id()
+    ))
+}
 
 /// Helper: send a MSG_EXEC via the writer half, read MSG_EXEC_RESULT from the
 /// reader half, and return `(exit_code, stdout, stderr)`.
@@ -236,17 +266,102 @@ fn exec_timeout_zero_means_no_timeout() {
     let _ = handle.join();
 }
 
+#[test]
+fn run_exits_after_shutdown_even_when_ack_write_fails() {
+    use std::net::Shutdown;
+    use std::os::unix::net::UnixListener;
+
+    let socket_path = unique_socket_path("shutdown-failed-ack");
+    let listener = UnixListener::bind(socket_path.as_str()).unwrap();
+
+    let guest_socket_path = socket_path.as_str().to_owned();
+    let handle = thread::spawn(move || run(Some(&guest_socket_path)));
+
+    let (mut host_stream, _) = listener.accept().unwrap();
+    drop(listener);
+    read_and_discard_message(&mut host_stream);
+
+    host_stream.shutdown(Shutdown::Read).unwrap();
+    let msg = vsock_proto::encode(MSG_SHUTDOWN, 1, &[]).unwrap();
+    host_stream.write_all(&msg).unwrap();
+
+    // Refuse the ACK write before delivering MSG_SHUTDOWN. The write half is
+    // still open, so the shutdown request is delivered, but the guest's final
+    // ACK write fails with EPIPE/BrokenPipe.
+    drop(host_stream);
+
+    let result = handle.join().unwrap();
+    assert!(
+        result.is_ok(),
+        "shutdown should stop run() cleanly even if ACK write fails: {result:?}",
+    );
+}
+
+#[test]
+fn run_sends_shutdown_ack_and_exits_without_waiting_for_disconnect() {
+    use std::os::unix::net::UnixListener;
+    use std::sync::mpsc;
+
+    let socket_path = unique_socket_path("shutdown-ack");
+    let listener = UnixListener::bind(socket_path.as_str()).unwrap();
+
+    let guest_socket_path = socket_path.as_str().to_owned();
+    let (done_tx, done_rx) = mpsc::channel();
+    let handle = thread::spawn(move || {
+        let result = run(Some(&guest_socket_path));
+        let _ = done_tx.send(());
+        result
+    });
+
+    let (mut host_stream, _) = listener.accept().unwrap();
+    drop(listener);
+    read_and_discard_message(&mut host_stream);
+
+    let msg = vsock_proto::encode(MSG_SHUTDOWN, 42, &[]).unwrap();
+    host_stream.write_all(&msg).unwrap();
+
+    let ack = read_message(&mut host_stream);
+    assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
+    assert_eq!(ack.seq, 42);
+
+    let finished_before_disconnect = done_rx.recv_timeout(Duration::from_secs(1)).is_ok();
+    drop(host_stream);
+
+    let result = handle.join().unwrap();
+    assert!(
+        finished_before_disconnect,
+        "run() should exit after MSG_SHUTDOWN without waiting for host disconnect",
+    );
+    assert!(
+        result.is_ok(),
+        "shutdown should stop run() cleanly: {result:?}"
+    );
+}
+
 // -----------------------------------------------------------------------
 // Helpers for spawn_watch streaming tests
 // -----------------------------------------------------------------------
 
-/// Read one framed message from the stream and discard it.
-fn read_and_discard_message(stream: &mut impl std::io::Read) {
+/// Read one framed message from the stream.
+fn read_message(stream: &mut impl std::io::Read) -> vsock_proto::RawMessage {
     let mut hdr = [0u8; 4];
     stream.read_exact(&mut hdr).unwrap();
     let body_len = u32::from_be_bytes(hdr) as usize;
     let mut body = vec![0u8; body_len];
     stream.read_exact(&mut body).unwrap();
+
+    let mut full = Vec::with_capacity(4 + body_len);
+    full.extend_from_slice(&hdr);
+    full.extend_from_slice(&body);
+    let mut decoder = vsock_proto::Decoder::new();
+    let msgs = decoder.decode(&full).unwrap();
+    assert_eq!(msgs.len(), 1);
+    msgs.into_iter().next().unwrap()
+}
+
+/// Read one framed message from the stream and discard it.
+fn read_and_discard_message(stream: &mut impl std::io::Read) {
+    let _ = read_message(stream);
 }
 
 /// Like `Read::read`, but retries on EINTR. `read_exact` retries
