@@ -2332,6 +2332,20 @@
       "when": 1777558547889,
       "tag": "0332_add_chat_thread_renamed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 333,
+      "version": "7",
+      "when": 1777799755678,
+      "tag": "0333_collapse_dual_default_model_providers",
+      "breakpoints": true
+    },
+    {
+      "idx": 334,
+      "version": "7",
+      "when": 1777799782403,
+      "tag": "0334_blushing_reptil",
+      "breakpoints": true
     }
   ]
 }

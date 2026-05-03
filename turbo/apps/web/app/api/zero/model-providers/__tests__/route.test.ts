@@ -360,4 +360,78 @@ describe("Org-level model provider routes", () => {
       expect(response.status).toBe(201);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Cross-framework default — workspace-scoped (issue #11743)
+  //
+  // The workspace has at most one `is_default = true` row per (orgId, userId),
+  // regardless of framework. Adding a provider in a different framework must
+  // not steal default from the existing one; setDefault and delete-fallback
+  // both operate workspace-wide.
+  // ---------------------------------------------------------------------------
+
+  describe("cross-framework default (workspace-scoped)", () => {
+    beforeEach(() => {
+      mockIsFeatureEnabled.mockImplementation(() => {
+        return true;
+      });
+    });
+
+    it("does not steal default when adding a different-framework provider", async () => {
+      await createProvider("anthropic-api-key", "ant-key");
+      await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
+
+      const providers = await listProviders();
+      const anthropic = providers.find((p) => {
+        return p.type === "anthropic-api-key";
+      });
+      const openai = providers.find((p) => {
+        return p.type === "openai-api-key";
+      });
+
+      expect(anthropic!.isDefault).toBe(true);
+      expect(openai!.isDefault).toBe(false);
+      expect(
+        providers.filter((p) => {
+          return p.isDefault;
+        }),
+      ).toHaveLength(1);
+    });
+
+    it("setDefault flips default across frameworks atomically", async () => {
+      await createProvider("anthropic-api-key", "ant-key");
+      await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
+
+      const request = createTestRequest(setDefaultUrl("openai-api-key"), {
+        method: "POST",
+      });
+      const response = await setDefaultPOST(request);
+      expect(response.status).toBe(200);
+
+      const providers = await listProviders();
+      const anthropic = providers.find((p) => {
+        return p.type === "anthropic-api-key";
+      });
+      const openai = providers.find((p) => {
+        return p.type === "openai-api-key";
+      });
+      expect(anthropic!.isDefault).toBe(false);
+      expect(openai!.isDefault).toBe(true);
+    });
+
+    it("delete reassigns default to earliest cross-framework provider", async () => {
+      await createProvider("anthropic-api-key", "ant-key");
+      await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
+
+      const request = createTestRequest(deleteUrl("anthropic-api-key"), {
+        method: "DELETE",
+      });
+      await DELETE(request);
+
+      const providers = await listProviders();
+      expect(providers).toHaveLength(1);
+      expect(providers[0]?.type).toBe("openai-api-key");
+      expect(providers[0]?.isDefault).toBe(true);
+    });
+  });
 });
