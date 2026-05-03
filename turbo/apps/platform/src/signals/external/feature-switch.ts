@@ -1,32 +1,16 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { clerk$, user$ } from "../auth";
+import { clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
-import { resolveApiBase } from "../api-base.ts";
-import { createAuthedTsRestClient } from "../api-client-base.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { localStorageSignals } from "./local-storage.ts";
 
-const internalReload$ = state(0);
+export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
 
-// Transport only: feature switch data still flows through `featureSwitch$`.
-// This client is pinned to the web backend so `apiBackend` can be derived
-// without making feature switch loading depend on the backend it selects.
-const webFeatureSwitchClient$ = computed((get) => {
-  return createAuthedTsRestClient(zeroFeatureSwitchesContract, {
-    baseUrl: resolveApiBase(false),
-    getClerk: () => {
-      return get(clerk$);
-    },
-  });
-});
-
-const dbFeatureSwitches$ = computed(async (get) => {
-  get(internalReload$);
-  const client = get(webFeatureSwitchClient$);
-  const result = await accept(client.get(), [200], { toast: false });
-  return result.body.switches;
-});
+const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
+  localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
 
 function applySwitches(
   result: Record<FeatureSwitchKey, boolean>,
@@ -43,29 +27,47 @@ function applySwitches(
   }
 }
 
-export const featureSwitch$ = computed(async (get) => {
-  get(internalReload$);
-
-  await Promise.resolve();
-
-  const user = await get(user$);
-  const userId = user?.id;
-  const email = user?.primaryEmailAddress?.emailAddress;
-  const clerk = await get(clerk$);
-  const orgId = clerk.organization?.id;
-
-  const result = getAllFeatureStates({ userId, email, orgId });
-
-  const dbSwitches = await get(dbFeatureSwitches$);
-  applySwitches(result, dbSwitches);
-
-  return result;
+export const featureSwitch$ = computed((get) => {
+  const raw = get(featureSwitchCache$);
+  if (!raw) {
+    // First-ever load: identity-gated switches start disabled until
+    // `reloadFeatureSwitch$` populates the cache.
+    return getAllFeatureStates({});
+  }
+  return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
 
-export const apiBackendEnabled$ = computed(async (get) => {
-  const features = await get(featureSwitch$);
-  return features[FeatureSwitchKey.ApiBackend] ?? false;
+export const apiBackendEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.ApiBackend] ?? false;
 });
+
+export const reloadFeatureSwitch$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+
+    const user = clerk.user;
+    if (!user) {
+      return;
+    }
+
+    const client = get(zeroClient$)(zeroFeatureSwitchesContract);
+    const result = await accept(
+      client.get({ fetchOptions: { signal } }),
+      [200],
+    );
+    signal.throwIfAborted();
+
+    const combined = getAllFeatureStates({
+      userId: user.id,
+      email: user.primaryEmailAddress?.emailAddress,
+      orgId: clerk.organization?.id,
+    });
+    applySwitches(combined, result.body.switches);
+
+    set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
+  },
+);
 
 export const setFeatureSwitch$ = command(
   async (
@@ -73,7 +75,7 @@ export const setFeatureSwitch$ = command(
     overrides: Partial<Record<FeatureSwitchKey, boolean>>,
     signal: AbortSignal,
   ) => {
-    const client = get(webFeatureSwitchClient$);
+    const client = get(zeroClient$)(zeroFeatureSwitchesContract);
     signal.throwIfAborted();
     await accept(
       client.update({
@@ -83,50 +85,28 @@ export const setFeatureSwitch$ = command(
       [200],
     );
     signal.throwIfAborted();
-    set(internalReload$, (v) => {
-      return v + 1;
-    });
+    await set(reloadFeatureSwitch$, signal);
   },
 );
 
 export const resetFeatureSwitches$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(webFeatureSwitchClient$);
+    const client = get(zeroClient$)(zeroFeatureSwitchesContract);
     signal.throwIfAborted();
     await accept(client.delete({ fetchOptions: { signal } }), [200]);
     signal.throwIfAborted();
-    set(internalReload$, (v) => {
-      return v + 1;
-    });
+    await set(reloadFeatureSwitch$, signal);
   },
 );
 
-export const trinityEnabled$ = computed(async (get) => {
-  const features = await get(featureSwitch$);
-  return features[FeatureSwitchKey.Trinity] ?? false;
+export const trinityEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.Trinity] ?? false;
 });
 
-export const idbMessageEnabled$ = computed(async (get) => {
-  const features = await get(featureSwitch$);
-  return features[FeatureSwitchKey.IdbMessage] ?? false;
+export const idbMessageEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.IdbMessage] ?? false;
 });
 
-export const pwaOfflineCacheEnabled$ = computed(async (get) => {
-  const features = await get(featureSwitch$);
-  return features[FeatureSwitchKey.PwaOfflineCache] ?? false;
+export const pwaOfflineCacheEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.PwaOfflineCache] ?? false;
 });
-
-export const detachedSetFeatureSwitch$ = command(
-  (
-    { set },
-    overrides: Partial<Record<FeatureSwitchKey, boolean>>,
-    signal: AbortSignal,
-  ) => {
-    // toast.error is already shown by accept() on API failure.
-    // Swallow all rejections here so the fire-and-forget proxy setter does
-    // not produce an unhandled promise rejection in the browser console.
-    set(setFeatureSwitch$, overrides, signal).catch((_error: unknown) => {
-      return;
-    });
-  },
-);

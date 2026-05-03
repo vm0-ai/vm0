@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { testContext } from "./test-helpers";
 import { detachedSetupPage } from "../../__tests__/page-helper";
-import { getMockFeatureSwitches } from "../../mocks/handlers/api-feature-switches";
 
 const context = testContext();
 
@@ -51,44 +50,6 @@ describe("global debug loggers", () => {
 
     await waitFor(() => {
       expect(window._vm0?.loggers?.Promise.debug).toBeTruthy();
-    });
-  });
-});
-
-describe("global feature switches", () => {
-  it("should have featureSwitches after init", async () => {
-    detachedSetupPage({ context, path: "/", withoutRender: true });
-
-    await waitFor(() => {
-      expect(window._vm0).toBeDefined();
-      expect(window._vm0?.featureSwitches.dummy).toBeTruthy();
-    });
-  });
-
-  it("should override feature switch when set value", async () => {
-    detachedSetupPage({
-      context,
-      path: "/",
-      featureSwitches: { dummy: false },
-      withoutRender: true,
-    });
-
-    await waitFor(() => {
-      expect(window._vm0?.featureSwitches.dummy).toBeFalsy();
-    });
-  });
-
-  it("should write through to server when setter used", async () => {
-    detachedSetupPage({ context, path: "/", withoutRender: true });
-
-    await waitFor(() => {
-      expect(window._vm0?.featureSwitches).toBeDefined();
-    });
-
-    window._vm0!.featureSwitches.dummy = false;
-
-    await waitFor(() => {
-      expect(getMockFeatureSwitches()).toMatchObject({ dummy: false });
     });
   });
 });

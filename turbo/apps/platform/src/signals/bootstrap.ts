@@ -53,6 +53,7 @@ import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page
 import { setupRealtime$ } from "./realtime.ts";
 import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
+import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -340,6 +341,7 @@ export const bootstrap$ = command(
       set(setupSidebarShortcut$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
+      set(reloadFeatureSwitch$, signal),
     ]);
 
     signal.throwIfAborted();

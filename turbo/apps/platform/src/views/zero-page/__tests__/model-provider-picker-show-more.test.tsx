@@ -21,10 +21,7 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import {
-  setMockFeatureSwitches,
-  resetMockFeatureSwitches,
-} from "../../../mocks/handlers/api-feature-switches.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -80,7 +77,6 @@ function findToggleButton(matcher: RegExp): HTMLElement | undefined {
 describe("model-provider-picker — VM0 show more", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
-    resetMockFeatureSwitches();
   });
 
   // MPKR-SM-001: Collapsed state shows only the four primary models plus the
