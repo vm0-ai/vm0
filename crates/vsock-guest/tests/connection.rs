@@ -351,6 +351,82 @@ fn streaming_monitor_normal_exit() {
     let _ = handle.join();
 }
 
+/// `MSG_SPAWN_WATCH_RESULT` must arrive before stdout chunks for that pid.
+/// The host only registers the stdout stream after processing the spawn
+/// result, so a chunk sent first would be dropped by older host code.
+#[test]
+fn streaming_spawn_watch_result_precedes_stdout_chunks() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+    use std::time::Instant;
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    read_and_discard_message(&mut host_stream);
+    send_spawn_watch(&mut host_stream, 1, "printf ordered-output", None, 5000);
+
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    let mut pid: Option<u32> = None;
+    let mut stdout_data = Vec::new();
+    let mut saw_exit = false;
+    let deadline = Instant::now() + Duration::from_secs(5);
+
+    while stdout_data.is_empty() || !saw_exit {
+        assert!(
+            Instant::now() < deadline,
+            "did not see spawn result, stdout chunk, and process exit in time \
+             (pid={pid:?}, stdout_len={}, saw_exit={saw_exit})",
+            stdout_data.len(),
+        );
+        let n = read_retry_eintr(&mut host_stream, &mut buf).unwrap();
+        assert!(
+            n > 0,
+            "unexpected EOF waiting for streaming spawn_watch result"
+        );
+
+        for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+            if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == 1 {
+                assert!(pid.is_none(), "duplicate spawn_watch_result");
+                pid = Some(vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap());
+                continue;
+            }
+
+            if msg.msg_type == MSG_STDOUT_CHUNK {
+                let Some(p) = pid else {
+                    panic!("stdout chunk arrived before spawn_watch_result");
+                };
+                let (chunk_pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload).unwrap();
+                if chunk_pid == p {
+                    stdout_data.extend_from_slice(data);
+                }
+            } else if msg.msg_type == MSG_PROCESS_EXIT {
+                let Some(p) = pid else {
+                    panic!("process_exit arrived before spawn_watch_result");
+                };
+                let (exit_pid, code, _stdout, stderr) =
+                    vsock_proto::decode_process_exit(&msg.payload).unwrap();
+                if exit_pid == p {
+                    assert_eq!(code, 0);
+                    assert_eq!(stderr, b"");
+                    saw_exit = true;
+                }
+            }
+        }
+    }
+
+    assert_eq!(String::from_utf8_lossy(&stdout_data), "ordered-output");
+
+    drop(host_stream);
+    let _ = handle.join();
+}
+
 /// Stream-only mode sends stdout chunks to the host without creating a
 /// guest-side tee file.
 #[test]
