@@ -42,7 +42,7 @@ async fn main() {
     let base_size = base_size_mb * 1024 * 1024;
 
     // Create base image
-    eprintln!("[1/5] Creating {base_size_mb}MB base image...");
+    eprintln!("== Creating base image ==");
     create_sparse_file(&base_path, base_size);
 
     let workloads = vec![
@@ -69,7 +69,7 @@ async fn main() {
     ];
 
     // --- dm-snapshot benchmark ---
-    eprintln!("[2/5] Setting up dm-snapshot...");
+    eprintln!("== Benchmarking dm-snapshot ==");
     let dm_results =
         match run_dm_snapshot_bench(&work_dir, &base_path, base_size, &workloads, &host_disk) {
             Ok(r) => r,
@@ -80,7 +80,7 @@ async fn main() {
         };
 
     // --- NBD COW benchmark ---
-    eprintln!("[3/5] Setting up NBD COW...");
+    eprintln!("== Benchmarking NBD COW ==");
     // Clean up any stale NBD devices from previous runs
     cleanup_stale_nbd_devices();
     let nbd_results =
@@ -93,7 +93,7 @@ async fn main() {
         };
 
     // --- Print results ---
-    eprintln!("[5/5] Results:");
+    eprintln!("== Results ==");
     eprintln!();
     println!(
         "{:<16} {:>10} {:>10} {:>10} {:>12} {:>10} {:>10} {:>10} {:>12}",
@@ -128,7 +128,7 @@ async fn main() {
 
     // Cleanup
     eprintln!();
-    eprintln!("Cleaning up...");
+    eprintln!("== Cleaning up ==");
     let _ = std::fs::remove_dir_all(&work_dir);
     eprintln!("Done.");
 }
