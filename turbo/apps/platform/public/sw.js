@@ -98,7 +98,7 @@ self.addEventListener("fetch", (event) => {
           const response = await fetch(event.request);
           if (response.ok && !response.redirected) {
             const cache = await caches.open(STATIC_CACHE);
-            cache.put(event.request, response.clone());
+            await cache.put(event.request, response.clone());
           }
           return response;
         } catch {
