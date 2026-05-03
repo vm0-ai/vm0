@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.254.0](https://github.com/vm0-ai/vm0/compare/core-v8.253.0...core-v8.254.0) (2026-05-03)
+
+
+### Features
+
+* **skeleton:** gate prefetch await behind a feature switch ([#11748](https://github.com/vm0-ai/vm0/issues/11748)) ([30f55cf](https://github.com/vm0-ai/vm0/commit/30f55cfab1aad0bc1fa5e081599fc98f130c9e6b))
+
 ## [8.253.0](https://github.com/vm0-ai/vm0/compare/core-v8.252.0...core-v8.253.0) (2026-05-01)
 
 

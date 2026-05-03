@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.322.0](https://github.com/vm0-ai/vm0/compare/app-v0.321.5...app-v0.322.0) (2026-05-03)
+
+
+### Features
+
+* **skeleton:** gate prefetch await behind a feature switch ([#11748](https://github.com/vm0-ai/vm0/issues/11748)) ([30f55cf](https://github.com/vm0-ai/vm0/commit/30f55cfab1aad0bc1fa5e081599fc98f130c9e6b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.254.0
+
 ## [0.321.5](https://github.com/vm0-ai/vm0/compare/app-v0.321.4...app-v0.321.5) (2026-05-03)
 
 
