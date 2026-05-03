@@ -53,3 +53,9 @@ yarn-error.log*
 
 # SBOM
 sbom.json
+
+# Node.js compile cache
+node-compile-cache/
+
+# tsx cache
+tsx-*/
