@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.99.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.6...runner-rs-v0.99.7) (2026-05-03)
+
+
+### Documentation
+
+* **runner:** document doctor entry points ([#11699](https://github.com/vm0-ai/vm0/issues/11699)) ([e431dc0](https://github.com/vm0-ai/vm0/commit/e431dc02d3d5f2b27ee3ad676f1d1d524f5c6b93))
+
+
+### Performance Improvements
+
+* **runner:** cache rootfs templates in r2 ([#11597](https://github.com/vm0-ai/vm0/issues/11597)) ([136382c](https://github.com/vm0-ai/vm0/commit/136382cbfa2fc1ed8230145edf13ec72f712e770))
+
 ## [0.99.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.5...runner-rs-v0.99.6) (2026-05-01)
 
 

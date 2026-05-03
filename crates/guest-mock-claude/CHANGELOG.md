@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.17.5](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.4...guest-mock-claude-v0.17.5) (2026-05-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** escalate forced CLI termination ([#11698](https://github.com/vm0-ai/vm0/issues/11698)) ([ad07a39](https://github.com/vm0-ai/vm0/commit/ad07a39afca3122eb73bd9092a48cbdd07d33766))
+
+
+### Refactoring
+
+* **guest-mock-claude:** reuse post-result helper for orphan pipe ([#11692](https://github.com/vm0-ai/vm0/issues/11692)) ([bf98aa2](https://github.com/vm0-ai/vm0/commit/bf98aa26ad215dbecddfbd568e7343d9fd35728c))
+
 ## [0.17.4](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.3...guest-mock-claude-v0.17.4) (2026-05-01)
 
 

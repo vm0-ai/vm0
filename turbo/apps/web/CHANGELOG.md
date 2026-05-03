@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.330.3](https://github.com/vm0-ai/vm0/compare/web-v12.330.2...web-v12.330.3) (2026-05-03)
+
+
+### Bug Fixes
+
+* **zero:** admit cross-framework default provider at admission and dispatch ([#11686](https://github.com/vm0-ai/vm0/issues/11686)) ([5eb640d](https://github.com/vm0-ai/vm0/commit/5eb640d70d9c5fdf22cdb7556f8154b4a9153a8a))
+* **zero:** thread provider framework into dispatch and validation ([#11649](https://github.com/vm0-ai/vm0/issues/11649)) ([4448bb2](https://github.com/vm0-ai/vm0/commit/4448bb2b21671ff23e9cd7c0678043342ab717e8))
+
 ## [12.330.2](https://github.com/vm0-ai/vm0/compare/web-v12.330.1...web-v12.330.2) (2026-05-01)
 
 

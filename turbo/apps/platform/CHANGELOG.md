@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.321.3](https://github.com/vm0-ai/vm0/compare/app-v0.321.2...app-v0.321.3) (2026-05-03)
+
+
+### Bug Fixes
+
+* add safe-area-inset-top to mobile top bar for PWA ([#11709](https://github.com/vm0-ai/vm0/issues/11709)) ([53df46e](https://github.com/vm0-ai/vm0/commit/53df46eb8498a5975aad81946fb8428aa68f671e))
+* prevent IDB cache gaps by checking anchor continuity before writing ([#11683](https://github.com/vm0-ai/vm0/issues/11683)) ([735aa8b](https://github.com/vm0-ai/vm0/commit/735aa8b9b8da177fa47b17768437ffed98f969e3))
+* restrict inline preview cards to platform /f/ file URLs only ([#11688](https://github.com/vm0-ai/vm0/issues/11688)) ([9aac496](https://github.com/vm0-ai/vm0/commit/9aac4965f7ae5f6b9fe88da91bfa51336509a570))
+
+
+### Refactoring
+
+* **platform:** rename connector signals to connected/authorized/available model ([#11711](https://github.com/vm0-ai/vm0/issues/11711)) ([46eb993](https://github.com/vm0-ai/vm0/commit/46eb993f71c2f7993e4af612ee47ec882f1b3f92))
+* rename zeroJob/job-prefixed signals to agent in job-detail ([#11716](https://github.com/vm0-ai/vm0/issues/11716)) ([fc06d22](https://github.com/vm0-ai/vm0/commit/fc06d2252e7b8dc4f803b6738f4aacd07489a309))
+
 ## [0.321.2](https://github.com/vm0-ai/vm0/compare/app-v0.321.1...app-v0.321.2) (2026-05-02)
 
 
