@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.330.7](https://github.com/vm0-ai/vm0/compare/web-v12.330.6...web-v12.330.7) (2026-05-03)
+
+
+### Bug Fixes
+
+* **zero:** enforce single workspace-scoped default model provider ([#11752](https://github.com/vm0-ai/vm0/issues/11752)) ([bac90bf](https://github.com/vm0-ai/vm0/commit/bac90bfff17ec5e946236536a445d0ed382a9f3f))
+
 ## [12.330.6](https://github.com/vm0-ai/vm0/compare/web-v12.330.5...web-v12.330.6) (2026-05-03)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.322.1](https://github.com/vm0-ai/vm0/compare/app-v0.322.0...app-v0.322.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* remove pwa edge-swipe sidebar gesture ([#11755](https://github.com/vm0-ai/vm0/issues/11755)) ([c81b638](https://github.com/vm0-ai/vm0/commit/c81b6385c7532e87a254d5704f9bf7c7ccb43528))
+
 ## [0.322.0](https://github.com/vm0-ai/vm0/compare/app-v0.321.5...app-v0.322.0) (2026-05-03)
 
 
