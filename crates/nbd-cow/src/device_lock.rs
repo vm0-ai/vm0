@@ -6,12 +6,14 @@
 
 use std::fs::{File, OpenOptions};
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use nix::fcntl::{Flock, FlockArg};
 
 const LOCK_FILE_PREFIX: &str = "vm0-nbd";
+const MAX_STALE_INODE_RETRIES: usize = 16;
 
 /// Owned host-global claim for one NBD device index.
 ///
@@ -63,12 +65,27 @@ pub fn try_acquire_device_claim_in(
     lock_dir: &Path,
 ) -> io::Result<Option<NbdDeviceClaim>> {
     let path = device_lock_path_in(index, lock_dir);
-    let file = open_lock_file(&path)?;
-    match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
-        Ok(lock) => Ok(Some(NbdDeviceClaim { index, _lock: lock })),
-        Err((_file, errno)) if errno == nix::errno::Errno::EWOULDBLOCK => Ok(None),
-        Err((_file, errno)) => Err(io::Error::from_raw_os_error(errno as i32)),
+    for _ in 0..MAX_STALE_INODE_RETRIES {
+        let file = open_lock_file(&path)?;
+        match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+            Ok(lock) => {
+                if lock_inode_is_current(&lock, &path)? {
+                    return Ok(Some(NbdDeviceClaim { index, _lock: lock }));
+                }
+            }
+            Err((file, errno)) if errno == nix::errno::Errno::EWOULDBLOCK => {
+                if file_inode_is_current(&file, &path)? {
+                    return Ok(None);
+                }
+            }
+            Err((_file, errno)) => return Err(io::Error::from_raw_os_error(errno as i32)),
+        }
     }
+
+    Err(io::Error::other(format!(
+        "lock path {} changed during NBD claim",
+        path.display()
+    )))
 }
 
 fn open_lock_file(path: &Path) -> io::Result<File> {
@@ -96,6 +113,23 @@ fn create_lock_file(path: &Path) -> io::Result<File> {
     options.create(true).truncate(false).open(path)
 }
 
+fn metadata_inode_is_current(lock_meta: std::fs::Metadata, path: &Path) -> io::Result<bool> {
+    let path_meta = match std::fs::metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(e),
+    };
+    Ok(lock_meta.ino() == path_meta.ino())
+}
+
+fn lock_inode_is_current(lock: &Flock<File>, path: &Path) -> io::Result<bool> {
+    metadata_inode_is_current(lock.metadata()?, path)
+}
+
+fn file_inode_is_current(file: &File, path: &Path) -> io::Result<bool> {
+    metadata_inode_is_current(file.metadata()?, path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +153,23 @@ mod tests {
             try_acquire_device_claim_in(7, dir.path())
                 .expect("third lock")
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn held_claim_detects_replaced_lock_file_inode() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = device_lock_path_in(7, dir.path());
+        let claim = try_acquire_device_claim_in(7, dir.path())
+            .expect("lock")
+            .expect("claim");
+
+        std::fs::remove_file(&path).expect("remove lock path");
+        drop(create_lock_file(&path).expect("recreate lock path"));
+
+        assert!(
+            !lock_inode_is_current(&claim._lock, &path).expect("inode comparison"),
+            "held claim should detect that the path was replaced"
         );
     }
 }

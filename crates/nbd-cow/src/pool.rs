@@ -1131,6 +1131,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn separate_pools_do_not_claim_same_locked_index() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let first = DevicePoolHandle::from_pool(test_pool(
+            1,
+            DevicePoolConfig::default().cooldown,
+            dir.path(),
+            always_free,
+        ));
+        let second = DevicePoolHandle::from_pool(test_pool(
+            1,
+            DevicePoolConfig::default().cooldown,
+            dir.path(),
+            always_free,
+        ));
+
+        let first_lease = first.acquire().await.expect("first acquire");
+        assert_eq!(first_lease.index(), 0);
+
+        let second_result = second.acquire().await;
+        assert!(matches!(second_result, Err(NbdCowError::NoFreeDevice)));
+
+        first.discard(first_lease).await;
+        first.cleanup().await;
+        second.cleanup().await;
+    }
+
+    #[tokio::test]
     async fn demand_error_waits_for_pending_success_before_failing_waiter() {
         let dir = tempfile::tempdir().expect("tempdir");
         let mut pool = test_pool_for_pending_scan(dir.path());
