@@ -7,10 +7,7 @@
  * (.btest.ts) against a real Chromium browser with fake-indexeddb.
  */
 
-/* eslint-disable */
-// @ts-nocheck
-
-function fakeCursor() {
+function fakeCursor(): null {
   return null;
 }
 
@@ -40,7 +37,7 @@ function fakeTransaction() {
   };
 }
 
-export function openDB(): Promise<any> {
+export function openDB(): Promise<Record<string, unknown>> {
   return Promise.resolve({
     objectStoreNames: {
       contains: () => false,
