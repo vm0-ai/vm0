@@ -1,3 +1,4 @@
+use std::io;
 use std::process::{Child, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
@@ -24,6 +25,23 @@ pub(crate) enum WaitOutcome {
     TimedOut,
     /// `wait()` itself failed; carries the error message.
     WaitFailed(String),
+}
+
+pub(crate) fn resolve_wait_outcome(
+    status: io::Result<ExitStatus>,
+    killed_by_timeout: bool,
+) -> WaitOutcome {
+    match status {
+        // Timeout is a deadline verdict: if the watchdog fired and the kill
+        // syscall succeeded, the child was not observed as complete before the
+        // deadline. Preserve that timeout verdict even if wait() races back
+        // with a status around the same boundary.
+        Ok(_) if killed_by_timeout => WaitOutcome::TimedOut,
+        Ok(s) => WaitOutcome::Exited(s),
+        // A real wait() failure is more actionable than the watchdog verdict.
+        // Do not hide wait/reap errors behind timeout classification.
+        Err(e) => WaitOutcome::WaitFailed(e.to_string()),
+    }
 }
 
 /// Watchdog that kills a child process tree if it is not stood down before
@@ -115,11 +133,7 @@ pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitO
     let status = child.wait();
     let killed_by_timeout = watchdog.join();
 
-    match status {
-        Ok(_) if killed_by_timeout => WaitOutcome::TimedOut,
-        Ok(s) => WaitOutcome::Exited(s),
-        Err(e) => WaitOutcome::WaitFailed(e.to_string()),
-    }
+    resolve_wait_outcome(status, killed_by_timeout)
 }
 
 /// Coordinate child wait + concurrent stdout/stderr drain + timeout-driven kill.
@@ -198,18 +212,68 @@ pub(crate) fn wait_with_drain_and_timeout(
     (outcome, stdout_buf, stderr_buf)
 }
 
-/// Resolve a [`WaitOutcome`] + drained bytes into the `(exit_code, stdout, stderr)`
-/// triple the protocol returns. Timeout overrides any drained stderr with the
-/// canonical "Timeout" body so callers can disambiguate from a real exit-1.
+/// Resolve a [`WaitOutcome`] + drained stderr into protocol exit fields.
+/// Timeout overrides any drained stderr with the canonical "Timeout" body so
+/// callers can disambiguate from a real exit-1.
+pub(crate) fn finalize_wait_outcome(outcome: WaitOutcome, stderr_buf: Vec<u8>) -> (i32, Vec<u8>) {
+    match outcome {
+        WaitOutcome::TimedOut => (EXIT_CODE_TIMEOUT, b"Timeout".to_vec()),
+        WaitOutcome::Exited(s) => (extract_exit_code(s), stderr_buf),
+        WaitOutcome::WaitFailed(msg) => (1, format!("Failed to wait: {msg}").into_bytes()),
+    }
+}
+
 pub(crate) fn finalize_buffered_result(
     outcome: WaitOutcome,
     stdout: Vec<u8>,
     stderr_buf: Vec<u8>,
 ) -> (i32, Vec<u8>, Vec<u8>) {
-    let (exit_code, stderr) = match outcome {
-        WaitOutcome::TimedOut => (EXIT_CODE_TIMEOUT, b"Timeout".to_vec()),
-        WaitOutcome::Exited(s) => (extract_exit_code(s), stderr_buf),
-        WaitOutcome::WaitFailed(msg) => (1, format!("Failed to wait: {msg}").into_bytes()),
-    };
+    let (exit_code, stderr) = finalize_wait_outcome(outcome, stderr_buf);
     (exit_code, stdout, stderr)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+
+    fn successful_status() -> ExitStatus {
+        Command::new("true").status().unwrap()
+    }
+
+    #[test]
+    fn resolve_wait_outcome_keeps_status_when_watchdog_did_not_fire() {
+        match resolve_wait_outcome(Ok(successful_status()), false) {
+            WaitOutcome::Exited(status) => assert_eq!(extract_exit_code(status), 0),
+            WaitOutcome::TimedOut => panic!("watchdog did not fire"),
+            WaitOutcome::WaitFailed(msg) => panic!("wait unexpectedly failed: {msg}"),
+        }
+    }
+
+    #[test]
+    fn resolve_wait_outcome_timeout_wins_over_observed_status() {
+        match resolve_wait_outcome(Ok(successful_status()), true) {
+            WaitOutcome::TimedOut => {}
+            WaitOutcome::Exited(_) => panic!("timeout should win over boundary status"),
+            WaitOutcome::WaitFailed(msg) => panic!("wait unexpectedly failed: {msg}"),
+        }
+    }
+
+    #[test]
+    fn resolve_wait_outcome_preserves_wait_error_without_timeout() {
+        match resolve_wait_outcome(Err(io::Error::other("wait failed")), false) {
+            WaitOutcome::WaitFailed(msg) => assert_eq!(msg, "wait failed"),
+            WaitOutcome::Exited(_) => panic!("wait error should not produce status"),
+            WaitOutcome::TimedOut => panic!("watchdog did not fire"),
+        }
+    }
+
+    #[test]
+    fn resolve_wait_outcome_preserves_wait_error_when_watchdog_fired() {
+        match resolve_wait_outcome(Err(io::Error::other("wait failed")), true) {
+            WaitOutcome::WaitFailed(msg) => assert_eq!(msg, "wait failed"),
+            WaitOutcome::Exited(_) => panic!("wait error should not produce status"),
+            WaitOutcome::TimedOut => panic!("wait error should not be hidden by timeout"),
+        }
+    }
 }

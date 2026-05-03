@@ -10,10 +10,9 @@ use crate::drain::{drain_into_vec_cancellable, drain_until_eof_or_cancelled};
 use crate::error::to_io_error;
 use crate::exec::{prepend_env, spawn_with_pipes, truncate_preview};
 use crate::log::log;
-use crate::process::extract_exit_code;
 use crate::wait::{
-    DRAIN_DEADLINE_SECS, EXIT_CODE_TIMEOUT, KillWatchdog, await_drain_deadline,
-    finalize_buffered_result, wait_with_drain_and_timeout,
+    DRAIN_DEADLINE_SECS, KillWatchdog, await_drain_deadline, finalize_buffered_result,
+    finalize_wait_outcome, resolve_wait_outcome, wait_with_drain_and_timeout,
 };
 use crate::writer::GuestWriter;
 
@@ -269,15 +268,9 @@ fn spawn_streaming_monitor(
             let _ = h.join();
         }
 
-        let killed_by_timeout = watchdog.map(KillWatchdog::join).unwrap_or(false);
-        let (exit_code, stderr) = if killed_by_timeout {
-            (EXIT_CODE_TIMEOUT, b"Timeout".to_vec())
-        } else {
-            match status {
-                Ok(s) => (extract_exit_code(s), stderr),
-                Err(e) => (1, format!("Failed to wait: {e}").into_bytes()),
-            }
-        };
+        let outcome =
+            resolve_wait_outcome(status, watchdog.map(KillWatchdog::join).unwrap_or(false));
+        let (exit_code, stderr) = finalize_wait_outcome(outcome, stderr);
 
         log(
             "INFO",
