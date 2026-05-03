@@ -1,3 +1,25 @@
+//! `runner start` — run the long-lived worker loop.
+//!
+//! `run_start` registers lifecycle signals early, loads config, claims the
+//! canonical runner `base_dir` lock, initializes shared resources, then enters
+//! `run()`, the main reactor for discovery, heartbeats, job execution,
+//! idle-pool maintenance, mitmproxy restart, and teardown.
+//!
+//! The sibling modules keep focused responsibilities out of this orchestration
+//! file:
+//! - `identity`: persistent runner id storage.
+//! - `job_lifecycle`: cleanup, budget, and completion ownership state.
+//! - `mitm_restart`: mitmproxy crash restart and backoff.
+//! - `signals`: lifecycle signal registration and mode transitions.
+//!
+//! Important invariants:
+//! - one process owns the canonical `base_dir` lock;
+//! - lifecycle signals are registered before slow startup work;
+//! - discovery is pinned across `select!` ticks so heartbeat and cleanup
+//!   branches do not restart polling;
+//! - the first heartbeat and idle-cleanup ticks are deferred;
+//! - teardown drops discovery before provider shutdown.
+
 use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
