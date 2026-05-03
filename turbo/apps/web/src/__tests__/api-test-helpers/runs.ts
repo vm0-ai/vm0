@@ -128,7 +128,11 @@ export async function createTestCheckpoint(
       },
       body: JSON.stringify({
         runId,
-        cliAgentType: "test-agent",
+        // Default to "claude-code" — the codebase's default framework and
+        // what production webhooks actually persist. Keeping a placeholder
+        // like "test-agent" creates false-positive mismatches in
+        // build-zero-context's framework-compatibility check on resume.
+        cliAgentType: "claude-code",
         cliAgentSessionId: `test-session-${runId}`,
         cliAgentSessionHistoryHash:
           "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",

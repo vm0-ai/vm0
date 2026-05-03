@@ -1297,8 +1297,8 @@ describe("POST /api/zero/chat/messages", () => {
 
         // Fake the runner completion: creates conversation +
         // agent_session. Stamp cliAgentType=codex on the conversation
-        // to mirror the post-#11649 webhook behavior (the
-        // createTestCheckpoint helper defaults to "test-agent").
+        // to mirror the post-#11649 webhook behavior (which writes the
+        // actually-dispatched framework, not the compose's literal one).
         const { agentSessionId } = await completeTestRun(user.userId, runId);
         await setTestSessionFramework(agentSessionId, "codex");
 

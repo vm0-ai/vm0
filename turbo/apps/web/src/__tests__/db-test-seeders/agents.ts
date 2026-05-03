@@ -631,11 +631,11 @@ export async function setTestSessionArtifacts(
 /**
  * Update the cliAgentType on the conversation linked to a session.
  *
- * @why-db-direct Test checkpoint helpers seed conversations with
- * cliAgentType "test-agent" while composes default to framework
- * "claude-code". Resolver compatibility checks compare these, so
- * resolveSession tests need to align the conversation framework before
- * invoking the resolver.
+ * @why-db-direct The framework-mismatch tests need to set a non-default
+ * cliAgentType on the seeded conversation to surface the
+ * build-zero-context compatibility check; doing it via webhook would
+ * require either a second checkpoint write or exposing internals on the
+ * webhook. A targeted UPDATE is the smallest seam.
  */
 export async function setTestSessionFramework(
   sessionId: string,
