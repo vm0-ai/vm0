@@ -56,6 +56,10 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  // Reset fake-indexeddb state between tests to prevent database
+  // cross-contamination when IdbMessage feature switch is enabled.
+  globalThis.indexedDB = new IDBFactory();
+
   // Override console.error to throw on unexpected errors.
   // - NotSupportedError / AbortError: expected happy-dom noise, silently ignored.
   // - "not wrapped in act(...)": unavoidable with our async bootstrap pattern
