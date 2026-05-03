@@ -58,7 +58,13 @@ beforeAll(() => {
 beforeEach(() => {
   // Reset fake-indexeddb state between tests to prevent database
   // cross-contamination when IdbMessage feature switch is enabled.
-  globalThis.indexedDB = new IDBFactory();
+  // fake-indexeddb v6.x requires defineProperty because the global indexedDB
+  // property cannot be overwritten by direct assignment after initialization.
+  Object.defineProperty(globalThis, "indexedDB", {
+    value: new IDBFactory(),
+    writable: true,
+    configurable: true,
+  });
 
   // Override console.error to throw on unexpected errors.
   // - NotSupportedError / AbortError: expected happy-dom noise, silently ignored.
