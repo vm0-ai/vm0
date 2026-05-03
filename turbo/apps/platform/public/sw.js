@@ -103,7 +103,9 @@ self.addEventListener("fetch", (event) => {
           return response;
         } catch {
           const cached = await caches.match(event.request);
-          if (cached) return cached;
+          if (cached) {
+            return cached;
+          }
           return new Response(
             "You are offline. Connect to the internet and try again.",
             {
