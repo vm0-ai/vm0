@@ -2544,7 +2544,7 @@ mod tests {
         events: Arc<Mutex<Vec<CapturedEvent>>>,
     }
 
-    #[derive(Clone, Default)]
+    #[derive(Clone, Debug, Default)]
     struct CapturedEvent {
         fields: BTreeMap<String, String>,
         field_kinds: BTreeMap<String, &'static str>,
@@ -2553,6 +2553,10 @@ mod tests {
     impl CapturedEvents {
         fn entries(&self) -> Vec<CapturedEvent> {
             self.events.lock().unwrap().clone()
+        }
+
+        fn clear(&self) {
+            self.events.lock().unwrap().clear();
         }
     }
 
@@ -2596,7 +2600,15 @@ mod tests {
                     .get("message")
                     .is_some_and(|value| value == message)
             })
-            .unwrap_or_else(|| panic!("missing event message {message:?}"))
+            .unwrap_or_else(|| panic!("missing event message {message:?}; captured={events:#?}"))
+    }
+
+    fn register_teardown_timer_callsites() {
+        let timer = TeardownTimer::start();
+        let phase = timer.phase_start("warmup_phase");
+        timer.phase_complete("warmup_phase", phase);
+        timer.event("warmup_event");
+        info!(total_teardown_ms = timer.elapsed_ms(), "runner stopped");
     }
 
     #[test]
@@ -2604,6 +2616,14 @@ mod tests {
         let captured = CapturedEvents::default();
         let subscriber = tracing_subscriber::registry().with(captured.clone());
         let _guard = tracing::subscriber::set_default(subscriber);
+        // These callsites are also hit by parallel runner tests. Reproduce the
+        // problematic shape by registering them on a thread without this
+        // thread-local subscriber, then rebuild the cache for this subscriber.
+        std::thread::spawn(register_teardown_timer_callsites)
+            .join()
+            .expect("callsite warmup thread panicked");
+        tracing::callsite::rebuild_interest_cache();
+        captured.clear();
 
         let timer = TeardownTimer::start();
         let phase = timer.phase_start("test_phase");
