@@ -16,6 +16,12 @@
         "backgroundColor": "#ffffff"
       },
       "package": "ai.vm0.app"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "66e359e1-5036-4ab0-a4a5-6758a0ca6317"
+      }
+    },
+    "owner": "vm0_ethan"
   }
 }
