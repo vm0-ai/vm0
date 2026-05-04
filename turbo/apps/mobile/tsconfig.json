@@ -3,7 +3,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "useDefineForClassFields": true,
-    "lib": ["ES2022", "ES2024.Promise"],
+    "lib": ["ES2022", "ES2024.Promise", "DOM"],
     "module": "ESNext",
     "skipLibCheck": true,
     "types": ["react-native"],
@@ -25,5 +25,5 @@
     "noImplicitReturns": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src", "custom-eslint", "index.ts"]
+  "include": ["src", "index.ts"]
 }

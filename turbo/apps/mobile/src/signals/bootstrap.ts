@@ -9,14 +9,12 @@ import { updatePage$ } from "./react-router.ts";
  * then renders the UI shell.
  */
 export const bootstrap$ = command(
-  async ({ set }, render: () => void, signal: AbortSignal) => {
+  ({ set }, render: () => void, signal: AbortSignal) => {
     set(setRootSignal$, signal);
 
     // Set initial page — placeholder home screen
     set(updatePage$, createElement(Text, null, "vm0 Mobile"));
 
     render();
-
-    signal.throwIfAborted();
   },
 );

@@ -29,15 +29,14 @@ function rebaseApiPath(path: string, apiBase: string): string {
 /**
  * Factory signal for creating typed ts-rest clients.
  */
-export const zeroClient$ = computed((get) => {
+export const zeroClient$ = computed((_get) => {
   return <T extends AppRouter>(contract: T) => {
     return createAuthedTsRestClient(contract, {
       baseUrl: resolveApiBase(false),
-      getToken: async () => {
-        // Mobile auth token goes here (Supabase / Clerk RN / custom)
-        return null;
+      getToken: () => {
+        return Promise.resolve(null);
       },
-      resolvePath: async (path) => {
+      resolvePath: (path) => {
         const apiBase = resolveApiBase(false);
         return rebaseApiPath(path, apiBase);
       },

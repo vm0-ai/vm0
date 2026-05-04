@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Getter } from "ccstate";
 import { jsonParseOr } from "../utils.ts";
 
 /**
@@ -36,7 +36,7 @@ export function localStorageSignals(key: string) {
     });
   });
 
-  const getJSON$ = computed(<T>(get): T | undefined => {
+  const getJSON$ = computed(<T>(get: Getter): T | undefined => {
     const raw = get(get$);
     if (raw === undefined) {
       return undefined;

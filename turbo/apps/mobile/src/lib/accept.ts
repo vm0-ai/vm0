@@ -1,10 +1,3 @@
-/**
- * Type-safe API response assertion helper.
- *
- * Accepts only the expected HTTP status codes. Throws on unexpected status
- * so that error-boundary and toast layers can surface the failure.
- */
-
 interface AcceptOptions {
   toast?: boolean;
 }
@@ -15,7 +8,7 @@ export async function accept<
 >(
   result: T | Promise<T>,
   expectedStatuses: readonly S[],
-  options: AcceptOptions = {},
+  _options: AcceptOptions = {},
 ): Promise<{ status: S; body: Extract<T, { status: S }>["body"] }> {
   const resolved = await result;
   if (!expectedStatuses.includes(resolved.status as S)) {
@@ -23,5 +16,8 @@ export async function accept<
       `Unexpected status ${String(resolved.status)}, expected one of ${expectedStatuses.join(", ")}`,
     );
   }
-  return resolved as { status: S; body: Extract<T, { status: S }>["body"] };
+  return resolved as unknown as {
+    status: S;
+    body: Extract<T, { status: S }>["body"];
+  };
 }

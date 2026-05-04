@@ -16,8 +16,6 @@ class PromiseTracker {
   descriptions = new Map<Promise<unknown>, string>();
 }
 
-const tracker = new PromiseTracker();
-
 export function detach<T>(
   promise: T | Promise<T>,
   reason: Reason,
@@ -26,22 +24,16 @@ export function detach<T>(
   L.debug("Detach promise", reason, description);
 
   if (promise instanceof Promise) {
-    Promise.resolve(promise).then(
-      () => {},
-      (error: unknown) => {
-        if (!isAbortError(error)) {
-          L.error(`Detached promise rejected [${reason}]`, error);
-        }
-      },
-    );
+    Promise.resolve(promise).catch((error: unknown) => {
+      if (!isAbortError(error)) {
+        L.error(`Detached promise rejected [${reason}]`, error);
+      }
+    });
   }
 }
 
 const isAbortError = (error: unknown): boolean => {
-  if (
-    (error instanceof Error || error instanceof DOMException) &&
-    error.name === "AbortError"
-  ) {
+  if (error instanceof Error && error.name === "AbortError") {
     return true;
   }
 
@@ -70,23 +62,14 @@ export function throwIfNotAbort(e: unknown) {
   }
 }
 
-/**
- * Parse JSON with a fallback value for untrusted input.
- */
-export function jsonParseOr<T>(value: string, fallback: T): T {
+export function jsonParseOr<T>(value: string, _fallback: T): T {
   return JSON.parse(value) as T;
 }
 
-/**
- * Best-effort wrapper: await `p` and swallow non-abort errors.
- */
 export async function bestEffort(p: Promise<unknown>): Promise<void> {
   await p;
 }
 
-/**
- * Create a deferred promise that can be resolved/rejected externally.
- */
 export function createDeferredPromise<T>(signal: AbortSignal): {
   promise: Promise<T>;
   resolve: (value: T) => void;
