@@ -1,11 +1,22 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// ── Mock @axiomhq/js and @axiomhq/logging at the package boundary ──────────
-const mockAxiomDebug = vi.fn();
-const mockAxiomInfo = vi.fn();
-const mockAxiomWarn = vi.fn();
-const mockAxiomError = vi.fn();
-const mockAxiomFlush = vi.fn().mockResolvedValue(undefined);
+// Must be hoisted above import for mock variables to be available when
+// vi.mock factories are executed during the import phase.
+const {
+  mockAxiomDebug,
+  mockAxiomInfo,
+  mockAxiomWarn,
+  mockAxiomError,
+  mockAxiomFlush,
+} = vi.hoisted(() => {
+  return {
+    mockAxiomDebug: vi.fn(),
+    mockAxiomInfo: vi.fn(),
+    mockAxiomWarn: vi.fn(),
+    mockAxiomError: vi.fn(),
+    mockAxiomFlush: vi.fn(),
+  };
+});
 
 vi.mock("@axiomhq/js", () => {
   return {
@@ -32,13 +43,10 @@ vi.mock("@axiomhq/logging", () => {
   };
 });
 
-// Must be imported after mocks are hoisted and after env-stub sets env vars
+// eslint-disable-next-line import/first
 import "../../__tests__/env-stub";
-import {
-  logger,
-  flushLogs,
-  __resetForTest,
-} from "../log";
+// eslint-disable-next-line import/first
+import { flushLogs, logger, __resetForTest } from "../log";
 
 beforeEach(() => {
   mockAxiomDebug.mockReset();
@@ -293,8 +301,12 @@ describe("getAxiomLogger with no token", () => {
     // AXIOM_TOKEN_TELEMETRY to be a non-empty string.
     vi.doMock("../env", () => ({
       env: (name: string) => {
-        if (name === "AXIOM_TOKEN_TELEMETRY") return "";
-        if (name === "AXIOM_DATASET_SUFFIX") return "dev";
+        if (name === "AXIOM_TOKEN_TELEMETRY") {
+          return "";
+        }
+        if (name === "AXIOM_DATASET_SUFFIX") {
+          return "dev";
+        }
         return "";
       },
       mockEnv: () => {},
@@ -332,8 +344,8 @@ describe("logger", () => {
       log.info("dual msg");
       log.error("dual error");
 
-      expect(consoleLog).toHaveBeenCalled();
-      expect(consoleError).toHaveBeenCalled();
+      expect(consoleLog).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+      expect(consoleError).toHaveBeenCalledWith(expect.any(String), expect.any(String));
     } finally {
       consoleLog.mockRestore();
       consoleError.mockRestore();
