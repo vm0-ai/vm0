@@ -4,6 +4,7 @@ import { AgentTalkPage } from "../../views/zero-page/agent-talk-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$ } from "../route.ts";
+import { onDomEventFn } from "../utils.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import {
   currentAgentId$,
@@ -25,9 +26,12 @@ export const setupAgentTalkPage$ = command(
     // Tear down the WebRTC peer / mic / Ably loop when the user leaves the
     // talk route. The server-side session row is preserved and resumed on
     // next entry.
-    signal.addEventListener("abort", () => {
-      set(exitAgentChatVoiceMode$);
-    });
+    signal.addEventListener(
+      "abort",
+      onDomEventFn(() => {
+        return set(exitAgentChatVoiceMode$, signal);
+      }),
+    );
 
     const agentId = get(currentAgentId$);
     if (agentId) {

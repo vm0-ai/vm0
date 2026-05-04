@@ -301,7 +301,7 @@ describe("agent-chat-voice-mode", () => {
         context.store.set(enterAgentChatVoiceMode$, AGENT_ID, context.signal),
         Reason.DomCallback,
       );
-      context.store.set(exitAgentChatVoiceMode$);
+      context.store.set(exitAgentChatVoiceMode$, context.signal);
       expect(context.store.get(agentChatVoiceMode$)).toBe("off");
     });
   });

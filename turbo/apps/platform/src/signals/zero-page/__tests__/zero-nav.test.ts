@@ -169,7 +169,11 @@ describe("zero-nav", () => {
       const pushStateMock = await setupNav();
 
       context.store.set(setZeroShowAboutPage$, true);
-      context.store.set(handleZeroNavSelect$, "schedules", context.signal);
+      await context.store.set(
+        handleZeroNavSelect$,
+        "schedules",
+        context.signal,
+      );
 
       expect(pushStateMock).toHaveBeenCalledWith({}, "", "/schedules");
       expect(context.store.get(activeRoute$)).toBe("schedules");
@@ -214,7 +218,7 @@ describe("zero-nav", () => {
         context.signal,
       );
 
-      context.store.set(
+      await context.store.set(
         handleZeroAccountAction$,
         "preferences",
         context.signal,
@@ -240,7 +244,11 @@ describe("zero-nav", () => {
         context.signal,
       );
 
-      context.store.set(handleZeroAccountAction$, "usage", context.signal);
+      await context.store.set(
+        handleZeroAccountAction$,
+        "usage",
+        context.signal,
+      );
 
       expect(context.store.get(activeRoute$)).toBe("usage");
     });

@@ -615,29 +615,32 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
     }
     pending = false;
     if (signal.aborted) {
-      void lock.release();
+      await lock.release();
       return;
     }
     set(internalWakeLock$, lock);
-    lock.addEventListener("release", () => {
-      if (
-        !signal.aborted &&
-        reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
-      ) {
-        reacquireCount++;
-        void requestAndTrack();
-      }
-    });
+    lock.addEventListener(
+      "release",
+      onDomEventFn(async () => {
+        if (
+          !signal.aborted &&
+          reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
+        ) {
+          reacquireCount++;
+          await requestAndTrack();
+        }
+      }),
+    );
   };
 
   signal.throwIfAborted();
 
-  const onVisibilityChange = (): void => {
+  const onVisibilityChange = onDomEventFn(async () => {
     if (document.visibilityState === "visible" && !signal.aborted) {
       reacquireCount = 0;
-      void requestAndTrack();
+      await requestAndTrack();
     }
-  };
+  });
   document.addEventListener("visibilitychange", onVisibilityChange);
   signal.addEventListener("abort", () => {
     document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -646,10 +649,10 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   await requestAndTrack();
 });
 
-const releaseWakeLock$ = command(({ get, set }) => {
+const releaseWakeLock$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const lock = get(internalWakeLock$);
   if (lock) {
-    void lock.release();
+    await lock.release();
     set(internalWakeLock$, null);
   }
 });
@@ -907,45 +910,47 @@ export const startVoiceChat$ = command(
  * are stateless, so next time startVoiceChat$ runs with the same
  * (user, agent) it will resume this one via get-or-create.
  */
-export const endVoiceChat$ = command(({ get, set }) => {
-  set(resetSessionSignal$);
-  set(releaseWakeLock$);
+export const endVoiceChat$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    set(resetSessionSignal$);
+    await set(releaseWakeLock$, _signal);
 
-  const dc = get(internalDc$);
-  if (dc) {
-    dc.close();
-    set(internalDc$, null);
-  }
-
-  const pc = get(internalPc$);
-  if (pc) {
-    pc.close();
-    set(internalPc$, null);
-  }
-
-  const stream = get(internalStream$);
-  if (stream) {
-    for (const track of stream.getTracks()) {
-      track.stop();
+    const dc = get(internalDc$);
+    if (dc) {
+      dc.close();
+      set(internalDc$, null);
     }
-    set(internalStream$, null);
-  }
 
-  const audioEl = get(internalAudioEl$);
-  if (audioEl) {
-    audioEl.pause();
-    audioEl.srcObject = null;
-    set(internalAudioEl$, null);
-  }
+    const pc = get(internalPc$);
+    if (pc) {
+      pc.close();
+      set(internalPc$, null);
+    }
 
-  set(internalSessionId$, null);
-  set(internalLastUserMessage$, "");
-  set(internalLastAssistantMessage$, "");
-  set(internalBargeInMode$, "speech_started");
-  set(internalCurrentAssistantAudioItem$, null);
-  set(internalStatus$, "idle");
-  // Bump so voiceChatTaskFeed$ re-resolves to [] after sessionId is cleared.
-  set(voiceChatReload$, (n) => {
-    return n + 1;
-  });
-});
+    const stream = get(internalStream$);
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      set(internalStream$, null);
+    }
+
+    const audioEl = get(internalAudioEl$);
+    if (audioEl) {
+      audioEl.pause();
+      audioEl.srcObject = null;
+      set(internalAudioEl$, null);
+    }
+
+    set(internalSessionId$, null);
+    set(internalLastUserMessage$, "");
+    set(internalLastAssistantMessage$, "");
+    set(internalBargeInMode$, "speech_started");
+    set(internalCurrentAssistantAudioItem$, null);
+    set(internalStatus$, "idle");
+    // Bump so voiceChatTaskFeed$ re-resolves to [] after sessionId is cleared.
+    set(voiceChatReload$, (n) => {
+      return n + 1;
+    });
+  },
+);
