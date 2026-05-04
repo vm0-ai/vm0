@@ -34,16 +34,15 @@ import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
 } from "../zero-page/clipboard.ts";
-import type { GroupedChatMessageGroup } from "./chat-message.ts";
+import type { EnrichedChatMessage, GroupedChatMessageGroup } from "./chat-message.ts";
 import { logger } from "../log.ts";
 import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { idbMessageEnabled$ } from "../external/feature-switch.ts";
 import {
-  parseBodyRenderBlocks,
   enrichBlocksWithTextPreviews,
+  parseBodyRenderBlocks,
 } from "./parse-body-blocks.ts";
-import type { EnrichedChatMessage } from "./chat-message.ts";
 import { clerk$ } from "../auth.ts";
 import {
   readThreadAgentId$,

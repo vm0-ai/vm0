@@ -1,5 +1,4 @@
-import { computed } from "ccstate";
-import type { Computed } from "ccstate";
+import { computed, type Computed } from "ccstate";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -128,7 +127,7 @@ export function classifyChatAttachment(
   return "file";
 }
 
-export function filenameFromUrl(url: string): string {
+function filenameFromUrl(url: string): string {
   const path = url.split("?")[0].split("#")[0];
   const last = path.split("/").pop();
   if (!last || last.length === 0) {
@@ -137,7 +136,7 @@ export function filenameFromUrl(url: string): string {
   return last;
 }
 
-export function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
+function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
   return (
     kind === "image" ||
     kind === "video" ||
@@ -463,15 +462,15 @@ export async function fetchPreviewText(
   return readLimitedText(response);
 }
 
-export const EMPTY_TEXT$ = computed(async () => {
-  return "";
+export const EMPTY_TEXT$ = computed(() => {
+  return Promise.resolve("");
 });
 
 function needsTextPreview(kind: BodyPreviewKind): boolean {
   return kind === "text" || kind === "json";
 }
 
-export function getTextPreview$(url: string): Computed<Promise<string>> {
+function getTextPreview$(url: string): Computed<Promise<string>> {
   const self = getTextPreview$ as typeof getTextPreview$ & {
     _cache?: Map<string, Computed<Promise<string>>>;
   };
