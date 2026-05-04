@@ -102,8 +102,7 @@
       "@tiptap/extension-paragraph": "3.21.0",
       "@tiptap/extension-text": "3.21.0",
       "@tiptap/extension-underline": "3.21.0",
-      "@tiptap/suggestion": "3.21.0",
-      "@xmldom/xmldom": ">=0.8.13"
+      "@tiptap/suggestion": "3.21.0"
     }
   },
   "packageManager": "pnpm@10.15.0",

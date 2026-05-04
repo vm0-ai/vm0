@@ -58,40 +58,6 @@
       ],
       "project": ["src/**/*.ts", "custom-eslint/**/*.ts"]
     },
-    "apps/mobile": {
-      "entry": [
-        "index.ts",
-        "src/**/__tests__/**/*.{test,spec}.{ts,tsx}",
-        "src/**/*.{test,spec}.{ts,tsx}"
-      ],
-      "project": ["**/*.{ts,tsx}"],
-      "ignore": [
-        "src/env.ts",
-        "src/signals/utils.ts",
-        "src/signals/fetch.ts",
-        "src/signals/log.ts",
-        "src/signals/react-router.ts",
-        "src/signals/root-signal.ts",
-        "src/signals/external/local-storage.ts",
-        "src/signals/route-paths.ts",
-        "src/types/route.ts"
-      ],
-      "ignoreDependencies": [
-        "@react-navigation/native",
-        "@react-navigation/native-stack",
-        "@testing-library/react-native",
-        "@vm0/api-contracts",
-        "@vm0/core",
-        "expo-status-bar",
-        "expo-updates",
-        "expo-system-ui",
-        "msw",
-        "react-native-safe-area-context",
-        "react-native-screens",
-        "signal-timers",
-        "typescript-eslint"
-      ]
-    },
     "apps/platform": {
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
