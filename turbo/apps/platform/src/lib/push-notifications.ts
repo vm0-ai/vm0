@@ -25,10 +25,19 @@ export const registerServiceWorker$ = command(
 
     const pwaOfflineEnabled = await get(pwaOfflineCacheEnabled$);
     signal.throwIfAborted();
-    const registration = await navigator.serviceWorker.register(
-      "/sw.js",
-      pwaOfflineEnabled ? { updateViaCache: "none" } : undefined,
-    );
+    // Registration can reject for reasons outside our control: private
+    // browsing, enterprise/browser policy, user-disabled SW, etc. Push
+    // notifications are a non-critical enhancement, so swallow the
+    // rejection to avoid aborting bootstrap.
+    let registration: ServiceWorkerRegistration;
+    try {
+      registration = await navigator.serviceWorker.register(
+        "/sw.js",
+        pwaOfflineEnabled ? { updateViaCache: "none" } : undefined,
+      );
+    } catch {
+      return;
+    }
     signal.throwIfAborted();
     set(swRegistration$, registration);
   },
