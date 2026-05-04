@@ -121,10 +121,10 @@ pub(crate) fn handle_spawn_watch(
 /// against `child.wait()`.
 ///
 /// Architecture:
-/// - Timeout killer thread: kills process group after deadline
+/// - Monitor thread: waits for child exit, timeout, or connection cancellation
 /// - Stderr reader thread: drains stderr into a `Vec<u8>` (cancellable)
 /// - Stdout reader thread: streams chunks to log + vsock (cancellable)
-/// - Monitor thread: waits for `child.wait()`, then applies drain deadline
+/// - Drain deadline: after child wait completes, bounds lingering pipe readers
 ///
 /// If a grandchild keeps pipe fds open past child exit, the deadline fires
 /// the cancel flag — both reader threads exit promptly, dropping their fds
