@@ -145,4 +145,18 @@ mod tests {
         drop(writer);
         handle.join().unwrap();
     }
+
+    #[test]
+    fn drain_exits_on_eof_without_chunks() {
+        let (reader, writer) = pipe_pair();
+        drop(writer);
+
+        let cancel = AtomicBool::new(false);
+        let mut output = Vec::new();
+        drain_until_eof_or_cancelled(reader, &cancel, |chunk| {
+            output.extend_from_slice(chunk);
+        });
+
+        assert!(output.is_empty());
+    }
 }
