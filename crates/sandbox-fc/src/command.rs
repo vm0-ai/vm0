@@ -232,6 +232,21 @@ struct PipeTasks {
     stderr: Option<PipeReadTask>,
 }
 
+#[derive(Clone, Copy)]
+enum PipeKind {
+    Stdout,
+    Stderr,
+}
+
+impl PipeKind {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
+        }
+    }
+}
+
 impl PipeTasks {
     fn new(stdout: PipeReadTask, stderr: PipeReadTask) -> Self {
         Self {
@@ -246,24 +261,31 @@ impl PipeTasks {
         timeout: Duration,
         child_pid: Option<u32>,
     ) -> std::result::Result<(Vec<u8>, Vec<u8>), CommandRunError> {
-        let stdout = match tokio::time::timeout_at(
+        let stdout = self
+            .collect_one(PipeKind::Stdout, deadline, timeout, child_pid)
+            .await?;
+        let stderr = self
+            .collect_one(PipeKind::Stderr, deadline, timeout, child_pid)
+            .await?;
+
+        Ok((stdout, stderr))
+    }
+
+    async fn collect_one(
+        &mut self,
+        kind: PipeKind,
+        deadline: tokio::time::Instant,
+        timeout: Duration,
+        child_pid: Option<u32>,
+    ) -> std::result::Result<Vec<u8>, CommandRunError> {
+        let result = match tokio::time::timeout_at(
             deadline,
-            self.stdout
-                .as_mut()
-                .ok_or(CommandRunError::PipeUnavailable("stdout"))?,
+            self.pipe_mut(kind)
+                .ok_or(CommandRunError::PipeUnavailable(kind.name()))?,
         )
         .await
         {
-            Ok(result) => {
-                self.stdout.take();
-                match collect_pipe_result(result) {
-                    Ok(stdout) => stdout,
-                    Err(e) => {
-                        self.abort_stderr().await;
-                        return Err(e);
-                    }
-                }
-            }
+            Ok(result) => result,
             Err(_) => {
                 kill_process_group_by_optional_pid(child_pid);
                 self.abort_all().await;
@@ -271,26 +293,28 @@ impl PipeTasks {
             }
         };
 
-        let stderr = match tokio::time::timeout_at(
-            deadline,
-            self.stderr
-                .as_mut()
-                .ok_or(CommandRunError::PipeUnavailable("stderr"))?,
-        )
-        .await
-        {
-            Ok(result) => {
-                self.stderr.take();
-                collect_pipe_result(result)?
+        self.take_pipe(kind);
+        match collect_pipe_result(result) {
+            Ok(output) => Ok(output),
+            Err(e) => {
+                self.abort_all().await;
+                Err(e)
             }
-            Err(_) => {
-                kill_process_group_by_optional_pid(child_pid);
-                self.abort_stderr().await;
-                return Err(CommandRunError::Timeout(timeout.as_millis()));
-            }
-        };
+        }
+    }
 
-        Ok((stdout, stderr))
+    fn pipe_mut(&mut self, kind: PipeKind) -> Option<&mut PipeReadTask> {
+        match kind {
+            PipeKind::Stdout => self.stdout.as_mut(),
+            PipeKind::Stderr => self.stderr.as_mut(),
+        }
+    }
+
+    fn take_pipe(&mut self, kind: PipeKind) -> Option<PipeReadTask> {
+        match kind {
+            PipeKind::Stdout => self.stdout.take(),
+            PipeKind::Stderr => self.stderr.take(),
+        }
     }
 
     async fn abort_all(&mut self) {
@@ -569,6 +593,86 @@ mod tests {
 
         assert_pid_not_running(pid).await;
         assert!(!std::path::Path::new(&marker).exists());
+    }
+
+    #[tokio::test]
+    async fn collect_with_deadline_cancel_aborts_pending_pipe_readers() {
+        let (started_tx, mut started_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (dropped_tx, mut dropped_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut pipe_tasks = PipeTasks::new(
+            pending_pipe_task("stdout", started_tx.clone(), dropped_tx.clone()),
+            pending_pipe_task("stderr", started_tx, dropped_tx),
+        );
+
+        let mut started = [
+            recv_pipe_start(&mut started_rx).await,
+            recv_pipe_start(&mut started_rx).await,
+        ];
+        started.sort_unstable();
+        assert_eq!(started, ["stderr", "stdout"]);
+
+        {
+            let collect = pipe_tasks.collect_with_deadline(
+                tokio::time::Instant::now() + Duration::from_secs(30),
+                Duration::from_secs(30),
+                None,
+            );
+            tokio::pin!(collect);
+            tokio::select! {
+                biased;
+                result = &mut collect => panic!("pipe collection completed unexpectedly: {result:?}"),
+                _ = tokio::task::yield_now() => {}
+            }
+        }
+        drop(pipe_tasks);
+
+        let mut dropped = [
+            recv_pipe_drop(&mut dropped_rx).await,
+            recv_pipe_drop(&mut dropped_rx).await,
+        ];
+        dropped.sort_unstable();
+        assert_eq!(dropped, ["stderr", "stdout"]);
+    }
+
+    struct PipeDropNotify {
+        name: &'static str,
+        dropped: tokio::sync::mpsc::UnboundedSender<&'static str>,
+    }
+
+    impl Drop for PipeDropNotify {
+        fn drop(&mut self) {
+            let _ = self.dropped.send(self.name);
+        }
+    }
+
+    fn pending_pipe_task(
+        name: &'static str,
+        started: tokio::sync::mpsc::UnboundedSender<&'static str>,
+        dropped: tokio::sync::mpsc::UnboundedSender<&'static str>,
+    ) -> PipeReadTask {
+        tokio::spawn(async move {
+            let _notify = PipeDropNotify { name, dropped };
+            let _ = started.send(name);
+            std::future::pending::<std::io::Result<Vec<u8>>>().await
+        })
+    }
+
+    async fn recv_pipe_start(
+        started: &mut tokio::sync::mpsc::UnboundedReceiver<&'static str>,
+    ) -> &'static str {
+        tokio::time::timeout(Duration::from_secs(1), started.recv())
+            .await
+            .expect("pipe task did not start")
+            .expect("pipe task start channel closed")
+    }
+
+    async fn recv_pipe_drop(
+        dropped: &mut tokio::sync::mpsc::UnboundedReceiver<&'static str>,
+    ) -> &'static str {
+        tokio::time::timeout(Duration::from_secs(1), dropped.recv())
+            .await
+            .expect("pipe reader was not aborted")
+            .expect("pipe reader drop channel closed")
     }
 
     async fn read_pid_file(path: &str) -> u32 {
