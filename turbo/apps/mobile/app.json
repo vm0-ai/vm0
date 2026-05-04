@@ -16,7 +16,6 @@
         "backgroundColor": "#ffffff"
       },
       "package": "ai.vm0.app"
-    },
-    "plugins": ["expo-linking"]
+    }
   }
 }

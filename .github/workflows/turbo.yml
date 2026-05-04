@@ -586,7 +586,6 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ needs.prepare.outputs.web-preview-url }}
-          NODE_OPTIONS: --no-experimental-strip-types
         run: eas build --platform all --profile preview --non-interactive
 
   test-app-browser:
