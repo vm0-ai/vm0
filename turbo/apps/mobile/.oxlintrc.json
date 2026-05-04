@@ -1,6 +1,12 @@
 {
   "$schema": "https://raw.githubusercontent.com/oxc-project/oxlint/main/npm/oxlint/configuration_schema.json",
-  "ignorePatterns": ["dist/**", ".expo/**", "node_modules/**"],
+  "ignorePatterns": [
+    "dist/**",
+    ".expo/**",
+    "node_modules/**",
+    "metro.config.js",
+    "babel.config.js"
+  ],
   "overrides": [
     {
       "files": ["src/views/**/*.*"],
