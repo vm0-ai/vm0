@@ -912,7 +912,7 @@ export const startVoiceChat$ = command(
  */
 export const endVoiceChat$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
-    set(resetSessionSignal$);
+    await set(resetSessionSignal$);
     await set(releaseWakeLock$, _signal);
 
     const dc = get(internalDc$);
