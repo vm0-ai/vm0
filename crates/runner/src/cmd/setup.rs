@@ -1,3 +1,9 @@
+//! Prepare a host to run vm0 sandboxes.
+//!
+//! The setup command validates host prerequisites, creates the runner home
+//! layout, and installs the pinned Firecracker, kernel, and mitmdump artifacts
+//! used by sandbox startup.
+
 use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -14,6 +20,12 @@ use crate::deps::{
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
+/// Run the host setup workflow for sandbox execution.
+///
+/// Returns `RunnerError::Config` when the host configuration is unsupported or
+/// missing required prerequisites, and `RunnerError::Internal` when filesystem,
+/// download, extraction, checksum, or install operations fail. KVM access
+/// problems are reported as warnings so setup can still prepare shared files.
 pub async fn run_setup() -> RunnerResult<()> {
     let arch = check_architecture()?;
     let missing_required = check_system_dependencies();
