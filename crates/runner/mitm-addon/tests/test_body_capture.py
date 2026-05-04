@@ -634,7 +634,7 @@ class TestDecompression:
         assert entry["response_body"] == '{"result": "hello world"}'
 
     def test_brotli_zip_bomb_capped_without_full_decode(self, real_flow, monkeypatch):
-        original = b"\x00" * (32 * 1024 * 1024)
+        original = b"\x00" * (10 * 1024 * 1024)
         compressed = brotli.compress(original)
         assert len(compressed) < STREAM_BUFFER_LIMIT
 

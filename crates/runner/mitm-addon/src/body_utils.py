@@ -37,7 +37,8 @@ _UTF8_LEAD_MAX_3BYTE = 0xF0  # 3-byte lead: 1110xxxx
 LARGE_RESPONSE_DECOMPRESS_LIMIT = 5 * 1024 * 1024  # 5 MB
 
 # Python's brotli binding has no max-output API. Feed compressed data in small
-# chunks so large compressible responses cannot be materialised in one call.
+# chunks and stop once the caller's cap is accumulated; process() can still
+# transiently emit a multi-MB chunk from a tiny input.
 _BROTLI_DECOMPRESS_INPUT_CHUNK_SIZE = 16
 
 
