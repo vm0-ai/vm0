@@ -25,9 +25,13 @@ enum ConnectionEnd {
     Shutdown,
 }
 
-struct CancelOnDrop(Arc<AtomicBool>);
+/// Signals all command work spawned for this host connection when the
+/// connection loop exits. `run()` may reconnect after a close, but in-flight
+/// commands belong to the old connection and should not survive into the next
+/// one.
+struct ConnectionCancelGuard(Arc<AtomicBool>);
 
-impl Drop for CancelOnDrop {
+impl Drop for ConnectionCancelGuard {
     fn drop(&mut self) {
         self.0.store(true, Ordering::Release);
     }
@@ -98,7 +102,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     let mut reader = stream.try_clone()?;
     let writer = GuestWriter::new(stream);
     let connection_cancel = Arc::new(AtomicBool::new(false));
-    let _cancel_on_drop = CancelOnDrop(connection_cancel.clone());
+    let _cancel_on_drop = ConnectionCancelGuard(connection_cancel.clone());
 
     let mut decoder = vsock_proto::Decoder::new();
 

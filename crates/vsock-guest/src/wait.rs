@@ -1,4 +1,3 @@
-use std::io;
 use std::process::{Child, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
@@ -35,65 +34,6 @@ enum KillReason {
     Cancelled,
 }
 
-pub(crate) fn resolve_wait_outcome(
-    status: io::Result<ExitStatus>,
-    killed_by_timeout: bool,
-) -> WaitOutcome {
-    match status {
-        // Timeout is a deadline verdict: if the watchdog fired and the kill
-        // syscall succeeded, the child was not observed as complete before the
-        // deadline. Preserve that timeout verdict even if wait() races back
-        // with a status around the same boundary.
-        Ok(_) if killed_by_timeout => WaitOutcome::TimedOut,
-        Ok(s) => WaitOutcome::Exited(s),
-        // A real wait() failure is more actionable than the watchdog verdict.
-        // Do not hide wait/reap errors behind timeout classification.
-        Err(e) => WaitOutcome::WaitFailed(e.to_string()),
-    }
-}
-
-/// Watchdog that kills a child process tree if it is not stood down before
-/// `timeout` elapses.
-#[must_use = "watchdogs must be stood down and joined so timeout verdicts are observed"]
-pub(crate) struct KillWatchdog {
-    done_tx: Option<mpsc::Sender<()>>,
-    handle: thread::JoinHandle<bool>,
-}
-
-impl KillWatchdog {
-    pub(crate) fn spawn(child_id: u32, timeout: Duration) -> Self {
-        let (done_tx, done_rx) = mpsc::channel::<()>();
-        let handle = thread::spawn(move || -> bool {
-            if done_rx.recv_timeout(timeout).is_err() {
-                // SAFETY: child_id is a valid PID from Command::spawn.
-                return unsafe { kill_process_tree(child_id) };
-            }
-            false
-        });
-
-        Self {
-            done_tx: Some(done_tx),
-            handle,
-        }
-    }
-
-    /// Stand the watchdog down without joining it yet.
-    ///
-    /// This lets callers preserve existing timing where the child has exited,
-    /// the watchdog is disarmed immediately, and the join verdict is collected
-    /// after other cleanup work.
-    pub(crate) fn stand_down(&mut self) {
-        if let Some(done_tx) = self.done_tx.take() {
-            let _ = done_tx.send(());
-        }
-    }
-
-    pub(crate) fn join(mut self) -> bool {
-        self.stand_down();
-        self.handle.join().unwrap_or(false)
-    }
-}
-
 /// Wait for drain workers to complete within the shared drain deadline, then
 /// cancel any laggards.
 pub(crate) fn await_drain_deadline(
@@ -126,19 +66,14 @@ pub(crate) fn await_drain_deadline(
 /// deadlock on its next write while we wait.
 pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitOutcome {
     if timeout_ms == 0 {
-        return resolve_wait_outcome(child.wait(), false);
+        return match child.wait() {
+            Ok(status) => WaitOutcome::Exited(status),
+            Err(e) => WaitOutcome::WaitFailed(e.to_string()),
+        };
     }
 
-    let timeout = Duration::from_millis(u64::from(timeout_ms));
-    let child_id = child.id();
-
-    // Watchdog: kills the process tree if the child does not report exit
-    // before the timeout. Its return value is the timeout verdict.
-    let watchdog = KillWatchdog::spawn(child_id, timeout);
-    let status = child.wait();
-    let killed_by_timeout = watchdog.join();
-
-    resolve_wait_outcome(status, killed_by_timeout)
+    let cancel = AtomicBool::new(false);
+    wait_with_kill_timeout_or_cancelled(child, timeout_ms, &cancel)
 }
 
 /// Wait for `child` to exit, killing and reaping it when either the configured
@@ -310,46 +245,6 @@ mod tests {
 
     fn successful_status() -> ExitStatus {
         Command::new("true").status().unwrap()
-    }
-
-    #[test]
-    fn resolve_wait_outcome_keeps_status_when_watchdog_did_not_fire() {
-        match resolve_wait_outcome(Ok(successful_status()), false) {
-            WaitOutcome::Exited(status) => assert_eq!(extract_exit_code(status), 0),
-            WaitOutcome::TimedOut => panic!("watchdog did not fire"),
-            WaitOutcome::Cancelled => panic!("connection was not cancelled"),
-            WaitOutcome::WaitFailed(msg) => panic!("wait unexpectedly failed: {msg}"),
-        }
-    }
-
-    #[test]
-    fn resolve_wait_outcome_timeout_wins_over_observed_status() {
-        match resolve_wait_outcome(Ok(successful_status()), true) {
-            WaitOutcome::TimedOut => {}
-            WaitOutcome::Exited(_) => panic!("timeout should win over boundary status"),
-            WaitOutcome::Cancelled => panic!("connection was not cancelled"),
-            WaitOutcome::WaitFailed(msg) => panic!("wait unexpectedly failed: {msg}"),
-        }
-    }
-
-    #[test]
-    fn resolve_wait_outcome_preserves_wait_error_without_timeout() {
-        match resolve_wait_outcome(Err(io::Error::other("wait failed")), false) {
-            WaitOutcome::WaitFailed(msg) => assert_eq!(msg, "wait failed"),
-            WaitOutcome::Exited(_) => panic!("wait error should not produce status"),
-            WaitOutcome::TimedOut => panic!("watchdog did not fire"),
-            WaitOutcome::Cancelled => panic!("connection was not cancelled"),
-        }
-    }
-
-    #[test]
-    fn resolve_wait_outcome_preserves_wait_error_when_watchdog_fired() {
-        match resolve_wait_outcome(Err(io::Error::other("wait failed")), true) {
-            WaitOutcome::WaitFailed(msg) => assert_eq!(msg, "wait failed"),
-            WaitOutcome::Exited(_) => panic!("wait error should not produce status"),
-            WaitOutcome::TimedOut => panic!("wait error should not be hidden by timeout"),
-            WaitOutcome::Cancelled => panic!("connection was not cancelled"),
-        }
     }
 
     #[test]
