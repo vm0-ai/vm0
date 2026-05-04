@@ -55,8 +55,8 @@ const cleanupAudio$ = command(async ({ get, set }) => {
     await cleanupFn();
   }
 
-  set(internalPlayingRunId$, null);
-  set(internalCleanupFn$, null);
+  await set(internalPlayingRunId$, null);
+  await set(internalCleanupFn$, null);
 });
 
 const resetPlaybackState$ = command(({ set }) => {
@@ -123,7 +123,7 @@ const fetchAndPlay$ = command(
         await reader.cancel();
         await audioCtx.close();
       };
-      set(internalCleanupFn$, cleanupFn);
+      await set(internalCleanupFn$, cleanupFn);
 
       for (;;) {
         if (signal.aborted) {
