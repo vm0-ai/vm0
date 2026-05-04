@@ -85,8 +85,42 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // All other requests (navigation, third-party, etc.): pass through to
-  // the browser's default handling without SW interception.
+  if (event.request.mode === "navigate") {
+    // Network-First: cache the app shell on each successful navigation so
+    // the PWA can cold-open offline. Vercel serves index.html with
+    // `cache-control: must-revalidate`, which prevents the browser's HTTP
+    // cache from being used without a server check. The SW Cache Storage
+    // is not bound by HTTP cache directives, so we cache explicitly here
+    // and serve from cache when the network is unreachable.
+    event.respondWith(
+      (async () => {
+        try {
+          const response = await fetch(event.request);
+          if (response.ok && !response.redirected) {
+            const cache = await caches.open(STATIC_CACHE);
+            await cache.put(event.request, response.clone());
+          }
+          return response;
+        } catch {
+          const cached = await caches.match(event.request);
+          if (cached) {
+            return cached;
+          }
+          return new Response(
+            "You are offline. Connect to the internet and try again.",
+            {
+              status: 503,
+              headers: { "Content-Type": "text/plain" },
+            },
+          );
+        }
+      })(),
+    );
+    return;
+  }
+
+  // All other requests (third-party, etc.): pass through to the browser's
+  // default handling without SW interception.
 });
 
 // --- Web Push Notifications ---

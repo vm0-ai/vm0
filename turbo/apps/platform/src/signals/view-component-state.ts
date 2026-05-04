@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { maybePageSignal$ } from "./page-signal.ts";
 import { reloadTelegramConnectLinkStatus$ } from "./zero-page/telegram-connect-signals.ts";
 import { onRef } from "./utils.ts";
+import { fetchPreviewText } from "./chat-page/parse-body-blocks.ts";
 
 type ImageLoadStatus = "loading" | "loaded" | "error";
 
@@ -15,7 +16,6 @@ type ImageLightboxImageState = {
   zoom: number;
 };
 
-const TEXT_PREVIEW_MAX_BYTES = 65_536;
 export const IMAGE_LIGHTBOX_MIN_ZOOM = 0.5;
 export const IMAGE_LIGHTBOX_MAX_ZOOM = 3;
 const IMAGE_LIGHTBOX_ZOOM_STEP = 0.25;
@@ -86,76 +86,6 @@ export const toggleTextPreviewCollapsed$ = command(({ set }, key: string) => {
     return { ...current, [key]: !(current[key] ?? false) };
   });
 });
-
-function toRawUrl(url: string): string {
-  if (!URL.canParse(url, window.location.origin)) {
-    const hashIndex = url.indexOf("#");
-    const base = hashIndex === -1 ? url : url.slice(0, hashIndex);
-    const hash = hashIndex === -1 ? "" : url.slice(hashIndex);
-    if (base.includes("raw=1")) {
-      return url;
-    }
-    return `${base}${base.includes("?") ? "&" : "?"}raw=1${hash}`;
-  }
-
-  const parsed = new URL(url, window.location.origin);
-  if (parsed.searchParams.get("raw") !== "1") {
-    parsed.searchParams.set("raw", "1");
-  }
-  return parsed.toString();
-}
-
-async function readLimitedText(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return "";
-  }
-
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  let reachedLimit = false;
-
-  while (received < TEXT_PREVIEW_MAX_BYTES) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    const remaining = TEXT_PREVIEW_MAX_BYTES - received;
-    const chunk =
-      value.byteLength > remaining ? value.slice(0, remaining) : value;
-    chunks.push(chunk);
-    received += chunk.byteLength;
-    if (received >= TEXT_PREVIEW_MAX_BYTES) {
-      reachedLimit = true;
-      break;
-    }
-  }
-
-  if (reachedLimit) {
-    await reader.cancel();
-  }
-
-  const bytes = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
-}
-
-function fetchPreviewText(url: string, signal: AbortSignal): Promise<string> {
-  return fetch(toRawUrl(url), {
-    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
-    signal,
-  }).then(async (response) => {
-    if (!response.ok) {
-      throw new Error(`HTTP ${String(response.status)}`);
-    }
-    return await readLimitedText(response);
-  });
-}
 
 const loadTextPreviewOnRef$ = command(
   ({ get, set }, el: HTMLElement, signal: AbortSignal) => {

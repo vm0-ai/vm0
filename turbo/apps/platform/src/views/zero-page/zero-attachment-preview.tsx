@@ -7,15 +7,18 @@ import {
   IconFileMusic,
   IconLoader2,
 } from "@tabler/icons-react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
+import type { Computed } from "ccstate";
 import { jsonParseOr } from "../../signals/utils.ts";
 import {
   textPreviewCollapsedByKey$,
-  textPreviewLoaderRef$,
-  textPreviewLoadStateByKey$,
   toggleTextPreviewCollapsed$,
 } from "../../signals/view-component-state.ts";
 import { openDocumentLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import {
+  classifyChatAttachment,
+  EMPTY_TEXT$,
+} from "../../signals/chat-page/parse-body-blocks.ts";
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
@@ -23,84 +26,10 @@ import docTxtIcon from "./assets/doc-txt.svg";
 import docJsonIcon from "./assets/doc-json.svg";
 import docHtmlIcon from "./assets/doc-html.svg";
 
-type ChatAttachmentKind =
-  | "image"
-  | "video"
-  | "audio"
-  | "markdown"
-  | "text"
-  | "json"
-  | "csv"
-  | "pdf"
-  | "html"
-  | "file";
-
 interface ChatAttachmentDescriptor {
   filename: string;
   url: string;
   contentType?: string;
-}
-
-function fileExt(filename: string): string {
-  return filename.split(".").pop()?.toLowerCase() ?? "";
-}
-
-function normalizeType(contentType?: string): string {
-  return (contentType ?? "").split(";")[0]?.trim().toLowerCase();
-}
-
-export function classifyChatAttachment(
-  attachment: ChatAttachmentDescriptor,
-): ChatAttachmentKind {
-  const type = normalizeType(attachment.contentType);
-  const ext = fileExt(attachment.filename);
-
-  if (type.startsWith("image/")) {
-    return "image";
-  }
-  if (type.startsWith("video/")) {
-    return "video";
-  }
-  if (type.startsWith("audio/")) {
-    return "audio";
-  }
-
-  if (type === "text/markdown" || ext === "md") {
-    return "markdown";
-  }
-  if (type === "text/plain" || ext === "txt") {
-    return "text";
-  }
-  if (type === "application/json" || ext === "json") {
-    return "json";
-  }
-  if (type === "text/csv" || ext === "csv") {
-    return "csv";
-  }
-  if (type === "application/pdf" || ext === "pdf") {
-    return "pdf";
-  }
-  if (type === "text/html" || ext === "html" || ext === "htm") {
-    return "html";
-  }
-
-  if (
-    ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"].includes(ext)
-  ) {
-    return "image";
-  }
-  if (["mp4", "webm", "mov", "ogv"].includes(ext)) {
-    return "video";
-  }
-  if (
-    ["mp3", "wav", "m4a", "aac", "ogg", "oga", "opus", "flac", "mpga"].includes(
-      ext,
-    )
-  ) {
-    return "audio";
-  }
-
-  return "file";
 }
 
 function getPreviewIconSrc(
@@ -122,15 +51,6 @@ function getPreviewIconSrc(
     return docHtmlIcon;
   }
   return docDocIcon;
-}
-
-export function filenameFromUrl(url: string): string {
-  const path = url.split("?")[0].split("#")[0];
-  const last = path.split("/").pop();
-  if (!last || last.length === 0) {
-    return "file";
-  }
-  return last;
 }
 
 function normalizePlatformFileUrl(url: string): string {
@@ -171,22 +91,16 @@ function formatPreviewText(kind: "text" | "json", text: string): string {
 
 type TextPreviewProps = {
   filename: string;
-  signal: AbortSignal;
   url: string;
   kind: "text" | "json";
+  text$?: Computed<Promise<string>>;
 };
 
-function TextPreview({ filename, url, kind }: TextPreviewProps) {
-  const textPreviewLoadStates = useGet(textPreviewLoadStateByKey$);
+function TextPreview({ filename, url, kind, text$ }: TextPreviewProps) {
   const textPreviewCollapsedByKey = useGet(textPreviewCollapsedByKey$);
-  const textPreviewLoaderRef = useSet(textPreviewLoaderRef$);
   const toggleTextPreviewCollapsed = useSet(toggleTextPreviewCollapsed$);
-  const textPreviewKey = `attachment-preview:${url}`;
   const collapsedKey = `attachment-preview:${kind}:${filename}:${url}`;
-  const { status, text } = textPreviewLoadStates[textPreviewKey] ?? {
-    status: "loading",
-    text: "",
-  };
+  const text = useLastResolved(text$ ?? EMPTY_TEXT$);
   const collapsed = textPreviewCollapsedByKey[collapsedKey] ?? false;
   const iconSrc = getPreviewIconSrc(kind);
 
@@ -196,11 +110,7 @@ function TextPreview({ filename, url, kind }: TextPreviewProps) {
     </div>
   );
 
-  if (status === "error") {
-    content = (
-      <p className="text-xs text-muted-foreground">Preview unavailable.</p>
-    );
-  } else if (status === "loaded") {
+  if (text !== undefined) {
     const formatted = formatPreviewText(kind, text);
     const trimmed =
       formatted.length > 8000 ? `${formatted.slice(0, 8000)}\n\n…` : formatted;
@@ -216,13 +126,6 @@ function TextPreview({ filename, url, kind }: TextPreviewProps) {
       className="relative rounded-xl border border-foreground/10 bg-background/60 p-3"
       data-testid={`attachment-preview-${kind}`}
     >
-      <span
-        key={textPreviewKey}
-        ref={textPreviewLoaderRef}
-        data-text-preview-key={textPreviewKey}
-        data-text-preview-url={url}
-        hidden
-      />
       <a
         href={toDownloadUrl(url)}
         download={filename}
@@ -362,10 +265,10 @@ function AudioPreview({ filename, url }: { filename: string; url: string }) {
 
 export function AttachmentPreview({
   attachment,
-  signal,
+  text$,
 }: {
   attachment: ChatAttachmentDescriptor;
-  signal: AbortSignal;
+  text$?: Computed<Promise<string>>;
 }) {
   const kind = classifyChatAttachment(attachment);
 
@@ -383,9 +286,9 @@ export function AttachmentPreview({
       return (
         <TextPreview
           filename={attachment.filename}
-          signal={signal}
           url={attachment.url}
           kind="text"
+          text$={text$}
         />
       );
     }
@@ -393,9 +296,9 @@ export function AttachmentPreview({
       return (
         <TextPreview
           filename={attachment.filename}
-          signal={signal}
           url={attachment.url}
           kind="json"
+          text$={text$}
         />
       );
     }

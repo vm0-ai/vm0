@@ -8,14 +8,16 @@
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
+import { computed } from "ccstate";
 import { server } from "../../../mocks/server.ts";
 import { http, HttpResponse } from "msw";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   classifyChatAttachment,
-  AttachmentPreview,
-} from "../zero-attachment-preview.tsx";
+  fetchPreviewText,
+} from "../../../signals/chat-page/parse-body-blocks.ts";
+import { AttachmentPreview } from "../zero-attachment-preview.tsx";
 
 const context = testContext();
 
@@ -210,7 +212,7 @@ describe("attachment preview component", () => {
   }) {
     const result = render(
       <StoreProvider value={context.store}>
-        <AttachmentPreview attachment={attachment} signal={context.signal} />
+        <AttachmentPreview attachment={attachment} />
       </StoreProvider>,
     );
     return result;
@@ -326,6 +328,10 @@ describe("text preview loading and error states", () => {
       }),
     );
 
+    const text$ = computed(() => {
+      return fetchPreviewText("https://example.com/notes.txt");
+    });
+
     const { container } = render(
       <StoreProvider value={context.store}>
         <AttachmentPreview
@@ -333,16 +339,14 @@ describe("text preview loading and error states", () => {
             filename: "notes.txt",
             url: "https://example.com/notes.txt",
           }}
-          signal={context.signal}
+          text$={text$}
         />
       </StoreProvider>,
     );
 
-    // The text preview renders immediately with loading state
     await waitFor(() => {
       expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
     });
-    // Loading spinner should be present
     const spinner = container.querySelector(".animate-spin");
     expect(spinner).toBeInTheDocument();
 
@@ -353,21 +357,25 @@ describe("text preview loading and error states", () => {
     });
   });
 
-  it("should show error state when fetch fails", async () => {
+  it("should stay in loading state when fetch fails", async () => {
     server.use(
       http.get("https://example.com/error.txt", () => {
         return new HttpResponse(null, { status: 500 });
       }),
     );
 
-    render(
+    const text$ = computed(() => {
+      return fetchPreviewText("https://example.com/error.txt");
+    });
+
+    const { container } = render(
       <StoreProvider value={context.store}>
         <AttachmentPreview
           attachment={{
             filename: "error.txt",
             url: "https://example.com/error.txt",
           }}
-          signal={context.signal}
+          text$={text$}
         />
       </StoreProvider>,
     );
@@ -376,9 +384,9 @@ describe("text preview loading and error states", () => {
       expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("Preview unavailable.")).toBeInTheDocument();
-    });
+    // Stays in loading state since the computed never resolves
+    const spinner = container.querySelector(".animate-spin");
+    expect(spinner).toBeInTheDocument();
   });
 
   it("should show loaded text content", async () => {
@@ -388,6 +396,10 @@ describe("text preview loading and error states", () => {
       }),
     );
 
+    const text$ = computed(() => {
+      return fetchPreviewText("https://example.com/hello.txt");
+    });
+
     render(
       <StoreProvider value={context.store}>
         <AttachmentPreview
@@ -395,7 +407,7 @@ describe("text preview loading and error states", () => {
             filename: "hello.txt",
             url: "https://example.com/hello.txt",
           }}
-          signal={context.signal}
+          text$={text$}
         />
       </StoreProvider>,
     );
@@ -416,6 +428,10 @@ describe("text preview loading and error states", () => {
       }),
     );
 
+    const text$ = computed(() => {
+      return fetchPreviewText("https://example.com/long.txt");
+    });
+
     render(
       <StoreProvider value={context.store}>
         <AttachmentPreview
@@ -423,7 +439,7 @@ describe("text preview loading and error states", () => {
             filename: "long.txt",
             url: "https://example.com/long.txt",
           }}
-          signal={context.signal}
+          text$={text$}
         />
       </StoreProvider>,
     );
@@ -455,6 +471,10 @@ describe("text preview loading and error states", () => {
       }),
     );
 
+    const text$ = computed(() => {
+      return fetchPreviewText("https://example.com/data.json");
+    });
+
     render(
       <StoreProvider value={context.store}>
         <AttachmentPreview
@@ -462,7 +482,7 @@ describe("text preview loading and error states", () => {
             filename: "data.json",
             url: "https://example.com/data.json",
           }}
-          signal={context.signal}
+          text$={text$}
         />
       </StoreProvider>,
     );
@@ -490,7 +510,6 @@ describe("document thumbnail preview", () => {
             filename: "readme.md",
             url: "https://example.com/readme.md",
           }}
-          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -511,7 +530,6 @@ describe("document thumbnail preview", () => {
             filename: "export.csv",
             url: "https://example.com/export.csv",
           }}
-          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -528,7 +546,6 @@ describe("document thumbnail preview", () => {
             filename: "doc.pdf",
             url: "https://example.com/doc.pdf",
           }}
-          signal={context.signal}
         />
       </StoreProvider>,
     );
@@ -545,7 +562,6 @@ describe("document thumbnail preview", () => {
             filename: "page.html",
             url: "https://example.com/page.html",
           }}
-          signal={context.signal}
         />
       </StoreProvider>,
     );
