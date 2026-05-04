@@ -49,7 +49,10 @@ pub(crate) fn drain_until_eof_or_cancelled<R>(
         if pfd.revents & libc::POLLNVAL != 0 {
             break;
         }
-        if pfd.revents & (libc::POLLIN | libc::POLLHUP | libc::POLLERR) == 0 {
+        if pfd.revents & (libc::POLLIN | libc::POLLHUP) == 0 {
+            if pfd.revents & libc::POLLERR != 0 {
+                break;
+            }
             continue;
         }
 
