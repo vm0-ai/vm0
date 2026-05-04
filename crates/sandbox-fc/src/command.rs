@@ -481,60 +481,21 @@ mod tests {
 
     #[tokio::test]
     async fn exec_with_timeout_kills_child_process_group() {
-        let dir = tempfile::tempdir().unwrap();
-        let pid_file = dir.path().join("pid");
-        let marker = dir.path().join("marker");
-        let pid_file = pid_file.to_str().unwrap();
-        let marker = marker.to_str().unwrap();
-
-        let outcome = exec_ignore_errors_with_timeout(
-            "sh",
-            &[
-                "-c",
-                "(sleep 5; touch \"$2\") & echo $! > \"$1\"; wait",
-                "_",
-                pid_file,
-                marker,
-            ],
-            Duration::from_millis(250),
-        )
-        .await;
-
-        assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
-        let pid = read_pid_file(pid_file).await;
-        assert_pid_not_running(pid).await;
-        assert!(!std::path::Path::new(marker).exists());
+        assert_timeout_kills_grandchild("(sleep 5; touch \"$2\") & echo $! > \"$1\"; wait").await;
     }
 
     #[tokio::test]
     async fn exec_with_timeout_bounds_pipe_drain_after_parent_exits() {
-        let dir = tempfile::tempdir().unwrap();
-        let pid_file = dir.path().join("pid");
-        let marker = dir.path().join("marker");
-        let pid_file = pid_file.to_str().unwrap();
-        let marker = marker.to_str().unwrap();
-
-        let outcome = exec_ignore_errors_with_timeout(
-            "sh",
-            &[
-                "-c",
-                "(sleep 5; touch \"$2\") & echo $! > \"$1\"",
-                "_",
-                pid_file,
-                marker,
-            ],
-            Duration::from_millis(250),
-        )
-        .await;
-
-        assert_eq!(outcome, IgnoredCommandOutcome::Timeout);
-        let pid = read_pid_file(pid_file).await;
-        assert_pid_not_running(pid).await;
-        assert!(!std::path::Path::new(marker).exists());
+        assert_timeout_kills_grandchild("(sleep 5; touch \"$2\") & echo $! > \"$1\"").await;
     }
 
     #[tokio::test]
     async fn exec_with_timeout_aborts_only_remaining_pipe_reader() {
+        assert_timeout_kills_grandchild("(exec 1>&-; sleep 5; touch \"$2\") & echo $! > \"$1\"")
+            .await;
+    }
+
+    async fn assert_timeout_kills_grandchild(script: &str) {
         let dir = tempfile::tempdir().unwrap();
         let pid_file = dir.path().join("pid");
         let marker = dir.path().join("marker");
@@ -543,13 +504,7 @@ mod tests {
 
         let outcome = exec_ignore_errors_with_timeout(
             "sh",
-            &[
-                "-c",
-                "(exec 1>&-; sleep 5; touch \"$2\") & echo $! > \"$1\"",
-                "_",
-                pid_file,
-                marker,
-            ],
+            &["-c", script, "_", pid_file, marker],
             Duration::from_millis(250),
         )
         .await;
