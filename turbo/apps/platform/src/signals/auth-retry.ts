@@ -36,12 +36,9 @@ export async function fetchFreshToken(
 
 /**
  * Fire-and-forget redirect to Clerk's hosted sign-in. The redirect navigates
- * the page away so the returned promise may never settle — callers must not
- * await it, and the final 401 response still needs to be returned to them.
+ * the page away, so the returned promise may never settle and the final 401
+ * response should still be returned to callers before awaiting this.
  */
-export function handleUnauthorizedRedirect(clerk: ClerkLike): void {
-  const redirectResult = clerk.redirectToSignIn();
-  if (redirectResult instanceof Promise) {
-    void redirectResult;
-  }
+export async function handleUnauthorizedRedirect(clerk: ClerkLike): Promise<void> {
+  await clerk.redirectToSignIn();
 }

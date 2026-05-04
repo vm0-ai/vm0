@@ -50,7 +50,7 @@ export function createAuthedTsRestClient<T extends AppRouter>(
           response = await requestWithToken(freshToken);
         }
         if (response.status === 401) {
-          handleUnauthorizedRedirect(clerk);
+          await handleUnauthorizedRedirect(clerk);
         }
       }
 

@@ -296,12 +296,12 @@ describe("agent-chat-voice-mode", () => {
       expect(context.store.get(agentChatVoiceMode$)).toBe("on");
     });
 
-    it("exit flips mode back to 'off' after enter", () => {
+    it("exit flips mode back to 'off' after enter", async () => {
       detach(
         context.store.set(enterAgentChatVoiceMode$, AGENT_ID, context.signal),
         Reason.DomCallback,
       );
-      context.store.set(exitAgentChatVoiceMode$, context.signal);
+      await context.store.set(exitAgentChatVoiceMode$, context.signal);
       expect(context.store.get(agentChatVoiceMode$)).toBe("off");
     });
   });

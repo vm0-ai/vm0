@@ -66,7 +66,7 @@ describe("chat draft persistence across thread navigation", () => {
     expect(getTextarea().value).toBe("draft for thread 1");
 
     // Navigate to thread-2
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-2" },
     });
 

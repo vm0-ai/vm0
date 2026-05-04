@@ -171,7 +171,7 @@ export const fetch$ = computed((get) => {
         response = await performFetch(freshToken);
       }
       if (response.status === 401) {
-        handleUnauthorizedRedirect(clerk);
+        await handleUnauthorizedRedirect(clerk);
       }
     }
 

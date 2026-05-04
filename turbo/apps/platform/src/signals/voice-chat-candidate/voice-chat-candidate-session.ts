@@ -631,29 +631,29 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
       return;
     }
     set(internalWakeLock$, lock);
-    lock.addEventListener("release", async () => {
-      if (
-        !signal.aborted &&
-        reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
-      ) {
-        reacquireCount++;
-        await requestAndTrack();
-      }
-    });
+    lock.addEventListener(
+      "release",
+      onDomEventFn(async () => {
+        if (
+          !signal.aborted &&
+          reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
+        ) {
+          reacquireCount++;
+          await requestAndTrack();
+        }
+      }),
+    );
   };
 
   signal.throwIfAborted();
 
-  const onVisibilityChange = async (_e: Event): Promise<void> => {
+  const onVisibilityChange = onDomEventFn(async () => {
     if (document.visibilityState === "visible" && !signal.aborted) {
       reacquireCount = 0;
       await requestAndTrack();
     }
-  };
-  document.addEventListener(
-    "visibilitychange",
-    onDomEventFn(onVisibilityChange),
-  );
+  });
+  document.addEventListener("visibilitychange", onVisibilityChange);
   signal.addEventListener("abort", () => {
     document.removeEventListener("visibilitychange", onVisibilityChange);
   });
@@ -921,9 +921,9 @@ export const startVoiceChatCandidate$ = command(
  * sessions are stateless, so next time startVoiceChatCandidate$ runs with
  * the same (user, agent) it will resume this one via get-or-create.
  */
-export const endVoiceChatCandidate$ = command(({ get, set }) => {
+export const endVoiceChatCandidate$ = command(async ({ get, set }, _signal: AbortSignal) => {
   set(resetSessionSignal$);
-  set(releaseWakeLock$, get(rootSignal$).signal);
+  await set(releaseWakeLock$, get(rootSignal$).signal);
 
   const dc = get(internalDc$);
   if (dc) {
