@@ -995,6 +995,31 @@ fn spawn_watch_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
     wait_for_pid_exit(pid, "spawn_watch host disconnect");
 }
 
+#[test]
+fn spawn_watch_buffered_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+
+    send_spawn_watch_buffered(&mut host_stream, 1, "sleep 60", 0);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let pid = read_spawn_watch_pid(&mut host_stream, 1);
+    assert!(
+        pid_alive(pid),
+        "child should still be running before disconnect",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+    wait_for_pid_exit(pid, "buffered spawn_watch host disconnect");
+}
+
 /// Regression for #11077: when the host drops the vsock connection
 /// mid-stream, the streaming monitor's stdout drain hits a write failure
 /// on its next chunk forward, signals cancel, drops the pipe fd, and the
