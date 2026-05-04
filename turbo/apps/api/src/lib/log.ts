@@ -223,6 +223,7 @@ export function logger(name: string): Logger {
   return loggerInstance;
 }
 
+// eslint-disable-next-line @typescript-eslint/naming-convention
 export function __resetForTest(): void {
   getAxiomLogger.reset();
   loggerRegistry.reset();

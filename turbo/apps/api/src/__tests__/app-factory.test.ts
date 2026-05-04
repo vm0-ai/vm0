@@ -15,6 +15,8 @@ const { mockFlushLogs } = vi.hoisted(() => {
   };
 });
 
+mockFlushLogs.mockResolvedValue(undefined);
+
 vi.mock("../lib/log", async () => {
   const actual =
     await vi.importActual<typeof import("../lib/log")>("../lib/log");

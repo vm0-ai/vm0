@@ -1,58 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import "../../__tests__/env-stub";
 import { flushLogs, logger, __resetForTest } from "../log";
+import { testContext } from "../../__tests__/test-helpers";
 
-// vi.hoisted runs before all imports, so mock variables are available
-// when vi.mock factories are executed during the import phase.
-const {
-  mockAxiomDebug,
-  mockAxiomInfo,
-  mockAxiomWarn,
-  mockAxiomError,
-  mockAxiomFlush,
-} = vi.hoisted(() => {
-  return {
-    mockAxiomDebug: vi.fn(),
-    mockAxiomInfo: vi.fn(),
-    mockAxiomWarn: vi.fn(),
-    mockAxiomError: vi.fn(),
-    mockAxiomFlush: vi.fn(),
-  };
-});
-
-vi.mock("@axiomhq/js", () => {
-  return {
-    Axiom: vi.fn(() => {
-      return {};
-    }),
-  };
-});
-
-vi.mock("@axiomhq/logging", () => {
-  return {
-    Logger: vi.fn(() => {
-      return {
-        debug: mockAxiomDebug,
-        info: mockAxiomInfo,
-        warn: mockAxiomWarn,
-        error: mockAxiomError,
-        flush: mockAxiomFlush,
-      };
-    }),
-    AxiomJSTransport: vi.fn(() => {
-      return {};
-    }),
-  };
-});
+const { axiomLogging } = testContext().mocks;
 
 beforeEach(() => {
-  mockAxiomDebug.mockReset();
-  mockAxiomInfo.mockReset();
-  mockAxiomWarn.mockReset();
-  mockAxiomError.mockReset();
-  mockAxiomFlush.mockReset();
-  mockAxiomFlush.mockResolvedValue(undefined);
   __resetForTest();
+  axiomLogging.flush.mockResolvedValue(undefined);
 });
 
 // ── logToAxiom dispatches to correct @axiomhq/logging level ─────────────────
@@ -62,7 +16,7 @@ describe("logToAxiom level dispatch", () => {
     const log = logger("test-debug");
     log.debug("hello", { key: "value" });
 
-    expect(mockAxiomDebug).toHaveBeenCalledWith("hello", {
+    expect(axiomLogging.debug).toHaveBeenCalledWith("hello", {
       key: "value",
       context: "test-debug",
       source: "api",
@@ -73,7 +27,7 @@ describe("logToAxiom level dispatch", () => {
     const log = logger("test-info");
     log.info("info msg");
 
-    expect(mockAxiomInfo).toHaveBeenCalledWith("info msg", {
+    expect(axiomLogging.info).toHaveBeenCalledWith("info msg", {
       context: "test-info",
       source: "api",
     });
@@ -83,7 +37,7 @@ describe("logToAxiom level dispatch", () => {
     const log = logger("test-warn");
     log.warn("warning");
 
-    expect(mockAxiomWarn).toHaveBeenCalledWith("warning", {
+    expect(axiomLogging.warn).toHaveBeenCalledWith("warning", {
       context: "test-warn",
       source: "api",
     });
@@ -93,7 +47,7 @@ describe("logToAxiom level dispatch", () => {
     const log = logger("test-err");
     log.error("boom");
 
-    expect(mockAxiomError).toHaveBeenCalledWith("boom", {
+    expect(axiomLogging.error).toHaveBeenCalledWith("boom", {
       context: "test-err",
       source: "api",
     });
@@ -103,7 +57,7 @@ describe("logToAxiom level dispatch", () => {
     const log = logger("test-fatal");
     log.fatal("dead");
 
-    expect(mockAxiomError).toHaveBeenCalledWith("dead", {
+    expect(axiomLogging.error).toHaveBeenCalledWith("dead", {
       context: "test-fatal",
       source: "api",
     });
@@ -114,7 +68,7 @@ describe("logToAxiom level dispatch", () => {
     const obj = { nested: true };
     log.info(obj);
 
-    expect(mockAxiomInfo).toHaveBeenCalledWith(
+    expect(axiomLogging.info).toHaveBeenCalledWith(
       String(obj),
       expect.objectContaining({ source: "api" }),
     );
@@ -128,7 +82,7 @@ describe("Axiom log source field", () => {
     const log = logger("source-test");
     log.info("msg");
 
-    expect(mockAxiomInfo).toHaveBeenCalledWith(
+    expect(axiomLogging.info).toHaveBeenCalledWith(
       "msg",
       expect.objectContaining({ source: "api" }),
     );
@@ -139,7 +93,7 @@ describe("Axiom log source field", () => {
     const err = new Error("fail");
     log.error(err);
 
-    expect(mockAxiomError).toHaveBeenCalledWith(
+    expect(axiomLogging.error).toHaveBeenCalledWith(
       "fail",
       expect.objectContaining({ source: "api" }),
     );
@@ -150,7 +104,7 @@ describe("Axiom log source field", () => {
     log.warn("msg", { context: "evil" });
 
     // context should be from the logger name, not from user fields
-    expect(mockAxiomWarn).toHaveBeenCalledWith("msg", {
+    expect(axiomLogging.warn).toHaveBeenCalledWith("msg", {
       context: "ctx-test",
       source: "api",
     });
@@ -165,11 +119,11 @@ describe("flushLogs", () => {
     logger("flush-test").info("msg");
     await flushLogs();
 
-    expect(mockAxiomFlush).toHaveBeenCalledOnce();
+    expect(axiomLogging.flush).toHaveBeenCalledOnce();
   });
 
   it("does not throw when flush fails", async () => {
-    mockAxiomFlush.mockRejectedValueOnce(new Error("flush down"));
+    axiomLogging.flush.mockRejectedValueOnce(new Error("flush down"));
     logger("fail-flush").info("msg");
 
     await expect(flushLogs()).resolves.toBeUndefined();
@@ -191,7 +145,7 @@ describe("serializeError via logging", () => {
     const err = new Error("test error");
     log.error(err);
 
-    expect(mockAxiomError).toHaveBeenCalledWith(
+    expect(axiomLogging.error).toHaveBeenCalledWith(
       "test error",
       expect.objectContaining({
         error: expect.objectContaining({
@@ -210,7 +164,7 @@ describe("serializeError via logging", () => {
     const err = new Error("wrapped", { cause });
     log.error(err);
 
-    expect(mockAxiomError).toHaveBeenCalledWith(
+    expect(axiomLogging.error).toHaveBeenCalledWith(
       "wrapped",
       expect.objectContaining({
         error: expect.objectContaining({
@@ -231,7 +185,7 @@ describe("serializeError via logging", () => {
     err.statusCode = 500;
     log.error(err);
 
-    const fields = mockAxiomError.mock.calls[0]?.[1] as
+    const fields = axiomLogging.error.mock.calls[0]?.[1] as
       | Record<string, unknown>
       | undefined;
     expect(fields?.error).toMatchObject({
@@ -251,7 +205,7 @@ describe("extractFields via logging", () => {
     const err = new Error("boom");
     log.info("oh no", err);
 
-    expect(mockAxiomInfo).toHaveBeenCalledWith(
+    expect(axiomLogging.info).toHaveBeenCalledWith(
       "oh no",
       expect.objectContaining({
         error: expect.objectContaining({
@@ -265,7 +219,7 @@ describe("extractFields via logging", () => {
     const log = logger("extract-obj");
     log.info("data", { count: 42 });
 
-    expect(mockAxiomInfo).toHaveBeenCalledWith("data", {
+    expect(axiomLogging.info).toHaveBeenCalledWith("data", {
       count: 42,
       context: "extract-obj",
       source: "api",
@@ -276,7 +230,7 @@ describe("extractFields via logging", () => {
     const log = logger("extract-multi");
     log.info("msg", 1, "two", { three: 3 });
 
-    expect(mockAxiomInfo).toHaveBeenCalledWith(
+    expect(axiomLogging.info).toHaveBeenCalledWith(
       "msg",
       expect.objectContaining({
         args: [1, "two", { three: 3 }],
@@ -289,12 +243,14 @@ describe("extractFields via logging", () => {
 
 describe("getAxiomLogger with no token", () => {
   it("returns null when AXIOM_TOKEN_TELEMETRY is unset", async () => {
+    // eslint-disable-next-line api/no-test-vi-mocks
     vi.resetModules();
 
     // Mock env to return empty string for AXIOM_TOKEN_TELEMETRY so
     // getAxiomLogger returns null. We mock the entire env module
     // because the real module calls createEnv which requires
     // AXIOM_TOKEN_TELEMETRY to be a non-empty string.
+    // eslint-disable-next-line api/no-test-vi-mocks
     vi.doMock("../env", () => ({
       env: (name: string) => {
         if (name === "AXIOM_TOKEN_TELEMETRY") {
@@ -315,8 +271,9 @@ describe("getAxiomLogger with no token", () => {
 
     // Axiom mock methods should not have been called
     // oxlint-disable-next-line vitest/prefer-called-with
-    expect(mockAxiomInfo).not.toHaveBeenCalled();
+    expect(axiomLogging.info).not.toHaveBeenCalled();
 
+    // eslint-disable-next-line api/no-test-vi-mocks
     vi.resetModules();
   });
 });
@@ -333,10 +290,10 @@ describe("logger", () => {
   });
 
   it("emits to console in addition to Axiom (dual-write)", () => {
+    // eslint-disable-next-line api/no-test-vi-mocks
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
+    // eslint-disable-next-line api/no-test-vi-mocks
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
     try {
       const log = logger("dual");
