@@ -1,5 +1,5 @@
 use std::io;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 /// Maximum length for command preview in logs
 const COMMAND_PREVIEW_MAX_LEN: usize = 100;
@@ -97,30 +97,56 @@ pub(crate) fn truncate_preview(s: &str) -> String {
     format!("{}...", &s[..end])
 }
 
-/// Spawn `command` with stdout/stderr piped — used by both buffered exec and
-/// streaming spawn-watch.
-pub(crate) fn spawn_with_pipes(command: &str, sudo: bool) -> io::Result<std::process::Child> {
+/// Spawn a command as the leader of a new process group on Unix.
+///
+/// Timeout killing targets the process group by child PID, so every child path
+/// that uses the shared wait helpers must preserve this spawn invariant.
+pub(crate) fn spawn_in_own_process_group(command: &mut Command) -> io::Result<Child> {
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        build_exec_command(command, sudo)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0)
-            .spawn()
+        command.process_group(0).spawn()
     }
     #[cfg(not(unix))]
     {
-        build_exec_command(command, sudo)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
+        command.spawn()
     }
+}
+
+/// Spawn `command` with stdout/stderr piped — used by both buffered exec and
+/// streaming spawn-watch.
+pub(crate) fn spawn_with_pipes(command: &str, sudo: bool) -> io::Result<Child> {
+    let mut command = build_exec_command(command, sudo);
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    spawn_in_own_process_group(&mut command)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    use crate::wait::{WaitOutcome, wait_with_kill_timeout};
+
+    struct TempDirGuard(PathBuf);
+
+    impl Drop for TempDirGuard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn wait_for_path(path: &std::path::Path, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if path.exists() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        path.exists()
+    }
 
     #[test]
     fn shell_escape_simple() {
@@ -220,6 +246,44 @@ mod tests {
             (prog == "sudo" && args == ["sh", "-c", "reboot"])
                 || (prog == "sh" && args == ["-c", "reboot"]),
             "unexpected sudo command: {prog} {args:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_in_own_process_group_timeout_kills_background_child() {
+        let dir = std::env::temp_dir().join(format!(
+            "vsock-guest-pg-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _guard = TempDirGuard(dir.clone());
+        let ready = dir.join("ready");
+        let survived = dir.join("survived");
+        let ready_arg = shell_escape_value(ready.to_str().unwrap());
+        let survived_arg = shell_escape_value(survived.to_str().unwrap());
+        let script =
+            format!("trap '' HUP; (sleep 1; touch {survived_arg}) & touch {ready_arg}; wait");
+
+        let mut command = build_exec_command(&script, false);
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+        let child = spawn_in_own_process_group(&mut command).unwrap();
+        assert!(
+            wait_for_path(&ready, Duration::from_secs(2)),
+            "background child should be started before timeout kill is tested"
+        );
+
+        let outcome = wait_with_kill_timeout(child, 100);
+        assert!(matches!(outcome, WaitOutcome::TimedOut));
+
+        std::thread::sleep(Duration::from_millis(1500));
+        assert!(
+            !survived.exists(),
+            "timeout kill should terminate background children in the process group"
         );
     }
 }

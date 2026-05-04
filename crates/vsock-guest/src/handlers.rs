@@ -1,5 +1,5 @@
 use std::io::{self, Write};
-use std::process::Stdio;
+use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::thread;
@@ -11,7 +11,9 @@ use vsock_proto::{
 
 use crate::drain::drain_into_vec_cancellable;
 use crate::error::to_io_error;
-use crate::exec::{build_exec_command, prepend_env, spawn_with_pipes, truncate_preview};
+use crate::exec::{
+    build_exec_command, prepend_env, spawn_in_own_process_group, spawn_with_pipes, truncate_preview,
+};
 use crate::log::log;
 use crate::process::extract_exit_code;
 use crate::shutdown::handle_shutdown;
@@ -115,12 +117,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
         }
     };
 
-    let mut child = match build_exec_command(&write_cmd, use_sudo)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+    let mut child = match spawn_write_file_command(&write_cmd, use_sudo) {
         Ok(c) => c,
         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
@@ -181,6 +178,15 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
     }
 }
 
+fn spawn_write_file_command(write_cmd: &str, use_sudo: bool) -> io::Result<Child> {
+    let mut command = build_exec_command(write_cmd, use_sudo);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    spawn_in_own_process_group(&mut command)
+}
+
 /// Handle incoming message and return the connection-loop outcome.
 ///
 /// `MSG_EXEC` and `MSG_SPAWN_WATCH` are handled separately in
@@ -213,5 +219,23 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
                 vsock_proto::encode(MSG_ERROR, msg.seq, &payload).map_err(to_io_error)?,
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn write_file_command_starts_as_process_group_leader() {
+        let mut child = spawn_write_file_command("sleep 10", false).unwrap();
+        let pid = child.id();
+
+        let pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
+        let _ = unsafe { crate::process::kill_process_tree(pid) };
+        let _ = child.wait();
+
+        assert_eq!(pgid, pid as libc::pid_t);
     }
 }

@@ -1,3 +1,12 @@
+//! Runtime-level sandbox backend abstractions.
+//!
+//! A [`RuntimeProvider`] builds a backend runtime from [`RuntimeConfig`]. The
+//! resulting [`SandboxRuntime`] owns runtime-wide shared resources and creates
+//! started [`SandboxFactory`] instances for individual profiles.
+//!
+//! Factories created from a runtime must be shut down before
+//! [`SandboxRuntime::shutdown`] releases the shared resources they depend on.
+
 use async_trait::async_trait;
 
 use crate::config::{FactoryConfig, RuntimeConfig};
