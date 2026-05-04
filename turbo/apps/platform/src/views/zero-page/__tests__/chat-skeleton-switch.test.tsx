@@ -75,7 +75,7 @@ describe("chat skeleton on switch", () => {
     });
 
     // Switch to thread-B — API is delayed, skeleton should appear
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-b" },
     });
 
@@ -144,7 +144,7 @@ describe("chat skeleton on switch", () => {
     });
 
     // loadLeftThread$ is idempotent — navigating to the same thread is a no-op.
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-a" },
     });
 

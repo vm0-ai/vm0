@@ -79,7 +79,7 @@ describe("chat draft persistence across thread navigation", () => {
     await fill(getTextarea(), "draft for thread 2");
 
     // Navigate back to thread-1 — draft restored from per-thread cache
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-1" },
     });
 
@@ -88,7 +88,7 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Navigate back to thread-2 — draft restored
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-2" },
     });
 
@@ -107,7 +107,7 @@ describe("chat draft persistence across thread navigation", () => {
 
     await fill(getTextarea(), "only for thread-a");
 
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-b" },
     });
 
@@ -187,7 +187,7 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Navigate to thread-2 while upload is in-flight
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-2" },
     });
 
@@ -201,7 +201,7 @@ describe("chat draft persistence across thread navigation", () => {
 
     // Navigate back to thread-1 — draft restored from per-thread cache,
     // upload should now be complete
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-1" },
     });
 

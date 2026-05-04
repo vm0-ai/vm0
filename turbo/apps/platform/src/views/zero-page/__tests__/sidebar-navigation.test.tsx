@@ -385,7 +385,7 @@ describe("sidebar new chat navigation", () => {
     expect(createCount).toBe(1);
     expect(pathname()).toBe(`/chats/${clientThreadId}`);
 
-    context.store.set(detachedNavigateTo$, "/agents/:agentId/chat", {
+    await context.store.set(detachedNavigateTo$, "/agents/:agentId/chat", {
       pathParams: { agentId: "c0000000-0000-4000-a000-000000000001" },
     });
     await waitFor(() => {
