@@ -4160,6 +4160,80 @@
           "Start with a batch of 20 leads to validate personalization quality before scaling up to 50 per run.",
           "Save your run ID. Zero caches Apollo and enrichment data to Google Drive, so you can re-personalize or re-upload without burning API credits."
         ]
+      },
+      "podcast-deep-research": {
+        "title": "Turn hours of podcast episodes into a searchable insights database",
+        "description": "Zero researches podcast episodes, extracts key claims and opinions from every guest, and builds a searchable web app so you can browse by speaker, topic, or confidence level.",
+        "timeSaved": "~15 hours saved per podcast series",
+        "scenario": "You've heard a podcast has incredible insights across dozens of episodes, but you don't have time to listen to all of them and take structured notes. Zero researches the episodes, catalogs every claim by speaker and topic, tags the confidence level, and builds an interactive frontend where you can filter, search, and discover what every guest said.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero research the Dwarkesh Patel podcast. Extract every opinion and factual claim from every guest across all episodes, tag each with speaker name, date, topic category, and confidence level (confident/hedged/speculative). Build a searchable web app where I can filter by speaker, topic, and confidence, and browse all insights."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero pull the top insights from the Dwarkesh podcast on AI and build a searchable frontend for them."
+          },
+          {
+            "label": "Deep-dive",
+            "prompt": "@Zero research podcast episodes 1-50 of the Dwarkesh Patel podcast. For each episode, extract: (1) every opinion stated, (2) who said it, (3) the topic, (4) how confidently they stated it. Also flag where guests disagreed with each other on the same topic. Build an interactive web app to explore all of this."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero research Dwarkesh Patel's podcast episodes. I want every opinion and factual claim extracted, tagged by speaker, topic, and confidence. Build me a searchable frontend for it."
+          },
+          {
+            "name": "Zero",
+            "text": "Research complete. I analyzed 54 episodes with 47 speakers and extracted 459 opinions across 17 topic categories. The web app is live — you can filter by speaker, topic, and confidence level."
+          }
+        ],
+        "steps": [
+          {
+            "title": "You describe the podcast and what you're looking for",
+            "description": "Tell Zero which podcast to research, what kind of insights you want extracted, and how you want them organized. Zero will ask clarifying questions if needed before starting the deep research."
+          },
+          {
+            "title": "Zero researches episodes and catalogs claims",
+            "description": "Zero systematically works through episodes, extracts every claim and opinion, tags them by speaker, topic, and confidence level, and identifies where guests disagree. The structured data is organized for filtering and discovery."
+          },
+          {
+            "title": "Zero builds a searchable web app for the insights",
+            "description": "Zero generates a production-ready web frontend with filtering by speaker, topic, and confidence. You get a live URL to share with your team — not a static report, but an interactive knowledge base."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Dig deeper into a topic",
+            "description": "Ask Zero to pull more detail on a specific theme that surfaced",
+            "examplePrompt": "@Zero for every speaker who talked about AI scaling laws, pull the full context around their claim and any counterarguments from other guests."
+          },
+          {
+            "title": "Add new episodes as they release",
+            "description": "Keep the database current without redoing the research",
+            "examplePrompt": "@Zero new Dwarkesh episode just dropped with Satya Nadella. Extract his claims and add them to the insights app."
+          },
+          {
+            "title": "Expand to another podcast",
+            "description": "Replicate the same research structure for a different show",
+            "examplePrompt": "@Zero do the same deep research on the Lex Fridman podcast's AI episodes and build a similar searchable frontend."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack. You chat with Zero to describe the podcast, review progress, and receive the finished app link."
+          },
+          {
+            "description": "v0. Zero generates and deploys a production-ready, searchable web frontend for your podcast insights."
+          }
+        ],
+        "tips": [
+          "Start with a podcast you already know well. It makes it easier to spot gaps in Zero's research and refine the prompt for the next run.",
+          "Ask Zero to highlight where guests disagree. The richest insights are often in the tension between competing views on the same topic.",
+          "Share the app link with your team immediately. The frontend Zero builds is a real deployed site they can explore — not a PDF to skim and forget."
+        ]
       }
     },
     "filter": {

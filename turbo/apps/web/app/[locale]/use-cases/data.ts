@@ -1848,6 +1848,39 @@ export const USE_CASES: UseCase[] = [
     promptVariantCount: 3,
     slackPreviewCount: 2,
   },
+
+  {
+    slug: "podcast-deep-research",
+    color: "#5b6eab",
+    screenshots: ["/assets/use-cases/podcast-deep-research.png"],
+    avatar: {
+      rotation: 0,
+      skin: 5,
+      hairStyle: 3,
+      hairColor: 4,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["everyone"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, V0],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: V0, required: true },
+    ],
+    relatedSlugs: [
+      "competitor-audit",
+      "trending-topic-radar",
+      "content-experiment-engine",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
 ];
 
 // ---------------------------------------------------------------------------

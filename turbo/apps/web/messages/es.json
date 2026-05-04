@@ -4160,6 +4160,80 @@
           "Empieza con un lote de 20 leads para validar la calidad de personalización antes de escalar a 50 por ejecución.",
           "Guarda tu ID de ejecución. Zero cachea los datos de Apollo y enriquecimiento en Google Drive, para que puedas re-personalizar o re-subir sin gastar créditos de API."
         ]
+      },
+      "podcast-deep-research": {
+        "title": "Convierte horas de episodios de podcast en una base de datos de ideas consultable",
+        "description": "Zero investiga episodios de podcast, extrae afirmaciones y opiniones clave de cada invitado y crea una aplicación web consultable para filtrar por orador, tema o nivel de confianza.",
+        "timeSaved": "~15 horas ahorradas por serie de podcast",
+        "scenario": "Has oído que un podcast tiene ideas increíbles en docenas de episodios, pero no tienes tiempo para escucharlos todos y tomar notas estructuradas. Zero investiga los episodios, cataloga cada afirmación por orador y tema, etiqueta el nivel de confianza y crea una interfaz interactiva donde puedes filtrar, buscar y descubrir lo que dijo cada invitado.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero investiga el podcast de Dwarkesh Patel. Extrae cada opinión y afirmación fáctica de cada invitado en todos los episodios, etiqueta cada una con nombre del orador, fecha, categoría temática y nivel de confianza (confident/hedged/speculative). Crea una aplicación web consultable donde pueda filtrar por orador, tema y confianza."
+          },
+          {
+            "label": "Rápido",
+            "prompt": "@Zero extrae las principales ideas sobre IA del podcast de Dwarkesh y crea un frontend consultable para ellas."
+          },
+          {
+            "label": "Profundo",
+            "prompt": "@Zero investiga los episodios 1-50 del podcast de Dwarkesh Patel. Para cada episodio, extrae: (1) cada opinión expresada, (2) quién la dijo, (3) el tema, (4) con qué confianza la expresó. También señala dónde los invitados discreparon entre sí sobre el mismo tema. Crea una aplicación web interactiva para explorar todo esto."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero investiga los episodios del podcast de Dwarkesh Patel. Quiero cada opinión y afirmación fáctica extraída, etiquetada por orador, tema y confianza. Constrúyeme un frontend consultable."
+          },
+          {
+            "name": "Zero",
+            "text": "Investigación completada. Analicé 54 episodios con 47 oradores y extraje 459 opiniones en 17 categorías temáticas. La aplicación web está activa — puedes filtrar por orador, tema y nivel de confianza."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Describes el podcast y lo que buscas",
+            "description": "Dile a Zero qué podcast investigar, qué tipo de ideas quieres extraer y cómo quieres que se organicen. Zero hará preguntas aclaratorias si es necesario antes de comenzar la investigación."
+          },
+          {
+            "title": "Zero investiga episodios y cataloga afirmaciones",
+            "description": "Zero trabaja sistemáticamente a través de los episodios, extrae cada afirmación y opinión, las etiqueta por orador, tema y nivel de confianza, e identifica dónde los invitados discrepan. Los datos estructurados se organizan para filtrado y descubrimiento."
+          },
+          {
+            "title": "Zero crea una aplicación web consultable para las ideas",
+            "description": "Zero genera un frontend web listo para producción con filtrado por orador, tema y confianza. Obtienes una URL activa para compartir con tu equipo — no es un informe estático, sino una base de conocimiento interactiva."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Profundizar en un tema",
+            "description": "Pide a Zero más detalles sobre un tema específico que haya surgido",
+            "examplePrompt": "@Zero para cada orador que habló sobre las leyes de escalado de IA, extrae el contexto completo de su afirmación y cualquier contraargumento de otros invitados."
+          },
+          {
+            "title": "Añadir nuevos episodios cuando se publiquen",
+            "description": "Mantén la base de datos actualizada sin rehacer la investigación",
+            "examplePrompt": "@Zero acaba de salir un nuevo episodio de Dwarkesh con Satya Nadella. Extrae sus afirmaciones y añádelas a la aplicación de ideas."
+          },
+          {
+            "title": "Expandir a otro podcast",
+            "description": "Replica la misma estructura de investigación para otro programa",
+            "examplePrompt": "@Zero haz la misma investigación profunda sobre los episodios de IA del podcast de Lex Fridman y crea un frontend consultable similar."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack. Chateas con Zero para describir el podcast, revisar el progreso y recibir el enlace de la aplicación terminada."
+          },
+          {
+            "description": "v0. Zero genera y despliega un frontend web listo para producción y consultable para tus ideas de podcast."
+          }
+        ],
+        "tips": [
+          "Empieza con un podcast que ya conozcas bien. Facilita detectar vacíos en la investigación de Zero y refinar el prompt para la próxima ejecución.",
+          "Pide a Zero que destaque dónde los invitados discrepan. Las ideas más valiosas suelen estar en la tensión entre puntos de vista opuestos sobre el mismo tema.",
+          "Comparte el enlace de la aplicación con tu equipo inmediatamente. El frontend que Zero construye es un sitio real desplegado que pueden explorar — no un PDF para ojear y olvidar."
+        ]
       }
     },
     "filter": {

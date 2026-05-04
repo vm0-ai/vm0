@@ -4160,6 +4160,80 @@
           "Starten Sie mit 20 Leads, um die Personalisierungsqualität zu validieren, bevor Sie auf 50 pro Lauf skalieren.",
           "Speichern Sie Ihre Lauf-ID. Zero cached Apollo- und Anreicherungsdaten in Google Drive, sodass Sie ohne erneute API-Kosten re-personalisieren oder erneut hochladen können."
         ]
+      },
+      "podcast-deep-research": {
+        "title": "Verwandeln Sie Stunden von Podcast-Episoden in eine durchsuchbare Erkenntnisdatenbank",
+        "description": "Zero recherchiert Podcast-Episoden, extrahiert wichtige Aussagen und Meinungen jedes Gastes und erstellt eine durchsuchbare Web-App, die Sie nach Sprecher, Thema oder Konfidenzniveau filtern können.",
+        "timeSaved": "~15 Stunden pro Podcast-Serie gespart",
+        "scenario": "Sie haben gehört, dass ein Podcast unglaubliche Einblicke in Dutzenden von Episoden bietet, aber Sie haben keine Zeit, alle anzuhören und strukturierte Notizen zu machen. Zero recherchiert die Episoden, katalogisiert jede Aussage nach Sprecher und Thema, markiert das Konfidenzniveau und erstellt ein interaktives Frontend, in dem Sie filtern, suchen und entdecken können, was jeder Gast gesagt hat.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero recherchiere den Dwarkesh Patel Podcast. Extrahiere jede Meinung und Tatsachenbehauptung von jedem Gast aus allen Episoden, markiere sie mit Name, Datum, Themenkategorie und Konfidenzniveau (confident/hedged/speculative). Erstelle eine durchsuchbare Web-App, in der ich nach Sprecher, Thema und Konfidenz filtern kann."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero ziehe die wichtigsten KI-Erkenntnisse aus dem Dwarkesh-Podcast und erstelle ein durchsuchbares Frontend dafür."
+          },
+          {
+            "label": "Tiefgehend",
+            "prompt": "@Zero recherchiere die Episoden 1-50 des Dwarkesh Patel Podcasts. Extrahiere für jede Episode: (1) jede geäußerte Meinung, (2) wer sie gesagt hat, (3) das Thema, (4) wie überzeugt sie geäußert wurde. Markiere auch, wo Gäste zu demselben Thema unterschiedlicher Meinung waren. Erstelle eine interaktive Web-App, um all dies zu erkunden."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero recherchiere die Episoden des Dwarkesh Patel Podcasts. Ich möchte jede Meinung und Tatsachenbehauptung extrahiert haben, markiert nach Sprecher, Thema und Konfidenz. Erstelle mir ein durchsuchbares Frontend dafür."
+          },
+          {
+            "name": "Zero",
+            "text": "Recherche abgeschlossen. Ich habe 54 Episoden mit 47 Sprechern analysiert und 459 Meinungen in 17 Themenkategorien extrahiert. Die Web-App ist live — Sie können nach Sprecher, Thema und Konfidenzniveau filtern."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Sie beschreiben den Podcast und wonach Sie suchen",
+            "description": "Sagen Sie Zero, welchen Podcast Sie recherchieren möchten, welche Art von Erkenntnissen Sie extrahieren möchten und wie sie organisiert werden sollen. Zero stellt bei Bedarf klärende Fragen, bevor die Recherche beginnt."
+          },
+          {
+            "title": "Zero recherchiert Episoden und katalogisiert Aussagen",
+            "description": "Zero arbeitet systematisch Episoden durch, extrahiert jede Aussage und Meinung, markiert sie nach Sprecher, Thema und Konfidenzniveau und identifiziert, wo Gäste unterschiedlicher Meinung sind. Die strukturierten Daten sind für Filterung und Entdeckung organisiert."
+          },
+          {
+            "title": "Zero erstellt eine durchsuchbare Web-App für die Erkenntnisse",
+            "description": "Zero generiert ein produktionsreifes Web-Frontend mit Filterung nach Sprecher, Thema und Konfidenz. Sie erhalten eine Live-URL zum Teilen mit Ihrem Team — kein statischer Bericht, sondern eine interaktive Wissensdatenbank."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Tiefer in ein Thema eintauchen",
+            "description": "Bitten Sie Zero, mehr Details zu einem bestimmten Thema zu liefern",
+            "examplePrompt": "@Zero ziehe für jeden Sprecher, der über KI-Skalierungsgesetze gesprochen hat, den vollständigen Kontext seiner Aussage und alle Gegenargumente anderer Gäste."
+          },
+          {
+            "title": "Neue Episoden bei Veröffentlichung hinzufügen",
+            "description": "Halten Sie die Datenbank aktuell, ohne die Recherche zu wiederholen",
+            "examplePrompt": "@Zero eine neue Dwarkesh-Episode mit Satya Nadella ist erschienen. Extrahiere seine Aussagen und füge sie der Insights-App hinzu."
+          },
+          {
+            "title": "Auf einen anderen Podcast ausweiten",
+            "description": "Replizieren Sie dieselbe Recherchestruktur für eine andere Sendung",
+            "examplePrompt": "@Zero führe dieselbe Tiefenrecherche für die KI-Episoden des Lex Fridman Podcasts durch und erstelle ein ähnliches durchsuchbares Frontend."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack. Sie chatten mit Zero, um den Podcast zu beschreiben, den Fortschritt zu überprüfen und den fertigen App-Link zu erhalten."
+          },
+          {
+            "description": "v0. Zero generiert und deployt ein produktionsreifes, durchsuchbares Web-Frontend für Ihre Podcast-Erkenntnisse."
+          }
+        ],
+        "tips": [
+          "Beginnen Sie mit einem Podcast, den Sie bereits gut kennen. So können Sie Lücken in Zeros Recherche leichter erkennen und den Prompt für den nächsten Durchlauf verfeinern.",
+          "Bitten Sie Zero, Meinungsverschiedenheiten zwischen Gästen hervorzuheben. Die wertvollsten Erkenntnisse liegen oft in der Spannung zwischen konkurrierenden Ansichten zum selben Thema.",
+          "Teilen Sie den App-Link sofort mit Ihrem Team. Das Frontend, das Zero erstellt, ist eine echte deployte Website, die sie erkunden können — keine PDF zum Überfliegen und Vergessen."
+        ]
       }
     },
     "filter": {
