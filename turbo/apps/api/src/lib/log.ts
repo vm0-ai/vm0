@@ -163,7 +163,9 @@ function logToAxiom(level: Level, name: string, args: unknown[]): void {
 }
 
 export async function flushLogs(): Promise<void> {
-  await getAxiomLogger()?.flush()?.catch(() => {});
+  await getAxiomLogger()
+    ?.flush()
+    ?.catch(() => {});
 }
 
 // ── Logger creation ──────────────────────────────────────────────────────
