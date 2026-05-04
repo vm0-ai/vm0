@@ -18,7 +18,8 @@ import {
   type ScheduleBody,
   type CronTimeOption,
 } from "./cron.ts";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -260,17 +261,26 @@ export interface ZeroScheduleSaveParams {
 
 export const saveZeroSchedule$ = command(
   async ({ get, set }, params: ZeroScheduleSaveParams, signal: AbortSignal) => {
-    const status = await get(zeroOnboardingStatus$);
-    signal.throwIfAborted();
-    const composeId = status.defaultAgentId;
-    if (!composeId) {
-      throw new Error("No default agent configured");
+    try {
+      const status = await get(zeroOnboardingStatus$);
+      signal.throwIfAborted();
+      const composeId = status.defaultAgentId;
+      if (!composeId) {
+        throw new Error("No default agent configured");
+      }
+
+      const body = buildScheduleBody(composeId, params);
+
+      const client = get(zeroClient$)(zeroSchedulesMainContract);
+      await accept(client.deploy({ body }), [200, 201]);
+    } catch (error: unknown) {
+      throwIfAbort(error);
+      if (!(error instanceof ApiError)) {
+        const message = error instanceof Error ? error.message : "Save failed";
+        toast.error(message);
+      }
+      throw error;
     }
-
-    const body = buildScheduleBody(composeId, params);
-
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -422,13 +432,21 @@ export const saveOrgSchedule$ = command(
     params: ZeroScheduleSaveParams & { agentId: string },
     signal: AbortSignal,
   ) => {
-    const body = buildScheduleBody(params.agentId, params);
+    let scheduleId: string;
+    try {
+      const body = buildScheduleBody(params.agentId, params);
 
-    const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(client.deploy({ body }), [200, 201]);
-    signal.throwIfAborted();
-
-    const scheduleId = result.body.schedule.id;
+      const client = get(zeroClient$)(zeroSchedulesMainContract);
+      const result = await accept(client.deploy({ body }), [200, 201]);
+      scheduleId = result.body.schedule.id;
+    } catch (error: unknown) {
+      throwIfAbort(error);
+      if (!(error instanceof ApiError)) {
+        const message = error instanceof Error ? error.message : "Save failed";
+        toast.error(message);
+      }
+      throw error;
+    }
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -491,9 +509,16 @@ export const runScheduleNow$ = command(
       return toast.dismiss(toastId);
     });
     const client = get(zeroClient$)(zeroScheduleRunContract);
-    const result = await accept(client.run({ body: { scheduleId } }), [201], {
-      toast: false,
-    });
+    let result: Awaited<ReturnType<typeof client.run>>;
+    try {
+      result = await accept(client.run({ body: { scheduleId } }), [201], {
+        toast: false,
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Run failed";
+      toast.error(message, { id: toastId });
+      throw error;
+    }
     signal.throwIfAborted();
 
     const data = result.body;

@@ -3,7 +3,7 @@ import {
   zeroIntegrationsTelegramContract,
   type TelegramLinkStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { onDomEventFn } from "../utils.ts";
@@ -59,17 +59,22 @@ export const telegramConnectLinkStatus$ = computed(
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
     const origin =
       typeof location === "undefined" ? undefined : location.origin;
-    const result = await accept(
-      client.getLinkStatus({
-        headers: {},
-        query: {
-          botId: parsed.params.telegramBotId,
-          ...(origin ? { origin } : {}),
-        },
-      }),
-      [200],
-      { toast: false },
-    );
+    let result: Awaited<ReturnType<typeof client.getLinkStatus>> | null = null;
+    try {
+      result = await accept(
+        client.getLinkStatus({
+          headers: {},
+          query: {
+            botId: parsed.params.telegramBotId,
+            ...(origin ? { origin } : {}),
+          },
+        }),
+        [200],
+        { toast: false },
+      );
+    } catch {
+      return null;
+    }
 
     return result.body;
   },
@@ -101,25 +106,43 @@ export const connectTelegramAccount$ = command(
     set(internalTelegramConnectSuccess$, null);
 
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
-    const result = await accept(
-      client.link({
-        headers: {},
-        fetchOptions: { signal },
-        body: {
-          telegramBotId: params.telegramBotId,
-          ...("telegramAuth" in params
-            ? { telegramAuth: params.telegramAuth }
-            : params.connectSignature
-              ? { connectSignature: params.connectSignature }
-              : {}),
-        },
-      }),
-      [200],
-      { toast: false },
-    );
+    let linked: TelegramConnectSuccess | null = null;
+    try {
+      const result = await accept(
+        client.link({
+          headers: {},
+          fetchOptions: { signal },
+          body: {
+            telegramBotId: params.telegramBotId,
+            ...("telegramAuth" in params
+              ? { telegramAuth: params.telegramAuth }
+              : params.connectSignature
+                ? { connectSignature: params.connectSignature }
+                : {}),
+          },
+        }),
+        [200],
+        { toast: false },
+      );
+      linked = result.body;
+    } catch (error: unknown) {
+      if (signal.aborted) {
+        throw error;
+      }
+      set(
+        internalTelegramConnectError$,
+        error instanceof ApiError
+          ? error.message
+          : "We couldn't connect Telegram. Try again from Telegram.",
+      );
+      set(internalTelegramConnectStatus$, "error");
+    }
 
     signal.throwIfAborted();
-    set(internalTelegramConnectSuccess$, result.body);
+    if (!linked) {
+      return;
+    }
+    set(internalTelegramConnectSuccess$, linked);
     set(internalTelegramConnectStatus$, "success");
   },
 );

@@ -251,6 +251,28 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
+  // zero-schedule.ts uses try/catch to surface non-API validation errors
+  // (e.g. past atTime from buildScheduleBody) as user-visible toasts, and
+  // to show error toasts when runScheduleNow$ fails. ApiError from accept()
+  // already toasts; only non-ApiError exceptions are caught here.
+  {
+    files: ["src/signals/zero-page/zero-schedule.ts"],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
+  },
+  // slack-connect-signals.ts and telegram-connect-signals.ts use try/catch
+  // to convert API errors into signal state (status/errorMsg) so the UI can
+  // render error states without the error propagating to component boundaries.
+  {
+    files: [
+      "src/signals/zero-page/slack-connect-signals.ts",
+      "src/signals/zero-page/telegram-connect-signals.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
+  },
   {
     ignores: [
       "dist/**",
