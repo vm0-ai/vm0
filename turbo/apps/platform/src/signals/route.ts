@@ -5,7 +5,7 @@ import { clerk$, needsOrgSelection$, resolveWebOrigin } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
+import { onDomEventFn, resetSignal } from "./utils.ts";
 import { logger } from "./log.ts";
 import { capturePageView, markNavigationPushState$ } from "../lib/posthog.ts";
 
@@ -202,17 +202,13 @@ export const detachedNavigateTo$ = command(
       searchParams?: URLSearchParams;
       replace?: boolean;
     },
-    _signal?: AbortSignal,
+    signal?: AbortSignal,
   ) => {
-    const signal = get(rootSignal$).signal;
-    await detach(
-      set(
-        navigate$,
-        generateRouterPath(pathname, options?.pathParams),
-        options ?? {},
-        signal,
-      ),
-      Reason.Entrance,
+    await set(
+      navigate$,
+      generateRouterPath(pathname, options?.pathParams),
+      options ?? {},
+      signal ?? get(rootSignal$).signal,
     );
   },
 );
