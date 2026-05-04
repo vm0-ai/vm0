@@ -586,7 +586,7 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ needs.prepare.outputs.web-preview-url }}
-        run: eas build --platform all --profile preview --non-interactive
+        run: eas build --platform android --profile preview --non-interactive
 
   test-app-browser:
     needs: [detect-release]
