@@ -5,6 +5,7 @@
   },
   "build": {
     "preview": {
+      "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_API_URL": "$EXPO_PUBLIC_API_URL"
       },
@@ -13,8 +14,7 @@
       },
       "android": {
         "resourceClass": "medium"
-      },
-      "channel": "preview"
+      }
     },
     "production": {
       "env": {
@@ -25,8 +25,7 @@
       },
       "android": {
         "resourceClass": "medium"
-      },
-      "channel": "production"
+      }
     }
   }
 }
