@@ -273,6 +273,7 @@ export const saveZeroSchedule$ = command(
 
       const client = get(zeroClient$)(zeroSchedulesMainContract);
       await accept(client.deploy({ body }), [200, 201]);
+      signal.throwIfAborted();
     } catch (error: unknown) {
       throwIfAbort(error);
       if (!(error instanceof ApiError)) {
@@ -438,6 +439,7 @@ export const saveOrgSchedule$ = command(
 
       const client = get(zeroClient$)(zeroSchedulesMainContract);
       const result = await accept(client.deploy({ body }), [200, 201]);
+      signal.throwIfAborted();
       scheduleId = result.body.schedule.id;
     } catch (error: unknown) {
       throwIfAbort(error);
@@ -514,6 +516,7 @@ export const runScheduleNow$ = command(
       const result = await accept(client.run({ body: { scheduleId } }), [201], {
         toast: false,
       });
+      signal.throwIfAborted();
       data = result.body;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Run failed";

@@ -55,6 +55,7 @@ export const initSlackConnectPage$ = command(
         const result = await accept(client.getStatus(), [200], {
           toast: false,
         });
+        signal.throwIfAborted();
         isConnected = result.body.isConnected;
       } catch (error: unknown) {
         if (signal.aborted) {
@@ -104,6 +105,7 @@ export const connectSlackAccount$ = command(
         [200],
         { toast: false },
       );
+      signal.throwIfAborted();
       connected = true;
     } catch (error: unknown) {
       if (signal.aborted) {

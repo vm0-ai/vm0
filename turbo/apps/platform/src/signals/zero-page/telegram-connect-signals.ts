@@ -122,6 +122,7 @@ export const connectTelegramAccount$ = command(
         [200],
         { toast: false },
       );
+      signal.throwIfAborted();
       linked = result.body;
     } catch (error: unknown) {
       if (signal.aborted) {
