@@ -9,14 +9,17 @@ import { ROUTES } from "../signals/route";
 import { useUndiciMock } from "./setup";
 import { accept, setupApp, testContext } from "./test-helpers";
 
+// eslint-disable-next-line api/no-test-vi-mocks
 const { mockFlushLogs } = vi.hoisted(() => {
   return {
+    // eslint-disable-next-line api/no-test-vi-mocks
     mockFlushLogs: vi.fn(),
   };
 });
 
 mockFlushLogs.mockResolvedValue(undefined);
 
+// eslint-disable-next-line api/no-test-vi-mocks
 vi.mock("../lib/log", async () => {
   const actual =
     await vi.importActual<typeof import("../lib/log")>("../lib/log");

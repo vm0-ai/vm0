@@ -230,7 +230,9 @@ vi.mock("../signals/external/axiom", () => {
 
 vi.mock("@axiomhq/js", () => {
   return {
-    Axiom: vi.fn(() => ({})),
+    Axiom: vi.fn(() => {
+      return {};
+    }),
   };
 });
 
@@ -245,7 +247,9 @@ vi.mock("@axiomhq/logging", () => {
         flush: apiTestMocks.axiomLogging.flush,
       };
     }),
-    AxiomJSTransport: vi.fn(() => ({})),
+    AxiomJSTransport: vi.fn(() => {
+      return {};
+    }),
   };
 });
 

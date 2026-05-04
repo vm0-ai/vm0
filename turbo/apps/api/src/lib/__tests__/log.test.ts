@@ -251,19 +251,21 @@ describe("getAxiomLogger with no token", () => {
     // because the real module calls createEnv which requires
     // AXIOM_TOKEN_TELEMETRY to be a non-empty string.
     // eslint-disable-next-line api/no-test-vi-mocks
-    vi.doMock("../env", () => ({
-      env: (name: string) => {
-        if (name === "AXIOM_TOKEN_TELEMETRY") {
+    vi.doMock("../env", () => {
+      return {
+        env: (name: string) => {
+          if (name === "AXIOM_TOKEN_TELEMETRY") {
+            return "";
+          }
+          if (name === "AXIOM_DATASET_SUFFIX") {
+            return "dev";
+          }
           return "";
-        }
-        if (name === "AXIOM_DATASET_SUFFIX") {
-          return "dev";
-        }
-        return "";
-      },
-      mockEnv: () => {},
-      clearMockedEnv: () => {},
-    }));
+        },
+        mockEnv: () => {},
+        clearMockedEnv: () => {},
+      };
+    });
 
     const mod = await import("../log");
     const log = mod.logger("no-token-test");
@@ -295,6 +297,7 @@ describe("logger", () => {
     // eslint-disable-next-line api/no-test-vi-mocks
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
+    // eslint-disable-next-line no-restricted-syntax
     try {
       const log = logger("dual");
       log.info("dual msg");
