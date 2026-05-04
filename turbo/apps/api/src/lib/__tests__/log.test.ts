@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import "../../__tests__/env-stub";
+import { flushLogs, logger, __resetForTest } from "../log";
 
-// Must be hoisted above import for mock variables to be available when
-// vi.mock factories are executed during the import phase.
+// vi.hoisted runs before all imports, so mock variables are available
+// when vi.mock factories are executed during the import phase.
 const {
   mockAxiomDebug,
   mockAxiomInfo,
@@ -42,11 +44,6 @@ vi.mock("@axiomhq/logging", () => {
     }),
   };
 });
-
-// eslint-disable-next-line import/first
-import "../../__tests__/env-stub";
-// eslint-disable-next-line import/first
-import { flushLogs, logger, __resetForTest } from "../log";
 
 beforeEach(() => {
   mockAxiomDebug.mockReset();
@@ -229,8 +226,7 @@ describe("serializeError via logging", () => {
 
   it("surfaces custom enumerable properties on Error", () => {
     const log = logger("custom-err");
-    const err = new Error("custom") as Error &
-      Record<string, unknown>;
+    const err = new Error("custom") as Error & Record<string, unknown>;
     err.code = "ERR_TEST";
     err.statusCode = 500;
     log.error(err);
@@ -318,6 +314,7 @@ describe("getAxiomLogger with no token", () => {
     log.info("should not reach axiom");
 
     // Axiom mock methods should not have been called
+    // oxlint-disable-next-line vitest/prefer-called-with
     expect(mockAxiomInfo).not.toHaveBeenCalled();
 
     vi.resetModules();
@@ -337,15 +334,23 @@ describe("logger", () => {
 
   it("emits to console in addition to Axiom (dual-write)", () => {
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     try {
       const log = logger("dual");
       log.info("dual msg");
       log.error("dual error");
 
-      expect(consoleLog).toHaveBeenCalledWith(expect.any(String), expect.any(String));
-      expect(consoleError).toHaveBeenCalledWith(expect.any(String), expect.any(String));
+      expect(consoleLog).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+      );
     } finally {
       consoleLog.mockRestore();
       consoleError.mockRestore();

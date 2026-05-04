@@ -873,8 +873,4 @@ export {
 } from "./firewalls";
 export { getGmtOffset } from "./timezone";
 export { getModelDisplayName } from "./model-display-name";
-export {
-  formatMessage,
-  serializeError,
-  extractFields,
-} from "./log-utils";
+export { formatMessage, serializeError, extractFields } from "./log-utils";
