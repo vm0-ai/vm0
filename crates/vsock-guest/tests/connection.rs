@@ -764,6 +764,54 @@ fn read_buffered_spawn_watch_result(
     }
 }
 
+fn read_spawn_watch_pid(stream: &mut impl std::io::Read, seq: u32) -> u32 {
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    loop {
+        let n = read_retry_eintr(stream, &mut buf).unwrap();
+        assert!(n > 0, "unexpected EOF waiting for spawn_watch pid");
+        for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+            if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == seq {
+                return vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap();
+            }
+        }
+    }
+}
+
+fn read_pid_file(path: &str) -> u32 {
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        match std::fs::read_to_string(path) {
+            Ok(contents) => return contents.trim().parse().unwrap(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => panic!("failed to read pid file {path}: {e}"),
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "pid file {path} was not created",
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn kill_pid_group(pid: u32) {
+    // SAFETY: best-effort cleanup for a pid produced by a test child process.
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+}
+
+fn wait_for_pid_exit(pid: u32, context: &str) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while pid_alive(pid) {
+        if std::time::Instant::now() >= deadline {
+            kill_pid_group(pid);
+            panic!("pid {pid} did not terminate within 5s after {context}");
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
 /// Regression for #11077 (`MSG_EXEC` side): with `timeout_ms = 0`, a
 /// backgrounded grandchild that inherits the stdout fd must NOT keep
 /// `MSG_EXEC_RESULT` from arriving after the foreground shell exits.
@@ -878,6 +926,69 @@ fn pid_alive(pid: u32) -> bool {
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 
+#[test]
+fn exec_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let pid_path = format!(
+        "/tmp/vsock-test-exec-cancel-{}-{}.pid",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let _ = std::fs::remove_file(&pid_path);
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+
+    let payload =
+        vsock_proto::encode_exec(0, &format!("echo $$ > '{pid_path}'; sleep 60"), &[], false);
+    let msg = vsock_proto::encode(MSG_EXEC, 1, &payload).unwrap();
+    host_stream.write_all(&msg).unwrap();
+
+    let pid = read_pid_file(&pid_path);
+    assert!(
+        pid_alive(pid),
+        "child should still be running before disconnect",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+    wait_for_pid_exit(pid, "exec host disconnect");
+
+    let _ = std::fs::remove_file(&pid_path);
+}
+
+#[test]
+fn spawn_watch_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+    read_and_discard_message(&mut host_stream); // MSG_READY
+
+    send_spawn_watch(&mut host_stream, 1, "sleep 60", None, 0);
+    host_stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let pid = read_spawn_watch_pid(&mut host_stream, 1);
+    assert!(
+        pid_alive(pid),
+        "child should still be running before disconnect",
+    );
+
+    drop(host_stream);
+    let _ = handle.join();
+    wait_for_pid_exit(pid, "spawn_watch host disconnect");
+}
+
 /// Regression for #11077: when the host drops the vsock connection
 /// mid-stream, the streaming monitor's stdout drain hits a write failure
 /// on its next chunk forward, signals cancel, drops the pipe fd, and the
@@ -974,9 +1085,9 @@ fn streaming_terminates_child_on_vsock_disconnect() {
 /// the second pipe would fill, the child would block on its next write,
 /// and the test would hit the read timeout.
 ///
-/// Pins down the concurrent-drain invariant of `wait_with_drain_and_timeout`
-/// shared by `MSG_EXEC` and buffered `MSG_SPAWN_WATCH`. The streaming
-/// path in `spawn_streaming_monitor` follows the same
+/// Pins down the concurrent-drain invariant shared by `MSG_EXEC` and buffered
+/// `MSG_SPAWN_WATCH`. The streaming path in `spawn_streaming_monitor` follows
+/// the same
 /// stderr-thread-before-stdout-thread structure for the same reason.
 #[test]
 fn buffered_spawn_watch_concurrent_large_stdout_stderr() {

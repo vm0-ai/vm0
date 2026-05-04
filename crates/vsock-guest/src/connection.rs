@@ -1,5 +1,7 @@
 use std::io::{self, Read};
 use std::os::unix::net::UnixStream;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -21,6 +23,14 @@ const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB
 enum ConnectionEnd {
     Closed,
     Shutdown,
+}
+
+struct CancelOnDrop(Arc<AtomicBool>);
+
+impl Drop for CancelOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
 }
 
 /// Connect to vsock (Linux only - this binary runs inside Firecracker VM)
@@ -87,6 +97,8 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
     // This avoids deadlock: reader can block while writer sends process_exit
     let mut reader = stream.try_clone()?;
     let writer = GuestWriter::new(stream);
+    let connection_cancel = Arc::new(AtomicBool::new(false));
+    let _cancel_on_drop = CancelOnDrop(connection_cancel.clone());
 
     let mut decoder = vsock_proto::Decoder::new();
 
@@ -130,6 +142,7 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     },
                     msg.seq,
                     writer.clone(),
+                    connection_cancel.clone(),
                 )?;
             } else if msg.msg_type == MSG_EXEC {
                 log(
@@ -147,11 +160,12 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                 let sudo = d.sudo;
                 let seq = msg.seq;
                 let w = writer.clone();
+                let connection_cancel = connection_cancel.clone();
                 thread::spawn(move || {
                     let env_refs: Vec<(&str, &str)> =
                         env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
                     let (exit_code, stdout, stderr) =
-                        handle_exec(timeout_ms, &command, &env_refs, sudo);
+                        handle_exec(timeout_ms, &command, &env_refs, sudo, &connection_cancel);
                     let payload = vsock_proto::encode_exec_result(exit_code, &stdout, &stderr);
                     let encoded = match vsock_proto::encode(MSG_EXEC_RESULT, seq, &payload) {
                         Ok(msg) => msg,
