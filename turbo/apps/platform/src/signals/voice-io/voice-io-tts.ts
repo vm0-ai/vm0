@@ -49,7 +49,7 @@ function stripMarkdown(text: string): string {
 // Internal commands
 // ---------------------------------------------------------------------------
 
-const cleanupAudio$ = command(async ({ get, set }) => {
+const cleanupAudio$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const cleanupFn = get(internalCleanupFn$);
   if (cleanupFn) {
     await cleanupFn();
@@ -67,6 +67,7 @@ const resetPlaybackState$ = command(({ set }) => {
 const fetchAndPlay$ = command(
   async ({ get, set }, runId: string, text: string, signal: AbortSignal) => {
     await set(cleanupAudio$);
+    signal.throwIfAborted();
     set(internalPlayingRunId$, runId);
 
     const plainText = stripMarkdown(text);
@@ -124,6 +125,7 @@ const fetchAndPlay$ = command(
         await audioCtx.close();
       };
       await set(internalCleanupFn$, cleanupFn);
+      signal.throwIfAborted();
 
       for (;;) {
         if (signal.aborted) {
@@ -197,6 +199,7 @@ const fetchAndPlay$ = command(
       // to prevent the message ID from getting stuck, which would block
       // future playback of the same message.
       await set(cleanupAudio$);
+      signal.throwIfAborted();
       throw error;
     }
   },
@@ -206,7 +209,7 @@ const fetchAndPlay$ = command(
 // Public commands
 // ---------------------------------------------------------------------------
 
-export const stopTts$ = command(async ({ set }) => {
+export const stopTts$ = command(async ({ set }, _signal: AbortSignal) => {
   await set(cleanupAudio$);
 });
 

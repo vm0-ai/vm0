@@ -116,6 +116,7 @@ export const startRecording$ = command(
 
     // Stop any ongoing TTS playback to prevent recording AI voice
     await set(stopTts$);
+    signal.throwIfAborted();
 
     let stream: MediaStream;
     // eslint-disable-next-line no-restricted-syntax -- getUserMedia rejects on permission denied
