@@ -633,6 +633,27 @@ class TestDecompression:
         add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "hello world"}'
 
+    def test_brotli_exact_limit_not_truncated(self, real_flow):
+        original = b"x" * STREAM_BUFFER_LIMIT
+        compressed = brotli.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body_truncated" not in entry
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+
+    def test_brotli_truncation_preserves_utf8_boundary(self, real_flow):
+        original = b"x" * STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
+        compressed = brotli.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["response_body_truncated"] is True
+        assert entry["response_body_encoding"] == "utf-8"
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+
     def test_brotli_zip_bomb_capped_without_full_decode(self, real_flow, monkeypatch):
         original = b"\x00" * (10 * 1024 * 1024)
         compressed = brotli.compress(original)
