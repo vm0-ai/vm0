@@ -49,7 +49,7 @@ function stripMarkdown(text: string): string {
 // Internal commands
 // ---------------------------------------------------------------------------
 
-const cleanupAudio$ = command(async ({ get, set }, _signal: AbortSignal) => {
+const cleanupAudio$ = command(async ({ get, set }, _signal?: AbortSignal) => {
   const cleanupFn = get(internalCleanupFn$);
   if (cleanupFn) {
     await cleanupFn();
@@ -209,7 +209,7 @@ const fetchAndPlay$ = command(
 // Public commands
 // ---------------------------------------------------------------------------
 
-export const stopTts$ = command(async ({ set }, _signal: AbortSignal) => {
+export const stopTts$ = command(async ({ set }, _signal?: AbortSignal) => {
   await set(cleanupAudio$);
 });
 
