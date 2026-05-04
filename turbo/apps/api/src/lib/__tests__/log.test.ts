@@ -243,7 +243,6 @@ describe("extractFields via logging", () => {
 
 describe("getAxiomLogger with no token", () => {
   it("returns null when AXIOM_TOKEN_TELEMETRY is unset", async () => {
-    // eslint-disable-next-line api/no-test-vi-mocks
     vi.resetModules();
 
     // Mock env to return empty string for AXIOM_TOKEN_TELEMETRY so
@@ -275,7 +274,6 @@ describe("getAxiomLogger with no token", () => {
     // oxlint-disable-next-line vitest/prefer-called-with
     expect(axiomLogging.info).not.toHaveBeenCalled();
 
-    // eslint-disable-next-line api/no-test-vi-mocks
     vi.resetModules();
   });
 });
@@ -295,7 +293,9 @@ describe("logger", () => {
     // eslint-disable-next-line api/no-test-vi-mocks
     const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
     // eslint-disable-next-line api/no-test-vi-mocks
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
 
     // eslint-disable-next-line no-restricted-syntax
     try {
