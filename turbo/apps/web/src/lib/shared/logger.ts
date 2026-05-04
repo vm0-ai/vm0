@@ -192,29 +192,33 @@ function createLogger(name: string): Logger {
       console.log(...formatArgs("DEBUG", name, args));
       // Also send to Axiom (if configured)
       getAxiomLogger()?.debug(formatMessage(args), {
-        context: name,
         ...extractFields(args),
+        context: name,
+        source: "web",
       });
     },
     info: (...args: unknown[]) => {
       console.info(...formatArgs("INFO", name, args));
       getAxiomLogger()?.info(formatMessage(args), {
-        context: name,
         ...extractFields(args),
+        context: name,
+        source: "web",
       });
     },
     warn: (...args: unknown[]) => {
       console.warn(...formatArgs("WARN", name, args));
       getAxiomLogger()?.warn(formatMessage(args), {
-        context: name,
         ...extractFields(args),
+        context: name,
+        source: "web",
       });
     },
     error: (...args: unknown[]) => {
       console.error(...formatArgs("ERROR", name, args));
       getAxiomLogger()?.error(formatMessage(args), {
-        context: name,
         ...extractFields(args),
+        context: name,
+        source: "web",
       });
     },
   };

@@ -1,3 +1,6 @@
+import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
+import { Axiom } from "@axiomhq/js";
+
 import { env } from "./env";
 import { singleton } from "./singleton";
 
@@ -108,6 +111,106 @@ function writeError(...args: unknown[]): void {
   console.error(...args);
 }
 
+// ── Axiom integration ────────────────────────────────────────────────────
+
+let axiomLogger: AxiomLogger | null = null;
+let axiomInitialized = false;
+
+function getAxiomLogger(): AxiomLogger | null {
+  if (axiomInitialized) return axiomLogger;
+  axiomInitialized = true;
+
+  const token = env("AXIOM_TOKEN_TELEMETRY");
+  if (!token) return null;
+
+  const axiom = new Axiom({ token });
+  axiomLogger = new AxiomLogger({
+    transports: [
+      new AxiomJSTransport({
+        axiom,
+        dataset: `vm0-web-logs-${env("AXIOM_DATASET_SUFFIX")}`,
+      }),
+    ],
+  });
+
+  return axiomLogger;
+}
+
+function formatMessage(args: unknown[]): string {
+  if (args.length === 0) return "";
+  if (typeof args[0] === "string") return args[0];
+  return String(args[0]);
+}
+
+function serializeError(err: Error): Record<string, unknown> {
+  const serialized: Record<string, unknown> = {
+    name: err.name,
+    message: err.message,
+    stack: err.stack,
+  };
+  if (err.cause !== undefined) {
+    serialized.cause =
+      err.cause instanceof Error ? serializeError(err.cause) : err.cause;
+  }
+  for (const [key, value] of Object.entries(err)) {
+    if (!(key in serialized)) {
+      serialized[key] = value;
+    }
+  }
+  return serialized;
+}
+
+function extractFields(args: unknown[]): Record<string, unknown> {
+  if (args.length <= 1) return {};
+  const fields = args.slice(1);
+  if (
+    fields.length === 1 &&
+    typeof fields[0] === "object" &&
+    fields[0] !== null
+  ) {
+    const value = fields[0];
+    if (value instanceof Error) {
+      return { error: serializeError(value) };
+    }
+    return value as Record<string, unknown>;
+  }
+  return { args: fields };
+}
+
+function logToAxiom(level: Level, name: string, args: unknown[]): void {
+  const alog = getAxiomLogger();
+  if (!alog) return;
+
+  const message = formatMessage(args);
+  const fields = { ...extractFields(args), context: name, source: "api" };
+
+  switch (level) {
+    case Level.Debug:
+      alog.debug(message, fields);
+      break;
+    case Level.Info:
+      alog.info(message, fields);
+      break;
+    case Level.Warn:
+      alog.warn(message, fields);
+      break;
+    case Level.Error:
+    case Level.Fatal:
+      alog.error(message, fields);
+      break;
+  }
+}
+
+export async function flushLogs(): Promise<void> {
+  try {
+    await axiomLogger?.flush();
+  } catch (e) {
+    console.error("[logger] Failed to flush logs to Axiom:", e);
+  }
+}
+
+// ── Logger creation ──────────────────────────────────────────────────────
+
 function createLogger(name: string): Logger {
   const loggerInstance: Logger = {
     level: getInitialLevel(name),
@@ -120,26 +223,31 @@ function createLogger(name: string): Logger {
       if (loggerInstance.shouldLog(Level.Debug)) {
         writeLog(...formatArgs(Level.Debug, name, args));
       }
+      logToAxiom(Level.Debug, name, args);
     },
     info: (...args: unknown[]) => {
       if (loggerInstance.shouldLog(Level.Info)) {
         writeLog(...formatArgs(Level.Info, name, args));
       }
+      logToAxiom(Level.Info, name, args);
     },
     warn: (...args: unknown[]) => {
       if (loggerInstance.shouldLog(Level.Warn)) {
         writeLog(...formatArgs(Level.Warn, name, args));
       }
+      logToAxiom(Level.Warn, name, args);
     },
     error: (...args: unknown[]) => {
       if (loggerInstance.shouldLog(Level.Error)) {
         writeError(...formatArgs(Level.Error, name, args));
       }
+      logToAxiom(Level.Error, name, args);
     },
     fatal: (...args: unknown[]) => {
       if (loggerInstance.shouldLog(Level.Fatal)) {
         writeError(...formatArgs(Level.Fatal, name, args));
       }
+      logToAxiom(Level.Fatal, name, args);
     },
   };
 
