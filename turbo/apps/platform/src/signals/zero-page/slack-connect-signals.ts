@@ -50,11 +50,12 @@ export const initSlackConnectPage$ = command(
     if (!initialStatus && !initialError && workspaceId) {
       set(internalStatus$, "checking");
       const client = get(zeroClient$)(zeroSlackConnectContract);
-      let result: Awaited<ReturnType<typeof client.getStatus>> | null = null;
+      let isConnected = false;
       try {
-        result = await accept(client.getStatus(), [200], {
+        const result = await accept(client.getStatus(), [200], {
           toast: false,
         });
+        isConnected = result.body.isConnected;
       } catch (error: unknown) {
         if (signal.aborted) {
           throw error;
@@ -62,7 +63,7 @@ export const initSlackConnectPage$ = command(
         // silently fall through to idle on non-abort errors
       }
       signal.throwIfAborted();
-      if (result?.body.isConnected) {
+      if (isConnected) {
         set(internalStatus$, "success");
         return;
       }

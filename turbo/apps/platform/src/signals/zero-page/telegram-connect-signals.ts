@@ -59,9 +59,8 @@ export const telegramConnectLinkStatus$ = computed(
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
     const origin =
       typeof location === "undefined" ? undefined : location.origin;
-    let result: Awaited<ReturnType<typeof client.getLinkStatus>> | null = null;
     try {
-      result = await accept(
+      const result = await accept(
         client.getLinkStatus({
           headers: {},
           query: {
@@ -72,11 +71,10 @@ export const telegramConnectLinkStatus$ = computed(
         [200],
         { toast: false },
       );
+      return result.body;
     } catch {
       return null;
     }
-
-    return result.body;
   },
 );
 

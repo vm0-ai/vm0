@@ -509,19 +509,18 @@ export const runScheduleNow$ = command(
       return toast.dismiss(toastId);
     });
     const client = get(zeroClient$)(zeroScheduleRunContract);
-    let result: Awaited<ReturnType<typeof client.run>>;
+    let data: { run: { id: string } };
     try {
-      result = await accept(client.run({ body: { scheduleId } }), [201], {
+      const result = await accept(client.run({ body: { scheduleId } }), [201], {
         toast: false,
       });
+      data = result.body;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Run failed";
       toast.error(message, { id: toastId });
       throw error;
     }
     signal.throwIfAborted();
-
-    const data = result.body;
 
     toast.success(
       createElement(
