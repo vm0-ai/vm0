@@ -61,13 +61,15 @@ use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{ExecutionContext, SandboxReuseResult};
 
+mod heartbeat;
 mod identity;
 mod job_lifecycle;
 mod mitm_restart;
 mod signals;
 
+use heartbeat::{HEARTBEAT_PERIOD, HeartbeatContext, collect_heartbeat_state, send_heartbeat};
 use identity::load_or_generate_runner_id;
 use job_lifecycle::{
     ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady, RunCleanupDisposition,
@@ -79,10 +81,6 @@ use mitm_restart::{
 };
 use signals::{EarlySignals, SignalController};
 
-/// Period between routine heartbeat ticks sent to the server. First
-/// tick is deferred by one period via `interval_at` — see the comment
-/// at the interval construction in `run()`.
-const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
 const ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE: u8 = 2;
 
 struct TeardownTimer {
@@ -766,15 +764,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let hb_ctx = HeartbeatContext {
-        idle_pool: &idle_pool,
-        runner_id: &runner_id,
-        name: &name,
-        group: &group,
-        profiles: &profiles,
-        budget: &budget,
-        provider: &*provider,
-    };
+    let hb_ctx = HeartbeatContext::new(
+        &idle_pool, &runner_id, &name, &group, &profiles, &budget, &*provider,
+    );
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -2431,92 +2423,6 @@ async fn handle_job_result(
     }
 }
 
-/// References needed to collect and send a heartbeat.
-/// Avoids passing 8+ arguments through `send_heartbeat`.
-struct HeartbeatContext<'a> {
-    idle_pool: &'a SharedIdlePool,
-    runner_id: &'a str,
-    name: &'a str,
-    group: &'a str,
-    profiles: &'a BTreeMap<String, ProfileConfig>,
-    budget: &'a ResourceBudget,
-    provider: &'a dyn JobProvider,
-}
-
-/// Collect current runner state, update the provider's held-sessions cache,
-/// and send a heartbeat to the server.
-async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
-    let pool = hb.idle_pool.lock().await;
-    let state = collect_heartbeat_state(
-        hb.runner_id,
-        hb.name,
-        hb.group,
-        hb.profiles,
-        hb.budget,
-        &pool,
-        mode,
-    );
-    drop(pool);
-    info!(
-        mode = ?mode,
-        running = state.running_count,
-        sessions = state.held_sessions.len(),
-        "heartbeat"
-    );
-    debug!(held_sessions = ?state.held_sessions);
-    hb.provider
-        .set_held_sessions(state.held_sessions.clone())
-        .await;
-    hb.provider.heartbeat(&state).await;
-}
-
-/// Collect current runner state for heartbeat reporting.
-fn collect_heartbeat_state(
-    runner_id: &str,
-    name: &str,
-    group: &str,
-    profiles: &BTreeMap<String, ProfileConfig>,
-    budget: &ResourceBudget,
-    idle_pool: &crate::idle_pool::IdlePool,
-    mode: RunnerMode,
-) -> HeartbeatState {
-    // Stopped is set only by `status.set_mode(Stopped)` immediately before
-    // `run()` returns, after the last heartbeat has been sent. If a caller
-    // reaches here with Stopped it means a new code path was added that
-    // heartbeats post-teardown, which breaks the contract that the server
-    // never sees mode=stopped on the wire. Debug-only: release still falls
-    // through to the defensive "stopping" mapping below.
-    debug_assert_ne!(
-        mode,
-        RunnerMode::Stopped,
-        "Stopped is never live-heartbeated",
-    );
-    let (allocated_vcpu, allocated_memory_mb, budget_running) = budget.allocated();
-    // budget.allocated() includes parked (idle) VMs that hold their budget.
-    // Report only actively running jobs so the scheduler sees real capacity.
-    let idle_count = idle_pool.len();
-    let running_count = budget_running.saturating_sub(idle_count);
-    HeartbeatState {
-        runner_id: runner_id.to_string(),
-        runner_name: name.to_string(),
-        group: group.to_string(),
-        profiles: profiles.keys().cloned().collect(),
-        total_vcpu: budget.effective_vcpu(),
-        total_memory_mb: budget.effective_memory_mb(),
-        max_concurrent: budget.max_concurrent(),
-        allocated_vcpu,
-        allocated_memory_mb,
-        running_count,
-        held_sessions: idle_pool.held_sessions(),
-        mode: match mode {
-            RunnerMode::Running => "running".to_string(),
-            RunnerMode::Draining => "draining".to_string(),
-            // Stopped caught by the debug_assert above; release falls here.
-            RunnerMode::Stopping | RunnerMode::Stopped => "stopping".to_string(),
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::signals::{
@@ -2531,11 +2437,8 @@ mod tests {
     use tracing_subscriber::layer::{Context, Layer};
     use tracing_subscriber::prelude::*;
 
-    // -----------------------------------------------------------------------
-    // collect_heartbeat_state: running_count excludes idle VMs
-    // -----------------------------------------------------------------------
-
     use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult, ParkingState};
+    use crate::types::HeartbeatState;
     use async_trait::async_trait;
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
@@ -2681,20 +2584,6 @@ mod tests {
             },
         );
         m
-    }
-
-    fn make_park_candidate(session_id: &str) -> ParkCandidate {
-        let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
-        ParkCandidate::from_parked_parts(ParkCandidateParts {
-            sandbox: Box::new(MockSandbox::new("test")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            session_id: session_id.into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        })
     }
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
@@ -3802,119 +3691,6 @@ mod tests {
         }
 
         async fn shutdown(&mut self) {}
-    }
-
-    #[test]
-    fn heartbeat_running_count_no_idle() {
-        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
-        let _leases = [
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-        ];
-        let pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
-        let profiles = test_profiles();
-
-        let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
-            &profiles,
-            &budget,
-            &pool,
-            RunnerMode::Running,
-        );
-        // 2 running jobs, 0 idle → running_count = 2
-        assert_eq!(state.running_count, 2);
-    }
-
-    #[test]
-    fn heartbeat_running_count_excludes_idle() {
-        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
-        // 3 budget reservations: 2 running + 1 will be parked
-        let _leases = [
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-        ];
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
-        // Park 1 VM — budget still held, but pool.len() = 1
-        assert!(matches!(
-            pool.park(make_park_candidate("sess-1")),
-            ParkResult::Parked,
-        ));
-        let profiles = test_profiles();
-
-        let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
-            &profiles,
-            &budget,
-            &pool,
-            RunnerMode::Running,
-        );
-        // budget says 3, idle pool has 1 → running_count = 2
-        assert_eq!(state.running_count, 2);
-        assert_eq!(state.held_sessions, vec!["sess-1"]);
-    }
-
-    #[test]
-    fn heartbeat_running_count_all_idle() {
-        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
-        let _leases = [
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-        ];
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
-        let _ = pool.park(make_park_candidate("sess-1"));
-        let _ = pool.park(make_park_candidate("sess-2"));
-        let profiles = test_profiles();
-
-        let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
-            &profiles,
-            &budget,
-            &pool,
-            RunnerMode::Running,
-        );
-        // budget says 2, idle pool has 2 → running_count = 0
-        assert_eq!(state.running_count, 0);
-    }
-
-    #[test]
-    fn heartbeat_running_count_saturates_on_transient_inconsistency() {
-        // Simulate transient state: budget released before idle pool updated
-        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        // budget_running = 0 but pool has 1 entry (inconsistent)
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
-        let _ = pool.park(make_park_candidate("sess-1"));
-        let profiles = test_profiles();
-
-        let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
-            &profiles,
-            &budget,
-            &pool,
-            RunnerMode::Running,
-        );
-        // saturating_sub prevents underflow: 0 - 1 → 0
-        assert_eq!(state.running_count, 0);
     }
 
     #[tokio::test]
