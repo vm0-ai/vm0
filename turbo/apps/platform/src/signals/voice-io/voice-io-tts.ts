@@ -10,7 +10,7 @@ const L = logger("AudioOutput:TTS");
 // ---------------------------------------------------------------------------
 
 const internalPlayingRunId$ = state<string | null>(null);
-const internalCleanupFn$ = state<(() => void) | null>(null);
+const internalCleanupFn$ = state<(() => Promise<void>) | null>(null);
 
 // ---------------------------------------------------------------------------
 // Public computed
@@ -48,10 +48,10 @@ function stripMarkdown(text: string): string {
 // Internal commands
 // ---------------------------------------------------------------------------
 
-const cleanupAudio$ = command(({ get, set }) => {
+const cleanupAudio$ = command(async ({ get, set }) => {
   const cleanupFn = get(internalCleanupFn$);
   if (cleanupFn) {
-    cleanupFn();
+    await cleanupFn();
   }
 
   set(internalPlayingRunId$, null);
@@ -65,7 +65,7 @@ const resetPlaybackState$ = command(({ set }) => {
 
 const fetchAndPlay$ = command(
   async ({ get, set }, runId: string, text: string, signal: AbortSignal) => {
-    set(cleanupAudio$);
+    await set(cleanupAudio$);
     set(internalPlayingRunId$, runId);
 
     const plainText = stripMarkdown(text);
@@ -122,9 +122,7 @@ const fetchAndPlay$ = command(
         await reader.cancel();
         await audioCtx.close();
       };
-      set(internalCleanupFn$, () => {
-        return cleanupFn;
-      });
+      set(internalCleanupFn$, cleanupFn);
 
       for (;;) {
         if (signal.aborted) {
@@ -194,7 +192,7 @@ const fetchAndPlay$ = command(
       // Always reset playback state on any error (including AbortError)
       // to prevent the message ID from getting stuck, which would block
       // future playback of the same message.
-      set(cleanupAudio$);
+      await set(cleanupAudio$);
       throw error;
     }
   },
@@ -204,8 +202,8 @@ const fetchAndPlay$ = command(
 // Public commands
 // ---------------------------------------------------------------------------
 
-export const stopTts$ = command(({ set }) => {
-  set(cleanupAudio$);
+export const stopTts$ = command(async ({ set }) => {
+  await set(cleanupAudio$);
 });
 
 export const playTts$ = command(

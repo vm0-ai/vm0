@@ -48,10 +48,12 @@ export const disconnectSlackOrg$ = command(
     await accept(client.disconnect(), [200]);
     signal.throwIfAborted();
     toast.success("Disconnected from Slack");
-    set(reloadSlackOrg$);
     // Re-start the Ably subscription so the card picks up when the user
     // re-connects via the OAuth tab.
-    await set(pollSlackConnection$, signal);
+    await Promise.all([
+      set(reloadSlackOrg$),
+      set(pollSlackConnection$, signal),
+    ]);
   },
 );
 
