@@ -4,6 +4,7 @@
 export function formatMessage(args: unknown[]): string {
   if (args.length === 0) return "";
   if (typeof args[0] === "string") return args[0];
+  if (args[0] instanceof Error) return args[0].message;
   return String(args[0]);
 }
 
