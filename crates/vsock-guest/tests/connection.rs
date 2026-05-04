@@ -18,9 +18,9 @@ use vsock_proto::{
 const EXIT_CODE_TIMEOUT: i32 = 124;
 const DRAIN_DEADLINE_SECS: u64 = 5;
 
-struct SocketPathGuard(String);
+struct TempPathGuard(String);
 
-impl SocketPathGuard {
+impl TempPathGuard {
     fn new(path: String) -> Self {
         let _ = std::fs::remove_file(&path);
         Self(path)
@@ -31,21 +31,29 @@ impl SocketPathGuard {
     }
 }
 
-impl Drop for SocketPathGuard {
+impl Drop for TempPathGuard {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.0);
     }
 }
 
-fn unique_socket_path(label: &str) -> SocketPathGuard {
+fn unique_tmp_path(label: &str, suffix: &str) -> TempPathGuard {
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    SocketPathGuard::new(format!(
-        "/tmp/vsock-test-{label}-{}-{nonce}.sock",
-        std::process::id()
+    TempPathGuard::new(format!(
+        "/tmp/vsock-test-{label}-{}-{nonce}{suffix}",
+        std::process::id(),
     ))
+}
+
+fn unique_socket_path(label: &str) -> TempPathGuard {
+    unique_tmp_path(label, ".sock")
+}
+
+fn unique_pid_path(label: &str) -> TempPathGuard {
+    unique_tmp_path(label, ".pid")
 }
 
 /// Helper: send a MSG_EXEC via the writer half, read MSG_EXEC_RESULT from the
@@ -934,15 +942,7 @@ fn pid_alive(pid: u32) -> bool {
 fn exec_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
     use std::os::unix::net::UnixStream as StdUnixStream;
 
-    let pid_path = format!(
-        "/tmp/vsock-test-exec-cancel-{}-{}.pid",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    );
-    let _ = std::fs::remove_file(&pid_path);
+    let pid_path = unique_pid_path("exec-cancel");
 
     let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
     let handle = thread::spawn(move || {
@@ -950,12 +950,16 @@ fn exec_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
     });
     read_and_discard_message(&mut host_stream); // MSG_READY
 
-    let payload =
-        vsock_proto::encode_exec(0, &format!("echo $$ > '{pid_path}'; sleep 60"), &[], false);
+    let payload = vsock_proto::encode_exec(
+        0,
+        &format!("echo $$ > '{}'; sleep 60", pid_path.as_str()),
+        &[],
+        false,
+    );
     let msg = vsock_proto::encode(MSG_EXEC, 1, &payload).unwrap();
     host_stream.write_all(&msg).unwrap();
 
-    let pid = read_pid_file(&pid_path);
+    let pid = read_pid_file(pid_path.as_str());
     assert!(
         pid_alive(pid),
         "child should still be running before disconnect",
@@ -964,8 +968,6 @@ fn exec_timeout_zero_silent_child_is_cancelled_on_host_disconnect() {
     drop(host_stream);
     let _ = handle.join();
     wait_for_pid_exit(pid, "exec host disconnect");
-
-    let _ = std::fs::remove_file(&pid_path);
 }
 
 #[test]
