@@ -77,6 +77,7 @@ jobs:
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
+      mobile-changed: ${{ steps.detect.outputs.mobile-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
       migration-changed: ${{ steps.detect-migration.outputs.migration-changed }}
       crates-changed: ${{ steps.detect-crates.outputs.crates-changed }}
@@ -566,6 +567,26 @@ jobs:
       - name: Test Mobile
         working-directory: turbo
         run: pnpm vitest run --project=@vm0/mobile
+
+  build-mobile-preview:
+    needs: [detect-release, prepare]
+    if: |
+      needs.detect-release.outputs.skip != 'true' &&
+      needs.prepare.outputs.mobile-changed == 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+      - name: Build mobile preview
+        working-directory: turbo/apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ needs.prepare.outputs.web-preview-url }}
+        run: eas build --platform all --profile preview --non-interactive
 
   test-app-browser:
     needs: [detect-release]
@@ -2232,6 +2253,7 @@ jobs:
       - test-cli
       - test-app
       - test-mobile
+      - build-mobile-preview
       - test-app-browser
       - test-api
       - test-other
@@ -2319,6 +2341,7 @@ jobs:
           # Informational: any result is acceptable (not a merge blocker)
           check_result "lighthouse-web" "${{ needs.lighthouse-web.result }}" "informational"
           check_result "lighthouse-app" "${{ needs.lighthouse-app.result }}" "informational"
+          check_result "build-mobile-preview" "${{ needs.build-mobile-preview.result }}" "informational"
 
           echo "::endgroup::"
           exit $FAILED

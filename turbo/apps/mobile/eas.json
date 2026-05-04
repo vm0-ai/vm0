@@ -1,0 +1,31 @@
+{
+  "cli": {
+    "version": ">=16.0.0"
+  },
+  "build": {
+    "preview": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "$EXPO_PUBLIC_API_URL"
+      },
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "resourceClass": "medium"
+      },
+      "channel": "preview"
+    },
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://api.vm0.ai"
+      },
+      "ios": {
+        "resourceClass": "m-medium"
+      },
+      "android": {
+        "resourceClass": "medium"
+      },
+      "channel": "production"
+    }
+  }
+}

@@ -7,7 +7,6 @@
     "icon": "./public/icon.png",
     "scheme": "vm0",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ai.vm0.app"
