@@ -134,6 +134,29 @@ mod tests {
     }
 
     #[test]
+    fn orphan_disconnect_reports_disconnect_error() {
+        let result = disconnect_orphan_if_still_dead_with(
+            3,
+            123,
+            |_| Ok(Some(())),
+            |_| Some(123),
+            |_| false,
+            |_| {
+                Err(nbd_cow::error::NbdCowError::Io(std::io::Error::other(
+                    "netlink failed",
+                )))
+            },
+        );
+
+        match result {
+            NbdOrphanDisconnect::Failed(message) => {
+                assert!(message.contains("netlink failed"));
+            }
+            other => panic!("expected disconnect failure, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn orphan_disconnect_rechecks_pid_after_lock() {
         let result = disconnect_orphan_if_still_dead_with(
             3,
@@ -142,6 +165,34 @@ mod tests {
             |_| Some(456),
             |_| false,
             |_| panic!("disconnect should not run after pid change"),
+        );
+
+        assert!(matches!(result, NbdOrphanDisconnect::Changed));
+    }
+
+    #[test]
+    fn orphan_disconnect_skips_when_pid_cleared_after_lock() {
+        let result = disconnect_orphan_if_still_dead_with(
+            3,
+            123,
+            |_| Ok(Some(())),
+            |_| None,
+            |_| panic!("pid_exists should not run after pid is cleared"),
+            |_| panic!("disconnect should not run after pid is cleared"),
+        );
+
+        assert!(matches!(result, NbdOrphanDisconnect::Changed));
+    }
+
+    #[test]
+    fn orphan_disconnect_skips_when_same_pid_is_live_after_lock() {
+        let result = disconnect_orphan_if_still_dead_with(
+            3,
+            123,
+            |_| Ok(Some(())),
+            |_| Some(123),
+            |_| true,
+            |_| panic!("disconnect should not run for a live pid"),
         );
 
         assert!(matches!(result, NbdOrphanDisconnect::Changed));
