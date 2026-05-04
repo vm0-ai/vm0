@@ -41,11 +41,16 @@ export const setupAgentDetailPage$ = command(
           "Agent detail page requires an active agent, but none found",
         );
       }
-      set(detachedNavigateTo$, "/agents/:agentId", {
-        pathParams: { agentId: defaultAgentId },
-        searchParams: get(searchParams$),
-        replace: true,
-      });
+      await set(
+        detachedNavigateTo$,
+        "/agents/:agentId",
+        {
+          pathParams: { agentId: defaultAgentId },
+          searchParams: get(searchParams$),
+          replace: true,
+        },
+        signal,
+      );
       return;
     }
 

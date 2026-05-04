@@ -70,10 +70,10 @@ export const deleteChatThread$ = command(
         return t.id !== threadId;
       });
       if (remaining.length === 0) {
-        set(detachedNavigateTo$, "/");
+        await set(detachedNavigateTo$, "/", undefined, signal);
       } else {
         const nextThread = remaining[idx] ?? remaining[remaining.length - 1];
-        set(navigateToChat$, nextThread.id);
+        await set(navigateToChat$, nextThread.id, signal);
       }
     }
 

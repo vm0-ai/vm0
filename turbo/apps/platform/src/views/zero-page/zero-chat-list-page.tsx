@@ -85,7 +85,7 @@ export function ZeroChatListPage() {
   };
 
   const onRecentSelect = (chatThreadId: string) => {
-    navigateToChat(chatThreadId);
+    detach(navigateToChat(chatThreadId, rootSignal), Reason.DomCallback);
   };
 
   return (

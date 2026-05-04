@@ -26,11 +26,16 @@ export const setupHomePage$ = command(
       if (queue) {
         forwardParams.set("queue", queue);
       }
-      set(detachedNavigateTo$, "/agents/:agentId/chat", {
-        pathParams: { agentId: homeAgentId },
-        searchParams: forwardParams.size > 0 ? forwardParams : undefined,
-        replace: true,
-      });
+      await set(
+        detachedNavigateTo$,
+        "/agents/:agentId/chat",
+        {
+          pathParams: { agentId: homeAgentId },
+          searchParams: forwardParams.size > 0 ? forwardParams : undefined,
+          replace: true,
+        },
+        signal,
+      );
     }
   },
 );

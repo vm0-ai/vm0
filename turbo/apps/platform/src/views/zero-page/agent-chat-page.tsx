@@ -258,6 +258,7 @@ export function VoiceChatLauncher() {
   const activeRoute = useGet(activeRoute$);
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const navigate = useSet(detachedNavigateTo$);
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   if (!trinityEnabled) {
     return null;
@@ -269,9 +270,16 @@ export function VoiceChatLauncher() {
     if (!currentChatAgentId) {
       return;
     }
-    navigate(onTalk ? "/agents/:agentId/chat" : "/agents/:agentId/talk", {
-      pathParams: { agentId: currentChatAgentId },
-    });
+    detach(
+      navigate(
+        onTalk ? "/agents/:agentId/chat" : "/agents/:agentId/talk",
+        {
+          pathParams: { agentId: currentChatAgentId },
+        },
+        rootSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const isConnecting = onTalk && voiceChatStatus === "connecting";
@@ -404,14 +412,22 @@ function SuggestedPromptButton({
 function IdeasUseCasesButton() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const navigate = useSet(detachedNavigateTo$);
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const handleClick = () => {
     if (!currentChatAgentId) {
       return;
     }
-    navigate("/agents/:agentId/ideas", {
-      pathParams: { agentId: currentChatAgentId },
-    });
+    detach(
+      navigate(
+        "/agents/:agentId/ideas",
+        {
+          pathParams: { agentId: currentChatAgentId },
+        },
+        rootSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   return (

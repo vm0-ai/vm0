@@ -65,11 +65,16 @@ export const setupAgentChatPage$ = command(
         throw new Error("Chat page requires an active agent, but none found");
       }
 
-      set(detachedNavigateTo$, "/agents/:agentId/chat", {
-        pathParams: { agentId: defaultAgentId },
-        searchParams: get(searchParams$),
-        replace: true,
-      });
+      await set(
+        detachedNavigateTo$,
+        "/agents/:agentId/chat",
+        {
+          pathParams: { agentId: defaultAgentId },
+          searchParams: get(searchParams$),
+          replace: true,
+        },
+        signal,
+      );
       return;
     }
 
@@ -86,7 +91,7 @@ export const setupAgentChatPage$ = command(
       set(updateSearchParams$, next);
     }
     if (queue === "1") {
-      set(openQueueDrawer$);
+      await set(openQueueDrawer$, signal);
     }
   },
 );

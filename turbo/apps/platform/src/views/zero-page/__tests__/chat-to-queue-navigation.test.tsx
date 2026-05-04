@@ -91,7 +91,7 @@ describe("chat to queue navigation", () => {
 
     // Open queue drawer (simulates clicking the queues nav item)
     act(() => {
-      context.store.set(openQueueDrawer$);
+      context.store.set(openQueueDrawer$, context.signal);
     });
 
     // The queue drawer should open and show concurrency info

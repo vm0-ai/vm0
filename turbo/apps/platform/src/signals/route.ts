@@ -194,7 +194,7 @@ export const navigate$ = command(
 );
 
 export const detachedNavigateTo$ = command(
-  (
+  async (
     { set, get },
     pathname: Parameters<typeof generateRouterPath>[0],
     options?: {
@@ -202,14 +202,13 @@ export const detachedNavigateTo$ = command(
       searchParams?: URLSearchParams;
       replace?: boolean;
     },
+    signal?: AbortSignal,
   ) => {
-    const signal = get(rootSignal$).signal;
-
-    set(
+    await set(
       navigate$,
       generateRouterPath(pathname, options?.pathParams),
       options ?? {},
-      signal,
+      signal ?? get(rootSignal$).signal,
     );
   },
 );

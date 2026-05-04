@@ -15,7 +15,7 @@ export const setupApiKeysPage$ = command(
     const features = await get(featureSwitch$);
     signal.throwIfAborted();
     if (!features[FeatureSwitchKey.ApiKeys]) {
-      set(detachedNavigateTo$, ROUTES.home, { replace: true });
+      await set(detachedNavigateTo$, ROUTES.home, { replace: true }, signal);
       return;
     }
 

@@ -169,7 +169,7 @@ describe("zero-nav", () => {
       const pushStateMock = await setupNav();
 
       context.store.set(setZeroShowAboutPage$, true);
-      context.store.set(handleZeroNavSelect$, "schedules");
+      context.store.set(handleZeroNavSelect$, "schedules", context.signal);
 
       expect(pushStateMock).toHaveBeenCalledWith({}, "", "/schedules");
       expect(context.store.get(activeRoute$)).toBe("schedules");
@@ -214,7 +214,11 @@ describe("zero-nav", () => {
         context.signal,
       );
 
-      context.store.set(handleZeroAccountAction$, "preferences");
+      context.store.set(
+        handleZeroAccountAction$,
+        "preferences",
+        context.signal,
+      );
 
       expect(context.store.get(activeRoute$)).toBe("settings");
     });
@@ -236,7 +240,7 @@ describe("zero-nav", () => {
         context.signal,
       );
 
-      context.store.set(handleZeroAccountAction$, "usage");
+      context.store.set(handleZeroAccountAction$, "usage", context.signal);
 
       expect(context.store.get(activeRoute$)).toBe("usage");
     });
@@ -244,7 +248,7 @@ describe("zero-nav", () => {
     it("should do nothing for 'signout' action", () => {
       mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
-      context.store.set(handleZeroAccountAction$, "signout");
+      context.store.set(handleZeroAccountAction$, "signout", context.signal);
 
       expect(context.store.get(activeRoute$)).toBe("schedules");
     });
@@ -252,7 +256,7 @@ describe("zero-nav", () => {
     it("should do nothing for 'manage' action", () => {
       mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
-      context.store.set(handleZeroAccountAction$, "manage");
+      context.store.set(handleZeroAccountAction$, "manage", context.signal);
 
       expect(context.store.get(activeRoute$)).toBe("schedules");
     });

@@ -74,6 +74,7 @@ import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.t
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
 import { currentAgent$ } from "../../signals/agent.ts";
@@ -653,13 +654,21 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
   const runScheduleNow = useSet(runScheduleNow$);
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const handleRunNow = async (entry: ScheduleEntry) => {
     await runScheduleNow(entry.id, pageSignal);
   };
 
   const handleOpenDetails = (entry: ScheduleEntry) => {
-    nav("/schedules/:scheduleId", { pathParams: { scheduleId: entry.id } });
+    detach(
+      nav(
+        "/schedules/:scheduleId",
+        { pathParams: { scheduleId: entry.id } },
+        rootSignal,
+      ),
+      Reason.DomCallback,
+    );
   };
 
   return (
@@ -744,6 +753,7 @@ function AgentHeader({
   showProfileAndInstructions: boolean;
 }) {
   const nav = useSet(detachedNavigateTo$);
+  const { signal: rootSignal } = useGet(rootSignal$);
   const openMaker = useSet(openAvatarMaker$);
 
   return (
@@ -800,9 +810,16 @@ function AgentHeader({
             size="sm"
             className="shrink-0 zero-btn-morandi gap-1.5"
             onClick={() => {
-              nav("/agents/:agentId/chat", {
-                pathParams: { agentId: agentId },
-              });
+              detach(
+                nav(
+                  "/agents/:agentId/chat",
+                  {
+                    pathParams: { agentId: agentId },
+                  },
+                  rootSignal,
+                ),
+                Reason.DomCallback,
+              );
             }}
             aria-label={`Chat with ${displayName}`}
           >
@@ -841,10 +858,11 @@ function AgentTabContent({
   const deleteAgent = useSet(deleteAgent$);
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const handleDelete = async () => {
     await deleteAgent(pageSignal);
-    nav("/agents");
+    detach(nav("/agents", undefined, rootSignal), Reason.DomCallback);
   };
 
   switch (activeTab) {

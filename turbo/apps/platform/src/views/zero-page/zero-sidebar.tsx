@@ -43,7 +43,9 @@ import {
   handleZeroNavSelect$,
   handleZeroAccountAction$,
   type SidebarNavId,
+  type ZeroAccountAction,
 } from "../../signals/zero-page/zero-nav.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
@@ -197,11 +199,15 @@ function SidebarNavContent() {
     return toggleOff();
   };
   const rawOnSelect = useSet(handleZeroNavSelect$);
+  const onAccountActionRaw = useSet(handleZeroAccountAction$);
+  const { signal: rootSignal } = useGet(rootSignal$);
   const onSelect = (id: SidebarNavId) => {
-    rawOnSelect(id);
+    detach(rawOnSelect(id, rootSignal), Reason.DomCallback);
     setExpanded(false);
   };
-  const onAccountAction = useSet(handleZeroAccountAction$);
+  const onAccountAction = (action: ZeroAccountAction) => {
+    detach(onAccountActionRaw(action, rootSignal), Reason.DomCallback);
+  };
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
   const manageCollapsed = useGet(manageSectionCollapsed$);

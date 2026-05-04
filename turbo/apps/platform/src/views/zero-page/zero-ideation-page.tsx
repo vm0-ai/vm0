@@ -11,6 +11,8 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { rootSignal$ } from "../../signals/root-signal.ts";
 import { currentAgentId$ } from "../../signals/agent.ts";
 import {
   ideationActiveTab$,
@@ -26,13 +28,21 @@ export function ZeroIdeationPage() {
   const searchQuery = useGet(ideationSearchQuery$);
   const setSearchQuery = useSet(setIdeationSearchQuery$);
   const navigate = useSet(detachedNavigateTo$);
+  const { signal: rootSignal } = useGet(rootSignal$);
   const agentId = useGet(currentAgentId$);
 
   const navigateToChat = () => {
     if (agentId) {
-      navigate("/agents/:agentId/chat", { pathParams: { agentId: agentId } });
+      detach(
+        navigate(
+          "/agents/:agentId/chat",
+          { pathParams: { agentId: agentId } },
+          rootSignal,
+        ),
+        Reason.DomCallback,
+      );
     } else {
-      navigate("/");
+      detach(navigate("/", undefined, rootSignal), Reason.DomCallback);
     }
   };
 
@@ -65,12 +75,19 @@ export function ZeroIdeationPage() {
   const handleSelectPrompt = (prompt: string) => {
     const searchParams = new URLSearchParams({ prompt });
     if (agentId) {
-      navigate("/agents/:agentId/chat", {
-        pathParams: { agentId: agentId },
-        searchParams,
-      });
+      detach(
+        navigate(
+          "/agents/:agentId/chat",
+          {
+            pathParams: { agentId: agentId },
+            searchParams,
+          },
+          rootSignal,
+        ),
+        Reason.DomCallback,
+      );
     } else {
-      navigate("/", { searchParams });
+      detach(navigate("/", { searchParams }, rootSignal), Reason.DomCallback);
     }
   };
 

@@ -1856,13 +1856,16 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const isQueued = latestRunStatus === "queued";
   const openQueueDrawer = useSet(openQueueDrawer$);
+  const { signal: rootSignal } = useGet(rootSignal$);
 
   const thinkingLabel = isQueued ? (
     <p className="zero-shimmer-text text-xs truncate">
       Waiting in{" "}
       <button
         type="button"
-        onClick={openQueueDrawer}
+        onClick={() => {
+          detach(openQueueDrawer(rootSignal), Reason.DomCallback);
+        }}
         className="cursor-pointer underline underline-offset-2"
       >
         queue...

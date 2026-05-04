@@ -83,15 +83,20 @@ interface SendNewThreadMessagePending extends PendingChatThread {
 }
 
 const routeMainOptimisticChatThread$ = command(
-  ({ get, set }, pending: PendingChatThread) => {
+  async ({ get, set }, pending: PendingChatThread, signal: AbortSignal) => {
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) === pending.threadId) {
       next.delete(SIDEBAR_PARAM);
     }
-    set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: pending.threadId },
-      searchParams: next,
-    });
+    await set(
+      detachedNavigateTo$,
+      "/chats/:threadId",
+      {
+        pathParams: { threadId: pending.threadId },
+        searchParams: next,
+      },
+      signal,
+    );
   },
 );
 
@@ -122,7 +127,7 @@ const showExistingOptimisticChatThread$ = command(
   ): Promise<void> => {
     if (pending.pane === "main") {
       if (get(currentChatThreadId$) !== pending.threadId) {
-        set(routeMainOptimisticChatThread$, pending);
+        await set(routeMainOptimisticChatThread$, pending, signal);
       }
       return;
     }
@@ -143,7 +148,7 @@ const routeOptimisticChatThread$ = command(
     set(registerOptimisticChatThread$, pending);
 
     if (pending.pane === "main") {
-      set(routeMainOptimisticChatThread$, pending);
+      await set(routeMainOptimisticChatThread$, pending, signal);
     } else {
       await set(routeSidebarOptimisticChatThread$, pending, signal);
     }

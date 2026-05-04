@@ -141,7 +141,10 @@ function NewOrUnreadChatButtonLeaf() {
       <button
         type="button"
         onClick={() => {
-          navigateToChatFn(unreadThread.id);
+          detach(
+            navigateToChatFn(unreadThread.id, rootSignal),
+            Reason.DomCallback,
+          );
         }}
         className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
       >

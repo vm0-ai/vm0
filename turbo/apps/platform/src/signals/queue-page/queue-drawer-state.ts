@@ -3,7 +3,6 @@ import { searchParams$, replaceSearchParams$ } from "../route.ts";
 import { startQueuePolling$ } from "./queue-signals.ts";
 import { resetSignal } from "../utils.ts";
 import { maybePageSignal$ } from "../page-signal.ts";
-import { rootSignal$ } from "../root-signal.ts";
 
 const internalQueueDrawerOpen$ = state(false);
 const resetQueuePollingSignal$ = resetSignal();
@@ -39,6 +38,8 @@ export const setQueueDrawerOpen$ = command(
   },
 );
 
-export const openQueueDrawer$ = command(({ get, set }) => {
-  set(setQueueDrawerOpen$, true, get(rootSignal$).signal);
-});
+export const openQueueDrawer$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    await set(setQueueDrawerOpen$, true, signal);
+  },
+);

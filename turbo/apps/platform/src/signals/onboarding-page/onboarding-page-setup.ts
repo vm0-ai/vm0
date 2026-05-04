@@ -33,7 +33,7 @@ export const setupOnboardingPage$ = command(
     signal.throwIfAborted();
 
     if (!needsOnboarding && !needsMemberOnboarding) {
-      set(detachedNavigateTo$, "/", { replace: true });
+      await set(detachedNavigateTo$, "/", { replace: true }, signal);
       return;
     }
 
