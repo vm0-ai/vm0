@@ -205,7 +205,7 @@ pub(crate) fn wait_with_drain_and_timeout_or_cancelled(
     drop(done_tx); // so recv returns Disconnected if both drain threads die
 
     let outcome = wait_with_kill_timeout_or_cancelled(child, timeout_ms, external_cancel);
-    if matches!(outcome, WaitOutcome::Cancelled) {
+    if matches!(outcome, WaitOutcome::Cancelled) || external_cancel.load(Ordering::Acquire) {
         cancel.store(true, Ordering::Release);
     }
 

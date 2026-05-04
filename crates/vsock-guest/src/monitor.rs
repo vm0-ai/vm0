@@ -228,7 +228,9 @@ fn spawn_streaming_monitor(
 
         // child wait is now UNBLOCKED — no pipe fds are held by this thread.
         let outcome = wait_with_kill_timeout_or_cancelled(child, timeout_ms, &connection_cancel);
-        if matches!(outcome, crate::wait::WaitOutcome::Cancelled) {
+        if matches!(outcome, crate::wait::WaitOutcome::Cancelled)
+            || connection_cancel.load(Ordering::Acquire)
+        {
             cancel.store(true, Ordering::Release);
         }
 

@@ -782,7 +782,11 @@ fn read_pid_file(path: &str) -> u32 {
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     loop {
         match std::fs::read_to_string(path) {
-            Ok(contents) => return contents.trim().parse().unwrap(),
+            Ok(contents) => {
+                if let Ok(pid) = contents.trim().parse() {
+                    return pid;
+                }
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => panic!("failed to read pid file {path}: {e}"),
         }
