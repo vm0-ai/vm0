@@ -39,7 +39,12 @@ export function serializeError(err: Error): Record<string, unknown> {
  * Otherwise, wrap remaining arguments in an 'args' field.
  */
 export function extractFields(args: unknown[]): Record<string, unknown> {
-  if (args.length <= 1) return {};
+  if (args.length <= 1) {
+    if (args.length === 1 && args[0] instanceof Error) {
+      return { error: serializeError(args[0]) };
+    }
+    return {};
+  }
   const fields = args.slice(1);
   if (
     fields.length === 1 &&

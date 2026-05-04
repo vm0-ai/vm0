@@ -303,14 +303,8 @@ describe("logger", () => {
       log.info("dual msg");
       log.error("dual error");
 
-      expect(consoleLog).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.any(String),
-      );
-      expect(consoleError).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.any(String),
-      );
+      expect(consoleLog).toHaveBeenCalledWith(expect.any(String));
+      expect(consoleError).toHaveBeenCalledWith(expect.any(String));
     } finally {
       consoleLog.mockRestore();
       consoleError.mockRestore();
