@@ -30,6 +30,7 @@ test("disconnect moves a just-connected connector back to an available card (reg
     submitApiToken$,
     "ahrefs",
     { AHREFS_API_KEY: "test" },
+    {},
     context.signal,
   );
   context.store.set(setPermissionDialogType$, null);

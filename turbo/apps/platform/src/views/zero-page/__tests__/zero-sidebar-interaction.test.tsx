@@ -20,7 +20,11 @@ import userEvent from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import {
+  fireClerkListeners,
+  mockedClerk,
+  mockUser,
+} from "../../../__tests__/mock-auth.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -184,6 +188,33 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
   });
 });
 
+describe("zero sidebar - account profile refresh", () => {
+  it("updates the account trigger after Clerk profile changes", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Test User")).toBeInTheDocument();
+    });
+
+    mockUser(
+      {
+        id: "test-user-123",
+        fullName: "Renamed User",
+        email: "renamed@example.com",
+      },
+      { token: "test-token" },
+    );
+    fireClerkListeners();
+
+    await waitFor(() => {
+      expect(screen.getByText("Renamed User")).toBeInTheDocument();
+      expect(screen.getByText("renamed@example.com")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Test User")).not.toBeInTheDocument();
+  });
+});
+
 describe("zero sidebar - sign-out option works (SIDEBAR-D-014)", () => {
   it("calls clerk signOut and closes the dropdown when sign-out is clicked", async () => {
     mockBaseAPIs();
@@ -274,18 +305,20 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
 describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () => {
   it("creates a new chat session and navigates to it", async () => {
     mockBaseAPIs();
+    let createdThreadId: string | null = null;
 
     server.use(
-      mockApi(chatThreadsContract.create, ({ respond }) => {
+      mockApi(chatThreadsContract.create, ({ body, respond }) => {
+        createdThreadId = body.clientThreadId ?? "new-thread-id";
         return respond(201, {
-          id: "new-thread-id",
+          id: createdThreadId,
           title: null,
           createdAt: "2026-03-10T00:00:00Z",
         });
       }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
         return respond(200, {
-          id: "new-thread-id",
+          id: params.id,
           title: null,
           agentId: DEFAULT_AGENT_ID,
           chatMessages: [],
@@ -317,7 +350,10 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
     click(newChatButton);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-id");
+      if (createdThreadId === null) {
+        throw new Error("expected a thread to be created");
+      }
+      expect(pathname()).toBe(`/chats/${createdThreadId}`);
     });
   });
 });

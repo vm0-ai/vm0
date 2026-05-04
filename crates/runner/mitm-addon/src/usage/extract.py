@@ -9,6 +9,7 @@ from collections.abc import Callable
 
 import body_utils
 
+from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
 
 # SSE event boundaries we scan for.  When no boundary is found we keep
@@ -17,6 +18,15 @@ from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
 # adding a longer separator here updates the tail automatically.
 _SSE_SEPARATORS: tuple[bytes, ...] = (b"\r\n\r\n", b"\n\n")
 _MAX_SEPARATOR_LEN = max(len(s) for s in _SSE_SEPARATORS)
+
+_MODEL_JSON_SCALAR_FIELDS = {
+    ("id",): ScalarField("string", max_bytes=1024),
+    ("model",): ScalarField("string", max_bytes=1024),
+    **{
+        ("usage", field): ScalarField("int", max_bytes=64)
+        for field in ANTHROPIC_USAGE_FIELD_CATEGORIES
+    },
+}
 
 
 def _extract_billing_usage(raw_usage, target: dict) -> None:
@@ -141,6 +151,39 @@ def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
     return parse_chunk, usage
 
 
+class ModelJsonUsageExtractor:
+    """Incrementally extract model usage from non-streaming JSON responses."""
+
+    def __init__(self) -> None:
+        self._extractor = JsonSelectiveExtractor(scalar_fields=_MODEL_JSON_SCALAR_FIELDS)
+
+    def feed(self, chunk: bytes) -> None:
+        self._extractor.feed(chunk)
+
+    def finish(self) -> tuple[dict | None, str | None]:
+        result = self._extractor.finish()
+        if not result.complete:
+            return None, result.error
+        usage: dict = {}
+        model = result.values.get(("model",))
+        if isinstance(model, str) and model:
+            usage["model"] = model
+        for raw_field, category in ANTHROPIC_USAGE_FIELD_CATEGORIES.items():
+            value = result.values.get(("usage", raw_field))
+            if _is_usage_quantity(value) and (value > 0 or category not in usage):
+                usage[category] = value
+        if not usage:
+            return None, None
+        message_id = result.values.get(("id",))
+        if isinstance(message_id, str) and message_id:
+            usage["message_id"] = message_id
+        return usage, None
+
+
+def create_model_json_usage_extractor() -> ModelJsonUsageExtractor:
+    return ModelJsonUsageExtractor()
+
+
 def extract_usage_from_json(body: bytes, headers) -> dict | None:
     """Extract usage from a non-streaming Anthropic API JSON response.
 
@@ -151,20 +194,7 @@ def extract_usage_from_json(body: bytes, headers) -> dict | None:
         body = body_utils.decompress_body(
             body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
-    try:
-        data = json.loads(body)
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    usage: dict = {}
-    model = data.get("model")
-    if model:
-        usage["model"] = model
-    _extract_billing_usage(data.get("usage"), usage)
-    if not usage:
-        return None
-    message_id = data.get("id")
-    if message_id:
-        usage["message_id"] = message_id
+    extractor = create_model_json_usage_extractor()
+    extractor.feed(body)
+    usage, _error = extractor.finish()
     return usage

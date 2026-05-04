@@ -164,9 +164,10 @@ sandbox:
 
 **Shared Read-Only Base**:
 - ext4 rootfs (~500MB-1GB)
-- Content-addressed: `/var/lib/vm0-runner/rootfs/{hash}/rootfs.ext4`
+- Content-addressed: `/var/lib/vm0-runner/images/{rootfs_hash}/rootfs.ext4`
 - Shared across all VMs via nbd-cow
-- Built via debootstrap + chroot in `build-rootfs.sh`
+- Built via debootstrap + chroot in `build-template.sh`, then customized with
+  guest binaries and host-specific settings in `customize-rootfs.sh`
 
 **Per-VM Copy-on-Write (nbd-cow)**:
 - Userspace NBD-based COW backed by sparse file

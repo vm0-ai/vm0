@@ -16,6 +16,7 @@ import { encryptSecretValue } from "../../shared/crypto";
 import { badRequest, notFound } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import type { Database } from "../../../types/global";
 
 const log = logger("service:model-provider");
 
@@ -71,8 +72,12 @@ function toModelProviderInfo(params: {
 
 /**
  * Get all provider types that belong to a given framework.
+ *
+ * Accepts `string` rather than `ModelProviderFramework` so callers that derive
+ * the framework from a compose document (codex, claude-code, …) can filter
+ * without first widening the registry's enum.
  */
-function getTypesForFramework(framework: ModelProviderFramework): string[] {
+function getTypesForFramework(framework: string): string[] {
   return Object.keys(MODEL_PROVIDER_TYPES).filter((t) => {
     return getFrameworkForType(t as ModelProviderType) === framework;
   });
@@ -80,13 +85,13 @@ function getTypesForFramework(framework: ModelProviderFramework): string[] {
 
 /**
  * Atomically assign isDefault=true to a provider, but only if no other provider
- * for the same framework already has isDefault=true for the same userId scope.
+ * already has isDefault=true for the same (orgId, userId) scope.
  *
  * Uses a single UPDATE with NOT EXISTS subquery to prevent the race condition
  * where two concurrent inserts both set isDefault=true.
  *
- * The userId filter ensures org-level defaults (sentinel userId) and user-level
- * defaults are independent — they do not interfere with each other.
+ * Workspace-scoped (per orgId + userId), regardless of framework — paired with
+ * the partial unique index `idx_model_providers_one_default_per_user`.
  *
  * @returns true if isDefault was set, false if another default already exists
  */
@@ -94,10 +99,7 @@ async function assignDefaultIfFirst(
   orgId: string,
   userId: string,
   providerId: string,
-  framework: ModelProviderFramework,
 ): Promise<boolean> {
-  const frameworkTypes = getTypesForFramework(framework);
-
   const result = await globalThis.services.db
     .update(modelProviders)
     .set({ isDefault: true })
@@ -114,7 +116,6 @@ async function assignDefaultIfFirst(
                 eq(modelProviders.userId, userId),
                 eq(modelProviders.isDefault, true),
                 ne(modelProviders.id, providerId),
-                inArray(modelProviders.type, frameworkTypes),
               ),
             ),
         ),
@@ -191,7 +192,6 @@ async function upsertModelProvider(
   if (!secretName) {
     throw badRequest(`Provider "${type}" does not have a secret name`);
   }
-  const framework = getFrameworkForType(type);
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
   const encryptedValue = encryptSecretValue(secret, encryptionKey);
 
@@ -259,14 +259,9 @@ async function upsertModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the framework (on create or update)
+  // Assign default if no other default exists for the workspace (on create or update)
   if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(
-      orgId,
-      userId,
-      provider!.id,
-      framework,
-    );
+    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
     if (isDefault) {
       provider!.isDefault = true;
     }
@@ -409,7 +404,6 @@ async function upsertMultiAuthModelProvider(
     );
   }
 
-  const framework = getFrameworkForType(type);
   const encryptionKey = globalThis.services.env.SECRETS_ENCRYPTION_KEY;
 
   log.debug("upserting multi-auth model provider", {
@@ -485,14 +479,9 @@ async function upsertMultiAuthModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the framework (on create or update)
+  // Assign default if no other default exists for the workspace (on create or update)
   if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(
-      orgId,
-      userId,
-      provider!.id,
-      framework,
-    );
+    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
     if (isDefault) {
       provider!.isDefault = true;
     }
@@ -536,8 +525,6 @@ async function upsertNoSecretModelProvider(
   type: ModelProviderType,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
-  const framework = getFrameworkForType(type);
-
   log.debug("upserting no-secret model provider", {
     orgId,
     type,
@@ -582,14 +569,9 @@ async function upsertNoSecretModelProvider(
 
   const wasCreated = !existingProvider;
 
-  // Assign default if no other default exists for the framework
+  // Assign default if no other default exists for the workspace
   if (!provider!.isDefault) {
-    const isDefault = await assignDefaultIfFirst(
-      orgId,
-      userId,
-      provider!.id,
-      framework,
-    );
+    const isDefault = await assignDefaultIfFirst(orgId, userId, provider!.id);
     if (isDefault) {
       provider!.isDefault = true;
     }
@@ -628,8 +610,6 @@ async function deleteModelProvider(
   userId: string,
   type: ModelProviderType,
 ): Promise<void> {
-  const framework = getFrameworkForType(type);
-
   // Find the model provider
   const [provider] = await globalThis.services.db
     .select()
@@ -687,19 +667,17 @@ async function deleteModelProvider(
 
   log.debug("model provider deleted", { orgId, type });
 
-  // If it was default, assign new default for framework
+  // If it was the workspace default, promote the earliest remaining provider
+  // (regardless of framework — workspace has at most one default).
   if (wasDefault) {
-    const remaining = await globalThis.services.db
+    const [nextDefault] = await globalThis.services.db
       .select({ id: modelProviders.id, type: modelProviders.type })
       .from(modelProviders)
       .where(
         and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
       )
-      .orderBy(modelProviders.createdAt);
-
-    const nextDefault = remaining.find((p) => {
-      return getFrameworkForType(p.type as ModelProviderType) === framework;
-    });
+      .orderBy(modelProviders.createdAt)
+      .limit(1);
 
     if (nextDefault) {
       await globalThis.services.db
@@ -708,7 +686,6 @@ async function deleteModelProvider(
         .where(eq(modelProviders.id, nextDefault.id));
 
       log.debug("new default assigned", {
-        framework,
         newDefaultType: nextDefault.type,
       });
     }
@@ -716,14 +693,15 @@ async function deleteModelProvider(
 }
 
 /**
- * Set a model provider as default for its framework
+ * Set a model provider as the workspace default. Workspace-scoped — clears any
+ * existing default for the (orgId, userId) regardless of framework, paired with
+ * the partial unique index `idx_model_providers_one_default_per_user`.
  */
 async function setModelProviderDefault(
   orgId: string,
   userId: string,
   type: ModelProviderType,
 ): Promise<ModelProviderInfo> {
-  const framework = getFrameworkForType(type);
   // For multi-auth providers, secretName will be null in response
   const secretName = getSecretNameForType(type) ?? null;
 
@@ -757,40 +735,28 @@ async function setModelProviderDefault(
     });
   }
 
-  // Get all providers for the same framework to clear their defaults
-  const allProviders = await globalThis.services.db
-    .select({ id: modelProviders.id, type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
-    );
-
-  const sameFrameworkIds = allProviders
-    .filter((p) => {
-      return getFrameworkForType(p.type as ModelProviderType) === framework;
-    })
-    .map((p) => {
-      return p.id;
-    });
-
-  // Use transaction to ensure atomicity
+  // Clear the existing default (if any) and set the new one in a single tx so
+  // the partial unique index never sees a dual-default state.
   await globalThis.services.db.transaction(async (tx) => {
-    // Clear all defaults for this framework
-    if (sameFrameworkIds.length > 0) {
-      await tx
-        .update(modelProviders)
-        .set({ isDefault: false, updatedAt: new Date() })
-        .where(inArray(modelProviders.id, sameFrameworkIds));
-    }
+    await tx
+      .update(modelProviders)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(
+        and(
+          eq(modelProviders.orgId, orgId),
+          eq(modelProviders.userId, userId),
+          eq(modelProviders.isDefault, true),
+          ne(modelProviders.id, target.id),
+        ),
+      );
 
-    // Set new default
     await tx
       .update(modelProviders)
       .set({ isDefault: true, updatedAt: new Date() })
       .where(eq(modelProviders.id, target.id));
   });
 
-  log.debug("model provider set as default", { type, framework });
+  log.debug("model provider set as default", { type });
 
   return toModelProviderInfo({
     id: target.id,
@@ -867,7 +833,7 @@ async function updateModelProviderModel(
 async function getDefaultModelProvider(
   orgId: string,
   userId: string,
-  framework: ModelProviderFramework,
+  framework: string,
 ): Promise<ModelProviderInfo | null> {
   // Use leftJoin to include multi-auth providers that don't have secretId
   const allProviders = await globalThis.services.db
@@ -893,6 +859,53 @@ async function getDefaultModelProvider(
       p.type in MODEL_PROVIDER_TYPES &&
       getFrameworkForType(p.type as ModelProviderType) === framework
     );
+  });
+
+  if (!defaultProvider) {
+    return null;
+  }
+
+  return toModelProviderInfo({
+    id: defaultProvider.id,
+    type: defaultProvider.type as ModelProviderType,
+    secretName: defaultProvider.secretName,
+    authMethod: defaultProvider.authMethod,
+    isDefault: defaultProvider.isDefault,
+    selectedModel: defaultProvider.selectedModel,
+    createdAt: defaultProvider.createdAt,
+    updatedAt: defaultProvider.updatedAt,
+  });
+}
+
+/**
+ * Get the default model provider regardless of framework. Returns the first
+ * `isDefault: true` provider for the (orgId, userId) scope. Used as the
+ * cross-framework fallback in admission (see Epic #11520 — provider's
+ * framework wins over compose's once admission resolves a provider).
+ */
+async function getAnyDefaultModelProvider(
+  orgId: string,
+  userId: string,
+): Promise<ModelProviderInfo | null> {
+  const allProviders = await globalThis.services.db
+    .select({
+      id: modelProviders.id,
+      type: modelProviders.type,
+      isDefault: modelProviders.isDefault,
+      selectedModel: modelProviders.selectedModel,
+      authMethod: modelProviders.authMethod,
+      secretName: secrets.name,
+      createdAt: modelProviders.createdAt,
+      updatedAt: modelProviders.updatedAt,
+    })
+    .from(modelProviders)
+    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+    .where(
+      and(eq(modelProviders.orgId, orgId), eq(modelProviders.userId, userId)),
+    );
+
+  const defaultProvider = allProviders.find((p) => {
+    return p.isDefault && p.type in MODEL_PROVIDER_TYPES;
   });
 
   if (!defaultProvider) {
@@ -995,7 +1008,7 @@ export function deleteOrgModelProvider(
 }
 
 /**
- * Set an org-level model provider as default for its framework
+ * Set an org-level model provider as the workspace default
  */
 export function setOrgModelProviderDefault(
   orgId: string,
@@ -1021,19 +1034,155 @@ export function updateOrgModelProviderModel(
 }
 
 /**
- * Get the org-level default model provider for a framework
+ * Get the org-level default model provider for a framework.
+ *
+ * `framework` accepts any string so non-claude-code frameworks (e.g. codex)
+ * can resolve their own default without widening the registry's enum.
+ * Unknown frameworks naturally return null because no registry type matches.
  */
 export function getOrgDefaultModelProvider(
   orgId: string,
-  framework: ModelProviderFramework,
+  framework: string,
 ): Promise<ModelProviderInfo | null> {
   return getDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID, framework);
+}
+
+/**
+ * Get the org-level default model provider type for run-policy checks.
+ *
+ * Filters by framework so a claude-code default does not satisfy a codex run
+ * (and vice versa) — without this filter, admission checks would pass for
+ * cross-framework configurations and fail later at provider-resolution time
+ * with a worse error.
+ *
+ * Accepts a db handle so callers inside queue-drain transactions can keep
+ * the read in the same boundary.
+ */
+export async function getOrgDefaultModelProviderType(
+  orgId: string,
+  framework: string,
+  db: Database = globalThis.services.db,
+): Promise<string | null> {
+  const frameworkTypes = getTypesForFramework(framework);
+  if (frameworkTypes.length === 0) {
+    return null;
+  }
+
+  const [row] = await db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+        inArray(modelProviders.type, frameworkTypes),
+      ),
+    )
+    .limit(1);
+
+  return row?.type ?? null;
+}
+
+/**
+ * Get the org-level default model provider regardless of framework.
+ *
+ * Used as the cross-framework fallback by admission (Stage B) when
+ * `getOrgDefaultModelProvider(orgId, composeFramework)` returns null. Per
+ * Epic #11520, the provider's framework wins; admission accepts any default
+ * and downstream stages route via `resolvedFramework`.
+ *
+ * Returns null only when the org has no `isDefault: true` provider for any
+ * framework. Telegram / Slack / chat-title callers keep using the strict
+ * framework-scoped variant — they want the claude-code default specifically.
+ */
+export function getOrgAnyDefaultModelProvider(
+  orgId: string,
+): Promise<ModelProviderInfo | null> {
+  return getAnyDefaultModelProvider(orgId, ORG_SENTINEL_USER_ID);
+}
+
+/**
+ * Type-only variant of `getOrgAnyDefaultModelProvider`, mirroring the shape
+ * of `getOrgDefaultModelProviderType`. Accepts a db handle so callers inside
+ * queue-drain transactions can keep the read in the same boundary.
+ */
+export async function getOrgAnyDefaultModelProviderType(
+  orgId: string,
+  db: Database = globalThis.services.db,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ type: modelProviders.type })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    )
+    .limit(1);
+
+  return row?.type ?? null;
 }
 
 /**
  * Get a specific model provider by ID, scoped to an org.
  * Returns null if the provider doesn't belong to the org.
  */
+/**
+ * Get the org-level model provider row for a specific type.
+ *
+ * Used by `resolveModelProviderSecrets` when the request explicitly overrides
+ * `modelProvider` with a type that differs from the workspace default — we
+ * need the explicit provider's `selectedModel` / `authMethod` rather than
+ * borrowing them from the unrelated default.
+ *
+ * Returns null when the org has no row of that type, in which case downstream
+ * resolution falls back to `getDefaultModel(providerType)` for the model and
+ * skips multi-auth resolution (consistent with no-secret-set behavior).
+ */
+export async function getOrgModelProviderByType(
+  orgId: string,
+  type: ModelProviderType,
+): Promise<ModelProviderInfo | null> {
+  const [row] = await globalThis.services.db
+    .select({
+      id: modelProviders.id,
+      type: modelProviders.type,
+      isDefault: modelProviders.isDefault,
+      selectedModel: modelProviders.selectedModel,
+      authMethod: modelProviders.authMethod,
+      secretName: secrets.name,
+      createdAt: modelProviders.createdAt,
+      updatedAt: modelProviders.updatedAt,
+    })
+    .from(modelProviders)
+    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.type, type),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+  if (!(row.type in MODEL_PROVIDER_TYPES)) return null;
+
+  return toModelProviderInfo({
+    id: row.id,
+    type: row.type as ModelProviderType,
+    secretName: row.secretName,
+    authMethod: row.authMethod,
+    isDefault: row.isDefault,
+    selectedModel: row.selectedModel,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
 export async function getModelProviderByIdForOrg(
   orgId: string,
   providerId: string,

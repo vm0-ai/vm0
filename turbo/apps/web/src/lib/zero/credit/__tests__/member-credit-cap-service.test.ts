@@ -6,7 +6,7 @@ import {
   createTestOrg,
   insertOrgMembersEntry,
   getOrgMembersEntry,
-  insertTestCreditUsage,
+  insertTestModelUsageEvent,
   updateOrgStripeFields,
 } from "../../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../env";
@@ -116,8 +116,8 @@ describe("evaluateMemberCaps", () => {
       creditEnabled: true,
     });
 
-    // Insert processed credit usage exceeding cap (75 credits total)
-    await insertTestCreditUsage(orgId, {
+    // Insert processed usage_event credits exceeding cap (75 credits total)
+    await insertTestModelUsageEvent(orgId, {
       userId,
       status: "processed",
       creditsCharged: 75,
@@ -153,8 +153,8 @@ describe("evaluateMemberCaps", () => {
       creditEnabled: true,
     });
 
-    // Insert processed credit usage under cap (25 credits)
-    await insertTestCreditUsage(orgId, {
+    // Insert processed usage_event credits under cap (25 credits)
+    await insertTestModelUsageEvent(orgId, {
       userId,
       status: "processed",
       creditsCharged: 25,
@@ -190,7 +190,7 @@ describe("evaluateMemberCaps", () => {
       creditCap: 50,
       creditEnabled: true,
     });
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId: userId1,
       status: "processed",
       creditsCharged: 75,
@@ -204,7 +204,7 @@ describe("evaluateMemberCaps", () => {
       creditCap: 100,
       creditEnabled: true,
     });
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId: userId2,
       status: "processed",
       creditsCharged: 30,
@@ -244,7 +244,7 @@ describe("evaluateMemberCaps", () => {
     });
 
     // Even with high usage, member without cap should remain enabled
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       status: "processed",
       creditsCharged: 999,
@@ -281,7 +281,7 @@ describe("evaluateMemberCaps", () => {
     });
 
     // Usage is under cap (10 credits), but member was previously disabled
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       status: "processed",
       creditsCharged: 10,

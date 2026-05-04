@@ -62,8 +62,8 @@ export default async function ModelsPage({ params }: PageProps) {
       return {
         "@type": "ListItem",
         position: i + 1,
-        name: m.name,
-        description: m.cardIntro,
+        name: t(`content.${m.slug}.name`),
+        description: t(`content.${m.slug}.cardIntro`),
       };
     }),
   };

@@ -9,6 +9,9 @@ use tokio::sync::Semaphore;
 use tokio::sync::{Mutex, Notify};
 use tracing::{debug, warn};
 
+use crate::ids::RunId;
+use crate::network_log_drain::{NetworkLogDrainContext, NetworkLogDrainCoordinator};
+
 /// Coordinates Rust-side DNS/kmsg network log attribution and file writes.
 ///
 /// Source-IP lookup and pending-write registration happen under the same lock,
@@ -27,8 +30,32 @@ struct Inner {
 
 #[derive(Default)]
 struct State {
-    source_paths: HashMap<String, PathBuf>,
+    source_paths: HashMap<String, SourceState>,
     pending_paths: HashMap<PathBuf, PathState>,
+    next_generation: u64,
+}
+
+enum SourceState {
+    Active { path: PathBuf, generation: u64 },
+    Draining { path: PathBuf, generation: u64 },
+}
+
+impl SourceState {
+    fn path(&self) -> &PathBuf {
+        match self {
+            Self::Active { path, .. } | Self::Draining { path, .. } => path,
+        }
+    }
+
+    fn generation(&self) -> u64 {
+        match self {
+            Self::Active { generation, .. } | Self::Draining { generation, .. } => *generation,
+        }
+    }
+
+    fn matches(&self, path: &Path, generation: u64) -> bool {
+        self.generation() == generation && self.path() == path
+    }
 }
 
 struct PathState {
@@ -52,6 +79,69 @@ struct WriteGate {
     release: Arc<Semaphore>,
 }
 
+/// Owns a source-IP network-log attribution for one runner job.
+///
+/// Keep this value alive until the sandbox is parked or stopped, then call
+/// [`NetworkLogSession::close_for_upload`] before reading/uploading the job's
+/// network log. Dropping it is only a best-effort cleanup fallback.
+#[must_use = "dropping a NetworkLogSession immediately closes network-log attribution"]
+pub struct NetworkLogSession {
+    manager: NetworkLogManager,
+    source_ip: String,
+    path: PathBuf,
+    generation: u64,
+    closed: bool,
+}
+
+impl NetworkLogSession {
+    /// Close local Rust-side network logs for this run before upload reads the file.
+    ///
+    /// The barrier only covers rows observable to the runner reader tasks. It
+    /// cannot prove delivery for data still buffered inside dnsmasq, `dmesg`,
+    /// or the kernel before those producers emit to their monitored streams.
+    pub async fn close_for_upload(mut self, run_id: RunId, drain: &NetworkLogDrainCoordinator) {
+        let current = self
+            .manager
+            .begin_session_drain(&self.source_ip, &self.path, self.generation)
+            .await;
+        if current {
+            drain
+                .drain(NetworkLogDrainContext {
+                    run_id,
+                    source_ip: &self.source_ip,
+                    path: &self.path,
+                    generation: self.generation,
+                })
+                .await;
+        }
+        self.manager.flush_path(&self.path).await;
+        self.manager
+            .finalize_session(&self.source_ip, &self.path, self.generation)
+            .await;
+        self.closed = true;
+    }
+}
+
+impl Drop for NetworkLogSession {
+    fn drop(&mut self) {
+        if self.closed {
+            return;
+        }
+
+        let manager = self.manager.clone();
+        let source_ip = self.source_ip.clone();
+        let path = self.path.clone();
+        let generation = self.generation;
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            std::mem::drop(handle.spawn(async move {
+                manager
+                    .finalize_session(&source_ip, &path, generation)
+                    .await;
+            }));
+        }
+    }
+}
+
 impl NetworkLogManager {
     pub fn new() -> Self {
         Self::default()
@@ -67,11 +157,33 @@ impl NetworkLogManager {
         }
     }
 
-    pub async fn register_source_ip(&self, source_ip: impl Into<String>, path: PathBuf) {
+    pub async fn register_source_ip(
+        &self,
+        source_ip: impl Into<String>,
+        path: PathBuf,
+    ) -> NetworkLogSession {
+        let source_ip = source_ip.into();
         let mut state = self.inner.state.lock().await;
-        state.source_paths.insert(source_ip.into(), path);
+        state.next_generation += 1;
+        let generation = state.next_generation;
+        state.source_paths.insert(
+            source_ip.clone(),
+            SourceState::Active {
+                path: path.clone(),
+                generation,
+            },
+        );
+        NetworkLogSession {
+            manager: self.clone(),
+            source_ip,
+            path,
+            generation,
+            closed: false,
+        }
     }
 
+    /// Remove a source mapping immediately.
+    #[cfg(test)]
     pub async fn unregister_source_ip(&self, source_ip: &str) {
         let mut state = self.inner.state.lock().await;
         state.source_paths.remove(source_ip);
@@ -96,7 +208,12 @@ impl NetworkLogManager {
 
         let path = {
             let mut state = self.inner.state.lock().await;
-            let Some(path) = state.source_paths.get(source_ip).cloned() else {
+            let Some(path) = state
+                .source_paths
+                .get(source_ip)
+                .map(SourceState::path)
+                .cloned()
+            else {
                 return false;
             };
             let path_state = state
@@ -109,6 +226,34 @@ impl NetworkLogManager {
 
         self.spawn_append(path, line);
         true
+    }
+
+    async fn begin_session_drain(&self, source_ip: &str, path: &Path, generation: u64) -> bool {
+        let mut state = self.inner.state.lock().await;
+        let Some(source_state) = state.source_paths.get(source_ip) else {
+            return false;
+        };
+        if !source_state.matches(path, generation) {
+            return false;
+        }
+        state.source_paths.insert(
+            source_ip.to_string(),
+            SourceState::Draining {
+                path: path.to_path_buf(),
+                generation,
+            },
+        );
+        true
+    }
+
+    async fn finalize_session(&self, source_ip: &str, path: &Path, generation: u64) {
+        let mut state = self.inner.state.lock().await;
+        let Some(source_state) = state.source_paths.get(source_ip) else {
+            return;
+        };
+        if source_state.matches(path, generation) {
+            state.source_paths.remove(source_ip);
+        }
     }
 
     /// Wait until all currently accepted Rust-side writes for `path` finish.
@@ -194,8 +339,12 @@ fn append_line(path: &Path, line: &str) -> std::io::Result<()> {
 mod tests {
     use std::future::{Future, poll_fn};
     use std::task::Poll;
+    use std::time::Duration;
 
     use serde_json::json;
+
+    use crate::ids::RunId;
+    use crate::network_log_drain::{NetworkLogDrainCoordinator, NetworkLogDrainProducer};
 
     use super::*;
 
@@ -207,13 +356,37 @@ mod tests {
             .collect()
     }
 
+    async fn source_ip_registered(manager: &NetworkLogManager, source_ip: &str) -> bool {
+        manager
+            .inner
+            .state
+            .lock()
+            .await
+            .source_paths
+            .contains_key(source_ip)
+    }
+
+    async fn wait_source_ip_unregistered(manager: &NetworkLogManager, source_ip: &str) {
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            if !source_ip_registered(manager, source_ip).await {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "source IP {source_ip} stayed registered after session drop",
+            );
+            tokio::task::yield_now().await;
+        }
+    }
+
     #[tokio::test]
     async fn append_for_ip_writes_json_line_to_registered_path() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("network.jsonl");
         let manager = NetworkLogManager::new();
 
-        manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         assert!(
             manager
                 .append_for_ip(
@@ -240,7 +413,7 @@ mod tests {
         let release = Arc::new(Semaphore::new(0));
         let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
 
-        manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         assert!(
             manager
                 .append_for_ip("10.200.0.2", json!({"type":"dns","host":"held.test"}))
@@ -275,8 +448,8 @@ mod tests {
         let release = Arc::new(Semaphore::new(0));
         let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
 
-        manager.register_source_ip("10.200.0.2", path.clone()).await;
-        manager.register_source_ip("10.200.0.3", path.clone()).await;
+        let _session_a = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let _session_b = manager.register_source_ip("10.200.0.3", path.clone()).await;
 
         let first_started = started.notified();
         assert!(
@@ -339,7 +512,7 @@ mod tests {
         let path = dir.path().join("missing").join("network.jsonl");
         let manager = NetworkLogManager::new();
 
-        manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         assert!(
             manager
                 .append_for_ip("10.200.0.2", json!({"type":"dns","host":"bad-path.test"}))
@@ -356,7 +529,7 @@ mod tests {
         let path = dir.path().join("network.jsonl");
         let manager = NetworkLogManager::new();
 
-        manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         manager.unregister_source_ip("10.200.0.2").await;
 
         assert!(
@@ -377,7 +550,7 @@ mod tests {
         let release = Arc::new(Semaphore::new(0));
         let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
 
-        manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         assert!(
             manager
                 .append_for_ip("10.200.0.2", json!({"type":"dns","host":"accepted.test"}))
@@ -403,7 +576,7 @@ mod tests {
         let release = Arc::new(Semaphore::new(0));
         let manager = NetworkLogManager::new_with_write_gate(started.clone(), release.clone());
 
-        manager
+        let _old_session = manager
             .register_source_ip("10.200.0.2", old_path.clone())
             .await;
         let old_started = started.notified();
@@ -415,7 +588,7 @@ mod tests {
         old_started.await;
 
         manager.unregister_source_ip("10.200.0.2").await;
-        manager
+        let _new_session = manager
             .register_source_ip("10.200.0.2", new_path.clone())
             .await;
         let new_started = started.notified();
@@ -446,11 +619,11 @@ mod tests {
         let new_path = dir.path().join("new.jsonl");
         let manager = NetworkLogManager::new();
 
-        manager
+        let _old_session = manager
             .register_source_ip("10.200.0.2", old_path.clone())
             .await;
         manager.unregister_source_ip("10.200.0.2").await;
-        manager
+        let _new_session = manager
             .register_source_ip("10.200.0.2", new_path.clone())
             .await;
 
@@ -465,5 +638,210 @@ mod tests {
         let lines = read_json_lines(&new_path);
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0]["host"], "new.test");
+    }
+
+    #[tokio::test]
+    async fn draining_session_accepts_late_rows_until_finalized() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+
+        manager
+            .begin_session_drain(&session.source_ip, &session.path, session.generation)
+            .await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"late.test"}))
+                .await
+        );
+        manager.flush_path(&path).await;
+
+        let lines = read_json_lines(&path);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0]["host"], "late.test");
+
+        manager
+            .finalize_session(&session.source_ip, &session.path, session.generation)
+            .await;
+        assert!(
+            !manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"closed.test"}))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn old_session_finalize_does_not_remove_new_registration() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_path = dir.path().join("old.jsonl");
+        let new_path = dir.path().join("new.jsonl");
+        let manager = NetworkLogManager::new();
+        let old = manager
+            .register_source_ip("10.200.0.2", old_path.clone())
+            .await;
+
+        manager
+            .begin_session_drain(&old.source_ip, &old.path, old.generation)
+            .await;
+        let _new_session = manager
+            .register_source_ip("10.200.0.2", new_path.clone())
+            .await;
+        manager
+            .finalize_session(&old.source_ip, &old.path, old.generation)
+            .await;
+
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"new.test"}))
+                .await
+        );
+        manager.flush_path(&new_path).await;
+
+        assert!(!old_path.exists());
+        let lines = read_json_lines(&new_path);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0]["host"], "new.test");
+    }
+
+    #[tokio::test]
+    async fn dropped_unclosed_session_finalizes_mapping() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(source_ip_registered(&manager, "10.200.0.2").await);
+
+        drop(session);
+        wait_source_ip_unregistered(&manager, "10.200.0.2").await;
+
+        assert!(
+            !manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"after-drop.test"}))
+                .await
+        );
+        manager.flush_path(&path).await;
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn close_for_upload_waits_for_barrier_and_flushes_late_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let (producer, mut drain_rx) = NetworkLogDrainProducer::channel("test");
+        let drain = NetworkLogDrainCoordinator::new(vec![producer]);
+
+        let manager_for_barrier = manager.clone();
+        let barrier = tokio::spawn(async move {
+            let request = drain_rx.recv().await.expect("drain request");
+            assert!(
+                manager_for_barrier
+                    .append_for_ip(
+                        "10.200.0.2",
+                        json!({"type":"dns","host":"during-drain.test"}),
+                    )
+                    .await
+            );
+            request.ack();
+        });
+
+        session.close_for_upload(RunId::nil(), &drain).await;
+        barrier.await.unwrap();
+
+        let lines = read_json_lines(&path);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0]["host"], "during-drain.test");
+        assert!(
+            !manager
+                .append_for_ip(
+                    "10.200.0.2",
+                    json!({"type":"dns","host":"after-close.test"})
+                )
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn close_for_upload_with_unavailable_producer_finalizes_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let (producer, drain_rx) = NetworkLogDrainProducer::channel("closed");
+        drop(drain_rx);
+        let drain = NetworkLogDrainCoordinator::new(vec![producer]);
+
+        session.close_for_upload(RunId::nil(), &drain).await;
+
+        assert!(!source_ip_registered(&manager, "10.200.0.2").await);
+        assert!(
+            !manager
+                .append_for_ip(
+                    "10.200.0.2",
+                    json!({"type":"dns","host":"after-close.test"})
+                )
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn close_for_upload_with_dropped_ack_finalizes_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let (producer, mut drain_rx) = NetworkLogDrainProducer::channel("dropped-ack");
+        let drain = NetworkLogDrainCoordinator::new(vec![producer]);
+        let receiver = tokio::spawn(async move {
+            let request = drain_rx.recv().await.expect("drain request");
+            drop(request);
+        });
+
+        session.close_for_upload(RunId::nil(), &drain).await;
+        receiver.await.unwrap();
+
+        assert!(!source_ip_registered(&manager, "10.200.0.2").await);
+        assert!(
+            !manager
+                .append_for_ip(
+                    "10.200.0.2",
+                    json!({"type":"dns","host":"after-close.test"})
+                )
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn close_for_upload_timeout_still_flushes_accepted_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("network.jsonl");
+        let manager = NetworkLogManager::new();
+        let session = manager.register_source_ip("10.200.0.2", path.clone()).await;
+        assert!(
+            manager
+                .append_for_ip("10.200.0.2", json!({"type":"dns","host":"accepted.test"}),)
+                .await
+        );
+        let (producer, _drain_rx) = NetworkLogDrainProducer::channel("held");
+        let drain = NetworkLogDrainCoordinator::new_with_timeout_for_test(
+            vec![producer],
+            Duration::from_millis(1),
+        );
+
+        session.close_for_upload(RunId::nil(), &drain).await;
+
+        let lines = read_json_lines(&path);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0]["host"], "accepted.test");
+        assert!(
+            !manager
+                .append_for_ip(
+                    "10.200.0.2",
+                    json!({"type":"dns","host":"after-timeout.test"})
+                )
+                .await
+        );
     }
 }

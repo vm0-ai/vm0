@@ -48,6 +48,9 @@ export function UsageInsightChatsTable({
   }
 
   const totalCount = chats.length + chatOtherCount;
+  const totalCredits = chats.reduce((s, r) => {
+    return s + r.credits;
+  }, chatOtherCredits);
   const maxValue = Math.max(
     1,
     ...chats.map((c) => {
@@ -65,6 +68,10 @@ export function UsageInsightChatsTable({
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalCount}
+      </p>
+      <p className="text-sm opacity-60 mt-2">
+        {totalCount === 1 ? "chat" : "chats"} used {formatValue(totalCredits)}{" "}
+        {totalCredits === 1 ? "credit" : "credits"}
       </p>
       <TooltipProvider delayDuration={300}>
         <ul className="flex flex-col gap-2.5 mt-4">

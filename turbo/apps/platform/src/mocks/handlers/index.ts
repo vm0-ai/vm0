@@ -49,10 +49,7 @@ import {
   resetMockTeam,
 } from "./api-agents.ts";
 import { apiRunsHandlers } from "./api-runs.ts";
-import {
-  apiFeatureSwitchesHandlers,
-  resetMockFeatureSwitches,
-} from "./api-feature-switches.ts";
+import { apiFeatureSwitchesHandlers } from "./api-feature-switches.ts";
 import { apiRealtimeHandlers } from "./api-realtime.ts";
 import { resetAblySubscriptions } from "../ably.ts";
 import {
@@ -120,7 +117,6 @@ export function resetAllMockHandlers(): void {
   resetMockOrgModelProviders();
   resetMockBilling();
   resetMockSlackConnect();
-  resetMockFeatureSwitches();
   resetAblySubscriptions();
   resetMockPermissionRequests();
   resetMockComposesList();

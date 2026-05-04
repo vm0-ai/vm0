@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.20.7](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.6...guest-download-v0.20.7) (2026-05-03)
+
+
+### Refactoring
+
+* **runner:** centralize guest download fatal errors ([#11696](https://github.com/vm0-ai/vm0/issues/11696)) ([8bd362e](https://github.com/vm0-ai/vm0/commit/8bd362edbb932a0ada0e6b021a113a9e5905cd74))
+* **runner:** share guest download manifest entry ([#11693](https://github.com/vm0-ai/vm0/issues/11693)) ([6aa3e3b](https://github.com/vm0-ai/vm0/commit/6aa3e3b942ca58b48a1fb6067e36a6dcf68c192c))
+
+## [0.20.6](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.5...guest-download-v0.20.6) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+## [0.20.5](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.4...guest-download-v0.20.5) (2026-04-29)
+
+
+### Refactoring
+
+* split runner storage manifest boundaries ([#11487](https://github.com/vm0-ai/vm0/issues/11487)) ([7bfc3f8](https://github.com/vm0-ai/vm0/commit/7bfc3f86717495cf2ed8d72c796fb1e3b6a98f30))
+
 ## [0.20.4](https://github.com/vm0-ai/vm0/compare/guest-download-v0.20.3...guest-download-v0.20.4) (2026-04-27)
 
 

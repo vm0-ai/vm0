@@ -18,7 +18,10 @@ import {
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { reloadTagline$ } from "./zero-chat-page.ts";
+import {
+  reloadTagline$,
+  resetChatPageModelSelection$,
+} from "./zero-chat-page.ts";
 import { setupAgentChatPageKeyboard$ } from "./agent-chat-keyboard.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 
@@ -31,6 +34,7 @@ export const setupAgentChatPage$ = command(
 
     // Reset the talk draft on entrance
     set(get(talkDraft$).clear$);
+    set(resetChatPageModelSelection$);
 
     // Read agent ID from URL immediately (synchronous) and update sidebar
     // highlight early so the UI responds without waiting for async data.

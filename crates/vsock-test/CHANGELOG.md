@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.12](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.11...vsock-test-v0.9.12) (2026-05-03)
+
+## [0.9.11](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.10...vsock-test-v0.9.11) (2026-05-03)
+
+## [0.9.10](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.9...vsock-test-v0.9.10) (2026-05-03)
+
+## [0.9.9](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.8...vsock-test-v0.9.9) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
 ## [0.9.8](https://github.com/vm0-ai/vm0/compare/vsock-test-v0.9.7...vsock-test-v0.9.8) (2026-04-27)
 
 

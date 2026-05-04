@@ -5,7 +5,7 @@
  * and agent hover interactions.
  */
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -15,6 +15,8 @@ import {
   zeroInsightsContract,
   type InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
+import { zeroUsageInsightContract } from "@vm0/api-contracts/contracts/zero-usage-insight";
+import { usageInsightFixture } from "../../usage-page/__tests__/test-fixtures.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -106,6 +108,8 @@ function sampleDay(
         agentNames: ["Beta Bot"],
       },
     ],
+    schedules: [],
+    chats: [],
     ...overrides,
   };
 }
@@ -133,13 +137,13 @@ describe("network insights page - empty state", () => {
 // ---------------------------------------------------------------------------
 
 describe("network insights page - data rendering", () => {
-  it("should render the Insights heading", async () => {
+  it("should render the Insights & Usage heading", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(screen.getByText("Insights")).toBeInTheDocument();
+      expect(screen.getByText("Insights & Usage")).toBeInTheDocument();
     });
   });
 
@@ -248,15 +252,18 @@ describe("network insights page - data rendering", () => {
     expect(abbreviated[0]).toHaveAttribute("title", "12,400");
   });
 
-  it("should display most-used service with proper connector label", async () => {
+  it("should render the Services subtitle in sentence form", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     detachedSetupPage({ context, path: "/insights" });
 
+    // sampleDay services: 10 + 5 = 15 calls
     await waitFor(() => {
-      expect(screen.getByText(/Most used:/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/services received 15 calls/),
+      ).toBeInTheDocument();
     });
-    // "slack" domain should render as "Slack" via CONNECTOR_TYPES label
+    // Connector label "Slack" still appears in the row list
     expect(screen.getAllByText("Slack").length).toBeGreaterThanOrEqual(1);
   });
 
@@ -340,7 +347,7 @@ describe("network insights page - data rendering", () => {
     });
   });
 
-  it("should render multiple days", async () => {
+  it("should render every day's masonry with a date title above it", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago),
       sampleDay(day2Ago, {
@@ -353,9 +360,13 @@ describe("network insights page - data rendering", () => {
     detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(screen.getByText("Alpha Bot")).toBeInTheDocument();
+      expect(screen.getByText("Yesterday")).toBeInTheDocument();
     });
+    // Both days render their full masonry — agent names from each day visible
+    expect(screen.getByText("Alpha Bot")).toBeInTheDocument();
     expect(screen.getByText("Gamma Bot")).toBeInTheDocument();
+    // PermissionsAllowedCard heading appears once per day's masonry
+    expect(screen.getAllByText("Allowed")).toHaveLength(2);
   });
 });
 
@@ -400,7 +411,7 @@ describe("network insights page - date range filter", () => {
     });
   });
 
-  it("should switch to Last 30 Days range", async () => {
+  it("should switch to Last 30 Days range and surface older day's masonry", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago),
       sampleDay(day25Ago, {
@@ -412,19 +423,19 @@ describe("network insights page - date range filter", () => {
 
     detachedSetupPage({ context, path: "/insights" });
 
-    // Default is "Last 7 Days" — OldBot not visible
+    // Default is "Last 7 Days" — OldBot's day filtered out entirely
     await waitFor(() => {
       expect(screen.getByText("Last 7 Days")).toBeInTheDocument();
     });
     expect(screen.queryByText("OldBot")).not.toBeInTheDocument();
 
-    // Open dropdown and select "Last 30 Days"
     click(screen.getByText("Last 7 Days"));
     await waitFor(() => {
       expect(screen.getByText("Last 30 Days")).toBeInTheDocument();
     });
     click(screen.getByText("Last 30 Days"));
 
+    // Older day's masonry is now rendered in full — OldBot visible
     await waitFor(() => {
       expect(screen.getByText("OldBot")).toBeInTheDocument();
     });
@@ -516,7 +527,7 @@ describe("network insights page - data refetch", () => {
     detachedSetupPage({ context, path: "/insights" });
 
     // The page setup calls reloadInsights$ which triggers a second fetch,
-    // so the UI should eventually show the refreshed data.
+    // so the UI should eventually show the refreshed data in the masonry.
     await waitFor(() => {
       expect(screen.getByText("RefreshedBot")).toBeInTheDocument();
     });
@@ -638,8 +649,10 @@ describe("network insights page - your credit usage card", () => {
     await waitFor(() => {
       expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
     });
-    // No match for current user → 0
-    expect(screen.getByText("0")).toBeInTheDocument();
+    // No match for current user → 0 (scoped to the Your Credit Usage card)
+    const yourUsageHeading = screen.getByText("Your Credit Usage");
+    const yourUsageCard = yourUsageHeading.closest("div") as HTMLElement;
+    expect(within(yourUsageCard).getByText("0")).toBeInTheDocument();
   });
 });
 
@@ -798,5 +811,397 @@ describe("network insights page - allowed card layout", () => {
     expect(
       screen.getByText(/calls made within 1 granted permission/),
     ).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Embedded usage panels (chart + schedules + chats)
+// ---------------------------------------------------------------------------
+
+describe("network insights page - embedded usage panels", () => {
+  it("renders the Usage chart and tables when the Time range tab is active", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    // Default tab is daily breakdown — switch to Time range to expose Usage view
+    await waitFor(() => {
+      expect(screen.getByText("Time range")).toBeInTheDocument();
+    });
+    click(screen.getByText("Time range"));
+
+    await waitFor(() => {
+      expect(
+        within(
+          screen.getByRole("region", { name: "Credits totals" }),
+        ).getByText("credits"),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("My Schedule")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Chat with Agent")).toBeInTheDocument();
+  });
+
+  it("does not render the Usage panels when there is no insights data", async () => {
+    mockInsightsAPI([]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Run an agent to see insights here."),
+      ).toBeInTheDocument();
+    });
+    // Tabs are not shown in the empty state, so Time range cannot be reached
+    expect(screen.queryByText("Time range")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Credits totals" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders the Time range tab even when the daily filter excludes all days", async () => {
+    mockInsightsAPI([sampleDay(day20Ago)]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Daily breakdown")).toBeInTheDocument();
+    });
+    click(screen.getByText("Daily breakdown"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("No activity in this time range."),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByText("Time range"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "Credits totals" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("requests 30d usage when Last 30 Days is selected", async () => {
+    let capturedRange: string | null = null;
+    mockInsightsAPI([
+      sampleDay(day1Ago),
+      sampleDay(day25Ago, {
+        agents: [
+          { agentName: "OldBot", agentId: "a-old", runs: 1, credits: 5 },
+        ],
+      }),
+    ]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ query, respond }) => {
+        capturedRange = query.range;
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Last 7 Days")).toBeInTheDocument();
+    });
+    click(screen.getByText("Last 7 Days"));
+    await waitFor(() => {
+      expect(screen.getByText("Last 30 Days")).toBeInTheDocument();
+    });
+    click(screen.getByText("Last 30 Days"));
+    click(screen.getByText("Time range"));
+
+    await waitFor(() => {
+      expect(screen.getByText("My Schedule")).toBeInTheDocument();
+    });
+    expect(capturedRange).toBe("30d");
+  });
+
+  it("requests a single-day usage window for a selected day", async () => {
+    let capturedQuery: { range: string; date?: string } | null = null;
+    mockInsightsAPI([sampleDay(day1Ago)]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ query, respond }) => {
+        capturedQuery = { range: query.range, date: query.date };
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Last 7 Days")).toBeInTheDocument();
+    });
+    click(screen.getByText("Last 7 Days"));
+    const findYesterdayItem = () => {
+      return screen.getAllByRole("menuitem").find((item) => {
+        return item.textContent === "Yesterday";
+      });
+    };
+    await waitFor(() => {
+      expect(findYesterdayItem()).toBeDefined();
+    });
+    click(findYesterdayItem()!);
+    click(screen.getByText("Time range"));
+
+    await waitFor(() => {
+      expect(screen.getByText("My Schedule")).toBeInTheDocument();
+    });
+    expect(capturedQuery).toStrictEqual({ range: "day", date: day1Ago });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tabs — daily breakdown vs. time-range
+// ---------------------------------------------------------------------------
+
+describe("network insights page - tabs", () => {
+  it("defaults to the daily breakdown tab", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Daily breakdown")).toBeInTheDocument();
+    });
+    // Newest day's masonry is visible under daily tab
+    expect(screen.getByText("Allowed")).toBeInTheDocument();
+  });
+
+  it("switches to time range and hides the per-day diary", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(200, usageInsightFixture);
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Time range")).toBeInTheDocument();
+    });
+    click(screen.getByText("Time range"));
+
+    // Daily masonry artifact gone; time-range view's totals region appears.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("region", { name: "Credits totals" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Allowed")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-day Schedules / Chats cards
+// ---------------------------------------------------------------------------
+
+describe("network insights page - per-day schedules and chats", () => {
+  it("renders Schedules card inside the day masonry", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        schedules: [
+          {
+            scheduleId: "sch-1",
+            scheduleName: "morning-brief",
+            scheduleDescription: "Morning summary",
+            credits: 80,
+            tokens: 8000,
+          },
+          {
+            scheduleId: "sch-2",
+            scheduleName: "weekly-report",
+            scheduleDescription: null,
+            credits: 40,
+            tokens: 4000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    // Card heading + the two schedule names visible inside the expanded day
+    await waitFor(() => {
+      expect(screen.getByText("Schedules")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Morning summary")).toBeInTheDocument();
+    expect(screen.getByText("weekly-report")).toBeInTheDocument();
+  });
+
+  it("renders Chats card inside the day masonry", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        chats: [
+          {
+            threadId: "t-1",
+            threadTitle: "Refactor billing",
+            credits: 60,
+            tokens: 6000,
+          },
+          {
+            threadId: "t-2",
+            threadTitle: null,
+            credits: 30,
+            tokens: 3000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Chats")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Refactor billing")).toBeInTheDocument();
+    expect(screen.getByText("(untitled)")).toBeInTheDocument();
+  });
+
+  it("hides the Schedules card when no schedules fired that day", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Allowed")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Schedules")).not.toBeInTheDocument();
+    expect(screen.queryByText("Chats")).not.toBeInTheDocument();
+  });
+
+  it("folds extra schedules behind a +N more toggle and reveals them on click", async () => {
+    const many = Array.from({ length: 7 }, (_, i) => {
+      return {
+        scheduleId: `sch-${i}`,
+        scheduleName: `schedule-${i}`,
+        scheduleDescription: null,
+        credits: 10 * (i + 1),
+        tokens: 1000 * (i + 1),
+      };
+    });
+    mockInsightsAPI([sampleDay(day1Ago, { schedules: many })]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    // First 4 visible, schedule-6 hidden behind the toggle
+    await waitFor(() => {
+      expect(screen.getByText("+3 more schedules")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("schedule-6")).not.toBeInTheDocument();
+
+    click(screen.getByText("+3 more schedules"));
+
+    await waitFor(() => {
+      expect(screen.getByText("schedule-6")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Show less")).toBeInTheDocument();
+  });
+
+  it("renders schedule rows as links to the schedule detail page", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        schedules: [
+          {
+            scheduleId: "sch-link",
+            scheduleName: "linked-schedule",
+            scheduleDescription: null,
+            credits: 50,
+            tokens: 5000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("linked-schedule")).toBeInTheDocument();
+    });
+    const link = screen.getByText("linked-schedule").closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe("/schedules/sch-link");
+  });
+
+  it("renders chat rows as links to the chat thread", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        chats: [
+          {
+            threadId: "thread-link",
+            threadTitle: "Linked thread",
+            credits: 50,
+            tokens: 5000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Linked thread")).toBeInTheDocument();
+    });
+    const link = screen.getByText("Linked thread").closest("a");
+    expect(link).not.toBeNull();
+    expect(link!.getAttribute("href")).toBe("/chats/thread-link");
+  });
+
+  it("matches AgentsCard subtitle style: '{noun} used {N} credits' with inline credit unit per row", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        schedules: [
+          {
+            scheduleId: "s1",
+            scheduleName: "a",
+            scheduleDescription: null,
+            credits: 60,
+            tokens: 6000,
+          },
+          {
+            scheduleId: "s2",
+            scheduleName: "b",
+            scheduleDescription: null,
+            credits: 40,
+            tokens: 4000,
+          },
+        ],
+        chats: [
+          {
+            threadId: "t1",
+            threadTitle: "x",
+            credits: 30,
+            tokens: 3000,
+          },
+        ],
+      }),
+    ]);
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    // Schedules: subtitle in sentence form, total = 60 + 40 = 100
+    await waitFor(() => {
+      expect(
+        screen.getByText(/schedules used 100 credits/),
+      ).toBeInTheDocument();
+    });
+    // Chats: singular "chat used" with the total
+    expect(screen.getByText(/chat used 30 credits/)).toBeInTheDocument();
+    // Per-row values are bare numbers — subtitle already names the unit
+    expect(screen.queryByText(/^60 credits?$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^40 credits?$/)).not.toBeInTheDocument();
   });
 });

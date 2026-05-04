@@ -26,6 +26,7 @@ from mitmproxy.test import tflow, tutils
 
 import auth
 import mitm_addon
+import registry
 import usage
 from usage.providers import connectors as _usage_connectors
 
@@ -34,7 +35,7 @@ from usage.providers import connectors as _usage_connectors
 def _reset_module_state() -> None:
     """Clear cached singletons between tests.
 
-    ``mitm_addon`` and ``auth`` cache registry data and firewall header
+    ``registry`` and ``auth`` cache registry data and firewall header
     lookups in module-level dicts.  Without a reset, earlier tests leak
     entries that change later tests' behaviour (e.g. a request from IP X
     in test A primes ``_request_start_times`` seen by test B).
@@ -43,9 +44,7 @@ def _reset_module_state() -> None:
     cleanup, so we use ``return``-style (not ``yield``) per PT022.
     """
     mitm_addon._request_start_times.clear()
-    mitm_addon._registry_cache = {}
-    mitm_addon._registry_cache_key = (0, 0)
-    mitm_addon._registry_load_error_logged = False
+    registry.reset_cache_for_tests()
     auth._firewall_header_cache.clear()
     auth._cache_locks.clear()
     auth._force_refresh_markers.clear()

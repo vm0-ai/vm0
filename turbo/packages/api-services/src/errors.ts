@@ -126,6 +126,13 @@ export const noModelProvider = makeApiError(
   "No model provider configured. Run 'zero org model-provider setup' to configure one, or add environment variables to your vm0.yaml.",
 );
 
+export const providerDeleted = makeApiError(
+  "ProviderDeletedError",
+  "PROVIDER_DELETED",
+  422,
+  "The model provider used by this thread has been deleted. Start a new chat thread to continue.",
+);
+
 // ============================================================================
 // Type Guards
 // ============================================================================
@@ -168,6 +175,12 @@ export function isNoModelProvider(
   e: unknown,
 ): e is ReturnType<typeof noModelProvider> {
   return e instanceof Error && e.name === "NoModelProviderError";
+}
+
+export function isProviderDeleted(
+  e: unknown,
+): e is ReturnType<typeof providerDeleted> {
+  return e instanceof Error && e.name === "ProviderDeletedError";
 }
 
 export function isRunNotCancellable(

@@ -8,7 +8,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use api_contracts::generated::routes;
-use reqwest::StatusCode;
+use reqwest::{RequestBuilder, Response, StatusCode};
+use serde::de::DeserializeOwned;
 
 use super::JobProvider;
 use crate::error::{RunnerError, RunnerResult};
@@ -168,7 +169,8 @@ impl JobProvider for ApiProvider {
                     match event {
                         Some(ably_subscriber::Event::Message(msg)) => {
                             if let Some(run_id) = parse_cancel_notification(&msg) {
-                                if let Some(token) = self.cancel_tokens.lock().await.get(&run_id) {
+                                let token = self.cancel_tokens.lock().await.get(&run_id).cloned();
+                                if let Some(token) = token {
                                     info!(run_id = %run_id, "ably: cancel notification, killing job");
                                     token.cancel();
                                 }
@@ -192,6 +194,9 @@ impl JobProvider for ApiProvider {
                                     }
                                     continue;
                                 }
+                                if self.cancel.is_cancelled() {
+                                    return None;
+                                }
                                 // Fall back to default profile when server doesn't send one
                                 // (backwards compat with pre-profile API).
                                 let profile = notif.profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
@@ -208,10 +213,8 @@ impl JobProvider for ApiProvider {
                         }
                         Some(ably_subscriber::Event::Disconnected { reason }) => {
                             *ably_connected = false;
-                            warn!(
-                                reason = reason.as_deref().unwrap_or("unknown"),
-                                "ably disconnected, switching to fast poll"
-                            );
+                            let reason = reason.as_deref().unwrap_or("unknown");
+                            warn!(reason = %reason, "ably disconnected, switching to fast poll");
                         }
                         Some(ably_subscriber::Event::Error { code, message }) => {
                             error!(code, message = %message, "ably fatal error, will reconnect");
@@ -233,8 +236,18 @@ impl JobProvider for ApiProvider {
                     *poll_now = false;
                     *deferred_poll_at = None;
                     let sessions = self.held_sessions.lock().await.clone();
-                    match self.api.poll(&self.group, &self.profiles, &sessions).await {
+                    let poll_result = tokio::select! {
+                        biased;
+                        () = self.cancel.cancelled() => {
+                            return None;
+                        }
+                        result = self.api.poll(&self.group, &self.profiles, &sessions) => result,
+                    };
+                    match poll_result {
                         Ok(Some(job)) => {
+                            if self.cancel.is_cancelled() {
+                                return None;
+                            }
                             // Fall back to default profile when server doesn't send one
                             // (backwards compat with pre-profile API).
                             let profile = job.experimental_profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
@@ -300,13 +313,17 @@ impl JobProvider for ApiProvider {
     /// 2. The main loop breaks (e.g. on `Draining` mode) and explicitly
     ///    drops the pinned future, which releases the lock.
     async fn shutdown(&self) {
-        let mut state = self.discovery.lock().await;
-        // Drop Ably subscription to close WebSocket
-        state.ably = None;
-        state.ably_connected = false;
-        // Abort in-flight reconnection task
-        if let Some(h) = state.ably_retry.handle.take() {
+        let reconnect_handle = {
+            let mut state = self.discovery.lock().await;
+            // Drop Ably subscription to close WebSocket
+            state.ably = None;
+            state.ably_connected = false;
+            // Take the in-flight reconnection task before awaiting its abort.
+            state.ably_retry.handle.take()
+        };
+        if let Some(h) = reconnect_handle {
             h.abort();
+            let _ = h.await;
         }
     }
 
@@ -523,24 +540,16 @@ impl ApiClient {
         {
             obj.insert("heldSessions".to_string(), serde_json::json!(held_sessions));
         }
-        let resp = self
-            .http
-            .request_route(routes::runners::poll::POLL, &self.token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("poll: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_route(routes::runners::poll::POLL, &self.token)
+                .json(&body),
+            "poll",
+        )
+        .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RunnerError::Api(format!("poll {status}: {body}")));
-        }
-
-        let poll: PollResponse = resp
-            .json()
-            .await
-            .map_err(|e| RunnerError::Api(format!("poll decode: {e}")))?;
+        let resp = check_api_status(resp, "poll").await?;
+        let poll: PollResponse = decode_api_json(resp, "poll").await?;
 
         Ok(poll.job)
     }
@@ -548,20 +557,16 @@ impl ApiClient {
     /// Send a heartbeat with runner state. Uses a short timeout (3s) to
     /// avoid blocking the main loop.
     async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
-        let resp = self
-            .http
-            .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
-            .timeout(Duration::from_secs(3))
-            .json(state)
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("heartbeat: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_route(routes::runners::heartbeat::HEARTBEAT, &self.token)
+                .timeout(Duration::from_secs(3))
+                .json(state),
+            "heartbeat",
+        )
+        .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RunnerError::Api(format!("heartbeat {status}: {body}")));
-        }
+        check_api_status(resp, "heartbeat").await?;
 
         Ok(())
     }
@@ -573,35 +578,27 @@ impl ApiClient {
     /// for the same job.
     async fn claim(&self, run_id: RunId) -> RunnerResult<ExecutionContext> {
         let run_id = run_id.to_string();
-        let resp = self
-            .http
-            .request_resolved_route(
-                routes::runners::jobs::by_id::claim::route(
-                    routes::runners::jobs::by_id::claim::Params {
-                        id: run_id.as_str(),
-                    },
-                ),
-                &self.token,
-            )
-            .json(&serde_json::json!({}))
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("claim: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_resolved_route(
+                    routes::runners::jobs::by_id::claim::route(
+                        routes::runners::jobs::by_id::claim::Params {
+                            id: run_id.as_str(),
+                        },
+                    ),
+                    &self.token,
+                )
+                .json(&serde_json::json!({})),
+            "claim",
+        )
+        .await?;
 
         if matches!(resp.status(), StatusCode::CONFLICT | StatusCode::NOT_FOUND) {
             return Err(RunnerError::AlreadyClaimed);
         }
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RunnerError::Api(format!("claim {status}: {body}")));
-        }
-
-        let ctx: ExecutionContext = resp
-            .json()
-            .await
-            .map_err(|e| RunnerError::Api(format!("claim decode: {e}")))?;
+        let resp = check_api_status(resp, "claim").await?;
+        let ctx: ExecutionContext = decode_api_json(resp, "claim").await?;
 
         Ok(ctx)
     }
@@ -624,19 +621,18 @@ impl ApiClient {
             sandbox_reuse_result: reuse_result,
         };
 
-        let resp = self
-            .http
-            .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("complete: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_route(routes::webhooks::agent::complete::COMPLETE, sandbox_token)
+                .json(&body),
+            "complete",
+        )
+        .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
+        if !resp.status().is_success() {
+            let (status, body) = read_api_error(resp).await;
             warn!(status = %status, "complete request failed: {body}");
-            return Err(RunnerError::Api(format!("complete {status}: {body}")));
+            return Err(api_status_error("complete", status, &body));
         }
 
         Ok(())
@@ -644,24 +640,48 @@ impl ApiClient {
 
     /// Fetch an Ably token for subscribing to runner group notifications.
     async fn realtime_token(&self, group: &str) -> RunnerResult<ably_subscriber::TokenRequest> {
-        let resp = self
-            .http
-            .request_route(routes::runners::realtime::token::CREATE, &self.token)
-            .json(&serde_json::json!({ "group": group }))
-            .send()
-            .await
-            .map_err(|e| RunnerError::Api(format!("realtime token: {e}")))?;
+        let resp = send_api(
+            self.http
+                .request_route(routes::runners::realtime::token::CREATE, &self.token)
+                .json(&serde_json::json!({ "group": group })),
+            "realtime token",
+        )
+        .await?;
 
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            return Err(RunnerError::Api(format!("realtime token {status}: {body}")));
-        }
-
-        resp.json()
-            .await
-            .map_err(|e| RunnerError::Api(format!("realtime token decode: {e}")))
+        let resp = check_api_status(resp, "realtime token").await?;
+        decode_api_json(resp, "realtime token").await
     }
+}
+
+async fn send_api(req: RequestBuilder, label: &str) -> RunnerResult<Response> {
+    req.send()
+        .await
+        .map_err(|e| RunnerError::Api(format!("{label}: {e}")))
+}
+
+async fn check_api_status(resp: Response, label: &str) -> RunnerResult<Response> {
+    let status = resp.status();
+    if !status.is_success() {
+        let (status, body) = read_api_error(resp).await;
+        return Err(api_status_error(label, status, &body));
+    }
+    Ok(resp)
+}
+
+async fn decode_api_json<T: DeserializeOwned>(resp: Response, label: &str) -> RunnerResult<T> {
+    resp.json()
+        .await
+        .map_err(|e| RunnerError::Api(format!("{label} decode: {e}")))
+}
+
+async fn read_api_error(resp: Response) -> (StatusCode, String) {
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    (status, body)
+}
+
+fn api_status_error(label: &str, status: StatusCode, body: &str) -> RunnerError {
+    RunnerError::Api(format!("{label} {status}: {body}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -671,6 +691,34 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use httpmock::Method::POST;
+    use httpmock::MockServer;
+    use tokio::io::AsyncReadExt;
+    use tokio::net::TcpListener;
+
+    struct DropSignal(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for DropSignal {
+        fn drop(&mut self) {
+            if let Some(tx) = self.0.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+
+    fn api_client_for_server(server: &MockServer) -> ApiClient {
+        ApiClient::new(
+            HttpClient::new(server.base_url()).unwrap(),
+            "runner-token".to_string(),
+        )
+    }
+
+    fn assert_api_error(err: RunnerError, expected: &str) {
+        match err {
+            RunnerError::Api(message) => assert_eq!(message, expected),
+            other => panic!("expected RunnerError::Api, got {other:?}"),
+        }
+    }
 
     fn make_message(name: Option<&str>, data: serde_json::Value) -> ably_subscriber::Message {
         ably_subscriber::Message {
@@ -680,6 +728,193 @@ mod tests {
             client_id: None,
             timestamp: None,
         }
+    }
+
+    #[tokio::test]
+    async fn shutdown_aborts_and_awaits_in_flight_ably_reconnect() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+        let mut ably_retry = RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None);
+        ably_retry.handle = Some(tokio::spawn(async move {
+            let _drop_signal = DropSignal(Some(dropped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<Result<ably_subscriber::Subscription, ably_subscriber::Error>>()
+                .await
+        }));
+
+        let provider = ApiProvider {
+            api: ApiClient::new(
+                HttpClient::new("https://api.vm0.dev".to_string()).unwrap(),
+                "runner-token".to_string(),
+            ),
+            group: "default".to_string(),
+            profiles: Vec::new(),
+            runner_id: "runner-1".to_string(),
+            discovery: tokio::sync::Mutex::new(DiscoveryState {
+                ably: None,
+                ably_retry,
+                ably_connected: true,
+                poll_now: false,
+                deferred_poll_at: None,
+            }),
+            tokens: tokio::sync::Mutex::new(HashMap::new()),
+            cancel_tokens: std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            held_sessions: tokio::sync::Mutex::new(Vec::new()),
+            cancel: CancellationToken::new(),
+        };
+
+        tokio::time::timeout(Duration::from_secs(1), started_rx)
+            .await
+            .expect("Ably reconnect task should start")
+            .unwrap();
+
+        provider.shutdown().await;
+
+        tokio::time::timeout(Duration::from_secs(1), dropped_rx)
+            .await
+            .expect("shutdown should await aborted Ably reconnect task")
+            .unwrap();
+
+        let state = provider.discovery.lock().await;
+        assert!(state.ably_retry.handle.is_none());
+        assert!(!state.ably_connected);
+    }
+
+    #[tokio::test]
+    async fn discover_cancel_aborts_in_flight_poll() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let (accepted_tx, accepted_rx) = tokio::sync::oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0_u8; 1024];
+            let _ = socket.read(&mut buf).await;
+            let _ = accepted_tx.send(());
+            std::future::pending::<()>().await;
+        });
+
+        let cancel = CancellationToken::new();
+        let provider = Arc::new(ApiProvider {
+            api: ApiClient::new(
+                HttpClient::new(api_url).unwrap(),
+                "runner-token".to_string(),
+            ),
+            group: "default".to_string(),
+            profiles: Vec::new(),
+            runner_id: "runner-1".to_string(),
+            discovery: tokio::sync::Mutex::new(DiscoveryState {
+                ably: None,
+                ably_retry: RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None),
+                ably_connected: false,
+                poll_now: true,
+                deferred_poll_at: None,
+            }),
+            tokens: tokio::sync::Mutex::new(HashMap::new()),
+            cancel_tokens: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            held_sessions: tokio::sync::Mutex::new(Vec::new()),
+            cancel: cancel.clone(),
+        });
+
+        let provider_for_discover = Arc::clone(&provider);
+        let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
+
+        tokio::time::timeout(Duration::from_secs(1), accepted_rx)
+            .await
+            .expect("poll request should reach the server")
+            .unwrap();
+
+        cancel.cancel();
+
+        let result = tokio::time::timeout(Duration::from_secs(1), discover_task)
+            .await
+            .expect("discover should not wait for the HTTP poll timeout")
+            .unwrap();
+        assert!(result.is_none());
+
+        server_task.abort();
+        let _ = server_task.await;
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_non_success_includes_status_and_body() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(503).body("poll unavailable");
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api.poll("default", &[], &[]).await.unwrap_err();
+
+        assert_api_error(err, "poll 503 Service Unavailable: poll unavailable");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_poll_decode_error_keeps_operation_label() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(routes::runners::poll::POLL.path);
+                then.status(200).body("not json");
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api.poll("default", &[], &[]).await.unwrap_err();
+
+        match err {
+            RunnerError::Api(message) => assert!(
+                message.starts_with("poll decode: "),
+                "unexpected error: {message}"
+            ),
+            other => panic!("expected RunnerError::Api, got {other:?}"),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn api_client_claim_conflict_or_not_found_is_already_claimed() {
+        for status in [409_u16, 404] {
+            let server = MockServer::start_async().await;
+            let run_id = RunId::nil();
+            let path = format!("/api/runners/jobs/{run_id}/claim");
+            let mock = server
+                .mock_async(|when, then| {
+                    when.method(POST).path(path.as_str());
+                    then.status(status);
+                })
+                .await;
+            let api = api_client_for_server(&server);
+
+            let err = api.claim(run_id).await.unwrap_err();
+
+            assert!(matches!(err, RunnerError::AlreadyClaimed));
+            mock.assert_async().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn api_client_complete_non_success_includes_status_and_body() {
+        let server = MockServer::start_async().await;
+        let mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path);
+                then.status(500).body("complete failed");
+            })
+            .await;
+        let api = api_client_for_server(&server);
+
+        let err = api
+            .complete("sandbox-token", RunId::nil(), 1, Some("boom"), None, None)
+            .await
+            .unwrap_err();
+
+        assert_api_error(err, "complete 500 Internal Server Error: complete failed");
+        mock.assert_async().await;
     }
 
     #[test]

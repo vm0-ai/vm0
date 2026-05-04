@@ -200,6 +200,7 @@ describe("sidebar chat delete", () => {
     await context.store.set(
       createNewChatThreadOptimistically$,
       AGENT_ID,
+      "main",
       context.signal,
     );
     const createdId = getLastCreatedId();

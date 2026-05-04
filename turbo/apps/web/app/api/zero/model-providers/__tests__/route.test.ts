@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { GET, POST } from "../route";
 import { DELETE } from "../[type]/route";
 import { POST as setDefaultPOST } from "../[type]/default/route";
@@ -8,6 +9,18 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
+
+vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@vm0/core/feature-switch")>();
+  return {
+    ...actual,
+    isFeatureEnabled: vi.fn().mockReturnValue(true),
+  };
+});
+
+const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
+const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const context = testContext();
 
@@ -295,6 +308,130 @@ describe("Org-level model provider routes", () => {
       });
       expect(anthropic!.isDefault).toBe(false);
       expect(oauth!.isDefault).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // codex-beta gate on POST /api/zero/model-providers
+  // ---------------------------------------------------------------------------
+
+  describe("openai-api-key codex-beta gate", () => {
+    beforeEach(() => {
+      mockIsFeatureEnabled.mockImplementation(() => {
+        return true;
+      });
+    });
+
+    it("creates openai-api-key provider when codex-beta is enabled", async () => {
+      mockIsFeatureEnabled.mockImplementation((key) => {
+        return key === FeatureSwitchKey.CodexBeta;
+      });
+
+      const response = await createProvider(
+        "openai-api-key",
+        "sk-proj-test",
+        "gpt-5.5",
+      );
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.provider.type).toBe("openai-api-key");
+      expect(data.provider.framework).toBe("codex");
+    });
+
+    it("returns 404 when codex-beta is disabled", async () => {
+      mockIsFeatureEnabled.mockImplementation((key) => {
+        return key !== FeatureSwitchKey.CodexBeta;
+      });
+
+      const response = await createProvider(
+        "openai-api-key",
+        "sk-proj-test",
+        "gpt-5.5",
+      );
+      expect(response.status).toBe(404);
+    });
+
+    it("does not gate other provider types when codex-beta is disabled", async () => {
+      mockIsFeatureEnabled.mockImplementation((key) => {
+        return key !== FeatureSwitchKey.CodexBeta;
+      });
+
+      const response = await createProvider("anthropic-api-key", "sk-ant-test");
+      expect(response.status).toBe(201);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Cross-framework default — workspace-scoped (issue #11743)
+  //
+  // The workspace has at most one `is_default = true` row per (orgId, userId),
+  // regardless of framework. Adding a provider in a different framework must
+  // not steal default from the existing one; setDefault and delete-fallback
+  // both operate workspace-wide.
+  // ---------------------------------------------------------------------------
+
+  describe("cross-framework default (workspace-scoped)", () => {
+    beforeEach(() => {
+      mockIsFeatureEnabled.mockImplementation(() => {
+        return true;
+      });
+    });
+
+    it("does not steal default when adding a different-framework provider", async () => {
+      await createProvider("anthropic-api-key", "ant-key");
+      await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
+
+      const providers = await listProviders();
+      const anthropic = providers.find((p) => {
+        return p.type === "anthropic-api-key";
+      });
+      const openai = providers.find((p) => {
+        return p.type === "openai-api-key";
+      });
+
+      expect(anthropic!.isDefault).toBe(true);
+      expect(openai!.isDefault).toBe(false);
+      expect(
+        providers.filter((p) => {
+          return p.isDefault;
+        }),
+      ).toHaveLength(1);
+    });
+
+    it("setDefault flips default across frameworks atomically", async () => {
+      await createProvider("anthropic-api-key", "ant-key");
+      await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
+
+      const request = createTestRequest(setDefaultUrl("openai-api-key"), {
+        method: "POST",
+      });
+      const response = await setDefaultPOST(request);
+      expect(response.status).toBe(200);
+
+      const providers = await listProviders();
+      const anthropic = providers.find((p) => {
+        return p.type === "anthropic-api-key";
+      });
+      const openai = providers.find((p) => {
+        return p.type === "openai-api-key";
+      });
+      expect(anthropic!.isDefault).toBe(false);
+      expect(openai!.isDefault).toBe(true);
+    });
+
+    it("delete reassigns default to earliest cross-framework provider", async () => {
+      await createProvider("anthropic-api-key", "ant-key");
+      await createProvider("openai-api-key", "sk-proj-test", "gpt-5.5");
+
+      const request = createTestRequest(deleteUrl("anthropic-api-key"), {
+        method: "DELETE",
+      });
+      await DELETE(request);
+
+      const providers = await listProviders();
+      expect(providers).toHaveLength(1);
+      expect(providers[0]?.type).toBe("openai-api-key");
+      expect(providers[0]?.isDefault).toBe(true);
     });
   });
 });

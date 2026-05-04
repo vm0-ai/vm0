@@ -1,6 +1,11 @@
 import { command, computed, state } from "ccstate";
 import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroClient$ } from "../api-client.ts";
+import {
+  setRange$,
+  setRangeWithDate$,
+  type InsightRange,
+} from "../usage-page/usage-insight-signals.ts";
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -42,6 +47,21 @@ export interface MemberCredits {
   agentCredits?: Record<string, number>;
 }
 
+export interface DaySchedule {
+  scheduleId: string;
+  scheduleName: string;
+  scheduleDescription: string | null;
+  credits: number;
+  tokens: number;
+}
+
+export interface DayChat {
+  threadId: string;
+  threadTitle: string | null;
+  credits: number;
+  tokens: number;
+}
+
 /** A single day's insight snapshot */
 export interface DayInsight {
   date: string; // ISO date, e.g. "2026-04-03"
@@ -52,6 +72,8 @@ export interface DayInsight {
   topTask: TopTask | null;
   services: ServiceUsage[];
   permissions: PermissionEntry[];
+  schedules: DaySchedule[];
+  chats: DayChat[];
 }
 
 export interface NetworkInsightsData {
@@ -72,8 +94,49 @@ export const insightsDateRange$ = computed((get) => {
   return get(internalDateRange$);
 });
 
+/**
+ * Map the page-level Insights date range to the bucket range understood by
+ * the embedded Usage chart. Presets stay aligned, while a specific Insights
+ * date becomes an explicit single-day Usage window.
+ */
+function toUsageRange(insightsRange: string): {
+  range: InsightRange;
+  date: string | null;
+} {
+  if (insightsRange === "last7") {
+    return { range: "7d", date: null };
+  }
+  if (insightsRange === "last28") {
+    return { range: "28d", date: null };
+  }
+  if (insightsRange === "last30") {
+    return { range: "30d", date: null };
+  }
+  return { range: "day", date: insightsRange };
+}
+
 export const setInsightsDateRange$ = command(({ set }, range: string) => {
   set(internalDateRange$, range);
+  const usageRange = toUsageRange(range);
+  if (usageRange.range === "day") {
+    set(setRangeWithDate$, usageRange.range, usageRange.date);
+  } else {
+    set(setRange$, usageRange.range);
+  }
+});
+
+/**
+ * Mirror the current Insights range into the Usage chart's range. Called
+ * during page setup so the embedded chart fetches the correct bucket
+ * window on first paint instead of the global default ("today").
+ */
+export const syncUsageRangeFromInsights$ = command(({ get, set }) => {
+  const usageRange = toUsageRange(get(internalDateRange$));
+  if (usageRange.range === "day") {
+    set(setRangeWithDate$, usageRange.range, usageRange.date);
+  } else {
+    set(setRange$, usageRange.range);
+  }
 });
 
 /** Calendar popover state */
@@ -144,6 +207,64 @@ export const reloadInsights$ = command(({ set }) => {
     return x + 1;
   });
 });
+
+// ---------------------------------------------------------------------------
+// Active tab: daily diary vs. period-wide time-range view
+// ---------------------------------------------------------------------------
+
+export type InsightsTab = "daily" | "time-range";
+
+const internalActiveTab$ = state<InsightsTab>("daily");
+
+export const insightsActiveTab$ = computed((get) => {
+  return get(internalActiveTab$);
+});
+
+export const setInsightsActiveTab$ = command(({ set }, tab: InsightsTab) => {
+  set(internalActiveTab$, tab);
+});
+
+// ---------------------------------------------------------------------------
+// "Show all" toggle for per-day schedules / chats cards (keyed by day date)
+// ---------------------------------------------------------------------------
+
+const internalExpandedSchedules$ = state<Set<string>>(new Set());
+
+export const expandedScheduleDays$ = computed((get) => {
+  return get(internalExpandedSchedules$);
+});
+
+export const toggleExpandedScheduleDay$ = command(
+  ({ get, set }, dayDate: string) => {
+    const current = get(internalExpandedSchedules$);
+    const next = new Set(current);
+    if (next.has(dayDate)) {
+      next.delete(dayDate);
+    } else {
+      next.add(dayDate);
+    }
+    set(internalExpandedSchedules$, next);
+  },
+);
+
+const internalExpandedChats$ = state<Set<string>>(new Set());
+
+export const expandedChatDays$ = computed((get) => {
+  return get(internalExpandedChats$);
+});
+
+export const toggleExpandedChatDay$ = command(
+  ({ get, set }, dayDate: string) => {
+    const current = get(internalExpandedChats$);
+    const next = new Set(current);
+    if (next.has(dayDate)) {
+      next.delete(dayDate);
+    } else {
+      next.add(dayDate);
+    }
+    set(internalExpandedChats$, next);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // "Load more" toggle for allowed-permissions card (keyed by day date)

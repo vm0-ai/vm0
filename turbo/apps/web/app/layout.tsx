@@ -9,7 +9,10 @@ import {
   JetBrains_Mono,
 } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
-import { getClerkPublishableKey } from "../src/lib/shared/clerk-config";
+import {
+  getClerkFrontendApiHost,
+  getClerkPublishableKey,
+} from "../src/lib/shared/clerk-config";
 import { getAppUrl } from "../src/lib/zero/url";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { env } from "../src/env";
@@ -135,6 +138,7 @@ export default async function RootLayout({
   // Locale is derived via next-intl (set by middleware + i18n.ts request config).
   // Drives the <html lang> attribute so non-English pages are indexed correctly.
   const htmlLang = await getLocale();
+  const clerkFapiHost = getClerkFrontendApiHost();
   return (
     <ClerkProvider
       publishableKey={getClerkPublishableKey()}
@@ -156,6 +160,13 @@ export default async function RootLayout({
             href="https://fonts.gstatic.com"
             crossOrigin="anonymous"
           />
+          {clerkFapiHost && (
+            <link
+              rel="preconnect"
+              href={`https://${clerkFapiHost}`}
+              crossOrigin="anonymous"
+            />
+          )}
           <link rel="dns-prefetch" href="https://plausible.io" />
           {/*
             Theme init must run synchronously in <head> before paint to avoid

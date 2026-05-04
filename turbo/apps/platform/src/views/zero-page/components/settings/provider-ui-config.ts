@@ -219,7 +219,7 @@ const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<Record<string, number>>({
   "glm-5.1": 0.4,
   "claude-haiku-4-5": 0.3,
   "kimi-k2.6": 0.3,
-  "deepseek-v4-pro": 0.3,
+  "deepseek-v4-pro": 0.06,
   "kimi-k2.5": 0.2,
   "MiniMax-M2.7": 0.1,
   "deepseek-v4-flash": 0.02,
@@ -227,4 +227,16 @@ const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<Record<string, number>>({
 
 export function getVm0ModelMultiplier(model: string): number | undefined {
   return VM0_MODEL_CREDIT_MULTIPLIER[model];
+}
+
+// The VM0 model dropdown shows the full list (10+ entries) which is too long
+// for the chat composer. Collapse to these flagship/budget picks by default;
+// the "Show all models" toggle reveals the rest.
+export function isVm0PrimaryModel(model: string): boolean {
+  return (
+    model === "claude-opus-4-7" ||
+    model === "claude-opus-4-6" ||
+    model === "claude-sonnet-4-6" ||
+    model === "deepseek-v4-pro"
+  );
 }

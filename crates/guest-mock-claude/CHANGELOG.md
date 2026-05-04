@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.17.5](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.4...guest-mock-claude-v0.17.5) (2026-05-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** escalate forced CLI termination ([#11698](https://github.com/vm0-ai/vm0/issues/11698)) ([ad07a39](https://github.com/vm0-ai/vm0/commit/ad07a39afca3122eb73bd9092a48cbdd07d33766))
+
+
+### Refactoring
+
+* **guest-mock-claude:** reuse post-result helper for orphan pipe ([#11692](https://github.com/vm0-ai/vm0/issues/11692)) ([bf98aa2](https://github.com/vm0-ai/vm0/commit/bf98aa26ad215dbecddfbd568e7343d9fd35728c))
+
+## [0.17.4](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.3...guest-mock-claude-v0.17.4) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
 ## [0.17.3](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.2...guest-mock-claude-v0.17.3) (2026-04-23)
 
 

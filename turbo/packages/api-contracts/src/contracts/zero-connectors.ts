@@ -25,6 +25,7 @@ export const zeroConnectorsMainContract = c.router({
     responses: {
       200: connectorListResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "List all connectors (zero proxy)",
@@ -44,6 +45,7 @@ export const zeroConnectorsByTypeContract = c.router({
     responses: {
       200: connectorResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get connector by type (zero proxy)",
@@ -94,6 +96,7 @@ export const zeroConnectorScopeDiffContract = c.router({
     responses: {
       200: scopeDiffResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get scope diff for a connector",
@@ -207,6 +210,7 @@ export const zeroComputerConnectorContract = c.router({
     responses: {
       200: connectorResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get computer connector status (zero proxy)",

@@ -1,8 +1,31 @@
+//! `runner start` — run the long-lived worker loop.
+//!
+//! `run_start` registers lifecycle signals early, loads config, claims the
+//! canonical runner `base_dir` lock, initializes shared resources, then enters
+//! `run()`, the main reactor for discovery, heartbeats, job execution,
+//! idle-pool maintenance, mitmproxy restart, and teardown.
+//!
+//! The sibling modules keep focused responsibilities out of this orchestration
+//! file:
+//! - `identity`: persistent runner id storage.
+//! - `job_lifecycle`: cleanup, budget, and completion ownership state.
+//! - `mitm_restart`: mitmproxy crash restart and backoff.
+//! - `orphan_reap`: orphan active-run reconciliation.
+//! - `signals`: lifecycle signal registration and mode transitions.
+//!
+//! Important invariants:
+//! - one process owns the canonical `base_dir` lock;
+//! - lifecycle signals are registered before slow startup work;
+//! - discovery is pinned across `select!` ticks so heartbeat and cleanup
+//!   branches do not restart polling;
+//! - the first heartbeat and idle-cleanup ticks are deferred;
+//! - teardown drops discovery before provider shutdown.
+
 use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Args;
 use futures_util::FutureExt;
@@ -21,13 +44,14 @@ use crate::executor::{self, ExecutorConfig};
 use crate::host;
 use crate::http::HttpClient;
 use crate::idle_pool::{
-    IdleDestroyJob, IdleDestroyPayload, IdlePool, IdlePoolConfig, IdlePoolSnapshot,
+    DestroyOutcome, IdleDestroyJob, IdleDestroyPayload, IdlePool, IdlePoolConfig, IdlePoolSnapshot,
     IdleUnparkResult, ParkCandidate, ParkCandidateParts, ParkResult, ParkingGate,
     ReusableIdleSandbox, StorageFingerprints,
 };
 use crate::kmsg_log;
 use crate::lock;
-use crate::network_log_manager::NetworkLogManager;
+use crate::network_log_drain::NetworkLogDrainCoordinator;
+use crate::network_log_manager::{NetworkLogManager, NetworkLogSession};
 use crate::network_logs;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
@@ -37,25 +61,78 @@ use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+use crate::types::{ExecutionContext, SandboxReuseResult};
 
+mod heartbeat;
 mod identity;
 mod job_lifecycle;
 mod mitm_restart;
+mod orphan_reap;
 mod signals;
 
+use heartbeat::{HEARTBEAT_PERIOD, HeartbeatContext, collect_heartbeat_state, send_heartbeat};
 use identity::load_or_generate_runner_id;
-use job_lifecycle::{ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady};
+use job_lifecycle::{
+    ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady, RunCleanupDisposition,
+    RunCleanupState,
+};
 use mitm_restart::{
     MITM_BACKOFF_INITIAL, MITM_BACKOFF_MAX, MITM_MAX_CONSECUTIVE_FAILURES, MitmRestartHandle,
     finish_mitm_restart_before_shutdown, handle_mitm_restart_result, maybe_spawn_mitm_restart,
 };
+use orphan_reap::{
+    OrphanReapMode, OrphanReapProcessDiscovery, OrphanedActiveRuns, reap_orphaned_active_runs,
+};
 use signals::{EarlySignals, SignalController};
 
-/// Period between routine heartbeat ticks sent to the server. First
-/// tick is deferred by one period via `interval_at` — see the comment
-/// at the interval construction in `run()`.
-const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
+struct TeardownTimer {
+    start: Instant,
+}
+
+impl TeardownTimer {
+    fn start() -> Self {
+        let timer = Self {
+            start: Instant::now(),
+        };
+        info!("teardown started");
+        timer
+    }
+
+    fn duration_ms(duration: Duration) -> u64 {
+        duration.as_millis().min(u128::from(u64::MAX)) as u64
+    }
+
+    fn elapsed_ms(&self) -> u64 {
+        Self::duration_ms(self.start.elapsed())
+    }
+
+    fn phase_start(&self, phase: &'static str) -> Instant {
+        let phase_start = Instant::now();
+        info!(
+            phase,
+            elapsed_ms = self.elapsed_ms(),
+            "teardown phase started"
+        );
+        phase_start
+    }
+
+    fn phase_complete(&self, phase: &'static str, phase_start: Instant) {
+        info!(
+            phase,
+            phase_ms = Self::duration_ms(phase_start.elapsed()),
+            elapsed_ms = self.elapsed_ms(),
+            "teardown phase complete"
+        );
+    }
+
+    fn event(&self, phase: &'static str) {
+        info!(
+            phase,
+            elapsed_ms = self.elapsed_ms(),
+            "teardown phase event"
+        );
+    }
+}
 
 #[derive(Args)]
 pub struct StartArgs {
@@ -234,6 +311,10 @@ pub async fn run_start(
     let dns_handle = dns::start(network_log_manager.clone())
         .await
         .map_err(|e| RunnerError::Internal(format!("dns proxy: {e}")))?;
+    let network_log_drain = NetworkLogDrainCoordinator::new(vec![
+        kmsg_handle.drain_producer(),
+        dns_handle.drain_producer(),
+    ]);
 
     // Resource budget from host resources + config.
     let config::SandboxConfig {
@@ -340,6 +421,7 @@ pub async fn run_start(
         http,
         log_paths,
         network_log_manager,
+        network_log_drain,
         home: home.clone(),
     });
 
@@ -367,6 +449,9 @@ pub async fn run_start(
         kmsg_handle,
         dns_handle,
         signal_source: SignalSource::Real(signals),
+        orphan_reap_process_discovery: None,
+        #[cfg(test)]
+        outer_job_panic: None,
     };
 
     run(config).await
@@ -397,11 +482,16 @@ struct RunConfig {
     min_memory_mb: u32,
     kmsg_handle: kmsg_log::KmsgHandle,
     dns_handle: dns::DnsProxy,
+    /// Deterministic process snapshot for orphan-reaper tests. Production leaves
+    /// this unset and scans `/proc`.
+    orphan_reap_process_discovery: Option<OrphanReapProcessDiscovery>,
     /// How the run's mode channel is driven. Production supplies the signal
     /// streams registered at the top of `run_start`; tests supply a
     /// pre-built `SignalController` so they can drive mode transitions
     /// through the lifecycle controller.
     signal_source: SignalSource,
+    #[cfg(test)]
+    outer_job_panic: Option<OuterJobPanicPoint>,
 }
 
 enum SignalSource {
@@ -413,6 +503,25 @@ enum SignalSource {
     /// below; non-test code matches on it but never builds it.
     #[cfg_attr(not(test), allow(dead_code))]
     Override(SignalController),
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OuterJobPanicPoint {
+    ActiveOrUnknown,
+    IdlePoolOwned,
+    DestroyCompleted,
+}
+
+#[cfg(test)]
+fn maybe_panic_outer_job(
+    configured: Option<OuterJobPanicPoint>,
+    point: OuterJobPanicPoint,
+    run_id: RunId,
+) {
+    if configured == Some(point) {
+        panic!("simulated outer job panic at {point:?} for {run_id}");
+    }
 }
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
@@ -439,7 +548,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         min_memory_mb,
         kmsg_handle,
         dns_handle,
+        orphan_reap_process_discovery,
         signal_source,
+        #[cfg(test)]
+        outer_job_panic,
     } = config;
 
     // Build per-profile factories via the sandbox runtime.
@@ -457,7 +569,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         let factory = match factory_result {
             Ok(f) => f,
             Err(e) => {
-                shutdown_factories(&mut factories, runtime.as_mut()).await;
+                shutdown_factories(&mut factories, runtime.as_mut(), None).await;
                 return Err(e.into());
             }
         };
@@ -545,16 +657,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // immediate heartbeat after parking a VM, so the server learns about the
     // new heldSession without waiting for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
+    let orphaned_active_runs = OrphanedActiveRuns::new();
+    let mut orphan_reap_tick = tokio::time::interval_at(
+        tokio::time::Instant::now() + Duration::from_secs(10),
+        Duration::from_secs(10),
+    );
+    orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-    let hb_ctx = HeartbeatContext {
-        idle_pool: &idle_pool,
-        runner_id: &runner_id,
-        name: &name,
-        group: &group,
-        profiles: &profiles,
-        budget: &budget,
-        provider: &*provider,
-    };
+    let hb_ctx = HeartbeatContext::new(
+        &idle_pool, &runner_id, &name, &group, &profiles, &budget, &*provider,
+    );
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -568,8 +680,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         exec_config: Arc::clone(&exec_config),
         idle_pool: Arc::clone(&idle_pool),
         status: Arc::clone(&status),
+        cancel_tokens: Arc::clone(&cancel_tokens),
+        orphaned_active_runs: orphaned_active_runs.clone(),
         parking_gate: parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
+        #[cfg(test)]
+        outer_job_panic,
     };
     let mut draining_idle_pool_drained = false;
     loop {
@@ -681,6 +797,25 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // stale cancel tokens until drain, budget exhaustion, or shutdown.
             result = jobs.join_next(), if !jobs.is_empty() => {
                 handle_job_result(result, &cancel_tokens).await;
+                if !orphaned_active_runs.is_empty() {
+                    reap_orphaned_active_runs(
+                        &orphaned_active_runs,
+                        &idle_pool,
+                        &status,
+                        OrphanReapMode::Immediate,
+                        orphan_reap_process_discovery.as_ref(),
+                    ).await;
+                }
+            }
+            // Reconcile active runs left visible after an outer job-task panic.
+            _ = orphan_reap_tick.tick(), if !orphaned_active_runs.is_empty() => {
+                reap_orphaned_active_runs(
+                    &orphaned_active_runs,
+                    &idle_pool,
+                    &status,
+                    OrphanReapMode::ConfirmAbsent,
+                    orphan_reap_process_discovery.as_ref(),
+                ).await;
             }
             // Reap completed destroy tasks
             Some(result) = destroy_tasks.join_next(), if !destroy_tasks.is_empty() => {
@@ -734,22 +869,29 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
+    let teardown = TeardownTimer::start();
 
     // Drop the pinned discover future so it releases the discovery Mutex.
     // Without this, provider.shutdown() deadlocks trying to acquire the
     // same Mutex that the still-alive discover_fut holds.
     drop(discover_fut);
+    teardown.event("drop_discover_fut");
 
     // Drain idle pool first — these VMs hold budget reservations. This
     // also clears `idle_vms` in status.json so the final snapshot is
     // consistent with the empty pool.
     lifecycle.close_parking();
+    let phase = teardown.phase_start("drain_idle_pool");
     drain_idle_pool(&idle_pool, &status, "shutdown").await;
+    teardown.phase_complete("drain_idle_pool", phase);
 
+    let phase = teardown.phase_start("provider_shutdown");
     provider.shutdown().await;
+    teardown.phase_complete("provider_shutdown", phase);
 
     // Send final heartbeat with Stopping so the server stops routing jobs
     // to this runner immediately, without waiting for TTL expiry.
+    let phase = teardown.phase_start("final_heartbeat");
     {
         let pool = idle_pool.lock().await;
         let state = collect_heartbeat_state(
@@ -764,8 +906,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         drop(pool);
         provider.heartbeat(&state).await;
     }
+    teardown.phase_complete("final_heartbeat", phase);
 
     let remaining = jobs.len();
+    let phase = teardown.phase_start("running_jobs_drain");
     if remaining > 0 {
         info!(remaining, "waiting for running jobs to finish");
         while !jobs.is_empty() {
@@ -774,6 +918,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             tokio::select! {
                 result = jobs.join_next() => {
                     handle_job_result(result, &cancel_tokens).await;
+                    if !orphaned_active_runs.is_empty() {
+                        reap_orphaned_active_runs(
+                            &orphaned_active_runs,
+                            &idle_pool,
+                            &status,
+                            OrphanReapMode::Immediate,
+                            orphan_reap_process_discovery.as_ref(),
+                        ).await;
+                    }
                 }
                 Some(result) = destroy_tasks.join_next() => {
                     if let Err(e) = result {
@@ -791,26 +944,47 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
         }
     }
+    teardown.phase_complete("running_jobs_drain", phase);
+    if !orphaned_active_runs.is_empty() {
+        let phase = teardown.phase_start("orphan_reap_shutdown_final");
+        reap_orphaned_active_runs(
+            &orphaned_active_runs,
+            &idle_pool,
+            &status,
+            OrphanReapMode::ShutdownFinal,
+            orphan_reap_process_discovery.as_ref(),
+        )
+        .await;
+        teardown.phase_complete("orphan_reap_shutdown_final", phase);
+    }
     // Wait for any in-flight destroy tasks (from cleanup tick, profile
     // mismatch eviction, etc.) so their factory Arcs are dropped before
     // shutdown_factories calls Arc::try_unwrap.
+    let phase = teardown.phase_start("destroy_tasks_drain");
     while let Some(result) = destroy_tasks.join_next().await {
         if let Err(e) = result {
             warn!(error = %e, "destroy task panicked during shutdown");
         }
     }
+    teardown.phase_complete("destroy_tasks_drain", phase);
+    let phase = teardown.phase_start("finish_mitm_restart");
     finish_mitm_restart_before_shutdown(&mut mitm, &mut mitm_retry).await;
+    teardown.phase_complete("finish_mitm_restart", phase);
     if let Some(abort) = signal_handler_abort {
         abort.abort();
+        teardown.event("signal_handler_aborted");
     }
 
     info!("shutting down factories");
-    shutdown_factories(&mut factories, runtime.as_mut()).await;
+    let phase = teardown.phase_start("shutdown_factories");
+    shutdown_factories(&mut factories, runtime.as_mut(), Some(&teardown)).await;
+    teardown.phase_complete("shutdown_factories", phase);
 
     // Wait for pending usage reports to flush before stopping the proxy.
     // The addon writes the current mitmdump identity plus in-flight flow
     // and pending report counts; this remains bounded best-effort and
     // falls back to stopping the proxy on timeout.
+    let phase = teardown.phase_start("wait_usage_flush");
     if let Some(usage_flush_target) = mitm.usage_flush_target() {
         info!("waiting for proxy usage reports to flush");
         let flushed = proxy::wait_usage_flush(
@@ -827,19 +1001,28 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     } else {
         info!("proxy is not running; skipping usage flush wait");
     }
+    teardown.phase_complete("wait_usage_flush", phase);
 
     // Stop proxy after all jobs have drained and factory is shut down.
+    let phase = teardown.phase_start("mitm_stop");
     if let Err(e) = mitm.stop().await {
         warn!(error = %e, "proxy stop failed");
     }
+    teardown.phase_complete("mitm_stop", phase);
 
     // Stop the kmsg monitor and wait for the `dmesg -w` child process
     // to be killed and reaped.
+    let phase = teardown.phase_start("kmsg_stop");
     kmsg_handle.stop().await;
+    teardown.phase_complete("kmsg_stop", phase);
+    let phase = teardown.phase_start("dns_stop");
     dns_handle.stop().await;
+    teardown.phase_complete("dns_stop", phase);
 
+    let phase = teardown.phase_start("status_stopped");
     status.set_mode(RunnerMode::Stopped).await;
-    info!("runner stopped");
+    teardown.phase_complete("status_stopped", phase);
+    info!(total_teardown_ms = teardown.elapsed_ms(), "runner stopped");
 
     Ok(())
 }
@@ -1061,15 +1244,41 @@ struct JobProfile {
 async fn shutdown_factories(
     factories: &mut BTreeMap<String, (SharedFactory, bool)>,
     runtime: &mut dyn SandboxRuntime,
+    teardown: Option<&TeardownTimer>,
 ) {
     for (name, (factory, _)) in std::mem::take(factories) {
         match Arc::try_unwrap(factory) {
-            Ok(mut f) => f.shutdown().await,
+            Ok(mut f) => {
+                let phase = teardown.map(|timer| {
+                    let phase_start = Instant::now();
+                    info!(
+                        phase = "factory_shutdown",
+                        profile = %name,
+                        elapsed_ms = timer.elapsed_ms(),
+                        "teardown phase started"
+                    );
+                    phase_start
+                });
+                f.shutdown().await;
+                if let (Some(timer), Some(phase)) = (teardown, phase) {
+                    info!(
+                        phase = "factory_shutdown",
+                        profile = %name,
+                        phase_ms = TeardownTimer::duration_ms(phase.elapsed()),
+                        elapsed_ms = timer.elapsed_ms(),
+                        "teardown phase complete"
+                    );
+                }
+            }
             Err(_) => warn!(profile = %name, "factory still referenced at shutdown"),
         }
     }
     // Clean up shared resources (netns pool, base loop cache).
+    let phase = teardown.map(|timer| timer.phase_start("runtime_shutdown"));
     runtime.shutdown().await;
+    if let (Some(timer), Some(phase)) = (teardown, phase) {
+        timer.phase_complete("runtime_shutdown", phase);
+    }
 }
 
 type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
@@ -1080,6 +1289,8 @@ struct SpawnContext {
     exec_config: Arc<ExecutorConfig>,
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    orphaned_active_runs: OrphanedActiveRuns,
     /// Current lifecycle parking permission. This is checked at job
     /// completion so soft-drain/resume races do not depend on a stale
     /// spawn-time mode snapshot.
@@ -1088,6 +1299,8 @@ struct SpawnContext {
     /// This eliminates the up-to-10s blind spot where the server doesn't know
     /// which runner holds a newly-parked session.
     park_notify: Arc<tokio::sync::Notify>,
+    #[cfg(test)]
+    outer_job_panic: Option<OuterJobPanicPoint>,
 }
 
 struct FinalizeContext {
@@ -1097,14 +1310,19 @@ struct FinalizeContext {
     session_id: Option<String>,
     guest_session_id: Option<String>,
     source_ip: String,
+    network_log_session: Option<NetworkLogSession>,
     storage_fingerprints: StorageFingerprints,
     factory: Arc<Box<dyn SandboxFactory>>,
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
     park_notify: Arc<tokio::sync::Notify>,
     parking_gate: ParkingGate,
+    network_log_drain: NetworkLogDrainCoordinator,
     exit_code: i32,
     cancel: CancellationToken,
+    cleanup_state: RunCleanupState,
+    #[cfg(test)]
+    outer_job_panic: Option<OuterJobPanicPoint>,
 }
 
 async fn finalize_sandbox_for_completion(
@@ -1124,14 +1342,19 @@ async fn finalize_sandbox_for_completion(
         session_id,
         guest_session_id,
         source_ip,
+        mut network_log_session,
         storage_fingerprints,
         factory,
         idle_pool,
         status,
         park_notify,
         parking_gate,
+        network_log_drain,
         exit_code,
         cancel,
+        cleanup_state,
+        #[cfg(test)]
+        outer_job_panic,
     } = ctx;
 
     let cancelled = cancel.is_cancelled();
@@ -1157,7 +1380,7 @@ async fn finalize_sandbox_for_completion(
                 error = %e,
                 "sandbox park failed, destroying instead of parking"
             );
-            stop_and_destroy_sandbox(
+            let destroy_outcome = stop_and_destroy_sandbox(
                 sandbox,
                 &**factory,
                 ActiveCleanupContext {
@@ -1166,17 +1389,29 @@ async fn finalize_sandbox_for_completion(
                     profile_name: &profile_name,
                     session_id: Some(&session_id),
                     reason: "park_failed",
+                    network_log_session: network_log_session.take(),
+                    network_log_drain: network_log_drain.clone(),
                 },
             )
             .await;
+            if destroy_outcome == DestroyOutcome::Completed {
+                cleanup_state.mark_destroy_completed();
+            }
+            #[cfg(test)]
+            maybe_panic_outer_job(
+                outer_job_panic,
+                OuterJobPanicPoint::DestroyCompleted,
+                run_id,
+            );
             BudgetOwnership::active(active_lease)
         } else if cancel.is_cancelled() {
+            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             info!(
                 run_id = %run_id,
                 session_id,
                 "job cancelled while parking, destroying VM"
             );
-            stop_and_destroy_sandbox(
+            let destroy_outcome = stop_and_destroy_sandbox(
                 sandbox,
                 &**factory,
                 ActiveCleanupContext {
@@ -1185,11 +1420,23 @@ async fn finalize_sandbox_for_completion(
                     profile_name: &profile_name,
                     session_id: Some(&session_id),
                     reason: "cancelled",
+                    network_log_session: None,
+                    network_log_drain: network_log_drain.clone(),
                 },
             )
             .await;
+            if destroy_outcome == DestroyOutcome::Completed {
+                cleanup_state.mark_destroy_completed();
+            }
+            #[cfg(test)]
+            maybe_panic_outer_job(
+                outer_job_panic,
+                OuterJobPanicPoint::DestroyCompleted,
+                run_id,
+            );
             BudgetOwnership::active(active_lease)
         } else {
+            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
             let mut pool = idle_pool.lock().await;
             if cancel.is_cancelled() {
                 info!(
@@ -1198,7 +1445,7 @@ async fn finalize_sandbox_for_completion(
                     "job cancelled before idle pool ownership transfer, destroying VM"
                 );
                 drop(pool);
-                stop_and_destroy_sandbox(
+                let destroy_outcome = stop_and_destroy_sandbox(
                     sandbox,
                     &**factory,
                     ActiveCleanupContext {
@@ -1207,9 +1454,20 @@ async fn finalize_sandbox_for_completion(
                         profile_name: &profile_name,
                         session_id: Some(&session_id),
                         reason: "cancelled",
+                        network_log_session: None,
+                        network_log_drain: network_log_drain.clone(),
                     },
                 )
                 .await;
+                if destroy_outcome == DestroyOutcome::Completed {
+                    cleanup_state.mark_destroy_completed();
+                }
+                #[cfg(test)]
+                maybe_panic_outer_job(
+                    outer_job_panic,
+                    OuterJobPanicPoint::DestroyCompleted,
+                    run_id,
+                );
                 return CompletionReady::new(
                     completion_payload,
                     BudgetOwnership::active(active_lease),
@@ -1228,8 +1486,15 @@ async fn finalize_sandbox_for_completion(
             match pool.park(candidate) {
                 ParkResult::Parked => {
                     info!(run_id = %run_id, session_id, "VM parked for reuse");
+                    cleanup_state.mark_idle_pool_owned();
+                    #[cfg(test)]
+                    maybe_panic_outer_job(
+                        outer_job_panic,
+                        OuterJobPanicPoint::IdlePoolOwned,
+                        run_id,
+                    );
                     // Push fresh idle state to status.json BEFORE
-                    // `status.remove_run` (below) clears the run_id
+                    // conditional active-run removal (below) clears the run_id
                     // from active_runs. Without this, doctor would
                     // briefly see the FC as unknown (neither active
                     // nor idle) until the next idle_cleanup tick
@@ -1243,6 +1508,13 @@ async fn finalize_sandbox_for_completion(
                 }
                 ParkResult::Replaced(evicted) => {
                     info!(run_id = %run_id, session_id, "VM parked, evicting previous");
+                    cleanup_state.mark_idle_pool_owned();
+                    #[cfg(test)]
+                    maybe_panic_outer_job(
+                        outer_job_panic,
+                        OuterJobPanicPoint::IdlePoolOwned,
+                        run_id,
+                    );
                     let snapshot = pool.status_snapshot();
                     drop(pool);
                     set_idle_status_snapshot(&status, snapshot).await;
@@ -1264,14 +1536,24 @@ async fn finalize_sandbox_for_completion(
                     // park()ed above; destroying a parked sandbox is
                     // safe — see Replaced arm for rationale.
                     let (payload, lease) = rejected.into_active_destroy_parts();
-                    destroy_idle_payload_and_wait(payload, "park_rejected").await;
+                    let destroy_outcome =
+                        destroy_idle_payload_and_wait(payload, "park_rejected").await;
+                    if destroy_outcome == DestroyOutcome::Completed {
+                        cleanup_state.mark_destroy_completed();
+                    }
+                    #[cfg(test)]
+                    maybe_panic_outer_job(
+                        outer_job_panic,
+                        OuterJobPanicPoint::DestroyCompleted,
+                        run_id,
+                    );
                     BudgetOwnership::active(ActiveBudgetLease::from_rejected_park(lease))
                 }
             }
         }
     } else {
         // No parkable session — stop + destroy.
-        stop_and_destroy_sandbox(
+        let destroy_outcome = stop_and_destroy_sandbox(
             sandbox,
             &**factory,
             ActiveCleanupContext {
@@ -1286,13 +1568,34 @@ async fn finalize_sandbox_for_completion(
                     session_id.as_deref(),
                     guest_session_id.as_deref(),
                 ),
+                network_log_session: network_log_session.take(),
+                network_log_drain: network_log_drain.clone(),
             },
         )
         .await;
+        if destroy_outcome == DestroyOutcome::Completed {
+            cleanup_state.mark_destroy_completed();
+        }
+        #[cfg(test)]
+        maybe_panic_outer_job(
+            outer_job_panic,
+            OuterJobPanicPoint::DestroyCompleted,
+            run_id,
+        );
         BudgetOwnership::active(active_lease)
     };
 
     CompletionReady::new(completion_payload, budget)
+}
+
+async fn close_network_log_session(
+    run_id: RunId,
+    session: Option<NetworkLogSession>,
+    drain: &NetworkLogDrainCoordinator,
+) {
+    if let Some(session) = session {
+        session.close_for_upload(run_id, drain).await;
+    }
 }
 
 /// Spawn a job executor task.
@@ -1342,6 +1645,15 @@ fn spawn_job(
     let park_notify = Arc::clone(&ctx.park_notify);
     let parking_gate = ctx.parking_gate.clone();
     let factory_for_cleanup = Arc::clone(&factory);
+    let cleanup_state = RunCleanupState::new();
+    let cleanup_state_for_body = cleanup_state.clone();
+    let cleanup_state_for_panic = cleanup_state.clone();
+    let cancel_tokens_for_panic = Arc::clone(&ctx.cancel_tokens);
+    let status_for_panic = Arc::clone(&status);
+    let idle_pool_for_panic = Arc::clone(&idle_pool);
+    let orphaned_active_runs_for_panic = ctx.orphaned_active_runs.clone();
+    #[cfg(test)]
+    let outer_job_panic = ctx.outer_job_panic;
 
     // Captured for the post-complete deferred work below: the panic-arm
     // empty `JobTelemetry` construction, the final `telemetry.flush()`, and
@@ -1354,135 +1666,179 @@ fn spawn_job(
     let reused = reuse_entry.is_some();
 
     jobs.spawn(async move {
-        // Inner spawn isolates panics: if execute_job panics, the outer task
-        // still reports completion and releases budget.
-        let cancel = job_cancel.clone();
+        let body = async move {
+            #[cfg(test)]
+            maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
-        let inner = tokio::spawn(async move {
-            if let Some(idle_entry) = reuse_entry {
-                executor::execute_job_reuse(idle_entry, context, &exec_config, cancel).await
-            } else {
-                executor::execute_job(
-                    &**factory,
-                    context,
-                    executor::NewSandboxDispatch {
-                        id: sandbox_id,
-                        reuse_result,
-                    },
-                    &exec_config,
-                    &params,
-                    cancel,
-                )
-                .await
-            }
-        });
+            // Inner spawn isolates panics: if execute_job panics, the outer task
+            // still reports completion and releases budget.
+            let cancel = job_cancel.clone();
 
-        let (exit_code, err, sandbox, source_ip, guest_session_id, telemetry) = match inner.await {
-            Ok((outcome, telemetry)) => {
-                let err = if job_cancel.is_cancelled() {
-                    Some("cancelled by user".to_string())
+            let inner = tokio::spawn(async move {
+                if let Some(idle_entry) = reuse_entry {
+                    executor::execute_job_reuse(idle_entry, context, &exec_config, cancel).await
                 } else {
-                    outcome.error
-                };
-                (
-                    outcome.exit_code,
-                    err,
-                    outcome.sandbox,
-                    outcome.source_ip,
-                    outcome.guest_session_id,
-                    telemetry,
-                )
-            }
-            Err(e) => {
-                // Panic lost the in-flight telemetry buffer; substitute an
-                // empty collector so the post-complete flush path stays
-                // unconditional. `flush` early-returns on empty pending_ops.
-                let empty_telemetry = JobTelemetry::new(
-                    exec_config_for_deferred.http.clone(),
-                    run_id,
-                    sandbox_token.clone(),
-                );
-                (
-                    1,
-                    Some(format!("executor task panicked: {e}")),
-                    None,
-                    String::new(),
-                    None,
-                    empty_telemetry,
-                )
-            }
-        };
+                    executor::execute_job(
+                        &**factory,
+                        context,
+                        executor::NewSandboxDispatch {
+                            id: sandbox_id,
+                            reuse_result,
+                        },
+                        &exec_config,
+                        &params,
+                        cancel,
+                    )
+                    .await
+                }
+            });
 
-        // Single sink for any claimed job's terminal state. Cancellation gets
-        // its own info marker; everything else with `err` set is a failure
-        // (panics, executor internal errors, non-zero exits with
-        // stderr/guest error file); otherwise the job finished normally.
-        let cancelled_for_log = job_cancel.is_cancelled();
-        match (cancelled_for_log, err.as_deref()) {
-            (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
-            (false, Some(e)) => {
-                error!(run_id = %run_id, exit_code, reused, error = %e, "job execution failed");
-            }
-            (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
-        }
-
-        let completion_payload =
-            CompletionPayload::new(run_id, exit_code, err, sandbox_id, reuse_result);
-        // Cancellation can arrive after terminal logging or while
-        // `sandbox.park()` is in flight. Pass the live token so finalization
-        // can re-check immediately before idle-pool ownership transfer.
-        let completion_ready = finalize_sandbox_for_completion(
-            sandbox,
-            ActiveBudgetLease::new(active_lease),
-            completion_payload,
-            FinalizeContext {
-                run_id,
-                sandbox_id,
-                profile_name,
-                session_id,
-                guest_session_id,
-                source_ip,
-                storage_fingerprints,
-                factory: factory_for_cleanup,
-                idle_pool,
-                status: Arc::clone(&status),
-                park_notify,
-                parking_gate,
+            let (
                 exit_code,
-                cancel: job_cancel,
-            },
-        )
-        .await;
+                err,
+                sandbox,
+                source_ip,
+                network_log_session,
+                guest_session_id,
+                telemetry,
+            ) = match inner.await {
+                Ok((outcome, telemetry)) => {
+                    let err = if job_cancel.is_cancelled() {
+                        Some("cancelled by user".to_string())
+                    } else {
+                        outcome.error
+                    };
+                    (
+                        outcome.exit_code,
+                        err,
+                        outcome.sandbox,
+                        outcome.source_ip,
+                        outcome.network_log_session,
+                        outcome.guest_session_id,
+                        telemetry,
+                    )
+                }
+                Err(e) => {
+                    // Panic lost the in-flight telemetry buffer; substitute an
+                    // empty collector so the post-complete flush path stays
+                    // unconditional. `flush` early-returns on empty pending_ops.
+                    let empty_telemetry = JobTelemetry::new(
+                        exec_config_for_deferred.http.clone(),
+                        run_id,
+                        sandbox_token.clone(),
+                    );
+                    (
+                        1,
+                        Some(format!("executor task panicked: {e}")),
+                        None,
+                        String::new(),
+                        None,
+                        None,
+                        empty_telemetry,
+                    )
+                }
+            };
 
-        // Structural guarantee: claim (in provider) is always paired with complete.
-        completion_ready
-            .complete_and_release(provider.as_ref(), status.as_ref())
-            .await;
+            // Single sink for any claimed job's terminal state. Cancellation gets
+            // its own info marker; everything else with `err` set is a failure
+            // (panics, executor internal errors, non-zero exits with
+            // stderr/guest error file); otherwise the job finished normally.
+            let cancelled_for_log = job_cancel.is_cancelled();
+            match (cancelled_for_log, err.as_deref()) {
+                (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
+                (false, Some(e)) => {
+                    error!(run_id = %run_id, exit_code, reused, error = %e, "job execution failed");
+                }
+                (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
+            }
 
-        // Best-effort telemetry, deferred past `provider.complete` so the
-        // user-visible run-complete signal isn't blocked on these uploads.
-        // They're still awaited (not spawned) so the surrounding `jobs`
-        // JoinSet drains them on graceful shutdown — no data loss on SIGTERM.
-        // Telemetry flush runs concurrently with network-log drain + upload.
-        // Network-log upload must wait for accepted Rust-side DNS/kmsg writes
-        // before reading the per-run JSONL snapshot.
-        let network_log_path = exec_config_for_deferred.log_paths.network_log(run_id);
-        let network_log_upload = async {
-            exec_config_for_deferred
-                .network_log_manager
-                .flush_path(&network_log_path)
-                .await;
-            network_logs::upload_network_logs(
-                &exec_config_for_deferred.http,
-                run_id,
-                &sandbox_token,
-                &network_log_path,
+            let completion_payload =
+                CompletionPayload::new(run_id, exit_code, err, sandbox_id, reuse_result);
+            // Cancellation can arrive after terminal logging or while
+            // `sandbox.park()` is in flight. Pass the live token so finalization
+            // can re-check immediately before idle-pool ownership transfer.
+            let completion_ready = finalize_sandbox_for_completion(
+                sandbox,
+                ActiveBudgetLease::new(active_lease),
+                completion_payload,
+                FinalizeContext {
+                    run_id,
+                    sandbox_id,
+                    profile_name,
+                    session_id,
+                    guest_session_id,
+                    source_ip,
+                    network_log_session,
+                    storage_fingerprints,
+                    factory: factory_for_cleanup,
+                    idle_pool,
+                    status: Arc::clone(&status),
+                    park_notify,
+                    parking_gate,
+                    network_log_drain: exec_config_for_deferred.network_log_drain.clone(),
+                    exit_code,
+                    cancel: job_cancel,
+                    cleanup_state: cleanup_state_for_body.clone(),
+                    #[cfg(test)]
+                    outer_job_panic,
+                },
             )
             .await;
-        };
-        tokio::join!(telemetry.flush(), network_log_upload,);
 
-        Some(run_id)
+            // Structural guarantee: claim (in provider) is always paired with complete.
+            completion_ready
+                .complete_and_release(provider.as_ref(), status.as_ref(), &cleanup_state_for_body)
+                .await;
+
+            // Best-effort telemetry, deferred past `provider.complete` so the
+            // user-visible run-complete signal isn't blocked on these uploads.
+            // They're still awaited (not spawned) so the surrounding `jobs`
+            // JoinSet drains them on graceful shutdown — no data loss on SIGTERM.
+            // Telemetry flush runs concurrently with best-effort network-log upload.
+            // The job finalizer already closed the local Rust-side DNS/kmsg
+            // session before sandbox reuse/release. Keep this flush as a
+            // defensive no-op for any accepted writes still finishing.
+            let network_log_path = exec_config_for_deferred.log_paths.network_log(run_id);
+            let network_log_upload = async {
+                exec_config_for_deferred
+                    .network_log_manager
+                    .flush_path(&network_log_path)
+                    .await;
+                network_logs::upload_network_logs(
+                    &exec_config_for_deferred.http,
+                    run_id,
+                    &sandbox_token,
+                    &network_log_path,
+                )
+                .await;
+            };
+            tokio::join!(telemetry.flush(), network_log_upload,);
+
+            Some(run_id)
+        };
+
+        match AssertUnwindSafe(body).catch_unwind().await {
+            Ok(result) => result,
+            Err(payload) => {
+                let cleanup = cleanup_panicked_job(
+                    run_id,
+                    sandbox_id,
+                    cancel_tokens_for_panic,
+                    status_for_panic,
+                    idle_pool_for_panic,
+                    cleanup_state_for_panic,
+                    orphaned_active_runs_for_panic,
+                );
+                if AssertUnwindSafe(cleanup).catch_unwind().await.is_err() {
+                    error!(
+                        run_id = %run_id,
+                        sandbox_id = %sandbox_id,
+                        "outer job panic cleanup panicked"
+                    );
+                }
+                std::panic::resume_unwind(payload);
+            }
+        }
     });
 }
 
@@ -1601,6 +1957,38 @@ async fn add_run_with_idle_status_snapshot(
     }
 }
 
+async fn cleanup_panicked_job(
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    status: Arc<StatusTracker>,
+    idle_pool: SharedIdlePool,
+    cleanup_state: RunCleanupState,
+    orphaned_active_runs: OrphanedActiveRuns,
+) {
+    cancel_tokens.lock().await.remove(&run_id);
+
+    match cleanup_state.disposition() {
+        RunCleanupDisposition::StatusRemoved => {}
+        RunCleanupDisposition::DestroyCompleted => {
+            status.remove_run_if_matching(run_id, sandbox_id).await;
+        }
+        RunCleanupDisposition::IdlePoolOwned => {
+            let snapshot = idle_pool.lock().await.status_snapshot();
+            set_idle_status_snapshot(&status, snapshot).await;
+            status.remove_run_if_matching(run_id, sandbox_id).await;
+        }
+        RunCleanupDisposition::ActiveOrUnknown => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                "outer job task panicked before sandbox ownership was proven; leaving active run visible for orphan reconciliation"
+            );
+            orphaned_active_runs.insert(run_id, sandbox_id).await;
+        }
+    }
+}
+
 fn spawn_idle_destroy_job(
     destroy_tasks: &mut JoinSet<()>,
     job: IdleDestroyJob,
@@ -1630,29 +2018,37 @@ async fn destroy_idle_job(job: IdleDestroyJob, _context: &'static str) {
     job.run().await;
 }
 
-async fn destroy_idle_payload_and_wait(payload: IdleDestroyPayload, context: &'static str) {
+async fn destroy_idle_payload_and_wait(
+    payload: IdleDestroyPayload,
+    context: &'static str,
+) -> DestroyOutcome {
     let handle = tokio::spawn(payload.stop_and_destroy());
     match handle.await {
-        Ok(()) => {}
-        Err(e) => warn!(context, error = %e, "idle payload destroy task panicked"),
+        Ok(outcome) => outcome,
+        Err(e) => {
+            warn!(context, error = %e, "idle payload destroy task panicked");
+            DestroyOutcome::Uncertain
+        }
     }
 }
 
-#[derive(Clone, Copy)]
 struct ActiveCleanupContext<'a> {
     run_id: RunId,
     sandbox_id: SandboxId,
     profile_name: &'a str,
     session_id: Option<&'a str>,
     reason: &'static str,
+    network_log_session: Option<NetworkLogSession>,
+    network_log_drain: NetworkLogDrainCoordinator,
 }
 
 /// Stop a sandbox and destroy it via its factory.
 async fn stop_and_destroy_sandbox(
     mut sandbox: Box<dyn Sandbox>,
     factory: &dyn SandboxFactory,
-    context: ActiveCleanupContext<'_>,
-) {
+    mut context: ActiveCleanupContext<'_>,
+) -> DestroyOutcome {
+    let mut uncertain = false;
     match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
         Ok(Ok(())) => {}
         Ok(Err(e)) => warn!(
@@ -1664,15 +2060,24 @@ async fn stop_and_destroy_sandbox(
             error = %e,
             "sandbox stop failed during active cleanup"
         ),
-        Err(_) => warn!(
-            run_id = %context.run_id,
-            sandbox_id = %context.sandbox_id,
-            profile_name = context.profile_name,
-            session_id = context.session_id.unwrap_or("<none>"),
-            reason = context.reason,
-            "sandbox stop panicked during active cleanup"
-        ),
+        Err(_) => {
+            warn!(
+                run_id = %context.run_id,
+                sandbox_id = %context.sandbox_id,
+                profile_name = context.profile_name,
+                session_id = context.session_id.unwrap_or("<none>"),
+                reason = context.reason,
+                "sandbox stop panicked during active cleanup"
+            );
+            uncertain = true;
+        }
     }
+    close_network_log_session(
+        context.run_id,
+        context.network_log_session.take(),
+        &context.network_log_drain,
+    )
+    .await;
     if AssertUnwindSafe(factory.destroy(sandbox))
         .catch_unwind()
         .await
@@ -1686,6 +2091,12 @@ async fn stop_and_destroy_sandbox(
             reason = context.reason,
             "sandbox destroy panicked during active cleanup"
         );
+        uncertain = true;
+    }
+    if uncertain {
+        DestroyOutcome::Uncertain
+    } else {
+        DestroyOutcome::Completed
     }
 }
 
@@ -1705,107 +2116,153 @@ async fn handle_job_result(
     }
 }
 
-/// References needed to collect and send a heartbeat.
-/// Avoids passing 8+ arguments through `send_heartbeat`.
-struct HeartbeatContext<'a> {
-    idle_pool: &'a SharedIdlePool,
-    runner_id: &'a str,
-    name: &'a str,
-    group: &'a str,
-    profiles: &'a BTreeMap<String, ProfileConfig>,
-    budget: &'a ResourceBudget,
-    provider: &'a dyn JobProvider,
-}
-
-/// Collect current runner state, update the provider's held-sessions cache,
-/// and send a heartbeat to the server.
-async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
-    let pool = hb.idle_pool.lock().await;
-    let state = collect_heartbeat_state(
-        hb.runner_id,
-        hb.name,
-        hb.group,
-        hb.profiles,
-        hb.budget,
-        &pool,
-        mode,
-    );
-    drop(pool);
-    info!(
-        mode = ?mode,
-        running = state.running_count,
-        sessions = state.held_sessions.len(),
-        "heartbeat"
-    );
-    debug!(held_sessions = ?state.held_sessions);
-    hb.provider
-        .set_held_sessions(state.held_sessions.clone())
-        .await;
-    hb.provider.heartbeat(&state).await;
-}
-
-/// Collect current runner state for heartbeat reporting.
-fn collect_heartbeat_state(
-    runner_id: &str,
-    name: &str,
-    group: &str,
-    profiles: &BTreeMap<String, ProfileConfig>,
-    budget: &ResourceBudget,
-    idle_pool: &crate::idle_pool::IdlePool,
-    mode: RunnerMode,
-) -> HeartbeatState {
-    // Stopped is set only by `status.set_mode(Stopped)` immediately before
-    // `run()` returns, after the last heartbeat has been sent. If a caller
-    // reaches here with Stopped it means a new code path was added that
-    // heartbeats post-teardown, which breaks the contract that the server
-    // never sees mode=stopped on the wire. Debug-only: release still falls
-    // through to the defensive "stopping" mapping below.
-    debug_assert_ne!(
-        mode,
-        RunnerMode::Stopped,
-        "Stopped is never live-heartbeated",
-    );
-    let (allocated_vcpu, allocated_memory_mb, budget_running) = budget.allocated();
-    // budget.allocated() includes parked (idle) VMs that hold their budget.
-    // Report only actively running jobs so the scheduler sees real capacity.
-    let idle_count = idle_pool.len();
-    let running_count = budget_running.saturating_sub(idle_count);
-    HeartbeatState {
-        runner_id: runner_id.to_string(),
-        runner_name: name.to_string(),
-        group: group.to_string(),
-        profiles: profiles.keys().cloned().collect(),
-        total_vcpu: budget.effective_vcpu(),
-        total_memory_mb: budget.effective_memory_mb(),
-        max_concurrent: budget.max_concurrent(),
-        allocated_vcpu,
-        allocated_memory_mb,
-        running_count,
-        held_sessions: idle_pool.held_sessions(),
-        mode: match mode {
-            RunnerMode::Running => "running".to_string(),
-            RunnerMode::Draining => "draining".to_string(),
-            // Stopped caught by the debug_assert above; release falls here.
-            RunnerMode::Stopping | RunnerMode::Stopped => "stopping".to_string(),
-        },
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::signals::{
         LifecycleController, handle_drain_signal, handle_resume_signal, handle_stopping_signal,
     };
     use super::*;
+    use std::fmt;
+    use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
-
-    // -----------------------------------------------------------------------
-    // collect_heartbeat_state: running_count excludes idle VMs
-    // -----------------------------------------------------------------------
+    use tracing::field::{Field, Visit};
+    use tracing::{Event, Subscriber};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
 
     use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult, ParkingState};
+    use crate::types::HeartbeatState;
     use async_trait::async_trait;
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
+
+    #[derive(Clone, Default)]
+    struct CapturedEvents {
+        events: Arc<Mutex<Vec<CapturedEvent>>>,
+    }
+
+    #[derive(Clone, Debug, Default)]
+    struct CapturedEvent {
+        fields: BTreeMap<String, String>,
+        field_kinds: BTreeMap<String, &'static str>,
+    }
+
+    impl CapturedEvents {
+        fn entries(&self) -> Vec<CapturedEvent> {
+            self.events.lock().unwrap().clone()
+        }
+
+        fn clear(&self) {
+            self.events.lock().unwrap().clear();
+        }
+    }
+
+    impl<S> Layer<S> for CapturedEvents
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = CapturedEvent::default();
+            event.record(&mut visitor);
+            self.events.lock().unwrap().push(visitor);
+        }
+    }
+
+    impl Visit for CapturedEvent {
+        fn record_str(&mut self, field: &Field, value: &str) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+            self.field_kinds.insert(field.name().to_string(), "str");
+        }
+
+        fn record_u64(&mut self, field: &Field, value: u64) {
+            self.fields
+                .insert(field.name().to_string(), value.to_string());
+            self.field_kinds.insert(field.name().to_string(), "u64");
+        }
+
+        fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
+            self.fields
+                .insert(field.name().to_string(), format!("{value:?}"));
+            self.field_kinds.insert(field.name().to_string(), "debug");
+        }
+    }
+
+    fn event_with_message<'a>(events: &'a [CapturedEvent], message: &str) -> &'a CapturedEvent {
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|value| value == message)
+            })
+            .unwrap_or_else(|| panic!("missing event message {message:?}; captured={events:#?}"))
+    }
+
+    fn register_teardown_timer_callsites() {
+        let timer = TeardownTimer::start();
+        let phase = timer.phase_start("warmup_phase");
+        timer.phase_complete("warmup_phase", phase);
+        timer.event("warmup_event");
+        info!(total_teardown_ms = timer.elapsed_ms(), "runner stopped");
+    }
+
+    #[test]
+    fn teardown_timer_emits_structured_timing_fields() {
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+        let _guard = tracing::subscriber::set_default(subscriber);
+        // These callsites are also hit by parallel runner tests. Reproduce the
+        // problematic shape by registering them on a thread without this
+        // thread-local subscriber, then rebuild the cache for this subscriber.
+        std::thread::spawn(register_teardown_timer_callsites)
+            .join()
+            .expect("callsite warmup thread panicked");
+        tracing::callsite::rebuild_interest_cache();
+        captured.clear();
+
+        let timer = TeardownTimer::start();
+        let phase = timer.phase_start("test_phase");
+        timer.phase_complete("test_phase", phase);
+        timer.event("drop_discover_fut");
+        info!(total_teardown_ms = timer.elapsed_ms(), "runner stopped");
+
+        let events = captured.entries();
+        event_with_message(&events, "teardown started");
+
+        let started = event_with_message(&events, "teardown phase started");
+        assert_eq!(
+            started.fields.get("phase").map(String::as_str),
+            Some("test_phase")
+        );
+        assert!(started.fields.contains_key("elapsed_ms"));
+        assert_eq!(started.field_kinds.get("elapsed_ms").copied(), Some("u64"));
+
+        let complete = event_with_message(&events, "teardown phase complete");
+        assert_eq!(
+            complete.fields.get("phase").map(String::as_str),
+            Some("test_phase")
+        );
+        assert!(complete.fields.contains_key("phase_ms"));
+        assert_eq!(complete.field_kinds.get("phase_ms").copied(), Some("u64"));
+        assert!(complete.fields.contains_key("elapsed_ms"));
+        assert_eq!(complete.field_kinds.get("elapsed_ms").copied(), Some("u64"));
+
+        let event = event_with_message(&events, "teardown phase event");
+        assert_eq!(
+            event.fields.get("phase").map(String::as_str),
+            Some("drop_discover_fut")
+        );
+        assert!(event.fields.contains_key("elapsed_ms"));
+        assert_eq!(event.field_kinds.get("elapsed_ms").copied(), Some("u64"));
+
+        let stopped = event_with_message(&events, "runner stopped");
+        assert!(stopped.fields.contains_key("total_teardown_ms"));
+        assert_eq!(
+            stopped.field_kinds.get("total_teardown_ms").copied(),
+            Some("u64")
+        );
+    }
 
     fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
         let mut m = BTreeMap::new();
@@ -1820,20 +2277,6 @@ mod tests {
             },
         );
         m
-    }
-
-    fn make_park_candidate(session_id: &str) -> ParkCandidate {
-        let budget = Arc::new(ResourceBudget::new(1, 1, 1.0, 0));
-        ParkCandidate::from_parked_parts(ParkCandidateParts {
-            sandbox: Box::new(MockSandbox::new("test")),
-            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
-            session_id: session_id.into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            source_ip: "10.0.0.1".into(),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        })
     }
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
@@ -1904,6 +2347,7 @@ mod tests {
             active_runs_at_complete: Arc::clone(&active_runs_at_complete),
             status_path: status_path.clone(),
         };
+        let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
@@ -1912,7 +2356,7 @@ mod tests {
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::active(ActiveBudgetLease::new(lease)),
         )
-        .complete_and_release(&provider, &status)
+        .complete_and_release(&provider, &status, &cleanup_state)
         .await;
 
         assert_eq!(
@@ -1923,12 +2367,16 @@ mod tests {
         assert_eq!(
             active_runs_at_complete.load(Ordering::SeqCst),
             1,
-            "status.remove_run must happen after provider.complete",
+            "active status removal must happen after provider.complete",
         );
         assert_eq!(
             status_active_run_count(&status_path).await,
             0,
-            "status.remove_run should complete before active budget release returns",
+            "active status removal should complete before active budget release returns",
+        );
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::StatusRemoved,
         );
         assert_eq!(budget.allocated().2, 0);
     }
@@ -1948,6 +2396,7 @@ mod tests {
             active_runs_at_complete,
             status_path,
         };
+        let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
@@ -1956,7 +2405,7 @@ mod tests {
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::idle_owned(),
         )
-        .complete_and_release(&provider, &status)
+        .complete_and_release(&provider, &status, &cleanup_state)
         .await;
 
         assert_eq!(
@@ -1964,7 +2413,50 @@ mod tests {
             1,
             "idle-owned completion must not release the park candidate budget",
         );
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::StatusRemoved,
+        );
         drop(park_candidate_lease);
+        assert_eq!(budget.allocated().2, 0);
+    }
+
+    #[tokio::test]
+    async fn completion_ready_does_not_remove_reinserted_active_run() {
+        let (budget, lease) = test_budget_lease();
+        let budget_count_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
+        let active_runs_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let provider = CompletionOrderProvider {
+            budget: Arc::clone(&budget),
+            budget_count_at_complete,
+            active_runs_at_complete,
+            status_path: status_path.clone(),
+        };
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let completed_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, completed_sandbox_id).await;
+        status.add_run(run_id, current_sandbox_id).await;
+
+        CompletionReady::new(
+            test_completion_payload(run_id, completed_sandbox_id),
+            BudgetOwnership::active(ActiveBudgetLease::new(lease)),
+        )
+        .complete_and_release(&provider, &status, &cleanup_state)
+        .await;
+
+        assert_eq!(
+            status_active_run_records(&status_path).await,
+            vec![(run_id.to_string(), current_sandbox_id.to_string())],
+        );
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::StatusRemoved,
+        );
         assert_eq!(budget.allocated().2, 0);
     }
 
@@ -1982,6 +2474,7 @@ mod tests {
             active_runs_at_complete,
             status_path,
         };
+        let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
@@ -1990,7 +2483,7 @@ mod tests {
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::active(ActiveBudgetLease::from_rejected_park(lease)),
         )
-        .complete_and_release(&provider, &status)
+        .complete_and_release(&provider, &status, &cleanup_state)
         .await;
 
         assert_eq!(
@@ -2001,11 +2494,368 @@ mod tests {
         assert_eq!(budget.allocated().2, 0);
     }
 
+    #[tokio::test]
+    async fn finalizer_closes_network_log_session_before_parking() {
+        let (_budget, lease) = test_budget_lease();
+        let dir = tempfile::tempdir().unwrap();
+        let status = Arc::new(StatusTracker::new(
+            dir.path().join("status.json"),
+            4,
+            None,
+            None,
+        ));
+        status.write_initial().await;
+        let parking_gate = ParkingGate::new_open();
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
+                IdlePoolConfig {
+                    default_timeout: Duration::from_secs(300),
+                    max_idle: 10,
+                },
+                parking_gate.clone(),
+            )));
+        let network_log_manager = NetworkLogManager::new();
+        let network_log_path = dir.path().join("network.jsonl");
+        let network_log_session = network_log_manager
+            .register_source_ip("10.0.0.1", network_log_path)
+            .await;
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("network-log-park"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(run_id, 0, None, sandbox_id, SandboxReuseResult::PoolMiss),
+            FinalizeContext {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default".into(),
+                session_id: Some("sess-network-log-park".into()),
+                guest_session_id: None,
+                source_ip: "10.0.0.1".into(),
+                network_log_session: Some(network_log_session),
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+                idle_pool: Arc::clone(&idle_pool),
+                status,
+                park_notify: Arc::new(tokio::sync::Notify::new()),
+                parking_gate,
+                network_log_drain: NetworkLogDrainCoordinator::noop(),
+                exit_code: 0,
+                cancel: CancellationToken::new(),
+                cleanup_state: RunCleanupState::new(),
+                outer_job_panic: None,
+            },
+        )
+        .await;
+
+        assert_eq!(idle_pool.lock().await.len(), 1);
+        assert!(
+            !network_log_manager
+                .append_for_ip(
+                    "10.0.0.1",
+                    serde_json::json!({"type":"dns","host":"after-park.test"})
+                )
+                .await,
+            "parked sandbox must not retain the previous run's network-log attribution",
+        );
+    }
+
+    #[tokio::test]
+    async fn finalizer_closes_network_log_session_before_cancel_destroy() {
+        let (_budget, lease) = test_budget_lease();
+        let dir = tempfile::tempdir().unwrap();
+        let status = Arc::new(StatusTracker::new(
+            dir.path().join("status.json"),
+            4,
+            None,
+            None,
+        ));
+        status.write_initial().await;
+        let parking_gate = ParkingGate::new_open();
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
+                IdlePoolConfig {
+                    default_timeout: Duration::from_secs(300),
+                    max_idle: 10,
+                },
+                parking_gate.clone(),
+            )));
+        let network_log_manager = NetworkLogManager::new();
+        let network_log_path = dir.path().join("network.jsonl");
+        let network_log_session = network_log_manager
+            .register_source_ip("10.0.0.1", network_log_path)
+            .await;
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("network-log-cancel"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(run_id, 0, None, sandbox_id, SandboxReuseResult::PoolMiss),
+            FinalizeContext {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default".into(),
+                session_id: Some("sess-network-log-cancel".into()),
+                guest_session_id: None,
+                source_ip: "10.0.0.1".into(),
+                network_log_session: Some(network_log_session),
+                storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+                idle_pool: Arc::clone(&idle_pool),
+                status,
+                park_notify: Arc::new(tokio::sync::Notify::new()),
+                parking_gate,
+                network_log_drain: NetworkLogDrainCoordinator::noop(),
+                exit_code: 0,
+                cancel,
+                cleanup_state: RunCleanupState::new(),
+                outer_job_panic: None,
+            },
+        )
+        .await;
+
+        assert_eq!(idle_pool.lock().await.len(), 0);
+        assert!(
+            !network_log_manager
+                .append_for_ip(
+                    "10.0.0.1",
+                    serde_json::json!({"type":"dns","host":"after-destroy.test"})
+                )
+                .await,
+            "cancelled destroyed sandbox must not retain network-log attribution",
+        );
+    }
+
     #[test]
     fn active_budget_drop_releases_budget_as_raii_fallback() {
         let (budget, lease) = test_budget_lease();
         drop(ActiveBudgetLease::new(lease));
         assert_eq!(budget.allocated().2, 0);
+    }
+
+    #[test]
+    fn run_cleanup_state_does_not_downgrade_precise_ownership() {
+        let state = RunCleanupState::new();
+
+        state.mark_idle_pool_owned();
+        state.mark_destroy_completed();
+        assert_eq!(state.disposition(), RunCleanupDisposition::IdlePoolOwned);
+
+        state.mark_status_removed();
+        state.mark_idle_pool_owned();
+        assert_eq!(state.disposition(), RunCleanupDisposition::StatusRemoved);
+    }
+
+    #[tokio::test]
+    async fn panic_cleanup_status_removed_only_clears_cancel_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let orphans = OrphanedActiveRuns::new();
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, sandbox_id).await;
+        status.remove_run_if_matching(run_id, sandbox_id).await;
+        tokens.lock().await.insert(run_id, CancellationToken::new());
+        cleanup_state.mark_status_removed();
+
+        cleanup_panicked_job(
+            run_id,
+            sandbox_id,
+            Arc::clone(&tokens),
+            Arc::clone(&status),
+            idle_pool,
+            cleanup_state,
+            orphans.clone(),
+        )
+        .await;
+
+        assert!(!tokens.lock().await.contains_key(&run_id));
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert!(active_runs.is_empty());
+        assert_eq!(orphans.len().await, 0);
+    }
+
+    #[tokio::test]
+    async fn panic_cleanup_active_unknown_keeps_active_and_registers_orphan() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let orphans = OrphanedActiveRuns::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, sandbox_id).await;
+        tokens.lock().await.insert(run_id, CancellationToken::new());
+
+        cleanup_panicked_job(
+            run_id,
+            sandbox_id,
+            Arc::clone(&tokens),
+            Arc::clone(&status),
+            idle_pool,
+            RunCleanupState::new(),
+            orphans.clone(),
+        )
+        .await;
+
+        assert!(!tokens.lock().await.contains_key(&run_id));
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(active_runs, vec![run_id.to_string()]);
+        assert_eq!(orphans.len().await, 1);
+    }
+
+    #[tokio::test]
+    async fn panic_cleanup_destroy_completed_removes_active_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let orphans = OrphanedActiveRuns::new();
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, sandbox_id).await;
+        tokens.lock().await.insert(run_id, CancellationToken::new());
+        cleanup_state.mark_destroy_completed();
+
+        cleanup_panicked_job(
+            run_id,
+            sandbox_id,
+            Arc::clone(&tokens),
+            Arc::clone(&status),
+            idle_pool,
+            cleanup_state,
+            orphans.clone(),
+        )
+        .await;
+
+        assert!(!tokens.lock().await.contains_key(&run_id));
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert!(active_runs.is_empty());
+        assert_eq!(orphans.len().await, 0);
+    }
+
+    #[tokio::test]
+    async fn panic_cleanup_destroy_completed_does_not_remove_reinserted_active_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let orphans = OrphanedActiveRuns::new();
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let completed_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, completed_sandbox_id).await;
+        status.add_run(run_id, current_sandbox_id).await;
+        tokens.lock().await.insert(run_id, CancellationToken::new());
+        cleanup_state.mark_destroy_completed();
+
+        cleanup_panicked_job(
+            run_id,
+            completed_sandbox_id,
+            Arc::clone(&tokens),
+            Arc::clone(&status),
+            idle_pool,
+            cleanup_state,
+            orphans.clone(),
+        )
+        .await;
+
+        assert!(!tokens.lock().await.contains_key(&run_id));
+        assert_eq!(
+            status_active_run_records(&status_path).await,
+            vec![(run_id.to_string(), current_sandbox_id.to_string())],
+        );
+        assert_eq!(orphans.len().await, 0);
+    }
+
+    #[tokio::test]
+    async fn panic_cleanup_idle_pool_owned_refreshes_idle_status_before_removing_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = Arc::new(StatusTracker::new(status_path.clone(), 4, None, None));
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
+        let tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+        let orphans = OrphanedActiveRuns::new();
+        let cleanup_state = RunCleanupState::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
+            sandbox: Box::new(MockSandbox::new("idle-owned-cleanup")),
+            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+            session_id: "sess-idle-owned-cleanup".into(),
+            sandbox_id,
+            profile_name: "vm0/default".into(),
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        });
+        assert!(matches!(
+            idle_pool.lock().await.park(candidate),
+            ParkResult::Parked
+        ));
+        status.add_run(run_id, sandbox_id).await;
+        tokens.lock().await.insert(run_id, CancellationToken::new());
+        cleanup_state.mark_idle_pool_owned();
+
+        cleanup_panicked_job(
+            run_id,
+            sandbox_id,
+            Arc::clone(&tokens),
+            Arc::clone(&status),
+            Arc::clone(&idle_pool),
+            cleanup_state,
+            orphans.clone(),
+        )
+        .await;
+
+        assert!(!tokens.lock().await.contains_key(&run_id));
+        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(idle_sessions, vec!["sess-idle-owned-cleanup"]);
+        assert!(active_runs.is_empty());
+        assert_eq!(orphans.len().await, 0);
     }
 
     struct PanickingDestroyFactory;
@@ -2196,119 +3046,6 @@ mod tests {
         }
 
         async fn shutdown(&mut self) {}
-    }
-
-    #[test]
-    fn heartbeat_running_count_no_idle() {
-        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
-        let _leases = [
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-        ];
-        let pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
-        let profiles = test_profiles();
-
-        let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
-            &profiles,
-            &budget,
-            &pool,
-            RunnerMode::Running,
-        );
-        // 2 running jobs, 0 idle → running_count = 2
-        assert_eq!(state.running_count, 2);
-    }
-
-    #[test]
-    fn heartbeat_running_count_excludes_idle() {
-        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
-        // 3 budget reservations: 2 running + 1 will be parked
-        let _leases = [
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-        ];
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
-        // Park 1 VM — budget still held, but pool.len() = 1
-        assert!(matches!(
-            pool.park(make_park_candidate("sess-1")),
-            ParkResult::Parked,
-        ));
-        let profiles = test_profiles();
-
-        let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
-            &profiles,
-            &budget,
-            &pool,
-            RunnerMode::Running,
-        );
-        // budget says 3, idle pool has 1 → running_count = 2
-        assert_eq!(state.running_count, 2);
-        assert_eq!(state.held_sessions, vec!["sess-1"]);
-    }
-
-    #[test]
-    fn heartbeat_running_count_all_idle() {
-        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 4));
-        let _leases = [
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-            ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap(),
-        ];
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
-        let _ = pool.park(make_park_candidate("sess-1"));
-        let _ = pool.park(make_park_candidate("sess-2"));
-        let profiles = test_profiles();
-
-        let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
-            &profiles,
-            &budget,
-            &pool,
-            RunnerMode::Running,
-        );
-        // budget says 2, idle pool has 2 → running_count = 0
-        assert_eq!(state.running_count, 0);
-    }
-
-    #[test]
-    fn heartbeat_running_count_saturates_on_transient_inconsistency() {
-        // Simulate transient state: budget released before idle pool updated
-        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
-        // budget_running = 0 but pool has 1 entry (inconsistent)
-        let mut pool = IdlePool::new(IdlePoolConfig {
-            default_timeout: Duration::from_secs(300),
-            max_idle: 0,
-        });
-        let _ = pool.park(make_park_candidate("sess-1"));
-        let profiles = test_profiles();
-
-        let state = collect_heartbeat_state(
-            "r1",
-            "runner-1",
-            "vm0/test",
-            &profiles,
-            &budget,
-            &pool,
-            RunnerMode::Running,
-        );
-        // saturating_sub prevents underflow: 0 - 1 → 0
-        assert_eq!(state.running_count, 0);
     }
 
     #[tokio::test]
@@ -2569,6 +3306,7 @@ mod tests {
                 http: crate::http::HttpClient::new(api_url.to_string()).unwrap(),
                 log_paths: crate::paths::LogPaths::new(log_dir),
                 network_log_manager: NetworkLogManager::new(),
+                network_log_drain: NetworkLogDrainCoordinator::noop(),
                 home,
             }),
             firecracker: config::FirecrackerConfig {
@@ -2580,11 +3318,13 @@ mod tests {
             min_memory_mb,
             kmsg_handle: kmsg_log::KmsgHandle::noop(),
             dns_handle: crate::dns::DnsProxy::noop(),
+            orphan_reap_process_discovery: None,
             signal_source: SignalSource::Override(SignalController {
                 mode_rx,
                 lifecycle: lifecycle.clone(),
                 handler_abort: None,
             }),
+            outer_job_panic: None,
         };
 
         let env = MockRunEnv {
@@ -2776,7 +3516,7 @@ mod tests {
             ),
         )
         .unwrap();
-        network_log_manager
+        let _network_log_session = network_log_manager
             .register_source_ip("10.200.0.200", network_log_path.clone())
             .await;
         assert!(
@@ -2797,12 +3537,16 @@ mod tests {
         let run_handle = tokio::spawn(run(config));
         push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
 
+        // The finalizer now closes Rust-side network-log attribution before
+        // completing the job, so release the accepted write before waiting for
+        // completion. The upload itself is still deferred until after the
+        // completion request below.
+        release_write.add_permits(1);
         let completion = env
             .handle
             .wait_completion(run_id, Duration::from_secs(5))
             .await;
         assert!(completion.is_some(), "job should complete");
-        release_write.add_permits(1);
 
         // Drain shutdown — must block on each `spawn_job` closure's deferred
         // `tokio::join!(flush, upload)` via the outer `jobs` JoinSet.
@@ -4174,8 +4918,76 @@ mod tests {
         (sessions, run_ids)
     }
 
+    async fn status_active_run_records(status_path: &std::path::Path) -> Vec<(String, String)> {
+        let raw = tokio::fs::read_to_string(status_path).await.unwrap();
+        let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let mut records: Vec<(String, String)> = status["active_runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|run| {
+                (
+                    run["run_id"].as_str().unwrap().to_string(),
+                    run["sandbox_id"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        records.sort_unstable();
+        records
+    }
+
     async fn status_idle_sessions(status_path: &std::path::Path) -> Vec<String> {
         status_idle_sessions_and_active_runs(status_path).await.0
+    }
+
+    async fn wait_status_idle_sessions_and_active_runs(
+        status_path: &std::path::Path,
+        expected_idle_sessions: &[&str],
+        expected_active_runs: &[String],
+        timeout: Duration,
+    ) {
+        let mut expected_idle_sessions: Vec<String> = expected_idle_sessions
+            .iter()
+            .map(|session| (*session).to_string())
+            .collect();
+        expected_idle_sessions.sort_unstable();
+        let mut expected_active_runs = expected_active_runs.to_vec();
+        expected_active_runs.sort_unstable();
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            let Some((idle_sessions, active_runs)) =
+                status_idle_sessions_and_active_runs_if_exists(status_path).await
+            else {
+                assert!(
+                    tokio::time::Instant::now() < deadline,
+                    "status file {} was not written within {timeout:?}",
+                    status_path.display(),
+                );
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                continue;
+            };
+            if idle_sessions == expected_idle_sessions && active_runs == expected_active_runs {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "status did not reach expected idle={expected_idle_sessions:?} active={expected_active_runs:?} within {timeout:?} (actual idle={idle_sessions:?} active={active_runs:?})",
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    async fn status_idle_sessions_and_active_runs_if_exists(
+        status_path: &std::path::Path,
+    ) -> Option<(Vec<String>, Vec<String>)> {
+        match tokio::fs::try_exists(status_path).await {
+            Ok(true) => Some(status_idle_sessions_and_active_runs(status_path).await),
+            Ok(false) => None,
+            Err(err) => panic!(
+                "failed to check status file {}: {err}",
+                status_path.display()
+            ),
+        }
     }
 
     async fn publish_idle_status(pool: &SharedIdlePool, status: &StatusTracker) {
@@ -5598,6 +6410,137 @@ mod tests {
         assert!(
             active_runs.is_empty(),
             "create failure should remove active run from status"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn outer_job_panic_after_idle_pool_owned_cleans_token_and_active_status() {
+        let (mut config, env) = mock_run_config_with_overrides(
+            test_profiles(),
+            8,
+            16384,
+            4,
+            Arc::new(sandbox_mock::MockSandboxOverrides::new()),
+        );
+        config.outer_job_panic = Some(OuterJobPanicPoint::IdlePoolOwned);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let cancel_tokens = Arc::clone(&config.cancel_tokens);
+        let status_path = env._temp_dir.path().join("status.json");
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-outer-panic-idle")),
+        );
+
+        wait_idle_pool_len(&idle_pool, 1, Duration::from_secs(5)).await;
+        wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+        wait_status_idle_sessions_and_active_runs(
+            &status_path,
+            &["sess-outer-panic-idle"],
+            &[],
+            Duration::from_secs(5),
+        )
+        .await;
+        assert!(
+            !env.handle
+                .completions
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|completion| completion.run_id == run_id),
+            "outer job panic must not synthesize provider completion"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
+        let (mut config, env) = mock_run_config_with_overrides(
+            test_profiles(),
+            8,
+            16384,
+            4,
+            Arc::new(sandbox_mock::MockSandboxOverrides::new()),
+        );
+        config.outer_job_panic = Some(OuterJobPanicPoint::ActiveOrUnknown);
+        config.orphan_reap_process_discovery = Some(OrphanReapProcessDiscovery {
+            firecrackers: Arc::new(Vec::new()),
+            incomplete_for_current_runner: false,
+        });
+        let cancel_tokens = Arc::clone(&config.cancel_tokens);
+        let status_path = env._temp_dir.path().join("status.json");
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+        wait_status_idle_sessions_and_active_runs(
+            &status_path,
+            &[],
+            &[run_id.to_string()],
+            Duration::from_secs(5),
+        )
+        .await;
+
+        shutdown(&env, run_handle).await;
+        wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+            .await;
+        assert!(
+            !env.handle
+                .completions
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|completion| completion.run_id == run_id),
+            "outer job panic must not synthesize provider completion"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn outer_job_panic_after_destroy_completed_cleans_token_and_active_status() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let destroy_entered = Arc::new(tokio::sync::Notify::new());
+        let destroy_release = Arc::new(tokio::sync::Notify::new());
+        overrides.set_destroy_gate(Arc::clone(&destroy_entered), Arc::clone(&destroy_release));
+        let destroy_entered_wait = destroy_entered.notified();
+        tokio::pin!(destroy_entered_wait);
+        destroy_entered_wait.as_mut().enable();
+
+        let (mut config, env) =
+            mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        config.outer_job_panic = Some(OuterJobPanicPoint::DestroyCompleted);
+        let cancel_tokens = Arc::clone(&config.cancel_tokens);
+        let status_path = env._temp_dir.path().join("status.json");
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = RunId::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        tokio::time::timeout(Duration::from_secs(5), destroy_entered_wait)
+            .await
+            .expect("active destroy should start");
+        let _token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+        destroy_release.notify_one();
+
+        wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+        wait_status_idle_sessions_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
+            .await;
+        assert!(
+            !env.handle
+                .completions
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|completion| completion.run_id == run_id),
+            "outer job panic must not synthesize provider completion"
         );
 
         shutdown(&env, run_handle).await;

@@ -4,6 +4,7 @@ export const elevenlabs = {
   elevenlabs: {
     label: "ElevenLabs",
     category: "ai-voice-audio",
+    generation: ["audio"],
     environmentMapping: {
       ELEVENLABS_TOKEN: "$secrets.ELEVENLABS_TOKEN",
     },

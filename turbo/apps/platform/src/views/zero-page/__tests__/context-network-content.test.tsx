@@ -168,6 +168,46 @@ async function setupAndNavigateToTab(tabName: "Context" | "Network") {
   click(tab);
 }
 
+function getTypeFilterButton(): HTMLButtonElement {
+  const button = document.querySelector<HTMLButtonElement>(
+    'button[aria-label="Type filter"]',
+  );
+  expect(button).toBeTruthy();
+  return button!;
+}
+
+function getMenuCheckbox(label: string): HTMLElement {
+  const item = screen.getAllByRole("menuitemcheckbox").find((el) => {
+    return el.textContent?.trim() === label;
+  });
+  expect(item).toBeTruthy();
+  return item!;
+}
+
+function queryMenuCheckbox(label: string): HTMLElement | undefined {
+  return screen.getAllByRole("menuitemcheckbox").find((el) => {
+    return el.textContent?.trim() === label;
+  });
+}
+
+async function openNetworkTypeFilter() {
+  const trigger = await waitFor(() => {
+    return getTypeFilterButton();
+  });
+  click(trigger);
+  await waitFor(() => {
+    expect(getMenuCheckbox("HTTP")).toBeInTheDocument();
+  });
+}
+
+function getAllTypesMenuItem(): HTMLElement {
+  const item = screen.getAllByRole("menuitemcheckbox").find((el) => {
+    return el.textContent?.trim() === "All types";
+  });
+  expect(item).toBeTruthy();
+  return item!;
+}
+
 // ---------------------------------------------------------------------------
 // Context content tests
 // ---------------------------------------------------------------------------
@@ -451,8 +491,317 @@ describe("networkContent", () => {
       }),
     ).toBeDefined();
 
-    // TCP entry renders host:port
-    expect(screen.getByText("db.internal:5432")).toBeInTheDocument();
+    // Default filter shows HTTP only.
+    expect(screen.queryByText("db.internal:5432")).not.toBeInTheDocument();
+
+    await openNetworkTypeFilter();
+    click(getMenuCheckbox("TCP"));
+
+    // TCP entry renders host:port when selected.
+    await waitFor(() => {
+      expect(screen.getByText("db.internal:5432")).toBeInTheDocument();
+    });
+  });
+
+  it("should default network type filter to HTTP", async () => {
+    const httpEntry = makeNetworkEntry({
+      timestamp: "2026-03-10T14:56:05Z",
+      type: "http",
+      url: "https://api.example.com/data",
+    });
+    const dnsEntry = makeNetworkEntry({
+      timestamp: "2026-03-10T14:56:06Z",
+      type: "dns",
+      action: undefined,
+      method: undefined,
+      url: undefined,
+      status: undefined,
+      host: "api.example.com",
+      port: 53,
+    });
+
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [httpEntry, dnsEntry],
+        hasMore: false,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("https://api.example.com/data"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("api.example.com:53")).not.toBeInTheDocument();
+
+    await openNetworkTypeFilter();
+    expect(getAllTypesMenuItem()).toHaveAttribute("aria-checked", "false");
+    expect(getMenuCheckbox("HTTP")).toHaveAttribute("aria-checked", "true");
+    expect(getMenuCheckbox("DNS")).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("should treat blank network log type as HTTP", async () => {
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [
+          makeNetworkEntry({
+            type: "",
+            url: "https://blank-type.example.com/data",
+          }),
+        ],
+        hasMore: false,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("https://blank-type.example.com/data"),
+      ).toBeInTheDocument();
+    });
+
+    await openNetworkTypeFilter();
+    expect(getMenuCheckbox("HTTP")).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("should support multiple selected network type filters", async () => {
+    const httpEntry = makeNetworkEntry({
+      timestamp: "2026-03-10T14:56:05Z",
+      type: "http",
+      url: "https://api.example.com/data",
+    });
+    const dnsEntry = makeNetworkEntry({
+      timestamp: "2026-03-10T14:56:06Z",
+      type: "dns",
+      action: undefined,
+      method: undefined,
+      url: undefined,
+      status: undefined,
+      host: "api.example.com",
+      port: 53,
+    });
+
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [httpEntry, dnsEntry],
+        hasMore: false,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("https://api.example.com/data"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("api.example.com:53")).not.toBeInTheDocument();
+
+    await openNetworkTypeFilter();
+    click(getMenuCheckbox("DNS"));
+
+    await waitFor(() => {
+      expect(screen.getByText("api.example.com:53")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("https://api.example.com/data"),
+    ).toBeInTheDocument();
+
+    click(getMenuCheckbox("HTTP"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("https://api.example.com/data"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("api.example.com:53")).toBeInTheDocument();
+  });
+
+  it("should keep load more visible when current loaded results do not match the type filter", async () => {
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [
+          makeNetworkEntry({
+            timestamp: "2026-03-10T14:56:06Z",
+            type: "dns",
+            action: undefined,
+            method: undefined,
+            url: undefined,
+            status: undefined,
+            host: "api.example.com",
+            port: 53,
+          }),
+        ],
+        hasMore: true,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("No matching logs in loaded results"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Load more")).toBeInTheDocument();
+  });
+
+  it("should include newly loaded types while all network types are selected", async () => {
+    let requestCount = 0;
+    server.use(
+      mockApi(logsByIdContract.getById, ({ params, respond }) => {
+        if (params.id === LOG_ID) {
+          return respond(200, makeLogDetail());
+        }
+        return respond(404, {
+          error: { message: "Not found", code: "NOT_FOUND" },
+        });
+      }),
+      mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
+        return respond(200, makeEventsResponse());
+      }),
+      mockApi(zeroRunNetworkLogsContract.getNetworkLogs, ({ respond }) => {
+        requestCount++;
+        if (requestCount === 1) {
+          return respond(200, {
+            networkLogs: [
+              makeNetworkEntry({
+                type: "http",
+                url: "https://api.example.com/data",
+                timestamp: "2026-03-10T14:56:05Z",
+              }),
+              makeNetworkEntry({
+                type: "dns",
+                action: undefined,
+                method: undefined,
+                url: undefined,
+                status: undefined,
+                host: "api.example.com",
+                port: 53,
+                timestamp: "2026-03-10T14:56:06Z",
+              }),
+            ],
+            hasMore: true,
+          });
+        }
+        return respond(200, {
+          networkLogs: [
+            makeNetworkEntry({
+              type: "udp",
+              action: undefined,
+              method: undefined,
+              url: undefined,
+              status: undefined,
+              host: "ntp.example.com",
+              port: 123,
+              timestamp: "2026-03-10T14:56:07Z",
+            }),
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("https://api.example.com/data"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("api.example.com:53")).not.toBeInTheDocument();
+
+    await openNetworkTypeFilter();
+    click(getAllTypesMenuItem());
+    await waitFor(() => {
+      expect(getTypeFilterButton().textContent).toContain("All types");
+    });
+
+    click(screen.getByText("Load more"));
+
+    await waitFor(() => {
+      expect(screen.getByText("ntp.example.com:123")).toBeInTheDocument();
+    });
+  });
+
+  it("should filter network log entries by type", async () => {
+    const httpEntry = makeNetworkEntry({
+      timestamp: "2026-03-10T14:56:05Z",
+      type: "http",
+      url: "https://api.example.com/data",
+    });
+    const dnsEntry = makeNetworkEntry({
+      timestamp: "2026-03-10T14:56:06Z",
+      type: "dns",
+      action: undefined,
+      method: undefined,
+      url: undefined,
+      status: undefined,
+      latency_ms: undefined,
+      request_size: undefined,
+      response_size: undefined,
+      firewall_name: undefined,
+      host: "api.example.com",
+      port: 53,
+      dns_event: "reply",
+      dns_result: "93.184.216.34",
+      dns_serial: "42",
+    });
+    const deniedHttpEntry = makeNetworkEntry({
+      timestamp: "2026-03-10T14:56:07Z",
+      type: "http",
+      action: "DENY",
+      url: "https://blocked.example.com/data",
+      status: undefined,
+    });
+
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [httpEntry, dnsEntry, deniedHttpEntry],
+        hasMore: false,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("https://api.example.com/data"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("api.example.com:53")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("https://blocked.example.com/data"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("DENY")).not.toBeInTheDocument();
+
+    await openNetworkTypeFilter();
+    expect(queryMenuCheckbox("DENY")).toBeUndefined();
+    click(getMenuCheckbox("DNS"));
+
+    await waitFor(() => {
+      expect(screen.getByText("api.example.com:53")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("https://api.example.com/data"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("https://blocked.example.com/data"),
+    ).toBeInTheDocument();
+    const httpBadges = screen.getAllByText("HTTP");
+    expect(
+      httpBadges.some((badge) => {
+        return badge.className.includes("line-through");
+      }),
+    ).toBeTruthy();
   });
 
   it("should render formatted time, size, and latency (ACT-N-003)", async () => {
@@ -576,6 +925,10 @@ describe("networkContent", () => {
     });
 
     await setupAndNavigateToTab("Network");
+
+    expect(screen.queryByText("api.github.com:53")).not.toBeInTheDocument();
+    await openNetworkTypeFilter();
+    click(getMenuCheckbox("DNS"));
 
     await waitFor(() => {
       expect(screen.getByText("api.github.com:53")).toBeInTheDocument();

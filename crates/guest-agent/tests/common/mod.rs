@@ -1,14 +1,14 @@
-//! Shared setup for the post-`type=result` reap integration tests.
+//! Shared setup for CLI forced-termination integration tests.
 //!
-//! # Why three test binaries instead of three cases in one
+//! # Why separate test binaries instead of cases in one
 //!
 //! `guest_agent::env` caches all `VM0_*` values in process-wide
-//! `LazyLock`s on first read. Consolidating the three reap scenarios
-//! (SIGTERM / SIGKILL-escalation / happy) into one `#[tokio::test]`
-//! binary would require each test to see its own `VM0_PROMPT`, which
-//! is impossible once the `LazyLock` is initialised. Splitting into
-//! three binaries gives each one a fresh process + fresh LazyLock
-//! state, paid for by a small cargo build-cache hit (idempotent).
+//! `LazyLock`s on first read. Consolidating scenarios with different
+//! prompts or grace windows into one `#[tokio::test]` binary would
+//! require each test to see its own `VM0_PROMPT`, which is impossible
+//! once the `LazyLock` is initialised. Splitting into separate binaries
+//! gives each one a fresh process + fresh LazyLock state, paid for by
+//! a small cargo build-cache hit (idempotent).
 //!
 //! # Error handling
 //!
@@ -100,6 +100,8 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
 /// - `@hang-after-result` → SIGTERM path
 /// - `@hang-after-result-deaf` → SIGKILL escalation path
 /// - `@exit-after-result` → happy path (no signal ever fires)
+/// - `@stuck-tool-deaf` → forced-termination SIGKILL escalation path
+/// - `@stuck-tool-closed-stdout-deaf` → stdout EOF before forced termination
 ///
 /// `sigterm_grace_secs` / `sigkill_grace_secs` control how long the
 /// FSM waits before each signal escalation. Signal-exit tests want

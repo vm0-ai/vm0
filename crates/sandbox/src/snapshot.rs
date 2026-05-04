@@ -33,18 +33,50 @@ pub struct SnapshotOutput {
 }
 
 /// Errors that can occur during snapshot operations.
+///
+/// These variants describe provider-neutral failure categories returned by
+/// [`SnapshotProvider`] operations. A failed snapshot attempt should be treated
+/// as incomplete: callers should not reuse output artifacts from the failed
+/// attempt unless the concrete provider documents a stronger guarantee.
 #[derive(Debug, thiserror::Error)]
 pub enum SnapshotError {
+    /// The provider could not prepare host resources, validate inputs, or
+    /// finish provider-specific setup needed before the snapshot can complete.
+    ///
+    /// Retry is usually only useful after fixing the reported prerequisite,
+    /// configuration, or transient resource-allocation failure.
     #[error("setup failed: {0}")]
     Setup(String),
+    /// The sandbox backend process or its launch chain failed while creating
+    /// the snapshot.
+    ///
+    /// This includes failures to spawn the backend and cases where the backend
+    /// exits before the provider can complete the snapshot workflow.
     #[error("process failed: {0}")]
     Process(String),
+    /// The provider failed while releasing or finalizing snapshot resources.
+    ///
+    /// The output should be treated as invalid. Retry may require operator
+    /// cleanup or the provider's garbage-collection path, depending on the
+    /// concrete backend.
     #[error("teardown failed: {0}")]
     Teardown(String),
+    /// The backend API reported an error while configuring, starting, pausing,
+    /// or snapshotting the sandbox.
+    ///
+    /// Retry depends on whether the API failure was caused by transient backend
+    /// state or by an invalid snapshot configuration.
     #[error("backend api error: {0}")]
     Api(String),
+    /// The provider could not establish or observe the guest readiness
+    /// connection required for snapshot creation.
+    ///
+    /// The backend may have started, but the snapshot workflow did not reach a
+    /// complete state.
     #[error("vsock connection failed: {0}")]
     Vsock(String),
+    /// A host I/O operation failed while preparing, finalizing, or checking
+    /// snapshot artifacts.
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 }

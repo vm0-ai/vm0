@@ -85,10 +85,12 @@ function ApiTokenForm({
   type,
   item,
   onSuccess,
+  showPermissionDialogOnConnect,
 }: {
   type: ConnectorType;
   item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
+  showPermissionDialogOnConnect: boolean;
 }) {
   const config = CONNECTOR_TYPES[type];
   const apiTokenConfig = config.authMethods["api-token"];
@@ -117,7 +119,14 @@ function ApiTokenForm({
     setSubmitting(type);
     detach(
       (async () => {
-        await submit(type, secretValues, pageSignal);
+        await submit(
+          type,
+          secretValues,
+          {
+            showPermissionDialog: showPermissionDialogOnConnect,
+          },
+          pageSignal,
+        );
         setSubmitting(null);
         clearForm(type);
         await onSuccess();
@@ -184,9 +193,11 @@ function ApiTokenForm({
 function PlatformConfirmationForm({
   type,
   onSuccess,
+  showPermissionDialogOnConnect,
 }: {
   type: ConnectorType;
   onSuccess: () => void | Promise<void>;
+  showPermissionDialogOnConnect: boolean;
 }) {
   const config = CONNECTOR_TYPES[type];
   const platformConfig = config.authMethods.platform;
@@ -207,7 +218,13 @@ function PlatformConfirmationForm({
     setSubmitting(type);
     detach(
       (async () => {
-        await enable(type, pageSignal);
+        await enable(
+          type,
+          {
+            showPermissionDialog: showPermissionDialogOnConnect,
+          },
+          pageSignal,
+        );
         setSubmitting(null);
         await onSuccess();
       })().catch((error: unknown) => {
@@ -247,9 +264,11 @@ function PlatformConfirmationForm({
 function ConnectModalContent({
   item,
   onSuccess,
+  showPermissionDialogOnConnect,
 }: {
   item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
+  showPermissionDialogOnConnect: boolean;
 }) {
   const [settleLoadable, connectAndSettle] = useLoadableSet(connectAndSettle$);
   const pageSignal = useGet(pageSignal$);
@@ -289,7 +308,14 @@ function ConnectModalContent({
           variant="outline"
           onClick={() => {
             return detach(
-              connectAndSettle(item.type, onSuccess, pageSignal),
+              connectAndSettle(
+                item.type,
+                onSuccess,
+                {
+                  showPermissionDialog: showPermissionDialogOnConnect,
+                },
+                pageSignal,
+              ),
               Reason.DomCallback,
             );
           }}
@@ -311,7 +337,12 @@ function ConnectModalContent({
       )}
 
       {hasApiToken && (
-        <ApiTokenForm type={item.type} item={item} onSuccess={onSuccess} />
+        <ApiTokenForm
+          type={item.type}
+          item={item}
+          onSuccess={onSuccess}
+          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
+        />
       )}
 
       {hasApiToken && hasPlatform && (
@@ -326,7 +357,11 @@ function ConnectModalContent({
       )}
 
       {hasPlatform && (
-        <PlatformConfirmationForm type={item.type} onSuccess={onSuccess} />
+        <PlatformConfirmationForm
+          type={item.type}
+          onSuccess={onSuccess}
+          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
+        />
       )}
     </div>
   );
@@ -339,9 +374,11 @@ function ConnectModalContent({
 export function ConnectModal({
   onClose,
   onSuccess,
+  showPermissionDialogOnConnect = false,
 }: {
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
+  showPermissionDialogOnConnect?: boolean;
 }) {
   const selectedType = useGet(selectedConnectorType$);
   const connectorTypes = useLastResolved(allConnectorTypes$);
@@ -382,6 +419,7 @@ export function ConnectModal({
 
         <ConnectModalContent
           item={item}
+          showPermissionDialogOnConnect={showPermissionDialogOnConnect}
           onSuccess={async () => {
             await onSuccess?.();
             onClose();

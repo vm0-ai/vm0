@@ -29,7 +29,6 @@ export enum FeatureSwitchKey {
   ResendConnector = "resendConnector",
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
-  UsageAnalytics = "usageAnalytics",
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
   Lab = "lab",
@@ -41,13 +40,19 @@ export enum FeatureSwitchKey {
 
   ChatManualHistory = "chatManualHistory",
   ChatMessageStartButton = "chatMessageStartButton",
+  ChatThreadPin = "chatThreadPin",
+  ChatThreadRename = "chatThreadRename",
   FreshdeskConnector = "freshdeskConnector",
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
+  ApiBackend = "apiBackend",
   ConnectorCategories = "connectorCategories",
   PlatformConnectors = "platformConnectors",
 
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
+  CodexBeta = "codexBeta",
+  IdbMessage = "idbMessage",
+  SkeletonNoPreload = "skeletonNoPreload",
 }

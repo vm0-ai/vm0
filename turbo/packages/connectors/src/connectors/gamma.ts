@@ -4,6 +4,7 @@ export const gamma = {
   gamma: {
     label: "Gamma",
     category: "marketing-content-growth",
+    generation: ["document", "presentation", "website"],
     environmentMapping: {
       GAMMA_TOKEN: "$secrets.GAMMA_TOKEN",
     },

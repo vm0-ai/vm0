@@ -6,8 +6,7 @@
  */
 
 import { command, state } from "ccstate";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { pwaOfflineCacheEnabled$ } from "../signals/external/feature-switch.ts";
 import { clerk$ } from "../signals/auth.ts";
 import { apiBase$ } from "../signals/fetch.ts";
 
@@ -19,7 +18,7 @@ const subscribing$ = state(false);
  * No-ops if push is not supported in this browser.
  */
 export const registerServiceWorker$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       return;
     }
@@ -28,9 +27,8 @@ export const registerServiceWorker$ = command(
     // browsing, enterprise/browser policy, user-disabled SW, etc. Push
     // notifications are a non-critical enhancement, so swallow the
     // rejection to avoid aborting bootstrap or spamming Sentry.
-    const pwaOfflineEnabled = isFeatureEnabled(
-      FeatureSwitchKey.PwaOfflineCache,
-    );
+    const pwaOfflineEnabled = await get(pwaOfflineCacheEnabled$);
+    signal.throwIfAborted();
     const registration = await navigator.serviceWorker
       .register(
         "/sw.js",
@@ -66,10 +64,11 @@ export const ensurePushSubscription$ = command(
       return;
     }
     set(subscribing$, true);
-    const clerkPromise = get(clerk$);
-    const apiBase = get(apiBase$);
     // eslint-disable-next-line no-restricted-syntax -- finally needed to reset `subscribing$` on success, failure, or abort so the next call can proceed
     try {
+      const clerkPromise = get(clerk$);
+      const apiBase = await get(apiBase$);
+      signal.throwIfAborted();
       await doSubscribe(registration, clerkPromise, apiBase, signal);
       signal.throwIfAborted();
     } finally {

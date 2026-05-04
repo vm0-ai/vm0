@@ -131,11 +131,13 @@ describe("connect modal - interactions", () => {
 
     click(screen.getByText("Sign in with GitHub"));
 
-    expect(openSpy).toHaveBeenCalledWith(
-      expect.stringContaining("/api/zero/connectors/github/authorize"),
-      "_blank",
-      expect.any(String),
-    );
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/api/zero/connectors/github/authorize"),
+        "_blank",
+        expect.any(String),
+      );
+    });
   });
 
   it("save button submits API token secrets (CONN-I-023)", async () => {

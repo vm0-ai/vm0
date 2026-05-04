@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
+import { useGet, useSet } from "ccstate-react";
 import { IconCpu } from "@tabler/icons-react";
 import {
   Select,
@@ -27,8 +28,13 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
+  showAllVm0Models$,
+  toggleShowAllVm0Models$,
+} from "../../../signals/zero-page/model-picker-ui";
+import {
   getUILabel,
   getVm0ModelMultiplier,
+  isVm0PrimaryModel,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
 
@@ -114,7 +120,7 @@ function MultiplierBadge({ multiplier }: { multiplier: number }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="shrink-0 rounded border border-border/60 bg-muted/50 px-1.5 py-px text-[11px] font-medium tabular-nums text-muted-foreground">
+          <span className="shrink-0 cursor-help text-xs tabular-nums text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
             {formatMultiplier(multiplier)}
           </span>
         </TooltipTrigger>
@@ -468,11 +474,59 @@ function buildProviderGroups(
     });
 }
 
+function ShowMoreToggleRow({
+  expanded,
+  hiddenCount,
+  onToggle,
+}: {
+  expanded: boolean;
+  hiddenCount: number;
+  onToggle: () => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-expanded={expanded}
+      className="rounded-md px-2 py-1.5 text-sm text-muted-foreground cursor-pointer hover:bg-accent transition-colors"
+      onClick={(e) => {
+        e.preventDefault();
+        onToggle();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
+    >
+      {expanded ? "Show fewer models" : `Show all models (+${hiddenCount})`}
+    </div>
+  );
+}
+
+interface RenderProviderGroupContext {
+  idx: number;
+  last: number;
+  selectedModel: string | null;
+  showAll: boolean;
+  onToggleShowAll: () => void;
+}
+
 function renderProviderGroup(
   group: ProviderGroup,
-  idx: number,
-  last: number,
+  ctx: RenderProviderGroupContext,
 ): ReactNode[] {
+  const { idx, last, selectedModel, showAll, onToggleShowAll } = ctx;
+  // Only the VM0 group is collapsible — BYOK groups list a handful of models.
+  const collapsible = group.isVm0;
+  const visibleModels =
+    collapsible && !showAll
+      ? group.models.filter((m) => {
+          return isVm0PrimaryModel(m) || m === selectedModel;
+        })
+      : group.models;
+  const hiddenCount = group.models.length - visibleModels.length;
   const rendered: ReactNode[] = [
     <SelectGroup key={group.provider.id}>
       <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
@@ -483,7 +537,7 @@ function renderProviderGroup(
           </span>
         )}
       </SelectLabel>
-      {group.models.map((model) => {
+      {visibleModels.map((model) => {
         const multiplier = group.isVm0
           ? getVm0ModelMultiplier(model)
           : undefined;
@@ -493,8 +547,8 @@ function renderProviderGroup(
             value={`${group.provider.id}::${model}`}
             disabled={group.incompatible}
           >
-            <span className="flex items-center gap-3 w-full">
-              <span className="truncate">{getModelDisplayName(model)}</span>
+            <span className="inline-flex items-baseline gap-1.5">
+              <span>{getModelDisplayName(model)}</span>
               {multiplier !== undefined && (
                 <MultiplierBadge multiplier={multiplier} />
               )}
@@ -502,6 +556,13 @@ function renderProviderGroup(
           </SelectItem>
         );
       })}
+      {collapsible && (showAll || hiddenCount > 0) && (
+        <ShowMoreToggleRow
+          expanded={showAll}
+          hiddenCount={hiddenCount}
+          onToggle={onToggleShowAll}
+        />
+      )}
     </SelectGroup>,
   ];
   if (idx < last) {
@@ -544,6 +605,8 @@ function ModelSelectDropdown({
     ? getModelDisplayName(resolved.selectedModel)
     : placeholder;
   const lastGroupIdx = groups.length - 1;
+  const showAll = useGet(showAllVm0Models$);
+  const toggleShowAll = useSet(toggleShowAllVm0Models$);
   return (
     <Select
       value={encodeValue(value)}
@@ -568,7 +631,7 @@ function ModelSelectDropdown({
           />
         </SelectValue>
       </SelectTrigger>
-      <SelectContent className="max-h-[280px]">
+      <SelectContent className="max-h-[280px] min-w-[260px]">
         {showUseDefault && (
           <InheritToggleRow
             effectiveDefault={effectiveDefault}
@@ -594,7 +657,13 @@ function ModelSelectDropdown({
         )}
         {(!showUseDefault || value !== null) &&
           groups.flatMap((group, idx) => {
-            return renderProviderGroup(group, idx, lastGroupIdx);
+            return renderProviderGroup(group, {
+              idx,
+              last: lastGroupIdx,
+              selectedModel: resolved?.selectedModel ?? null,
+              showAll,
+              onToggleShowAll: toggleShowAll,
+            });
           })}
       </SelectContent>
     </Select>

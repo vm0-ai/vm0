@@ -4,6 +4,7 @@ export const runway = {
   runway: {
     label: "Runway",
     category: "ai-image-video",
+    generation: ["video"],
     environmentMapping: {
       RUNWAY_TOKEN: "$secrets.RUNWAY_TOKEN",
     },

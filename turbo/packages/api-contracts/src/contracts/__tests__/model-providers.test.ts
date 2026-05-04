@@ -6,9 +6,13 @@ import {
   getModels,
   getDefaultModel,
   getEnvironmentMapping,
+  getFrameworkForType,
   getVm0VisibleModels,
+  normalizeVm0ModelId,
   VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
+  modelProviderTypeSchema,
+  modelProviderFrameworkSchema,
   type ModelProviderType,
 } from "../model-providers";
 
@@ -18,6 +22,7 @@ describe("getProviderBaseUrl", () => {
     "anthropic-api-key",
     "azure-foundry",
     "aws-bedrock",
+    "openai-api-key",
   ] as ModelProviderType[])("returns null for %s", (type) => {
     expect(getProviderBaseUrl(type)).toBeNull();
   });
@@ -160,6 +165,68 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels({});
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("deepseek-v4-flash");
+  });
+});
+
+describe("normalizeVm0ModelId", () => {
+  it.each([
+    ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
+    ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
+    ["z-ai/glm-5.1", "glm-5.1"],
+    ["moonshotai/kimi-k2.6", "kimi-k2.6"],
+    ["minimax/minimax-m2.7", "MiniMax-M2.7"],
+  ])("normalizes %s to %s", (model, expected) => {
+    expect(normalizeVm0ModelId(model)).toBe(expected);
+  });
+
+  it("keeps unknown model ids unchanged", () => {
+    expect(normalizeVm0ModelId("custom/model")).toBe("custom/model");
+  });
+});
+
+describe("openai-api-key codex provider", () => {
+  it("declares codex framework", () => {
+    expect(getFrameworkForType("openai-api-key")).toBe("codex");
+  });
+
+  it("maps OPENAI_API_KEY and OPENAI_MODEL via environment mapping", () => {
+    const mapping = getEnvironmentMapping("openai-api-key");
+    expect(mapping).toBeDefined();
+    expect(mapping!["OPENAI_API_KEY"]).toBe("$secret");
+    expect(mapping!["OPENAI_MODEL"]).toBe("$model");
+  });
+
+  it("offers codex-compatible models with gpt-5.5 default", () => {
+    const models = getModels("openai-api-key");
+    expect(models).toContain("gpt-5.5");
+    expect(models).toContain("gpt-5.4");
+    expect(models).toContain("gpt-5.4-mini");
+    expect(models).toContain("gpt-5.3-codex");
+    expect(models).toContain("gpt-5.2");
+    expect(getDefaultModel("openai-api-key")).toBe("gpt-5.5");
+  });
+
+  it("supports model selection", () => {
+    expect(hasModelSelection("openai-api-key")).toBe(true);
+  });
+
+  it("firewall scopes to OpenAI Responses API", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["openai-api-key"];
+    expect(config.apis).toHaveLength(1);
+    expect(config.apis[0]!.base).toBe("https://api.openai.com/v1/responses");
+    expect(config.apis[0]!.auth.headers).toEqual({
+      Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
+    });
+  });
+
+  it("modelProviderTypeSchema accepts openai-api-key", () => {
+    expect(modelProviderTypeSchema.safeParse("openai-api-key").success).toBe(
+      true,
+    );
+  });
+
+  it("modelProviderFrameworkSchema accepts codex", () => {
+    expect(modelProviderFrameworkSchema.safeParse("codex").success).toBe(true);
   });
 });
 

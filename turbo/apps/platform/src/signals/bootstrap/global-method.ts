@@ -1,11 +1,6 @@
 import { command } from "ccstate";
 import { getLoggers, Level, logger } from "../log";
 import type { DebugLoggers } from "../../types/global-method";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  detachedSetFeatureSwitch$,
-  featureSwitch$,
-} from "../external/feature-switch";
 import { inspectLogInput$ } from "./inspect-log-input";
 import { extendDebugLoggerLocalStorage$ } from "./loggers";
 
@@ -34,7 +29,7 @@ const createLoggerControl$ = command(({ set }, name: string) => {
 });
 
 export const setupGlobalMethod$ = command(
-  async ({ set, get }, signal: AbortSignal) => {
+  ({ set, get }, signal: AbortSignal) => {
     L.debug("Setting up global method vm0");
 
     window._vm0 = {
@@ -46,7 +41,6 @@ export const setupGlobalMethod$ = command(
         }
         return result;
       },
-      featureSwitches: {},
       inspectLogs() {
         get(inspectLogInput$)?.click();
       },
@@ -55,16 +49,6 @@ export const setupGlobalMethod$ = command(
     signal.addEventListener("abort", () => {
       L.debug("Cleaning up global method vm0");
       delete window._vm0;
-    });
-
-    const features = await get(featureSwitch$);
-    signal.throwIfAborted();
-
-    window._vm0.featureSwitches = new Proxy(features, {
-      set(_, prop: FeatureSwitchKey, value: boolean) {
-        set(detachedSetFeatureSwitch$, { [prop]: value }, signal);
-        return true;
-      },
     });
   },
 );

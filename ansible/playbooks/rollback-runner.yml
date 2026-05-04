@@ -59,9 +59,10 @@
 # Optional Variables:
 #   - sentry_dsn: Forwarded to the systemd unit as SENTRY_DSN
 #   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
-#       Passed to `runner build` (speeds up rootfs cache hit on fresh hosts)
-#       and to `runner gc` (R2-side cache cleanup). If omitted, local-only
-#       behavior is used in both cases.
+#       Passed to `runner build` for best-effort template cache download/upload
+#       and to `runner gc` for best-effort R2-side cleanup. Rollback does not
+#       run the newer `--warm-rootfs-cache` path because the target rollback
+#       binary may predate that flag.
 
 - name: Rollback VM0 Runner
   hosts: all
@@ -338,8 +339,10 @@
 
     # Always runs on install path. Content-addressed by hash of embedded
     # guests + recipe; if target's rootfs/snapshot are already on disk at
-    # the matching hash path, this returns in ~1s. If R2 creds are passed,
-    # remote cache can satisfy a local miss in seconds instead of rebuilding.
+    # the matching hash path, this returns in ~1s. When R2 credentials are
+    # provided, the build can best-effort download/upload rootfs through the
+    # shared cache. Without R2 credentials, rollback intentionally preserves
+    # the old offline-capable local path.
     - name: Rebuild default rootfs and snapshot
       when: not (skip_install | default(false))
       command: >

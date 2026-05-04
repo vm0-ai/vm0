@@ -15,12 +15,20 @@
 #     -e "ansible_user=ubuntu" \
 #     -e "official_runner_secret=xxx" \
 #     -e "api_url=https://www.vm0.ai" \
-#     -e "runner_version=0.3.0"
+#     -e "runner_version=0.3.0" \
+#     -e "r2_account_id=xxx" \
+#     -e "r2_access_key_id=xxx" \
+#     -e "r2_secret_access_key=xxx" \
+#     -e "r2_bucket=xxx"
 #
 # Required Variables:
 #   - runner_version: Semantic version of the runner being built
 #   - official_runner_secret: Runner authentication secret (baked into config)
 #   - api_url: vm0 API URL (baked into config)
+#   - r2_account_id / r2_access_key_id / r2_secret_access_key / r2_bucket:
+#       Shared template cache credentials. Required so the pre-fan-out
+#       warm step can fail visibly instead of allowing every host to rebuild
+#       the same template locally.
 
 - name: Build VM0 Runner
   hosts: all
@@ -55,17 +63,31 @@
     - name: Download dependencies (Firecracker, kernel, mitmproxy)
       command: "{{ bin_dir }}/runner setup"
 
+    - name: Warm shared template cache
+      run_once: true
+      command: >
+        {{ bin_dir }}/runner build
+        --profile vm0/default
+        --warm-rootfs-cache
+      environment:
+        # Fail visibly if the shared R2 cache cannot be warmed. This prevents
+        # every production host from stampeding into the slow local rootfs
+        # template build path during a new template_hash deploy.
+        R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
+        R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
+        R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"
+        R2_USER_STORAGES_BUCKET_NAME: "{{ r2_bucket | default('') }}"
+      register: default_rootfs_warm_output
+
     - name: Build default rootfs and snapshot
       command: >
         {{ bin_dir }}/runner build
         --profile vm0/default
       environment:
-        # R2 credentials so `runner build` can pull the rootfs.ext4 from the
-        # shared image cache instead of rebuilding it from scratch (~3-5 min
-        # saved per deploy).  Only rootfs is cached; the snapshot is always
-        # created locally because it contains host-specific state.  Host CA
-        # is swapped in via inject-ca.sh after download.  Without these, R2
-        # download is skipped and the local build path runs unchanged.
+        # R2 credentials so `runner build` can pull the warmed template
+        # above instead of rebuilding it from scratch. The rootfs and
+        # snapshot are created locally because they include guest binaries,
+        # host CA, and host-specific snapshot state.
         R2_ACCOUNT_ID: "{{ r2_account_id | default('') }}"
         R2_ACCESS_KEY_ID: "{{ r2_access_key_id | default('') }}"
         R2_SECRET_ACCESS_KEY: "{{ r2_secret_access_key | default('') }}"

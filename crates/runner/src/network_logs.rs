@@ -9,7 +9,7 @@ use crate::ids::RunId;
 
 /// Network log entry from the per-run JSONL file.
 ///
-/// [NETWORK_LOG_FIELDS] — shared schema boundary is api-contracts; producers
+/// `NETWORK_LOG_FIELDS` — shared schema boundary is api-contracts; producers
 /// include mitmproxy plus Rust-side DNS/kmsg logging.
 /// Uses a transparent `serde_json::Value` wrapper so all fields pass through
 /// to Axiom without needing a struct field for each one. This avoids silently

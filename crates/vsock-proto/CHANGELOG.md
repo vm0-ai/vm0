@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.9.6](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.5...vsock-proto-v0.9.6) (2026-05-03)
+
+
+### Refactoring
+
+* **vsock-proto:** carry exec flags through decode ([#11712](https://github.com/vm0-ai/vm0/issues/11712)) ([0518e37](https://github.com/vm0-ai/vm0/commit/0518e37c7f8f7def316abd857be74201d5c268ed))
+
+## [0.9.5](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.4...vsock-proto-v0.9.5) (2026-05-03)
+
+
+### Documentation
+
+* **vsock-proto:** fix decode_exec return docs ([#11694](https://github.com/vm0-ai/vm0/issues/11694)) ([5ae7202](https://github.com/vm0-ai/vm0/commit/5ae7202333860b36f5c94fc03a7eff2caf8ab490))
+
+## [0.9.4](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.3...vsock-proto-v0.9.4) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
 ## [0.9.3](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.2...vsock-proto-v0.9.3) (2026-04-27)
 
 

@@ -2,6 +2,8 @@ import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { hasAuthMethods } from "@vm0/api-contracts/contracts/model-providers";
 import { createErrorResponse } from "@vm0/api-contracts/contracts/errors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -14,6 +16,7 @@ import {
   upsertOrgMultiAuthModelProvider,
   upsertOrgNoSecretModelProvider,
 } from "../../../../src/lib/zero/model-provider/model-provider-service";
+import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 import { logger } from "../../../../src/lib/shared/logger";
 import { isBadRequest } from "@vm0/api-services/errors";
 
@@ -66,6 +69,21 @@ const router = tsr.router(zeroModelProvidersMainContract, {
     }
 
     const { type, secret, authMethod, secrets, selectedModel } = body;
+
+    if (type === "openai-api-key") {
+      const overrides = await loadFeatureSwitchOverrides(
+        org.orgId,
+        authCtx.userId,
+      );
+      const codexBetaEnabled = isFeatureEnabled(FeatureSwitchKey.CodexBeta, {
+        userId: authCtx.userId,
+        orgId: org.orgId,
+        overrides,
+      });
+      if (!codexBetaEnabled) {
+        return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
+      }
+    }
 
     log.debug("upserting org model provider", {
       orgId: org.orgId,

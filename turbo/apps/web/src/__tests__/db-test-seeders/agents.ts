@@ -241,6 +241,26 @@ export async function deleteTestCompose(composeId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Pin a zero_agents row to a specific model provider + selected-model pair.
+ * Used by tests that need an agent whose default provider is explicitly set,
+ * so chat-thread eager-pin paths can be exercised.
+ *
+ * @why-db-direct The agent provider pin is normally set by compose creation /
+ * agent edit API routes; tests need a direct setter for isolated setup.
+ */
+export async function setTestZeroAgentModelProvider(
+  agentId: string,
+  modelProviderId: string | null,
+  selectedModel: string | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroAgents)
+    .set({ modelProviderId, selectedModel })
+    .where(eq(zeroAgents.id, agentId));
+}
+
+/**
  * Ensure a matching zero_agents row exists for a compose.
  * Extracted from createTestCompose — the compose API route doesn't create
  * the zero_agents row; this bridges the gap for tests.
@@ -385,6 +405,41 @@ export async function setTestChatThreadLastReadAt(
   await globalThis.services.db
     .update(chatThreads)
     .set({ lastReadAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
+ * Set pinned_at on a chat thread directly in the database.
+ *
+ * @why-db-direct The pin/unpin route is exercised in its own route test;
+ * list-route ordering tests need to seed an arbitrary pinned state to
+ * assert the new ORDER BY without round-tripping the auth/clerk-mocked POST.
+ */
+export async function setTestChatThreadPinnedAt(
+  threadId: string,
+  pinnedAt: Date | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ pinnedAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
+ * Set renamed_at on a chat thread directly in the database.
+ *
+ * @why-db-direct Tests that need to seed a user-renamed state to assert
+ * the automated-title-generation suppression logic require direct access.
+ */
+export async function setTestChatThreadRenamedAt(
+  threadId: string,
+  renamedAt: Date | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ renamedAt })
     .where(eq(chatThreads.id, threadId));
 }
 
@@ -576,11 +631,11 @@ export async function setTestSessionArtifacts(
 /**
  * Update the cliAgentType on the conversation linked to a session.
  *
- * @why-db-direct Test checkpoint helpers seed conversations with
- * cliAgentType "test-agent" while composes default to framework
- * "claude-code". Resolver compatibility checks compare these, so
- * resolveSession tests need to align the conversation framework before
- * invoking the resolver.
+ * @why-db-direct The framework-mismatch tests need to set a non-default
+ * cliAgentType on the seeded conversation to surface the
+ * build-zero-context compatibility check; doing it via webhook would
+ * require either a second checkpoint write or exposing internals on the
+ * webhook. A targeted UPDATE is the smallest seam.
  */
 export async function setTestSessionFramework(
   sessionId: string,

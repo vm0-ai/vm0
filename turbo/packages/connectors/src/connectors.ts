@@ -159,6 +159,7 @@ import { v0 } from "./connectors/v0";
 import { db9 } from "./connectors/db9";
 import { drive9 } from "./connectors/drive9";
 import { msg9 } from "./connectors/msg9";
+import { nanoBanana } from "./connectors/nano-banana";
 import { amplitude } from "./connectors/amplitude";
 import { attio } from "./connectors/attio";
 import { buffer } from "./connectors/buffer";
@@ -172,6 +173,7 @@ import { pandadoc } from "./connectors/pandadoc";
 import { greenhouse } from "./connectors/greenhouse";
 import { zoom } from "./connectors/zoom";
 import { groq } from "./connectors/groq";
+import { gumroad } from "./connectors/gumroad";
 import { langfuse } from "./connectors/langfuse";
 import { n8n } from "./connectors/n8n";
 import { wandb } from "./connectors/wandb";
@@ -240,6 +242,16 @@ export type ConnectorDisplayCategory =
   | "data-automation-infrastructure";
 
 export type ConnectorDisplayCategoryGroup = "ai";
+
+export type ConnectorGenerationType =
+  | "audio"
+  | "code"
+  | "document"
+  | "image"
+  | "presentation"
+  | "text"
+  | "video"
+  | "website";
 
 export const CONNECTOR_DISPLAY_CATEGORY_GROUPS: Record<
   ConnectorDisplayCategoryGroup,
@@ -343,6 +355,11 @@ export interface ConnectorConfig {
   readonly oauth?: ConnectorOAuthConfig;
   /** Environment mapping declaring which env vars this connector provides. */
   readonly environmentMapping: Record<string, string>;
+  /**
+   * Output categories this connector skill can generate. This is product
+   * metadata for discovery and routing, not a permission/capability grant.
+   */
+  readonly generation?: readonly ConnectorGenerationType[];
   /**
    * Optional concept words and common-guess aliases used by connector search.
    * Lowercase only. Avoid duplicating content already in `label`,
@@ -519,6 +536,7 @@ const CONNECTOR_TYPES_DEF = {
   ...db9,
   ...drive9,
   ...msg9,
+  ...nanoBanana,
   ...amplitude,
   ...attio,
   ...buffer,
@@ -532,6 +550,7 @@ const CONNECTOR_TYPES_DEF = {
   ...greenhouse,
   ...zoom,
   ...groq,
+  ...gumroad,
   ...langfuse,
   ...n8n,
   ...wandb,

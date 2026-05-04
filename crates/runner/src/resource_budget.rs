@@ -57,10 +57,12 @@ impl BudgetLease {
         }
     }
 
+    /// Returns the vCPU reservation held by this lease.
     pub fn vcpu(&self) -> u32 {
         self.vcpu
     }
 
+    /// Returns the memory reservation, in MiB, held by this lease.
     pub fn memory_mb(&self) -> u32 {
         self.memory_mb
     }
@@ -174,14 +176,17 @@ impl ResourceBudget {
         vcpu_ok && mem_ok && count_ok
     }
 
+    /// Returns the vCPU admission budget after applying the concurrency factor.
     pub fn effective_vcpu(&self) -> u32 {
         self.effective_vcpu
     }
 
+    /// Returns the memory admission budget, in MiB, after applying the concurrency factor.
     pub fn effective_memory_mb(&self) -> u32 {
         self.effective_memory_mb
     }
 
+    /// Returns the configured concurrent job cap; `0` means no job-count cap.
     pub fn max_concurrent(&self) -> usize {
         self.max_concurrent
     }

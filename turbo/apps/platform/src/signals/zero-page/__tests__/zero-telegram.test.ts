@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import type { TelegramBotStatus } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -86,6 +87,13 @@ describe("zero telegram signals", () => {
   });
 
   it("updates a bot default agent and refreshes mock state", async () => {
+    const toastId = "telegram-agent-toast";
+    const loadingSpy = vi.spyOn(toast, "loading").mockImplementation(() => {
+      return toastId as ReturnType<typeof toast.loading>;
+    });
+    const successSpy = vi.spyOn(toast, "success").mockImplementation(() => {
+      return toastId as ReturnType<typeof toast.success>;
+    });
     setMockTelegramIntegration({
       statuses: [telegramStatus("bot_alpha")],
     });
@@ -100,9 +108,15 @@ describe("zero telegram signals", () => {
     expect(getMockTelegramIntegration().statuses.bot_alpha).toMatchObject({
       agent: { id: "compose_2" },
     });
+    expect(loadingSpy).toHaveBeenCalledWith("Updating default agent...");
+    expect(successSpy).toHaveBeenCalledWith("Default agent updated", {
+      id: toastId,
+    });
     await expect(context.store.get(telegramBots$)).resolves.toMatchObject([
       { id: "bot_alpha", agent: { id: "compose_2" } },
     ]);
+    loadingSpy.mockRestore();
+    successSpy.mockRestore();
   });
 
   it("disconnects a bot and refreshes the list state", async () => {

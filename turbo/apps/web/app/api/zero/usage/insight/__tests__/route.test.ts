@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   createTestRequest,
-  insertTestCreditUsageForRun,
+  insertTestModelUsageEventForRun,
   insertTestUsageEvent,
-  setTestCreditUsageCreatedAt,
+  setTestUsageEventCreatedAt,
   seedTestSchedule,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -69,6 +69,13 @@ describe("GET /api/zero/usage/insight", () => {
     expect(response.status).toBe(400);
   });
 
+  it("returns 400 when range=day is missing a date", async () => {
+    const response = await GET(
+      makeRequest({ range: "day", groupBy: "source", tz: "UTC" }),
+    );
+    expect(response.status).toBe(400);
+  });
+
   it("happy path — shape and totals add up for range=7d groupBy=source tz=UTC", async () => {
     const { userId, orgId } = await context.user;
     const { composeId } = await seedTestCompose({
@@ -80,7 +87,7 @@ describe("GET /api/zero/usage/insight", () => {
       triggerSource: "web",
       status: "completed",
     });
-    await insertTestCreditUsageForRun({
+    await insertTestModelUsageEventForRun({
       runId,
       orgId,
       userId,
@@ -103,7 +110,7 @@ describe("GET /api/zero/usage/insight", () => {
     expect(typeof data.grandTotalCredits).toBe("number");
     expect(typeof data.grandTotalTokens).toBe("number");
 
-    // Grand total should include the inserted credit usage
+    // Grand total should include the inserted usage events
     expect(data.grandTotalCredits).toBeGreaterThanOrEqual(100);
 
     // Totals across bucket series should be <= grandTotal
@@ -136,7 +143,7 @@ describe("GET /api/zero/usage/insight", () => {
         triggerSource: source,
         status: "completed",
       });
-      await insertTestCreditUsageForRun({
+      await insertTestModelUsageEventForRun({
         runId,
         orgId,
         userId,
@@ -185,7 +192,7 @@ describe("GET /api/zero/usage/insight", () => {
         triggerSource: "cli",
         status: "completed",
       });
-      await insertTestCreditUsageForRun({
+      await insertTestModelUsageEventForRun({
         runId,
         orgId,
         userId,
@@ -237,27 +244,27 @@ describe("GET /api/zero/usage/insight", () => {
       triggerSource: "cli",
       status: "completed",
     });
-    const { id: cu1Id } = await insertTestCreditUsageForRun({
+    const { id: cu1Id } = await insertTestModelUsageEventForRun({
       runId: run1,
       orgId,
       userId,
       creditsCharged: 10,
       status: "processed",
     });
-    await setTestCreditUsageCreatedAt(cu1Id, t1);
+    await setTestUsageEventCreatedAt(cu1Id, t1);
 
     const { runId: run2 } = await seedTestRun(userId, composeId, {
       triggerSource: "cli",
       status: "completed",
     });
-    const { id: cu2Id } = await insertTestCreditUsageForRun({
+    const { id: cu2Id } = await insertTestModelUsageEventForRun({
       runId: run2,
       orgId,
       userId,
       creditsCharged: 10,
       status: "processed",
     });
-    await setTestCreditUsageCreatedAt(cu2Id, t2);
+    await setTestUsageEventCreatedAt(cu2Id, t2);
 
     const response = await GET(
       makeRequest({ range: "today", groupBy: "source", tz: "UTC" }),
@@ -294,27 +301,27 @@ describe("GET /api/zero/usage/insight", () => {
       triggerSource: "cli",
       status: "completed",
     });
-    const { id: cu1Id } = await insertTestCreditUsageForRun({
+    const { id: cu1Id } = await insertTestModelUsageEventForRun({
       runId: run1,
       orgId,
       userId,
       creditsCharged: 10,
       status: "processed",
     });
-    await setTestCreditUsageCreatedAt(cu1Id, t1);
+    await setTestUsageEventCreatedAt(cu1Id, t1);
 
     const { runId: run2 } = await seedTestRun(userId, composeId, {
       triggerSource: "cli",
       status: "completed",
     });
-    const { id: cu2Id } = await insertTestCreditUsageForRun({
+    const { id: cu2Id } = await insertTestModelUsageEventForRun({
       runId: run2,
       orgId,
       userId,
       creditsCharged: 10,
       status: "processed",
     });
-    await setTestCreditUsageCreatedAt(cu2Id, t2);
+    await setTestUsageEventCreatedAt(cu2Id, t2);
 
     const response = await GET(
       makeRequest({ range: "yesterday", groupBy: "source", tz: "UTC" }),
@@ -359,14 +366,14 @@ describe("GET /api/zero/usage/insight", () => {
       triggerSource: "cli",
       status: "completed",
     });
-    const { id: cuId } = await insertTestCreditUsageForRun({
+    const { id: cuId } = await insertTestModelUsageEventForRun({
       runId,
       orgId,
       userId,
       creditsCharged: 42,
       status: "processed",
     });
-    await setTestCreditUsageCreatedAt(cuId, runTime);
+    await setTestUsageEventCreatedAt(cuId, runTime);
 
     const response = await GET(
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
@@ -384,6 +391,68 @@ describe("GET /api/zero/usage/insight", () => {
     expect(bucket!.ts).toContain(sixDaysAgo.toISOString().split("T")[0]);
   });
 
+  it("day window includes only the selected calendar day", async () => {
+    const { userId, orgId } = await context.user;
+    const { composeId } = await seedTestCompose({
+      userId,
+      name: uniqueId("compose"),
+      orgId,
+    });
+
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const selectedStart = new Date(todayStart.getTime() - 5 * 86400000);
+    const selectedDate = selectedStart.toISOString().split("T")[0]!;
+
+    const { runId: selectedRunId } = await seedTestRun(userId, composeId, {
+      triggerSource: "cli",
+      status: "completed",
+    });
+    const { id: selectedUsageId } = await insertTestModelUsageEventForRun({
+      runId: selectedRunId,
+      orgId,
+      userId,
+      creditsCharged: 42,
+      status: "processed",
+    });
+    await setTestUsageEventCreatedAt(
+      selectedUsageId,
+      new Date(selectedStart.getTime() + 3600000),
+    );
+
+    const { runId: outsideRunId } = await seedTestRun(userId, composeId, {
+      triggerSource: "cli",
+      status: "completed",
+    });
+    const { id: outsideUsageId } = await insertTestModelUsageEventForRun({
+      runId: outsideRunId,
+      orgId,
+      userId,
+      creditsCharged: 99,
+      status: "processed",
+    });
+    await setTestUsageEventCreatedAt(
+      outsideUsageId,
+      new Date(selectedStart.getTime() + 86400000 + 3600000),
+    );
+
+    const response = await GET(
+      makeRequest({
+        range: "day",
+        date: selectedDate,
+        groupBy: "source",
+        tz: "UTC",
+      }),
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as UsageInsightResponse;
+
+    expect(data.grandTotalCredits).toBe(42);
+    expect(data.buckets[0]?.ts).toContain(selectedDate);
+  });
+
   it("TZ shift — same row appears in different date buckets by timezone", async () => {
     context.mocks.date.setSystemTime(new Date("2026-04-23T15:00:00Z"));
 
@@ -397,7 +466,7 @@ describe("GET /api/zero/usage/insight", () => {
       triggerSource: "cli",
       status: "completed",
     });
-    const { id: cuId } = await insertTestCreditUsageForRun({
+    const { id: cuId } = await insertTestModelUsageEventForRun({
       runId,
       orgId,
       userId,
@@ -432,7 +501,7 @@ describe("GET /api/zero/usage/insight", () => {
     };
     const expectedUtcDate = dateInTimeZone(rowTime, "UTC");
     const expectedLaDate = dateInTimeZone(rowTime, "America/Los_Angeles");
-    await setTestCreditUsageCreatedAt(cuId, rowTime);
+    await setTestUsageEventCreatedAt(cuId, rowTime);
 
     const responseUtc = await GET(
       makeRequest({ range: "7d", groupBy: "source", tz: "UTC" }),
@@ -480,7 +549,7 @@ describe("GET /api/zero/usage/insight", () => {
     });
     let eventBoostedScheduleId = "";
 
-    // Seed 105 schedules in parallel, each with one run + credit usage
+    // Seed 105 schedules in parallel, each with one run + usage events
     await Promise.all(
       Array.from({ length: 105 }, async (_, i) => {
         const scheduleId = await seedTestSchedule({
@@ -495,7 +564,7 @@ describe("GET /api/zero/usage/insight", () => {
           status: "completed",
         });
 
-        await insertTestCreditUsageForRun({
+        await insertTestModelUsageEventForRun({
           runId,
           orgId,
           userId,
@@ -573,7 +642,7 @@ describe("GET /api/zero/usage/insight", () => {
         scheduleId,
         status: "completed",
       });
-      await insertTestCreditUsageForRun({
+      await insertTestModelUsageEventForRun({
         runId,
         orgId,
         userId,
@@ -612,7 +681,7 @@ describe("GET /api/zero/usage/insight", () => {
       triggerSource: "web",
       status: "completed",
     });
-    await insertTestCreditUsageForRun({
+    await insertTestModelUsageEventForRun({
       runId: myRunId,
       orgId,
       userId,
@@ -634,7 +703,7 @@ describe("GET /api/zero/usage/insight", () => {
         status: "completed",
       },
     );
-    await insertTestCreditUsageForRun({
+    await insertTestModelUsageEventForRun({
       runId: otherRunId,
       orgId,
       userId: otherUserId,
@@ -674,7 +743,7 @@ describe("GET /api/zero/usage/insight", () => {
       status: "completed",
     });
 
-    await insertTestCreditUsageForRun({
+    await insertTestModelUsageEventForRun({
       runId,
       orgId,
       userId,
@@ -870,7 +939,7 @@ describe("GET /api/zero/usage/insight", () => {
       status: "completed",
     });
 
-    await insertTestCreditUsageForRun({
+    await insertTestModelUsageEventForRun({
       runId,
       orgId,
       userId,
@@ -929,7 +998,7 @@ describe("GET /api/zero/usage/insight", () => {
 
         // Top-100 items have credits 6..105; overflow items 1..5 have creditsCharged = 0
         // so all overflow rows have zero credits — this is the regression case.
-        await insertTestCreditUsageForRun({
+        await insertTestModelUsageEventForRun({
           runId,
           orgId,
           userId,

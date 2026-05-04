@@ -85,9 +85,9 @@ import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
-  zeroAddedConnectors$,
-  addZeroConnector$,
-  removeZeroConnector$,
+  zeroAuthorizedConnectors$,
+  authorizeConnector$,
+  deauthorizeConnector$,
 } from "../../signals/zero-page/zero-connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
@@ -201,7 +201,8 @@ interface ComposerConnectorItem {
   helpText: string;
   tags: readonly string[];
   connected: boolean;
-  added: boolean;
+  authorized: boolean;
+  available: boolean;
 }
 
 function resolveConnectorLabel(
@@ -222,7 +223,7 @@ function ConnectorTriggerIcons({
 }) {
   const enabled = connectors
     .filter((c) => {
-      return c.added;
+      return c.authorized;
     })
     .slice(0, 3);
   if (enabled.length === 0) {
@@ -374,7 +375,7 @@ function ConnectorsPopoverButton({
         return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
       })
     : [...agentConnectors].sort((a, b) => {
-        return Number(b.added) - Number(a.added);
+        return Number(b.authorized) - Number(a.authorized);
       });
 
   const visibleConnectors =
@@ -389,7 +390,7 @@ function ConnectorsPopoverButton({
       // Snapshot the sort order when popover opens
       const freshSort = [...agentConnectors]
         .sort((a, b) => {
-          return Number(b.added) - Number(a.added);
+          return Number(b.authorized) - Number(a.authorized);
         })
         .map((c) => {
           return c.type;
@@ -467,12 +468,12 @@ function ConnectorsPopoverButton({
                         {item.label}
                       </span>
                       <LoadingSwitch
-                        checked={item.added}
+                        checked={item.authorized}
                         onCheckedChange={(checked) => {
                           onToggle(item.type, checked);
                         }}
                         loading={savingType === item.type}
-                        ariaLabel={`${item.added ? "Remove" : "Add"} ${item.label}`}
+                        ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
                         size="sm"
                       />
                     </div>
@@ -832,17 +833,19 @@ export function ZeroChatComposer({
     }
   };
 
-  // Connectors
+  // Connectors: connected (org-level) + authorized (agent-level) → available
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const addedConnectorsLoadable = useLastLoadable(zeroAddedConnectors$);
+  const authorizedConnectorsLoadable = useLastLoadable(
+    zeroAuthorizedConnectors$,
+  );
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
   const pendingConnectType = useGet(pendingConnectType$);
   const setPendingConnectType = useSet(setPendingConnectType$);
   const setSelectedConnType = useSet(setSelectedConnectorType$);
   const pollingConnType = useGet(pollingConnectorType$);
-  const addConnector = useSet(addZeroConnector$);
-  const removeConnector = useSet(removeZeroConnector$);
+  const authorizeFn = useSet(authorizeConnector$);
+  const deauthorizeFn = useSet(deauthorizeConnector$);
   const optimisticConnected = useGet(justConnectedTypes$);
 
   const savingType = useGet(composerSavingType$);
@@ -850,7 +853,7 @@ export function ZeroChatComposer({
 
   const connectorsLoading =
     allTypesLoadable.state !== "hasData" ||
-    addedConnectorsLoadable.state !== "hasData";
+    authorizedConnectorsLoadable.state !== "hasData";
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
@@ -859,34 +862,38 @@ export function ZeroChatComposer({
       return [c.type, c];
     }),
   );
-  const addedConnectors =
-    addedConnectorsLoadable.state === "hasData"
-      ? addedConnectorsLoadable.data
+  const authorizedConnectors =
+    authorizedConnectorsLoadable.state === "hasData"
+      ? authorizedConnectorsLoadable.data
       : [];
-  const addedSet = new Set(addedConnectors);
+  const authorizedSet = new Set(authorizedConnectors);
 
   const unconnectedConnectors = allConnectors.filter((c) => {
     return !c.connected;
   });
 
-  // Show all org-connected services (so user can toggle them on/off for this agent)
+  // Show all org-connected services so user can toggle authorization on/off per agent.
+  // available = connected ∧ authorized → the connector is actually usable in this agent.
   const connectedTypes = allConnectors.filter((c) => {
     return c.connected || optimisticConnected.has(c.type);
   });
   const agentConnectors: ComposerConnectorItem[] = connectedTypes.map((c) => {
+    const connected = c.connected || optimisticConnected.has(c.type);
+    const authorized = authorizedSet.has(c.type);
     return {
       type: c.type,
       label: c.label,
       helpText: c.helpText,
       tags: c.tags,
-      connected: c.connected || optimisticConnected.has(c.type),
-      added: addedSet.has(c.type),
+      connected,
+      authorized,
+      available: connected && authorized,
     };
   });
 
   const handleConnectSuccess = async (type: string) => {
     const label = resolveConnectorLabel(type, connectorMap);
-    await addConnector(type, pageSignal).catch((error: unknown) => {
+    await authorizeFn(type, pageSignal).catch((error: unknown) => {
       if (!(error instanceof DOMException && error.name === "AbortError")) {
         toast.error(`${label} was authorized but could not be saved`, {
           id: `connector-save-error-${type}`,
@@ -902,8 +909,8 @@ export function ZeroChatComposer({
     setSavingType(type);
     detach(
       (checked
-        ? addConnector(type, pageSignal)
-        : removeConnector(type, pageSignal)
+        ? authorizeFn(type, pageSignal)
+        : deauthorizeFn(type, pageSignal)
       ).finally(() => {
         setSavingType(null);
       }),
@@ -1129,7 +1136,7 @@ export function ZeroChatComposer({
           }}
           onSuccess={async () => {
             const type = pendingConnectType ?? selectedConnType;
-            if (type && !addedSet.has(type)) {
+            if (type && !authorizedSet.has(type)) {
               await handleConnectSuccess(type);
             }
             setPendingConnectType(null);

@@ -16,8 +16,8 @@ import {
   createTestVolume,
   findTestStorageByName,
   findTestRunRecord,
-  findTestCreditUsage,
-  insertTestCreditUsageForRun,
+  findTestUsageEvent,
+  insertTestModelUsageEventForRun,
   insertTestSandboxTelemetry,
   findTestSandboxTelemetry,
   createTestSchedule,
@@ -1103,14 +1103,14 @@ describe("Zero Agents API", () => {
       expect(data.error.code).toBe("CONFLICT");
     });
 
-    it("should delete runs and preserve credit_usage on agent deletion", async () => {
+    it("should delete runs and preserve usage_event on agent deletion", async () => {
       const created = await (await postAgent({}, testCliToken)).json();
 
       const { runId } = await seedTestRun(user.userId, created.agentId, {
         status: "completed",
       });
 
-      const { id: creditId } = await insertTestCreditUsageForRun({
+      const { id: usageEventId } = await insertTestModelUsageEventForRun({
         runId,
         orgId: user.orgId,
         userId: user.userId,
@@ -1124,10 +1124,10 @@ describe("Zero Agents API", () => {
       const run = await findTestRunRecord(runId);
       expect(run).toBeUndefined();
 
-      const credit = await findTestCreditUsage(creditId);
-      expect(credit).toBeDefined();
-      expect(credit!.creditsCharged).toBe(100);
-      expect(credit!.status).toBe("processed");
+      const usage = await findTestUsageEvent(usageEventId);
+      expect(usage).toBeDefined();
+      expect(usage!.creditsCharged).toBe(100);
+      expect(usage!.status).toBe("processed");
     });
 
     it("should cascade-delete run data when agent is deleted", async () => {

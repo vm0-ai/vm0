@@ -9,10 +9,12 @@
 //! in the consumer.
 //!
 //! Usage (mirrors real Codex CLI):
+//! ```text
 //!   guest-mock-codex exec [--json] [--sandbox <mode>] [--skip-git-repo-check]
 //!                          [-C <dir>] [-m <model>] [--append-system-prompt <s>]
 //!                          [--last] [-- <prompt>]
 //!   guest-mock-codex exec resume <thread_id> [-- <prompt>]
+//! ```
 //!
 //! Fixture mode: when `MOCK_CODEX_FIXTURE=<name>` is set in the env, the
 //! synthetic 3-event sequence is replaced with a baked JSONL fixture by

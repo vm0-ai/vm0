@@ -21,6 +21,7 @@ const mockApi = createMockApi(context);
 
 function mockSubagentAPIs() {
   // Stateful thread store — POST adds threads, GET returns them
+  const createdThreadIds: string[] = [];
   const threads: {
     id: string;
     title: string | null;
@@ -117,7 +118,24 @@ function mockSubagentAPIs() {
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads });
     }),
-    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+    mockApi(chatThreadByIdContract.get, ({ params, respond }) => {
+      if (params.id !== "thread-sub-1") {
+        const thread = threads.find((item) => {
+          return item.id === params.id;
+        });
+        return respond(200, {
+          id: params.id,
+          title: thread?.title ?? null,
+          agentId: thread?.agent.id ?? "c0000000-0000-4000-a000-000000000001",
+          chatMessages: [],
+          latestSessionId: null,
+          activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: thread?.createdAt ?? "2026-03-10T00:00:00Z",
+          updatedAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
+        });
+      }
       return respond(200, {
         id: "thread-sub-1",
         title: "Subagent thread",
@@ -144,8 +162,10 @@ function mockSubagentAPIs() {
     }),
     mockApi(chatThreadsContract.create, ({ body, respond }) => {
       const now = new Date().toISOString();
+      const id = body.clientThreadId ?? "new-thread-id";
+      createdThreadIds.unshift(id);
       const newThread = {
-        id: "new-thread-id",
+        id,
         title: body.title ?? null,
         agent: { id: body.agentId, avatarUrl: null },
         createdAt: now,
@@ -162,11 +182,13 @@ function mockSubagentAPIs() {
       });
     }),
   );
+
+  return { createdThreadIds };
 }
 
 describe("sidebar new chat navigation", () => {
   it("should create thread and navigate to /chat/:threadId when clicking new chat for default agent", async () => {
-    mockSubagentAPIs();
+    const { createdThreadIds } = mockSubagentAPIs();
 
     // Start on the default agent chat page — this synchronously sets currentChatAgentId$
     // so ChatThreadsSection doesn't remount between waitFor and click
@@ -185,12 +207,13 @@ describe("sidebar new chat navigation", () => {
 
     // Verify navigation to /chat/:threadId
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-id");
+      expect(createdThreadIds).toHaveLength(1);
+      expect(pathname()).toBe(`/chats/${createdThreadIds[0]!}`);
     });
   });
 
   it("should create thread and navigate to /chat/:threadId when clicking new chat for a subagent", async () => {
-    mockSubagentAPIs();
+    const { createdThreadIds } = mockSubagentAPIs();
 
     detachedSetupPage({
       context,
@@ -207,7 +230,8 @@ describe("sidebar new chat navigation", () => {
 
     // Verify navigation to /chat/:threadId
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-id");
+      expect(createdThreadIds).toHaveLength(1);
+      expect(pathname()).toBe(`/chats/${createdThreadIds[0]!}`);
     });
   });
 
@@ -215,11 +239,13 @@ describe("sidebar new chat navigation", () => {
     mockSubagentAPIs();
     // Override POST with deferred so we can control when the response arrives
     const createDeferred = createDeferredPromise<void>(context.signal);
+    let clientThreadId: string | null = null;
     server.use(
-      mockApi(chatThreadsContract.create, async ({ respond }) => {
+      mockApi(chatThreadsContract.create, async ({ body, respond }) => {
+        clientThreadId = body.clientThreadId ?? null;
         await createDeferred.promise;
         return respond(201, {
-          id: "delayed-thread-id",
+          id: body.clientThreadId ?? "delayed-thread-id",
           title: null,
           createdAt: "2026-03-10T00:00:00Z",
         });
@@ -251,48 +277,23 @@ describe("sidebar new chat navigation", () => {
 
     // After creation completes, button should be re-enabled
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/delayed-thread-id");
+      expect(clientThreadId).not.toBeNull();
+      expect(pathname()).toBe(`/chats/${clientThreadId}`);
     });
   });
 
   it("should show new chat entry in sidebar and focus textarea after creating new chat", async () => {
     mockSubagentAPIs();
-
-    // Override list and detail endpoints to include the newly created thread.
-    // fetchZeroSessionList$ is always called after navigation so the list must
-    // include the new thread (title: null) for "New chat" to appear in the sidebar.
+    const createDeferred = createDeferredPromise<void>(context.signal);
+    let createdThreadId: string | null = null;
     server.use(
-      mockApi(chatThreadsContract.list, ({ respond }) => {
-        return respond(200, {
-          threads: [
-            {
-              id: "new-thread-id",
-              title: null,
-              agent: {
-                id: "c0000000-0000-4000-a000-000000000001",
-                avatarUrl: null,
-              },
-              createdAt: "2026-03-10T00:00:00Z",
-              updatedAt: "2026-03-10T00:00:00Z",
-              isRead: false,
-              isArchived: false,
-              running: false,
-            },
-          ],
-        });
-      }),
-      mockApi(chatThreadByIdContract.get, ({ respond }) => {
-        return respond(200, {
-          id: "new-thread-id",
+      mockApi(chatThreadsContract.create, async ({ body, respond }) => {
+        createdThreadId = body.clientThreadId ?? "created-thread-id";
+        await createDeferred.promise;
+        return respond(201, {
+          id: createdThreadId,
           title: null,
-          agentId: "c0000000-0000-4000-a000-000000000001",
-          chatMessages: [],
-          latestSessionId: "session-new-1",
-          activeRunIds: [],
-          draftContent: null,
-          draftAttachments: null,
           createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
         });
       }),
     );
@@ -304,25 +305,28 @@ describe("sidebar new chat navigation", () => {
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
 
-    // Wait for thread list to load — the thread row for the not-yet-named
-    // thread is identifiable by its link href.
     const newChatButton = await waitFor(() => {
-      expect(
-        document.querySelector(`a[href="/chats/new-thread-id"]`),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Subagent thread")).toBeInTheDocument();
       return screen.getByLabelText(/^New chat/);
     });
 
     click(newChatButton);
+    await waitFor(() => {
+      expect(createdThreadId).not.toBeNull();
+    });
+    const threadId = createdThreadId;
+    if (!threadId) {
+      throw new Error("Expected created thread id");
+    }
 
     // 1. Verify navigation (URL-based selection confirmation)
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-id");
+      expect(pathname()).toBe(`/chats/${threadId}`);
     });
 
     // 2. Verify sidebar row falls back to "New chat" for a null title.
     await waitFor(() => {
-      const link = document.querySelector(`a[href="/chats/new-thread-id"]`);
+      const link = document.querySelector(`a[href="/chats/${threadId}"]`);
       expect(link).toBeInTheDocument();
       expect(within(link as HTMLElement).getByText("New chat")).toBeDefined();
     });
@@ -331,6 +335,8 @@ describe("sidebar new chat navigation", () => {
     await waitFor(() => {
       expect(screen.getByRole("textbox")).toHaveFocus();
     });
+
+    createDeferred.resolve();
   });
 
   it("should reuse an existing optimistic new chat when creating again", async () => {
@@ -373,6 +379,7 @@ describe("sidebar new chat navigation", () => {
     await context.store.set(
       createNewChatThreadOptimistically$,
       "c0000000-0000-4000-a000-000000000001",
+      "main",
       context.signal,
     );
     expect(createCount).toBe(1);
@@ -390,6 +397,7 @@ describe("sidebar new chat navigation", () => {
     await context.store.set(
       createNewChatThreadOptimistically$,
       "c0000000-0000-4000-a000-000000000001",
+      "main",
       context.signal,
     );
 

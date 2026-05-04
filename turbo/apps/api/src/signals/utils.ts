@@ -1,6 +1,6 @@
-import { env } from "./external/env";
-import { lazySingleton } from "./external/lazy-singleton";
-import { logger } from "./external/log";
+import { env } from "../lib/env";
+import { logger } from "../lib/log";
+import { singleton } from "../lib/singleton";
 
 export enum Mechanism {
   WaitUntil = "wait_until",
@@ -15,7 +15,7 @@ class PromiseTracker {
   descriptions = new Map<Promise<unknown>, string>();
 }
 
-const tracker = lazySingleton(() => {
+const tracker = singleton(() => {
   return new PromiseTracker();
 });
 
@@ -36,6 +36,16 @@ export function safeJsonParse(input: string): unknown {
   // eslint-disable-next-line no-restricted-syntax -- this is the centralized guarded JSON.parse
   try {
     return JSON.parse(input);
+  } catch (error) {
+    throwIfAbort(error);
+    return undefined;
+  }
+}
+
+export function safeUrlParse(input: string): URL | undefined {
+  // eslint-disable-next-line no-restricted-syntax -- centralized guarded URL constructor
+  try {
+    return new URL(input);
   } catch (error) {
     throwIfAbort(error);
     return undefined;

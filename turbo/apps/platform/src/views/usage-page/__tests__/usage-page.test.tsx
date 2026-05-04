@@ -14,7 +14,7 @@ beforeEach(() => {
   resetAllMockHandlers();
 });
 
-describe("/_/usage page", () => {
+describe("/usage page", () => {
   it("renders the page header and usage insight content", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
@@ -22,7 +22,7 @@ describe("/_/usage page", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(

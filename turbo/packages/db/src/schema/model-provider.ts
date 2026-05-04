@@ -8,6 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { secrets } from "./secret";
 
 /**
@@ -50,6 +51,9 @@ export const modelProviders = pgTable(
         table.userId,
         table.type,
       ),
+      uniqueIndex("idx_model_providers_one_default_per_user")
+        .on(table.orgId, table.userId)
+        .where(sql`is_default = true`),
     ];
   },
 );

@@ -144,6 +144,15 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
     }
     prevOrgId = newOrgId;
     persistOrgId(newOrgId);
+    // On mobile, Clerk can transiently clear clerk.organization to
+    // undefined during a background token refresh before restoring it on
+    // the next event. Guard against that by only reloading when the
+    // session is landing on a concrete org (org_A→org_B or
+    // undefined→org_A). An org disappearing to undefined is treated as a
+    // transient state; the listener will fire again with the real org_id.
+    if (!newOrgId) {
+      return;
+    }
     // Force a JWT rotation so the __session cookie carries the new
     // org_id claim before the reload — a brand-new tab opened in
     // parallel would otherwise read the stale cookie JWT (which bakes
@@ -171,6 +180,26 @@ export const user$ = computed(async (get) => {
   get(reload$);
   const clerk = await get(clerk$);
   return clerk.user ?? undefined;
+});
+
+export const currentUserInfo$ = computed(async (get) => {
+  get(clerkVersion$);
+  const clerk = await get(clerk$);
+  const user = clerk.user;
+  if (!user) {
+    return undefined;
+  }
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    firstName: user.firstName,
+    imageUrl: user.imageUrl,
+    primaryEmailAddress: user.primaryEmailAddress
+      ? {
+          emailAddress: user.primaryEmailAddress.emailAddress,
+        }
+      : null,
+  };
 });
 
 /**

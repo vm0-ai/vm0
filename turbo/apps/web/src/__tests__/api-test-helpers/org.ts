@@ -8,6 +8,8 @@ export {
   deleteOrgCacheEntry,
   insertOrgMembersEntry,
   insertOrgDefaultModelProvider,
+  insertOrgNonDefaultModelProvider,
+  deleteTestModelProvider,
   setOrgCredits,
   lockOrgAndSetCredits,
 } from "../db-test-seeders/org";

@@ -65,6 +65,7 @@ import { generate as generateGitlab } from "./gitlab";
 import { generate as generateGranola } from "./granola";
 import { generate as generateGreenhouse } from "./greenhouse";
 import { generate as generateGroq } from "./groq";
+import { generate as generateGumroad } from "./gumroad";
 import { generate as generateHeygen } from "./heygen";
 import { generate as generateHelicone } from "./helicone";
 import { generate as generateHtmlcsstoimage } from "./htmlcsstoimage";
@@ -103,6 +104,7 @@ import { generate as generateMixpanel } from "./mixpanel";
 import { generate as generateMonday } from "./monday";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
+import { generate as generateNanoBanana } from "./nano-banana";
 import { generate as generateNeon } from "./neon";
 import { generate as generateNotion } from "./notion";
 import { generate as generateOnyx } from "./onyx";
@@ -233,6 +235,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   granola: generateGranola,
   greenhouse: generateGreenhouse,
   groq: generateGroq,
+  gumroad: generateGumroad,
   heygen: generateHeygen,
   helicone: generateHelicone,
   htmlcsstoimage: generateHtmlcsstoimage,
@@ -271,6 +274,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   monday: generateMonday,
   msg9: generateMsg9,
   n8n: generateN8n,
+  "nano-banana": generateNanoBanana,
   neon: generateNeon,
   notion: generateNotion,
   onyx: generateOnyx,

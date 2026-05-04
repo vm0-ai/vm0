@@ -44,10 +44,19 @@ fn create_test_base_image(path: &Path) {
     f.set_len(64 * 1024 * 1024).expect("truncate base image");
 }
 
-fn test_device_pool() -> tokio::sync::Mutex<nbd_cow::pool::DevicePool> {
-    tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
-        nbd_cow::pool::DevicePoolConfig::default(),
-    ))
+fn test_device_pool() -> nbd_cow::pool::DevicePoolHandle {
+    nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default())
+}
+
+fn destroy_policy() -> nbd_cow::DestroyRetryPolicy {
+    nbd_cow::DestroyRetryPolicy {
+        attempts: 1,
+        delay: std::time::Duration::ZERO,
+    }
+}
+
+fn keep_cow_policy() -> nbd_cow::DestroyRetryPolicy {
+    destroy_policy()
 }
 
 // ---------------------------------------------------------------------------
@@ -67,7 +76,8 @@ async fn create_and_destroy() {
     let size = 64 * 1024 * 1024;
 
     let pool = test_device_pool();
-    let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+    let device = pool
+        .create_cow_device(&base, &cow, size)
         .await
         .expect("create");
 
@@ -78,7 +88,10 @@ async fn create_and_destroy() {
         "path should be /dev/nbdN"
     );
 
-    device.destroy().await.expect("destroy");
+    device
+        .destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy");
     // After destroy, the COW file should be removed
     assert!(!cow.exists(), "COW file should be removed after destroy");
 }
@@ -96,7 +109,8 @@ async fn destroy_keep_cow_preserves_file() {
     let size = 64 * 1024 * 1024;
 
     let pool = test_device_pool();
-    let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+    let device = pool
+        .create_cow_device(&base, &cow, size)
         .await
         .expect("create");
 
@@ -119,7 +133,10 @@ async fn destroy_keep_cow_preserves_file() {
     assert!(status.success());
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    device.destroy_keep_cow().await.expect("destroy_keep_cow");
+    device
+        .destroy_keep_cow_with_retries(keep_cow_policy())
+        .await
+        .expect("destroy_keep_cow");
     assert!(cow.exists(), "COW file should be preserved");
 }
 
@@ -136,7 +153,8 @@ async fn write_and_read_back_via_block_device() {
     let size = 64 * 1024 * 1024;
 
     let pool = test_device_pool();
-    let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+    let device = pool
+        .create_cow_device(&base, &cow, size)
         .await
         .expect("create");
     let dev_path = device.device_path().to_owned();
@@ -185,7 +203,10 @@ async fn write_and_read_back_via_block_device() {
         "marker should survive write/read"
     );
 
-    device.destroy().await.expect("destroy");
+    device
+        .destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -201,7 +222,8 @@ async fn cow_file_is_sparse() {
     let size = 64 * 1024 * 1024;
 
     let pool = test_device_pool();
-    let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+    let device = pool
+        .create_cow_device(&base, &cow, size)
         .await
         .expect("create");
 
@@ -226,7 +248,10 @@ async fn cow_file_is_sparse() {
     // Give the flush a moment
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    device.destroy_keep_cow().await.expect("destroy");
+    device
+        .destroy_keep_cow_with_retries(keep_cow_policy())
+        .await
+        .expect("destroy");
 
     // Check COW file is sparse — actual disk usage should be much less than 64MB
     let meta = fs::metadata(&cow).expect("metadata");
@@ -250,7 +275,8 @@ async fn device_path_format() {
     let size = 64 * 1024 * 1024;
 
     let pool = test_device_pool();
-    let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+    let device = pool
+        .create_cow_device(&base, &cow, size)
         .await
         .expect("create");
 
@@ -260,7 +286,10 @@ async fn device_path_format() {
         "device path should start with /dev/nbd, got: {path_str}"
     );
 
-    device.destroy().await.expect("destroy");
+    device
+        .destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -278,10 +307,12 @@ async fn multiple_devices_from_same_base() {
     let cow2 = tmp.path().join("cow2.img");
 
     let pool = test_device_pool();
-    let mut dev1 = nbd_cow::NbdCowDevice::create(&base, &cow1, size, &pool)
+    let dev1 = pool
+        .create_cow_device(&base, &cow1, size)
         .await
         .expect("create 1");
-    let mut dev2 = nbd_cow::NbdCowDevice::create(&base, &cow2, size, &pool)
+    let dev2 = pool
+        .create_cow_device(&base, &cow2, size)
         .await
         .expect("create 2");
 
@@ -289,8 +320,12 @@ async fn multiple_devices_from_same_base() {
     assert!(dev1.device_path().exists());
     assert!(dev2.device_path().exists());
 
-    dev1.destroy().await.expect("destroy 1");
-    dev2.destroy().await.expect("destroy 2");
+    dev1.destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy 1");
+    dev2.destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy 2");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -311,7 +346,8 @@ async fn snapshot_restore_round_trip() {
 
     // Phase 1: create device, write data, destroy_keep_cow
     {
-        let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+        let device = pool
+            .create_cow_device(&base, &cow, size)
             .await
             .expect("create");
 
@@ -347,7 +383,10 @@ async fn snapshot_restore_round_trip() {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         device.log_status().await;
-        device.destroy_keep_cow().await.expect("destroy_keep_cow");
+        device
+            .destroy_keep_cow_with_retries(keep_cow_policy())
+            .await
+            .expect("destroy_keep_cow");
     }
 
     // Verify COW file and bitmap exist
@@ -373,7 +412,8 @@ async fn snapshot_restore_round_trip() {
 
     // Phase 2: create new device with same base + COW — data should persist
     {
-        let mut device = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+        let device = pool
+            .create_cow_device(&base, &cow, size)
             .await
             .expect("restore create");
 
@@ -406,7 +446,10 @@ async fn snapshot_restore_round_trip() {
             "marker should survive snapshot restore"
         );
 
-        device.destroy().await.expect("destroy");
+        device
+            .destroy_with_retries(destroy_policy())
+            .await
+            .expect("destroy");
     }
 
     // After destroy, COW and bitmap should both be cleaned up
@@ -434,9 +477,9 @@ async fn connect_device_specific_index() {
     let cow = tmp.path().join("cow.img");
     let size: u64 = 64 * 1024 * 1024;
 
-    // Find a free device via pool, then connect with connect_device directly
-    let pool = test_device_pool();
-    let device_index = pool.lock().await.acquire().await.expect("acquire");
+    let device_index = (0..nbd_cow::netlink::nbds_max())
+        .find(|index| nbd_cow::netlink::device_appears_free(*index))
+        .expect("free NBD device");
 
     let mut client_fds = Vec::new();
     let mut server_handles = Vec::new();
@@ -477,9 +520,6 @@ async fn connect_device_specific_index() {
     }
     drop(client_fds);
     let _ = nbd_cow::netlink::disconnect(device_index);
-
-    pool.lock().await.release(device_index);
-    pool.lock().await.cleanup().await;
 }
 
 /// After destroy + release, the pool should not hand back the same device
@@ -496,25 +536,26 @@ async fn pool_cooldown_prevents_immediate_reuse() {
     let size = 64 * 1024 * 1024;
 
     // Use a long cooldown so the released device can't be reused
-    let pool = tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
-        nbd_cow::pool::DevicePoolConfig {
-            cooldown: std::time::Duration::from_secs(60),
-        },
-    ));
+    let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig {
+        cooldown: std::time::Duration::from_secs(60),
+    });
 
     let cow1 = tmp.path().join("cow1.img");
-    let mut dev1 = nbd_cow::NbdCowDevice::create(&base, &cow1, size, &pool)
+    let dev1 = pool
+        .create_cow_device(&base, &cow1, size)
         .await
         .expect("create 1");
     let idx1 = dev1.device_index();
 
-    dev1.destroy().await.expect("destroy 1");
-    pool.lock().await.release(idx1);
+    dev1.destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy 1");
 
     // Immediately create another device — should get a DIFFERENT index
     // because idx1 is still in cooldown (60s)
     let cow2 = tmp.path().join("cow2.img");
-    let mut dev2 = nbd_cow::NbdCowDevice::create(&base, &cow2, size, &pool)
+    let dev2 = pool
+        .create_cow_device(&base, &cow2, size)
         .await
         .expect("create 2");
     let idx2 = dev2.device_index();
@@ -524,9 +565,10 @@ async fn pool_cooldown_prevents_immediate_reuse() {
         "pool should not reuse device {idx1} during cooldown"
     );
 
-    dev2.destroy().await.expect("destroy 2");
-    pool.lock().await.release(idx2);
-    pool.lock().await.cleanup().await;
+    dev2.destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy 2");
+    pool.cleanup().await;
 }
 
 /// After cooldown expires, a released device should become available again.
@@ -542,96 +584,91 @@ async fn pool_release_and_reacquire_after_cooldown() {
     let size = 64 * 1024 * 1024;
 
     // Very short cooldown so we can test re-acquisition
-    let pool = tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
-        nbd_cow::pool::DevicePoolConfig {
-            cooldown: std::time::Duration::from_millis(50),
-        },
-    ));
+    let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig {
+        cooldown: std::time::Duration::from_millis(50),
+    });
 
     let cow = tmp.path().join("cow.img");
-    let mut dev = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+    let dev = pool
+        .create_cow_device(&base, &cow, size)
         .await
         .expect("create");
-    let idx = dev.device_index();
 
-    dev.destroy().await.expect("destroy");
-    pool.lock().await.release(idx);
+    dev.destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy");
 
     // Wait for cooldown to expire
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-    // The released device should now be available via acquire
-    let reacquired = pool.lock().await.acquire().await.expect("reacquire");
-
-    // We can't guarantee it's the SAME index (background scan might find
-    // another free device first), but acquire should succeed without error.
-    // Release it back and clean up.
-    pool.lock().await.release(reacquired);
-    pool.lock().await.cleanup().await;
+    let cow2 = tmp.path().join("cow2.img");
+    let dev2 = pool
+        .create_cow_device(&base, &cow2, size)
+        .await
+        .expect("create after cooldown");
+    dev2.destroy_with_retries(destroy_policy())
+        .await
+        .expect("destroy after cooldown");
+    pool.cleanup().await;
 }
 
-/// Pool warmup should populate the ready queue.
+/// Pool warmup should leave the public pooled-device path usable.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn pool_warmup_populates_ready_queue() {
+async fn pool_warmup_allows_pooled_create() {
     require_root!();
     require_nbd!();
 
-    let pool = tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
-        nbd_cow::pool::DevicePoolConfig::default(),
-    ));
-    pool.lock().await.warmup().await;
+    let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
+    pool.warmup().await;
 
-    // After warmup, acquire should be instant (Tier 1 — from ready queue)
-    let start = std::time::Instant::now();
-    let idx = pool
-        .lock()
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let base = tmp.path().join("base.img");
+    create_test_base_image(&base);
+    let cow = tmp.path().join("cow.img");
+    let device = pool
+        .create_cow_device(&base, &cow, 64 * 1024 * 1024)
         .await
-        .acquire()
+        .expect("create after warmup");
+
+    device
+        .destroy_with_retries(destroy_policy())
         .await
-        .expect("acquire after warmup");
-    let elapsed = start.elapsed();
-
-    // Tier 1 acquire should be sub-millisecond (no sysfs scan needed)
-    assert!(
-        elapsed.as_millis() < 50,
-        "acquire after warmup took {elapsed:?}, expected < 50ms (Tier 1)"
-    );
-
-    pool.lock().await.release(idx);
-    pool.lock().await.cleanup().await;
+        .expect("destroy after warmup");
+    pool.cleanup().await;
 }
 
 /// After cleanup(), acquire must return NoFreeDevice immediately.
 /// This is a pure-logic test — no root or nbd module required.
 #[tokio::test(flavor = "multi_thread")]
 async fn pool_cleanup_rejects_acquire() {
-    let pool = tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
-        nbd_cow::pool::DevicePoolConfig::default(),
-    ));
-    pool.lock().await.cleanup().await;
+    let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
+    pool.cleanup().await;
 
-    let result = pool.lock().await.acquire().await;
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let base = tmp.path().join("base.img");
+    create_test_base_image(&base);
+    let cow = tmp.path().join("cow.img");
+    let result = pool.create_cow_device(&base, &cow, 64 * 1024 * 1024).await;
     assert!(result.is_err(), "acquire after cleanup should fail");
 }
 
-/// Calling release() after cleanup() should be a no-op (not panic or corrupt state).
+/// Calling cleanup() twice should be a no-op (not panic or corrupt state).
 /// This is a pure-logic test — no root or nbd module required.
 #[tokio::test(flavor = "multi_thread")]
-async fn pool_release_after_cleanup_is_noop() {
-    let pool = tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
-        nbd_cow::pool::DevicePoolConfig::default(),
-    ));
-    pool.lock().await.cleanup().await;
+async fn pool_cleanup_is_idempotent() {
+    let pool = nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
+    pool.cleanup().await;
+    pool.cleanup().await;
 
-    // release after cleanup should silently do nothing
-    pool.lock().await.release(42);
-
-    // pool should still reject acquire
-    let result = pool.lock().await.acquire().await;
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let base = tmp.path().join("base.img");
+    create_test_base_image(&base);
+    let cow = tmp.path().join("cow.img");
+    let result = pool.create_cow_device(&base, &cow, 64 * 1024 * 1024).await;
     assert!(
         result.is_err(),
-        "acquire should still fail after release on cleaned-up pool"
+        "create should still fail after repeated cleanup"
     );
 }
 
@@ -650,7 +687,8 @@ async fn drop_without_destroy_disconnects() {
     let size: u64 = 64 * 1024 * 1024;
 
     let pool = test_device_pool();
-    let device = nbd_cow::NbdCowDevice::create(&base, &cow, size, &pool)
+    let device = pool
+        .create_cow_device(&base, &cow, size)
         .await
         .expect("create");
 
@@ -688,5 +726,5 @@ async fn drop_without_destroy_disconnects() {
         );
     }
 
-    pool.lock().await.cleanup().await;
+    pool.cleanup().await;
 }

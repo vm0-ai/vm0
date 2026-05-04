@@ -331,7 +331,7 @@ async def get_firewall_headers(
     (run_id, api_id) coalesce into a single HTTP fetch.
 
     Cache is evicted when:
-    - The run is removed from the registry (see load_registry)
+    - The run is removed from the registry (see registry.load_registry)
     - A 401 response is received (see response handler)
     - The expiresAt timestamp from the auth endpoint has passed
     """

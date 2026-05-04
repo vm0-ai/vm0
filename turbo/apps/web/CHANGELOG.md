@@ -1,5 +1,312 @@
 # Changelog
 
+## [12.330.8](https://github.com/vm0-ai/vm0/compare/web-v12.330.7...web-v12.330.8) (2026-05-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.255.0
+
+## [12.330.7](https://github.com/vm0-ai/vm0/compare/web-v12.330.6...web-v12.330.7) (2026-05-03)
+
+
+### Bug Fixes
+
+* **zero:** enforce single workspace-scoped default model provider ([#11752](https://github.com/vm0-ai/vm0/issues/11752)) ([bac90bf](https://github.com/vm0-ai/vm0/commit/bac90bfff17ec5e946236536a445d0ed382a9f3f))
+
+## [12.330.6](https://github.com/vm0-ai/vm0/compare/web-v12.330.5...web-v12.330.6) (2026-05-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.254.0
+
+## [12.330.5](https://github.com/vm0-ai/vm0/compare/web-v12.330.4...web-v12.330.5) (2026-05-03)
+
+
+### Performance Improvements
+
+* **auth:** preconnect to clerk frontend api host ([#11738](https://github.com/vm0-ai/vm0/issues/11738)) ([3d186e1](https://github.com/vm0-ai/vm0/commit/3d186e1be2a91d52b2330cea4b9d6b794d49f126))
+
+## [12.330.4](https://github.com/vm0-ai/vm0/compare/web-v12.330.3...web-v12.330.4) (2026-05-03)
+
+
+### Bug Fixes
+
+* **zero:** respect resolved framework on session continue ([#11728](https://github.com/vm0-ai/vm0/issues/11728)) ([#11730](https://github.com/vm0-ai/vm0/issues/11730)) ([f924611](https://github.com/vm0-ai/vm0/commit/f924611fd5eb86ed10d19be8195c0e0f6b335fb8))
+
+## [12.330.3](https://github.com/vm0-ai/vm0/compare/web-v12.330.2...web-v12.330.3) (2026-05-03)
+
+
+### Bug Fixes
+
+* **zero:** admit cross-framework default provider at admission and dispatch ([#11686](https://github.com/vm0-ai/vm0/issues/11686)) ([5eb640d](https://github.com/vm0-ai/vm0/commit/5eb640d70d9c5fdf22cdb7556f8154b4a9153a8a))
+* **zero:** thread provider framework into dispatch and validation ([#11649](https://github.com/vm0-ai/vm0/issues/11649)) ([4448bb2](https://github.com/vm0-ai/vm0/commit/4448bb2b21671ff23e9cd7c0678043342ab717e8))
+
+## [12.330.2](https://github.com/vm0-ai/vm0/compare/web-v12.330.1...web-v12.330.2) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.253.0
+
+## [12.330.1](https://github.com/vm0-ai/vm0/compare/web-v12.330.0...web-v12.330.1) (2026-05-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.252.0
+
+## [12.330.0](https://github.com/vm0-ai/vm0/compare/web-v12.329.1...web-v12.330.0) (2026-05-01)
+
+
+### Features
+
+* **zero:** add chat thread rename behind ChatThreadRename feature switch ([#11648](https://github.com/vm0-ai/vm0/issues/11648)) ([bf4abcc](https://github.com/vm0-ai/vm0/commit/bf4abcc6fe9a8459dd008a7500577018c6ee7fac))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.251.0
+
+## [12.329.1](https://github.com/vm0-ai/vm0/compare/web-v12.329.0...web-v12.329.1) (2026-05-01)
+
+
+### Bug Fixes
+
+* remove permissive auth probe default to eliminate shadow mismatches ([#11646](https://github.com/vm0-ai/vm0/issues/11646)) ([3a49158](https://github.com/vm0-ai/vm0/commit/3a491586c1242f81590eadf5a46b2dc5a3d8cbe6))
+
+## [12.329.0](https://github.com/vm0-ai/vm0/compare/web-v12.328.0...web-v12.329.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** pin chat threads in platform sidebar ([#11636](https://github.com/vm0-ai/vm0/issues/11636)) ([7190949](https://github.com/vm0-ai/vm0/commit/719094992e2a7e13f1086b2bd8b5219759ac8c86))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.250.0
+
+## [12.328.0](https://github.com/vm0-ai/vm0/compare/web-v12.327.0...web-v12.328.0) (2026-04-30)
+
+
+### Features
+
+* **api:** add cors middleware for cross-origin browser access ([#11633](https://github.com/vm0-ai/vm0/issues/11633)) ([ca50728](https://github.com/vm0-ai/vm0/commit/ca50728186ca1d0619d41bf29f357bf62bde1ab3))
+
+
+### Bug Fixes
+
+* add missing display flex to nav-center CSS ([#11626](https://github.com/vm0-ai/vm0/issues/11626)) ([50057bb](https://github.com/vm0-ai/vm0/commit/50057bbe033d772b64c7a734cf507bd6293168eb))
+* respect dark mode in rankings table background ([#11628](https://github.com/vm0-ai/vm0/issues/11628)) ([fee3c9a](https://github.com/vm0-ai/vm0/commit/fee3c9a844b96cf3a2703c176e1304a739d75f5d))
+* stabilize landing nav dropdown clicks ([#11625](https://github.com/vm0-ai/vm0/issues/11625)) ([17f92ca](https://github.com/vm0-ai/vm0/commit/17f92ca2ac9b2bb3265a2c0e7b30c66fdbdd03b1))
+
+## [12.327.0](https://github.com/vm0-ai/vm0/compare/web-v12.326.0...web-v12.327.0) (2026-04-30)
+
+
+### Features
+
+* **web:** regroup marketing nav into Resources & Trust & Tech mega-menus ([#11610](https://github.com/vm0-ai/vm0/issues/11610)) ([51c2fbe](https://github.com/vm0-ai/vm0/commit/51c2fbe553f272f05200563d76b41245a595715c))
+* **web:** show cache tokens on rankings page ([#11614](https://github.com/vm0-ai/vm0/issues/11614)) ([6e34b1a](https://github.com/vm0-ai/vm0/commit/6e34b1ae626aa6099461e7e7349cca0a21adb7c4))
+
+
+### Bug Fixes
+
+* **web:** resolve i18n keys for model slugs containing dots ([#11615](https://github.com/vm0-ai/vm0/issues/11615)) ([3f86cc7](https://github.com/vm0-ai/vm0/commit/3f86cc78eaff32a67fba25fcf6bb42bc94c973bf))
+* **zero:** drop residual framework strict-equality check ([#11616](https://github.com/vm0-ai/vm0/issues/11616)) ([#11619](https://github.com/vm0-ai/vm0/issues/11619)) ([b98842a](https://github.com/vm0-ai/vm0/commit/b98842a4e9f6beefc622d4982f8d16e3a1837428))
+
+
+### Refactoring
+
+* **api:** tighten env schema and clean up dead code ([#11621](https://github.com/vm0-ai/vm0/issues/11621)) ([849fe02](https://github.com/vm0-ai/vm0/commit/849fe027474e831d4721c3f3758142f4677a60da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.249.0
+
+## [12.326.0](https://github.com/vm0-ai/vm0/compare/web-v12.325.0...web-v12.326.0) (2026-04-30)
+
+
+### Features
+
+* **web:** make rankings page public and align with official site style ([#11593](https://github.com/vm0-ai/vm0/issues/11593)) ([32a1753](https://github.com/vm0-ai/vm0/commit/32a17530de0b58540958b3b715961ecb7466494d))
+
+## [12.325.0](https://github.com/vm0-ai/vm0/compare/web-v12.324.0...web-v12.325.0) (2026-04-30)
+
+
+### Features
+
+* add artifact google drive sync ([#11595](https://github.com/vm0-ai/vm0/issues/11595)) ([4e3f205](https://github.com/vm0-ai/vm0/commit/4e3f205dce5a93826a2962bf9848a21ff8d272d0))
+
+
+### Bug Fixes
+
+* **org:** remove model usage ranking ([#11585](https://github.com/vm0-ai/vm0/issues/11585)) ([b966f13](https://github.com/vm0-ai/vm0/commit/b966f13120e867272d6854a2fa30c4482b5f62df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.248.1
+
+## [12.324.0](https://github.com/vm0-ai/vm0/compare/web-v12.323.0...web-v12.324.0) (2026-04-30)
+
+
+### Features
+
+* add promo credits messaging to homepage hero ([#11587](https://github.com/vm0-ai/vm0/issues/11587)) ([5b60624](https://github.com/vm0-ai/vm0/commit/5b60624abe8a409cdceafec890cdc668adcc2e19))
+* refresh env driver docs ([#11591](https://github.com/vm0-ai/vm0/issues/11591)) ([0883e1d](https://github.com/vm0-ai/vm0/commit/0883e1d4aa502ebf7d2e9fe385ec1eaaa531703c))
+
+## [12.323.0](https://github.com/vm0-ai/vm0/compare/web-v12.322.0...web-v12.323.0) (2026-04-29)
+
+
+### Features
+
+* **zero:** wire codex item.completed events into chat thread persistence ([#11561](https://github.com/vm0-ai/vm0/issues/11561)) ([3358cbb](https://github.com/vm0-ai/vm0/commit/3358cbbc7d4afd56429a20670f0471608ab95ec3)), closes [#11559](https://github.com/vm0-ai/vm0/issues/11559) [#11520](https://github.com/vm0-ai/vm0/issues/11520)
+
+## [12.322.0](https://github.com/vm0-ai/vm0/compare/web-v12.321.0...web-v12.322.0) (2026-04-29)
+
+
+### Features
+
+* **zero:** codex-beta feature switch with provider-create gate and picker filter ([#11546](https://github.com/vm0-ai/vm0/issues/11546)) ([1b30292](https://github.com/vm0-ai/vm0/commit/1b30292f2eb55bd2864006da51b8ee2da7f22a48)), closes [#11529](https://github.com/vm0-ai/vm0/issues/11529) [#11520](https://github.com/vm0-ai/vm0/issues/11520)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.248.0
+
+## [12.321.0](https://github.com/vm0-ai/vm0/compare/web-v12.320.2...web-v12.321.0) (2026-04-29)
+
+
+### Features
+
+* **zero:** eager-pin chat thread to model provider at creation ([#11542](https://github.com/vm0-ai/vm0/issues/11542)) ([2d64e03](https://github.com/vm0-ai/vm0/commit/2d64e03c38388960e7897956631a256641265555)), closes [#11528](https://github.com/vm0-ai/vm0/issues/11528)
+
+
+### Bug Fixes
+
+* restore nano-banana connector registration lost during connectors package extraction ([#11512](https://github.com/vm0-ai/vm0/issues/11512)) ([9f3a82c](https://github.com/vm0-ai/vm0/commit/9f3a82cc265ce6b57e8b7cb4d3230b85a3e854c4))
+
+## [12.320.2](https://github.com/vm0-ai/vm0/compare/web-v12.320.1...web-v12.320.2) (2026-04-29)
+
+
+### Bug Fixes
+
+* aggregate model rankings by model name ([#11518](https://github.com/vm0-ai/vm0/issues/11518)) ([a61863a](https://github.com/vm0-ai/vm0/commit/a61863a45b373cc92d78e5281c038594f580a22d))
+* estimate WAV duration from byte size instead of chunk-walk parsing ([#11514](https://github.com/vm0-ai/vm0/issues/11514)) ([cad1e89](https://github.com/vm0-ai/vm0/commit/cad1e890e75508f21fc389be11759c0e559bc688))
+
+## [12.320.1](https://github.com/vm0-ai/vm0/compare/web-v12.320.0...web-v12.320.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* harden model rankings cron aggregation ([#11485](https://github.com/vm0-ai/vm0/issues/11485)) ([39bc094](https://github.com/vm0-ai/vm0/commit/39bc0948c813a3250a8c3e8990c9ceb665a5f848))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.247.0
+
+## [12.320.0](https://github.com/vm0-ai/vm0/compare/web-v12.319.0...web-v12.320.0) (2026-04-29)
+
+
+### Features
+
+* add model usage ranking ([#11486](https://github.com/vm0-ai/vm0/issues/11486)) ([f4a3513](https://github.com/vm0-ai/vm0/commit/f4a3513015b7a6c046d7c741b8b5e97270b76c3e))
+* add zero web voice to agent prompt ([#11496](https://github.com/vm0-ai/vm0/issues/11496)) ([9d72135](https://github.com/vm0-ai/vm0/commit/9d72135fba03b9f518e15d7f74bf4f564a234d42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.246.0
+
+## [12.319.0](https://github.com/vm0-ai/vm0/compare/web-v12.318.0...web-v12.319.0) (2026-04-29)
+
+
+### Features
+
+* add gumroad connector (api-token + oauth) ([#11470](https://github.com/vm0-ai/vm0/issues/11470)) ([e9039db](https://github.com/vm0-ai/vm0/commit/e9039db1f992be2520f54ecf07b1601dc2537d7b))
+* add web voice cli ([#11465](https://github.com/vm0-ai/vm0/issues/11465)) ([bcd8ff8](https://github.com/vm0-ai/vm0/commit/bcd8ff820e5621facaccc1b823ace3a582cb034b))
+
+
+### Bug Fixes
+
+* **api:** stop @sentry/node from emitting duplicate spans ([#11462](https://github.com/vm0-ai/vm0/issues/11462)) ([5fe6c4f](https://github.com/vm0-ai/vm0/commit/5fe6c4f61686f826a654932614e6f5942cf4f280))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.245.0
+
+## [12.318.0](https://github.com/vm0-ai/vm0/compare/web-v12.317.0...web-v12.318.0) (2026-04-29)
+
+
+### Features
+
+* add model usage rankings ([#11464](https://github.com/vm0-ai/vm0/issues/11464)) ([e251a05](https://github.com/vm0-ai/vm0/commit/e251a05dcc738ea7b2ae0c798ef9a47e21978746))
+
+
+### Bug Fixes
+
+* preserve cancelled run chat error ([#11459](https://github.com/vm0-ai/vm0/issues/11459)) ([8fc17bf](https://github.com/vm0-ai/vm0/commit/8fc17bfe5fcf9684784e29714b71e895492df71b))
+
+## [12.317.0](https://github.com/vm0-ai/vm0/compare/web-v12.316.1...web-v12.317.0) (2026-04-29)
+
+
+### Features
+
+* add credit addition records ([#11447](https://github.com/vm0-ai/vm0/issues/11447)) ([07a164a](https://github.com/vm0-ai/vm0/commit/07a164a2f4025615c0f5d657e419d93b886cc249))
+
+
+### Bug Fixes
+
+* forward bb0 device code routes to api ([#11449](https://github.com/vm0-ai/vm0/issues/11449)) ([433f3b2](https://github.com/vm0-ai/vm0/commit/433f3b2b466c390394ca0e8877985e451cd74d5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.244.0
+
+## [12.316.1](https://github.com/vm0-ai/vm0/compare/web-v12.316.0...web-v12.316.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* adjust deepseek-v4-pro credit multiplier from 0.3x to 0.06x ([#11435](https://github.com/vm0-ai/vm0/issues/11435)) ([049f315](https://github.com/vm0-ai/vm0/commit/049f31501d973889dc39f336e5c2139e4568ed3c))
+
 ## [12.316.0](https://github.com/vm0-ai/vm0/compare/web-v12.315.0...web-v12.316.0) (2026-04-28)
 
 

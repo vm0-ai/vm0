@@ -1,18 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createStore } from "ccstate";
-import { registerServiceWorker$ } from "../push-notifications";
 
-const { mockIsFeatureEnabled } = vi.hoisted(() => {
-  return { mockIsFeatureEnabled: vi.fn() };
+const { setEnabled, getEnabled } = vi.hoisted(() => {
+  let enabled = false;
+  return {
+    setEnabled: (v: boolean) => {
+      enabled = v;
+    },
+    getEnabled: () => {
+      return enabled;
+    },
+  };
 });
 
-vi.mock("@vm0/core/feature-switch", () => {
-  return { isFeatureEnabled: mockIsFeatureEnabled };
+vi.mock("../../signals/external/feature-switch.ts", async () => {
+  const { computed } = await import("ccstate");
+  return {
+    pwaOfflineCacheEnabled$: computed(() => {
+      return getEnabled();
+    }),
+  };
 });
+
+const { registerServiceWorker$ } = await import("../push-notifications");
 
 describe("registerServiceWorker$", () => {
   beforeEach(() => {
-    mockIsFeatureEnabled.mockReset();
+    setEnabled(false);
   });
 
   function setupServiceWorkerMocks() {
@@ -23,7 +37,7 @@ describe("registerServiceWorker$", () => {
   }
 
   it("passes updateViaCache: none when PwaOfflineCache is enabled", async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
+    setEnabled(true);
     const { mockRegister } = setupServiceWorkerMocks();
 
     const store = createStore();
@@ -35,7 +49,7 @@ describe("registerServiceWorker$", () => {
   });
 
   it("omits updateViaCache: none when PwaOfflineCache is disabled", async () => {
-    mockIsFeatureEnabled.mockReturnValue(false);
+    setEnabled(false);
     const { mockRegister } = setupServiceWorkerMocks();
 
     const store = createStore();

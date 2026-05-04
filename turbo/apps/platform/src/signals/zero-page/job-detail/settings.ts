@@ -2,14 +2,14 @@ import { command } from "ccstate";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroClient$ } from "../../api-client.ts";
 import { accept } from "../../../lib/accept.ts";
-import { zeroJobDetail$, reloadJobDetail$ } from "./detail.ts";
+import { agentDetail$, reloadAgentDetail$ } from "./detail.ts";
 import { reloadAgentById$, reloadAgents$ } from "../../agent.ts";
 
 // ---------------------------------------------------------------------------
 // Settings: update agent metadata (displayName, sound)
 // ---------------------------------------------------------------------------
 
-interface ZeroJobSettingsUpdate {
+interface AgentSettingsUpdate {
   displayName?: string;
   description?: string;
   sound?: string;
@@ -18,9 +18,9 @@ interface ZeroJobSettingsUpdate {
   selectedModel?: string | null;
 }
 
-export const zeroJobUpdateSettings$ = command(
-  async ({ get, set }, update: ZeroJobSettingsUpdate, signal: AbortSignal) => {
-    const detail = await get(zeroJobDetail$);
+export const updateAgentSettings$ = command(
+  async ({ get, set }, update: AgentSettingsUpdate, signal: AbortSignal) => {
+    const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail) {
       throw new Error("No compose detail found");
@@ -36,7 +36,7 @@ export const zeroJobUpdateSettings$ = command(
     );
     signal.throwIfAborted();
 
-    set(reloadJobDetail$);
+    set(reloadAgentDetail$);
     set(reloadAgents$);
     set(reloadAgentById$);
   },

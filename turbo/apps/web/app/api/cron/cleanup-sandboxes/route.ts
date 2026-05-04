@@ -20,7 +20,6 @@ import {
   drainOrgQueue,
   dispatchQueuedZeroRun,
 } from "../../../../src/lib/zero/zero-run-queue-service";
-import { processOrgCredits } from "../../../../src/lib/zero/credit/credit-service";
 import { processOrgUsageEvents } from "../../../../src/lib/zero/credit/usage-event-service";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
@@ -247,7 +246,6 @@ const router = tsr.router(cronCleanupSandboxesContract, {
             },
           );
 
-          await processOrgCredits(run.orgId);
           await processOrgUsageEvents(run.orgId);
 
           const isDebug =

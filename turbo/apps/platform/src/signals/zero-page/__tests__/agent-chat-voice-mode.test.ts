@@ -269,7 +269,7 @@ describe("agent-chat-voice-mode", () => {
         path: "/",
         withoutRender: true,
       });
-      await expect(context.store.get(trinityEnabled$)).resolves.toBeFalsy();
+      expect(context.store.get(trinityEnabled$)).toBeFalsy();
     });
 
     it("resolves to true when the user override is set", async () => {
@@ -279,7 +279,7 @@ describe("agent-chat-voice-mode", () => {
         withoutRender: true,
         featureSwitches: { trinity: true },
       });
-      await expect(context.store.get(trinityEnabled$)).resolves.toBeTruthy();
+      expect(context.store.get(trinityEnabled$)).toBeTruthy();
     });
   });
 

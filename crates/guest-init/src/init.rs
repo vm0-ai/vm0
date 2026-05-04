@@ -75,7 +75,7 @@ pub fn init_filesystem() -> Result<(), InitError> {
 
     // 2. Load environment variables.
     //
-    // /etc/environment is baked into the rootfs by build-rootfs.sh and
+    // /etc/environment is baked into the rootfs by customize-rootfs.sh and
     // contains variables shared by ALL users (LANG, NODE_EXTRA_CA_CERTS, …).
     // PAM reads it for login shells (`su - user`), but the init process
     // (root) and its children (vsock-guest → `sh -c`) don't go through PAM,
@@ -204,9 +204,10 @@ mod tests {
 
     #[test]
     fn parse_env_value_with_equals() {
-        let content = "NODE_EXTRA_CA_CERTS=/etc/ssl/ca.pem";
+        // Values may legitimately contain `=`; only the first one separates key/value.
+        let content = "TOKEN=abc=def==";
         let pairs = parse_env_content(content);
-        assert_eq!(pairs, vec![("NODE_EXTRA_CA_CERTS", "/etc/ssl/ca.pem")]);
+        assert_eq!(pairs, vec![("TOKEN", "abc=def==")]);
     }
 
     #[test]

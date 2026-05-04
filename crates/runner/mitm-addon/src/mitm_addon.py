@@ -21,19 +21,21 @@ from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports ---
 #
-# Usage/body_utils are imported by module (not selective `from X import ...`)
+# Usage/body_utils/registry/response_streaming are imported by module
+# (not selective `from X import ...`)
 # so that:
-#   1. Cross-module calls read as ``usage.X(...)`` / ``body_utils.X(...)``,
+#   1. Cross-module calls read as ``usage.X(...)`` / ``body_utils.X(...)`` /
+#      ``registry.X(...)`` / ``response_streaming.X(...)``,
 #      making the module boundary visible at call sites.
-#   2. Tests can patch ``usage.name`` / ``body_utils.name`` in one place and
-#      it affects both direct callers in those modules and handler callers
-#      here — no mock-placement pitfalls.
+#   2. Tests can patch names on the owning module object and affect all
+#      callers — no mock-placement pitfalls from copied function bindings.
 import body_utils
+import registry
+import response_streaming
 import usage
 import vendor_check
 from auth import (
     _firewall_header_cache,
-    evict_stale_cache_keys,
     handle_firewall_request,
     request_force_refresh,
 )
@@ -47,11 +49,7 @@ from url_utils import get_original_url
 # starts shadowing our vendored copy; see vendor_check.py for the playbook.
 vendor_check.verify()
 
-# HTTP status boundaries used in response-phase classification.  Also defined
-# in ``usage.py`` for the same reason; kept local because they're RFC-fixed
-# (never drift) and factoring them out for two callers adds no value.
-_HTTP_STATUS_OK_MIN = 200  # inclusive: start of 2xx success range
-_HTTP_STATUS_REDIRECT_MIN = 300  # start of 3xx — doubles as the 2xx exclusive upper bound
+# HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
 
@@ -107,66 +105,8 @@ def get_registry_path() -> str:
     return ctx.options.vm0_proxy_registry_path
 
 
-# ============================================================================
-# Registry & VM Lookup
-# ============================================================================
-
-# Cache for proxy registry (invalidated by file stat change)
-_registry_cache: dict = {}
-_registry_cache_key: tuple[int, int] = (0, 0)
-# One-shot guard for stat-path failures: no cache key is available in that
-# branch, so we fall back to a flag (mirrors counters.py:_pending_write_error_logged).
-# Parse-path failures use the cache key itself — recording the bad file's
-# (mtime_ns, size) as already-processed prevents re-parsing the same bytes
-# on every request and re-warning about them.
-_registry_load_error_logged = False
-
 # Track request start times for latency calculation
 _request_start_times: dict = {}
-
-
-def load_registry() -> dict:
-    """Load the proxy registry from file, with stat-based cache invalidation."""
-    global _registry_cache, _registry_cache_key, _registry_load_error_logged
-
-    try:
-        registry_path = Path(get_registry_path())
-        st = registry_path.stat()
-    except OSError as e:
-        if not _registry_load_error_logged:
-            _registry_load_error_logged = True
-            ctx.log.warn(f"Failed to stat proxy registry: {e}")
-        return _registry_cache
-
-    key = (st.st_mtime_ns, st.st_size)
-    if key == _registry_cache_key:
-        return _registry_cache
-
-    try:
-        with registry_path.open() as f:
-            new_registry = json.load(f).get("vms", {})
-
-        # Evict cache entries for runs no longer in the registry
-        active_run_ids = {vm.get("runId") for vm in new_registry.values()}
-        evict_stale_cache_keys(active_run_ids)
-
-        _registry_cache = new_registry
-        _registry_load_error_logged = False
-    except Exception as e:
-        if not _registry_load_error_logged:
-            _registry_load_error_logged = True
-            ctx.log.warn(f"Failed to parse proxy registry: {e}")
-
-    # Record this file state as already processed — success or parse failure —
-    # so subsequent requests on the same bytes short-circuit at the key check.
-    _registry_cache_key = key
-    return _registry_cache
-
-
-def get_vm_info(client_ip: str) -> dict | None:
-    """Look up VM info by client IP address."""
-    registry = load_registry()
-    return registry.get(client_ip)
 
 
 # ============================================================================
@@ -184,7 +124,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     if not client_ip:
         return
 
-    vm_info = get_vm_info(client_ip)
+    vm_info = registry.get_vm_info(client_ip, get_registry_path())
     if not vm_info:
         # Not a registered VM - pass through without MITM interception
         # This is critical for CIDR-based rules where all VM traffic is redirected
@@ -215,7 +155,7 @@ async def request(flow: http.HTTPFlow) -> None:
         return
 
     # Look up VM info from registry
-    vm_info = get_vm_info(client_ip)
+    vm_info = registry.get_vm_info(client_ip, get_registry_path())
 
     if not vm_info:
         # Not a registered VM, pass through without proxying
@@ -350,106 +290,8 @@ def _release_tracked_usage_flow(flow: http.HTTPFlow) -> None:
 
 
 def responseheaders(flow: http.HTTPFlow) -> None:
-    """
-    Enable response streaming with body buffering.
-
-    Uses a callback to stream response data to the client immediately
-    while accumulating a copy in memory (up to ``STREAM_BUFFER_LIMIT``).
-    Once the limit is exceeded, buffering stops but streaming continues
-    uninterrupted.  The buffered body is available in the ``response()``
-    hook via ``flow.metadata["stream_buffer"]``.
-    """
-    if not flow.response:
-        return
-
-    buf = bytearray()
-    state = {"truncated": False}
-
-    # Set up usage extraction only for billable model-provider responses.
-    # For non-SSE billable model-provider responses, disable buffer truncation
-    # so the full JSON body is available for usage extraction in response().
-    sse_parser = None
-    sse_decompressor = None
-    ndjson_parser = None
-    ndjson_decompressor = None
-    firewall_name = flow.metadata.get("firewall_name", "")
-    is_model_provider = firewall_name.startswith("model-provider:")
-    # Platform-billable firewall flag, sourced from vm_info["billableFirewalls"]
-    # via auth.handle_firewall_request.  Gates report_connector_usage (in response())
-    # and the full-body response buffering that billing payload extraction needs.
-    is_billable_flow = flow.metadata.get("firewall_billable", False)
-    is_billable_model_provider = is_model_provider and is_billable_flow
-    # X-specific NDJSON stream classification — tied to the x firewall itself,
-    # not to billing.  Kept separate so a future non-x billable connector
-    # doesn't accidentally inherit X stream parsing.
-    is_x_flow = firewall_name == "x"
-
-    # Classify X NDJSON streams early so we can register an incremental parser
-    # and avoid buffering the (potentially multi-GB) stream body.  Only a
-    # cheap path-only check happens here — full request metadata is parsed
-    # later in response() by report_connector_usage.
-    #
-    # Gated on 2xx status so error responses (4xx/5xx on stream endpoints
-    # return JSON, not NDJSON) fall through to the existing unbounded-buffer
-    # path and preserve the full error body for forensic inspection in
-    # network logs.  report_connector_usage already skips non-2xx responses
-    # so no billing record is affected either way.
-    #
-    # Reads ``original_url`` with no fallback — kept consistent with
-    # :func:`usage._parse_x_request_metadata` so the log entry's
-    # ``is_stream`` field cannot diverge from the parser registration
-    # decision.  For any x firewall flow, ``request()`` has already
-    # populated ``original_url`` before ``responseheaders`` fires.
-    is_x_stream = False
-    if is_x_flow and _HTTP_STATUS_OK_MIN <= flow.response.status_code < _HTTP_STATUS_REDIRECT_MIN:
-        stream_path = urllib.parse.urlparse(flow.metadata.get("original_url", "")).path
-        is_x_stream = usage.x.is_stream_path(stream_path)
-
-    if is_billable_model_provider:
-        content_type = flow.response.headers.get("content-type", "")
-        if "text/event-stream" in content_type:
-            parser_fn, usage_dict = usage.create_sse_usage_extractor()
-            sse_parser = parser_fn
-            flow.metadata["model_provider_usage"] = usage_dict
-            sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
-    elif is_x_stream:
-        parser_fn, ndjson_state = usage.x.create_ndjson_extractor()
-        ndjson_parser = parser_fn
-        # Deliberately NOT "model_provider_usage" — that key would route through
-        # report_model_provider_usage and trigger the model-provider webhook.
-        # x_ndjson_state is only consumed by report_connector_usage.
-        flow.metadata["x_ndjson_state"] = ndjson_state
-        ndjson_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
-
-    # Buffer cap policy:
-    # - Billable flows keep the full body for billing extraction.
-    # - X stream endpoints are the exception: the incremental parser handles
-    #   bytes as they arrive, so the buffer is only for forensic logging.
-    # - Everything else uses STREAM_BUFFER_LIMIT (default 64 KB).
-    buf_limit = None if is_billable_flow and not is_x_stream else body_utils.STREAM_BUFFER_LIMIT
-
-    def stream_and_buffer(chunk: bytes) -> bytes:
-        if not state["truncated"]:
-            if buf_limit is None:
-                buf.extend(chunk)
-            else:
-                remaining = buf_limit - len(buf)
-                if len(chunk) <= remaining:
-                    buf.extend(chunk)
-                else:
-                    buf.extend(chunk[:remaining])
-                    state["truncated"] = True
-        if sse_parser is not None:
-            plaintext = sse_decompressor(chunk) if sse_decompressor else chunk
-            sse_parser(plaintext)
-        elif ndjson_parser is not None:
-            plaintext = ndjson_decompressor(chunk) if ndjson_decompressor else chunk
-            ndjson_parser(plaintext)
-        return chunk
-
-    flow.response.stream = stream_and_buffer
-    flow.metadata["stream_buffer"] = buf
-    flow.metadata["stream_buffer_state"] = state
+    """Install response stream buffering and incremental body parsers."""
+    response_streaming.configure_response_stream(flow)
 
 
 def _track_usage_flow(fn):
@@ -465,6 +307,7 @@ def _track_usage_flow(fn):
         try:
             return fn(flow, *args, **kwargs)
         finally:
+            response_streaming.release_response_stream_state(flow)
             _release_tracked_usage_flow(flow)
 
     return wrapper
@@ -496,7 +339,9 @@ def response(flow: http.HTTPFlow) -> None:
     # Use buffered body length when complete; fall back to Content-Length header.
     stream_buf = flow.metadata.get("stream_buffer")
     stream_state = flow.metadata.get("stream_buffer_state")
-    if stream_buf is not None and stream_state and not stream_state["truncated"]:
+    if stream_buf is not None and stream_state and "total_bytes" in stream_state:
+        response_size = int(stream_state["total_bytes"])
+    elif stream_buf is not None and stream_state and not stream_state["truncated"]:
         response_size = len(stream_buf)
     elif flow.response:
         response_size = int(flow.response.headers.get("content-length", 0))
@@ -544,10 +389,17 @@ def response(flow: http.HTTPFlow) -> None:
 
         log_network_entry(network_log_path, log_entry)
 
+    response_streaming.finalize_model_json_usage(flow, proxy_log_path)
+
     # Report proxy-extracted usage for model provider responses.
     # For non-streaming responses, fall back to extracting usage from the
-    # buffered JSON body (buffer is never truncated for billable model providers).
-    if not flow.metadata.get("model_provider_usage") and stream_buf:
+    # buffered JSON body only for legacy/test flows that did not pass through
+    # responseheaders() and therefore have no incremental extractor.
+    if (
+        not flow.metadata.get("_model_json_usage_finalized")
+        and not flow.metadata.get("model_provider_usage")
+        and stream_buf
+    ):
         firewall_name = flow.metadata.get("firewall_name", "")
         if firewall_name.startswith("model-provider:") and flow.metadata.get(
             "firewall_billable", False
@@ -561,6 +413,7 @@ def response(flow: http.HTTPFlow) -> None:
     usage.report_model_provider_usage(flow, run_id)
 
     # Billable connector usage observation (issue #9504, stage 0).
+    response_streaming.finalize_x_json_state(flow)
     usage.report_connector_usage(flow, run_id)
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers.
@@ -652,10 +505,11 @@ def error(flow: http.HTTPFlow) -> None:
     # Billable connector usage for X NDJSON streams that crash mid-flight
     # (issue #9534): the incremental parser populated x_ndjson_state during
     # chunks; log what was observed so partial streams aren't silently
-    # dropped from billing.  report_connector_usage no-ops when there's no
-    # response or the status is non-2xx, so normal model-provider errors
-    # are unaffected.
-    usage.report_connector_usage(flow, run_id)
+    # dropped from billing.  Do not run the generic connector fallback for
+    # non-streaming JSON errors: partial bodies could otherwise be treated
+    # as unparseable successes and billed from request-side hints.
+    if flow.metadata.get("x_ndjson_state") is not None:
+        usage.report_connector_usage(flow, run_id)
 
     log_proxy_entry(
         proxy_log_path,
@@ -692,7 +546,7 @@ def tcp_start(flow: tcp.TCPFlow) -> None:
     if not client_ip:
         return
 
-    vm_info = get_vm_info(client_ip)
+    vm_info = registry.get_vm_info(client_ip, get_registry_path())
     if not vm_info:
         return
 

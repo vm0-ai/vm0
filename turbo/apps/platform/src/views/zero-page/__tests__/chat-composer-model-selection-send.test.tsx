@@ -32,10 +32,7 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import {
-  setMockFeatureSwitches,
-  resetMockFeatureSwitches,
-} from "../../../mocks/handlers/api-feature-switches.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -49,7 +46,6 @@ const THREAD_ID = "thread-test-1";
 describe("chat composer — model picker display vs. send body", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
-    resetMockFeatureSwitches();
   });
 
   // CHAT-MSEL-001: picker display and send body agree on org default

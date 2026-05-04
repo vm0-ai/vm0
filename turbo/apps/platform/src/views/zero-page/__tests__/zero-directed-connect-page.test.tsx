@@ -136,11 +136,13 @@ describe("directed connect page", () => {
     expect(reconnectBtn).toBeDefined();
     click(reconnectBtn!);
 
-    expect(openSpy).toHaveBeenCalledWith(
-      expect.stringContaining("/api/zero/connectors/github/authorize"),
-      "_blank",
-      expect.any(String),
-    );
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/api/zero/connectors/github/authorize"),
+        "_blank",
+        expect.any(String),
+      );
+    });
   });
 
   it("reconnect button opens api-token dialog for an already-connected api-token connector", async () => {
@@ -320,11 +322,13 @@ describe("directed connect page", () => {
     expect(connectBtn2).toBeDefined();
     click(connectBtn2!);
 
-    expect(openSpy).toHaveBeenCalledWith(
-      expect.stringContaining("/api/zero/connectors/gmail/authorize"),
-      "_blank",
-      expect.any(String),
-    );
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/api/zero/connectors/gmail/authorize"),
+        "_blank",
+        expect.any(String),
+      );
+    });
   });
 
   it("save button submits the api token to the server (CONN-I-049)", async () => {

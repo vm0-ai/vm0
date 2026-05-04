@@ -107,3 +107,29 @@ export function capturePageView(): void {
   }
   posthog.capture("$pageview");
 }
+
+const firstSkeletonHideReported$ = state(false);
+
+/**
+ * Report the time elapsed from the inline `__appBootstrapStart` mark in
+ * `index.html` to the first `hideAppSkeleton$` invocation. Captures the
+ * total perceived bootstrap duration (HTML parse start → first real content).
+ * No-op after the first call.
+ */
+export const captureFirstSkeletonHide$ = command(({ get, set }) => {
+  if (get(firstSkeletonHideReported$)) {
+    return;
+  }
+  set(firstSkeletonHideReported$, true);
+
+  if (!POSTHOG_KEY) {
+    return;
+  }
+  const startMark = window.__appBootstrapStart;
+  if (typeof startMark !== "number") {
+    return;
+  }
+  posthog.capture("app_first_skeleton_hide", {
+    duration_ms: Math.round(performance.now() - startMark),
+  });
+});

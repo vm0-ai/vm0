@@ -188,4 +188,8 @@ export {
 } from "./domains/zero-computer-use";
 
 // Domain modules - Web
-export { downloadWebFile, uploadWebFile } from "./domains/web";
+export {
+  downloadWebFile,
+  uploadWebFile,
+  generateWebVoice,
+} from "./domains/web";

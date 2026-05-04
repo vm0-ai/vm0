@@ -23,16 +23,21 @@ export async function generateMetadata({
     return { title: t("notFound") };
   }
 
+  const t = await getTranslations({ locale, namespace: "models" });
+  const cn = `content.${slug}`;
+  const metaTitle = t(`${cn}.metaTitle`);
+  const metaDesc = t(`${cn}.metaDescription`);
+  const ogImageAlt = t(`${cn}.pageTitle`);
   const url = `${BASE_URL}/${locale}/models/${slug}`;
-  const title = `${model.metaTitle} | VM0`;
+  const title = `${metaTitle} | VM0`;
 
   return {
     title,
-    description: model.metaDescription,
+    description: metaDesc,
     alternates: buildLocaleAlternates(`/models/${slug}`, locale as Locale),
     openGraph: {
       title,
-      description: model.metaDescription,
+      description: metaDesc,
       url,
       type: "article",
       images: [
@@ -40,14 +45,14 @@ export async function generateMetadata({
           url: "/og-image.png",
           width: 1200,
           height: 630,
-          alt: model.pageTitle,
+          alt: ogImageAlt,
         },
       ],
     },
     twitter: {
       card: "summary_large_image",
       title,
-      description: model.metaDescription,
+      description: metaDesc,
       images: ["/og-image.png"],
       creator: "@vm0_ai",
       site: "@vm0_ai",
@@ -74,15 +79,19 @@ export default async function ModelDetailPage({ params }: PageProps) {
     notFound();
   }
 
+  const cn = `content.${slug}`;
   const related = MODELS.filter((m) => {
     return m.slug !== model.slug;
   }).slice(0, 3);
 
+  const modelName = t(`${cn}.name`);
+  const faqs = t.raw(`${cn}.faqs`) as { q: string; a: string }[];
+
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
-    name: `${model.name} on VM0`,
-    description: model.metaDescription,
+    name: `${modelName} on VM0`,
+    description: t(`${cn}.metaDescription`),
     brand: {
       "@type": "Brand",
       name: model.vendor,
@@ -109,7 +118,7 @@ export default async function ModelDetailPage({ params }: PageProps) {
       {
         "@type": "ListItem",
         position: 3,
-        name: model.name,
+        name: modelName,
         item: `${BASE_URL}/${locale}/models/${slug}`,
       },
     ],
@@ -118,7 +127,7 @@ export default async function ModelDetailPage({ params }: PageProps) {
   const faqJsonLd = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    mainEntity: model.faqs.map((faq) => {
+    mainEntity: faqs.map((faq) => {
       return {
         "@type": "Question",
         name: faq.q,
@@ -138,7 +147,7 @@ export default async function ModelDetailPage({ params }: PageProps) {
       <script type="application/ld+json" suppressHydrationWarning>
         {JSON.stringify(breadcrumbJsonLd)}
       </script>
-      {model.faqs.length > 0 && (
+      {faqs.length > 0 && (
         <script type="application/ld+json" suppressHydrationWarning>
           {JSON.stringify(faqJsonLd)}
         </script>

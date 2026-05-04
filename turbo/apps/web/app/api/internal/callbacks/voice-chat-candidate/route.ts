@@ -13,7 +13,6 @@ import {
   dispatchQueuedZeroRun,
   drainOrgQueue,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
-import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
 import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
 import { isNotFound } from "@vm0/api-services/errors";
 import type { VoiceChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
@@ -127,8 +126,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Mismatch path cancelled one or more pending/queued runs. Dispatch the
   // side effects (Ably cancel, registered callbacks, queue drain) once per
-  // run, then process org credits + usage events once for the batch —
-  // all cancelled runs share the session's org.
+  // run, then process org usage events once for the batch. All cancelled runs
+  // share the session's org.
   if (cancelledRuns.length > 0) {
     const orgId = cancelledRuns[0]!.orgId;
     after(async () => {
@@ -140,7 +139,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         if (active) anyActive = true;
       }
       if (anyActive) {
-        await processOrgCredits(orgId);
         await processOrgUsageEvents(orgId);
       }
     });

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.16.16](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.15...guest-init-v0.16.16) (2026-05-03)
+
+## [0.16.15](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.14...guest-init-v0.16.15) (2026-05-03)
+
+## [0.16.14](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.13...guest-init-v0.16.14) (2026-05-03)
+
+
+### Performance Improvements
+
+* **runner:** cache rootfs templates in r2 ([#11597](https://github.com/vm0-ai/vm0/issues/11597)) ([136382c](https://github.com/vm0-ai/vm0/commit/136382cbfa2fc1ed8230145edf13ec72f712e770))
+
+## [0.16.13](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.12...guest-init-v0.16.13) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
 ## [0.16.12](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.11...guest-init-v0.16.12) (2026-04-27)
 
 ## [0.16.11](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.10...guest-init-v0.16.11) (2026-04-25)

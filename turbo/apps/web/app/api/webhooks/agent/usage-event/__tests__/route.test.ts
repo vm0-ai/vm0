@@ -366,6 +366,36 @@ describe("POST /api/webhooks/agent/usage-event", () => {
       expect(response.status).toBe(400);
     });
 
+    it.each([
+      {
+        name: "non-integer quantity",
+        body: () => {
+          return validBody({ ...validEvent(), quantity: 1.5 });
+        },
+      },
+      {
+        name: "unknown kind",
+        body: () => {
+          return validBody({ ...validEvent(), kind: "external-api" });
+        },
+      },
+      {
+        name: "unexpected event field",
+        body: () => {
+          return validBody({ ...validEvent(), unexpected: true });
+        },
+      },
+      {
+        name: "unexpected top-level field",
+        body: () => {
+          return { ...validBody(), unexpected: true };
+        },
+      },
+    ])("rejects $name", async ({ body }) => {
+      const response = await POST(makeRequest(body(), testToken));
+      expect(response.status).toBe(400);
+    });
+
     it("rejects empty provider", async () => {
       const body = validBody({ ...validEvent(), provider: "" });
       const response = await POST(makeRequest(body, testToken));

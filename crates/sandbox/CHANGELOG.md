@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.12.10](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.9...sandbox-v0.12.10) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+## [0.12.9](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.8...sandbox-v0.12.9) (2026-04-29)
+
+
+### Documentation
+
+* **sandbox-fc:** document snapshot error variants ([#11535](https://github.com/vm0-ai/vm0/issues/11535)) ([f9d5625](https://github.com/vm0-ai/vm0/commit/f9d5625227abb29245b0048e4052d9a6f7592157))
+
+## [0.12.8](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.7...sandbox-v0.12.8) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** clean up outer job panic bookkeeping ([#11393](https://github.com/vm0-ai/vm0/issues/11393)) ([4ecf0b6](https://github.com/vm0-ai/vm0/commit/4ecf0b65e25c66a86eec0151a29dd4f0fa0deeb0))
+
 ## [0.12.7](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.6...sandbox-v0.12.7) (2026-04-27)
 
 

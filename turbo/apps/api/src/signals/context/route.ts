@@ -55,6 +55,11 @@ export function honoSignalHandler(
     const data = await (isCommand(handler$)
       ? store.set(handler$, signal)
       : store.get(handler$));
+
+    if (data instanceof Response) {
+      return data;
+    }
+
     if (!isRouteResult(data)) {
       throw new Error("Route handler must return a ts-rest response object");
     }

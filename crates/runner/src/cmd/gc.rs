@@ -30,10 +30,12 @@ const GC_MIN_AGE: Duration = Duration::from_secs(10 * 60);
 const JOB_LOG_MAX_AGE: Duration = Duration::from_secs(7 * 24 * 3600);
 
 /// Per-host storage archive cache size cap. Enforced by `gc_storage_cache`
-/// as an LRU by `<version>/` dir mtime. Per-entry archives are capped at
-/// 8 MiB by the cache writer (#10808), so this bounds cardinality more
-/// than per-entry size.
+/// as an LRU by `<version>/` dir mtime.
 const STORAGE_CACHE_MAX_BYTES: u64 = 1 << 30; // 1 GiB
+/// Per-host storage archive cache entry cap. The byte cap alone does not
+/// bound many tiny storage versions, and each cached version also creates a
+/// lock file.
+const STORAGE_CACHE_MAX_ENTRIES: u64 = 5_000;
 
 #[derive(Args)]
 pub struct GcArgs {
@@ -44,7 +46,8 @@ pub struct GcArgs {
     #[arg(long)]
     keep_latest: Option<usize>,
     /// TTL for R2 image cache objects (in days). Objects older than this
-    /// are deleted from `runner-images/` on R2. Default: 7 days.
+    /// are deleted from the legacy `runner-images/` prefix and the shared
+    /// `runner-templates/` prefix on R2. Default: 7 days.
     /// Minimum: 1 — `0` would wipe even the just-uploaded image.
     #[arg(long, default_value_t = R2_DEFAULT_KEEP_DAYS, value_parser = clap::value_parser!(u64).range(1..))]
     r2_keep_days: u64,
@@ -179,18 +182,16 @@ struct GcCandidate {
     _lock: Flock<std::fs::File>,
 }
 
-/// Per-rootfs state carried through the two-phase global GC: first we walk
-/// every rootfs and record whether we hold its exclusive lock plus whether
-/// any locked / recent snapshot already forces it to survive; then we prune
-/// snapshots globally and, for each rootfs with no surviving snapshot, try
-/// to delete the rootfs dir itself.
+/// Per-rootfs state carried through the two-phase global GC for rootfs
+/// directories whose exclusive lock we hold: first we walk snapshots and record
+/// whether any locked / recent snapshot already forces the rootfs to survive;
+/// then we prune snapshots globally and, for each rootfs with no surviving
+/// snapshot, try to delete the rootfs dir itself.
 struct RootfsState {
     path: PathBuf,
     hash: String,
-    /// `Some(_)` = we hold the exclusive rootfs lock and may delete the rootfs
-    /// directory if it ends up with no surviving snapshots. `None` = another
-    /// process holds it; we can only touch unlocked snapshots inside.
-    rootfs_lock: Option<Flock<std::fs::File>>,
+    /// Exclusive rootfs lock held until this GC pass finishes.
+    _rootfs_lock: Flock<std::fs::File>,
     /// True once any snapshot under this rootfs is known to survive GC
     /// (in-use, too recent, kept by top-N, or a deletion failure). Blocks
     /// rootfs-dir deletion in the final pass.
@@ -239,6 +240,63 @@ async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run
         );
     }
     rootfs_size
+}
+
+fn template_warm_hash(name: &str) -> Option<&str> {
+    name.strip_prefix("template-")
+        .and_then(|rest| rest.strip_suffix(".warm.tmp"))
+        .filter(|hash| !hash.is_empty())
+}
+
+/// Try to delete an abandoned `runner build --warm-rootfs-cache` working dir.
+///
+/// The directory intentionally lives under `images/` so the warm download/build
+/// uses the same data volume as normal rootfs builds. It is a template
+/// warm dir, so it is guarded by the template lock rather than `image-*`.
+async fn gc_template_warm_dir(
+    home: &HomePaths,
+    warm_path: &Path,
+    warm_name: &str,
+    template_hash: &str,
+    dry_run: bool,
+) -> u64 {
+    let lock_path = home.template_lock(template_hash);
+    let _lock = match probe_lock(&lock_path) {
+        LockProbe::Free(lock) => lock,
+        LockProbe::Held => {
+            info!("images/{warm_name}: template warm dir in use, skipping");
+            return 0;
+        }
+        LockProbe::Error(e) => {
+            info!("images/{warm_name}: template lock probe failed ({e}), skipping");
+            return 0;
+        }
+    };
+
+    let (size, mtime) = dir_stats(warm_path).await;
+    let age = SystemTime::now().duration_since(mtime).unwrap_or_default();
+    if age < GC_MIN_AGE {
+        info!(
+            "images/{warm_name}: template warm dir too recent ({}s), keeping",
+            age.as_secs()
+        );
+        return 0;
+    }
+    if dry_run {
+        info!(
+            "[dry-run] would delete template warm dir images/{warm_name} ({})",
+            human_bytes(size)
+        );
+    } else if let Err(e) = tokio::fs::remove_dir_all(warm_path).await {
+        warn!("failed to remove template warm dir images/{warm_name}: {e}");
+        return 0;
+    } else {
+        info!(
+            "deleted template warm dir images/{warm_name} ({})",
+            human_bytes(size)
+        );
+    }
+    size
 }
 
 /// GC for the nested image layout: `<images>/<rootfs>/snapshots/<snapshot>/`.
@@ -290,32 +348,36 @@ async fn gc_nested_images(
             continue;
         }
 
-        // Probe rootfs lock. If held (by start/build), we can still GC
-        // individual snapshots (guarded by their own locks), but must NOT
-        // delete the rootfs directory itself.
+        if let Some(template_hash) = template_warm_hash(&rootfs_hash) {
+            total_freed +=
+                gc_template_warm_dir(home, &rootfs_path, &rootfs_hash, template_hash, dry_run)
+                    .await;
+            continue;
+        }
+
+        // Probe rootfs lock. If held (by start/build), skip the whole rootfs.
+        // `runner start` acquires shared rootfs before shared snapshot; cleaning
+        // snapshots while only the rootfs lock is held can race that acquisition
+        // window and delete a snapshot the runner is about to lock.
         let rootfs_lock_path = home.rootfs_lock(&rootfs_hash);
         let rootfs_lock = match probe_lock(&rootfs_lock_path) {
-            LockProbe::Free(lock) => Some(lock),
+            LockProbe::Free(lock) => lock,
             LockProbe::Held => {
-                info!("images/{rootfs_hash}: rootfs in use, will only GC unlocked snapshots");
-                None
+                info!("images/{rootfs_hash}: rootfs in use, skipping");
+                continue;
             }
             LockProbe::Error(e) => {
                 info!("images/{rootfs_hash}: lock probe failed ({e}), skipping");
                 continue;
             }
         };
-        let can_delete_rootfs = rootfs_lock.is_some();
 
         let snapshots_dir = rootfs_path.join("snapshots");
         let mut snapshot_entries = match tokio::fs::read_dir(&snapshots_dir).await {
             Ok(rd) => rd,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // No snapshots/ subdirectory — orphaned rootfs, handle inline.
-                if can_delete_rootfs {
-                    total_freed +=
-                        try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
-                }
+                total_freed += try_delete_orphan_rootfs(&rootfs_path, &rootfs_hash, dry_run).await;
                 continue;
             }
             Err(e) => {
@@ -328,7 +390,7 @@ async fn gc_nested_images(
         rootfs_states.push(RootfsState {
             path: rootfs_path.clone(),
             hash: rootfs_hash.clone(),
-            rootfs_lock,
+            _rootfs_lock: rootfs_lock,
             any_snapshot_survives: false,
         });
 
@@ -451,7 +513,7 @@ async fn gc_nested_images(
     // subdirs we already counted (dry-run leaves them on disk), so subtract
     // that overlap to match the real-mode total.
     for (idx, state) in rootfs_states.iter().enumerate() {
-        if !state.any_snapshot_survives && state.rootfs_lock.is_some() {
+        if !state.any_snapshot_survives {
             let rootfs_bytes = try_delete_orphan_rootfs(&state.path, &state.hash, dry_run).await;
             let overlap = if dry_run {
                 dry_run_snapshot_bytes.get(idx).copied().unwrap_or(0)
@@ -474,17 +536,57 @@ enum LockProbe {
     Error(String),
 }
 
+fn lock_metadata_inode_is_current(
+    lock_meta: std::fs::Metadata,
+    path: &Path,
+) -> Result<bool, String> {
+    let path_meta = match std::fs::metadata(path) {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("stat lock {}: {e}", path.display())),
+    };
+    Ok(lock_meta.ino() == path_meta.ino())
+}
+
+fn lock_probe_inode_is_current(lock: &Flock<std::fs::File>, path: &Path) -> Result<bool, String> {
+    let lock_meta = lock
+        .metadata()
+        .map_err(|e| format!("stat locked fd for {}: {e}", path.display()))?;
+    lock_metadata_inode_is_current(lock_meta, path)
+}
+
+fn lock_file_inode_is_current(file: &std::fs::File, path: &Path) -> Result<bool, String> {
+    let lock_meta = file
+        .metadata()
+        .map_err(|e| format!("stat lock fd for {}: {e}", path.display()))?;
+    lock_metadata_inode_is_current(lock_meta, path)
+}
+
 /// Try a nonblocking exclusive flock to check if a resource is in use.
 fn probe_lock(path: &Path) -> LockProbe {
-    let file = match lock::open_lock_file(path) {
-        Ok(f) => f,
-        Err(e) => return LockProbe::Error(e.to_string()),
-    };
-    match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
-        Ok(lock) => LockProbe::Free(lock),
-        Err((_, e)) if e == nix::errno::Errno::EWOULDBLOCK => LockProbe::Held,
-        Err((_, e)) => LockProbe::Error(e.to_string()),
+    const MAX_STALE_INODE_RETRIES: usize = 16;
+    for _ in 0..MAX_STALE_INODE_RETRIES {
+        let file = match lock::open_lock_file(path) {
+            Ok(f) => f,
+            Err(e) => return LockProbe::Error(e.to_string()),
+        };
+        match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
+            Ok(lock) => match lock_probe_inode_is_current(&lock, path) {
+                Ok(true) => return LockProbe::Free(lock),
+                Ok(false) => continue,
+                Err(e) => return LockProbe::Error(e),
+            },
+            Err((file, e)) if e == nix::errno::Errno::EWOULDBLOCK => {
+                match lock_file_inode_is_current(&file, path) {
+                    Ok(true) => return LockProbe::Held,
+                    Ok(false) => continue,
+                    Err(e) => return LockProbe::Error(e),
+                }
+            }
+            Err((_, e)) => return LockProbe::Error(e.to_string()),
+        }
     }
+    LockProbe::Error(format!("lock path {} changed during probe", path.display()))
 }
 
 /// Like `next_entry()`, but logs a warning and returns `None` on I/O error
@@ -866,46 +968,41 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
             );
             cleaned += 1;
         } else {
-            // Re-check before disconnect: between the scan and now, the device
-            // could have been freed and re-acquired by another runner. Only
-            // disconnect if the PID is unchanged and still dead.
+            // Re-check before disconnect while holding the same per-index lock
+            // the allocator uses. Between the scan and now, the device could
+            // have been freed and re-acquired by another runner.
             let result = match tokio::task::spawn_blocking(move || {
-                match super::nbd::read_nbd_pid(device_index) {
-                    Some(current_pid) if current_pid == pid
-                        && !Path::new(&format!("/proc/{pid}")).exists() =>
-                    {
-                        Some(nbd_cow::netlink::disconnect(device_index))
-                    }
-                    _ => {
-                        tracing::debug!(
-                            "nbd{device_index}: skipping disconnect, device state changed since scan"
-                        );
-                        None
-                    }
-                }
+                super::nbd::disconnect_orphan_if_still_dead(device_index, pid)
             })
             .await
             {
                 Ok(result) => result,
                 Err(e) => {
-                    tracing::warn!(
-                        "nbd disconnect task failed for /dev/nbd{device_index}: {e}"
-                    );
+                    tracing::warn!("nbd disconnect task failed for /dev/nbd{device_index}: {e}");
                     continue;
                 }
             };
 
             match result {
-                Some(Ok(())) => {
+                super::nbd::NbdOrphanDisconnect::Disconnected => {
                     info!(
                         "disconnected orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
                     );
                     cleaned += 1;
                 }
-                Some(Err(e)) => {
+                super::nbd::NbdOrphanDisconnect::Locked => {
+                    tracing::debug!(
+                        "nbd{device_index}: skipping disconnect, NBD device lock is held"
+                    );
+                }
+                super::nbd::NbdOrphanDisconnect::Changed => {
+                    tracing::debug!(
+                        "nbd{device_index}: skipping disconnect, device state changed since scan"
+                    );
+                }
+                super::nbd::NbdOrphanDisconnect::Failed(e) => {
                     info!("failed to disconnect orphan NBD device /dev/nbd{device_index}: {e}");
                 }
-                None => {} // skipped — already logged at debug level
             }
         }
     }
@@ -1100,19 +1197,33 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
     Ok((cleaned, freed))
 }
 
-/// Eligible `<version>` directory holding the exclusive per-version flock
-/// until the candidate is deleted or the LRU pass completes.
+/// Eligible `<version>` directory discovered during the scan phase.
+///
+/// The scan-time size and mtime are advisory: deletion reacquires the
+/// per-version lock and revalidates both before removing the directory.
 struct StorageCandidate {
     path: PathBuf,
     name: String,
     version: String,
     size: u64,
     mtime: SystemTime,
-    _lock: Flock<std::fs::File>,
 }
 
-/// Bound `/var/lib/vm0-runner/storages/` to `STORAGE_CACHE_MAX_BYTES` by
-/// evicting least-recently-used `<version>` directories.
+struct StorageEvictionResult {
+    freed: u64,
+    /// Candidate contribution to keep in `total_size` after this attempt.
+    /// `None` removes the scan-time size from the cap calculation.
+    remaining_size: Option<u64>,
+    /// Candidate contribution to keep in `total_entries` after this attempt.
+    /// Dry-runs set this to false to model the real deletion while leaving
+    /// the filesystem untouched.
+    remaining_entry: bool,
+    /// True when a real run deleted the cache entry, or a dry-run would have.
+    evicted: bool,
+}
+
+/// Bound `/var/lib/vm0-runner/storages/` to storage cache size and entry
+/// limits by evicting least-recently-used `<version>` directories.
 ///
 /// Entries younger than [`GC_MIN_AGE`] or whose per-version flock is held
 /// are always protected — the former prevents races with a writer's
@@ -1123,12 +1234,28 @@ struct StorageCandidate {
 /// Missing `storages_dir` is a no-op (cold host before the cache writer
 /// in #10808 lands).
 async fn gc_storage_cache(home: &HomePaths, dry_run: bool) -> RunnerResult<u64> {
-    gc_storage_cache_with_cap(home, STORAGE_CACHE_MAX_BYTES, dry_run).await
+    gc_storage_cache_with_limits(
+        home,
+        STORAGE_CACHE_MAX_BYTES,
+        STORAGE_CACHE_MAX_ENTRIES,
+        dry_run,
+    )
+    .await
 }
 
+#[cfg(test)]
 async fn gc_storage_cache_with_cap(
     home: &HomePaths,
     max_bytes: u64,
+    dry_run: bool,
+) -> RunnerResult<u64> {
+    gc_storage_cache_with_limits(home, max_bytes, u64::MAX, dry_run).await
+}
+
+async fn gc_storage_cache_with_limits(
+    home: &HomePaths,
+    max_bytes: u64,
+    max_entries: u64,
     dry_run: bool,
 ) -> RunnerResult<u64> {
     let storages_dir = home.storages_dir();
@@ -1144,7 +1271,17 @@ async fn gc_storage_cache_with_cap(
     // without racing the writer, and counting them would evict eligible
     // entries to make room for unmeasurable ones.
     let mut total_size: u64 = 0;
+    // Entry cardinality is independent from byte accounting: locked or
+    // probe-error entries still contribute to filesystem pressure even when
+    // they cannot be safely evicted in this pass.
+    let mut total_entries: u64 = 0;
     let mut freed: u64 = 0;
+    let mut scanned_entries: u64 = 0;
+    let mut eligible_entries: u64 = 0;
+    let mut skipped_recent: u64 = 0;
+    let mut skipped_locked: u64 = 0;
+    let mut lock_probe_errors: u64 = 0;
+    let mut evicted_entries: u64 = 0;
 
     while let Some(name_entry) =
         next_entry_warn(&mut name_entries, "gc_storage_cache", &storages_dir).await
@@ -1190,15 +1327,18 @@ async fn gc_storage_cache_with_cap(
                 continue;
             }
 
+            scanned_entries = scanned_entries.saturating_add(1);
+            total_entries = total_entries.saturating_add(1);
+
             let lock_path = home.storage_lock_for_cache_key(name_str, version_str);
             let lock = match probe_lock(&lock_path) {
                 LockProbe::Free(l) => l,
                 LockProbe::Held => {
-                    info!("storages/{name_str}/{version_str}: in use, skipping");
+                    skipped_locked = skipped_locked.saturating_add(1);
                     continue;
                 }
-                LockProbe::Error(e) => {
-                    info!("storages/{name_str}/{version_str}: lock probe failed ({e}), skipping");
+                LockProbe::Error(_) => {
+                    lock_probe_errors = lock_probe_errors.saturating_add(1);
                     continue;
                 }
             };
@@ -1206,28 +1346,26 @@ async fn gc_storage_cache_with_cap(
             let (size, mtime) = dir_stats(&version_path).await;
             let age = now.duration_since(mtime).unwrap_or_default();
             total_size = total_size.saturating_add(size);
+            drop(lock);
             if age < GC_MIN_AGE {
-                info!(
-                    "storages/{name_str}/{version_str}: too recent ({}s), keeping",
-                    age.as_secs()
-                );
+                skipped_recent = skipped_recent.saturating_add(1);
                 continue;
             }
 
             let name = name_str.to_owned();
             let version = version_str.to_owned();
+            eligible_entries = eligible_entries.saturating_add(1);
             candidates.push(StorageCandidate {
                 path: version_path,
                 name,
                 version,
                 size,
                 mtime,
-                _lock: lock,
             });
         }
     }
 
-    if total_size <= max_bytes {
+    if total_size <= max_bytes && total_entries <= max_entries {
         return Ok(freed);
     }
 
@@ -1235,32 +1373,218 @@ async fn gc_storage_cache_with_cap(
     candidates.sort_by_key(|c| c.mtime);
 
     for c in candidates {
-        if total_size <= max_bytes {
+        if total_size <= max_bytes && total_entries <= max_entries {
             break;
         }
-        if dry_run {
-            info!(
-                "[dry-run] would evict storages/{}/{} ({})",
-                c.name,
-                c.version,
-                human_bytes(c.size)
-            );
-        } else if let Err(e) = tokio::fs::remove_dir_all(&c.path).await {
-            warn!("failed to remove storages/{}/{}: {e}", c.name, c.version);
-            continue;
-        } else {
-            info!(
-                "evicted storages/{}/{} ({})",
-                c.name,
-                c.version,
-                human_bytes(c.size)
-            );
+        let result = evict_storage_candidate(home, &c, now, dry_run).await;
+        freed = freed.saturating_add(result.freed);
+        if result.evicted {
+            evicted_entries = evicted_entries.saturating_add(1);
         }
-        freed = freed.saturating_add(c.size);
         total_size = total_size.saturating_sub(c.size);
+        if let Some(remaining_size) = result.remaining_size {
+            total_size = total_size.saturating_add(remaining_size);
+        }
+        total_entries = total_entries.saturating_sub(1);
+        if result.remaining_entry {
+            total_entries = total_entries.saturating_add(1);
+        }
     }
 
+    let eviction_action = if dry_run { "would_evict" } else { "evicted" };
+    info!(
+        "storage cache gc: scanned={scanned_entries}, eligible={eligible_entries}, skipped_recent={skipped_recent}, skipped_locked={skipped_locked}, lock_probe_errors={lock_probe_errors}, eviction_action={eviction_action}, evicted_entries={evicted_entries}, freed={}, remaining_bytes={}, remaining_entries={total_entries}, limits=({}, {max_entries} entries)",
+        human_bytes(freed),
+        human_bytes(total_size),
+        human_bytes(max_bytes)
+    );
+
     Ok(freed)
+}
+
+async fn evict_storage_candidate(
+    home: &HomePaths,
+    candidate: &StorageCandidate,
+    now: SystemTime,
+    dry_run: bool,
+) -> StorageEvictionResult {
+    let lock_path = home.storage_lock_for_cache_key(&candidate.name, &candidate.version);
+    let lock = match probe_lock(&lock_path) {
+        LockProbe::Free(lock) => lock,
+        LockProbe::Held => {
+            info!(
+                "storages/{}/{}: in use, skipping",
+                candidate.name, candidate.version
+            );
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: None,
+                remaining_entry: true,
+                evicted: false,
+            };
+        }
+        LockProbe::Error(e) => {
+            info!(
+                "storages/{}/{}: lock probe failed ({e}), skipping",
+                candidate.name, candidate.version
+            );
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: None,
+                remaining_entry: true,
+                evicted: false,
+            };
+        }
+    };
+
+    match tokio::fs::metadata(&candidate.path).await {
+        Ok(meta) if meta.is_dir() => {}
+        Ok(_) => {
+            info!(
+                "storages/{}/{}: no longer a directory, skipping",
+                candidate.name, candidate.version
+            );
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: None,
+                remaining_entry: false,
+                evicted: false,
+            };
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: None,
+                remaining_entry: false,
+                evicted: false,
+            };
+        }
+        Err(e) => {
+            warn!(
+                "storages/{}/{}: stat failed ({e}), skipping",
+                candidate.name, candidate.version
+            );
+            return StorageEvictionResult {
+                freed: 0,
+                remaining_size: Some(candidate.size),
+                remaining_entry: true,
+                evicted: false,
+            };
+        }
+    }
+
+    let (size, mtime) = dir_stats(&candidate.path).await;
+    let age = now.duration_since(mtime).unwrap_or_default();
+    if age < GC_MIN_AGE {
+        info!(
+            "storages/{}/{}: too recent ({}s), keeping",
+            candidate.name,
+            candidate.version,
+            age.as_secs()
+        );
+        return StorageEvictionResult {
+            freed: 0,
+            remaining_size: Some(size),
+            remaining_entry: true,
+            evicted: false,
+        };
+    }
+
+    if dry_run {
+        return StorageEvictionResult {
+            freed: size,
+            remaining_size: None,
+            remaining_entry: false,
+            evicted: true,
+        };
+    }
+
+    match tokio::fs::remove_dir_all(&candidate.path).await {
+        Ok(()) => {
+            remove_storage_lock_after_eviction(
+                &lock_path,
+                &lock,
+                &candidate.name,
+                &candidate.version,
+            )
+            .await;
+            remove_empty_storage_name_dir_after_eviction(&candidate.path, &candidate.name).await;
+            StorageEvictionResult {
+                freed: size,
+                remaining_size: None,
+                remaining_entry: false,
+                evicted: true,
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => StorageEvictionResult {
+            freed: 0,
+            remaining_size: None,
+            remaining_entry: false,
+            evicted: false,
+        },
+        Err(e) => {
+            warn!(
+                "failed to remove storages/{}/{}: {e}",
+                candidate.name, candidate.version
+            );
+            StorageEvictionResult {
+                freed: 0,
+                remaining_size: Some(size),
+                remaining_entry: true,
+                evicted: false,
+            }
+        }
+    }
+}
+
+async fn remove_empty_storage_name_dir_after_eviction(version_path: &Path, name_hash: &str) {
+    let Some(name_path) = version_path.parent() else {
+        return;
+    };
+
+    match tokio::fs::remove_dir(name_path).await {
+        Ok(()) => {}
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) => {}
+        Err(e) => {
+            warn!(
+                "storages/{name_hash}: failed to remove empty storage directory {}: {e}",
+                name_path.display()
+            );
+        }
+    }
+}
+
+async fn remove_storage_lock_after_eviction(
+    lock_path: &Path,
+    lock: &Flock<std::fs::File>,
+    name_hash: &str,
+    version_hash: &str,
+) {
+    let Ok(lock_meta) = lock.metadata() else {
+        return;
+    };
+
+    match std::fs::metadata(lock_path) {
+        Ok(path_meta) if path_meta.ino() == lock_meta.ino() => {}
+        Ok(_) => return,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(_) => return,
+    }
+
+    match tokio::fs::remove_file(lock_path).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            warn!(
+                "storages/{name_hash}/{version_hash}: failed to remove storage lock {}: {e}",
+                lock_path.display()
+            );
+        }
+    }
 }
 
 async fn gc_storage_staging_dir(
@@ -1433,6 +1757,41 @@ mod tests {
             LockProbe::Held => {}
             _ => panic!("expected Held"),
         }
+    }
+
+    #[test]
+    fn lock_probe_inode_check_detects_replaced_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+
+        let held_lock = match probe_lock(&path) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => panic!("new test lock must not be held"),
+            LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
+        };
+
+        std::fs::remove_file(&path).unwrap();
+        drop(lock::open_lock_file(&path).unwrap());
+
+        assert!(
+            !lock_probe_inode_is_current(&held_lock, &path).unwrap(),
+            "inode check must reject a lock fd whose path was recreated"
+        );
+    }
+
+    #[test]
+    fn lock_file_inode_check_detects_replaced_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.lock");
+
+        let file = lock::open_lock_file(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        drop(lock::open_lock_file(&path).unwrap());
+
+        assert!(
+            !lock_file_inode_is_current(&file, &path).unwrap(),
+            "inode check must reject an opened lock fd whose path was recreated"
+        );
     }
 
     fn test_home(root: &Path) -> HomePaths {
@@ -1703,6 +2062,73 @@ mod tests {
         let home = test_home(dir.path());
         let freed = gc_nested_images(&home, Some(1), false).await.unwrap();
         assert_eq!(freed, 0);
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_keeps_locked_template_warm_dir() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&warm_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let lock_file = lock::open_lock_file(&home.template_lock("abc123")).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(warm_dir.exists(), "active warm rootfs dir must survive GC");
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_keeps_recent_template_warm_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            warm_dir.exists(),
+            "recent warm rootfs dir must survive the GC grace window"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_removes_stale_template_warm_dir() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&warm_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert!(
+            !warm_dir.exists(),
+            "stale warm rootfs dir should be removed"
+        );
+        assert!(freed > 0);
     }
 
     #[tokio::test]
@@ -2275,10 +2701,11 @@ mod tests {
         assert_eq!(freed, 0);
     }
 
-    /// When the rootfs lock is held, GC can still delete unlocked snapshots
-    /// but must NOT delete the rootfs directory itself.
+    /// When the rootfs lock is held, GC skips the whole rootfs. This avoids
+    /// racing `runner start`, which acquires shared rootfs before shared
+    /// snapshot and may be between those two locks.
     #[tokio::test]
-    async fn gc_nested_images_locked_rootfs_still_cleans_unlocked_snapshots() {
+    async fn gc_nested_images_locked_rootfs_keeps_all_snapshots() {
         use std::fs::FileTimes;
 
         let dir = tempfile::tempdir().unwrap();
@@ -2312,12 +2739,12 @@ mod tests {
 
         let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
         assert!(
-            !snap_old.exists(),
-            "unlocked old snapshot should be deleted"
+            snap_old.exists(),
+            "unlocked old snapshot should survive while rootfs lock is held"
         );
         assert!(snap_used.exists(), "locked snapshot must survive");
         assert!(rootfs_dir.exists(), "rootfs must survive (lock held)");
-        assert!(freed > 0);
+        assert_eq!(freed, 0);
     }
 
     /// A locked snapshot must survive even with keep_latest=0 and old mtime.
@@ -2763,6 +3190,56 @@ mod tests {
         make_storage_entry_at(final_dir.with_file_name(tmp_name), archive_bytes, mtime)
     }
 
+    fn count_storage_cache_versions(home: &HomePaths) -> usize {
+        let Ok(name_entries) = std::fs::read_dir(home.storages_dir()) else {
+            return 0;
+        };
+
+        name_entries
+            .filter_map(Result::ok)
+            .map(|name_entry| name_entry.path())
+            .filter(|path| path.is_dir())
+            .map(|name_path| {
+                let Ok(version_entries) = std::fs::read_dir(name_path) else {
+                    return 0;
+                };
+                version_entries
+                    .filter_map(Result::ok)
+                    .map(|version_entry| version_entry.path())
+                    .filter(|path| {
+                        path.is_dir()
+                            && !path
+                                .file_name()
+                                .and_then(|name| name.to_str())
+                                .is_some_and(|name| name.ends_with(".tmp"))
+                    })
+                    .count()
+            })
+            .sum()
+    }
+
+    async fn storage_candidate_for(path: PathBuf) -> StorageCandidate {
+        let name = path
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|name| name.to_str())
+            .unwrap()
+            .to_owned();
+        let version = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap()
+            .to_owned();
+        let (size, mtime) = dir_stats(&path).await;
+        StorageCandidate {
+            path,
+            name,
+            version,
+            size,
+            mtime,
+        }
+    }
+
     #[tokio::test]
     async fn gc_storage_cache_missing_dir_returns_zero() {
         let dir = tempfile::tempdir().unwrap();
@@ -2802,6 +3279,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_storage_cache_ignores_non_directory_entries_for_entry_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 32], old);
+        let root_file = home.storages_dir().join("root-file");
+        let version_file = entry.parent().unwrap().join("not-a-version");
+        std::fs::write(&root_file, b"noise").unwrap();
+        std::fs::write(&version_file, b"noise").unwrap();
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(entry.exists(), "only real version directories should count");
+        assert!(
+            root_file.exists(),
+            "GC should ignore non-directory root entries"
+        );
+        assert!(
+            version_file.exists(),
+            "GC should ignore non-directory version entries"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_storage_cache_over_cap_evicts_oldest_first() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
@@ -2828,6 +3334,104 @@ mod tests {
         assert!(middle.exists(), "middle entry must survive");
         assert!(newest.exists(), "newest entry must survive");
         assert_eq!(freed, oldest_size);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_over_entry_cap_evicts_oldest_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t_mid = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        let t_new = SystemTime::UNIX_EPOCH + Duration::from_secs(3_000_000);
+        let oldest = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_old);
+        let middle = make_storage_entry(&home, "foo", "v2", &[0u8; 32], t_mid);
+        let newest = make_storage_entry(&home, "bar", "v1", &[0u8; 32], t_new);
+        let (oldest_size, _) = dir_stats(&oldest).await;
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 2, false)
+            .await
+            .unwrap();
+
+        assert!(!oldest.exists(), "oldest entry must be evicted");
+        assert!(middle.exists(), "middle entry must survive");
+        assert!(
+            middle.parent().unwrap().exists(),
+            "storage name dir must remain while another version exists"
+        );
+        assert!(newest.exists(), "newest entry must survive");
+        assert_eq!(freed, oldest_size);
+        assert_eq!(count_storage_cache_versions(&home), 2);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_tmp_entries_do_not_count_toward_entry_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let real = make_storage_entry(&home, "foo", "v1", &[0u8; 32], old);
+        let tmp = make_storage_staging_entry(&home, "foo", "v2", &[0u8; 32], SystemTime::now());
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            real.exists(),
+            ".tmp staging dirs must not consume entry cap"
+        );
+        assert!(
+            tmp.exists(),
+            "recent .tmp staging dir must remain protected"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_entry_cap_preserves_recent_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let fresh_a = make_storage_entry(&home, "foo", "v1", &[0u8; 32], SystemTime::now());
+        let fresh_b = make_storage_entry(&home, "foo", "v2", &[0u8; 32], SystemTime::now());
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, false)
+            .await
+            .unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(fresh_a.exists(), "recent entry must survive");
+        assert!(fresh_b.exists(), "recent entry must survive");
+        assert_eq!(count_storage_cache_versions(&home), 2);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_entry_cap_skips_locked_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_locked = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t_unlocked = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        let locked = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_locked);
+        let unlocked = make_storage_entry(&home, "bar", "v1", &[0u8; 32], t_unlocked);
+        let (unlocked_size, _) = dir_stats(&unlocked).await;
+
+        let lock_file = lock::open_lock_file(&home.storage_lock("foo", "v1")).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockShared).unwrap();
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, false)
+            .await
+            .unwrap();
+
+        assert!(locked.exists(), "locked entry must survive");
+        assert!(!unlocked.exists(), "unlocked entry must be evicted");
+        assert_eq!(freed, unlocked_size);
+        assert_eq!(count_storage_cache_versions(&home), 1);
     }
 
     #[tokio::test]
@@ -2904,6 +3508,107 @@ mod tests {
         assert_eq!(
             freed, oldest_size,
             "dry-run must report the bytes a real run would free"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_entry_cap_dry_run_does_not_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let t_new = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000_000);
+        let oldest = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_old);
+        let newest = make_storage_entry(&home, "foo", "v2", &[0u8; 32], t_new);
+        let oldest_lock = home.storage_lock("foo", "v1");
+        let (oldest_size, _) = dir_stats(&oldest).await;
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 1, true)
+            .await
+            .unwrap();
+
+        assert!(oldest.exists(), "dry-run must not delete oldest entry");
+        assert!(newest.exists(), "dry-run must not delete newest entry");
+        assert!(
+            oldest_lock.exists(),
+            "dry-run must not remove the lock file it would clean up"
+        );
+        assert_eq!(freed, oldest_size);
+        assert_eq!(count_storage_cache_versions(&home), 2);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_removes_lock_after_eviction() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_old);
+        let lock_path = home.storage_lock("foo", "v1");
+        drop(lock::open_lock_file(&lock_path).unwrap());
+        assert!(lock_path.exists(), "test setup must create the lock file");
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 0, false)
+            .await
+            .unwrap();
+
+        assert!(freed > 0);
+        assert!(!entry.exists(), "entry should be evicted");
+        assert!(
+            !lock_path.exists(),
+            "matching storage lock should be removed with the evicted entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_removes_empty_name_dir_after_eviction() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let t_old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 32], t_old);
+        let name_dir = entry.parent().unwrap().to_path_buf();
+
+        let freed = gc_storage_cache_with_limits(&home, 1 << 20, 0, false)
+            .await
+            .unwrap();
+
+        assert!(freed > 0);
+        assert!(!entry.exists(), "entry should be evicted");
+        assert!(
+            !name_dir.exists(),
+            "empty storage name dir should be removed with its last version"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_lock_cleanup_keeps_replaced_lock_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let lock_path = home.storage_lock("foo", "v1");
+        let held_lock = match probe_lock(&lock_path) {
+            LockProbe::Free(lock) => lock,
+            LockProbe::Held => panic!("new test lock must not be held"),
+            LockProbe::Error(e) => panic!("new test lock must be probeable: {e}"),
+        };
+
+        std::fs::remove_file(&lock_path).unwrap();
+        drop(lock::open_lock_file(&lock_path).unwrap());
+        assert!(
+            lock_path.exists(),
+            "test setup must recreate the lock path with a new inode"
+        );
+
+        remove_storage_lock_after_eviction(&lock_path, &held_lock, "foo", "v1").await;
+
+        assert!(
+            lock_path.exists(),
+            "cleanup must not remove a lock path recreated after this lock was acquired"
         );
     }
 
@@ -2986,6 +3691,203 @@ mod tests {
             tmp.exists(),
             "dry-run must not delete stale .tmp staging dir"
         );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_skips_candidate_locked_after_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+        let candidate = storage_candidate_for(entry.clone()).await;
+
+        let lock_file = lock::open_lock_file(&home.storage_lock("foo", "v1")).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockShared).unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, None);
+        assert!(result.remaining_entry);
+        assert!(!result.evicted);
+        assert!(
+            entry.exists(),
+            "candidate locked after scan must survive delete recheck"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_treats_missing_candidate_as_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+        let candidate = storage_candidate_for(entry.clone()).await;
+
+        std::fs::remove_dir_all(&entry).unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, None);
+        assert!(!result.remaining_entry);
+        assert!(!result.evicted);
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_treats_file_candidate_as_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+        let candidate = storage_candidate_for(entry.clone()).await;
+
+        std::fs::remove_dir_all(&entry).unwrap();
+        std::fs::write(&entry, b"not-a-directory").unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, None);
+        assert!(!result.remaining_entry);
+        assert!(!result.evicted);
+        assert!(
+            entry.is_file(),
+            "non-directory replacement must not be treated as a live cache entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_storage_cache_delete_recheck_keeps_candidate_that_became_recent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry = make_storage_entry(&home, "foo", "v1", &[0u8; 256], old);
+        let candidate = storage_candidate_for(entry.clone()).await;
+
+        std::fs::File::open(&entry)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(SystemTime::now()))
+            .unwrap();
+
+        let result = evict_storage_candidate(&home, &candidate, SystemTime::now(), false).await;
+        let (fresh_size, _) = dir_stats(&entry).await;
+
+        assert_eq!(result.freed, 0);
+        assert_eq!(result.remaining_size, Some(fresh_size));
+        assert!(result.remaining_entry);
+        assert!(!result.evicted);
+        assert!(
+            entry.exists(),
+            "candidate that became recent after scan must survive delete recheck"
+        );
+    }
+
+    const LOW_FD_STORAGE_GC_CHILD_ENV: &str = "VM0_RUNNER_LOW_FD_STORAGE_GC_CHILD";
+
+    #[test]
+    fn gc_storage_cache_many_candidates_does_not_exhaust_lock_fds() {
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .env(LOW_FD_STORAGE_GC_CHILD_ENV, "1")
+            .arg("gc_storage_cache_many_candidates_low_fd_child")
+            .arg("--ignored")
+            .arg("--nocapture")
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+
+        assert!(
+            output.status.success(),
+            "low-fd storage GC child failed\nstatus: {}\nstdout:\n{}\nstderr:\n{}",
+            output.status,
+            stdout,
+            stderr
+        );
+        assert!(
+            stdout.contains("gc_storage_cache_many_candidates_low_fd_child"),
+            "low-fd storage GC child did not run\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "spawned by gc_storage_cache_many_candidates_does_not_exhaust_lock_fds"]
+    async fn gc_storage_cache_many_candidates_low_fd_child() {
+        if std::env::var_os(LOW_FD_STORAGE_GC_CHILD_ENV).is_none() {
+            return;
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        std::fs::create_dir_all(home.locks_dir()).unwrap();
+
+        let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let entry_count = 220usize;
+        let keep_count = 20usize;
+        let mut entry_size = 0;
+        for index in 0..entry_count {
+            let entry =
+                make_storage_entry(&home, &format!("low-fd-{index}"), "v1", &[0u8; 4096], old);
+            if index == 0 {
+                entry_size = dir_stats(&entry).await.0;
+            }
+        }
+        assert!(
+            entry_size > 0,
+            "test storage entries must consume disk blocks"
+        );
+
+        set_soft_nofile_limit_for_child(128);
+
+        let cap = entry_size * keep_count as u64;
+        let freed = gc_storage_cache_with_cap(&home, cap, false).await.unwrap();
+        let remaining = count_storage_cache_versions(&home);
+
+        assert!(
+            remaining <= keep_count,
+            "storage GC left {remaining} versions with cap for {keep_count}; freed {freed}"
+        );
+    }
+
+    fn set_soft_nofile_limit_for_child(limit: u64) {
+        // This helper runs only in the spawned child process, so lowering the
+        // process-wide fd limit cannot leak into the parent test runner.
+        unsafe {
+            let mut current = std::mem::MaybeUninit::<nix::libc::rlimit>::uninit();
+            let rc = nix::libc::getrlimit(nix::libc::RLIMIT_NOFILE, current.as_mut_ptr());
+            assert_eq!(
+                rc,
+                0,
+                "getrlimit(RLIMIT_NOFILE) failed: {}",
+                std::io::Error::last_os_error()
+            );
+            let current = current.assume_init();
+            let target = std::cmp::min(limit as nix::libc::rlim_t, current.rlim_max);
+            assert!(
+                target >= 64,
+                "RLIMIT_NOFILE hard limit {target} is too low for this regression test"
+            );
+
+            let next = nix::libc::rlimit {
+                rlim_cur: target,
+                rlim_max: current.rlim_max,
+            };
+            let rc = nix::libc::setrlimit(nix::libc::RLIMIT_NOFILE, &next);
+            assert_eq!(
+                rc,
+                0,
+                "setrlimit(RLIMIT_NOFILE) failed: {}",
+                std::io::Error::last_os_error()
+            );
+        }
     }
 
     #[test]

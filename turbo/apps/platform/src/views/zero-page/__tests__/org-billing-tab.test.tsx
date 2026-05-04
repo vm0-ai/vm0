@@ -466,6 +466,7 @@ describe("org billing tab - auto-recharge section", () => {
           autoRecharge: { enabled, threshold: 2000, amount: 10_000 },
           creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
           creditBreakdown: [],
+          creditGrants: [],
         });
       }),
     );

@@ -17,6 +17,7 @@ import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as zeroAgentScheduleSchema from "./schema/zero-agent-schedule";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
+import * as modelStatSchema from "./schema/model-stat";
 import * as variableSchema from "./schema/variable";
 import * as composeJobSchema from "./schema/compose-job";
 import * as connectorSchema from "./schema/connector";
@@ -44,8 +45,6 @@ import * as userCacheSchema from "./schema/user-cache";
 import * as exportJobSchema from "./schema/export-job";
 import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
-import * as creditUsageSchema from "./schema/credit-usage";
-import * as creditPricingSchema from "./schema/credit-pricing";
 import * as usagePricingSchema from "./schema/usage-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
 import * as zeroRunSchema from "./schema/zero-run";
@@ -82,6 +81,7 @@ export const schema = {
   ...zeroAgentScheduleSchema,
   ...secretSchema,
   ...modelProviderSchema,
+  ...modelStatSchema,
   ...slackOrgInstallationSchema,
   ...slackOrgConnectionSchema,
   ...slackOrgThreadSessionSchema,
@@ -109,8 +109,6 @@ export const schema = {
   ...exportJobSchema,
   ...emailSuppressionSchema,
   ...skillSchema,
-  ...creditUsageSchema,
-  ...creditPricingSchema,
   ...usagePricingSchema,
   ...zeroAgentSchema,
   ...zeroRunSchema,

@@ -64,7 +64,10 @@ function mockAPIs(options?: {
 }
 
 async function openProvidersPage() {
-  detachedSetupPage({ context, path: "/?settings=providers" });
+  detachedSetupPage({
+    context,
+    path: "/?settings=providers",
+  });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -120,6 +123,21 @@ describe("org providers tab - display", () => {
     await waitFor(() => {
       expect(screen.getByText("No providers configured")).toBeInTheDocument();
     });
+  });
+
+  it("does not show the VM0 model popularity ranking entry point", async () => {
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(screen.getByText("Default provider")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Open VM0 model popularity ranking"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Model Popularity")).not.toBeInTheDocument();
+    expect(screen.queryByText("LLM Leaderboard")).not.toBeInTheDocument();
   });
 });
 

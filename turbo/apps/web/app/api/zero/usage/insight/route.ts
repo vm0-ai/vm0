@@ -29,8 +29,18 @@ const router = tsr.router(zeroUsageInsightContract, {
       );
     }
 
+    if (query.range === "day") {
+      if (!query.date || !/^\d{4}-\d{2}-\d{2}$/.test(query.date)) {
+        return createErrorResponse(
+          "BAD_REQUEST",
+          "date must be YYYY-MM-DD when range=day",
+        );
+      }
+    }
+
     const result = await getUsageInsight(authCtx.userId, org.orgId, {
       range: query.range,
+      date: query.date,
       groupBy: query.groupBy,
       tz: query.tz,
     });

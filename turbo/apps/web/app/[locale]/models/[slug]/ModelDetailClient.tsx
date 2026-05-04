@@ -126,6 +126,12 @@ interface Props {
 export function ModelDetailClient({ model, related }: Props) {
   const t = useTranslations("models");
   const platformUrl = getAppUrl();
+  const c = (key: string) => {
+    return `content.${model.slug}.${key}`;
+  };
+  const rc = (slug: string, key: string) => {
+    return `content.${slug}.${key}`;
+  };
 
   const heroMeta = [
     formatContextWindow(model.contextWindowK),
@@ -159,10 +165,10 @@ export function ModelDetailClient({ model, related }: Props) {
               />
             )}
             <h1 className="text-[32px] font-semibold leading-[1.15] tracking-tight sm:text-[40px]">
-              {model.pageTitle}
+              {t(c("pageTitle"))}
             </h1>
             <p className="mt-5 text-[17px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-              {model.tagline}
+              {t(c("tagline"))}
             </p>
 
             <p className="mt-6 text-[14px] text-[hsl(var(--muted-foreground))]">
@@ -188,26 +194,28 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* TL;DR */}
           <Card className="mb-12">
             <div className="flex flex-col gap-4">
-              {model.summary.split("\n\n").map((para, i) => {
-                return (
-                  <p
-                    key={i}
-                    className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]"
-                  >
-                    {inlineCode(para)}
-                  </p>
-                );
-              })}
+              {t(c("summary"))
+                .split("\n\n")
+                .map((para, i) => {
+                  return (
+                    <p
+                      key={i}
+                      className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]"
+                    >
+                      {inlineCode(para)}
+                    </p>
+                  );
+                })}
             </div>
           </Card>
 
           {/* Overview */}
           <Section title={t("whatIsHeading", { name: model.name })}>
             <p className="mb-6 text-[14px] text-[hsl(var(--muted-foreground))]">
-              Released {model.releaseDate} · {model.familyPosition}
+              {t(c("releaseDate"))} · {t(c("familyPosition"))}
             </p>
             <div className="flex flex-col gap-4">
-              {model.background.map((para, i) => {
+              {(t.raw(c("background")) as string[]).map((para, i) => {
                 return (
                   <p
                     key={i}
@@ -221,13 +229,13 @@ export function ModelDetailClient({ model, related }: Props) {
           </Section>
 
           {/* What's notable */}
-          {model.architecture && (
+          {t(c("architecture")) && (
             <Section
               title={t("whatsNotableHeading", { name: model.name })}
               subtitle={t("whatsNotableSubtitle")}
             >
               <p className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                {inlineCode(model.architecture)}
+                {inlineCode(t(c("architecture")))}
               </p>
             </Section>
           )}
@@ -235,28 +243,42 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* Specs */}
           <Section title={t("specsHeading")}>
             <Card>
-              {model.specs.map((row, i) => {
-                return (
-                  <DataRow
-                    key={row.label}
-                    label={row.label}
-                    value={row.value}
-                    last={i === model.specs.length - 1}
-                  />
-                );
-              })}
+              {(t.raw(c("specs")) as { label: string; value: string }[]).map(
+                (row, i, arr) => {
+                  return (
+                    <DataRow
+                      key={row.label}
+                      label={row.label}
+                      value={row.value}
+                      last={i === arr.length - 1}
+                    />
+                  );
+                },
+              )}
             </Card>
           </Section>
 
           {/* Benchmarks */}
-          {model.benchmarks.length > 0 && (
+          {(
+            t.raw(c("benchmarks")) as {
+              name: string;
+              score: string;
+              note?: string;
+            }[]
+          ).length > 0 && (
             <Section
               title={t("benchmarksHeading", { name: model.name })}
-              subtitle={model.benchmarksNote}
+              subtitle={t(c("benchmarksNote"))}
             >
               <Card>
-                {model.benchmarks.map((b, i) => {
-                  const last = i === model.benchmarks.length - 1;
+                {(
+                  t.raw(c("benchmarks")) as {
+                    name: string;
+                    score: string;
+                    note?: string;
+                  }[]
+                ).map((b, i, arr) => {
+                  const last = i === arr.length - 1;
                   return (
                     <div
                       key={b.name}
@@ -318,7 +340,9 @@ export function ModelDetailClient({ model, related }: Props) {
             subtitle={t("performanceSubtitle")}
           >
             <div className="grid gap-4 sm:grid-cols-2">
-              {model.performance.map((note) => {
+              {(
+                t.raw(c("performance")) as { title: string; body: string }[]
+              ).map((note) => {
                 return (
                   <Card key={note.title} className="!p-6">
                     <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
@@ -336,7 +360,9 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* Best agent tasks */}
           <Section title={t("bestForHeading", { name: model.name })}>
             <div className="flex flex-col gap-4">
-              {model.bestForExamples.map((ex) => {
+              {(
+                t.raw(c("bestForExamples")) as { title: string; body: string }[]
+              ).map((ex) => {
                 return (
                   <Card key={ex.title} className="!p-6">
                     <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
@@ -352,53 +378,59 @@ export function ModelDetailClient({ model, related }: Props) {
           </Section>
 
           {/* Skip when */}
-          {model.avoidFor && (
+          {t(c("avoidFor")) && (
             <Section title={t("skipWhenHeading", { name: model.name })}>
               <p className="text-[16px] leading-relaxed text-[hsl(var(--muted-foreground))]">
-                {inlineCode(model.avoidFor)}
+                {inlineCode(t(c("avoidFor")))}
               </p>
             </Section>
           )}
 
           {/* Comparisons */}
-          {model.comparisons.length > 0 && (
+          {model.comparisonSlugs.length > 0 && (
             <Section title={t("comparisonsHeading", { name: model.name })}>
               <div className="flex flex-col gap-4">
-                {model.comparisons.map((cmp) => {
-                  return (
-                    <Card key={cmp.vs} className="!p-6">
-                      <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                        {t("comparisonTitleTemplate", {
-                          model: model.name,
-                          other: cmp.vs,
-                        })}
-                      </h3>
-                      <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                        {inlineCode(cmp.body)}
-                      </p>
-                    </Card>
-                  );
-                })}
+                {(() => {
+                  const cmps = t.raw(c("comparisons")) as {
+                    vs: string;
+                    body: string;
+                  }[];
+                  return cmps.map((cmp) => {
+                    return (
+                      <Card key={cmp.vs} className="!p-6">
+                        <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                          {t("comparisonTitleTemplate", {
+                            model: model.name,
+                            other: cmp.vs,
+                          })}
+                        </h3>
+                        <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
+                          {inlineCode(cmp.body)}
+                        </p>
+                      </Card>
+                    );
+                  });
+                })()}
               </div>
             </Section>
           )}
 
           {/* Verdict */}
-          {model.verdict && (
+          {t(c("verdict")) && (
             <Section title={t("verdictHeading", { name: model.name })}>
               <div className="rounded-2xl border-l-[3px] border-[#ed4e01] bg-white p-6 sm:p-8">
                 <p className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {inlineCode(model.verdict)}
+                  {inlineCode(t(c("verdict")))}
                 </p>
               </div>
             </Section>
           )}
 
           {/* FAQ */}
-          {model.faqs.length > 0 && (
+          {(t.raw(c("faqs")) as { q: string; a: string }[]).length > 0 && (
             <Section title={t("faqHeading")}>
               <div className="flex flex-col gap-7">
-                {model.faqs.map((faq) => {
+                {(t.raw(c("faqs")) as { q: string; a: string }[]).map((faq) => {
                   return (
                     <div key={faq.q}>
                       <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
@@ -415,25 +447,31 @@ export function ModelDetailClient({ model, related }: Props) {
           )}
 
           {/* Alternatives */}
-          {model.alternatives.length > 0 && (
+          {model.alternativeSlugs.length > 0 && (
             <Section title={t("alternativesHeading")}>
               <div className="grid gap-3 sm:grid-cols-2">
-                {model.alternatives.map((alt) => {
-                  return (
-                    <Link
-                      key={alt.slug}
-                      href={`/models/${alt.slug}`}
-                      className="block rounded-2xl bg-white p-5 transition-all hover:-translate-y-0.5"
-                    >
-                      <div className="text-[15px] font-medium text-[hsl(var(--foreground))]">
-                        {altName(alt.slug)}
-                      </div>
-                      <div className="mt-1 text-[14px] font-light text-[hsl(var(--muted-foreground))]">
-                        {alt.reason}
-                      </div>
-                    </Link>
-                  );
-                })}
+                {(() => {
+                  const alts = t.raw(c("alternatives")) as {
+                    slug: string;
+                    reason: string;
+                  }[];
+                  return alts.map((alt) => {
+                    return (
+                      <Link
+                        key={alt.slug}
+                        href={`/models/${alt.slug}`}
+                        className="block rounded-2xl bg-white p-5 transition-all hover:-translate-y-0.5"
+                      >
+                        <div className="text-[15px] font-medium text-[hsl(var(--foreground))]">
+                          {altName(alt.slug)}
+                        </div>
+                        <div className="mt-1 text-[14px] font-light text-[hsl(var(--muted-foreground))]">
+                          {alt.reason}
+                        </div>
+                      </Link>
+                    );
+                  });
+                })()}
               </div>
             </Section>
           )}
@@ -504,8 +542,12 @@ export function ModelDetailClient({ model, related }: Props) {
                     href={`/models/${m.slug}`}
                     className="uc-related-card"
                   >
-                    <div className="uc-related-card-title">{m.name}</div>
-                    <div className="uc-related-card-desc">{m.cardIntro}</div>
+                    <div className="uc-related-card-title">
+                      {t(rc(m.slug, "name"))}
+                    </div>
+                    <div className="uc-related-card-desc">
+                      {t(rc(m.slug, "cardIntro"))}
+                    </div>
                   </Link>
                 );
               })}

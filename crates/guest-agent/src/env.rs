@@ -174,12 +174,23 @@ static POST_RESULT_SIGKILL_GRACE: LazyLock<u64> = LazyLock::new(|| {
 // mounted at boot. If the env var is unset or empty, there are no artifacts.
 // ---------------------------------------------------------------------------
 
+/// One artifact mount described by the runner-provided `VM0_ARTIFACTS` JSON array.
+///
+/// The environment value is encoded as camelCase JSON, so this struct expects
+/// `mountPath`, `storageId`, and `versionId` keys at the guest-agent boundary.
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactEnv {
+    /// VAS storage name for the mounted artifact. This is also the artifact
+    /// name reported in checkpoint snapshot payloads.
     pub name: String,
+    /// Absolute path inside the guest where the artifact archive was mounted
+    /// and where the guest-agent walks files during checkpointing.
     pub mount_path: String,
+    /// VAS storage id used when recomputing the mounted artifact's content hash.
     pub storage_id: String,
+    /// VAS version id mounted at startup. This is the expected content hash used
+    /// to skip unchanged snapshots and the parent version for new snapshots.
     pub version_id: String,
 }
 
@@ -206,84 +217,141 @@ static ARTIFACTS: LazyLock<Vec<ArtifactEnv>> = LazyLock::new(load_artifacts);
 // Public accessors
 // ---------------------------------------------------------------------------
 
+/// Runner-provided run id from `VM0_RUN_ID`; empty string means unset.
 pub fn run_id() -> &'static str {
     &RUN_ID
 }
+/// Backend API base URL from `VM0_API_URL`; empty string means unset.
 pub fn api_url() -> &'static str {
     &API_URL
 }
+/// Backend API bearer token from `VM0_API_TOKEN`; empty string means no API.
 pub fn api_token() -> &'static str {
     &API_TOKEN
 }
+/// Sandbox id from `VM0_SANDBOX_ID`; empty string means unset.
 pub fn sandbox_id() -> &'static str {
     &SANDBOX_ID
 }
+/// Sandbox reuse result from `VM0_SANDBOX_REUSE_RESULT`; empty string means unset.
 pub fn sandbox_reuse_result() -> &'static str {
     &SANDBOX_REUSE_RESULT
 }
+/// User prompt from `VM0_PROMPT`; empty string means unset.
 pub fn prompt() -> &'static str {
     &PROMPT
 }
+/// Additional system prompt text from `VM0_APPEND_SYSTEM_PROMPT`; empty string
+/// means unset.
 pub fn append_system_prompt() -> &'static str {
     &APPEND_SYSTEM_PROMPT
 }
+/// Vercel protection bypass secret from `VERCEL_PROTECTION_BYPASS`; empty
+/// string means unset.
 pub fn vercel_bypass() -> &'static str {
     &VERCEL_BYPASS
 }
+/// Claude/Codex resume session id from `VM0_RESUME_SESSION_ID`; empty string
+/// means a new session.
 pub fn resume_session_id() -> &'static str {
     &RESUME_SESSION_ID
 }
+/// Runner-provided API start timestamp from `VM0_API_START_TIME`; empty string
+/// means unset.
 pub fn api_start_time() -> &'static str {
     &API_START_TIME
 }
+/// Guest working directory from `VM0_WORKING_DIR`; empty string means unset.
 pub fn working_dir() -> &'static str {
     &WORKING_DIR
 }
+/// Encoded secret values from `VM0_SECRET_VALUES`; empty string means no secrets.
 pub fn secret_values() -> &'static str {
     &SECRET_VALUES
 }
+/// Raw disallowed tool list from `VM0_DISALLOWED_TOOLS`; empty string means no
+/// explicit deny list.
 pub fn disallowed_tools() -> &'static str {
     &DISALLOWED_TOOLS
 }
+/// Raw allowed tool list from `VM0_TOOLS`; empty string means no explicit allow list.
 pub fn tools() -> &'static str {
     &TOOLS
 }
+/// Raw CLI settings payload from `VM0_SETTINGS`; empty string means no settings
+/// override.
 pub fn settings() -> &'static str {
     &SETTINGS
 }
+/// Whether `USE_MOCK_CLAUDE` is exactly `"true"`; unset or any other value is
+/// false.
 pub fn use_mock_claude() -> bool {
     *USE_MOCK_CLAUDE
 }
+/// Mock Claude binary path from `VM0_MOCK_CLAUDE_PATH`, or
+/// `DEFAULT_MOCK_CLAUDE_PATH` when unset.
 pub fn mock_claude_path() -> String {
     MOCK_CLAUDE_PATH.clone()
 }
+/// Raw CLI framework selector from `CLI_AGENT_TYPE`; empty string means unset.
 pub fn cli_agent_type() -> &'static str {
     &CLI_AGENT_TYPE
 }
+/// OpenAI API key from `OPENAI_API_KEY`; empty string means unset.
 pub fn openai_api_key() -> &'static str {
     &OPENAI_API_KEY
 }
+/// OpenAI model from `OPENAI_MODEL`; empty string means unset.
 pub fn openai_model() -> &'static str {
     &OPENAI_MODEL
 }
+/// Whether `USE_MOCK_CODEX` is `"true"` or `"1"`; unset or any other value is
+/// false.
 pub fn use_mock_codex() -> bool {
     *USE_MOCK_CODEX
 }
+/// Mock Codex binary path from `VM0_MOCK_CODEX_PATH`, or
+/// `DEFAULT_MOCK_CODEX_PATH` when unset.
 pub fn mock_codex_path() -> String {
     MOCK_CODEX_PATH.clone()
 }
+/// Guest home directory from `HOME`.
+///
+/// # Panics
+/// Panics if `HOME` is unset, which indicates a rootfs/runner contract
+/// violation.
 pub fn home_dir() -> &'static str {
     &HOME_DIR
 }
+/// Artifact mounts parsed from `VM0_ARTIFACTS`.
+///
+/// Unset or empty `VM0_ARTIFACTS` returns an empty slice.
+///
+/// # Panics
+/// Panics if `VM0_ARTIFACTS` is set but is not a valid JSON array.
 pub fn artifacts() -> &'static [ArtifactEnv] {
     &ARTIFACTS
 }
+/// Stuck tool timeout in seconds from `VM0_STUCK_TOOL_TIMEOUT_SECS`.
+///
+/// Unset or unparseable values use the compiled default; unparseable values
+/// also log a warning.
 pub fn stuck_tool_timeout_secs() -> u64 {
     *STUCK_TOOL_TIMEOUT
 }
+/// Grace period before SIGTERM after `type=result`, from
+/// `VM0_POST_RESULT_SIGTERM_GRACE_SECS`.
+///
+/// Unset or unparseable values use the compiled default; unparseable values
+/// also log a warning.
 pub fn post_result_sigterm_grace_secs() -> u64 {
     *POST_RESULT_SIGTERM_GRACE
 }
+/// Grace period before SIGKILL after SIGTERM, from
+/// `VM0_POST_RESULT_SIGKILL_GRACE_SECS`.
+///
+/// Unset or unparseable values use the compiled default; unparseable values
+/// also log a warning.
 pub fn post_result_sigkill_grace_secs() -> u64 {
     *POST_RESULT_SIGKILL_GRACE
 }

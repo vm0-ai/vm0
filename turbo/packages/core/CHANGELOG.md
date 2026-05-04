@@ -1,5 +1,102 @@
 # Changelog
 
+## [8.255.0](https://github.com/vm0-ai/vm0/compare/core-v8.254.0...core-v8.255.0) (2026-05-03)
+
+
+### Features
+
+* remove UsageAnalytics/GumroadConnector switches, promote IdbMessage/SkeletonNoPreload to full rollout ([#11758](https://github.com/vm0-ai/vm0/issues/11758)) ([361ee81](https://github.com/vm0-ai/vm0/commit/361ee8142dd7f17f054c478833e188b174b19c5d))
+
+## [8.254.0](https://github.com/vm0-ai/vm0/compare/core-v8.253.0...core-v8.254.0) (2026-05-03)
+
+
+### Features
+
+* **skeleton:** gate prefetch await behind a feature switch ([#11748](https://github.com/vm0-ai/vm0/issues/11748)) ([30f55cf](https://github.com/vm0-ai/vm0/commit/30f55cfab1aad0bc1fa5e081599fc98f130c9e6b))
+
+## [8.253.0](https://github.com/vm0-ai/vm0/compare/core-v8.252.0...core-v8.253.0) (2026-05-01)
+
+
+### Features
+
+* enable idb message cache for staff org ([#11659](https://github.com/vm0-ai/vm0/issues/11659)) ([92280b2](https://github.com/vm0-ai/vm0/commit/92280b297b15a9f01c66c2bfbdd516142f56a3cf))
+
+
+### Refactoring
+
+* drive chat thread panes via load commands; fix idb cache ([#11670](https://github.com/vm0-ai/vm0/issues/11670)) ([adcacaf](https://github.com/vm0-ai/vm0/commit/adcacaf89afc76bc90bfaf038af1e80d002dff01))
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+## [8.252.0](https://github.com/vm0-ai/vm0/compare/core-v8.251.0...core-v8.252.0) (2026-05-01)
+
+
+### Features
+
+* add IndexedDB message cache behind idbMessage feature switch ([#11647](https://github.com/vm0-ai/vm0/issues/11647)) ([d53d15b](https://github.com/vm0-ai/vm0/commit/d53d15b36d01a9354b2ab990e4ac3d56bf325314))
+
+## [8.251.0](https://github.com/vm0-ai/vm0/compare/core-v8.250.0...core-v8.251.0) (2026-05-01)
+
+
+### Features
+
+* **zero:** add chat thread rename behind ChatThreadRename feature switch ([#11648](https://github.com/vm0-ai/vm0/issues/11648)) ([bf4abcc](https://github.com/vm0-ai/vm0/commit/bf4abcc6fe9a8459dd008a7500577018c6ee7fac))
+
+## [8.250.0](https://github.com/vm0-ai/vm0/compare/core-v8.249.0...core-v8.250.0) (2026-04-30)
+
+
+### Features
+
+* **zero:** pin chat threads in platform sidebar ([#11636](https://github.com/vm0-ai/vm0/issues/11636)) ([7190949](https://github.com/vm0-ai/vm0/commit/719094992e2a7e13f1086b2bd8b5219759ac8c86))
+
+## [8.249.0](https://github.com/vm0-ai/vm0/compare/core-v8.248.1...core-v8.249.0) (2026-04-30)
+
+
+### Features
+
+* enable ChatManualHistory for all users ([#11617](https://github.com/vm0-ai/vm0/issues/11617)) ([7f1ec4b](https://github.com/vm0-ai/vm0/commit/7f1ec4bb4fa5dbe79220dadeed673210c59f5d16))
+
+## [8.248.1](https://github.com/vm0-ai/vm0/compare/core-v8.248.0...core-v8.248.1) (2026-04-30)
+
+
+### Bug Fixes
+
+* **org:** remove model usage ranking ([#11585](https://github.com/vm0-ai/vm0/issues/11585)) ([b966f13](https://github.com/vm0-ai/vm0/commit/b966f13120e867272d6854a2fa30c4482b5f62df))
+
+## [8.248.0](https://github.com/vm0-ai/vm0/compare/core-v8.247.0...core-v8.248.0) (2026-04-29)
+
+
+### Features
+
+* **zero:** codex-beta feature switch with provider-create gate and picker filter ([#11546](https://github.com/vm0-ai/vm0/issues/11546)) ([1b30292](https://github.com/vm0-ai/vm0/commit/1b30292f2eb55bd2864006da51b8ee2da7f22a48)), closes [#11529](https://github.com/vm0-ai/vm0/issues/11529) [#11520](https://github.com/vm0-ai/vm0/issues/11520)
+
+## [8.247.0](https://github.com/vm0-ai/vm0/compare/core-v8.246.0...core-v8.247.0) (2026-04-29)
+
+
+### Features
+
+* add api backend shadow migration and migrate read routes ([#11454](https://github.com/vm0-ai/vm0/issues/11454)) ([d45cbef](https://github.com/vm0-ai/vm0/commit/d45cbef58410bf5e7ea8f2c1debbce52ca3f4cb8))
+
+## [8.246.0](https://github.com/vm0-ai/vm0/compare/core-v8.245.0...core-v8.246.0) (2026-04-29)
+
+
+### Features
+
+* add model usage ranking ([#11486](https://github.com/vm0-ai/vm0/issues/11486)) ([f4a3513](https://github.com/vm0-ai/vm0/commit/f4a3513015b7a6c046d7c741b8b5e97270b76c3e))
+
+## [8.245.0](https://github.com/vm0-ai/vm0/compare/core-v8.244.0...core-v8.245.0) (2026-04-29)
+
+
+### Features
+
+* add gumroad connector (api-token + oauth) ([#11470](https://github.com/vm0-ai/vm0/issues/11470)) ([e9039db](https://github.com/vm0-ai/vm0/commit/e9039db1f992be2520f54ecf07b1601dc2537d7b))
+
+## [8.244.0](https://github.com/vm0-ai/vm0/compare/core-v8.243.0...core-v8.244.0) (2026-04-29)
+
+
+### Features
+
+* launch usage page ([#11446](https://github.com/vm0-ai/vm0/issues/11446)) ([55fa993](https://github.com/vm0-ai/vm0/commit/55fa9934e2d1bf95ff6329ed858853f24eb3b4d3))
+
 ## [8.243.0](https://github.com/vm0-ai/vm0/compare/core-v8.242.1...core-v8.243.0) (2026-04-28)
 
 

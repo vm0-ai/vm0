@@ -10,14 +10,15 @@ import {
   getVm0Vendor,
   getVm0ApiModel,
   type ModelProviderType,
-  type ModelProviderFramework,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { badRequest, noModelProvider } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import {
   getOrgDefaultModelProvider,
+  getOrgAnyDefaultModelProvider,
   getModelProviderByIdForOrg,
+  getOrgModelProviderByType,
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
@@ -56,7 +57,6 @@ export const MODEL_PROVIDER_ENV_VARS = [
  * Single DB query: caller passes the already-fetched defaultProvider.
  */
 function resolveProviderType(
-  framework: string,
   defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>,
   explicitModelProvider?: string,
 ): ModelProviderType {
@@ -73,14 +73,6 @@ function resolveProviderType(
     providerType = defaultProvider.type;
   } else {
     throw noModelProvider();
-  }
-
-  const providerFramework = getFrameworkForType(providerType);
-  if (providerFramework !== framework) {
-    throw badRequest(
-      `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
-        `This provider is for "${providerFramework}" agents.`,
-    );
   }
 
   return providerType;
@@ -153,13 +145,17 @@ interface ModelProviderSecretResult {
    *  servicePlaceholders logic; literals (base URLs, model names) are plain strings. */
   injectedEnvironment: Record<string, string> | undefined;
   /** The resolved model provider type (e.g. "anthropic", "vercel-ai-gateway").
-   *  Undefined when provider resolution was skipped (explicit env vars or non-claude-code). */
+   *  Undefined when provider resolution was skipped (explicit env vars). */
   resolvedModelProvider: ModelProviderType | undefined;
+  /** Canonical framework for this resolution. When a provider was resolved this
+   *  is the provider's framework (source-of-truth for downstream); otherwise
+   *  the input `framework` is echoed back. */
+  framework: string;
   /** For meta-providers like "vm0", the concrete provider type resolved at build time.
    *  Used for firewall lookup instead of the meta-provider type. */
   concreteProviderType?: ModelProviderType;
   /** The logical model name selected by the user (e.g. "claude-sonnet-4-6").
-   *  Used for credit usage billing. */
+   *  Used for model usage billing. */
   selectedModel?: string;
 }
 
@@ -196,6 +192,7 @@ async function resolveVm0Provider(
     secrets,
     injectedEnvironment,
     resolvedModelProvider: "vm0",
+    framework: getFrameworkForType("vm0"),
     concreteProviderType: concreteType,
     selectedModel,
   };
@@ -262,6 +259,7 @@ async function resolveMultiAuthProviderSecrets(
     secrets: secretsMap,
     injectedEnvironment,
     resolvedModelProvider: providerType,
+    framework: getFrameworkForType(providerType),
     selectedModel,
   };
 }
@@ -285,36 +283,61 @@ export async function resolveModelProviderSecrets(
 ): Promise<ModelProviderSecretResult> {
   const secrets: Record<string, string> | undefined = undefined;
 
-  // Skip if explicit model provider config exists or framework doesn't use model providers
-  if (hasExplicitModelProviderConfig || framework !== "claude-code") {
+  // Skip if compose already declares the framework's auth env var directly.
+  // Framework-agnostic: codex with explicit OPENAI_API_KEY short-circuits here
+  // just like claude-code with explicit ANTHROPIC_API_KEY.
+  if (hasExplicitModelProviderConfig) {
     return {
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: undefined,
+      framework,
     };
   }
 
-  // Resolve provider: specific ID override → org default
+  // Resolve provider: specific ID override → framework-scoped org default →
+  // cross-framework fallback. The cross-framework fallback mirrors admission
+  // (zero-run-policy.ts) and implements Epic #11520's "provider's framework
+  // wins" rule at the dispatch boundary: an org with only a codex provider
+  // still resolves secrets for a claude-code compose; the provider's
+  // framework propagates downstream via `resolvedFramework`.
   let defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
   if (modelProviderId) {
     defaultProvider = await getModelProviderByIdForOrg(orgId, modelProviderId);
   } else {
-    defaultProvider = await getOrgDefaultModelProvider(
-      orgId,
-      framework as ModelProviderFramework,
-    );
+    defaultProvider =
+      (await getOrgDefaultModelProvider(orgId, framework)) ??
+      (await getOrgAnyDefaultModelProvider(orgId));
   }
 
   const secretUserId = ORG_SENTINEL_USER_ID;
 
   const providerType = resolveProviderType(
-    framework,
     defaultProvider,
     explicitModelProvider,
   );
+  // Only borrow `selectedModel` / `authMethod` from a provider row that
+  // actually matches the resolved `providerType`. When an explicit
+  // `modelProvider` request differs from the workspace default's type (e.g.
+  // workspace default is `claude-code-oauth-token` with selectedModel
+  // `claude-sonnet-4-5`, request asks for `openai-api-key`), passing the
+  // foreign selectedModel through would inject `OPENAI_MODEL=claude-sonnet-4-5`
+  // and the codex CLI would refuse to run.
+  //
+  // When defaultProvider is for the wrong type AND we have an explicit type
+  // override (no modelProviderId pin), look up the explicit provider's row
+  // by type so vm0/multi-auth flows still see their stored selectedModel/
+  // authMethod. Falls back to undefined when no row exists, in which case
+  // `resolveEnvironmentMapping` uses `getDefaultModel(providerType)`.
+  let matchingProvider: typeof defaultProvider = null;
+  if (defaultProvider && defaultProvider.type === providerType) {
+    matchingProvider = defaultProvider;
+  } else if (explicitModelProvider && !modelProviderId) {
+    matchingProvider = await getOrgModelProviderByType(orgId, providerType);
+  }
   // selectedModelOverride (from agent/schedule config) takes precedence over provider's stored model
   const selectedModel =
-    selectedModelOverride ?? defaultProvider?.selectedModel ?? undefined;
+    selectedModelOverride ?? matchingProvider?.selectedModel ?? undefined;
 
   // Handle VM0 managed provider (meta-provider resolution)
   if (providerType === "vm0") {
@@ -324,13 +347,15 @@ export async function resolveModelProviderSecrets(
     return resolveVm0Provider(selectedModel);
   }
 
+  const resolvedFramework = getFrameworkForType(providerType);
+
   // Handle multi-auth providers (like aws-bedrock)
   if (hasAuthMethods(providerType)) {
     const resolved = await resolveMultiAuthProviderSecrets(
       orgId,
       secretUserId,
       providerType,
-      defaultProvider?.authMethod,
+      matchingProvider?.authMethod,
       selectedModel,
     );
     return (
@@ -338,6 +363,7 @@ export async function resolveModelProviderSecrets(
         secrets,
         injectedEnvironment: undefined,
         resolvedModelProvider: providerType,
+        framework: resolvedFramework,
         selectedModel,
       }
     );
@@ -350,6 +376,7 @@ export async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: providerType,
+      framework: resolvedFramework,
       selectedModel,
     };
   }
@@ -366,6 +393,7 @@ export async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: providerType,
+      framework: resolvedFramework,
       selectedModel,
     };
   }
@@ -385,6 +413,7 @@ export async function resolveModelProviderSecrets(
     secrets: { [secretName]: secretValue },
     injectedEnvironment,
     resolvedModelProvider: providerType,
+    framework: resolvedFramework,
     selectedModel,
   };
 }

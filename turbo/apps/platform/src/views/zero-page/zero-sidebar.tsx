@@ -409,7 +409,7 @@ function SidebarNavContent() {
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">
-                  <p className="text-xs">Insights</p>
+                  <p className="text-xs">Insights &amp; Usage</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -648,7 +648,7 @@ function SidebarNavContent() {
                     </Link>
                   </TooltipTrigger>
                   <TooltipContent side="top">
-                    <p className="text-xs">Insights</p>
+                    <p className="text-xs">Insights &amp; Usage</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>

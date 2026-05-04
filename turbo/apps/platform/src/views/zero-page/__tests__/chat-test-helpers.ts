@@ -358,7 +358,8 @@ export function mockChatLifecycle(options?: {
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: threadList });
     }),
-    mockApi(chatThreadsContract.create, ({ respond }) => {
+    mockApi(chatThreadsContract.create, ({ body, respond }) => {
+      threadId = body.clientThreadId ?? threadId;
       return respond(201, {
         id: threadId,
         title: null,

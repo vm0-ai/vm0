@@ -43,6 +43,10 @@ pre-commit:
             run: cargo clippy --all-targets --all-features
             root: crates/
             glob: "crates/**/*.{rs,toml}"
+          - name: cargo-doc
+            run: cargo doc --workspace --all-features --no-deps
+            root: crates/
+            glob: "crates/**/*.{rs,toml}"
           - name: ruff-fmt
             run: ruff format .
             root: crates/runner/mitm-addon/

@@ -3,7 +3,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import type { MemberUsage } from "@vm0/api-contracts/contracts/zero-usage";
-import { IconUsers } from "@tabler/icons-react";
+import { IconChevronRight, IconUsers } from "@tabler/icons-react";
 import { Input } from "@vm0/ui";
 import {
   Tooltip,
@@ -86,6 +86,8 @@ function segmentKey(seg: CreditSegment): string {
   return seg.tier ? `${seg.category}:${seg.tier}` : seg.category;
 }
 
+type CreditGrant = BillingStatusResponse["creditGrants"][number];
+
 function descriptionForSegment(
   seg: CreditSegment,
   currentTier: string,
@@ -97,6 +99,102 @@ function descriptionForSegment(
     return "Monthly plan credits, resets each billing cycle";
   }
   return "Leftover credits from previous plan";
+}
+
+function formatCreditDate(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function expiresLabel(grant: CreditGrant): string {
+  if (grant.source === "auto_recharge") {
+    return "Never expires";
+  }
+  return `Expires ${formatCreditDate(grant.expiresAt)}`;
+}
+
+function CreditGrantRow({ grant }: { grant: CreditGrant }) {
+  const hasPartialBalance = grant.remaining !== grant.amount;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          tabIndex={0}
+          data-testid={`credit-grant-${grant.id}`}
+          className="flex min-w-0 cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-medium text-foreground">
+              {grant.label}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              Added {formatCreditDate(grant.createdAt)}
+            </div>
+          </div>
+          <div className="shrink-0 text-right">
+            <div className="text-[13px] font-medium tabular-nums text-foreground">
+              {grant.amount.toLocaleString()}
+            </div>
+            {hasPartialBalance ? (
+              <div className="text-xs tabular-nums text-muted-foreground">
+                {grant.remaining.toLocaleString()} left
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        sideOffset={8}
+        style={{ backgroundColor: "white", color: "inherit" }}
+        className="border shadow-md"
+      >
+        <div className="font-medium text-foreground">{expiresLabel(grant)}</div>
+        <div className="mt-0.5 text-muted-foreground">
+          {grant.remaining.toLocaleString()} credits remaining
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
+  if (grants.length === 0) {
+    return null;
+  }
+
+  return (
+    <details
+      data-testid="credit-grants-section"
+      className="group mt-4 border-t border-border/50 pt-3"
+    >
+      <summary
+        data-testid="credit-grants-toggle"
+        className="mb-1 cursor-pointer list-none px-2"
+      >
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <IconChevronRight
+            size={13}
+            stroke={2}
+            className="shrink-0 transition-transform group-open:rotate-90"
+          />
+          <span>Credit additions</span>
+          <span className="tabular-nums">({grants.length})</span>
+        </div>
+      </summary>
+      <TooltipProvider delayDuration={100}>
+        <div className="flex flex-col">
+          {grants.map((grant) => {
+            return <CreditGrantRow key={grant.id} grant={grant} />;
+          })}
+        </div>
+      </TooltipProvider>
+    </details>
+  );
 }
 
 function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
@@ -168,6 +266,7 @@ function CreditBalanceChart({ billing }: { billing: BillingStatusResponse }) {
           </div>
         </div>
       )}
+      <CreditGrantList grants={billing.creditGrants} />
     </div>
   );
 }
@@ -299,9 +398,7 @@ function OverviewSection() {
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Credit balance */}
       <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Credit balance</h3>
         <div className="overflow-hidden rounded-xl bg-card zero-border">
           {billingLoading && !billing ? (
             <div className="px-5 py-4 space-y-2">

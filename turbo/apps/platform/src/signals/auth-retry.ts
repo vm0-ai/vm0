@@ -12,7 +12,7 @@ import { logger } from "./log.ts";
 
 const L = logger("AuthRetry");
 
-type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
+export type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
 
 /**
  * Force-refresh the Clerk session token. Returns the new token only if it

@@ -27,4 +27,12 @@ export interface ConversationResolution {
   additionalVolumes?: AdditionalVolume[];
   /** Run ID from the previous conversation (used by zero layer for provider compatibility) */
   previousRunId?: string;
+  /**
+   * Framework recorded on the conversation being continued
+   * (`conversations.cliAgentType`). Source of truth for the previous run's
+   * framework — compared against `resolvedFramework` in build-zero-context to
+   * detect mid-thread framework switches. Undefined for direct-conversation
+   * resumes from data that predates cliAgentType persistence.
+   */
+  sessionFramework: string | undefined;
 }

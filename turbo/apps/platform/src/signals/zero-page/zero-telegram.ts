@@ -430,6 +430,10 @@ export const updateTelegramBotAgent$ = command(
     input: { botId: string; defaultAgentId: string },
     signal: AbortSignal,
   ): Promise<TelegramBotStatus> => {
+    const toastId = toast.loading("Updating default agent...");
+    signal.addEventListener("abort", () => {
+      return toast.dismiss(toastId);
+    });
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
     const result = await accept(
       client.updateBot({
@@ -439,10 +443,22 @@ export const updateTelegramBotAgent$ = command(
         fetchOptions: { signal },
       }),
       [200],
-    );
+      { toast: false },
+    ).catch((error: unknown) => {
+      if (signal.aborted) {
+        toast.dismiss(toastId);
+      } else {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to update Telegram bot";
+        toast.error(message, { id: toastId });
+      }
+      throw error;
+    });
     signal.throwIfAborted();
     set(reloadTelegramBots$);
-    toast.success("Telegram bot updated");
+    toast.success("Default agent updated", { id: toastId });
     return (result as { body: TelegramBotStatus }).body;
   },
 );

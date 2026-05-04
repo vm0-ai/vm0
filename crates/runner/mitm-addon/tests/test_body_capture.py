@@ -633,6 +633,57 @@ class TestDecompression:
         add_capture_fields(flow, entry)
         assert entry["response_body"] == '{"result": "hello world"}'
 
+    def test_brotli_exact_limit_not_truncated(self, real_flow):
+        original = b"x" * STREAM_BUFFER_LIMIT
+        compressed = brotli.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert "response_body_truncated" not in entry
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+
+    def test_brotli_truncation_preserves_utf8_boundary(self, real_flow):
+        original = b"x" * STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
+        compressed = brotli.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
+        entry = {}
+        add_capture_fields(flow, entry)
+        assert entry["response_body_truncated"] is True
+        assert entry["response_body_encoding"] == "utf-8"
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+
+    def test_brotli_zip_bomb_capped_without_full_decode(self, real_flow, monkeypatch):
+        original = b"\x00" * (10 * 1024 * 1024)
+        compressed = brotli.compress(original)
+        assert len(compressed) < STREAM_BUFFER_LIMIT
+
+        real_decompressor = brotli.Decompressor
+        stats = {"calls": 0, "max_input": 0, "max_output": 0}
+
+        class CountingDecompressor:
+            def __init__(self):
+                self._inner = real_decompressor()
+
+            def process(self, chunk: bytes) -> bytes:
+                out = self._inner.process(chunk)
+                stats["calls"] += 1
+                stats["max_input"] = max(stats["max_input"], len(chunk))
+                stats["max_output"] = max(stats["max_output"], len(out))
+                return out
+
+        monkeypatch.setattr("body_utils.brotli.Decompressor", CountingDecompressor)
+
+        flow = self._make_flow_with_compressed_buffer(real_flow, compressed, "br", "text/plain")
+        entry = {}
+        add_capture_fields(flow, entry)
+
+        assert entry["response_body_truncated"] is True
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
+        assert stats["max_input"] < len(compressed)
+        assert stats["max_output"] < len(original)
+
     def test_zstd_decompressed(self, real_flow):
         original = b'{"result": "hello world"}'
         compressed = zstandard.ZstdCompressor().compress(original)
@@ -688,7 +739,8 @@ class TestDecompression:
         entry = {}
         add_capture_fields(flow, entry)
         # Body should be capped, not 1MB
-        assert len(entry.get("response_body", "")) <= STREAM_BUFFER_LIMIT
+        assert entry["response_body_truncated"] is True
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
     def test_truncated_brotli_falls_back(self, real_flow):
         """Truncated brotli data should fall back gracefully."""
@@ -823,6 +875,23 @@ class TestStreamDecompressor:
         assert decomp is not None
         assert decomp(zstandard.ZstdCompressor().compress(b"hello world")) == b"hello world"
 
+    def test_supported_encodings_across_small_chunks(self, headers):
+        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
+        compressed_by_encoding = {
+            "gzip": gzip.compress(plaintext),
+            "deflate": zlib.compress(plaintext),
+            "br": brotli.compress(plaintext),
+            "zstd": zstandard.ZstdCompressor().compress(plaintext),
+        }
+
+        for encoding, compressed in compressed_by_encoding.items():
+            decomp = create_stream_decompressor(headers(("Content-Encoding", encoding)))
+            assert decomp is not None
+            out = bytearray()
+            for idx in range(0, len(compressed), 3):
+                out.extend(decomp(compressed[idx : idx + 3]))
+            assert bytes(out) == plaintext, encoding
+
     def test_no_encoding_returns_none(self, headers):
         assert create_stream_decompressor(headers()) is None
 
@@ -908,9 +977,9 @@ class TestDecompressBody:
     ``LARGE_RESPONSE_DECOMPRESS_LIMIT``) for JSON parsing.
 
     Focus: verify the documented ``max_output`` cap is enforced during
-    decompression (not only via after-the-fact slicing) for gzip/zstd.
-    brotli is intentionally not tested for strict bounding — see the
-    ``decompress_body`` docstring for why that codec is best-effort.
+    decompression (not only via after-the-fact slicing) for codecs with
+    hard output-limit APIs.  Brotli's Python binding is best-effort; the
+    high-compression capture regression is covered in ``TestDecompression``.
     """
 
     def test_gzip_respects_max_output(self, headers):

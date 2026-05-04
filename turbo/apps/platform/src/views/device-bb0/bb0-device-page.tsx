@@ -329,7 +329,7 @@ function DeviceCodeStep() {
         Device code
         <Input
           value={deviceCode}
-          disabled={!state.wifiSent || confirming || confirmed}
+          disabled={confirming || confirmed}
           placeholder="ABCD-2345"
           inputMode="text"
           autoCapitalize="characters"

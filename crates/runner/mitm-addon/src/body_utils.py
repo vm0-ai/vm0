@@ -2,8 +2,8 @@
 
 Exports:
 
-- ``STREAM_BUFFER_LIMIT`` — 64 KB cap used by the streaming buffer in
-  ``mitm_addon.responseheaders`` and by the decompression safety cap.
+- ``STREAM_BUFFER_LIMIT`` — 64 KB cap used by the responseheaders streaming
+  buffer and by the decompression safety cap.
 - Streaming / one-shot decompression for gzip, deflate, br, zstd.
 - UTF-8-safe truncation, text/binary content detection and encoding.
 - Header redaction for sensitive names (auth, token, cookie, …).
@@ -30,12 +30,16 @@ _UTF8_LEAD_MAX_1BYTE = 0x80  # ASCII: 0xxxxxxx
 _UTF8_LEAD_MAX_2BYTE = 0xE0  # 2-byte lead: 110xxxxx
 _UTF8_LEAD_MAX_3BYTE = 0xF0  # 3-byte lead: 1110xxxx
 
-# Decompression cap for response bodies that need full parsing for usage
-# extraction (model-provider non-SSE JSON, billable-connector JSON).  Larger
-# than STREAM_BUFFER_LIMIT (which guards capture-mode body logging) so large
-# search/timeline payloads decompress fully.  Still bounded so a malicious
-# upstream cannot exhaust memory via a decompression bomb.
+# Decompression cap for legacy/test one-shot usage extraction fallbacks.
+# Production billable JSON paths use streaming decompression plus selective
+# extraction; this remains larger than STREAM_BUFFER_LIMIT for direct helper
+# calls while still bounding decompression bombs.
 LARGE_RESPONSE_DECOMPRESS_LIMIT = 5 * 1024 * 1024  # 5 MB
+
+# Python's brotli binding has no max-output API. Feed compressed data in small
+# chunks and stop once the caller's cap is accumulated; process() can still
+# transiently emit a multi-MB chunk from a tiny input.
+_BROTLI_DECOMPRESS_INPUT_CHUNK_SIZE = 16
 
 
 # ---------------------------------------------------------------------------
@@ -138,15 +142,11 @@ def decompress_body(
     - zstd: hard cap via ``ZstdDecompressor.stream_reader(data).read(max_output)``;
       zstd reads incrementally so total memory is bounded by
       ``max_output`` plus library internal buffers.
-    - br: **no hard cap.**  The Python ``brotli`` bindings expose only
-      ``Decompressor.process(data)`` which materialises the full decompressed
-      output before returning; slicing afterwards does not prevent the
-      transient allocation.  Input chunking is not a reliable defence —
-      a single brotli copy command can emit up to 16 MB from a handful of
-      encoded bytes, so chunk-level bounds don't hold for adversarial
-      input.  This is acceptable given the callers only decompress
-      bodies from the pre-configured model-provider and billable-connector
-      allowlist (not arbitrary user-supplied URLs).
+    - br: bounded accumulator over small compressed input chunks.  The
+      Python ``brotli`` bindings expose no max-output API, so ``process`` may
+      still transiently emit a multi-MB chunk, but decoding stops once
+      ``max_output`` bytes have been accumulated instead of materialising the
+      full response before slicing.
 
     Returns the original data unchanged when the encoding is missing,
     ``identity``, or unrecognised, and on decompression error.  A valid
@@ -163,8 +163,7 @@ def decompress_body(
             obj = zlib.decompressobj(wbits)
             return obj.decompress(data, max_length=max_output)
         if encoding == "br":
-            dec = brotli.Decompressor()
-            return dec.process(data)[:max_output]
+            return _decompress_brotli_bounded(data, max_output)
         if encoding == "zstd":
             # stream_reader.read(n) reads *up to* n bytes: the full frame if
             # smaller than n, exactly n if larger — so total memory is bounded
@@ -176,6 +175,27 @@ def decompress_body(
             # ctx.log unavailable outside mitmproxy runtime
             ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
     return data
+
+
+def _decompress_brotli_bounded(data: bytes, max_output: int) -> bytes:
+    if max_output <= 0:
+        return b""
+
+    dec = brotli.Decompressor()
+    out = bytearray()
+    for offset in range(0, len(data), _BROTLI_DECOMPRESS_INPUT_CHUNK_SIZE):
+        chunk = data[offset : offset + _BROTLI_DECOMPRESS_INPUT_CHUNK_SIZE]
+        decoded = dec.process(chunk)
+        if not decoded:
+            continue
+
+        remaining = max_output - len(out)
+        if len(decoded) >= remaining:
+            out.extend(decoded[:remaining])
+            return bytes(out)
+        out.extend(decoded)
+
+    return bytes(out)
 
 
 def _is_text_content(content_type: str) -> bool:
@@ -288,7 +308,11 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     if flow.response:
         stream_buf = flow.metadata.get("stream_buffer")
         if stream_buf is not None:
-            body = decompress_body(bytes(stream_buf), flow.response.headers)
+            body = decompress_body(
+                bytes(stream_buf),
+                flow.response.headers,
+                max_output=STREAM_BUFFER_LIMIT + 1,
+            )
         else:
             try:
                 body = flow.response.content

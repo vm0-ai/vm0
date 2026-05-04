@@ -98,6 +98,7 @@ import { googleSheetsFirewall } from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
 import { greenhouseFirewall } from "./greenhouse.generated";
 import { groqFirewall } from "./groq.generated";
+import { gumroadFirewall } from "./gumroad.generated";
 import { heygenFirewall } from "./heygen.generated";
 import { heliconeFirewall } from "./helicone.generated";
 import { htmlcsstoimageFirewall } from "./htmlcsstoimage.generated";
@@ -135,6 +136,7 @@ import { mixpanelFirewall } from "./mixpanel.generated";
 import { mondayFirewall } from "./monday.generated";
 import { msg9Firewall } from "./msg9.generated";
 import { n8nFirewall } from "./n8n.generated";
+import { nanoBananaFirewall } from "./nano-banana.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { onyxFirewall } from "./onyx.generated";
@@ -286,6 +288,7 @@ const CONNECTOR_FIREWALLS = {
   granola: granolaFirewall,
   greenhouse: greenhouseFirewall,
   groq: groqFirewall,
+  gumroad: gumroadFirewall,
   heygen: heygenFirewall,
   helicone: heliconeFirewall,
   htmlcsstoimage: htmlcsstoimageFirewall,
@@ -323,6 +326,7 @@ const CONNECTOR_FIREWALLS = {
   monday: mondayFirewall,
   msg9: msg9Firewall,
   n8n: n8nFirewall,
+  "nano-banana": nanoBananaFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
   onyx: onyxFirewall,

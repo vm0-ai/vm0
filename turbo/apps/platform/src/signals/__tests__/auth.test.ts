@@ -7,7 +7,13 @@ import {
   mockOrganization,
   mockUser,
 } from "../../__tests__/mock-auth";
-import { setupClerk$, user$, currentOrgInfo$, resolveWebOrigin } from "../auth";
+import {
+  setupClerk$,
+  user$,
+  currentUserInfo$,
+  currentOrgInfo$,
+  resolveWebOrigin,
+} from "../auth";
 
 const context = testContext();
 
@@ -73,6 +79,39 @@ describe("setupClerk$ auth reload filtering", () => {
 
     const userAfter = await store.get(user$);
     expect(userAfter).toBeUndefined();
+  });
+});
+
+describe("currentUserInfo$ re-emits on Clerk listener events", () => {
+  it("picks up profile changes after fireClerkListeners", async () => {
+    const { store, signal } = context;
+
+    detachedSetupPage({ context, path: "/", withoutRender: true });
+    await store.set(setupClerk$, signal);
+
+    const before = await store.get(currentUserInfo$);
+    expect(before?.fullName).toBe("Test User");
+
+    mockUser(
+      {
+        id: "test-user-123",
+        fullName: "Renamed User",
+        firstName: "Renamed",
+        email: "renamed@example.com",
+        imageUrl: "https://example.com/new-avatar.png",
+      },
+      { token: "test-token" },
+    );
+    fireClerkListeners();
+
+    const after = await store.get(currentUserInfo$);
+    expect(after).toMatchObject({
+      id: "test-user-123",
+      fullName: "Renamed User",
+      firstName: "Renamed",
+      imageUrl: "https://example.com/new-avatar.png",
+      primaryEmailAddress: { emailAddress: "renamed@example.com" },
+    });
   });
 });
 
@@ -190,6 +229,39 @@ describe("watchOrgSwitch$ JWT rotation on org change", () => {
     await vi.waitFor(() => {
       expect(window.location.pathname).toBe("/");
     });
+  });
+
+  it("does NOT reload when org transiently disappears (mobile token refresh)", async () => {
+    window.location.href = "http://localhost/agents";
+    expect(window.location.pathname).toBe("/agents");
+
+    await setupPage({
+      context,
+      path: "/agents",
+      org: {
+        activeOrg: { id: "org_A", name: "Org A" },
+        memberships: [{ id: "org_A" }],
+      },
+      withoutRender: true,
+    });
+
+    // Clear any getToken calls made during setup by prior tests in this
+    // describe block (mocks are not auto-cleared between tests).
+    mockedClerk.sessionGetToken.mockClear();
+
+    // Simulate Clerk transiently clearing clerk.organization to undefined
+    // during a background token refresh (the observed mobile crash path).
+    mockOrganization({
+      activeOrg: null,
+      memberships: [{ id: "org_A" }],
+    });
+    fireClerkListeners();
+
+    // The guard exits synchronously before calling getToken; flush
+    // microtasks to let any queued promise chains settle.
+    await Promise.resolve();
+    expect(mockedClerk.sessionGetToken).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/agents");
   });
 
   it("still reloads when getToken rejects (refresh failure is swallowed)", async () => {

@@ -1,4 +1,9 @@
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconAlertTriangle,
@@ -578,7 +583,8 @@ function AddTelegramDomainStep({
         <div className="leading-relaxed">
           In {BOT_FATHER_HANDLE}, send <TelegramCommand command="/setdomain" />,
           choose this bot, and set the domain to{" "}
-          <CopyableTelegramValue value={domain} />.
+          <CopyableTelegramValue value={domain} />. Telegram uses this domain to
+          allow the connect flow for this bot.
         </div>
       </div>
       {confirmed ? (
@@ -608,7 +614,8 @@ function AddTelegramPrivacyStep({
         <div className="leading-relaxed">
           In {BOT_FATHER_HANDLE}, send <TelegramCommand command="/setprivacy" />
           , choose this bot, then{" "}
-          <strong className="font-medium">disable</strong> privacy mode.
+          <strong className="font-medium">disable</strong> privacy mode. This
+          lets the agent read group context around mentions and replies.
         </div>
       </div>
       {confirmed ? (
@@ -648,7 +655,9 @@ function AddTelegramCreateStep({
         <div>
           {setupStatus?.username
             ? `VM0 will register @${setupStatus.username} and configure its webhook.`
-            : "VM0 will register this bot and configure its webhook."}
+            : "VM0 will register this bot and configure its webhook."}{" "}
+          After setup, mention the bot in a group or send it a DM to talk with
+          the selected agent.
         </div>
       </div>
       <AddTelegramBotAgentField
@@ -1447,7 +1456,7 @@ function TelegramBotRow({
   const unlinkingBotId = useGet(telegramUnlinkingBotId$);
   const uninstallingBotId = useGet(telegramUninstallingBotId$);
   const reinstallingBotId = useGet(telegramReinstallingBotId$);
-  const apiBase = useGet(apiBase$);
+  const apiBase = useLastResolved(apiBase$);
   const saving = savingBotId === bot.id;
   const unlinking = unlinkingBotId === bot.id;
   const uninstalling = uninstallingBotId === bot.id;
@@ -1455,7 +1464,7 @@ function TelegramBotRow({
   const actionDisabled =
     disabled || saving || unlinking || uninstalling || reinstalling;
   const options = buildBotAgentOptions(bot, agents, defaultAgent);
-  const avatarUrl = resolveTelegramBotAvatarUrl(bot.avatarUrl, apiBase);
+  const avatarUrl = resolveTelegramBotAvatarUrl(bot.avatarUrl, apiBase ?? "");
 
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
@@ -1499,11 +1508,6 @@ function TelegramBotRow({
           uninstalling={uninstalling}
           reinstalling={reinstalling}
         />
-        {canManage && saving ? (
-          <div className="text-xs text-muted-foreground sm:col-span-2">
-            Saving agent...
-          </div>
-        ) : null}
       </div>
     </div>
   );

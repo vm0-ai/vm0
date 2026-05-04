@@ -15,7 +15,15 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
+import { Link } from "../router/link.tsx";
 import {
   networkInsightsData$,
   insightsDateRange$,
@@ -30,9 +38,19 @@ import {
   setInsightsHoveredAgent$,
   expandedAllowedDays$,
   toggleExpandedAllowed$,
+  expandedScheduleDays$,
+  toggleExpandedScheduleDay$,
+  expandedChatDays$,
+  toggleExpandedChatDay$,
+  insightsActiveTab$,
+  setInsightsActiveTab$,
   type DayInsight,
+  type DaySchedule,
+  type DayChat,
+  type InsightsTab,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
+import { UsageInsightView } from "../usage-page/components/usage-insight-view.tsx";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -747,7 +765,9 @@ function ServicesCard({
   const sorted = [...day.services].sort((a, b) => {
     return b.calls - a.calls;
   });
-  const top = sorted[0];
+  const totalCalls = day.services.reduce((s, x) => {
+    return s + x.calls;
+  }, 0);
   const { accent } = getCardPalette(colorIndex);
 
   return (
@@ -761,15 +781,10 @@ function ServicesCard({
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {day.services.length}
       </p>
-      {top && (
-        <p className="text-sm opacity-60 mt-2">
-          Most used:{" "}
-          <span className="font-semibold opacity-100">
-            {connectorLabel(top.domain)}
-          </span>{" "}
-          ({top.calls} calls)
-        </p>
-      )}
+      <p className="text-sm opacity-60 mt-2">
+        {day.services.length === 1 ? "service" : "services"} received{" "}
+        {totalCalls} {totalCalls === 1 ? "call" : "calls"}
+      </p>
       <div className="flex flex-col gap-2.5 mt-4">
         {sorted.map((s) => {
           const isActive =
@@ -978,7 +993,248 @@ function formatDate(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Day section — masonry of cards (dim approach for hover)
+// Per-day Schedules card
+// ---------------------------------------------------------------------------
+
+function formatCardValue(n: number): string {
+  if (n >= 1_000_000) {
+    return `${(n / 1_000_000).toFixed(1)}M`;
+  }
+  if (n >= 1000) {
+    return `${(n / 1000).toFixed(1)}K`;
+  }
+  return n.toLocaleString();
+}
+
+function DaySchedulesCard({
+  dayDate,
+  schedules,
+}: {
+  dayDate: string;
+  schedules: DaySchedule[];
+}) {
+  const { accent } = getCardPalette(2);
+  const expandedDays = useGet(expandedScheduleDays$);
+  const toggleExpanded = useSet(toggleExpandedScheduleDay$);
+  const showAll = expandedDays.has(dayDate);
+
+  if (schedules.length === 0) {
+    return null;
+  }
+
+  const totalCredits = schedules.reduce((s, r) => {
+    return s + r.credits;
+  }, 0);
+  const visible = showAll ? schedules : schedules.slice(0, 4);
+  const overflow = schedules.length - visible.length;
+  const maxValue = Math.max(
+    1,
+    ...schedules.map((s) => {
+      return s.credits;
+    }),
+  );
+
+  return (
+    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid mb-3">
+      <p
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        style={{ color: accent }}
+      >
+        Schedules
+      </p>
+      <div className="flex items-center mb-3">
+        <span className="text-3xl font-black tabular-nums font-serif">
+          {schedules.length}
+        </span>
+      </div>
+      <p className="text-sm opacity-60">
+        {schedules.length === 1 ? "schedule" : "schedules"} used{" "}
+        {formatCardValue(totalCredits)}{" "}
+        {totalCredits === 1 ? "credit" : "credits"}
+      </p>
+      <TooltipProvider delayDuration={300}>
+        <ul className="flex flex-col gap-2 mt-3">
+          {visible.map((row) => {
+            const fullName =
+              row.scheduleDescription?.trim() || row.scheduleName;
+            const pct = (row.credits / maxValue) * 100;
+            return (
+              <li key={row.scheduleId}>
+                <Link
+                  pathname="/schedules/:scheduleId"
+                  options={{ pathParams: { scheduleId: row.scheduleId } }}
+                  className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                        {fullName}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      sideOffset={4}
+                      className="max-w-xs"
+                    >
+                      <p className="text-xs whitespace-normal break-words">
+                        {fullName}
+                      </p>
+                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
+                        Click to open →
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <div className="w-16 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${pct}%`, backgroundColor: accent }}
+                    />
+                  </div>
+                  <span className="text-xs opacity-60 tabular-nums shrink-0">
+                    {formatCardValue(row.credits)}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          {(overflow > 0 || showAll) && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleExpanded(dayDate);
+                }}
+                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
+              >
+                {showAll
+                  ? "Show less"
+                  : `+${overflow} more ${overflow === 1 ? "schedule" : "schedules"}`}
+              </button>
+            </li>
+          )}
+        </ul>
+      </TooltipProvider>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-day Chats card
+// ---------------------------------------------------------------------------
+
+function DayChatsCard({
+  dayDate,
+  chats,
+}: {
+  dayDate: string;
+  chats: DayChat[];
+}) {
+  const { accent } = getCardPalette(5);
+  const expandedDays = useGet(expandedChatDays$);
+  const toggleExpanded = useSet(toggleExpandedChatDay$);
+  const showAll = expandedDays.has(dayDate);
+
+  if (chats.length === 0) {
+    return null;
+  }
+
+  const totalCredits = chats.reduce((s, r) => {
+    return s + r.credits;
+  }, 0);
+  const visible = showAll ? chats : chats.slice(0, 4);
+  const overflow = chats.length - visible.length;
+  const maxValue = Math.max(
+    1,
+    ...chats.map((c) => {
+      return c.credits;
+    }),
+  );
+
+  return (
+    <section className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid mb-3">
+      <p
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        style={{ color: accent }}
+      >
+        Chats
+      </p>
+      <div className="flex items-center mb-3">
+        <span className="text-3xl font-black tabular-nums font-serif">
+          {chats.length}
+        </span>
+      </div>
+      <p className="text-sm opacity-60">
+        {chats.length === 1 ? "chat" : "chats"} used{" "}
+        {formatCardValue(totalCredits)}{" "}
+        {totalCredits === 1 ? "credit" : "credits"}
+      </p>
+      <TooltipProvider delayDuration={300}>
+        <ul className="flex flex-col gap-2 mt-3">
+          {visible.map((row) => {
+            const fullTitle = row.threadTitle ?? "(untitled)";
+            const pct = (row.credits / maxValue) * 100;
+            return (
+              <li key={row.threadId}>
+                <Link
+                  pathname="/chats/:threadId"
+                  options={{ pathParams: { threadId: row.threadId } }}
+                  className="flex items-center gap-2 -mx-1.5 px-1.5 py-0.5 rounded-md hover:bg-foreground/5 transition-colors"
+                >
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-sm font-medium flex-1 truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                        {fullTitle}
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      sideOffset={4}
+                      className="max-w-xs"
+                    >
+                      <p className="text-xs whitespace-normal break-words">
+                        {fullTitle}
+                      </p>
+                      <p className="text-[11px] mt-1.5 pt-1.5 border-t border-white/15 opacity-80">
+                        Click to open →
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <div className="w-16 h-1.5 rounded-full bg-foreground/10 overflow-hidden shrink-0">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${pct}%`, backgroundColor: accent }}
+                    />
+                  </div>
+                  <span className="text-xs opacity-60 tabular-nums shrink-0">
+                    {formatCardValue(row.credits)}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          {(overflow > 0 || showAll) && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleExpanded(dayDate);
+                }}
+                className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground transition-colors -mx-1.5 px-1.5 py-1 rounded-md hover:bg-foreground/5"
+              >
+                {showAll
+                  ? "Show less"
+                  : `+${overflow} more ${overflow === 1 ? "chat" : "chats"}`}
+              </button>
+            </li>
+          )}
+        </ul>
+      </TooltipProvider>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Day section — date title + masonry of cards
 // ---------------------------------------------------------------------------
 
 function DaySection({
@@ -999,7 +1255,7 @@ function DaySection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-lg font-semibold text-foreground sticky top-0 bg-background/80 backdrop-blur-sm py-2 z-10">
+      <h2 className="text-lg font-semibold text-foreground">
         {formatDate(day.date)}
       </h2>
       <div className="columns-1 sm:columns-2 lg:columns-3 gap-3">
@@ -1024,6 +1280,8 @@ function DaySection({
           onHoverAgent={handleHoverAgent}
         />
         <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
+        <DaySchedulesCard dayDate={day.date} schedules={day.schedules} />
+        <DayChatsCard dayDate={day.date} chats={day.chats} />
         <PermissionsAllowedCard
           day={day}
           colorIndex={5}
@@ -1056,6 +1314,8 @@ function formatAbsoluteTime(iso: string): string {
 function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
+  const activeTab = useGet(insightsActiveTab$);
+  const setActiveTab = useSet(setInsightsActiveTab$);
   const prefsLoadable = useLastLoadable(userPreferences$);
   const adminLoadable = useLastLoadable(isOrgAdmin$);
   const userLoadable = useLastLoadable(user$);
@@ -1077,10 +1337,10 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
         <div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold">Insights</h1>
+              <h1 className="text-xl font-semibold">Insights &amp; Usage</h1>
               <p className="text-sm text-muted-foreground mt-1">
-                Monitor what your agents access, which permissions they use, and
-                spot anything unusual.
+                Monitor what your agents access, how credits are spent, which
+                permissions they use, and spot anything unusual.
               </p>
             </div>
             {data.days.length > 0 && (
@@ -1104,7 +1364,23 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
           )}
         </div>
 
-        {filtered.length === 0 ? (
+        {data.days.length > 0 && (
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => {
+              setActiveTab(v as InsightsTab);
+            }}
+          >
+            <TabsList>
+              <TabsTrigger value="daily">Daily breakdown</TabsTrigger>
+              <TabsTrigger value="time-range">Time range</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+
+        {activeTab === "time-range" && data.days.length > 0 ? (
+          <UsageInsightView />
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
             <img
               src={emptyInsightsImg}

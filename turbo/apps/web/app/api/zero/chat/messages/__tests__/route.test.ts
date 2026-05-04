@@ -6,11 +6,16 @@ import {
   createTestRequest,
   createTestCompose,
   insertOrgDefaultModelProvider,
+  deleteTestModelProvider,
+  setTestZeroAgentModelProvider,
   findTestCallbacksByRunId,
+  findTestRunnerJobEntry,
   getTestRun,
   getTestChatMessagesByThread,
   countUserRows,
+  completeTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { setTestSessionFramework } from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
   getTestChatThreadModelOverride,
   getTestModelProviderIdByType,
@@ -995,6 +1000,470 @@ describe("POST /api/zero/chat/messages", () => {
           }),
         );
         expect(response.status).toBe(400);
+      });
+    });
+
+    describe("eager-pin / orphan provider", () => {
+      it("eager-pins thread to agent's modelProvider on creation", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          providerId,
+          "claude-opus-4-7",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "kick off thread",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("keeps thread pinned to original provider after agent provider changes", async () => {
+        const originalProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          originalProviderId,
+          "claude-opus-4-7",
+        );
+
+        const create = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "first" }),
+          }),
+        );
+        expect(create.status).toBe(201);
+        const { threadId } = await create.json();
+
+        // Agent owner switches the agent's default provider after the
+        // thread is created — the thread must keep its original pin.
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+        const newProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+        await setTestZeroAgentModelProvider(agentId, newProviderId, "gpt-5");
+
+        const followUp = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "follow up", threadId }),
+          }),
+        );
+        expect(followUp.status).toBe(201);
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(originalProviderId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("returns 422 PROVIDER_DELETED when the eager-pinned provider is gone", async () => {
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          providerId,
+          "claude-opus-4-7",
+        );
+
+        const create = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "first" }),
+          }),
+        );
+        expect(create.status).toBe(201);
+        const { threadId } = await create.json();
+
+        // Provider is deleted by the org admin between sends. The thread
+        // must surface PROVIDER_DELETED rather than silently fall back.
+        await deleteTestModelProvider(providerId);
+
+        const followUp = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "should fail", threadId }),
+          }),
+        );
+        expect(followUp.status).toBe(422);
+        const data = await followUp.json();
+        expect(data.error.code).toBe("PROVIDER_DELETED");
+
+        // The thread row keeps the now-stale UUID so the resolver can
+        // detect the orphan-pin state on later sends.
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(providerId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("leaves thread NULL when agent has no provider configured", async () => {
+        // Default test agent has no modelProviderId / selectedModel.
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "default-claude-code" }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBeNull();
+        expect(override.selectedModel).toBeNull();
+      });
+
+      it("falls back to agent provider when legacy thread has NULL pin", async () => {
+        // Create the thread with no pin (mirrors a row from before
+        // the eager-pin migration).
+        const create = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "legacy" }),
+          }),
+        );
+        expect(create.status).toBe(201);
+        const { threadId } = await create.json();
+
+        const before = await getTestChatThreadModelOverride(threadId);
+        expect(before.modelProviderId).toBeNull();
+        expect(before.selectedModel).toBeNull();
+
+        // Now pin the agent and resend without a per-run modelSelection.
+        // The send must succeed using the agent's current provider; the
+        // thread itself stays NULL until the user explicitly picks.
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          providerId,
+          "claude-opus-4-7",
+        );
+
+        const followUp = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "follow up", threadId }),
+          }),
+        );
+        expect(followUp.status).toBe(201);
+
+        const after = await getTestChatThreadModelOverride(threadId);
+        expect(after.modelProviderId).toBeNull();
+        expect(after.selectedModel).toBeNull();
+      });
+    });
+
+    describe("dispatch framework derivation (Issue #11645)", () => {
+      // Production-shape regression: thread eager-pinned to an
+      // openai-api-key provider on a compose that says framework:
+      // claude-code (the default) and has no explicit env block — the
+      // production case where the org provider injects the auth secret
+      // at runtime. Pre-fix, the dispatched runner_job_queue entry
+      // carried cliAgentType="claude-code" and launched the wrong
+      // binary. The fix wires resolvedFramework through
+      // ExecutionContext so the provider's framework wins.
+      it("dispatches cliAgentType=codex when pinned to openai-api-key provider on a claude-code compose", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("codex-pin"),
+          { noEnvironmentBlock: true },
+        );
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          composeAgentId,
+          providerId,
+          "gpt-5",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "kick off codex",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { runId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
+      });
+
+      it("dispatches cliAgentType=claude-code when no provider override forces a different framework", async () => {
+        // Default agent (no eager-pin) on a compose with no explicit
+        // env block — org default anthropic-api-key (from beforeEach)
+        // resolves to claude-code, matching the compose's framework.
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("default-cc"),
+          { noEnvironmentBlock: true },
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "default claude-code",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { runId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("claude-code");
+      });
+    });
+
+    describe("session continue framework derivation (Issue #11728)", () => {
+      // Production regression: chat thread eager-pinned to an
+      // openai-api-key provider on a compose declaring framework:
+      // claude-code. The first message dispatches cliAgentType=codex
+      // (from #11649), which the runner persists onto
+      // conversation.cliAgentType. Pre-fix, the second message failed
+      // because resolveSession compared the compose's literal framework
+      // ("claude-code") against the conversation's recorded framework
+      // ("codex"). Post-fix, the framework-compatibility check moved
+      // to build-zero-context and uses resolvedFramework.
+      it("dispatches cliAgentType=codex on the second message of an openai-pinned thread", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("continue-codex"),
+          { noEnvironmentBlock: true },
+        );
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+        const providerId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          composeAgentId,
+          providerId,
+          "gpt-5",
+        );
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "first",
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId, runId } = await first.json();
+        await context.mocks.flushAfter();
+
+        // Fake the runner completion: creates conversation +
+        // agent_session. Stamp cliAgentType=codex on the conversation
+        // to mirror the post-#11649 webhook behavior (which writes the
+        // actually-dispatched framework, not the compose's literal one).
+        const { agentSessionId } = await completeTestRun(user.userId, runId);
+        await setTestSessionFramework(agentSessionId, "codex");
+
+        const second = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "second",
+              threadId,
+            }),
+          }),
+        );
+        expect(second.status).toBe(201);
+        const { runId: secondRunId } = await second.json();
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(secondRunId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
+      });
+
+      it("fails the second-message run when resolvedFramework no longer matches the conversation's framework", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("continue-codex-mismatch"),
+          { noEnvironmentBlock: true },
+        );
+
+        // Force the cross-framework fallback path (no eager-pin on the
+        // agent or thread, so the route relies on the org default). On
+        // the first message the only default is openai-api-key (codex);
+        // on the second message we flip it back to anthropic-api-key
+        // (claude-code) to surface the framework mismatch against the
+        // conversation's persisted cliAgentType=codex.
+        const anthropicId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await deleteTestModelProvider(anthropicId);
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+
+        const first = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "first",
+            }),
+          }),
+        );
+        expect(first.status).toBe(201);
+        const { threadId, runId } = await first.json();
+        await context.mocks.flushAfter();
+
+        const { agentSessionId } = await completeTestRun(user.userId, runId);
+        await setTestSessionFramework(agentSessionId, "codex");
+
+        // Flip the org default back to anthropic-api-key so the
+        // resolved framework for the second message is claude-code.
+        const codexId = await getTestModelProviderIdByType(
+          user.orgId,
+          "openai-api-key",
+        );
+        await deleteTestModelProvider(codexId);
+        await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+
+        const second = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "second",
+              threadId,
+            }),
+          }),
+        );
+        // Phase 1 admits the run; the framework-compat check runs in
+        // Phase 2 (deferred dispatch) and surfaces as a failed run.
+        expect(second.status).toBe(201);
+        const { runId: secondRunId } = await second.json();
+        await context.mocks.flushAfter();
+
+        const failedRun = await getTestRun(secondRunId);
+        expect(failedRun.status).toBe("failed");
+        expect(failedRun.error).toMatch(
+          /framework changed from "codex" to "claude-code"/,
+        );
+      });
+    });
+
+    describe("admission cross-framework default (Issue #11684)", () => {
+      // Admission-layer regression for Epic #11520's residual gap:
+      // a claude-code compose with no env block, served by an org whose
+      // only isDefault provider is openai-api-key (codex framework). The
+      // request body carries no modelProviderId or modelSelection — the
+      // path the Web UI takes when the org has no claude-code default.
+      // Pre-fix, admission threw noModelProvider() and the UI rendered
+      // "Oops, something went wrong". Post-fix, admission falls back to
+      // the org's cross-framework default and the provider's framework
+      // propagates downstream via resolvedFramework.
+      it("admits a claude-code compose when the org's only default is openai-api-key (codex)", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("admit-cross-framework"),
+          { noEnvironmentBlock: true },
+        );
+
+        // Wipe the beforeEach-seeded anthropic provider so the org has
+        // only an openai-api-key (codex) provider as its default.
+        const anthropicId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await deleteTestModelProvider(anthropicId);
+        await insertOrgDefaultModelProvider(user.orgId, "openai-api-key");
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "claude-code compose, codex provider",
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { runId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
+      });
+
+      it("returns 422 NO_MODEL_PROVIDER when org has no default provider at all", async () => {
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("no-default-provider"),
+          { noEnvironmentBlock: true },
+        );
+
+        // Wipe the beforeEach-seeded anthropic provider so the org has
+        // no isDefault: true provider for any framework — the genuine
+        // "no provider configured at all" failure mode.
+        const anthropicId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await deleteTestModelProvider(anthropicId);
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "should fail",
+            }),
+          }),
+        );
+        expect(response.status).toBe(422);
+        const data = await response.json();
+        expect(data.error.code).toBe("NO_MODEL_PROVIDER");
       });
     });
 

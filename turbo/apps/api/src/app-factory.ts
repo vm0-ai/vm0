@@ -6,20 +6,26 @@ import { type Context, type MiddlewareHandler, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 // oxlint-disable-next-line no-restricted-imports -- app-factory needs the matched route resolver before next(); other signals files use the wrappers from signals/context/hono.
 import { routePath } from "hono/route";
+import { Readable } from "node:stream";
+import type { ReadableStream as NodeReadableStream } from "node:stream/web";
+import { request as undiciRequest, type Dispatcher } from "undici";
 
+import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
-import { logger } from "./lib/log";
+import { flushLogs, logger } from "./lib/log";
+import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
 import { ROUTES, type RouteEntry } from "./signals/route";
 import { isAbortError } from "./signals/utils";
 
 const L = logger("App");
 
-// Hop-by-hop headers must not be forwarded across a proxy hop. fetch() will
-// recompute Content-Length and ignore Host, but we strip them defensively.
+// Hop-by-hop headers (RFC 7230 §6.1) — must not be forwarded across a proxy
+// hop. We use undici.request rather than fetch so the upstream bytes (and
+// their content-encoding) flow through verbatim; that means content-length
+// stays meaningful and is NOT stripped here.
 const HOP_BY_HOP_HEADERS: Readonly<Record<string, true>> = {
   connection: true,
-  "content-length": true,
   host: true,
   "keep-alive": true,
   "proxy-authenticate": true,
@@ -30,61 +36,105 @@ const HOP_BY_HOP_HEADERS: Readonly<Record<string, true>> = {
   upgrade: true,
 };
 
+const PROXY_REQUEST_HEADERS: Readonly<Record<string, true>> = {
+  forwarded: true,
+  "x-forwarded-host": true,
+  "x-forwarded-port": true,
+  "x-forwarded-proto": true,
+};
+
 function isHopByHop(name: string): boolean {
   return Object.hasOwn(HOP_BY_HOP_HEADERS, name.toLowerCase());
 }
 
-function buildProxyRequest(context: Context, webUrl: string): Request {
-  const incoming = new URL(context.req.url);
-  const target = new URL(`${incoming.pathname}${incoming.search}`, webUrl);
+function isProxyRequestHeader(name: string): boolean {
+  return Object.hasOwn(PROXY_REQUEST_HEADERS, name.toLowerCase());
+}
 
-  const headers = new Headers();
-  for (const [key, value] of context.req.raw.headers) {
-    if (!isHopByHop(key)) {
-      headers.set(key, value);
-    }
-  }
+// Statuses for which the WHATWG Response constructor rejects a non-null body
+// argument (fetch spec: "null body status"). Even an empty stream is a
+// non-null body object, so we must hand `null` to `new Response` here — and
+// drain the upstream stream separately so undici can release the connection.
+const NULL_BODY_STATUSES: Readonly<Record<number, true>> = {
+  101: true,
+  103: true,
+  204: true,
+  205: true,
+  304: true,
+};
 
-  const init: RequestInit & { duplex?: "half" } = {
-    method: context.req.method,
-    headers,
-    redirect: "manual",
-    signal: context.req.raw.signal,
-  };
-
-  // GET/HEAD must not have a body. For everything else, stream the incoming
-  // body through — `duplex: "half"` is required by undici when sending a
-  // ReadableStream body.
-  if (context.req.method !== "GET" && context.req.method !== "HEAD") {
-    init.body = context.req.raw.body;
-    init.duplex = "half";
-  }
-
-  return new Request(target, init);
+function isNullBodyStatus(status: number): boolean {
+  return Object.hasOwn(NULL_BODY_STATUSES, status);
 }
 
 async function proxyToWeb(context: Context, webUrl: string): Promise<Response> {
-  const upstream = await fetch(buildProxyRequest(context, webUrl));
-  // Strip hop-by-hop headers from the upstream response too, so the runtime
-  // can set its own Content-Length / Transfer-Encoding for our reply.
-  const headers = new Headers();
-  for (const [key, value] of upstream.headers) {
-    if (!isHopByHop(key)) {
-      headers.set(key, value);
+  const incoming = new URL(context.req.url);
+  const target = new URL(`${incoming.pathname}${incoming.search}`, webUrl);
+
+  const requestHeaders: Record<string, string> = {};
+  for (const [key, value] of context.req.raw.headers) {
+    if (!isHopByHop(key) && !isProxyRequestHeader(key)) {
+      requestHeaders[key] = value;
     }
   }
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers,
+
+  // GET/HEAD must not carry a body. For everything else, adapt the incoming
+  // web ReadableStream into a Node Readable for undici.
+  const hasBody = context.req.method !== "GET" && context.req.method !== "HEAD";
+  // The dom and node:stream/web flavours of ReadableStream are the same
+  // runtime object; TS surfaces them as distinct types because tsconfig pulls
+  // in lib.dom alongside @types/node, so coerce through unknown.
+  const webBody = context.req.raw.body as unknown as NodeReadableStream | null;
+  const requestBody =
+    hasBody && webBody ? Readable.fromWeb(webBody) : undefined;
+
+  // undici.request — unlike fetch — does not auto-decompress, so compressed
+  // upstream bytes flow through verbatim and the original content-encoding
+  // header stays accurate.
+  const upstream = await undiciRequest(target, {
+    method: context.req.method as Dispatcher.HttpMethod,
+    headers: requestHeaders,
+    body: requestBody,
+    signal: context.req.raw.signal,
+  });
+
+  const responseHeaders = new Headers();
+  for (const [name, value] of Object.entries(upstream.headers)) {
+    if (value === undefined || name === "set-cookie" || isHopByHop(name)) {
+      continue;
+    }
+    const values = Array.isArray(value) ? value : [value];
+    for (const v of values) {
+      responseHeaders.append(name, v);
+    }
+  }
+  const setCookie = upstream.headers["set-cookie"];
+  if (setCookie) {
+    const list = Array.isArray(setCookie) ? setCookie : [setCookie];
+    for (const cookie of list) {
+      responseHeaders.append("set-cookie", cookie);
+    }
+  }
+
+  if (isNullBodyStatus(upstream.statusCode)) {
+    upstream.body.resume();
+    return new Response(null, {
+      status: upstream.statusCode,
+      headers: responseHeaders,
+    });
+  }
+
+  return new Response(Readable.toWeb(upstream.body) as ReadableStream, {
+    status: upstream.statusCode,
+    headers: responseHeaders,
   });
 }
 
 // Stamp the matched route template into OTel baggage so child spans (db
 // queries, outbound fetches) can carry `http.route` without reaching back
 // into the parent SERVER span. Any code further down the call tree —
-// including PgInstrumentation's requestHook in instrument.ts — reads it
-// from `propagation.getActiveBaggage()`.
+// including the pg pool wrapper in `lib/db.ts` — reads it from
+// `propagation.getActiveBaggage()`.
 //
 // `c.req.routePath` reflects the *current* middleware's pattern (here `"*"`)
 // until next() returns, but we need the matched route *before* next() so the
@@ -147,6 +197,18 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
   // `http.route` for direct slicing without trace_id joins.
   app.use("*", httpInstrumentationMiddleware({ serviceName: "vm0-api" }));
   app.use("*", httpRouteBaggage);
+  // Browser cross-origin requests (e.g. https://app.vm0.ai → api.vm0.ai). Must
+  // run before the route handlers so OPTIONS preflight short-circuits without
+  // matching a registered method, and so registered route responses receive
+  // Access-Control-Allow-Origin without relying on the legacy web proxy.
+  app.use("*", corsMiddleware);
+
+  // Flush buffered Axiom logs after the response is sent so logging doesn't
+  // add latency to the user-visible request.
+  app.use("*", async (c, next) => {
+    await next();
+    waitUntil(flushLogs());
+  });
 
   for (const { route, handler } of routes) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
@@ -157,11 +219,7 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
   // match a registered route to VM0_WEB_URL so legacy traffic keeps working
   // until each endpoint is migrated.
   app.notFound((context) => {
-    const webUrl = env("VM0_WEB_URL");
-    if (!webUrl) {
-      return context.json({ error: "Not Found" }, 404);
-    }
-    return proxyToWeb(context, webUrl);
+    return proxyToWeb(context, env("VM0_WEB_URL"));
   });
 
   return app;

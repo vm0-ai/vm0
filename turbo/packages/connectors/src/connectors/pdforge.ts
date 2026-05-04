@@ -4,6 +4,7 @@ export const pdforge = {
   pdforge: {
     label: "PDForge",
     category: "data-automation-infrastructure",
+    generation: ["document"],
     environmentMapping: {
       PDFORGE_API_KEY: "$secrets.PDFORGE_API_KEY",
     },

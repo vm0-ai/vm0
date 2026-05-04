@@ -50,6 +50,9 @@ export function UsageInsightSchedulesTable({
   }
 
   const totalCount = schedules.length + scheduleOtherCount;
+  const totalCredits = schedules.reduce((s, r) => {
+    return s + r.credits;
+  }, scheduleOtherCredits);
   const maxValue = Math.max(
     1,
     ...schedules.map((s) => {
@@ -67,6 +70,10 @@ export function UsageInsightSchedulesTable({
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalCount}
+      </p>
+      <p className="text-sm opacity-60 mt-2">
+        {totalCount === 1 ? "schedule" : "schedules"} used{" "}
+        {formatValue(totalCredits)} {totalCredits === 1 ? "credit" : "credits"}
       </p>
       <TooltipProvider delayDuration={300}>
         <ul className="flex flex-col gap-2.5 mt-4">

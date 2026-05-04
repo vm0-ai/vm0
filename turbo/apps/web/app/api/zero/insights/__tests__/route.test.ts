@@ -105,6 +105,8 @@ describe("GET /api/zero/insights", () => {
     expect(data.days[0].date).toBe(yesterday);
     expect(data.days[0].agents).toHaveLength(1);
     expect(data.days[0].agents[0].agentName).toBe("Test Agent");
+    expect(data.days[0].schedules).toEqual([]);
+    expect(data.days[0].chats).toEqual([]);
     expect(data.days[0].creditsUsed).toBe(100);
     expect(data.totalCredits).toBe(100);
     expect(data.totalRuns).toBe(5);

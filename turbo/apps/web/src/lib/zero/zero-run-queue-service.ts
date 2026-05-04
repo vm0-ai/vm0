@@ -33,6 +33,7 @@ import {
   validateComposeRequirements,
   checkOrgCreditsForRun,
   checkModelProviderConfigured,
+  resolveProviderTypeForAdmission,
 } from "./zero-run-policy";
 import {
   buildAndDispatchRun,
@@ -597,9 +598,20 @@ export async function dispatchQueuedZeroRun(
     composeContent,
   );
 
+  const composeAgents = composeContent?.agents
+    ? Object.values(composeContent.agents)
+    : [];
+  const composeFramework = composeAgents[0]?.framework ?? "claude-code";
+  const admissionProviderType = await resolveProviderTypeForAdmission({
+    orgId: params.orgId,
+    modelProvider: params.modelProvider,
+    modelProviderId: params.modelProviderId,
+    composeFramework,
+  });
+
   // Validate compose requirements for new runs only
   if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(composeContent);
+    await validateComposeRequirements(composeContent, admissionProviderType);
   }
 
   // Register callbacks early so they persist even if context building fails

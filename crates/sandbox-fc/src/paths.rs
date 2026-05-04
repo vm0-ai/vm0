@@ -1,3 +1,10 @@
+//! Canonical path helpers for sandbox-fc on-disk and runtime layout.
+//!
+//! Factory workspaces live under the configured factory base directory, while
+//! runtime sockets live under `/run/vm0/sock/<id>/`. Snapshot outputs use fixed
+//! artifact names such as `snapshot.bin`, `memory.bin`, `cow.img`, and the
+//! `cow.img.bitmap` dirty-bitmap sidecar.
+
 use std::path::{Path, PathBuf};
 
 use crate::SnapshotConfig;
@@ -76,10 +83,12 @@ impl FactoryPaths {
         Self { base_dir }
     }
 
+    /// Directory containing per-sandbox workspace directories.
     pub fn workspaces(&self) -> PathBuf {
         self.base_dir.join("workspaces")
     }
 
+    /// Workspace directory for one sandbox or snapshot work tree.
     pub fn workspace(&self, id: &str) -> PathBuf {
         self.workspaces().join(id)
     }
@@ -99,6 +108,7 @@ impl SandboxPaths {
         &self.workspace
     }
 
+    /// Serialized Firecracker configuration for this sandbox workspace.
     pub fn config(&self) -> PathBuf {
         self.workspace.join("config.json")
     }
@@ -124,18 +134,22 @@ impl SockPaths {
         &self.dir
     }
 
+    /// Firecracker API Unix-domain socket, `api.sock`.
     pub fn api_sock(&self) -> PathBuf {
         self.dir.join("api.sock")
     }
 
+    /// Directory used as the base for guest vsock Unix-domain sockets.
     pub fn vsock_dir(&self) -> PathBuf {
         self.dir.join("vsock")
     }
 
+    /// Host-side vsock listener socket, `vsock/vsock.sock`.
     pub fn vsock(&self) -> PathBuf {
         self.vsock_dir().join("vsock.sock")
     }
 
+    /// VM0 control server Unix-domain socket, `control.sock`.
     pub fn control_sock(&self) -> PathBuf {
         self.dir.join("control.sock")
     }
@@ -155,18 +169,22 @@ impl SnapshotOutputPaths {
         &self.output_dir
     }
 
+    /// Firecracker VM state snapshot, `snapshot.bin`.
     pub fn snapshot(&self) -> PathBuf {
         self.output_dir.join("snapshot.bin")
     }
 
+    /// Firecracker guest memory snapshot, `memory.bin`.
     pub fn memory(&self) -> PathBuf {
         self.output_dir.join("memory.bin")
     }
 
+    /// Root drive COW image captured for the snapshot, `cow.img`.
     pub fn cow(&self) -> PathBuf {
         self.output_dir.join("cow.img")
     }
 
+    /// Dirty-bitmap sidecar for `cow.img`, stored as `cow.img.bitmap`.
     pub fn cow_bitmap(&self) -> PathBuf {
         self.output_dir.join("cow.img.bitmap")
     }

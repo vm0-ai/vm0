@@ -230,7 +230,7 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/_/usage", setup: noop$ },
+          { path: "/usage", setup: noop$ },
           { path: "{/*path}", setup: noop$ },
         ],
         context.signal,

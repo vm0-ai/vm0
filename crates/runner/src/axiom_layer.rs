@@ -43,11 +43,12 @@ const FLUSH_DEADLINE: Duration = Duration::from_secs(15);
 /// stuck ingest call can hold up the dispatcher's batch loop. Must stay
 /// `<= FLUSH_DEADLINE` (see above).
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
-// Compile-time enforcement of the FLUSH_DEADLINE >= HTTP_TIMEOUT invariant —
-// without this, a slow flush gets aborted mid-request during shutdown and
-// the final batch (usually the most valuable one) never reaches Axiom.
+// Compile-time enforcement of the full-precision FLUSH_DEADLINE >=
+// HTTP_TIMEOUT invariant — without this, a slow flush gets aborted
+// mid-request during shutdown and the final batch (usually the most valuable
+// one) never reaches Axiom.
 const _: () = assert!(
-    FLUSH_DEADLINE.as_secs() >= HTTP_TIMEOUT.as_secs(),
+    FLUSH_DEADLINE.as_nanos() >= HTTP_TIMEOUT.as_nanos(),
     "FLUSH_DEADLINE must be >= HTTP_TIMEOUT; see FLUSH_DEADLINE doc comment",
 );
 /// Max bytes we'll serialize from a single `Debug`-formatted field.

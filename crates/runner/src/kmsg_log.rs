@@ -9,10 +9,14 @@
 use std::process::Stdio;
 
 use chrono::{DateTime, Utc};
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::network_log_drain::{
+    NetworkLogDrainProducer, NetworkLogDrainRequest, ReadyLine, poll_next_line_ready,
+};
 use crate::network_log_manager::NetworkLogManager;
 
 /// Prefix used in iptables `--log-prefix` to identify our log lines.
@@ -24,6 +28,7 @@ pub struct KmsgHandle {
     cancel: CancellationToken,
     task: tokio::task::JoinHandle<()>,
     child: Option<tokio::process::Child>,
+    drain: NetworkLogDrainProducer,
 }
 
 impl KmsgHandle {
@@ -43,11 +48,29 @@ impl KmsgHandle {
     pub fn noop() -> Self {
         let cancel = CancellationToken::new();
         let token = cancel.clone();
+        let (drain, mut drain_rx) = NetworkLogDrainProducer::channel("kmsg");
         Self {
             cancel,
-            task: tokio::spawn(async move { token.cancelled().await }),
+            task: tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = token.cancelled() => break,
+                        request = drain_rx.recv() => {
+                            let Some(request) = request else {
+                                break;
+                            };
+                            request.ack();
+                        }
+                    }
+                }
+            }),
             child: None,
+            drain,
         }
+    }
+
+    pub fn drain_producer(&self) -> NetworkLogDrainProducer {
+        self.drain.clone()
     }
 }
 
@@ -83,6 +106,7 @@ pub fn spawn(network_log_manager: NetworkLogManager) -> std::io::Result<KmsgHand
 
     let cancel = CancellationToken::new();
     let token = cancel.clone();
+    let (drain, drain_rx) = NetworkLogDrainProducer::channel("kmsg");
 
     // Log stderr in a background task so dmesg errors are visible.
     // Shares the cancel token so the task exits promptly on shutdown.
@@ -108,12 +132,13 @@ pub fn spawn(network_log_manager: NetworkLogManager) -> std::io::Result<KmsgHand
     }
 
     let task = tokio::spawn(async move {
-        run_loop(network_log_manager, token, stdout).await;
+        run_loop(network_log_manager, token, stdout, drain_rx).await;
     });
     Ok(KmsgHandle {
         cancel,
         task,
         child: Some(child),
+        drain,
     })
 }
 
@@ -123,11 +148,39 @@ async fn run_loop(
     network_log_manager: NetworkLogManager,
     cancel: CancellationToken,
     stdout: tokio::process::ChildStdout,
+    drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
 ) {
-    let mut lines = tokio::io::BufReader::new(stdout).lines();
+    run_reader(
+        network_log_manager,
+        cancel,
+        tokio::io::BufReader::new(stdout),
+        drain_rx,
+    )
+    .await;
+}
+
+async fn run_reader<R>(
+    network_log_manager: NetworkLogManager,
+    cancel: CancellationToken,
+    reader: R,
+    mut drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
+) where
+    R: AsyncBufRead + Unpin,
+{
+    let mut lines = reader.lines();
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
+            request = drain_rx.recv() => {
+                let Some(request) = request else {
+                    break;
+                };
+                let stop = drain_ready_lines(&mut lines, &network_log_manager).await;
+                request.ack();
+                if stop {
+                    break;
+                }
+            }
             result = lines.next_line() => {
                 let line = match result {
                     Ok(Some(l)) => l,
@@ -139,14 +192,39 @@ async fn run_loop(
                     continue;
                 }
 
-                if let Some(entry) = parse_log_message(&line) {
-                    // Capture the timestamp before handing the row to the manager so
-                    // it reflects observation time, not delayed write time.
-                    let timestamp = Utc::now();
-                    append_log_entry(&network_log_manager, &entry, timestamp).await;
-                }
+                handle_kmsg_line(&network_log_manager, &line).await;
             }
         }
+    }
+}
+
+async fn drain_ready_lines<R>(
+    lines: &mut tokio::io::Lines<R>,
+    network_log_manager: &NetworkLogManager,
+) -> bool
+where
+    R: AsyncBufRead + Unpin,
+{
+    loop {
+        match poll_next_line_ready(lines) {
+            Ok(ReadyLine::Line(line)) => handle_kmsg_line(network_log_manager, &line).await,
+            Ok(ReadyLine::Pending) => return false,
+            Ok(ReadyLine::Eof) | Err(_) => return true,
+        }
+    }
+}
+
+async fn handle_kmsg_line(network_log_manager: &NetworkLogManager, line: &str) {
+    // Fast check before acquiring lock.
+    if !line.contains(LOG_PREFIX) {
+        return;
+    }
+
+    if let Some(entry) = parse_log_message(line) {
+        // Capture the timestamp before handing the row to the manager so
+        // it reflects observation time, not delayed write time.
+        let timestamp = Utc::now();
+        append_log_entry(network_log_manager, &entry, timestamp).await;
     }
 }
 
@@ -236,6 +314,9 @@ fn network_log_row(entry: &LogEntry, timestamp: DateTime<Utc>) -> serde_json::Va
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::RunId;
+    use crate::network_log_drain::NetworkLogDrainContext;
+    use tokio::io::AsyncWriteExt;
 
     #[test]
     fn parse_udp_log_message() {
@@ -358,7 +439,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.jsonl");
         let manager = NetworkLogManager::new();
-        manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         let entry = LogEntry {
             source_ip: "10.200.0.2".to_string(),
             dst_ip: "8.8.8.8".to_string(),
@@ -398,7 +479,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("multi.jsonl");
         let manager = NetworkLogManager::new();
-        manager.register_source_ip("10.0.0.1", path.clone()).await;
+        let _session = manager.register_source_ip("10.0.0.1", path.clone()).await;
         for dst in ["8.8.8.8", "1.1.1.1", "9.9.9.9"] {
             assert!(
                 append_log_entry(
@@ -457,6 +538,53 @@ mod tests {
         );
         manager.flush_path(&path).await;
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn drain_barrier_processes_queued_kmsg_line_before_ack() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("kmsg.jsonl");
+        let manager = NetworkLogManager::new();
+        let _session = manager.register_source_ip("10.0.0.1", path.clone()).await;
+        let cancel = CancellationToken::new();
+        let (producer, drain_rx) = NetworkLogDrainProducer::channel("kmsg-test");
+        let (mut writer, reader) = tokio::io::duplex(1024);
+        let task = tokio::spawn(run_reader(
+            manager.clone(),
+            cancel.clone(),
+            tokio::io::BufReader::new(reader),
+            drain_rx,
+        ));
+
+        writer
+            .write_all(
+                b"[12345.678901] VM0:10.0.0.1:IN=vm0-ve OUT=ens5 SRC=10.0.0.1 DST=8.8.8.8 LEN=64 PROTO=UDP SPT=45678 DPT=53\n",
+            )
+            .await
+            .unwrap();
+
+        producer
+            .drain(
+                NetworkLogDrainContext {
+                    run_id: RunId::nil(),
+                    source_ip: "10.0.0.1",
+                    path: &path,
+                    generation: 1,
+                },
+                std::time::Duration::from_secs(1),
+            )
+            .await;
+        manager.flush_path(&path).await;
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(parsed["type"], "udp");
+        assert_eq!(parsed["host"], "8.8.8.8");
+        assert_eq!(parsed["port"], 53);
+
+        cancel.cancel();
+        drop(writer);
+        task.await.unwrap();
     }
 
     #[test]

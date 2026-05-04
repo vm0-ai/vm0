@@ -242,11 +242,15 @@ pub fn encode_spawn_watch(
 pub fn encode_exec_result(exit_code: i32, stdout: &[u8], stderr: &[u8]) -> Vec<u8> {
     let mut p = Vec::with_capacity(12 + stdout.len() + stderr.len());
     p.extend_from_slice(&exit_code.to_be_bytes());
+    append_output_pair(&mut p, stdout, stderr);
+    p
+}
+
+fn append_output_pair(p: &mut Vec<u8>, stdout: &[u8], stderr: &[u8]) {
     p.extend_from_slice(&(stdout.len() as u32).to_be_bytes());
     p.extend_from_slice(stdout);
     p.extend_from_slice(&(stderr.len() as u32).to_be_bytes());
     p.extend_from_slice(stderr);
-    p
 }
 
 /// Encode write_file payload: `[2B path_len][path][1B flags][4B content_len][content]`.
@@ -304,10 +308,7 @@ pub fn encode_process_exit(pid: u32, exit_code: i32, stdout: &[u8], stderr: &[u8
     let mut p = Vec::with_capacity(16 + stdout.len() + stderr.len());
     p.extend_from_slice(&pid.to_be_bytes());
     p.extend_from_slice(&exit_code.to_be_bytes());
-    p.extend_from_slice(&(stdout.len() as u32).to_be_bytes());
-    p.extend_from_slice(stdout);
-    p.extend_from_slice(&(stderr.len() as u32).to_be_bytes());
-    p.extend_from_slice(stderr);
+    append_output_pair(&mut p, stdout, stderr);
     p
 }
 
@@ -336,14 +337,17 @@ pub fn encode_error(message: &str) -> Vec<u8> {
 // Decode
 // ---------------------------------------------------------------------------
 
-/// Decode exec/spawn_watch shared fields. Returns `(decoded, consumed_offset)`.
+struct DecodedExecInner<'a> {
+    exec: DecodedExec<'a>,
+    offset: usize,
+    raw_flags: u8,
+}
+
+/// Decode exec/spawn_watch shared fields.
 ///
 /// The env section is optional: if the payload ends right after the command,
 /// an empty vec is returned (backward-compatible with old encoders).
-fn decode_exec_inner(
-    payload: &[u8],
-    sudo_flag: u8,
-) -> Result<(DecodedExec<'_>, usize), ProtocolError> {
+fn decode_exec_inner(payload: &[u8], sudo_flag: u8) -> Result<DecodedExecInner<'_>, ProtocolError> {
     let timeout_ms =
         read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
     let flags =
@@ -360,15 +364,16 @@ fn decode_exec_inner(
 
     let env_start = 9 + cmd_len;
     if env_start >= payload.len() {
-        return Ok((
-            DecodedExec {
+        return Ok(DecodedExecInner {
+            exec: DecodedExec {
                 timeout_ms,
                 command,
                 env: Vec::new(),
                 sudo,
             },
-            env_start,
-        ));
+            offset: env_start,
+            raw_flags: flags,
+        });
     }
 
     let env_count = read_u32_at(payload, env_start)
@@ -407,20 +412,21 @@ fn decode_exec_inner(
         env.push((key, val));
     }
 
-    Ok((
-        DecodedExec {
+    Ok(DecodedExecInner {
+        exec: DecodedExec {
             timeout_ms,
             command,
             env,
             sudo,
         },
         offset,
-    ))
+        raw_flags: flags,
+    })
 }
 
-/// Decode exec payload. Returns `(timeout_ms, command, env, sudo)`.
+/// Decode exec payload into a [`DecodedExec`] struct.
 pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
-    decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|(d, _)| d)
+    decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|d| d.exec)
 }
 
 /// Decode spawn_watch payload. Extends exec fields with streaming metadata.
@@ -429,10 +435,12 @@ pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
 /// The log_path section is optional — if the payload ends after the exec
 /// fields, `stdout_log_path` is `None`.
 pub fn decode_spawn_watch(payload: &[u8]) -> Result<DecodedSpawnWatch<'_>, ProtocolError> {
-    let (exec, offset) = decode_exec_inner(payload, SPAWN_WATCH_FLAG_SUDO)?;
-    let flags =
-        read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload("exec payload too short"))?;
-    let stream_flag = (flags & SPAWN_WATCH_FLAG_STREAM_STDOUT) != 0;
+    let DecodedExecInner {
+        exec,
+        offset,
+        raw_flags,
+    } = decode_exec_inner(payload, SPAWN_WATCH_FLAG_SUDO)?;
+    let stream_flag = (raw_flags & SPAWN_WATCH_FLAG_STREAM_STDOUT) != 0;
     let stdout_log_path = if offset == payload.len() {
         None
     } else if offset + 2 <= payload.len() {
@@ -474,24 +482,67 @@ pub fn decode_spawn_watch(payload: &[u8]) -> Result<DecodedSpawnWatch<'_>, Proto
 pub fn decode_exec_result(payload: &[u8]) -> Result<(i32, &[u8], &[u8]), ProtocolError> {
     let exit_code =
         read_i32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("exec_result too short"))?;
-    let stdout_len = read_u32_at(payload, 4)
-        .ok_or(ProtocolError::InvalidPayload("exec_result too short"))?
-        as usize;
-    let stderr_off = 8 + stdout_len;
-    let stdout = payload
-        .get(8..stderr_off)
-        .ok_or(ProtocolError::InvalidPayload(
-            "exec_result stdout truncated",
-        ))?;
-    let stderr_len = read_u32_at(payload, stderr_off)
-        .ok_or(ProtocolError::InvalidPayload("exec_result too short"))?
-        as usize;
-    let stderr = payload
-        .get(stderr_off + 4..stderr_off + 4 + stderr_len)
-        .ok_or(ProtocolError::InvalidPayload(
-            "exec_result stderr truncated",
-        ))?;
+    let (stdout, stderr) = decode_output_pair_at(payload, 4, OutputPairContext::ExecResult)?;
     Ok((exit_code, stdout, stderr))
+}
+
+#[derive(Clone, Copy)]
+enum OutputPairContext {
+    ExecResult,
+    ProcessExit,
+}
+
+impl OutputPairContext {
+    fn too_short(self) -> &'static str {
+        match self {
+            Self::ExecResult => "exec_result too short",
+            Self::ProcessExit => "process_exit too short",
+        }
+    }
+
+    fn stdout_truncated(self) -> &'static str {
+        match self {
+            Self::ExecResult => "exec_result stdout truncated",
+            Self::ProcessExit => "process_exit stdout truncated",
+        }
+    }
+
+    fn stderr_truncated(self) -> &'static str {
+        match self {
+            Self::ExecResult => "exec_result stderr truncated",
+            Self::ProcessExit => "process_exit stderr truncated",
+        }
+    }
+}
+
+fn decode_output_pair_at(
+    payload: &[u8],
+    offset: usize,
+    ctx: OutputPairContext,
+) -> Result<(&[u8], &[u8]), ProtocolError> {
+    let stdout_len = read_u32_at(payload, offset)
+        .ok_or(ProtocolError::InvalidPayload(ctx.too_short()))? as usize;
+    let stdout_start = offset
+        .checked_add(4)
+        .ok_or(ProtocolError::InvalidPayload(ctx.stdout_truncated()))?;
+    let stderr_len_offset = stdout_start
+        .checked_add(stdout_len)
+        .ok_or(ProtocolError::InvalidPayload(ctx.stdout_truncated()))?;
+    let stdout = payload
+        .get(stdout_start..stderr_len_offset)
+        .ok_or(ProtocolError::InvalidPayload(ctx.stdout_truncated()))?;
+    let stderr_len = read_u32_at(payload, stderr_len_offset)
+        .ok_or(ProtocolError::InvalidPayload(ctx.too_short()))? as usize;
+    let stderr_start = stderr_len_offset
+        .checked_add(4)
+        .ok_or(ProtocolError::InvalidPayload(ctx.stderr_truncated()))?;
+    let stderr_end = stderr_start
+        .checked_add(stderr_len)
+        .ok_or(ProtocolError::InvalidPayload(ctx.stderr_truncated()))?;
+    let stderr = payload
+        .get(stderr_start..stderr_end)
+        .ok_or(ProtocolError::InvalidPayload(ctx.stderr_truncated()))?;
+    Ok((stdout, stderr))
 }
 
 /// Decode write_file payload. Returns `(path, content, sudo, append)`.
@@ -570,23 +621,7 @@ pub fn decode_process_exit(payload: &[u8]) -> Result<ProcessExit<'_>, ProtocolEr
         read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload("process_exit too short"))?;
     let exit_code =
         read_i32_at(payload, 4).ok_or(ProtocolError::InvalidPayload("process_exit too short"))?;
-    let stdout_len = read_u32_at(payload, 8)
-        .ok_or(ProtocolError::InvalidPayload("process_exit too short"))?
-        as usize;
-    let stderr_off = 12 + stdout_len;
-    let stdout = payload
-        .get(12..stderr_off)
-        .ok_or(ProtocolError::InvalidPayload(
-            "process_exit stdout truncated",
-        ))?;
-    let stderr_len = read_u32_at(payload, stderr_off)
-        .ok_or(ProtocolError::InvalidPayload("process_exit too short"))?
-        as usize;
-    let stderr = payload
-        .get(stderr_off + 4..stderr_off + 4 + stderr_len)
-        .ok_or(ProtocolError::InvalidPayload(
-            "process_exit stderr truncated",
-        ))?;
+    let (stdout, stderr) = decode_output_pair_at(payload, 8, OutputPairContext::ProcessExit)?;
     Ok((pid, exit_code, stdout, stderr))
 }
 
@@ -1060,6 +1095,80 @@ mod tests {
     #[test]
     fn decode_exec_result_too_short() {
         assert!(decode_exec_result(&[0; 8]).is_err());
+    }
+
+    #[test]
+    fn decode_exec_result_rejects_truncated_stdout() {
+        let mut payload = 0_i32.to_be_bytes().to_vec();
+        payload.extend_from_slice(&3_u32.to_be_bytes());
+        payload.extend_from_slice(b"ab");
+
+        let err = decode_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("exec_result stdout truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_exec_result_rejects_truncated_stderr() {
+        let mut payload = 0_i32.to_be_bytes().to_vec();
+        payload.extend_from_slice(&0_u32.to_be_bytes());
+        payload.extend_from_slice(&3_u32.to_be_bytes());
+        payload.extend_from_slice(b"xy");
+
+        let err = decode_exec_result(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("exec_result stderr truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_process_exit_rejects_truncated_stdout() {
+        let mut payload = 123_u32.to_be_bytes().to_vec();
+        payload.extend_from_slice(&1_i32.to_be_bytes());
+        payload.extend_from_slice(&3_u32.to_be_bytes());
+        payload.extend_from_slice(b"ab");
+
+        let err = decode_process_exit(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_exit stdout truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_process_exit_rejects_truncated_stderr() {
+        let mut payload = 123_u32.to_be_bytes().to_vec();
+        payload.extend_from_slice(&1_i32.to_be_bytes());
+        payload.extend_from_slice(&0_u32.to_be_bytes());
+        payload.extend_from_slice(&3_u32.to_be_bytes());
+        payload.extend_from_slice(b"xy");
+
+        let err = decode_process_exit(&payload).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::InvalidPayload("process_exit stderr truncated")
+        ));
+    }
+
+    #[test]
+    fn decode_output_pair_messages_allow_trailing_bytes() {
+        let mut exec_result = encode_exec_result(0, b"out", b"err");
+        exec_result.extend_from_slice(b"trailing");
+        let (code, stdout, stderr) = decode_exec_result(&exec_result).unwrap();
+        assert_eq!(code, 0);
+        assert_eq!(stdout, b"out");
+        assert_eq!(stderr, b"err");
+
+        let mut process_exit = encode_process_exit(123, 1, b"out", b"err");
+        process_exit.extend_from_slice(b"trailing");
+        let (pid, code, stdout, stderr) = decode_process_exit(&process_exit).unwrap();
+        assert_eq!(pid, 123);
+        assert_eq!(code, 1);
+        assert_eq!(stdout, b"out");
+        assert_eq!(stderr, b"err");
     }
 
     #[test]

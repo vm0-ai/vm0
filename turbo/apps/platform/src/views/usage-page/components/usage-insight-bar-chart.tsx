@@ -49,8 +49,10 @@ function formatCategoryLabel(key: string): string {
 const RANGE_LABELS = {
   today: "Today",
   yesterday: "Yesterday",
+  day: "Selected day",
   "7d": "Last 7 days",
   "28d": "Last 28 days",
+  "30d": "Last 30 days",
 } as const satisfies Record<InsightRange, string>;
 
 // --- Helpers ---
@@ -90,7 +92,7 @@ function formatBucketLabel(ts: string, range: string): string {
   if (Number.isNaN(d.getTime())) {
     return ts;
   }
-  if (range === "today" || range === "yesterday") {
+  if (range === "today" || range === "yesterday" || range === "day") {
     return String(d.getUTCHours()).padStart(2, "0");
   }
   return d.toLocaleDateString("en-US", {

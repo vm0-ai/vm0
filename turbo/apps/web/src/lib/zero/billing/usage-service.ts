@@ -16,7 +16,6 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { clerkClient } from "@clerk/nextjs/server";
 import {
-  buildLegacyRunUsageTotalsSubquery,
   buildUsageEventRunUsageTotalsSubquery,
   getMemberUsageTotals,
   hasRunUsageTotals,
@@ -29,7 +28,7 @@ import {
 
 /**
  * Get per-member token usage aggregation for the current billing period.
- * Includes processed credit_usage and usage_event records.
+ * Includes processed usage_event records.
  * Free tier orgs (no billing period) get { period: null, members: [] }.
  */
 export async function getUsageMembers(
@@ -169,7 +168,7 @@ interface UsageRunsOptions {
 
 /**
  * Get per-run usage records for an org with pagination and filtering.
- * Includes runs with processed credit_usage or run-linked usage_event records.
+ * Includes runs with processed run-linked usage_event records.
  */
 export async function getUsageRuns(
   orgId: string,
@@ -177,7 +176,6 @@ export async function getUsageRuns(
 ): Promise<UsageRunsResponse> {
   const db = globalThis.services.db;
 
-  const legacyUsage = buildLegacyRunUsageTotalsSubquery(db, orgId);
   const eventUsage = buildUsageEventRunUsageTotalsSubquery(db, orgId);
 
   // Build filter conditions
@@ -200,7 +198,6 @@ export async function getUsageRuns(
   const [countResult] = await db
     .select({ total: count() })
     .from(agentRuns)
-    .leftJoin(legacyUsage, eq(agentRuns.id, legacyUsage.runId))
     .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
     .leftJoin(
       agentComposeVersions,
@@ -210,7 +207,7 @@ export async function getUsageRuns(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .where(and(...conditions, hasRunUsageTotals(legacyUsage, eventUsage)));
+    .where(and(...conditions, hasRunUsageTotals(eventUsage)));
 
   const total = countResult?.total ?? 0;
 
@@ -228,14 +225,13 @@ export async function getUsageRuns(
       prompt: agentRuns.prompt,
       triggerSource: zeroRuns.triggerSource,
       agentName: zeroAgents.displayName,
-      inputTokens: mergedRunInputTokens(legacyUsage, eventUsage),
-      outputTokens: mergedRunOutputTokens(legacyUsage, eventUsage),
-      cacheTokens: mergedRunCacheTokens(legacyUsage, eventUsage),
-      creditsCharged: mergedRunCreditsCharged(legacyUsage, eventUsage),
-      model: mergedRunModel(legacyUsage, eventUsage),
+      inputTokens: mergedRunInputTokens(eventUsage),
+      outputTokens: mergedRunOutputTokens(eventUsage),
+      cacheTokens: mergedRunCacheTokens(eventUsage),
+      creditsCharged: mergedRunCreditsCharged(eventUsage),
+      model: mergedRunModel(eventUsage),
     })
     .from(agentRuns)
-    .leftJoin(legacyUsage, eq(agentRuns.id, legacyUsage.runId))
     .leftJoin(eventUsage, eq(agentRuns.id, eventUsage.runId))
     .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
     .leftJoin(
@@ -247,7 +243,7 @@ export async function getUsageRuns(
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
     .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(and(...conditions, hasRunUsageTotals(legacyUsage, eventUsage)))
+    .where(and(...conditions, hasRunUsageTotals(eventUsage)))
     .orderBy(desc(agentRuns.createdAt))
     .limit(options.pageSize)
     .offset(offset);

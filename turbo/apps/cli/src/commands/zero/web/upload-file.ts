@@ -23,7 +23,11 @@ Notes:
   - Returned URL is permanent (serves a short-lived signed redirect on access)
   - Safe to persist in chat messages or share over external channels
   - Max file size: 1 GB
-  - Allowed types: png / jpeg / gif / webp / svg / mp4 / webm / mov / pdf / txt / csv / md / html / json`,
+  - Allowed image types: png / jpeg / gif / webp / avif / svg
+  - Allowed video types: mp4 / webm / mov
+  - Allowed audio types: aac / flac / m4a / mp3 / mp4 / mpga / ogg / opus / wav / webm
+  - Allowed document/text types: pdf / txt / csv / md / html / json
+  - Use --content-type for ambiguous extensions like .mp4 or .webm when needed`,
   )
   .action(
     withErrorHandler(

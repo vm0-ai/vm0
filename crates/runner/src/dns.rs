@@ -18,10 +18,14 @@
 use std::process::Stdio;
 
 use chrono::{DateTime, Utc};
-use tokio::io::AsyncBufReadExt;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
+use crate::network_log_drain::{
+    NetworkLogDrainProducer, NetworkLogDrainRequest, ReadyLine, poll_next_line_ready,
+};
 use crate::network_log_manager::NetworkLogManager;
 
 /// Handle to the dnsmasq process and its log monitor.
@@ -29,6 +33,7 @@ pub struct DnsProxy {
     cancel: CancellationToken,
     task: tokio::task::JoinHandle<()>,
     child: Option<tokio::process::Child>,
+    drain: NetworkLogDrainProducer,
     port: u16,
 }
 
@@ -49,15 +54,33 @@ impl DnsProxy {
         self.port
     }
 
+    pub fn drain_producer(&self) -> NetworkLogDrainProducer {
+        self.drain.clone()
+    }
+
     /// Create a noop handle for testing. No `dnsmasq` process is spawned.
     #[cfg(test)]
     pub fn noop() -> Self {
         let cancel = CancellationToken::new();
         let token = cancel.clone();
+        let (drain, mut drain_rx) = NetworkLogDrainProducer::channel("dns");
         Self {
             cancel,
-            task: tokio::spawn(async move { token.cancelled().await }),
+            task: tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = token.cancelled() => break,
+                        request = drain_rx.recv() => {
+                            let Some(request) = request else {
+                                break;
+                            };
+                            request.ack();
+                        }
+                    }
+                }
+            }),
             child: None,
+            drain,
             port: 0,
         }
     }
@@ -192,8 +215,9 @@ async fn try_start(port: u16, network_log_manager: NetworkLogManager) -> std::io
 
     let cancel = CancellationToken::new();
     let token = cancel.clone();
+    let (drain, drain_rx) = NetworkLogDrainProducer::channel("dns");
     let task = tokio::spawn(async move {
-        if let Err(e) = tail_stderr(stderr, network_log_manager, token).await {
+        if let Err(e) = tail_stderr(stderr, network_log_manager, token, drain_rx).await {
             warn!(error = %e, "dns log monitor exited");
         }
     });
@@ -203,6 +227,7 @@ async fn try_start(port: u16, network_log_manager: NetworkLogManager) -> std::io
         cancel,
         task,
         child: Some(child),
+        drain,
         port,
     })
 }
@@ -223,11 +248,41 @@ async fn tail_stderr(
     stderr: tokio::process::ChildStderr,
     network_log_manager: NetworkLogManager,
     cancel: CancellationToken,
+    drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
 ) -> std::io::Result<()> {
-    let mut lines = tokio::io::BufReader::new(stderr).lines();
+    tail_reader(
+        tokio::io::BufReader::new(stderr),
+        network_log_manager,
+        cancel,
+        drain_rx,
+    )
+    .await
+}
+
+async fn tail_reader<R>(
+    reader: R,
+    network_log_manager: NetworkLogManager,
+    cancel: CancellationToken,
+    mut drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
+) -> std::io::Result<()>
+where
+    R: AsyncBufRead + Unpin,
+{
+    let mut lines = reader.lines();
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
+            request = drain_rx.recv() => {
+                let Some(request) = request else {
+                    break;
+                };
+                let outcome = drain_ready_lines(&mut lines, &network_log_manager).await;
+                request.ack();
+                if let DrainOutcome::Stop(result) = outcome {
+                    result?;
+                    break;
+                }
+            }
             result = lines.next_line() => {
                 let line = match result {
                     Ok(Some(l)) => l,
@@ -243,16 +298,42 @@ async fn tail_stderr(
                     }
                 };
 
-                if let Some(entry) = parse_dns_line(&line) {
-                    // Capture the timestamp before handing the row to the manager so
-                    // it reflects DNS observation time, not delayed write time.
-                    let timestamp = Utc::now();
-                    append_dns_entry(&network_log_manager, &entry, timestamp).await;
-                }
+                handle_dns_line(&network_log_manager, &line).await;
             }
         }
     }
     Ok(())
+}
+
+enum DrainOutcome {
+    Continue,
+    Stop(std::io::Result<()>),
+}
+
+async fn drain_ready_lines<R>(
+    lines: &mut tokio::io::Lines<R>,
+    network_log_manager: &NetworkLogManager,
+) -> DrainOutcome
+where
+    R: AsyncBufRead + Unpin,
+{
+    loop {
+        match poll_next_line_ready(lines) {
+            Ok(ReadyLine::Line(line)) => handle_dns_line(network_log_manager, &line).await,
+            Ok(ReadyLine::Pending) => return DrainOutcome::Continue,
+            Ok(ReadyLine::Eof) => return DrainOutcome::Stop(Ok(())),
+            Err(e) => return DrainOutcome::Stop(Err(e)),
+        }
+    }
+}
+
+async fn handle_dns_line(network_log_manager: &NetworkLogManager, line: &str) {
+    if let Some(entry) = parse_dns_line(line) {
+        // Capture the timestamp before handing the row to the manager so
+        // it reflects DNS observation time, not delayed write time.
+        let timestamp = Utc::now();
+        append_dns_entry(network_log_manager, &entry, timestamp).await;
+    }
 }
 
 /// Parsed DNS log entry.
@@ -447,6 +528,9 @@ fn network_log_row(entry: &DnsLogEntry, timestamp: DateTime<Utc>) -> serde_json:
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::RunId;
+    use crate::network_log_drain::NetworkLogDrainContext;
+    use tokio::io::AsyncWriteExt;
 
     fn assert_query_event(entry: &DnsLogEntry, expected_query_type: &str) {
         assert_eq!(entry.event.name(), "query");
@@ -644,7 +728,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("dns.jsonl");
         let manager = NetworkLogManager::new();
-        manager.register_source_ip("10.200.0.2", path.clone()).await;
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         let entry = DnsLogEntry {
             source_ip: "10.200.0.2".to_string(),
             domain: "api.github.com".to_string(),
@@ -673,7 +757,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("dns.jsonl");
         let manager = NetworkLogManager::new();
-        manager.register_source_ip("10.0.0.1", path.clone()).await;
+        let _session = manager.register_source_ip("10.0.0.1", path.clone()).await;
         for domain in ["a.com", "b.com", "c.com"] {
             assert!(
                 append_dns_entry(
@@ -717,7 +801,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("dns.jsonl");
         let manager = NetworkLogManager::new();
-        manager.register_source_ip("10.0.0.1", path.clone()).await;
+        let _session = manager.register_source_ip("10.0.0.1", path.clone()).await;
 
         for result in ["140.82.121.3", "140.82.121.4"] {
             assert!(
@@ -777,6 +861,51 @@ mod tests {
         );
         manager.flush_path(&path).await;
         assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn drain_barrier_processes_queued_dns_line_before_ack() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dns.jsonl");
+        let manager = NetworkLogManager::new();
+        let _session = manager.register_source_ip("10.0.0.1", path.clone()).await;
+        let cancel = CancellationToken::new();
+        let (producer, drain_rx) = NetworkLogDrainProducer::channel("dns-test");
+        let (mut writer, reader) = tokio::io::duplex(1024);
+        let task = tokio::spawn(tail_reader(
+            tokio::io::BufReader::new(reader),
+            manager.clone(),
+            cancel.clone(),
+            drain_rx,
+        ));
+
+        writer
+            .write_all(b"dnsmasq[1234]: 42 10.0.0.1/54321 query[A] example.com from 10.0.0.1\n")
+            .await
+            .unwrap();
+
+        producer
+            .drain(
+                NetworkLogDrainContext {
+                    run_id: RunId::nil(),
+                    source_ip: "10.0.0.1",
+                    path: &path,
+                    generation: 1,
+                },
+                std::time::Duration::from_secs(1),
+            )
+            .await;
+        manager.flush_path(&path).await;
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(parsed["type"], "dns");
+        assert_eq!(parsed["host"], "example.com");
+        assert_eq!(parsed["dns_event"], "query");
+
+        cancel.cancel();
+        drop(writer);
+        task.await.unwrap().unwrap();
     }
 
     #[test]

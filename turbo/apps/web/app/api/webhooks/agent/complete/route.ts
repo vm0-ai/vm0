@@ -21,7 +21,6 @@ import {
   drainOrgQueue,
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
-import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
 import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
 import { waitForAgentEventPrefixVisible } from "../../../../../src/lib/infra/run/agent-event-visibility";
 import { publishRunChangedForUserSafely } from "../../../../../src/lib/infra/run/run-realtime";
@@ -43,7 +42,6 @@ function scheduleTerminalSideEffects(
     await dispatchTerminalSideEffects(runId, status, errorMsg, () => {
       return drainOrgQueue(orgId, dispatchQueuedZeroRun);
     });
-    await processOrgCredits(orgId);
     await processOrgUsageEvents(orgId);
   });
 }

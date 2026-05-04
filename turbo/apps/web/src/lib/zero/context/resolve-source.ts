@@ -153,6 +153,28 @@ export async function resolveComposeFromId(
 }
 
 /**
+ * Check that the resolved framework matches the framework recorded on the
+ * conversation being continued. Mid-thread framework changes are incompatible
+ * because the persisted `cliAgentSessionHistory` is in the previous framework's
+ * format and cannot be replayed by a different binary.
+ */
+export function checkFrameworkCompatibility(
+  sessionFramework: string | undefined,
+  resolvedFramework: string | undefined,
+): void {
+  if (
+    sessionFramework &&
+    resolvedFramework &&
+    sessionFramework !== resolvedFramework
+  ) {
+    throw badRequest(
+      `Cannot continue session: framework changed from "${sessionFramework}" to "${resolvedFramework}". ` +
+        `Start a new run instead.`,
+    );
+  }
+}
+
+/**
  * Check that the resolved model provider is compatible with the original
  * provider from the session being continued.
  */

@@ -144,7 +144,7 @@ export async function deleteComposeById(
 
   // Delete all runs for this agent's compose versions.
   // Downstream tables (events, callbacks, telemetry, checkpoints, etc.)
-  // cascade-delete automatically. creditUsage.runId is SET NULL to
+  // cascade-delete automatically. usageEvent.runId is SET NULL to
   // preserve billing records.
   const versionIds = await db
     .select({ id: agentComposeVersions.id })

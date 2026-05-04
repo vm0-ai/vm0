@@ -50,6 +50,7 @@ import {
   verifyOrgAccessForResume,
   resolveComposeFromId,
   checkProviderCompatibility,
+  checkFrameworkCompatibility,
   applyResolutionDefaults,
 } from "./context/resolve-source";
 
@@ -177,6 +178,7 @@ async function resolveSecretsAndEnvironment(
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
+  resolvedFramework: string;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
   selectedModel: string | undefined;
   connectorPermissionConfigs: ExpandedFirewallConfig[];
@@ -329,6 +331,9 @@ async function resolveSecretsAndEnvironment(
     environment,
     secretConnectorMap,
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
+    // Provider-derived framework when resolution ran; otherwise the compose
+    // framework. Source-of-truth for downstream framework-aware logic.
+    resolvedFramework: modelProviderResult.framework ?? framework,
     modelProviderConfig,
     selectedModel: modelProviderResult.selectedModel,
     connectorPermissionConfigs,
@@ -348,7 +353,9 @@ interface BuildZeroContextResult {
   timings: BuildZeroContextTimings;
   /** The resolved model provider type, if provider resolution ran during context build. */
   resolvedModelProvider: ModelProviderType | undefined;
-  /** The logical model name selected by the user, for credit usage billing. */
+  /** Provider-derived framework, source-of-truth for downstream. */
+  resolvedFramework: string;
+  /** The logical model name selected by the user, for model usage billing. */
   selectedModel: string | undefined;
 }
 
@@ -548,6 +555,7 @@ export async function resolveCliRunContext(
     environment,
     secretConnectorMap,
     resolvedModelProvider,
+    resolvedFramework,
     modelProviderConfig,
     selectedModel,
     connectorPermissionConfigs,
@@ -557,8 +565,9 @@ export async function resolveCliRunContext(
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
-  // Step 5: Provider compatibility check for session continues.
+  // Step 5: Compatibility checks for session continues.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
+  checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
 
   // Build permission manifest
   const permissionResult = mergePermissions(
@@ -718,6 +727,7 @@ export async function buildZeroExecutionContext(
     environment,
     secretConnectorMap,
     resolvedModelProvider,
+    resolvedFramework,
     modelProviderConfig,
     selectedModel,
     connectorPermissionConfigs,
@@ -728,10 +738,14 @@ export async function buildZeroExecutionContext(
   const userTimezone =
     params.preloadedUserTimezone ?? userPrefs?.timezone ?? undefined;
 
-  // Step 5: Provider compatibility check for session continues.
-  // When resuming a session, verify the new provider is compatible with the
-  // original provider to avoid mid-conversation base URL mismatches.
+  // Step 5: Compatibility checks for session continues.
+  // - Provider: avoid mid-conversation base URL mismatches.
+  // - Framework: persisted cliAgentSessionHistory is in the previous
+  //   framework's format; switching binaries mid-thread can't replay it.
+  //   resolvedFramework is the source of truth (provider-derived since
+  //   #11649); the compose's `framework` field is no longer authoritative.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
+  checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
 
   // Build permission manifest (base + auth entries for the runner).
   const permissionResult = mergePermissions(
@@ -778,12 +792,18 @@ export async function buildZeroExecutionContext(
       modelUsageProvider,
       // API start time for E2E timing metrics
       apiStartTime: params.apiStartTime,
+      // Provider-derived framework — source of truth for downstream
+      // dispatch (execution-preparer) and admission validation. Undefined
+      // on the CLI path (no provider context); dispatch falls back to
+      // compose framework via extractCliAgentType.
+      resolvedFramework,
     },
     timings: {
       resolveSourceAndOrg: resolveEnd - resolveStart,
       resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
     },
     resolvedModelProvider,
+    resolvedFramework,
     selectedModel,
   };
 }

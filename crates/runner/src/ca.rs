@@ -1,9 +1,10 @@
 use std::path::Path;
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::lock;
 use crate::paths::HomePaths;
 
-const CA_CERT: &str = "mitmproxy-ca-cert.pem";
+pub(crate) const CA_CERT: &str = "mitmproxy-ca-cert.pem";
 const CA_KEY: &str = "mitmproxy-ca-key.pem";
 const CA_COMBINED: &str = "mitmproxy-ca.pem";
 
@@ -20,6 +21,11 @@ const CA_COMBINED: &str = "mitmproxy-ca.pem";
 /// first-ever generation) so legacy runners that shipped with looser perms
 /// get migrated automatically.
 pub async fn ensure(home: &HomePaths) -> RunnerResult<()> {
+    // CA generation/repair writes multiple related files. Serialize it before
+    // any filesystem checks so concurrent `runner build` processes cannot
+    // observe or create a mixed cert/key/combined state.
+    let _lock = lock::acquire(home.ca_lock()).await?;
+
     let ca_dir = home.ca_dir();
     let cert = ca_dir.join(CA_CERT);
     let key = ca_dir.join(CA_KEY);
@@ -184,11 +190,13 @@ async fn apply_perms(cert: &Path, key: &Path, combined: &Path) -> RunnerResult<(
 }
 
 async fn run_openssl(args: &[&str]) -> RunnerResult<()> {
-    let output = tokio::process::Command::new("openssl")
-        .args(args)
+    let mut cmd = tokio::process::Command::new("openssl");
+    cmd.args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
+    let output = cmd
         .output()
         .await
         .map_err(|e| RunnerError::Internal(format!("spawn openssl: {e}")))?;

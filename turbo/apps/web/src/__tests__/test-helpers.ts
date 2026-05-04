@@ -80,7 +80,12 @@ interface S3Mocks {
     (bucket: string, prefix: string) => Promise<{ key: string; size: number }[]>
   >;
   uploadS3Buffer: MockInstance<
-    (bucket: string, key: string, data: Buffer) => Promise<void>
+    (
+      bucket: string,
+      key: string,
+      data: Buffer,
+      contentType?: string,
+    ) => Promise<void>
   >;
   s3ObjectExists: MockInstance<
     (bucket: string, key: string) => Promise<boolean>
