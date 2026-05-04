@@ -241,6 +241,16 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
+  // chat-draft.ts handles upload failures (file too large, network errors,
+  // R2 put failures) in the try/catch block around attachment.upload$. The
+  // catch removes the orphaned chip from the UI and shows a toast so the
+  // user knows the upload failed and can retry.
+  {
+    files: ["src/signals/zero-page/chat-draft.ts"],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
+  },
   {
     ignores: [
       "dist/**",

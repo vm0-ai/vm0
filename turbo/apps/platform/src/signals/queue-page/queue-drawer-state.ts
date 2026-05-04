@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { searchParams$, replaceSearchParams$ } from "../route.ts";
 import { startQueuePolling$ } from "./queue-signals.ts";
-import { resetSignal } from "../utils.ts";
+import { detach, Reason, resetSignal } from "../utils.ts";
 import { maybePageSignal$ } from "../page-signal.ts";
 
 const internalQueueDrawerOpen$ = state(false);
@@ -27,7 +27,8 @@ export const setQueueDrawerOpen$ = command(
       const signal = pageSignal
         ? set(resetQueuePollingSignal$, pageSignal)
         : set(resetQueuePollingSignal$);
-      await set(startQueuePolling$, signal);
+      // eslint-disable-next-line ccstate/no-detach-in-signals -- polling is a long-running background task, fire-and-forget by design
+      detach(set(startQueuePolling$, signal), Reason.Entrance);
     } else {
       if (next.has("queue")) {
         next.delete("queue");
