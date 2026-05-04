@@ -202,13 +202,13 @@ export const detachedNavigateTo$ = command(
       searchParams?: URLSearchParams;
       replace?: boolean;
     },
-    signal?: AbortSignal,
+    _signal?: AbortSignal,
   ) => {
     await set(
       navigate$,
       generateRouterPath(pathname, options?.pathParams),
       options ?? {},
-      signal ?? get(rootSignal$).signal,
+      get(rootSignal$).signal,
     );
   },
 );
