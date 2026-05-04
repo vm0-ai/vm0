@@ -205,7 +205,7 @@ export const detachedNavigateTo$ = command(
     _signal?: AbortSignal,
   ) => {
     const signal = get(rootSignal$).signal;
-    detach(
+    await detach(
       set(
         navigate$,
         generateRouterPath(pathname, options?.pathParams),
