@@ -310,9 +310,6 @@ importers:
       '@react-navigation/native-stack':
         specifier: ^7.3.0
         version: 7.14.12(@react-navigation/native@7.2.2(react-native@0.79.2(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.4))(react@19.2.4))(react-native-safe-area-context@5.4.1(react-native@0.79.2(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.4))(react@19.2.4))(react-native-screens@4.10.0(react-native@0.79.2(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.4))(react@19.2.4))(react-native@0.79.2(@babel/core@7.29.0)(@types/react@19.2.14)(react@19.2.4))(react@19.2.4)
-      '@ts-rest/core':
-        specifier: ^3.53.0-rc.1
-        version: 3.53.0-rc.1(@types/node@24.3.0)
       '@vm0/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts

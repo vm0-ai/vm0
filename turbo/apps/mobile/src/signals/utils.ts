@@ -10,12 +10,6 @@ export enum Reason {
   Daemon = "daemon",
 }
 
-class PromiseTracker {
-  collected = new Set<Promise<unknown>>();
-  reasons = new Map<Promise<unknown>, Reason>();
-  descriptions = new Map<Promise<unknown>, string>();
-}
-
 export function detach<T>(
   promise: T | Promise<T>,
   reason: Reason,

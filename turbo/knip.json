@@ -71,8 +71,18 @@
         "src/signals/root-signal.ts"
       ],
       "ignoreDependencies": [
+        "@react-navigation/native",
+        "@react-navigation/native-stack",
+        "@testing-library/react-native",
+        "@vm0/api-contracts",
+        "@vm0/core",
+        "expo-status-bar",
         "expo-updates",
         "expo-system-ui",
+        "msw",
+        "react-native-safe-area-context",
+        "react-native-screens",
+        "signal-timers",
         "typescript-eslint"
       ]
     },
