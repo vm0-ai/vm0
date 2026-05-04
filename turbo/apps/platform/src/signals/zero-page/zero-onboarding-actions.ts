@@ -285,14 +285,9 @@ export const onboardingAddToSlack$ = command(
 
         // Forward ?prompt= to /works so the page can keep the same context
         // (e.g. re-opening the DM) once the OAuth tab returns.
-        await set(
-          detachedNavigateTo$,
-          "/works",
-          {
-            searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
-          },
-          signal,
-        );
+        set(detachedNavigateTo$, "/works", {
+          searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
+        });
       })(),
     ]);
   },
@@ -315,15 +310,10 @@ export const onboardingContinueWeb$ = command(
         // with the prompt the user arrived with.
         const prompt = get(searchParams$).get("prompt");
 
-        await set(
-          detachedNavigateTo$,
-          "/agents/:agentId/chat",
-          {
-            pathParams: { agentId: agentId },
-            searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
-          },
-          signal,
-        );
+        set(detachedNavigateTo$, "/agents/:agentId/chat", {
+          pathParams: { agentId: agentId },
+          searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
+        });
       })(),
     ]);
   },
@@ -342,12 +332,7 @@ export const onboardingContinueTelegram$ = command(
           return;
         }
 
-        await set(
-          detachedNavigateTo$,
-          ROUTES.settingsTelegram,
-          undefined,
-          signal,
-        );
+        set(detachedNavigateTo$, ROUTES.settingsTelegram);
       })(),
     ]);
   },

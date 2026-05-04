@@ -188,7 +188,7 @@ export const navigate$ = command(
     // abort the previous route's controller, which would poison any signal
     // derived from it — passing the caller's signal here causes the new
     // route's signal to be born-aborted.
-    await set(loadRoute$, get(rootSignal$).signal);
+    await set(loadRoute$, get(rootSignal$));
     signal.throwIfAborted();
   },
 );
@@ -202,7 +202,6 @@ export const detachedNavigateTo$ = command(
       searchParams?: URLSearchParams;
       replace?: boolean;
     },
-    signal?: AbortSignal,
   ) => {
     // eslint-disable-next-line ccstate/no-detach-in-signals -- confirmed by ethan@vm0.ai
     detach(
@@ -210,7 +209,7 @@ export const detachedNavigateTo$ = command(
         navigate$,
         generateRouterPath(pathname, options?.pathParams),
         options ?? {},
-        signal ?? get(rootSignal$).signal,
+        get(rootSignal$),
       ),
       Reason.Entrance,
     );

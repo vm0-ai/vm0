@@ -745,7 +745,7 @@ export function ZeroChatComposer({
   } = resolved;
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {

@@ -1712,7 +1712,7 @@ function ChatThreadComposer({
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
 
   // Per-thread composer state lives in ccstate signals on the factory so the
   // initial value seeds from threadData once it resolves (a React useState
@@ -1860,7 +1860,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const isQueued = latestRunStatus === "queued";
   const openQueueDrawer = useSet(openQueueDrawer$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
 
   const thinkingLabel = isQueued ? (
     <p className="zero-shimmer-text text-xs truncate">

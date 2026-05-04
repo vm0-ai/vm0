@@ -44,7 +44,6 @@ import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -1028,7 +1027,6 @@ function ScheduleActionsContainer({
     useLoadableSet(runScheduleNow$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const navigate = useSet(detachedNavigateTo$);
-  const { signal: rootSignal } = useGet(rootSignal$);
 
   const saving = savingLoadable.state === "loading";
   const toggling = togglingLoadable.state === "loading";
@@ -1092,10 +1090,7 @@ function ScheduleActionsContainer({
         { name: entry.name, agentId: entry.agentId },
         pageSignal,
       ).then(() => {
-        detach(
-          navigate("/schedules", undefined, rootSignal),
-          Reason.DomCallback,
-        );
+        navigate("/schedules");
       }),
       Reason.DomCallback,
     );

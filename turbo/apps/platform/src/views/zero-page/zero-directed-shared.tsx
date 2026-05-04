@@ -20,7 +20,7 @@ import { Link } from "../router/link.tsx";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountActionRaw = useSet(handleZeroAccountAction$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
   const onAccountAction = (action: ZeroAccountAction) => {
     detach(onAccountActionRaw(action, rootSignal), Reason.DomCallback);
   };

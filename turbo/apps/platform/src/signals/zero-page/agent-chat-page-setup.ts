@@ -65,16 +65,11 @@ export const setupAgentChatPage$ = command(
         throw new Error("Chat page requires an active agent, but none found");
       }
 
-      await set(
-        detachedNavigateTo$,
-        "/agents/:agentId/chat",
-        {
-          pathParams: { agentId: defaultAgentId },
-          searchParams: get(searchParams$),
-          replace: true,
-        },
-        signal,
-      );
+      set(detachedNavigateTo$, "/agents/:agentId/chat", {
+        pathParams: { agentId: defaultAgentId },
+        searchParams: get(searchParams$),
+        replace: true,
+      });
       return;
     }
 

@@ -44,14 +44,9 @@ export const navigateToAdjacentThread$ = command(
         return;
       }
       const agentId = availableThreads[0]!.agent.id;
-      await set(
-        detachedNavigateTo$,
-        "/agents/:agentId/chat",
-        {
-          pathParams: { agentId },
-        },
-        signal,
-      );
+      set(detachedNavigateTo$, "/agents/:agentId/chat", {
+        pathParams: { agentId },
+      });
       return;
     }
     const targetIdx = args.direction === "prev" ? idx - 1 : idx + 1;

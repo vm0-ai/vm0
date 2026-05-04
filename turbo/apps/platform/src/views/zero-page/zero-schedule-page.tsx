@@ -38,7 +38,6 @@ import {
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
 import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -535,7 +534,6 @@ export function ZeroSchedulePage() {
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
-  const { signal: rootSignal } = useGet(rootSignal$);
 
   const activeListTab = useGet(scheduleListTab$);
   const setActiveListTab = useSet(setScheduleListTab$);
@@ -565,16 +563,9 @@ export function ZeroSchedulePage() {
   ] as const;
 
   const openScheduleDetail = (entry: CombinedEntry) => {
-    detach(
-      navigate(
-        "/schedules/:scheduleId",
-        {
-          pathParams: { scheduleId: entry.id },
-        },
-        rootSignal,
-      ),
-      Reason.DomCallback,
-    );
+    navigate("/schedules/:scheduleId", {
+      pathParams: { scheduleId: entry.id },
+    });
   };
 
   const handleToggle = (entry: CombinedEntry, enabled: boolean) => {

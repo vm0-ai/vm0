@@ -200,7 +200,7 @@ function SidebarNavContent() {
   };
   const rawOnSelect = useSet(handleZeroNavSelect$);
   const onAccountActionRaw = useSet(handleZeroAccountAction$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
   const onSelect = (id: SidebarNavId) => {
     detach(rawOnSelect(id, rootSignal), Reason.DomCallback);
     setExpanded(false);

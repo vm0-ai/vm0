@@ -132,7 +132,7 @@ function NewOrUnreadChatButtonLeaf() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const navigateToChatFn = useSet(navigateToChat$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
   const creating = useGet(optimisticChatThread$) !== null;
   const unreadThread = useLastResolved(earliestUnreadEndedThread$);
 

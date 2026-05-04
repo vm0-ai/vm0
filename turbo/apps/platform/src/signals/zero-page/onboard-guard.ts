@@ -52,15 +52,10 @@ export const onboardGuard$ = command(
         forwarded.set(key, value);
       }
     }
-    await set(
-      detachedNavigateTo$,
-      "/onboarding",
-      {
-        replace: true,
-        searchParams: forwarded.toString().length > 0 ? forwarded : undefined,
-      },
-      signal,
-    );
+    set(detachedNavigateTo$, "/onboarding", {
+      replace: true,
+      searchParams: forwarded.toString().length > 0 ? forwarded : undefined,
+    });
     return true;
   },
 );

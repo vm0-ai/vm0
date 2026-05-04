@@ -869,7 +869,7 @@ function OnboardingIllustrationPanel() {
 
 function OnboardingAccountDropdown() {
   const onAccountActionRaw = useSet(handleZeroAccountAction$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
   const onAccountAction = (action: ZeroAccountAction) => {
     detach(onAccountActionRaw(action, rootSignal), Reason.DomCallback);
   };

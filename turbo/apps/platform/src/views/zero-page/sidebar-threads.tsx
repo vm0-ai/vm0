@@ -702,7 +702,7 @@ function ChatThreadsTitle() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
   const { titleLabel, searchPlaceholder, newChatAriaLabel } =
     useChatThreadsTitleLabels();
   const newChatDisabled = useGet(optimisticChatThread$) !== null;

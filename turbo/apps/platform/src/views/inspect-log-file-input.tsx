@@ -10,7 +10,7 @@ import { detach, Reason } from "../signals/utils.ts";
 export function InspectLogFileInput() {
   const setEl = useSet(setInspectLogInput$);
   const handleFileChange = useSet(handleInspectLogFileChange$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -75,10 +75,8 @@ export const deleteChatThread$ = command(
         return t.id !== threadId;
       });
       if (remaining.length === 0) {
-        await Promise.all([
-          set(detachedNavigateTo$, "/", undefined, signal),
-          set(reloadChatThreads$),
-        ]);
+        set(detachedNavigateTo$, "/");
+        await set(reloadChatThreads$);
       } else {
         const nextThread = remaining[idx] ?? remaining[remaining.length - 1];
         await Promise.all([

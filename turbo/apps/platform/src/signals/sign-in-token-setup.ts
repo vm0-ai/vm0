@@ -20,7 +20,7 @@ export const setupSignInTokenPage$ = command(
 
     if (!token) {
       L.error("Missing token parameter");
-      await set(detachedNavigateTo$, "/", { replace: true }, signal);
+      set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
 
@@ -29,7 +29,7 @@ export const setupSignInTokenPage$ = command(
 
     if (!clerk.client) {
       L.error("Clerk client not available");
-      await set(detachedNavigateTo$, "/", { replace: true }, signal);
+      set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
 
@@ -41,7 +41,7 @@ export const setupSignInTokenPage$ = command(
 
     if (result.status !== "complete" || !result.createdSessionId) {
       L.error("Unexpected sign-in status:", result.status);
-      await set(detachedNavigateTo$, "/", { replace: true }, signal);
+      set(detachedNavigateTo$, "/", { replace: true });
       return;
     }
 
@@ -49,6 +49,6 @@ export const setupSignInTokenPage$ = command(
     signal.throwIfAborted();
 
     L.debug("Token sign-in complete, redirecting to /");
-    await set(detachedNavigateTo$, "/", { replace: true }, signal);
+    set(detachedNavigateTo$, "/", { replace: true });
   },
 );

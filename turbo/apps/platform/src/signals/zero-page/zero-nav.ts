@@ -6,15 +6,10 @@ import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 
 export const navigateToChat$ = command(
-  async ({ set }, chatThreadId: string, signal: AbortSignal) => {
-    await set(
-      detachedNavigateTo$,
-      "/chats/:threadId",
-      {
-        pathParams: { threadId: chatThreadId },
-      },
-      signal,
-    );
+  ({ set }, chatThreadId: string, _signal: AbortSignal) => {
+    set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: chatThreadId },
+    });
   },
 );
 
@@ -107,7 +102,7 @@ export const handleZeroNavSelect$ = command(
         Exclude<SidebarNavId, "queues">,
         (typeof ROUTES)[keyof typeof ROUTES]
       >;
-      await set(detachedNavigateTo$, navRoutes[id], undefined, signal);
+      set(detachedNavigateTo$, navRoutes[id]);
     }
     set(internalShowAboutPage$, false);
   },
@@ -121,20 +116,20 @@ export type ZeroAccountAction =
   | "signout";
 
 export const handleZeroAccountAction$ = command(
-  async ({ set }, action: ZeroAccountAction, signal: AbortSignal) => {
+  ({ set }, action: ZeroAccountAction, _signal: AbortSignal) => {
     if (action === "signout" || action === "manage") {
       return;
     }
     if (action === "preferences") {
-      await set(detachedNavigateTo$, ROUTES.settings, undefined, signal);
+      set(detachedNavigateTo$, ROUTES.settings);
       return;
     }
     if (action === "apiKeys") {
-      await set(detachedNavigateTo$, ROUTES.settingsApiKeys, undefined, signal);
+      set(detachedNavigateTo$, ROUTES.settingsApiKeys);
       return;
     }
     if (action === "usage") {
-      await set(detachedNavigateTo$, ROUTES.usage, undefined, signal);
+      set(detachedNavigateTo$, ROUTES.usage);
     }
   },
 );

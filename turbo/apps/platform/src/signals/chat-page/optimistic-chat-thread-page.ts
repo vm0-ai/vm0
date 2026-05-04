@@ -83,20 +83,15 @@ interface SendNewThreadMessagePending extends PendingChatThread {
 }
 
 const routeMainOptimisticChatThread$ = command(
-  async ({ get, set }, pending: PendingChatThread, signal: AbortSignal) => {
+  ({ get, set }, pending: PendingChatThread, _signal: AbortSignal) => {
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) === pending.threadId) {
       next.delete(SIDEBAR_PARAM);
     }
-    await set(
-      detachedNavigateTo$,
-      "/chats/:threadId",
-      {
-        pathParams: { threadId: pending.threadId },
-        searchParams: next,
-      },
-      signal,
-    );
+    set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: pending.threadId },
+      searchParams: next,
+    });
   },
 );
 

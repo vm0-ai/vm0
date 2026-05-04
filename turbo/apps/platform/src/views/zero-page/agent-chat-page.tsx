@@ -179,7 +179,7 @@ function NewChatButton() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const creating = useGet(optimisticChatThread$) !== null;
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
 
   const handleNewChat = (pane: OptimisticChatPane) => {
     detach(
@@ -258,7 +258,6 @@ export function VoiceChatLauncher() {
   const activeRoute = useGet(activeRoute$);
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const navigate = useSet(detachedNavigateTo$);
-  const { signal: rootSignal } = useGet(rootSignal$);
 
   if (!trinityEnabled) {
     return null;
@@ -270,16 +269,9 @@ export function VoiceChatLauncher() {
     if (!currentChatAgentId) {
       return;
     }
-    detach(
-      navigate(
-        onTalk ? "/agents/:agentId/chat" : "/agents/:agentId/talk",
-        {
-          pathParams: { agentId: currentChatAgentId },
-        },
-        rootSignal,
-      ),
-      Reason.DomCallback,
-    );
+    navigate(onTalk ? "/agents/:agentId/chat" : "/agents/:agentId/talk", {
+      pathParams: { agentId: currentChatAgentId },
+    });
   };
 
   const isConnecting = onTalk && voiceChatStatus === "connecting";
@@ -412,22 +404,14 @@ function SuggestedPromptButton({
 function IdeasUseCasesButton() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const navigate = useSet(detachedNavigateTo$);
-  const { signal: rootSignal } = useGet(rootSignal$);
 
   const handleClick = () => {
     if (!currentChatAgentId) {
       return;
     }
-    detach(
-      navigate(
-        "/agents/:agentId/ideas",
-        {
-          pathParams: { agentId: currentChatAgentId },
-        },
-        rootSignal,
-      ),
-      Reason.DomCallback,
-    );
+    navigate("/agents/:agentId/ideas", {
+      pathParams: { agentId: currentChatAgentId },
+    });
   };
 
   return (
@@ -484,7 +468,7 @@ export function AgentChatPage() {
   );
 
   const sendNewThread = useSet(sendNewThreadOptimistically$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
 
   const orgProviders = useLastResolved(orgModelProviders$);

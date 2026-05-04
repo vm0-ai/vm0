@@ -99,7 +99,6 @@ import {
 } from "../../signals/zero-page/zero-telegram.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
 import { Link } from "../router/link.tsx";
 import { BetaBadge } from "./components/settings/beta-badge.tsx";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
@@ -1233,7 +1232,6 @@ function AddTelegramBotDialog({
   const setOpen = useSet(setTelegramAddDialogOpen$);
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
-  const { signal: rootSignal } = useGet(rootSignal$);
   const [registerLoadable, registerBot] = useLoadableSet(registerTelegramBot$);
   const adding = registerLoadable.state === "loading";
 
@@ -1241,7 +1239,7 @@ function AddTelegramBotDialog({
     pathname: typeof ROUTES.telegramConnect,
     options: { searchParams: URLSearchParams },
   ) => {
-    detach(navigate(pathname, options, rootSignal), Reason.DomCallback);
+    navigate(pathname, options);
   };
 
   return (

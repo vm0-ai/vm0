@@ -1,11 +1,9 @@
-import { useGet, useSet } from "ccstate-react";
+import { useSet } from "ccstate-react";
 import type { MouseEvent, Ref } from "react";
 import {
   generateRouterPath,
   detachedNavigateTo$,
 } from "../../signals/route.ts";
-import { detach, Reason } from "../../signals/utils.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
 
 type PathName = Parameters<typeof generateRouterPath>[0];
 type PathParams = Parameters<typeof generateRouterPath>[1];
@@ -43,7 +41,6 @@ export function Link({
   ...rest
 }: LinkProps) {
   const navigate = useSet(detachedNavigateTo$);
-  const { signal: rootSignal } = useGet(rootSignal$);
   const path = generateRouterPath(pathname, options?.pathParams);
   const href = buildHref(path, options?.searchParams);
 
@@ -57,7 +54,7 @@ export function Link({
     if (isNewTabClick(e)) {
       window.open(`${window.location.origin}${href}`, "_blank");
     } else {
-      detach(navigate(pathname, options, rootSignal), Reason.DomCallback);
+      navigate(pathname, options);
     }
   };
 

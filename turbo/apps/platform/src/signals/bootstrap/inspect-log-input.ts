@@ -24,7 +24,7 @@ export const handleInspectLogFileChange$ = command(
   async ({ set }, file: File, signal: AbortSignal) => {
     await set(loadInspectLogFile$, file, signal);
     if (pathname() !== "/activities/inspect") {
-      await set(detachedNavigateTo$, ROUTES.activityInspect, undefined, signal);
+      set(detachedNavigateTo$, ROUTES.activityInspect);
     }
   },
 );

@@ -62,16 +62,16 @@ import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
  * already enforces auth, so wrapping here would add an unnecessary
  * sign-in round-trip before the redirect.
  */
-const setupNotFoundRedirect$ = command(async ({ set }, signal: AbortSignal) => {
-  await set(detachedNavigateTo$, "/", undefined, signal);
+const setupNotFoundRedirect$ = command(({ set }, _signal: AbortSignal) => {
+  set(detachedNavigateTo$, "/");
 });
 
 /**
  * Create a redirect setup command for static routes (no params to forward).
  */
 function redirectTo(target: RoutePath) {
-  return command(async ({ set }, signal: AbortSignal) => {
-    await set(detachedNavigateTo$, target, { replace: true }, signal);
+  return command(({ set }, _signal: AbortSignal) => {
+    set(detachedNavigateTo$, target, { replace: true });
   });
 }
 
@@ -80,20 +80,15 @@ function redirectTo(target: RoutePath) {
  * Reads the `id` param from the source URL and maps it to `targetParam` on the target route.
  */
 function redirectWithId(target: RoutePath, targetParam: string) {
-  return command(async ({ get, set }, signal: AbortSignal) => {
+  return command(({ get, set }, _signal: AbortSignal) => {
     const params = get(pathParams$) ?? {};
-    await set(
-      detachedNavigateTo$,
-      target,
-      {
-        pathParams: { [targetParam]: String(params.id) } as Record<
-          string,
-          string
-        >,
-        replace: true,
-      },
-      signal,
-    );
+    set(detachedNavigateTo$, target, {
+      pathParams: { [targetParam]: String(params.id) } as Record<
+        string,
+        string
+      >,
+      replace: true,
+    });
   });
 }
 
@@ -308,18 +303,16 @@ const handleBillingRedirect$ = command(() => {
 });
 
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
-  const wrappedHandler = onDomEventFn(
-    async (event: MessageEvent): Promise<void> => {
-      if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
-        const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
-        if (match) {
-          await set(detachedNavigateTo$, "/chats/:threadId", {
-            pathParams: { threadId: match[1] },
-          });
-        }
+  const wrappedHandler = onDomEventFn((event: MessageEvent): void => {
+    if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
+      const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
+      if (match) {
+        set(detachedNavigateTo$, "/chats/:threadId", {
+          pathParams: { threadId: match[1] },
+        });
       }
-    },
-  );
+    }
+  });
   navigator.serviceWorker?.addEventListener("message", wrappedHandler);
   signal.addEventListener("abort", () => {
     navigator.serviceWorker?.removeEventListener("message", wrappedHandler);

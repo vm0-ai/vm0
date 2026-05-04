@@ -65,7 +65,7 @@ export function ZeroChatListPage() {
   const navigateToChat = useSet(navigateToChat$);
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const creating = useGet(optimisticChatThread$) !== null;
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
 
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);

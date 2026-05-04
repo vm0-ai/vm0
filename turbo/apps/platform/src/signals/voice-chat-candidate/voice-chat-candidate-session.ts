@@ -924,7 +924,7 @@ export const startVoiceChatCandidate$ = command(
 export const endVoiceChatCandidate$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     await set(resetSessionSignal$);
-    await set(releaseWakeLock$, get(rootSignal$).signal);
+    await set(releaseWakeLock$, get(rootSignal$));
 
     const dc = get(internalDc$);
     if (dc) {

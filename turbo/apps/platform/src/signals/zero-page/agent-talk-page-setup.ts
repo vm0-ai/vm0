@@ -57,15 +57,10 @@ export const setupAgentTalkPage$ = command(
       if (!defaultAgentId) {
         throw new Error("Talk page requires an active agent, but none found");
       }
-      await set(
-        detachedNavigateTo$,
-        "/agents/:agentId/talk",
-        {
-          pathParams: { agentId: defaultAgentId },
-          replace: true,
-        },
-        signal,
-      );
+      set(detachedNavigateTo$, "/agents/:agentId/talk", {
+        pathParams: { agentId: defaultAgentId },
+        replace: true,
+      });
       return;
     }
 
