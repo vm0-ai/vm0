@@ -199,6 +199,19 @@ const FAL_AI: ConnectorRef = {
   icon: "/assets/connectors/fal.svg",
 };
 
+const HEYGEN: ConnectorRef = {
+  id: "heygen",
+  label: "HeyGen",
+  icon: "/assets/connectors/heygen.svg",
+};
+
+const ELEVENLABS: ConnectorRef = {
+  id: "elevenlabs",
+  label: "ElevenLabs",
+  icon: "/assets/connectors/elevenlabs.svg",
+  dark: true,
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -1361,7 +1374,11 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "promo-video-from-recordings",
     color: "#c86478",
-    screenshots: ["/assets/use-cases/promo-video-from-recordings.png"],
+    screenshots: [
+      "/assets/use-cases/promo-video-from-recordings.png",
+      "/assets/use-cases/promo-video-from-recordings-2.png",
+      "/assets/use-cases/promo-video-from-recordings-3.png",
+    ],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1373,10 +1390,12 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
-    connectors: [SLACK, GOOGLE_DRIVE, NOTION],
+    connectors: [SLACK, GOOGLE_DRIVE, ELEVENLABS, HEYGEN, NOTION],
     integrations: [
       { connector: SLACK, required: true },
       { connector: GOOGLE_DRIVE, required: true },
+      { connector: ELEVENLABS, required: true },
+      { connector: HEYGEN, required: true },
       { connector: NOTION, required: false },
     ],
     relatedSlugs: [
@@ -1386,7 +1405,7 @@ export const USE_CASES: UseCase[] = [
     ],
     stepCount: 3,
     nextActionCount: 3,
-    integrationCount: 3,
+    integrationCount: 5,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,

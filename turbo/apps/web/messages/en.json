@@ -3965,12 +3965,12 @@
             "description": "Zero connects to your Google Drive, locates the specified folder, and ingests the raw screen recordings. It identifies key moments and UI interactions to determine the optimal sequence and pacing."
           },
           {
-            "title": "Zero writes the narration and selects music",
-            "description": "Based on your brief, Zero generates a narration script that highlights the product’s value propositions. It selects a background music track and maps narration segments to video timestamps."
+            "title": "Zero writes the script and synthesizes voiceover with ElevenLabs",
+            "description": "Based on your brief, Zero drafts a narration script that highlights your product's value, then sends it to ElevenLabs to generate a clean voiceover in the tone you asked for. It also selects a background music track and maps each narration segment to the matching video timestamps."
           },
           {
-            "title": "Zero assembles and exports the final cut",
-            "description": "Zero adds transitions between scenes, layers the narration and music, and exports a polished promotional short (30–90s). The final video is saved back to Google Drive and shared in Slack."
+            "title": "Zero assembles the final cut with HeyGen",
+            "description": "Zero hands the recordings, voiceover, and music track to HeyGen, which stitches the scenes together, layers in transitions, and renders a polished promotional short (30–90s). The final video lands back in Google Drive and gets posted to Slack for review."
           }
         ],
         "nextActions": [
@@ -3996,6 +3996,12 @@
           },
           {
             "description": "Zero reads raw screen recordings from Google Drive and saves the finished promo video back to the same or a specified folder."
+          },
+          {
+            "description": "Zero generates the voiceover narration through ElevenLabs, matched to the tone and pacing you brief."
+          },
+          {
+            "description": "Zero hands the script, voiceover, and recordings to HeyGen, which renders the final video with transitions and background music."
           },
           {
             "description": "Optionally, Zero saves the narration script and video brief to Notion for your content archive and future reference."

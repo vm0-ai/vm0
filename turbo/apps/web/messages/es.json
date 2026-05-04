@@ -3965,12 +3965,12 @@
             "description": "Zero se conecta a tu Google Drive, localiza la carpeta especificada e ingiere las grabaciones de pantalla en bruto. Identifica momentos clave e interacciones de UI para determinar la secuencia y ritmo óptimos."
           },
           {
-            "title": "Zero escribe la narración y selecciona la música",
-            "description": "Basándose en tu brief, Zero genera un guión de narración que destaca las propuestas de valor del producto. Selecciona una pista de música de fondo y asigna los segmentos de narración a las marcas de tiempo del video."
+            "title": "Zero escribe el guion y genera la voz en off con ElevenLabs",
+            "description": "Basándose en tu brief, Zero redacta un guion de narración que destaca el valor de tu producto y luego lo envía a ElevenLabs para generar una voz en off limpia en el tono que pediste. También selecciona una pista de música de fondo y asigna cada segmento de narración a las marcas de tiempo correspondientes del video."
           },
           {
-            "title": "Zero ensambla y exporta el corte final",
-            "description": "Zero añade transiciones entre escenas, superpone narración y música, y exporta un corto promocional pulido (30–90s). El video final se guarda en Google Drive y se comparte en Slack."
+            "title": "Zero monta el corte final con HeyGen",
+            "description": "Zero entrega las grabaciones, la voz en off y la pista musical a HeyGen, que une las escenas, aplica transiciones y renderiza un corto promocional pulido (30–90s). El video final vuelve a Google Drive y se publica en Slack para su revisión."
           }
         ],
         "nextActions": [
@@ -3996,6 +3996,12 @@
           },
           {
             "description": "Zero lee las grabaciones de pantalla en bruto desde Google Drive y guarda el video promocional terminado en la misma carpeta o en una especificada."
+          },
+          {
+            "description": "Zero genera la narración de voz en off a través de ElevenLabs, ajustada al tono y al ritmo que indiques en el brief."
+          },
+          {
+            "description": "Zero pasa el guion, la voz en off y las grabaciones a HeyGen, que renderiza el video final con transiciones y música de fondo."
           },
           {
             "description": "Opcionalmente, Zero guarda el guión de narración y el brief del video en Notion para tu archivo de contenido y referencia futura."

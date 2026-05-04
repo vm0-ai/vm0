@@ -3965,12 +3965,12 @@
             "description": "Zero verbindet sich mit Ihrem Google Drive, findet den angegebenen Ordner und nimmt die rohen Bildschirmaufnahmen auf. Es identifiziert Schlüsselmomente und UI-Interaktionen, um die optimale Reihenfolge und das Tempo zu bestimmen."
           },
           {
-            "title": "Zero schreibt die Narration und wählt Musik aus",
-            "description": "Basierend auf Ihrem Briefing erstellt Zero ein Narrationsskript, das die Wertversprechen des Produkts hervorhebt. Es wählt einen Hintergrundmusik-Track und ordnet Narrationssegmente den Video-Zeitstempeln zu."
+            "title": "Zero schreibt das Skript und erzeugt die Sprachausgabe mit ElevenLabs",
+            "description": "Basierend auf Ihrem Briefing erstellt Zero ein Narrationsskript, das den Wert Ihres Produkts hervorhebt, und schickt es dann an ElevenLabs, um eine saubere Sprachausgabe im gewünschten Ton zu erzeugen. Außerdem wählt es einen Hintergrundmusik-Track und ordnet jedes Narrationssegment den passenden Video-Zeitstempeln zu."
           },
           {
-            "title": "Zero erstellt und exportiert den fertigen Schnitt",
-            "description": "Zero fügt Übergänge zwischen Szenen ein, legt Narration und Musik übereinander und exportiert einen professionellen Werbespot (30–90s). Das fertige Video wird in Google Drive gespeichert und in Slack geteilt."
+            "title": "Zero erstellt den finalen Schnitt mit HeyGen",
+            "description": "Zero übergibt die Aufnahmen, die Sprachausgabe und den Musik-Track an HeyGen, das die Szenen zusammenfügt, Übergänge einbaut und einen professionellen Werbespot (30–90s) rendert. Das fertige Video wird zurück in Google Drive gespeichert und zur Überprüfung in Slack gepostet."
           }
         ],
         "nextActions": [
@@ -3996,6 +3996,12 @@
           },
           {
             "description": "Zero liest rohe Bildschirmaufnahmen aus Google Drive und speichert das fertige Promo-Video zurück in denselben oder einen angegebenen Ordner."
+          },
+          {
+            "description": "Zero erzeugt die Voiceover-Narration über ElevenLabs, abgestimmt auf den Ton und das Tempo aus Ihrem Briefing."
+          },
+          {
+            "description": "Zero übergibt Skript, Sprachausgabe und Aufnahmen an HeyGen, das das finale Video mit Übergängen und Hintergrundmusik rendert."
           },
           {
             "description": "Optional speichert Zero das Narrationsskript und das Video-Briefing in Notion für Ihr Content-Archiv und künftige Referenz."
