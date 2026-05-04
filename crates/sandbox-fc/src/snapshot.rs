@@ -879,6 +879,30 @@ mod tests {
         assert!(drained.load(Ordering::SeqCst));
     }
 
+    #[tokio::test]
+    async fn drain_stderr_forwarder_after_spawn_exit_preserves_other_handles() {
+        async fn assert_handle_preserved(
+            child_status: std::io::Result<Option<std::process::ExitStatus>>,
+        ) {
+            let handle = tokio::spawn(std::future::pending::<()>());
+
+            let returned = drain_stderr_forwarder_after_spawn_exit(&child_status, Some(handle))
+                .await
+                .expect("handle should be preserved");
+
+            assert!(
+                !returned.is_finished(),
+                "helper should not join or abort the forwarder"
+            );
+            returned.abort();
+            let _ = returned.await;
+        }
+
+        assert_handle_preserved(Ok(None)).await;
+        assert_handle_preserved(Ok(Some(exit_status_zero()))).await;
+        assert_handle_preserved(Err(std::io::Error::from(std::io::ErrorKind::Interrupted))).await;
+    }
+
     /// Empty stderr buffer should produce a sentinel string rather than
     /// an empty error body. Verifies the early-exit error path is
     /// always informative even with no captured output.
