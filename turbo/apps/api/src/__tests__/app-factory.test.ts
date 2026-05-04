@@ -3,19 +3,23 @@ import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import { vi } from "vitest";
-
-const mockFlushLogs = vi.fn().mockResolvedValue(undefined);
-vi.mock("../lib/log", async () => {
-  const actual =
-    await vi.importActual<typeof import("../lib/log")>("../lib/log");
-  return { ...actual, flushLogs: mockFlushLogs };
-});
-
 import { createApp } from "../app-factory";
 import { mockEnv } from "../lib/env";
 import { ROUTES } from "../signals/route";
 import { useUndiciMock } from "./setup";
 import { accept, setupApp, testContext } from "./test-helpers";
+
+const { mockFlushLogs } = vi.hoisted(() => {
+  return {
+    mockFlushLogs: vi.fn(),
+  };
+});
+
+vi.mock("../lib/log", async () => {
+  const actual =
+    await vi.importActual<typeof import("../lib/log")>("../lib/log");
+  return { ...actual, flushLogs: mockFlushLogs };
+});
 
 function headerValue(headers: unknown, name: string): string | undefined {
   if (!headers) {
@@ -452,7 +456,7 @@ describe("createApp", () => {
       // wait a tick for the async work to be scheduled.
       await vi.waitFor(
         () => {
-          expect(mockFlushLogs).toHaveBeenCalled();
+          expect(mockFlushLogs).toHaveBeenCalledWith();
         },
         { timeout: 5000 },
       );
