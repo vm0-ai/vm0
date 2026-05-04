@@ -553,6 +553,20 @@ jobs:
           files: turbo/junit.xml
           report_type: test_results
 
+  test-mobile:
+    needs: [detect-release]
+    # Skip for release-please PRs, commits, and merge queue entries
+    if: needs.detect-release.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      - name: Test Mobile
+        working-directory: turbo
+        run: pnpm vitest run --project=@vm0/mobile
+
   test-app-browser:
     needs: [detect-release]
     # Skip for release-please PRs, commits, and merge queue entries
@@ -2217,6 +2231,7 @@ jobs:
       - test-migrate
       - test-cli
       - test-app
+      - test-mobile
       - test-app-browser
       - test-api
       - test-other
@@ -2282,6 +2297,7 @@ jobs:
           check_result "test-web" "${{ needs.test-web.result }}" ""
           check_result "test-cli" "${{ needs.test-cli.result }}" ""
           check_result "test-app" "${{ needs.test-app.result }}" ""
+          check_result "test-mobile" "${{ needs.test-mobile.result }}" ""
           check_result "test-app-browser" "${{ needs.test-app-browser.result }}" ""
           check_result "test-api" "${{ needs.test-api.result }}" ""
           check_result "test-other" "${{ needs.test-other.result }}" ""
