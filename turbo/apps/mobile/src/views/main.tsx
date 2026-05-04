@@ -22,9 +22,13 @@ function AppShell() {
   useEffect(() => {
     const rootSignal = AbortSignal.any([]);
     const run = async () => {
-      await store.set(bootstrap$, () => {
-        setReady(true);
-      }, rootSignal);
+      await store.set(
+        bootstrap$,
+        () => {
+          setReady(true);
+        },
+        rootSignal,
+      );
     };
     detach(run(), Reason.Entrance, "main");
     return () => {

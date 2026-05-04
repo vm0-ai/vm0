@@ -59,10 +59,7 @@ export default [
       "ccstate/no-package-variable": [
         "error",
         {
-          allowedConstructors: [
-            "PromiseTracker",
-            "LoggerRegistry",
-          ],
+          allowedConstructors: ["PromiseTracker", "LoggerRegistry"],
         },
       ],
       "ccstate/computed-const-args-package-scope": "error",
@@ -116,10 +113,7 @@ export default [
   },
   // Allow direct fetch$ in the abstraction layers and tests.
   {
-    files: [
-      "src/signals/fetch.ts",
-      "src/signals/api-client.ts",
-    ],
+    files: ["src/signals/fetch.ts", "src/signals/api-client.ts"],
     rules: {
       "ccstate/no-direct-fetch": "off",
     },

@@ -44,4 +44,6 @@ export const logger = (name: string) => {
   return createLogger(name);
 };
 
-export const setLogErrorHandler = (_handler: (name: string, args: unknown[]) => void): void => {};
+export const setLogErrorHandler = (
+  _handler: (name: string, args: unknown[]) => void,
+): void => {};

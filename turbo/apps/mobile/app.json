@@ -18,8 +18,6 @@
       },
       "package": "ai.vm0.app"
     },
-    "plugins": [
-      "expo-linking"
-    ]
+    "plugins": ["expo-linking"]
   }
 }
