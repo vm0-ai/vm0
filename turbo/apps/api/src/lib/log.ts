@@ -113,18 +113,14 @@ function writeError(...args: unknown[]): void {
 
 // ── Axiom integration ────────────────────────────────────────────────────
 
-let axiomLogger: AxiomLogger | null = null;
-let axiomInitialized = false;
-
-function getAxiomLogger(): AxiomLogger | null {
-  if (axiomInitialized) return axiomLogger;
-  axiomInitialized = true;
-
+const getAxiomLogger = singleton((): AxiomLogger | null => {
   const token = env("AXIOM_TOKEN_TELEMETRY");
-  if (!token) return null;
+  if (!token) {
+    return null;
+  }
 
   const axiom = new Axiom({ token });
-  axiomLogger = new AxiomLogger({
+  return new AxiomLogger({
     transports: [
       new AxiomJSTransport({
         axiom,
@@ -132,13 +128,15 @@ function getAxiomLogger(): AxiomLogger | null {
       }),
     ],
   });
-
-  return axiomLogger;
-}
+});
 
 function formatMessage(args: unknown[]): string {
-  if (args.length === 0) return "";
-  if (typeof args[0] === "string") return args[0];
+  if (args.length === 0) {
+    return "";
+  }
+  if (typeof args[0] === "string") {
+    return args[0];
+  }
   return String(args[0]);
 }
 
@@ -161,7 +159,9 @@ function serializeError(err: Error): Record<string, unknown> {
 }
 
 function extractFields(args: unknown[]): Record<string, unknown> {
-  if (args.length <= 1) return {};
+  if (args.length <= 1) {
+    return {};
+  }
   const fields = args.slice(1);
   if (
     fields.length === 1 &&
@@ -179,34 +179,36 @@ function extractFields(args: unknown[]): Record<string, unknown> {
 
 function logToAxiom(level: Level, name: string, args: unknown[]): void {
   const alog = getAxiomLogger();
-  if (!alog) return;
+  if (!alog) {
+    return;
+  }
 
   const message = formatMessage(args);
   const fields = { ...extractFields(args), context: name, source: "api" };
 
   switch (level) {
-    case Level.Debug:
+    case Level.Debug: {
       alog.debug(message, fields);
       break;
-    case Level.Info:
+    }
+    case Level.Info: {
       alog.info(message, fields);
       break;
-    case Level.Warn:
+    }
+    case Level.Warn: {
       alog.warn(message, fields);
       break;
+    }
     case Level.Error:
-    case Level.Fatal:
+    case Level.Fatal: {
       alog.error(message, fields);
       break;
+    }
   }
 }
 
 export async function flushLogs(): Promise<void> {
-  try {
-    await axiomLogger?.flush();
-  } catch (e) {
-    console.error("[logger] Failed to flush logs to Axiom:", e);
-  }
+  await getAxiomLogger()?.flush();
 }
 
 // ── Logger creation ──────────────────────────────────────────────────────

@@ -104,6 +104,9 @@ importers:
       '@axiomhq/js':
         specifier: ^1.5.0
         version: 1.5.0
+      '@axiomhq/logging':
+        specifier: ^0.1.6
+        version: 0.1.7(@axiomhq/js@1.5.0)
       '@clerk/backend':
         specifier: ^3.4.1
         version: 3.4.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
