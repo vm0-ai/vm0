@@ -581,6 +581,11 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Install EAS CLI
         run: npm install -g eas-cli
+      - name: Init EAS project
+        working-directory: turbo/apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: eas init --non-interactive --force
       - name: Build mobile preview
         working-directory: turbo/apps/mobile
         env:
