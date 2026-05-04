@@ -87,18 +87,6 @@ export default async function ModelDetailPage({ params }: PageProps) {
   const modelName = t(`${cn}.name`);
   const faqs = t.raw(`${cn}.faqs`) as { q: string; a: string }[];
 
-  const productJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Product",
-    name: `${modelName} on VM0`,
-    description: t(`${cn}.metaDescription`),
-    brand: {
-      "@type": "Brand",
-      name: model.vendor,
-    },
-    category: "AI Model",
-  };
-
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -141,9 +129,6 @@ export default async function ModelDetailPage({ params }: PageProps) {
 
   return (
     <>
-      <script type="application/ld+json" suppressHydrationWarning>
-        {JSON.stringify(productJsonLd)}
-      </script>
       <script type="application/ld+json" suppressHydrationWarning>
         {JSON.stringify(breadcrumbJsonLd)}
       </script>
