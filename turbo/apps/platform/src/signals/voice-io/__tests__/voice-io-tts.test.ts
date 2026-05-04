@@ -216,7 +216,7 @@ describe("playTts$", () => {
     mockTtsEndpoint();
 
     await context.store.set(playTts$, "msg-4", "Hello world", context.signal);
-    context.store.set(stopTts$);
+    await context.store.set(stopTts$);
     expect(context.store.get(ttsPlayingRunId$)).toBeNull();
 
     const { getFetchCount } = mockTtsEndpoint();
@@ -235,7 +235,7 @@ describe("playTts$", () => {
     expect(mockAudioContext.close).not.toHaveBeenCalled();
 
     // stopTts$ triggers the stored cleanup function
-    context.store.set(stopTts$);
+    await context.store.set(stopTts$);
 
     // The cleanup function should have called audioCtx.close()
     expect(mockAudioContext.close).toHaveBeenCalledTimes(1);
