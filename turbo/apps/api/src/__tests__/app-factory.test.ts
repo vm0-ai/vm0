@@ -2,6 +2,14 @@ import { initContract } from "@ts-rest/core";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
+import { vi } from "vitest";
+
+const mockFlushLogs = vi.fn().mockResolvedValue(undefined);
+vi.mock("../lib/log", async () => {
+  const actual =
+    await vi.importActual<typeof import("../lib/log")>("../lib/log");
+  return { ...actual, flushLogs: mockFlushLogs };
+});
 
 import { createApp } from "../app-factory";
 import { mockEnv } from "../lib/env";
@@ -430,6 +438,23 @@ describe("createApp", () => {
 
       expect(response.headers.get("access-control-allow-origin")).toBe(
         "https://app.vm7.ai:8443",
+      );
+    });
+  });
+
+  describe("flush middleware", () => {
+    it("calls flushLogs after a successful response", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", { method: "GET" });
+
+      expect(response.status).toBe(200);
+      // flushLogs is called via waitUntil after the response, so we need to
+      // wait a tick for the async work to be scheduled.
+      await vi.waitFor(
+        () => {
+          expect(mockFlushLogs).toHaveBeenCalled();
+        },
+        { timeout: 5000 },
       );
     });
   });

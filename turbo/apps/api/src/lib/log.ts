@@ -1,6 +1,8 @@
 import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
 import { Axiom } from "@axiomhq/js";
 
+import { formatMessage, extractFields } from "@vm0/core";
+
 import { env } from "./env";
 import { singleton } from "./singleton";
 
@@ -130,53 +132,6 @@ const getAxiomLogger = singleton((): AxiomLogger | null => {
   });
 });
 
-function formatMessage(args: unknown[]): string {
-  if (args.length === 0) {
-    return "";
-  }
-  if (typeof args[0] === "string") {
-    return args[0];
-  }
-  return String(args[0]);
-}
-
-function serializeError(err: Error): Record<string, unknown> {
-  const serialized: Record<string, unknown> = {
-    name: err.name,
-    message: err.message,
-    stack: err.stack,
-  };
-  if (err.cause !== undefined) {
-    serialized.cause =
-      err.cause instanceof Error ? serializeError(err.cause) : err.cause;
-  }
-  for (const [key, value] of Object.entries(err)) {
-    if (!(key in serialized)) {
-      serialized[key] = value;
-    }
-  }
-  return serialized;
-}
-
-function extractFields(args: unknown[]): Record<string, unknown> {
-  if (args.length <= 1) {
-    return {};
-  }
-  const fields = args.slice(1);
-  if (
-    fields.length === 1 &&
-    typeof fields[0] === "object" &&
-    fields[0] !== null
-  ) {
-    const value = fields[0];
-    if (value instanceof Error) {
-      return { error: serializeError(value) };
-    }
-    return value as Record<string, unknown>;
-  }
-  return { args: fields };
-}
-
 function logToAxiom(level: Level, name: string, args: unknown[]): void {
   const alog = getAxiomLogger();
   if (!alog) {
@@ -266,4 +221,9 @@ export function logger(name: string): Logger {
   const loggerInstance = createLogger(name);
   registry.set(name, loggerInstance);
   return loggerInstance;
+}
+
+export function __resetForTest(): void {
+  getAxiomLogger.reset();
+  loggerRegistry.reset();
 }
