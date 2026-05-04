@@ -921,45 +921,47 @@ export const startVoiceChatCandidate$ = command(
  * sessions are stateless, so next time startVoiceChatCandidate$ runs with
  * the same (user, agent) it will resume this one via get-or-create.
  */
-export const endVoiceChatCandidate$ = command(async ({ get, set }, _signal: AbortSignal) => {
-  set(resetSessionSignal$);
-  await set(releaseWakeLock$, get(rootSignal$).signal);
+export const endVoiceChatCandidate$ = command(
+  async ({ get, set }, _signal: AbortSignal) => {
+    set(resetSessionSignal$);
+    await set(releaseWakeLock$, get(rootSignal$).signal);
 
-  const dc = get(internalDc$);
-  if (dc) {
-    dc.close();
-    set(internalDc$, null);
-  }
-
-  const pc = get(internalPc$);
-  if (pc) {
-    pc.close();
-    set(internalPc$, null);
-  }
-
-  const stream = get(internalStream$);
-  if (stream) {
-    for (const track of stream.getTracks()) {
-      track.stop();
+    const dc = get(internalDc$);
+    if (dc) {
+      dc.close();
+      set(internalDc$, null);
     }
-    set(internalStream$, null);
-  }
 
-  const audioEl = get(internalAudioEl$);
-  if (audioEl) {
-    audioEl.pause();
-    audioEl.srcObject = null;
-    set(internalAudioEl$, null);
-  }
+    const pc = get(internalPc$);
+    if (pc) {
+      pc.close();
+      set(internalPc$, null);
+    }
 
-  set(internalSessionId$, null);
-  set(internalLastUserMessage$, "");
-  set(internalLastAssistantMessage$, "");
-  set(internalBargeInMode$, "speech_started");
-  set(internalCurrentAssistantAudioItem$, null);
-  set(internalStatus$, "idle");
-  // Bump so vccTaskFeed$ re-resolves to [] after sessionId is cleared.
-  set(vccReload$, (n) => {
-    return n + 1;
-  });
-});
+    const stream = get(internalStream$);
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      set(internalStream$, null);
+    }
+
+    const audioEl = get(internalAudioEl$);
+    if (audioEl) {
+      audioEl.pause();
+      audioEl.srcObject = null;
+      set(internalAudioEl$, null);
+    }
+
+    set(internalSessionId$, null);
+    set(internalLastUserMessage$, "");
+    set(internalLastAssistantMessage$, "");
+    set(internalBargeInMode$, "speech_started");
+    set(internalCurrentAssistantAudioItem$, null);
+    set(internalStatus$, "idle");
+    // Bump so vccTaskFeed$ re-resolves to [] after sessionId is cleared.
+    set(vccReload$, (n) => {
+      return n + 1;
+    });
+  },
+);

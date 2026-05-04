@@ -39,6 +39,8 @@ export async function fetchFreshToken(
  * the page away, so the returned promise may never settle and the final 401
  * response should still be returned to callers before awaiting this.
  */
-export async function handleUnauthorizedRedirect(clerk: ClerkLike): Promise<void> {
+export async function handleUnauthorizedRedirect(
+  clerk: ClerkLike,
+): Promise<void> {
   await clerk.redirectToSignIn();
 }

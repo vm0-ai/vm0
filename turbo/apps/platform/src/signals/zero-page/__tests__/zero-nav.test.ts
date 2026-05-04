@@ -256,7 +256,11 @@ describe("zero-nav", () => {
     it("should do nothing for 'signout' action", async () => {
       mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
-      await context.store.set(handleZeroAccountAction$, "signout", context.signal);
+      await context.store.set(
+        handleZeroAccountAction$,
+        "signout",
+        context.signal,
+      );
 
       expect(context.store.get(activeRoute$)).toBe("schedules");
     });
@@ -264,7 +268,11 @@ describe("zero-nav", () => {
     it("should do nothing for 'manage' action", async () => {
       mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
-      await context.store.set(handleZeroAccountAction$, "manage", context.signal);
+      await context.store.set(
+        handleZeroAccountAction$,
+        "manage",
+        context.signal,
+      );
 
       expect(context.store.get(activeRoute$)).toBe("schedules");
     });
