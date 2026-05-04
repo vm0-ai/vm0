@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { onDomEventFn } from "../utils.ts";
 import { fetch$ } from "../fetch.ts";
 import { fetchTtsAudio } from "../../lib/voice-io/tts-fetch.ts";
 import { logger } from "../log.ts";
@@ -182,9 +183,12 @@ const fetchAndPlay$ = command(
 
       // Detect end of playback
       if (lastSource) {
-        lastSource.addEventListener("ended", () => {
-          set(resetPlaybackState$);
-        });
+        lastSource.addEventListener(
+          "ended",
+          onDomEventFn(async () => {
+            await set(resetPlaybackState$);
+          }),
+        );
       } else {
         set(resetPlaybackState$);
       }

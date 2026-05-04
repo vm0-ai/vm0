@@ -89,7 +89,7 @@ export const deleteChatThread$ = command(
       return;
     }
 
-    set(reloadChatThreads$);
+    await set(reloadChatThreads$);
   },
 );
 

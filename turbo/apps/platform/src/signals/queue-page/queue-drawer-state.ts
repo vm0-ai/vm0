@@ -13,7 +13,7 @@ export const queueDrawerOpen$ = computed((get) => {
 
 export const setQueueDrawerOpen$ = command(
   async ({ get, set }, open: boolean, _signal: AbortSignal) => {
-    set(internalQueueDrawerOpen$, open);
+    await set(internalQueueDrawerOpen$, open);
     const pageSignal = get(maybePageSignal$);
 
     const params = get(searchParams$);
@@ -22,7 +22,7 @@ export const setQueueDrawerOpen$ = command(
     if (open) {
       if (!next.has("queue")) {
         next.set("queue", "1");
-        set(replaceSearchParams$, next);
+        await set(replaceSearchParams$, next);
       }
       const signal = pageSignal
         ? set(resetQueuePollingSignal$, pageSignal)
@@ -31,9 +31,9 @@ export const setQueueDrawerOpen$ = command(
     } else {
       if (next.has("queue")) {
         next.delete("queue");
-        set(replaceSearchParams$, next);
+        await set(replaceSearchParams$, next);
       }
-      set(resetQueuePollingSignal$);
+      await set(resetQueuePollingSignal$);
     }
   },
 );
