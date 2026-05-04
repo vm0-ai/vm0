@@ -16,18 +16,12 @@
           {
             "paths": [
               {
-                "allowImportNames": [
-                  "StrictMode",
-                  "Component",
-                  "useEffect",
-                  "useState"
-                ],
+                "allowImportNames": ["StrictMode", "Component"],
                 "allowTypeImports": true,
                 "name": "react"
               },
               {
                 "allowImportNames": [
-                  "createStore",
                   "useGet",
                   "useSet",
                   "useLoadable",

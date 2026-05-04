@@ -4,10 +4,6 @@ import { createElement } from "react";
 import { Text } from "react-native";
 import { updatePage$ } from "./react-router.ts";
 
-/**
- * Root bootstrap command. Initializes the app with the root AbortSignal,
- * then renders the UI shell.
- */
 export const bootstrap$ = command(
   ({ set }, render: () => void, signal: AbortSignal) => {
     set(setRootSignal$, signal);

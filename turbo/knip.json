@@ -66,9 +66,15 @@
       ],
       "project": ["**/*.{ts,tsx}"],
       "ignore": [
+        "src/env.ts",
         "src/signals/utils.ts",
+        "src/signals/fetch.ts",
+        "src/signals/log.ts",
         "src/signals/react-router.ts",
-        "src/signals/root-signal.ts"
+        "src/signals/root-signal.ts",
+        "src/signals/external/local-storage.ts",
+        "src/signals/route-paths.ts",
+        "src/types/route.ts"
       ],
       "ignoreDependencies": [
         "@react-navigation/native",
