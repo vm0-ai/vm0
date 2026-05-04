@@ -56,6 +56,44 @@ fn unique_pid_path(label: &str) -> TempPathGuard {
     unique_tmp_path(label, ".pid")
 }
 
+struct OrphanProcessGuard {
+    pid_file: TempPathGuard,
+}
+
+impl OrphanProcessGuard {
+    fn new(label: &str) -> Self {
+        Self {
+            pid_file: unique_pid_path(label),
+        }
+    }
+
+    fn pid_path(&self) -> &str {
+        self.pid_file.as_str()
+    }
+}
+
+impl Drop for OrphanProcessGuard {
+    fn drop(&mut self) {
+        let Ok(pid_text) = std::fs::read_to_string(self.pid_file.as_str()) else {
+            return;
+        };
+        let Ok(pid) = pid_text.trim().parse::<libc::pid_t>() else {
+            return;
+        };
+        if pid > 0 {
+            // SAFETY: pid is written by the shell as `$!` for this test's
+            // background `sleep` process; failures are best-effort cleanup.
+            unsafe {
+                let _ = libc::kill(pid, libc::SIGKILL);
+            }
+        }
+    }
+}
+
+fn orphan_sleep_command(marker: &str, pid_path: &str) -> String {
+    format!("sleep 30 & echo $! > {pid_path}; echo {marker}")
+}
+
 /// Helper: send a MSG_EXEC via the writer half, read MSG_EXEC_RESULT from the
 /// reader half, and return `(exit_code, stdout, stderr)`.
 fn send_exec_and_read_result(
@@ -456,8 +494,14 @@ fn streaming_monitor_normal_exit() {
     // Discard MSG_READY
     read_and_discard_message(&mut host_stream);
 
-    let log_path = format!("/tmp/vsock-test-normal-{}.log", std::process::id());
-    send_spawn_watch(&mut host_stream, 1, "echo hello", Some(&log_path), 5000);
+    let log_path = unique_tmp_path("normal", ".log");
+    send_spawn_watch(
+        &mut host_stream,
+        1,
+        "echo hello",
+        Some(log_path.as_str()),
+        5000,
+    );
 
     host_stream
         .set_read_timeout(Some(Duration::from_secs(10)))
@@ -468,8 +512,6 @@ fn streaming_monitor_normal_exit() {
     assert_eq!(exit_code, 0);
     assert_eq!(String::from_utf8_lossy(&stdout_data).trim(), "hello");
 
-    // Cleanup
-    let _ = std::fs::remove_file(&log_path);
     drop(host_stream);
     let _ = handle.join();
 }
@@ -599,8 +641,8 @@ fn streaming_monitor_stream_only_does_not_write_guest_log() {
     // Discard MSG_READY
     read_and_discard_message(&mut host_stream);
 
-    let log_path = format!("/tmp/vsock-test-stream-only-{}.log", std::process::id());
-    std::fs::write(&log_path, "preexisting\n").unwrap();
+    let log_path = unique_tmp_path("stream-only", ".log");
+    std::fs::write(log_path.as_str(), "preexisting\n").unwrap();
     send_spawn_watch(&mut host_stream, 1, "echo stream-only", None, 5000);
 
     host_stream
@@ -611,12 +653,11 @@ fn streaming_monitor_stream_only_does_not_write_guest_log() {
     assert!(pid > 0);
     assert_eq!(exit_code, 0);
     assert_eq!(String::from_utf8_lossy(&stdout_data).trim(), "stream-only");
-    let log_content = std::fs::read_to_string(&log_path).unwrap();
+    let log_content = std::fs::read_to_string(log_path.as_str()).unwrap();
     assert_eq!(log_content, "preexisting\n");
 
     drop(host_stream);
     let _ = handle.join();
-    let _ = std::fs::remove_file(&log_path);
 }
 
 /// Regression test: if the main child exits but an orphaned background
@@ -640,12 +681,14 @@ fn streaming_monitor_drains_on_orphaned_stdout() {
     // Command that writes to stdout, then spawns a background process
     // that inherits (and holds open) the stdout fd. The main shell exits
     // immediately but the backgrounded `sleep` keeps the pipe alive.
-    let log_path = format!("/tmp/vsock-test-orphan-{}.log", std::process::id());
+    let log_path = unique_tmp_path("orphan", ".log");
+    let orphan = OrphanProcessGuard::new("orphan-sleep");
+    let command = orphan_sleep_command("orphan-test", orphan.pid_path());
     send_spawn_watch(
         &mut host_stream,
         1,
-        "echo orphan-test; sleep 30 &",
-        Some(&log_path),
+        &command,
+        Some(log_path.as_str()),
         0, // no timeout — relies entirely on drain deadline
     );
 
@@ -664,11 +707,6 @@ fn streaming_monitor_drains_on_orphaned_stdout() {
         String::from_utf8_lossy(&stdout_data),
     );
 
-    // Cleanup: kill the orphaned sleep process (best-effort)
-    let _ = std::process::Command::new("pkill")
-        .args(["-f", "sleep 30"])
-        .status();
-    let _ = std::fs::remove_file(&log_path);
     drop(host_stream);
     let _ = handle.join();
 }
@@ -693,12 +731,12 @@ fn streaming_monitor_timeout_kills_process() {
 
     // Command that runs longer than the timeout.
     // timeout_ms = 1000 (1s), command sleeps 60s → killed after 1s.
-    let log_path = format!("/tmp/vsock-test-timeout-{}.log", std::process::id());
+    let log_path = unique_tmp_path("timeout", ".log");
     send_spawn_watch(
         &mut host_stream,
         1,
         "echo timeout-test; sleep 60",
-        Some(&log_path),
+        Some(log_path.as_str()),
         1000, // 1 second timeout
     );
 
@@ -718,7 +756,6 @@ fn streaming_monitor_timeout_kills_process() {
         String::from_utf8_lossy(&stdout_data),
     );
 
-    let _ = std::fs::remove_file(&log_path);
     drop(host_stream);
     let _ = handle.join();
 }
@@ -849,14 +886,11 @@ fn exec_returns_when_orphaned_grandchild_holds_stdout() {
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
 
+    let orphan = OrphanProcessGuard::new("orphan-exec-sleep");
+    let command = orphan_sleep_command("orphan-exec", orphan.pid_path());
     let start = Instant::now();
-    let (code, stdout, _stderr) = send_exec_and_read_result(
-        &mut host_writer,
-        &mut host_reader,
-        1,
-        "echo orphan-exec; sleep 30 &",
-        0,
-    );
+    let (code, stdout, _stderr) =
+        send_exec_and_read_result(&mut host_writer, &mut host_reader, 1, &command, 0);
     let elapsed = start.elapsed();
 
     assert_eq!(code, 0);
@@ -870,10 +904,6 @@ fn exec_returns_when_orphaned_grandchild_holds_stdout() {
         "MSG_EXEC_RESULT should arrive within drain deadline, took {elapsed:?}",
     );
 
-    // Cleanup: kill the orphaned sleep
-    let _ = std::process::Command::new("pkill")
-        .args(["-f", "sleep 30"])
-        .status();
     drop(host_writer);
     drop(host_reader);
     let _ = handle.join();
@@ -1044,12 +1074,12 @@ fn streaming_terminates_child_on_vsock_disconnect() {
     // Long-running command that writes stdout every ~50 ms — gives the
     // streaming drain a chunk to forward at high frequency, so the post-
     // disconnect write failure is observed promptly.
-    let log_path = format!("/tmp/vsock-test-disco-{}.log", std::process::id());
+    let log_path = unique_tmp_path("disco", ".log");
     send_spawn_watch(
         &mut host_stream,
         1,
         "while true; do echo tick; sleep 0.05; done",
-        Some(&log_path),
+        Some(log_path.as_str()),
         0, // no timeout — we want SIGPIPE, not the kill watchdog, to terminate
     );
 
@@ -1101,13 +1131,10 @@ fn streaming_terminates_child_on_vsock_disconnect() {
             unsafe {
                 libc::kill(pid as i32, libc::SIGKILL);
             }
-            let _ = std::fs::remove_file(&log_path);
             panic!("pid {pid} did not terminate within 5s after vsock disconnect");
         }
         thread::sleep(Duration::from_millis(50));
     }
-
-    let _ = std::fs::remove_file(&log_path);
 }
 
 /// Regression: a child producing > 64 KB on **both** stdout and stderr
@@ -1191,8 +1218,10 @@ fn buffered_spawn_watch_returns_when_orphaned_grandchild_holds_stdout() {
         .set_read_timeout(Some(Duration::from_secs(15)))
         .unwrap();
 
+    let orphan = OrphanProcessGuard::new("orphan-buf-sleep");
+    let command = orphan_sleep_command("orphan-buf", orphan.pid_path());
     let start = Instant::now();
-    send_spawn_watch_buffered(&mut host_stream, 1, "echo orphan-buf; sleep 30 &", 0);
+    send_spawn_watch_buffered(&mut host_stream, 1, &command, 0);
     let (pid, code, stdout, _stderr) = read_buffered_spawn_watch_result(&mut host_stream, 1);
     let elapsed = start.elapsed();
 
@@ -1208,9 +1237,6 @@ fn buffered_spawn_watch_returns_when_orphaned_grandchild_holds_stdout() {
         "MSG_PROCESS_EXIT should arrive within drain deadline, took {elapsed:?}",
     );
 
-    let _ = std::process::Command::new("pkill")
-        .args(["-f", "sleep 30"])
-        .status();
     drop(host_stream);
     let _ = handle.join();
 }
