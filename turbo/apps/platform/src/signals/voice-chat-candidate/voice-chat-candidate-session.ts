@@ -6,10 +6,11 @@ import {
 } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import {
   jsonParseOr,
+  onDomEventFn,
   resetSignal,
   throwIfAbort,
-  onDomEventFn,
 } from "../utils.ts";
+import { rootSignal$ } from "../root-signal.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -626,36 +627,33 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
     }
     pending = false;
     if (signal.aborted) {
-      lock.release().catch(() => {
-        return undefined;
-      });
+      await lock.release();
       return;
     }
     set(internalWakeLock$, lock);
-    lock.addEventListener("release", () => {
+    lock.addEventListener("release", async () => {
       if (
         !signal.aborted &&
         reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
       ) {
         reacquireCount++;
-        requestAndTrack().catch(() => {
-          return undefined;
-        });
+        await requestAndTrack();
       }
     });
   };
 
   signal.throwIfAborted();
 
-  const onVisibilityChange = (): void => {
+  const onVisibilityChange = async (_e: Event): Promise<void> => {
     if (document.visibilityState === "visible" && !signal.aborted) {
       reacquireCount = 0;
-      requestAndTrack().catch(() => {
-        return undefined;
-      });
+      await requestAndTrack();
     }
   };
-  document.addEventListener("visibilitychange", onVisibilityChange);
+  document.addEventListener(
+    "visibilitychange",
+    onDomEventFn(onVisibilityChange),
+  );
   signal.addEventListener("abort", () => {
     document.removeEventListener("visibilitychange", onVisibilityChange);
   });
@@ -663,12 +661,10 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   await requestAndTrack();
 });
 
-const releaseWakeLock$ = command(({ get, set }) => {
+const releaseWakeLock$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const lock = get(internalWakeLock$);
   if (lock) {
-    lock.release().catch(() => {
-      return undefined;
-    });
+    await lock.release();
     set(internalWakeLock$, null);
   }
 });
@@ -927,7 +923,7 @@ export const startVoiceChatCandidate$ = command(
  */
 export const endVoiceChatCandidate$ = command(({ get, set }) => {
   set(resetSessionSignal$);
-  set(releaseWakeLock$);
+  set(releaseWakeLock$, get(rootSignal$).signal);
 
   const dc = get(internalDc$);
   if (dc) {

@@ -8,9 +8,6 @@
  * expired between fetch and server-side validation (see issue #8883).
  */
 import type { Clerk } from "@clerk/clerk-js";
-import { logger } from "./log.ts";
-
-const L = logger("AuthRetry");
 
 export type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
 
@@ -45,11 +42,6 @@ export async function fetchFreshToken(
 export function handleUnauthorizedRedirect(clerk: ClerkLike): void {
   const redirectResult = clerk.redirectToSignIn();
   if (redirectResult instanceof Promise) {
-    redirectResult.catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      L.error("Sign-in redirect failed", error);
-    });
+    void redirectResult;
   }
 }

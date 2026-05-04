@@ -4,9 +4,6 @@ import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { logger } from "../log.ts";
-
-const L = logger("ZeroSlack");
 
 const internalReload$ = state(0);
 
@@ -54,12 +51,7 @@ export const disconnectSlackOrg$ = command(
     set(reloadSlackOrg$);
     // Re-start the Ably subscription so the card picks up when the user
     // re-connects via the OAuth tab.
-    set(pollSlackConnection$, signal).catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      L.error("Re-subscribe after disconnect failed", error);
-    });
+    await set(pollSlackConnection$, signal);
   },
 );
 

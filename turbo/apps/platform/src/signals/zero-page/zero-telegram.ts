@@ -444,22 +444,11 @@ export const updateTelegramBotAgent$ = command(
       }),
       [200],
       { toast: false },
-    ).catch((error: unknown) => {
-      if (signal.aborted) {
-        toast.dismiss(toastId);
-      } else {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Failed to update Telegram bot";
-        toast.error(message, { id: toastId });
-      }
-      throw error;
-    });
+    );
     signal.throwIfAborted();
     set(reloadTelegramBots$);
     toast.success("Default agent updated", { id: toastId });
-    return (result as { body: TelegramBotStatus }).body;
+    return result.body;
   },
 );
 

@@ -218,13 +218,14 @@ function QueueDrawerContent() {
 export function QueueDrawer() {
   const open = useGet(queueDrawerOpen$);
   const setOpen = useSet(setQueueDrawerOpen$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <Sheet
       open={open}
       onOpenChange={(v) => {
         if (!v) {
-          setOpen(false);
+          detach(setOpen(false, pageSignal), Reason.DomCallback);
         }
       }}
     >

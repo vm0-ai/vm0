@@ -1,5 +1,4 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -175,27 +174,7 @@ export function createDraftSignals(): DraftSignals {
         return [...prev, attachment];
       });
 
-      await set(attachment.upload$, signal).catch((error: unknown) => {
-        // Drop the failed chip so the composer doesn't show an orphan.
-        // `removeAttachment$` may have already removed it on user cancel;
-        // filter is a no-op in that case.
-        set(internalAttachments$, (prev) => {
-          return prev.filter((a) => {
-            return a !== attachment;
-          });
-        });
-
-        // Aborts come from user cancel (X on chip) or external signal
-        // (page navigation) — neither is an error condition.
-        const isAbort = error instanceof Error && error.name === "AbortError";
-        if (isAbort) {
-          return;
-        }
-
-        const message =
-          error instanceof Error ? error.message : "Unknown error";
-        toast.error(`Failed to upload ${file.name}: ${message}`);
-      });
+      await set(attachment.upload$, signal);
     },
   );
 

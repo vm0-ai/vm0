@@ -118,13 +118,9 @@ const fetchAndPlay$ = command(
       let lastSource: AudioBufferSourceNode | null = null;
       let carry: Uint8Array | null = null;
 
-      const cleanupFn = () => {
-        reader.cancel().catch((error: unknown) => {
-          L.debug("reader cancel error", error);
-        });
-        audioCtx.close().catch((error: unknown) => {
-          L.debug("audioCtx close error", error);
-        });
+      const cleanupFn = async () => {
+        await reader.cancel();
+        await audioCtx.close();
       };
       set(internalCleanupFn$, () => {
         return cleanupFn;

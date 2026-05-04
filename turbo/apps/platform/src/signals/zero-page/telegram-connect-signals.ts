@@ -3,9 +3,10 @@ import {
   zeroIntegrationsTelegramContract,
   type TelegramLinkStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { accept, ApiError } from "../../lib/accept.ts";
+import { accept } from "../../lib/accept.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { onDomEventFn } from "../utils.ts";
 import { searchParams$ } from "../route.ts";
 import {
   parseTelegramPostMessage,
@@ -68,11 +69,9 @@ export const telegramConnectLinkStatus$ = computed(
       }),
       [200],
       { toast: false },
-    ).catch(() => {
-      return null;
-    });
+    );
 
-    return result?.body ?? null;
+    return result.body;
   },
 );
 
@@ -102,7 +101,7 @@ export const connectTelegramAccount$ = command(
     set(internalTelegramConnectSuccess$, null);
 
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
-    const linked = await accept(
+    const result = await accept(
       client.link({
         headers: {},
         fetchOptions: { signal },
@@ -117,36 +116,17 @@ export const connectTelegramAccount$ = command(
       }),
       [200],
       { toast: false },
-    )
-      .then((result) => {
-        return result.body;
-      })
-      .catch((error: unknown) => {
-        if (signal.aborted) {
-          throw error;
-        }
-        set(
-          internalTelegramConnectError$,
-          error instanceof ApiError
-            ? error.message
-            : "We couldn't connect Telegram. Try again from Telegram.",
-        );
-        set(internalTelegramConnectStatus$, "error");
-        return null;
-      });
+    );
 
     signal.throwIfAborted();
-    if (!linked) {
-      return;
-    }
-    set(internalTelegramConnectSuccess$, linked);
+    set(internalTelegramConnectSuccess$, result.body);
     set(internalTelegramConnectStatus$, "success");
   },
 );
 
 export const startTelegramConnectLoginListener$ = command(
   ({ get, set }, signal: AbortSignal) => {
-    function handleMessage(event: MessageEvent) {
+    async function handleMessage(event: MessageEvent) {
       const auth = parseTelegramPostMessage(event.data);
       if (!auth) {
         return;
@@ -157,27 +137,17 @@ export const startTelegramConnectLoginListener$ = command(
         return;
       }
 
-      set(
+      await set(
         connectTelegramAccount$,
         { telegramBotId: parsed.params.telegramBotId, telegramAuth: auth },
         signal,
-      ).catch((error: unknown) => {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        set(
-          internalTelegramConnectError$,
-          error instanceof Error
-            ? error.message
-            : "We couldn't connect Telegram. Try again from Telegram.",
-        );
-        set(internalTelegramConnectStatus$, "error");
-      });
+      );
     }
 
-    window.addEventListener("message", handleMessage);
+    const wrappedHandler = onDomEventFn(handleMessage);
+    window.addEventListener("message", wrappedHandler);
     signal.addEventListener("abort", () => {
-      window.removeEventListener("message", handleMessage);
+      window.removeEventListener("message", wrappedHandler);
     });
   },
 );

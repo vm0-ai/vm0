@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { searchParams$ } from "../route.ts";
 import { zeroSlackConnectContract } from "@vm0/api-contracts/contracts/zero-slack-connect";
 import { zeroClient$ } from "../api-client.ts";
-import { accept, ApiError } from "../../lib/accept.ts";
+import { accept } from "../../lib/accept.ts";
 
 // Internal state
 const internalStatus$ = state<
@@ -52,15 +52,9 @@ export const initSlackConnectPage$ = command(
       const client = get(zeroClient$)(zeroSlackConnectContract);
       const result = await accept(client.getStatus(), [200], {
         toast: false,
-      }).catch((error: unknown) => {
-        if (signal.aborted) {
-          throw error;
-        }
-        // silently fall through to idle on non-abort errors
-        return null;
       });
       signal.throwIfAborted();
-      if (result?.body.isConnected) {
+      if (result.body.isConnected) {
         set(internalStatus$, "success");
         return;
       }
@@ -87,7 +81,7 @@ export const connectSlackAccount$ = command(
     const client = get(zeroClient$)(zeroSlackConnectContract);
     const channelId = params.get("c");
     const threadTs = params.get("t");
-    const connected = await accept(
+    await accept(
       client.connect({
         body: {
           workspaceId,
@@ -98,27 +92,8 @@ export const connectSlackAccount$ = command(
       }),
       [200],
       { toast: false },
-    )
-      .then(() => {
-        return true;
-      })
-      .catch((error: unknown) => {
-        if (signal.aborted) {
-          throw error;
-        }
-        const msg =
-          error instanceof ApiError
-            ? error.message
-            : "Failed to connect. Please try again.";
-        set(internalErrorMsg$, msg);
-        set(internalStatus$, "error");
-        // error handled via signal state — return false to skip success path
-        return false;
-      });
+    );
     signal.throwIfAborted();
-    if (!connected) {
-      return;
-    }
     set(internalStatus$, "success");
     window.location.href = "slack://open";
   },

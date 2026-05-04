@@ -17,6 +17,8 @@
  * cached one.
  */
 
+import { detach, Reason } from "../signals/utils.ts";
+
 type Callback = (message: { name: string; data: null }) => void;
 type ConnectionListener = () => void;
 
@@ -179,30 +181,35 @@ export class Realtime {
   constructor(config?: { authCallback?: AuthCallback }) {
     if (config?.authCallback) {
       capturedAuthCallback = config.authCallback;
-      invokeAuthCallback(config.authCallback)
-        .then(() => {
-          hasConnected = true;
-          const listener = connectedListener;
-          connectedListener = null;
-          if (listener) {
-            queueMicrotask(() => {
-              listener();
-            });
+      detach(
+        (async () => {
+          try {
+            await invokeAuthCallback(config.authCallback!);
+            hasConnected = true;
+            const listener = connectedListener;
+            connectedListener = null;
+            if (listener) {
+              queueMicrotask(() => {
+                listener();
+              });
+            }
+          } catch (error: unknown) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            failedStateChange = { reason: { message } };
+            const listener = failedListener;
+            failedListener = null;
+            if (listener) {
+              const stateChange = failedStateChange;
+              queueMicrotask(() => {
+                listener(stateChange);
+              });
+            }
           }
-        })
-        .catch((error: unknown) => {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          failedStateChange = { reason: { message } };
-          const listener = failedListener;
-          failedListener = null;
-          if (listener) {
-            const stateChange = failedStateChange;
-            queueMicrotask(() => {
-              listener(stateChange);
-            });
-          }
-        });
+        })(),
+        Reason.Deferred,
+        "ably.authCallback",
+      );
     } else {
       queueMicrotask(() => {
         hasConnected = true;

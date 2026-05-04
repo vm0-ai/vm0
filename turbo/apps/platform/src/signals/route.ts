@@ -210,12 +210,7 @@ export const detachedNavigateTo$ = command(
       generateRouterPath(pathname, options?.pathParams),
       options ?? {},
       signal,
-    ).catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      L.error("Navigation failed", error);
-    });
+    );
   },
 );
 

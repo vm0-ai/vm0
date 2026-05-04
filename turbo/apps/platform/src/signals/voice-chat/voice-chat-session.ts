@@ -4,7 +4,7 @@ import {
   type VoiceChatItemRole,
   type VoiceChatTask,
 } from "@vm0/api-contracts/contracts/zero-voice-chat";
-import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
+import { onDomEventFn, resetSignal, throwIfAbort } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -615,9 +615,7 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
     }
     pending = false;
     if (signal.aborted) {
-      lock.release().catch(() => {
-        return undefined;
-      });
+      void lock.release();
       return;
     }
     set(internalWakeLock$, lock);
@@ -627,9 +625,7 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
         reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
       ) {
         reacquireCount++;
-        requestAndTrack().catch(() => {
-          return undefined;
-        });
+        void requestAndTrack();
       }
     });
   };
@@ -639,9 +635,7 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   const onVisibilityChange = (): void => {
     if (document.visibilityState === "visible" && !signal.aborted) {
       reacquireCount = 0;
-      requestAndTrack().catch(() => {
-        return undefined;
-      });
+      void requestAndTrack();
     }
   };
   document.addEventListener("visibilitychange", onVisibilityChange);
@@ -655,9 +649,7 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
 const releaseWakeLock$ = command(({ get, set }) => {
   const lock = get(internalWakeLock$);
   if (lock) {
-    lock.release().catch(() => {
-      return undefined;
-    });
+    void lock.release();
     set(internalWakeLock$, null);
   }
 });
