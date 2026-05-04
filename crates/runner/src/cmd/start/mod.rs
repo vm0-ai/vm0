@@ -7,6 +7,7 @@
 //!
 //! The sibling modules keep focused responsibilities out of this orchestration
 //! file:
+//! - `factory_lifecycle`: sandbox factory startup and shutdown.
 //! - `identity`: persistent runner id storage.
 //! - `job_lifecycle`: cleanup, budget, and completion ownership state.
 //! - `mitm_restart`: mitmproxy crash restart and backoff.
@@ -63,6 +64,7 @@ use crate::status::{RunnerMode, StatusTracker};
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, SandboxReuseResult};
 
+mod factory_lifecycle;
 mod heartbeat;
 mod identity;
 mod job_lifecycle;
@@ -70,6 +72,7 @@ mod mitm_restart;
 mod orphan_reap;
 mod signals;
 
+use factory_lifecycle::{SharedFactory, shutdown_factories, start_factories};
 use heartbeat::{HEARTBEAT_PERIOD, HeartbeatContext, collect_heartbeat_state, send_heartbeat};
 use identity::load_or_generate_runner_id;
 use job_lifecycle::{
@@ -554,31 +557,8 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         outer_job_panic,
     } = config;
 
-    // Build per-profile factories via the sandbox runtime.
-    let mut factories: BTreeMap<String, (SharedFactory, bool)> = BTreeMap::new();
-    for (profile_name, profile_config) in &profiles {
-        let factory_config = config::RunnerConfig::build_factory_config(
-            &firecracker,
-            &base_dir,
-            profile_name,
-            profile_config,
-            &home,
-        );
-        let restore_guest_state = factory_config.snapshot.is_some();
-        let factory_result = runtime.create_factory(factory_config).await;
-        let factory = match factory_result {
-            Ok(f) => f,
-            Err(e) => {
-                shutdown_factories(&mut factories, runtime.as_mut(), None).await;
-                return Err(e.into());
-            }
-        };
-        factories.insert(
-            profile_name.clone(),
-            (Arc::new(factory), restore_guest_state),
-        );
-        info!(profile = %profile_name, "factory started");
-    }
+    let mut factories =
+        start_factories(&profiles, &firecracker, &base_dir, &home, runtime.as_mut()).await?;
 
     let mut jobs: JoinSet<Option<RunId>> = JoinSet::new();
     // Tracked destroy tasks — JoinSet ensures we can await all in-flight
@@ -1027,13 +1007,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     Ok(())
 }
 
-/// A sandbox factory shared across concurrent job executors.
-///
-/// Uses `Arc<Box<...>>` instead of `Arc<dyn ...>` because `Arc::try_unwrap`
-/// requires a sized type — `dyn SandboxFactory` is unsized, but `Box<dyn
-/// SandboxFactory>` is sized, allowing `try_unwrap` at shutdown.
-type SharedFactory = Arc<Box<dyn SandboxFactory>>;
-
 struct DiscoveredJob {
     run_id: RunId,
     profile_name: String,
@@ -1238,47 +1211,6 @@ struct JobProfile {
     restore_guest_state: bool,
     factory: SharedFactory,
     cancel: CancellationToken,
-}
-
-/// Shut down all factories, then release shared runtime resources.
-async fn shutdown_factories(
-    factories: &mut BTreeMap<String, (SharedFactory, bool)>,
-    runtime: &mut dyn SandboxRuntime,
-    teardown: Option<&TeardownTimer>,
-) {
-    for (name, (factory, _)) in std::mem::take(factories) {
-        match Arc::try_unwrap(factory) {
-            Ok(mut f) => {
-                let phase = teardown.map(|timer| {
-                    let phase_start = Instant::now();
-                    info!(
-                        phase = "factory_shutdown",
-                        profile = %name,
-                        elapsed_ms = timer.elapsed_ms(),
-                        "teardown phase started"
-                    );
-                    phase_start
-                });
-                f.shutdown().await;
-                if let (Some(timer), Some(phase)) = (teardown, phase) {
-                    info!(
-                        phase = "factory_shutdown",
-                        profile = %name,
-                        phase_ms = TeardownTimer::duration_ms(phase.elapsed()),
-                        elapsed_ms = timer.elapsed_ms(),
-                        "teardown phase complete"
-                    );
-                }
-            }
-            Err(_) => warn!(profile = %name, "factory still referenced at shutdown"),
-        }
-    }
-    // Clean up shared resources (netns pool, base loop cache).
-    let phase = teardown.map(|timer| timer.phase_start("runtime_shutdown"));
-    runtime.shutdown().await;
-    if let (Some(timer), Some(phase)) = (teardown, phase) {
-        timer.phase_complete("runtime_shutdown", phase);
-    }
 }
 
 type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
