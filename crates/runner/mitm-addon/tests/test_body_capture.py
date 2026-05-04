@@ -688,7 +688,8 @@ class TestDecompression:
         entry = {}
         add_capture_fields(flow, entry)
         # Body should be capped, not 1MB
-        assert len(entry.get("response_body", "")) <= STREAM_BUFFER_LIMIT
+        assert entry["response_body_truncated"] is True
+        assert len(entry["response_body"]) == STREAM_BUFFER_LIMIT
 
     def test_truncated_brotli_falls_back(self, real_flow):
         """Truncated brotli data should fall back gracefully."""

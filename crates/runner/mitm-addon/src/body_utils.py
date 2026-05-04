@@ -287,7 +287,11 @@ def add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     if flow.response:
         stream_buf = flow.metadata.get("stream_buffer")
         if stream_buf is not None:
-            body = decompress_body(bytes(stream_buf), flow.response.headers)
+            body = decompress_body(
+                bytes(stream_buf),
+                flow.response.headers,
+                max_output=STREAM_BUFFER_LIMIT + 1,
+            )
         else:
             try:
                 body = flow.response.content
