@@ -85,10 +85,13 @@ import {
   PreviewableFileAttachmentChip,
 } from "./zero-attachment-chips.tsx";
 import {
-  AttachmentPreview,
   classifyChatAttachment,
-  filenameFromUrl,
-} from "./zero-attachment-preview.tsx";
+  contentTypeForBodyPreviewKind,
+  enrichBlocksWithTextPreviews,
+  parseBodyRenderBlocks,
+  type BodyRenderBlock,
+} from "../../signals/chat-page/parse-body-blocks.ts";
+import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
   openImageLightbox$ as openAttachmentImageLightbox$,
@@ -111,6 +114,7 @@ import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 
 import type {
+  EnrichedChatMessage,
   GroupedChatMessageGroup,
   PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
@@ -1960,290 +1964,14 @@ function parseInlineAttachments(content: string): {
   return { cleanContent: cleaned.trim(), parsed };
 }
 
-type BodyRenderBlock =
-  | {
-      type: "markdown";
-      id: string;
-      content: string;
-    }
-  | {
-      type: "preview";
-      id: string;
-      preview: {
-        filename: string;
-        url: string;
-        kind: BodyPreviewKind;
-      };
-    };
-
-type BodyPreviewKind =
-  | "image"
-  | "video"
-  | "audio"
-  | "markdown"
-  | "text"
-  | "json"
-  | "csv"
-  | "pdf"
-  | "html";
-
-function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
-  return (
-    kind === "image" ||
-    kind === "video" ||
-    kind === "audio" ||
-    kind === "markdown" ||
-    kind === "text" ||
-    kind === "json" ||
-    kind === "csv" ||
-    kind === "pdf" ||
-    kind === "html"
-  );
-}
-
-function isPlatformFileUrl(url: string): boolean {
-  const baseUrl = "https://vm0.local";
-  if (!URL.canParse(url, baseUrl)) {
-    return false;
-  }
-  const parsed = new URL(url, baseUrl);
-  return /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
-}
-
-function stripMarkdownLineDecorations(value: string): string {
-  let candidate = value
-    .trim()
-    .replace(/^(?:>\s*)+/, "")
-    .replace(/^(?:[-*+]\s+|\d+[.)]\s+)/, "")
-    .trim();
-  const wrappers: [string, string][] = [
-    ["**", "**"],
-    ["__", "__"],
-    ["*", "*"],
-    ["_", "_"],
-    ["~~", "~~"],
-    ["`", "`"],
-    ["<", ">"],
-    ["(", ")"],
-    ["（", "）"],
-  ];
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const [prefix, suffix] of wrappers) {
-      if (candidate.startsWith(prefix) && candidate.endsWith(suffix)) {
-        candidate = candidate
-          .slice(prefix.length, candidate.length - suffix.length)
-          .trim();
-        changed = true;
-        break;
-      }
-    }
-  }
-
-  return candidate;
-}
-
-function trimPreviewUrl(value: string): string {
-  let url = value.trim();
-  let previous = "";
-  while (url !== previous) {
-    previous = url;
-    url = url
-      .replace(/[*_~`]+$/g, "")
-      .replace(/[)\]}>.,，。；;:：!！?？]+$/g, "");
-  }
-  return url;
-}
-
-type ExtractedPreviewUrl = {
-  url: string;
-  source: "markdown-link" | "bare-url" | "platform-file-line";
-};
-
-function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
-  const candidate = stripMarkdownLineDecorations(line);
-  const markdownLinkMatch = candidate.match(
-    /^\[([^\]]+)\]\((https?:\/\/[^)\s]+|\/f\/[^)\s]+)\)$/,
-  );
-  const bareUrlMatch = candidate.match(/^(https?:\/\/\S+|\/f\/\S+)$/);
-  if (markdownLinkMatch?.[2]) {
-    return {
-      url: trimPreviewUrl(markdownLinkMatch[2]),
-      source: "markdown-link",
-    };
-  }
-  if (bareUrlMatch?.[1]) {
-    return {
-      url: trimPreviewUrl(bareUrlMatch[1]),
-      source: "bare-url",
-    };
-  }
-
-  const urls = Array.from(
-    candidate.matchAll(/(?:https?:\/\/|\/f\/)[^\s<>"']+/g),
-    (match) => {
-      return trimPreviewUrl(match[0]);
-    },
-  ).filter((url, index, list) => {
-    return url.length > 0 && list.indexOf(url) === index;
-  });
-
-  if (urls.length === 1 && isPlatformFileUrl(urls[0]!)) {
-    return {
-      url: urls[0]!,
-      source: "platform-file-line",
-    };
-  }
-
-  return null;
-}
-
-function contentTypeForBodyPreviewKind(kind: BodyPreviewKind): string {
-  if (kind === "markdown") {
-    return "text/markdown";
-  }
-  if (kind === "text") {
-    return "text/plain";
-  }
-  if (kind === "json") {
-    return "application/json";
-  }
-  if (kind === "csv") {
-    return "text/csv";
-  }
-  if (kind === "pdf") {
-    return "application/pdf";
-  }
-  if (kind === "html") {
-    return "text/html";
-  }
-  if (kind === "image") {
-    return "image/*";
-  }
-  if (kind === "audio") {
-    return "audio/*";
-  }
-  return "video/*";
-}
-
-function parseBodyRenderBlocks(content: string): {
-  cleanContent: string;
-  blocks: BodyRenderBlock[];
-} {
-  const blocks: BodyRenderBlock[] = [];
-  const lines = content.split("\n");
-  const keptLines: string[] = [];
-  const markdownBuffer: string[] = [];
-  let blockSequence = 0;
-  let openFence: {
-    marker: "`" | "~";
-    length: number;
-  } | null = null;
-  const nextBlockId = (type: BodyRenderBlock["type"]) => {
-    blockSequence += 1;
-    return `${type}-${blockSequence}`;
-  };
-
-  const flushMarkdownBuffer = () => {
-    const joined = markdownBuffer.join("\n").trim();
-    if (joined) {
-      blocks.push({
-        type: "markdown",
-        id: nextBlockId("markdown"),
-        content: joined,
-      });
-    }
-    markdownBuffer.length = 0;
-  };
-
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-    const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
-    if (fenceMatch) {
-      const fence = fenceMatch[1];
-      const marker = fence.startsWith("`") ? "`" : "~";
-      if (
-        openFence &&
-        openFence.marker === marker &&
-        fence.length >= openFence.length
-      ) {
-        openFence = null;
-      } else if (!openFence) {
-        openFence = { marker, length: fence.length };
-      }
-      markdownBuffer.push(line);
-      keptLines.push(line);
-      continue;
-    }
-
-    if (openFence) {
-      markdownBuffer.push(line);
-      keptLines.push(line);
-      continue;
-    }
-
-    const extracted = extractPreviewUrlFromLine(line);
-    if (!extracted) {
-      markdownBuffer.push(line);
-      keptLines.push(line);
-      continue;
-    }
-
-    const { url } = extracted;
-    const filename = filenameFromUrl(url);
-    const kind = classifyChatAttachment({ filename, url });
-
-    if (
-      extracted.source === "markdown-link" &&
-      (kind === "image" || kind === "video")
-    ) {
-      markdownBuffer.push(line);
-      keptLines.push(line);
-      continue;
-    }
-
-    if (isBodyPreviewKind(kind)) {
-      // Only render platform /f/ file URLs as inline preview cards.
-      // External URLs stay as plain markdown links so the recipient
-      // isn't misled into thinking the file was uploaded to vm0.
-      if (!isPlatformFileUrl(url)) {
-        markdownBuffer.push(line);
-        keptLines.push(line);
-        continue;
-      }
-      flushMarkdownBuffer();
-      blocks.push({
-        type: "preview",
-        id: nextBlockId("preview"),
-        preview: { filename, url, kind },
-      });
-      continue;
-    }
-
-    markdownBuffer.push(line);
-    keptLines.push(line);
-  }
-
-  flushMarkdownBuffer();
-
-  return {
-    cleanContent: keptLines.join("\n").trim(),
-    blocks,
-  };
-}
-
 function BodyContentBlocks({
   blocks,
   openLightbox,
   hardBreaks,
-  signal,
 }: {
   blocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
   hardBreaks: boolean;
-  signal: AbortSignal;
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -2299,7 +2027,7 @@ function BodyContentBlocks({
               url: block.preview.url,
               contentType: contentTypeForBodyPreviewKind(block.preview.kind),
             }}
-            signal={signal}
+            text$={block.preview.text$}
           />
         );
       })}
@@ -2688,7 +2416,7 @@ function PagedUserMessage({
   message,
   thread,
 }: {
-  message: PagedChatMessage;
+  message: EnrichedChatMessage;
   thread: ChatThreadSignals;
 }) {
   const content = message.content ?? "";
@@ -2706,7 +2434,9 @@ function PagedUserMessage({
     cleanContent.trim() === ATTACH_ONLY_PLACEHOLDER
       ? ""
       : cleanContent;
-  const { blocks: bodyBlocks } = parseBodyRenderBlocks(strippedContent);
+  const bodyBlocks = enrichBlocksWithTextPreviews(
+    parseBodyRenderBlocks(strippedContent).blocks,
+  );
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
@@ -2746,7 +2476,6 @@ function PagedUserMessage({
                   blocks={bodyBlocks}
                   openLightbox={openLightbox}
                   hardBreaks
-                  signal={pageSignal}
                 />
               </div>
             )}
@@ -2821,9 +2550,12 @@ function PagedAssistantGroup({
   );
 }
 
-function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
+function PagedAssistantMessageItem({
+  message,
+}: {
+  message: EnrichedChatMessage;
+}) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const pageSignal = useGet(pageSignal$);
   const openLightbox = (url: string) => {
     openImageLightbox(url);
   };
@@ -2837,7 +2569,7 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
   }
 
   if (message.content) {
-    const { blocks } = parseBodyRenderBlocks(message.content);
+    const { blocks } = message;
     return (
       <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         {blocks.length > 0 ? (
@@ -2845,7 +2577,6 @@ function PagedAssistantMessageItem({ message }: { message: PagedChatMessage }) {
             blocks={blocks}
             openLightbox={openLightbox}
             hardBreaks={false}
-            signal={pageSignal}
           />
         ) : null}
       </div>

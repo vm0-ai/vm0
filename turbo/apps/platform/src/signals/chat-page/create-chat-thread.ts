@@ -39,6 +39,11 @@ import { logger } from "../log.ts";
 import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { idbMessageEnabled$ } from "../external/feature-switch.ts";
+import {
+  parseBodyRenderBlocks,
+  enrichBlocksWithTextPreviews,
+} from "./parse-body-blocks.ts";
+import type { EnrichedChatMessage } from "./chat-message.ts";
 import { clerk$ } from "../auth.ts";
 import {
   readThreadAgentId$,
@@ -560,7 +565,7 @@ function createDraftSync(
  */
 function mergeIntoGroups(
   groups: GroupedChatMessageGroup[],
-  messages: PagedChatMessage[],
+  messages: EnrichedChatMessage[],
 ): GroupedChatMessageGroup[] {
   const result = groups.map((g) => {
     return { ...g, messages: [...g.messages] };
@@ -647,11 +652,15 @@ function createPagedMessages(
   // advanced after each successful fetch to the last returned message.
   const nextCursorId$ = state<string | undefined>(undefined);
 
-  const allMessages$ = computed(async (get): Promise<PagedChatMessage[]> => {
+  const allMessages$ = computed(async (get): Promise<EnrichedChatMessage[]> => {
     const initial = await get(initialPage$);
     const history = get(historyMessages$);
     const deltas = get(deltaMessages$);
-    return [...history, ...initial.messages, ...deltas];
+    const raw = [...history, ...initial.messages, ...deltas];
+    return raw.map((msg) => {
+      const { blocks } = parseBodyRenderBlocks(msg.content ?? "");
+      return { ...msg, blocks: enrichBlocksWithTextPreviews(blocks) };
+    });
   });
 
   const groupedChatMessages$ = computed(

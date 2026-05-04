@@ -17,6 +17,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 
 export { chatThreads$, reloadChatThreads$ } from "../agent-chat.ts";
 
@@ -37,11 +38,15 @@ export {
 
 export type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
+export interface EnrichedChatMessage extends PagedChatMessage {
+  blocks: BodyRenderBlock[];
+}
+
 /** A group of consecutive messages with the same role. */
 export interface GroupedChatMessageGroup {
   beginMessageId: string;
   role: "user" | "assistant";
-  messages: PagedChatMessage[];
+  messages: EnrichedChatMessage[];
 }
 
 // ---------------------------------------------------------------------------
