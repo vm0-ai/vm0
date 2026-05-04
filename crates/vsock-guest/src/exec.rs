@@ -125,7 +125,7 @@ pub(crate) fn spawn_with_pipes(command: &str, sudo: bool) -> io::Result<Child> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     use crate::wait::{WaitOutcome, wait_with_kill_timeout};
 
@@ -135,6 +135,17 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    fn wait_for_path(path: &std::path::Path, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if path.exists() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        path.exists()
     }
 
     #[test]
@@ -251,13 +262,20 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let _guard = TempDirGuard(dir.clone());
+        let ready = dir.join("ready");
         let survived = dir.join("survived");
+        let ready_arg = shell_escape_value(ready.to_str().unwrap());
         let survived_arg = shell_escape_value(survived.to_str().unwrap());
-        let script = format!("trap '' HUP; (sleep 1; touch {survived_arg}) & wait");
+        let script =
+            format!("trap '' HUP; (sleep 1; touch {survived_arg}) & touch {ready_arg}; wait");
 
         let mut command = build_exec_command(&script, false);
         command.stdout(Stdio::null()).stderr(Stdio::null());
         let child = spawn_in_own_process_group(&mut command).unwrap();
+        assert!(
+            wait_for_path(&ready, Duration::from_secs(2)),
+            "background child should be started before timeout kill is tested"
+        );
 
         let outcome = wait_with_kill_timeout(child, 100);
         assert!(matches!(outcome, WaitOutcome::TimedOut));
