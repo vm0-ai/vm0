@@ -231,6 +231,16 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
+  // push-notifications.ts handles navigator.serviceWorker.register() which can
+  // reject for reasons outside our control (private browsing, enterprise policy,
+  // user-disabled SW, etc.). The catch block silently returns — push is a
+  // non-critical enhancement so rejections should not abort bootstrap.
+  {
+    files: ["src/lib/push-notifications.ts"],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
+  },
   {
     ignores: [
       "dist/**",
