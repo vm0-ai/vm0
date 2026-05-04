@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { onDomEventFn } from "../utils.ts";
+import { detach, onDomEventFn, Reason } from "../utils.ts";
 import { fetch$ } from "../fetch.ts";
 import { fetchTtsAudio } from "../../lib/voice-io/tts-fetch.ts";
 import { logger } from "../log.ts";
@@ -11,7 +11,7 @@ const L = logger("AudioOutput:TTS");
 // ---------------------------------------------------------------------------
 
 const internalPlayingRunId$ = state<string | null>(null);
-const internalCleanupFn$ = state<(() => Promise<void>) | null>(null);
+const internalCleanupFn$ = state<(() => void) | null>(null);
 
 // ---------------------------------------------------------------------------
 // Public computed
@@ -49,14 +49,14 @@ function stripMarkdown(text: string): string {
 // Internal commands
 // ---------------------------------------------------------------------------
 
-const cleanupAudio$ = command(async ({ get, set }, _signal?: AbortSignal) => {
+const cleanupAudio$ = command(({ get, set }) => {
   const cleanupFn = get(internalCleanupFn$);
   if (cleanupFn) {
-    await cleanupFn();
+    cleanupFn();
   }
 
-  await set(internalPlayingRunId$, null);
-  await set(internalCleanupFn$, null);
+  set(internalPlayingRunId$, null);
+  set(internalCleanupFn$, null);
 });
 
 const resetPlaybackState$ = command(({ set }) => {
@@ -120,11 +120,11 @@ const fetchAndPlay$ = command(
       let lastSource: AudioBufferSourceNode | null = null;
       let carry: Uint8Array | null = null;
 
-      const cleanupFn = async () => {
-        await reader.cancel();
-        await audioCtx.close();
+      const cleanupFn = () => {
+        reader.cancel();
+        audioCtx.close();
       };
-      await set(internalCleanupFn$, cleanupFn);
+      set(internalCleanupFn$, cleanupFn);
       signal.throwIfAborted();
 
       for (;;) {
@@ -198,7 +198,7 @@ const fetchAndPlay$ = command(
       // Always reset playback state on any error (including AbortError)
       // to prevent the message ID from getting stuck, which would block
       // future playback of the same message.
-      await set(cleanupAudio$);
+      set(cleanupAudio$);
       signal.throwIfAborted();
       throw error;
     }
@@ -209,15 +209,16 @@ const fetchAndPlay$ = command(
 // Public commands
 // ---------------------------------------------------------------------------
 
-export const stopTts$ = command(async ({ set }, _signal?: AbortSignal) => {
-  await set(cleanupAudio$);
+export const stopTts$ = command(({ set }) => {
+  set(cleanupAudio$);
 });
 
 export const playTts$ = command(
-  async ({ get, set }, runId: string, text: string, signal: AbortSignal) => {
+  ({ get, set }, runId: string, text: string, signal: AbortSignal) => {
     if (get(internalPlayingRunId$) === runId) {
       return;
     }
-    await set(fetchAndPlay$, runId, text, signal);
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- fire-and-forget by design; guard check above prevents duplicate playback
+    detach(set(fetchAndPlay$, runId, text, signal), Reason.Entrance);
   },
 );
