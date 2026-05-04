@@ -255,7 +255,7 @@ function selectedSource(route: AppRoute): ShadowCompareSource {
 export function shadowCompareRoute({
   route,
   handler,
-  timeoutMs = 2000,
+  timeoutMs = 300_000,
 }: ShadowCompareOptions): Command<Promise<unknown>, [AbortSignal]> {
   return command(
     async ({ get, set }, signal: AbortSignal): Promise<unknown> => {
