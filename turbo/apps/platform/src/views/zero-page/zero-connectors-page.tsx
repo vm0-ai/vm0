@@ -7,6 +7,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
   IconPlug,
@@ -64,7 +65,7 @@ import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import noConnectorImg from "./assets/no-connector.webp";
-import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
+import { detach, onDomEventFn, Reason } from "../../signals/utils.ts";
 import {
   Button,
   DropdownMenu,
@@ -302,12 +303,14 @@ function GlobalConnectorCard({
   onConnect,
   onDisconnect,
   onReviewScopes,
+  isDisconnecting,
 }: {
   connector: ConnectorTypeWithStatus;
   isPolling: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
   onReviewScopes?: () => void;
+  isDisconnecting: boolean;
 }) {
   const status = (() => {
     if (isPolling) {
@@ -416,7 +419,10 @@ function GlobalConnectorCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={onDisconnect}>
+              <DropdownMenuItem
+                onClick={onDisconnect}
+                disabled={isDisconnecting}
+              >
                 Disconnect
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -596,7 +602,7 @@ export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
-  const disconnect = useSet(disconnectConnector$);
+  const [disconnectLoadable, disconnect] = useLoadableSet(disconnectConnector$);
   const signal = useGet(pageSignal$);
   const selectedType = useGet(selectedConnectorType$);
   const setSelected = useSet(setSelectedConnectorType$);
@@ -630,6 +636,7 @@ export function ZeroConnectorsPage() {
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const disconnecting = disconnectLoadable.state === "loading";
 
   const filtered = allConnectors.filter((c) => {
     return matchesConnectorSearch(search, c);
@@ -656,25 +663,12 @@ export function ZeroConnectorsPage() {
     }
   };
 
-  const disconnectHandler = (type: ConnectorType) => {
-    const label =
-      allConnectors.find((c) => {
-        return c.type === type;
-      })?.label ?? type;
-    const toastId = toast.loading(`Disconnecting ${label}...`);
-    detach(
-      disconnect(type, signal).then(
-        () => {
-          return toast.success(`${label} disconnected`, { id: toastId });
-        },
-        (error: unknown) => {
-          throwIfAbort(error);
-          toast.error(`Failed to disconnect ${label}`, { id: toastId });
-        },
-      ),
-      Reason.DomCallback,
-    );
-  };
+  const disconnectHandler = onDomEventFn(async (type: ConnectorType) => {
+    if (disconnecting) {
+      return;
+    }
+    await disconnect(type, signal);
+  });
 
   const getEffective = (c: ConnectorTypeWithStatus) => {
     return optimisticConnected.has(c.type) && !c.connected
@@ -701,6 +695,7 @@ export function ZeroConnectorsPage() {
         key={c.type}
         connector={effectiveConnector}
         isPolling={pollingType === c.type}
+        isDisconnecting={disconnecting}
         onConnect={() => {
           return connectHandler(c.type);
         }}

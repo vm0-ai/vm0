@@ -137,7 +137,7 @@ describe("connectors page", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
-  it("shows loading toast then success toast on disconnect", async () => {
+  it("shows success toast on disconnect", async () => {
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
     const deleteDeferred = createDeferredPromise<void>(context.signal);
@@ -165,15 +165,9 @@ describe("connectors page", () => {
     });
     click(screen.getByText("Disconnect"));
 
-    // Loading toast should appear while API is in-flight
-    await waitFor(() => {
-      expect(screen.getByText("Disconnecting GitHub...")).toBeInTheDocument();
-    });
-
     // Resolve the API call
     deleteDeferred.resolve();
 
-    // Success toast should replace the loading toast
     await waitFor(() => {
       expect(screen.getByText("GitHub disconnected")).toBeInTheDocument();
     });
@@ -206,9 +200,7 @@ describe("connectors page", () => {
     click(screen.getByText("Disconnect"));
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Failed to disconnect GitHub"),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Failed to disconnect")).toBeInTheDocument();
     });
   });
 });

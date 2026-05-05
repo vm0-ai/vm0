@@ -418,6 +418,7 @@ export const justConnectedTypes$ = computed((get) => {
 export const disconnectConnector$ = command(
   async ({ set }, type: ConnectorType, signal: AbortSignal): Promise<void> => {
     await set(deleteConnector$, type, signal);
+    signal.throwIfAborted();
     set(internalJustConnectedTypes$, (prev) => {
       if (!prev.has(type)) {
         return prev;
@@ -425,6 +426,9 @@ export const disconnectConnector$ = command(
       const next = new Set(prev);
       next.delete(type);
       return next;
+    });
+    toast.success(`${CONNECTOR_TYPES[type].label} disconnected`, {
+      id: `connector-disconnected-${type}`,
     });
   },
 );
