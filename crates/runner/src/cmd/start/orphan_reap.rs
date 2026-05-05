@@ -6,15 +6,12 @@ use std::sync::Arc;
 use sandbox::SandboxId;
 use tracing::{info, warn};
 
-use super::set_idle_status_snapshot;
-use crate::idle_pool::IdlePool;
+use super::idle_lifecycle::{SharedIdlePool, set_idle_status_snapshot};
 use crate::ids::RunId;
 use crate::process;
 use crate::status::StatusTracker;
 
 const ORPHANED_ACTIVE_RUN_ABSENT_SCANS_BEFORE_REMOVE: u8 = 2;
-
-type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct OrphanedActiveRun {
@@ -329,7 +326,8 @@ async fn reap_orphaned_active_runs_with_firecrackers(
 mod tests {
     use super::*;
     use crate::idle_pool::{
-        IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult, StorageFingerprints,
+        IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult,
+        StorageFingerprints,
     };
     use crate::resource_budget::ResourceBudget;
     use sandbox::SandboxFactory;
