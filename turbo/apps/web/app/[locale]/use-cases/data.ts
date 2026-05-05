@@ -362,10 +362,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "build-with-v0",
     color: "#7c8cbe",
-    screenshots: [
-      "/assets/use-cases/build-with-v0.png",
-      "/assets/use-cases/build-with-v0-2.png",
-    ],
+    screenshots: ["/assets/use-cases/build-with-v0.png"],
     avatar: {
       rotation: 3,
       skin: 1,
