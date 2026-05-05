@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import { chatThreads$ } from "../agent-chat.ts";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -8,6 +7,7 @@ import {
 } from "./chat-thread-panes.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import type { ChatThreadSignals } from "./create-chat-thread.ts";
+import { sidebarChatThreads$ } from "./optimistic-chat-thread-page.ts";
 
 export const navigateToAdjacentThread$ = command(
   async (
@@ -26,7 +26,11 @@ export const navigateToAdjacentThread$ = command(
       return;
     }
 
-    const threads = await get(chatThreads$);
+    // Use the merged sidebar list (persisted + optimistic, deduped/sorted) so
+    // mod+shift+arrow navigation works on a freshly-created optimistic thread
+    // before the server's `threadListChanged` reload pulls it into
+    // `chatThreads$`.
+    const threads = await get(sidebarChatThreads$);
     signal.throwIfAborted();
     const excludedThreadId = inMainPane ? rightThreadId : leftThreadId;
     const availableThreads = threads.filter((thread) => {

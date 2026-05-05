@@ -263,30 +263,48 @@ export const createNewChatThreadOptimistically$ = command(
   },
 );
 
-export const pendingOptimisticChatThreads$ = computed(
+/**
+ * Unified sidebar list: persisted threads merged with the optimistic-only
+ * pending threads for the current agent, deduped by id, sorted (pinned first
+ * then most-recent activity desc).
+ *
+ * Returning a single signal — instead of letting the sidebar read persisted
+ * and optimistic separately — guarantees that the optimistic→persisted
+ * handoff happens in one ccstate compute. That removes the React render
+ * window where two `useLastResolved` subscribers update one after the other
+ * and briefly emit two `<ChatThreadItem>` siblings sharing the same `key`.
+ *
+ * Sort key:
+ * - When the persisted version exists, dedupe drops the optimistic entry and
+ *   the server's `updatedAt` decides position.
+ * - While only the optimistic exists, its browser-side `createdAt` (captured
+ *   when `createNewChatThread$` minted the threadId) participates in the
+ *   same sort, so a freshly-created thread lands at the top of the unpinned
+ *   section without being pinned to a fixed slot.
+ */
+export const sidebarChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    const optimisticThreads = get(allPendingChatThreads$);
-    if (optimisticThreads.length === 0) {
-      return [];
+    const persisted = await get(chatThreads$);
+    const pending = get(allPendingChatThreads$);
+    if (pending.length === 0) {
+      return persisted;
     }
 
     const currentAgentId = await get(currentChatAgentId$);
     if (!currentAgentId) {
-      return [];
+      return persisted;
     }
 
-    const persistedThreads = await get(chatThreads$);
-    const persistedThreadIds = new Set(
-      persistedThreads.map((thread) => {
+    const persistedIds = new Set(
+      persisted.map((thread) => {
         return thread.id;
       }),
     );
-
-    return optimisticThreads
+    const optimisticItems: ChatThreadListItem[] = pending
       .filter((thread) => {
         return (
           thread.agentId === currentAgentId &&
-          !persistedThreadIds.has(thread.threadId)
+          !persistedIds.has(thread.threadId)
         );
       })
       .map((thread) => {
@@ -301,6 +319,19 @@ export const pendingOptimisticChatThreads$ = computed(
           running: thread.running,
         };
       });
+
+    if (optimisticItems.length === 0) {
+      return persisted;
+    }
+
+    return [...persisted, ...optimisticItems].sort((a, b) => {
+      const aPinned = a.pinnedAt ? 0 : 1;
+      const bPinned = b.pinnedAt ? 0 : 1;
+      if (aPinned !== bPinned) {
+        return aPinned - bPinned;
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
   },
 );
 

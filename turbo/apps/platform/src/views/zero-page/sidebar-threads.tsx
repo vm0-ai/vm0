@@ -62,7 +62,7 @@ import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
   type OptimisticChatPane,
-  pendingOptimisticChatThreads$,
+  sidebarChatThreads$,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
@@ -617,9 +617,7 @@ function ChatThreads() {
   const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
 
-  const chatThreads = useLastResolved(chatThreads$) ?? [];
-  const optimisticChatThreads =
-    useLastResolved(pendingOptimisticChatThreads$) ?? [];
+  const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
   const searchTerm = useGet(sidebarSearchTerm$);
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredChatThreads = trimmedTerm
@@ -627,11 +625,6 @@ function ChatThreads() {
         return (s.title ?? "").toLowerCase().includes(trimmedTerm);
       })
     : chatThreads;
-  const filteredOptimisticChatThreads = trimmedTerm
-    ? optimisticChatThreads.filter((s) => {
-        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
-      })
-    : optimisticChatThreads;
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -642,10 +635,7 @@ function ChatThreads() {
     detach(deleteChatThread(threadId, pageSignal), Reason.DomCallback);
   }
 
-  if (
-    filteredOptimisticChatThreads.length === 0 &&
-    filteredChatThreads.length === 0
-  ) {
+  if (filteredChatThreads.length === 0) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
         {trimmedTerm
@@ -656,9 +646,6 @@ function ChatThreads() {
   }
   return (
     <>
-      {filteredOptimisticChatThreads.map((session) => {
-        return <ChatThreadItem key={session.id} session={session} />;
-      })}
       {filteredChatThreads.map((session) => {
         return <ChatThreadItem key={session.id} session={session} />;
       })}
