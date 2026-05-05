@@ -289,6 +289,25 @@ mod tests {
     }
 
     #[test]
+    fn set_system_log_file_switches_unopened_path_without_creating_old_file() {
+        let _guard = LOG_TEST_MUTEX.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let first_path = dir.path().join("first.log");
+        let second_path = dir.path().join("second.log");
+        let _system_log = SystemLogFileGuard::set(&first_path);
+
+        set_system_log_file(&second_path);
+        append_system_log_line("final path line").unwrap();
+
+        assert!(
+            !first_path.exists(),
+            "path updates before first append should not create the old path",
+        );
+        let second_content = std::fs::read_to_string(second_path).unwrap();
+        assert_eq!(second_content, "final path line\n");
+    }
+
+    #[test]
     fn setting_same_system_log_file_path_forces_reopen() {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
