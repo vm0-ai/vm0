@@ -13,6 +13,7 @@
 //! - `job_lifecycle`: cleanup, budget, and completion ownership state.
 //! - `mitm_restart`: mitmproxy crash restart and backoff.
 //! - `orphan_reap`: orphan active-run reconciliation.
+//! - `sandbox_finalization`: post-executor sandbox park/destroy finalization.
 //! - `signals`: lifecycle signal registration and mode transitions.
 //!
 //! Important invariants:
@@ -31,7 +32,7 @@ use std::time::{Duration, Instant};
 
 use clap::Args;
 use futures_util::FutureExt;
-use sandbox::{RuntimeProvider, Sandbox, SandboxFactory, SandboxId, SandboxRuntime};
+use sandbox::{RuntimeProvider, SandboxId, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -46,13 +47,12 @@ use crate::executor::{self, ExecutorConfig};
 use crate::host;
 use crate::http::HttpClient;
 use crate::idle_pool::{
-    DestroyOutcome, IdlePool, IdlePoolConfig, IdlePoolSnapshot, IdleUnparkResult, ParkCandidate,
-    ParkCandidateParts, ParkResult, ParkingGate, ReusableIdleSandbox, StorageFingerprints,
+    IdlePool, IdlePoolConfig, IdlePoolSnapshot, IdleUnparkResult, ParkingGate, ReusableIdleSandbox,
 };
 use crate::kmsg_log;
 use crate::lock;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
-use crate::network_log_manager::{NetworkLogManager, NetworkLogSession};
+use crate::network_log_manager::NetworkLogManager;
 use crate::network_logs;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
@@ -71,6 +71,7 @@ mod idle_lifecycle;
 mod job_lifecycle;
 mod mitm_restart;
 mod orphan_reap;
+mod sandbox_finalization;
 mod signals;
 
 use factory_lifecycle::{SharedFactory, shutdown_factories, start_factories};
@@ -78,14 +79,12 @@ use heartbeat::{HEARTBEAT_PERIOD, HeartbeatContext, collect_heartbeat_state, sen
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
     SharedIdlePool, add_run_with_idle_status_snapshot, cleanup_expired_idle_entries,
-    destroy_idle_jobs_and_wait, destroy_idle_payload_and_wait, drain_idle_pool,
-    evict_expired_idle_entries, evict_oldest_idle_entry, set_idle_status_snapshot,
-    spawn_idle_destroy_job,
+    destroy_idle_jobs_and_wait, drain_idle_pool, evict_expired_idle_entries,
+    evict_oldest_idle_entry, set_idle_status_snapshot, spawn_idle_destroy_job,
 };
-use job_lifecycle::{
-    ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady, RunCleanupDisposition,
-    RunCleanupState,
-};
+use job_lifecycle::{ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState};
+#[cfg(test)]
+use job_lifecycle::{BudgetOwnership, CompletionReady};
 use mitm_restart::{
     MITM_BACKOFF_INITIAL, MITM_BACKOFF_MAX, MITM_MAX_CONSECUTIVE_FAILURES, MitmRestartHandle,
     finish_mitm_restart_before_shutdown, handle_mitm_restart_result, maybe_spawn_mitm_restart,
@@ -93,6 +92,7 @@ use mitm_restart::{
 use orphan_reap::{
     OrphanReapMode, OrphanReapProcessDiscovery, OrphanedActiveRuns, reap_orphaned_active_runs,
 };
+use sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
 use signals::{EarlySignals, SignalController};
 
 struct TeardownTimer {
@@ -1229,301 +1229,6 @@ struct SpawnContext {
     outer_job_panic: Option<OuterJobPanicPoint>,
 }
 
-struct FinalizeContext {
-    run_id: RunId,
-    sandbox_id: SandboxId,
-    profile_name: String,
-    session_id: Option<String>,
-    guest_session_id: Option<String>,
-    source_ip: String,
-    network_log_session: Option<NetworkLogSession>,
-    storage_fingerprints: StorageFingerprints,
-    factory: Arc<Box<dyn SandboxFactory>>,
-    idle_pool: SharedIdlePool,
-    status: Arc<StatusTracker>,
-    park_notify: Arc<tokio::sync::Notify>,
-    parking_gate: ParkingGate,
-    network_log_drain: NetworkLogDrainCoordinator,
-    exit_code: i32,
-    cancel: CancellationToken,
-    cleanup_state: RunCleanupState,
-    #[cfg(test)]
-    outer_job_panic: Option<OuterJobPanicPoint>,
-}
-
-async fn finalize_sandbox_for_completion(
-    sandbox: Option<Box<dyn Sandbox>>,
-    active_lease: ActiveBudgetLease,
-    completion_payload: CompletionPayload,
-    ctx: FinalizeContext,
-) -> CompletionReady {
-    let Some(mut sandbox) = sandbox else {
-        return CompletionReady::new(completion_payload, BudgetOwnership::active(active_lease));
-    };
-
-    let FinalizeContext {
-        run_id,
-        sandbox_id,
-        profile_name,
-        session_id,
-        guest_session_id,
-        source_ip,
-        mut network_log_session,
-        storage_fingerprints,
-        factory,
-        idle_pool,
-        status,
-        park_notify,
-        parking_gate,
-        network_log_drain,
-        exit_code,
-        cancel,
-        cleanup_state,
-        #[cfg(test)]
-        outer_job_panic,
-    } = ctx;
-
-    let cancelled = cancel.is_cancelled();
-    let parkable_session = if exit_code == 0 && !cancelled && parking_gate.is_open() {
-        // Prefer context session_id (from resume_session), fall back to
-        // guest-reported session ID (first run — CLI generated it).
-        session_id
-            .as_deref()
-            .or(guest_session_id.as_deref())
-            .map(str::to_owned)
-    } else {
-        None
-    };
-
-    let budget = if let Some(session_id) = parkable_session {
-        // Inflate the guest balloon BEFORE acquiring the pool lock —
-        // the HTTP call to Firecracker can take milliseconds, and we
-        // must not block other take/park operations on it.
-        if let Err(e) = park_sandbox_panic_safe(sandbox.as_mut()).await {
-            warn!(
-                run_id = %run_id,
-                session_id,
-                error = %e,
-                "sandbox park failed, destroying instead of parking"
-            );
-            let destroy_outcome = stop_and_destroy_sandbox(
-                sandbox,
-                &**factory,
-                ActiveCleanupContext {
-                    run_id,
-                    sandbox_id,
-                    profile_name: &profile_name,
-                    session_id: Some(&session_id),
-                    reason: "park_failed",
-                    network_log_session: network_log_session.take(),
-                    network_log_drain: network_log_drain.clone(),
-                },
-            )
-            .await;
-            if destroy_outcome == DestroyOutcome::Completed {
-                cleanup_state.mark_destroy_completed();
-            }
-            #[cfg(test)]
-            maybe_panic_outer_job(
-                outer_job_panic,
-                OuterJobPanicPoint::DestroyCompleted,
-                run_id,
-            );
-            BudgetOwnership::active(active_lease)
-        } else if cancel.is_cancelled() {
-            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
-            info!(
-                run_id = %run_id,
-                session_id,
-                "job cancelled while parking, destroying VM"
-            );
-            let destroy_outcome = stop_and_destroy_sandbox(
-                sandbox,
-                &**factory,
-                ActiveCleanupContext {
-                    run_id,
-                    sandbox_id,
-                    profile_name: &profile_name,
-                    session_id: Some(&session_id),
-                    reason: "cancelled",
-                    network_log_session: None,
-                    network_log_drain: network_log_drain.clone(),
-                },
-            )
-            .await;
-            if destroy_outcome == DestroyOutcome::Completed {
-                cleanup_state.mark_destroy_completed();
-            }
-            #[cfg(test)]
-            maybe_panic_outer_job(
-                outer_job_panic,
-                OuterJobPanicPoint::DestroyCompleted,
-                run_id,
-            );
-            BudgetOwnership::active(active_lease)
-        } else {
-            close_network_log_session(run_id, network_log_session.take(), &network_log_drain).await;
-            let mut pool = idle_pool.lock().await;
-            if cancel.is_cancelled() {
-                info!(
-                    run_id = %run_id,
-                    session_id,
-                    "job cancelled before idle pool ownership transfer, destroying VM"
-                );
-                drop(pool);
-                let destroy_outcome = stop_and_destroy_sandbox(
-                    sandbox,
-                    &**factory,
-                    ActiveCleanupContext {
-                        run_id,
-                        sandbox_id,
-                        profile_name: &profile_name,
-                        session_id: Some(&session_id),
-                        reason: "cancelled",
-                        network_log_session: None,
-                        network_log_drain: network_log_drain.clone(),
-                    },
-                )
-                .await;
-                if destroy_outcome == DestroyOutcome::Completed {
-                    cleanup_state.mark_destroy_completed();
-                }
-                #[cfg(test)]
-                maybe_panic_outer_job(
-                    outer_job_panic,
-                    OuterJobPanicPoint::DestroyCompleted,
-                    run_id,
-                );
-                return CompletionReady::new(
-                    completion_payload,
-                    BudgetOwnership::active(active_lease),
-                );
-            }
-            let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
-                sandbox,
-                factory,
-                session_id: session_id.clone(),
-                sandbox_id,
-                profile_name,
-                budget_lease: active_lease.into_park_candidate_lease(),
-                source_ip,
-                storage_fingerprints,
-            });
-            match pool.park(candidate) {
-                ParkResult::Parked => {
-                    info!(run_id = %run_id, session_id, "VM parked for reuse");
-                    cleanup_state.mark_idle_pool_owned();
-                    #[cfg(test)]
-                    maybe_panic_outer_job(
-                        outer_job_panic,
-                        OuterJobPanicPoint::IdlePoolOwned,
-                        run_id,
-                    );
-                    // Push fresh idle state to status.json BEFORE
-                    // conditional active-run removal (below) clears the run_id
-                    // from active_runs. Without this, doctor would
-                    // briefly see the FC as unknown (neither active
-                    // nor idle) until the next idle_cleanup tick
-                    // (~10s), producing transient false-positive
-                    // FirecrackerNotInStatus warnings.
-                    let snapshot = pool.status_snapshot();
-                    drop(pool);
-                    set_idle_status_snapshot(&status, snapshot).await;
-                    park_notify.notify_one();
-                    BudgetOwnership::idle_owned()
-                }
-                ParkResult::Replaced(evicted) => {
-                    info!(run_id = %run_id, session_id, "VM parked, evicting previous");
-                    cleanup_state.mark_idle_pool_owned();
-                    #[cfg(test)]
-                    maybe_panic_outer_job(
-                        outer_job_panic,
-                        OuterJobPanicPoint::IdlePoolOwned,
-                        run_id,
-                    );
-                    let snapshot = pool.status_snapshot();
-                    drop(pool);
-                    set_idle_status_snapshot(&status, snapshot).await;
-                    // Notify immediately — session is already in pool.
-                    // Don't wait for stop_and_destroy which can be slow.
-                    park_notify.notify_one();
-                    // The replaced VM was park()ed when it entered the
-                    // pool; destroying a parked sandbox is safe — Drop
-                    // aborts any leftover handles and the FC process is
-                    // killed regardless of balloon state.
-                    destroy_idle_jobs_and_wait(vec![evicted], "park_replaced").await;
-                    BudgetOwnership::idle_owned()
-                }
-                ParkResult::Rejected(rejected) => {
-                    info!(run_id = %run_id, session_id, "idle parking rejected, destroying VM");
-                    drop(pool);
-                    // Pool unchanged (park rejected) — no status
-                    // update needed. The rejected sandbox was just
-                    // park()ed above; destroying a parked sandbox is
-                    // safe — see Replaced arm for rationale.
-                    let (payload, lease) = rejected.into_active_destroy_parts();
-                    let destroy_outcome =
-                        destroy_idle_payload_and_wait(payload, "park_rejected").await;
-                    if destroy_outcome == DestroyOutcome::Completed {
-                        cleanup_state.mark_destroy_completed();
-                    }
-                    #[cfg(test)]
-                    maybe_panic_outer_job(
-                        outer_job_panic,
-                        OuterJobPanicPoint::DestroyCompleted,
-                        run_id,
-                    );
-                    BudgetOwnership::active(ActiveBudgetLease::from_rejected_park(lease))
-                }
-            }
-        }
-    } else {
-        // No parkable session — stop + destroy.
-        let destroy_outcome = stop_and_destroy_sandbox(
-            sandbox,
-            &**factory,
-            ActiveCleanupContext {
-                run_id,
-                sandbox_id,
-                profile_name: &profile_name,
-                session_id: session_id.as_deref().or(guest_session_id.as_deref()),
-                reason: active_cleanup_reason(
-                    exit_code,
-                    cancelled,
-                    parking_gate.is_open(),
-                    session_id.as_deref(),
-                    guest_session_id.as_deref(),
-                ),
-                network_log_session: network_log_session.take(),
-                network_log_drain: network_log_drain.clone(),
-            },
-        )
-        .await;
-        if destroy_outcome == DestroyOutcome::Completed {
-            cleanup_state.mark_destroy_completed();
-        }
-        #[cfg(test)]
-        maybe_panic_outer_job(
-            outer_job_panic,
-            OuterJobPanicPoint::DestroyCompleted,
-            run_id,
-        );
-        BudgetOwnership::active(active_lease)
-    };
-
-    CompletionReady::new(completion_payload, budget)
-}
-
-async fn close_network_log_session(
-    run_id: RunId,
-    session: Option<NetworkLogSession>,
-    drain: &NetworkLogDrainCoordinator,
-) {
-    if let Some(session) = session {
-        session.close_for_upload(run_id, drain).await;
-    }
-}
-
 /// Spawn a job executor task.
 ///
 /// The provider has already claimed the job and the caller has reserved
@@ -1768,34 +1473,6 @@ fn spawn_job(
     });
 }
 
-async fn park_sandbox_panic_safe(sandbox: &mut dyn Sandbox) -> Result<(), String> {
-    match AssertUnwindSafe(sandbox.park()).catch_unwind().await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(e)) => Err(e.to_string()),
-        Err(_) => Err("sandbox park panicked".into()),
-    }
-}
-
-fn active_cleanup_reason(
-    exit_code: i32,
-    cancelled: bool,
-    parking_open: bool,
-    context_session_id: Option<&str>,
-    guest_session_id: Option<&str>,
-) -> &'static str {
-    if cancelled {
-        "cancelled"
-    } else if exit_code != 0 {
-        "nonzero_exit"
-    } else if !parking_open {
-        "parking_closed"
-    } else if context_session_id.is_none() && guest_session_id.is_none() {
-        "no_session"
-    } else {
-        "not_parkable"
-    }
-}
-
 async fn cleanup_panicked_job(
     run_id: RunId,
     sandbox_id: SandboxId,
@@ -1825,74 +1502,6 @@ async fn cleanup_panicked_job(
             );
             orphaned_active_runs.insert(run_id, sandbox_id).await;
         }
-    }
-}
-
-struct ActiveCleanupContext<'a> {
-    run_id: RunId,
-    sandbox_id: SandboxId,
-    profile_name: &'a str,
-    session_id: Option<&'a str>,
-    reason: &'static str,
-    network_log_session: Option<NetworkLogSession>,
-    network_log_drain: NetworkLogDrainCoordinator,
-}
-
-/// Stop a sandbox and destroy it via its factory.
-async fn stop_and_destroy_sandbox(
-    mut sandbox: Box<dyn Sandbox>,
-    factory: &dyn SandboxFactory,
-    mut context: ActiveCleanupContext<'_>,
-) -> DestroyOutcome {
-    let mut uncertain = false;
-    match AssertUnwindSafe(sandbox.stop()).catch_unwind().await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => warn!(
-            run_id = %context.run_id,
-            sandbox_id = %context.sandbox_id,
-            profile_name = context.profile_name,
-            session_id = context.session_id.unwrap_or("<none>"),
-            reason = context.reason,
-            error = %e,
-            "sandbox stop failed during active cleanup"
-        ),
-        Err(_) => {
-            warn!(
-                run_id = %context.run_id,
-                sandbox_id = %context.sandbox_id,
-                profile_name = context.profile_name,
-                session_id = context.session_id.unwrap_or("<none>"),
-                reason = context.reason,
-                "sandbox stop panicked during active cleanup"
-            );
-            uncertain = true;
-        }
-    }
-    close_network_log_session(
-        context.run_id,
-        context.network_log_session.take(),
-        &context.network_log_drain,
-    )
-    .await;
-    if AssertUnwindSafe(factory.destroy(sandbox))
-        .catch_unwind()
-        .await
-        .is_err()
-    {
-        warn!(
-            run_id = %context.run_id,
-            sandbox_id = %context.sandbox_id,
-            profile_name = context.profile_name,
-            session_id = context.session_id.unwrap_or("<none>"),
-            reason = context.reason,
-            "sandbox destroy panicked during active cleanup"
-        );
-        uncertain = true;
-    }
-    if uncertain {
-        DestroyOutcome::Uncertain
-    } else {
-        DestroyOutcome::Completed
     }
 }
 
@@ -1926,9 +1535,12 @@ mod tests {
     use tracing_subscriber::layer::{Context, Layer};
     use tracing_subscriber::prelude::*;
 
-    use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult, ParkingState};
+    use crate::idle_pool::{
+        IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult, ParkingState,
+    };
     use crate::types::HeartbeatState;
     use async_trait::async_trait;
+    use sandbox::{Sandbox, SandboxFactory};
     use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
     #[derive(Clone, Default)]
