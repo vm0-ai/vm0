@@ -166,3 +166,153 @@ pub(super) async fn destroy_idle_payload_and_wait(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    use async_trait::async_trait;
+    use sandbox::{Sandbox, SandboxFactory, SandboxId};
+    use sandbox_mock::{MockSandbox, MockSandboxFactory};
+
+    use crate::idle_pool::{
+        IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult,
+    };
+    use crate::resource_budget::ResourceBudget;
+
+    struct PanickingDestroyFactory;
+
+    #[async_trait]
+    impl SandboxFactory for PanickingDestroyFactory {
+        fn name(&self) -> &str {
+            "panic-destroy"
+        }
+
+        fn config_hash(&self) -> String {
+            "panic-destroy".into()
+        }
+
+        async fn startup(&mut self) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn create(
+            &self,
+            config: sandbox::SandboxConfig,
+        ) -> sandbox::Result<Box<dyn Sandbox>> {
+            Ok(Box::new(MockSandbox::new(config.id.to_string())))
+        }
+
+        async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {
+            panic!("simulated destroy panic");
+        }
+
+        async fn shutdown(&mut self) {}
+    }
+
+    struct RecordingDestroyFactory {
+        destroy_count: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl SandboxFactory for RecordingDestroyFactory {
+        fn name(&self) -> &str {
+            "recording-destroy"
+        }
+
+        fn config_hash(&self) -> String {
+            "recording-destroy".into()
+        }
+
+        async fn startup(&mut self) -> sandbox::Result<()> {
+            Ok(())
+        }
+
+        async fn create(
+            &self,
+            config: sandbox::SandboxConfig,
+        ) -> sandbox::Result<Box<dyn Sandbox>> {
+            Ok(Box::new(MockSandbox::new(config.id.to_string())))
+        }
+
+        async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {
+            self.destroy_count.fetch_add(1, Ordering::SeqCst);
+        }
+
+        async fn shutdown(&mut self) {}
+    }
+
+    #[tokio::test]
+    async fn idle_destroy_panic_releases_budget_lease() {
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
+            sandbox: Box::new(MockSandbox::new("panic-destroy")),
+            factory: Arc::new(Box::new(PanickingDestroyFactory) as Box<dyn SandboxFactory>),
+            session_id: "sess-panic".into(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: "vm0/default".into(),
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        });
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let jobs = pool.drain();
+
+        destroy_idle_jobs_and_wait(jobs, "test_destroy_panic").await;
+
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn idle_stop_panic_still_attempts_destroy_and_releases_budget_lease() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_stop_panic("simulated idle stop panic");
+        let sandbox_factory = MockSandboxFactory::with_overrides(overrides);
+        let sandbox = sandbox_factory
+            .create(sandbox::SandboxConfig {
+                id: SandboxId::new_v4(),
+                resources: sandbox::ResourceLimits {
+                    cpu_count: 2,
+                    memory_mb: 4096,
+                },
+            })
+            .await
+            .expect("create sandbox");
+
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let destroy_count = Arc::new(AtomicUsize::new(0));
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
+            sandbox,
+            factory: Arc::new(Box::new(RecordingDestroyFactory {
+                destroy_count: Arc::clone(&destroy_count),
+            }) as Box<dyn SandboxFactory>),
+            session_id: "sess-stop-panic".into(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: "vm0/default".into(),
+            budget_lease: lease,
+            source_ip: "10.0.0.1".into(),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        });
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let mut jobs = pool.drain();
+        assert_eq!(jobs.len(), 1);
+
+        jobs.pop().unwrap().run().await;
+
+        assert_eq!(destroy_count.load(Ordering::SeqCst), 1);
+        assert_eq!(budget.allocated(), (0, 0, 0));
+    }
+}
