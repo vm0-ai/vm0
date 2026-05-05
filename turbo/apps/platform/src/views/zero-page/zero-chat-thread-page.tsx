@@ -28,11 +28,9 @@ import {
   IconDownload,
   IconEye,
   IconFile,
-  IconFileMusic,
   IconLink,
   IconLoader2,
   IconPackage,
-  IconVideo,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -57,12 +55,14 @@ import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
+import docAudioIcon from "./assets/doc-audio.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docHtmlIcon from "./assets/doc-html.svg";
 import docJsonIcon from "./assets/doc-json.svg";
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docTxtIcon from "./assets/doc-txt.svg";
+import docVideoIcon from "./assets/doc-video.svg";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
@@ -457,6 +457,12 @@ function getArtifactFileIconSrc(file: ChatThreadArtifactFile): string | null {
   if (kind === "markdown") {
     return docDocIcon;
   }
+  if (kind === "video") {
+    return docVideoIcon;
+  }
+  if (kind === "audio") {
+    return docAudioIcon;
+  }
   return null;
 }
 
@@ -482,12 +488,6 @@ function ArtifactFileIcon({
   const previewKind = getArtifactPreviewKind(file);
   if (previewKind === "image") {
     return <IconPhoto size={18} stroke={1.5} />;
-  }
-  if (previewKind === "video") {
-    return <IconVideo size={18} stroke={1.5} />;
-  }
-  if (previewKind === "audio") {
-    return <IconFileMusic size={18} stroke={1.5} />;
   }
   return <IconFile size={18} stroke={1.5} />;
 }
@@ -1064,15 +1064,12 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
 
   if (previewKind === "audio") {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-muted/40 p-6">
-        <span className="flex h-14 w-14 items-center justify-center rounded-xl border border-border/70 bg-background text-muted-foreground shadow-sm">
-          <IconFileMusic size={30} stroke={1.5} />
-        </span>
+      <div className="flex h-full w-full items-center justify-center bg-muted/40 px-8">
         <audio
           src={file.url}
           controls
           preload="metadata"
-          className="w-full max-w-[320px]"
+          className="w-full max-w-[480px]"
           aria-label={`Audio preview for ${file.filename}`}
         />
       </div>

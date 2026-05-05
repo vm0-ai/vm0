@@ -33,10 +33,10 @@ import {
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
-  checkOrgCreditsForRun,
   checkModelProviderConfigured,
   resolveProviderTypeForAdmission,
 } from "./zero-run-policy";
+import { checkOrgCredits } from "./credit/check-org-credits";
 import {
   enqueueRun,
   drainOrgQueue,
@@ -669,11 +669,9 @@ async function createZeroRunRecord(
   }
 
   const round3Credits = timed(async () => {
-    return checkOrgCreditsForRun(
-      resolved.orgId,
-      params.userId,
-      params.modelProvider,
-    );
+    if (admissionProviderType === "vm0") {
+      return checkOrgCredits(resolved.orgId, params.userId);
+    }
   });
   const round3ModelProvider = timed(async () => {
     return checkModelProviderConfigured(
