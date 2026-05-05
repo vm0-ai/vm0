@@ -53,7 +53,7 @@ export enum FeatureSwitchKey {
   Trinity = "trinity",
   ZapierConnector = "zapierConnector",
   CodexBeta = "codexBeta",
-  ChatgptOauthProvider = "chatgpt-oauth-provider",
+  ChatgptOauthProvider = "chatgptOauthProvider",
   IdbMessage = "idbMessage",
   SkeletonNoPreload = "skeletonNoPreload",
 }
