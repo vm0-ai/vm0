@@ -1080,6 +1080,19 @@ impl NetnsPool {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn track_lease_for_test(&mut self, lease: &NetnsLease) {
+        self.in_flight.insert(lease.name().to_string());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn lease_for_test(&self, name: &str) -> NetnsLease {
+        NetnsLease::new(
+            NetnsInfo::new(name.into(), "test-ve".into(), "10.200.0.2".into()),
+            self.instance_id,
+        )
+    }
+
     /// Create a new pool with a small pre-warmed buffer.
     ///
     /// Pre-warms `BUFFER_SIZE` namespaces per queue at startup.
