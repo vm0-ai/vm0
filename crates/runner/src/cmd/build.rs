@@ -1,6 +1,8 @@
+use std::fs::File;
 use std::path::{Path, PathBuf};
 
 use clap::Args;
+use nix::fcntl::Flock;
 use sandbox::SnapshotProvider;
 use sha2::{Digest, Sha256};
 
@@ -196,6 +198,63 @@ struct RootfsBuildInput<'a> {
     template: TemplateInput<'a>,
     rootfs_paths: &'a RootfsPaths,
     guests: &'a GuestBinaries,
+}
+
+enum RootfsImageLock {
+    Shared { _guard: Flock<File> },
+    Exclusive { _guard: Flock<File> },
+}
+
+impl RootfsImageLock {
+    fn is_exclusive(&self) -> bool {
+        matches!(self, Self::Exclusive { .. })
+    }
+
+    #[cfg(test)]
+    fn is_shared(&self) -> bool {
+        matches!(self, Self::Shared { .. })
+    }
+}
+
+async fn acquire_rootfs_lock_for_image_build(
+    paths: &HomePaths,
+    rootfs_hash: &str,
+    rootfs_paths: &RootfsPaths,
+) -> RunnerResult<RootfsImageLock> {
+    let rootfs_lock_path = paths.rootfs_lock(rootfs_hash);
+
+    loop {
+        if is_rootfs_present(rootfs_paths).await? {
+            tracing::info!(
+                "acquiring shared rootfs lock for image build: {}",
+                rootfs_lock_path.display()
+            );
+            let guard = lock::acquire_shared(rootfs_lock_path.clone()).await?;
+            if is_rootfs_present(rootfs_paths).await? {
+                return Ok(RootfsImageLock::Shared { _guard: guard });
+            }
+            drop(guard);
+            tracing::info!(
+                "rootfs disappeared while acquiring shared rootfs lock; retrying image build lock"
+            );
+            continue;
+        }
+
+        tracing::info!(
+            "acquiring exclusive rootfs lock for image build: {}",
+            rootfs_lock_path.display()
+        );
+        let guard = lock::acquire(rootfs_lock_path.clone()).await?;
+        if is_rootfs_present(rootfs_paths).await? {
+            drop(guard);
+            tracing::info!(
+                "rootfs appeared while acquiring exclusive rootfs lock; retrying with shared lock"
+            );
+            continue;
+        }
+
+        return Ok(RootfsImageLock::Exclusive { _guard: guard });
+    }
 }
 
 struct BuildHashes {
@@ -493,24 +552,18 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
             let guests = guests.as_ref().ok_or_else(|| {
                 RunnerError::Internal("full image build missing guest binaries".into())
             })?;
-            // Keep the rootfs lock through snapshot creation so GC cannot reap
-            // the rootfs while the snapshot provider is reading it. Acquire it
-            // before the shared template lock: a process waiting for this same
-            // rootfs must not block unrelated builds that can use the template.
-            let rootfs_lock_path = paths.rootfs_lock(rootfs_hash);
-            tracing::info!(
-                "acquiring exclusive rootfs lock for image build: {}",
-                rootfs_lock_path.display()
-            );
-            let _rootfs_lock = lock::acquire(rootfs_lock_path).await?;
-
-            let rootfs_present_after_lock = is_rootfs_present(rootfs_paths).await?;
+            // Keep a rootfs lock through snapshot creation so GC cannot reap
+            // the rootfs while the snapshot provider is reading it. Existing
+            // immutable rootfs images only need a shared lock; exclusive is
+            // required only when this process may write `rootfs.ext4`.
+            let _rootfs_lock =
+                acquire_rootfs_lock_for_image_build(&paths, rootfs_hash, rootfs_paths).await?;
             let input = RootfsBuildInput {
                 template: template_input,
                 rootfs_paths,
                 guests,
             };
-            if !rootfs_present_after_lock {
+            if _rootfs_lock.is_exclusive() {
                 let template_lock_path = paths.template_lock(&hashes.template_hash);
                 tracing::info!(
                     "acquiring exclusive template lock for image build: {}",
@@ -520,6 +573,11 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 let release_template_lock =
                     TemplateLockRelease::from_release(move || drop(template_lock));
                 ensure_rootfs_under_lock(input, release_template_lock).await?;
+            } else {
+                tracing::info!(
+                    "[OK] rootfs already present: {}",
+                    rootfs_paths.dir().display()
+                );
             }
 
             let _snapshot_lock = lock::acquire(paths.snapshot_lock(snapshot_hash)).await?;
@@ -2021,6 +2079,71 @@ exit 1
 
         tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
         assert!(is_rootfs_present(&rootfs).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn rootfs_image_lock_uses_shared_for_existing_rootfs_in_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs_hash = "existing-rootfs-hash";
+        let rootfs = RootfsPaths::new(&home, rootfs_hash);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"rootfs").await.unwrap();
+        let _running_runner = lock::acquire_shared(home.rootfs_lock(rootfs_hash))
+            .await
+            .unwrap();
+
+        let image_lock = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            acquire_rootfs_lock_for_image_build(&home, rootfs_hash, &rootfs),
+        )
+        .await
+        .expect("existing rootfs must not wait for an exclusive lock")
+        .unwrap();
+
+        assert!(image_lock.is_shared());
+    }
+
+    #[tokio::test]
+    async fn rootfs_image_lock_uses_exclusive_for_missing_rootfs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs_hash = "missing-rootfs-hash";
+        let rootfs = RootfsPaths::new(&home, rootfs_hash);
+
+        let image_lock = acquire_rootfs_lock_for_image_build(&home, rootfs_hash, &rootfs)
+            .await
+            .unwrap();
+
+        assert!(image_lock.is_exclusive());
+    }
+
+    #[tokio::test]
+    async fn rootfs_image_lock_retries_shared_when_another_builder_commits_rootfs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs_hash = "committed-by-other-builder-hash";
+        let rootfs = RootfsPaths::new(&home, rootfs_hash);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        let builder_lock = lock::acquire(home.rootfs_lock(rootfs_hash)).await.unwrap();
+
+        let task_home = home.clone();
+        let task_rootfs_hash = rootfs_hash.to_string();
+        let image_lock_task = tokio::spawn(async move {
+            let task_rootfs = RootfsPaths::new(&task_home, &task_rootfs_hash);
+            acquire_rootfs_lock_for_image_build(&task_home, &task_rootfs_hash, &task_rootfs).await
+        });
+
+        tokio::fs::write(rootfs.rootfs(), b"rootfs").await.unwrap();
+        drop(builder_lock);
+
+        let image_lock = tokio::time::timeout(std::time::Duration::from_secs(2), image_lock_task)
+            .await
+            .expect("builder should retry with a shared lock after rootfs commit")
+            .unwrap()
+            .unwrap();
+
+        assert!(image_lock.is_shared());
     }
 
     /// Staging contract: the in-progress `rootfs.ext4.staging` must not
