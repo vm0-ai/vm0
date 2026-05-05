@@ -26,7 +26,7 @@
  *   - Console output is preserved for Vercel logs (dual-write)
  */
 import "server-only";
-import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
+import { EVENT, Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
 import { formatMessage, extractFields } from "@vm0/core";
 import { getDatasetName, DATASETS } from "./axiom/datasets";
 import { getTelemetryInstance } from "./axiom/instances";
@@ -136,33 +136,33 @@ function createLogger(name: string): Logger {
       console.log(...formatArgs("DEBUG", name, args));
       // Also send to Axiom (if configured)
       getAxiomLogger()?.debug(formatMessage(args), {
+        [EVENT]: { source: "web" },
         ...extractFields(args),
         context: name,
-        source: "web",
       });
     },
     info: (...args: unknown[]) => {
       console.info(...formatArgs("INFO", name, args));
       getAxiomLogger()?.info(formatMessage(args), {
+        [EVENT]: { source: "web" },
         ...extractFields(args),
         context: name,
-        source: "web",
       });
     },
     warn: (...args: unknown[]) => {
       console.warn(...formatArgs("WARN", name, args));
       getAxiomLogger()?.warn(formatMessage(args), {
+        [EVENT]: { source: "web" },
         ...extractFields(args),
         context: name,
-        source: "web",
       });
     },
     error: (...args: unknown[]) => {
       console.error(...formatArgs("ERROR", name, args));
       getAxiomLogger()?.error(formatMessage(args), {
+        [EVENT]: { source: "web" },
         ...extractFields(args),
         context: name,
-        source: "web",
       });
     },
   };

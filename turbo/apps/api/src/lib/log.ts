@@ -1,4 +1,4 @@
-import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
+import { EVENT, Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
 import { Axiom } from "@axiomhq/js";
 
 import { formatMessage, extractFields } from "@vm0/core";
@@ -139,24 +139,24 @@ function logToAxiom(level: Level, name: string, args: unknown[]): void {
   }
 
   const message = formatMessage(args);
-  const fields = { ...extractFields(args), context: name, source: "api" };
+  const data = { [EVENT]: { source: "api" }, ...extractFields(args), context: name };
 
   switch (level) {
     case Level.Debug: {
-      alog.debug(message, fields);
+      alog.debug(message, data);
       break;
     }
     case Level.Info: {
-      alog.info(message, fields);
+      alog.info(message, data);
       break;
     }
     case Level.Warn: {
-      alog.warn(message, fields);
+      alog.warn(message, data);
       break;
     }
     case Level.Error:
     case Level.Fatal: {
-      alog.error(message, fields);
+      alog.error(message, data);
       break;
     }
   }
