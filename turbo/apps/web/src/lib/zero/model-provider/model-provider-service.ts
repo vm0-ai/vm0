@@ -34,6 +34,51 @@ interface ModelProviderInfo {
 }
 
 /**
+ * Shared SELECT projection for reading model_providers rows joined with secrets.
+ *
+ * Centralized to prevent column drift across the 6 read paths
+ * (`listModelProviders`, `getDefaultModelProvider`, `getAnyDefaultModelProvider`,
+ * `getOrgModelProviderByType`, `getModelProviderById`, `getUserModelProviderByType`).
+ */
+function selectProviderRow(): {
+  id: typeof modelProviders.id;
+  type: typeof modelProviders.type;
+  isDefault: typeof modelProviders.isDefault;
+  selectedModel: typeof modelProviders.selectedModel;
+  authMethod: typeof modelProviders.authMethod;
+  secretName: typeof secrets.name;
+  createdAt: typeof modelProviders.createdAt;
+  updatedAt: typeof modelProviders.updatedAt;
+} {
+  return {
+    id: modelProviders.id,
+    type: modelProviders.type,
+    isDefault: modelProviders.isDefault,
+    selectedModel: modelProviders.selectedModel,
+    authMethod: modelProviders.authMethod,
+    secretName: secrets.name,
+    createdAt: modelProviders.createdAt,
+    updatedAt: modelProviders.updatedAt,
+  };
+}
+
+/**
+ * Defense-in-depth check rejecting vm0 user-tier writes (Epic #11868 Decision 4).
+ *
+ * vm0 is a no-secret meta-provider and is org-only — the personal tier is BYOK
+ * only. Called from both `upsertModelProvider` and `upsertNoSecretModelProvider`
+ * since vm0 normally flows through the latter, but the former must also reject
+ * user-tier vm0 attempts as defense-in-depth alongside frontend filtering.
+ */
+function assertVm0OrgOnly(type: ModelProviderType, userId: string): void {
+  if (type === "vm0" && userId !== ORG_SENTINEL_USER_ID) {
+    throw badRequest(
+      "VM0 managed provider is org-only and cannot be configured per-user",
+    );
+  }
+}
+
+/**
  * Build a ModelProviderInfo from raw fields.
  * Derives framework from type, and secretNames from authMethod when not explicitly provided.
  */
@@ -134,16 +179,7 @@ async function listModelProviders(
 ): Promise<ModelProviderInfo[]> {
   // Use leftJoin to include multi-auth providers that don't have secretId
   const result = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -181,14 +217,7 @@ async function upsertModelProvider(
   secret: string,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
-  // VM0 is a no-secret meta-provider and is org-only (Epic #11868 Decision 4).
-  // The personal tier is BYOK only; reject any user-tier vm0 attempt at the
-  // service core as defense-in-depth alongside frontend filtering.
-  if (type === "vm0" && userId !== ORG_SENTINEL_USER_ID) {
-    throw badRequest(
-      "VM0 managed provider is org-only and cannot be configured per-user",
-    );
-  }
+  assertVm0OrgOnly(type, userId);
 
   // Multi-auth providers need different handling
   if (hasAuthMethods(type)) {
@@ -534,13 +563,7 @@ async function upsertNoSecretModelProvider(
   type: ModelProviderType,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
-  // VM0 is org-only (Epic #11868 Decision 4). Defense-in-depth alongside the
-  // check in upsertModelProvider — vm0 normally flows through this path.
-  if (type === "vm0" && userId !== ORG_SENTINEL_USER_ID) {
-    throw badRequest(
-      "VM0 managed provider is org-only and cannot be configured per-user",
-    );
-  }
+  assertVm0OrgOnly(type, userId);
 
   log.debug("upserting no-secret model provider", {
     orgId,
@@ -854,16 +877,7 @@ async function getDefaultModelProvider(
 ): Promise<ModelProviderInfo | null> {
   // Use leftJoin to include multi-auth providers that don't have secretId
   const allProviders = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -905,16 +919,7 @@ async function getAnyDefaultModelProvider(
   userId: string,
 ): Promise<ModelProviderInfo | null> {
   const allProviders = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -1160,16 +1165,7 @@ export async function getOrgModelProviderByType(
   type: ModelProviderType,
 ): Promise<ModelProviderInfo | null> {
   const [row] = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -1211,16 +1207,7 @@ export async function getModelProviderById(
   providerId: string,
 ): Promise<ModelProviderInfo | null> {
   const [row] = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -1385,16 +1372,7 @@ export async function getUserModelProviderByType(
   type: ModelProviderType,
 ): Promise<ModelProviderInfo | null> {
   const [row] = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
