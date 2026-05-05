@@ -629,19 +629,19 @@ function startGoogleDriveConnectAndSync(params: {
     toast.error("Google Drive connection page is still loading");
     return;
   }
+  const agentId = params.agentId;
   detach(
-    params
-      .waitForGoogleDriveAndSyncArtifacts(
+    (async () => {
+      await params.waitForGoogleDriveAndSyncArtifacts(
         {
-          agentId: params.agentId,
+          agentId,
           threadId: params.threadId,
           files: params.files,
         },
         params.pageSignal,
-      )
-      .then(() => {
-        params.onSyncComplete();
-      }),
+      );
+      params.onSyncComplete();
+    })(),
     Reason.DomCallback,
     "artifact google drive connect sync",
   );
@@ -660,11 +660,12 @@ function syncArtifactFilesAndRefresh(params: {
   reason: string;
 }): void {
   detach(
-    params.sync.then((success) => {
+    (async () => {
+      const success = await params.sync;
       if (success) {
         params.onSyncSuccess();
       }
-    }),
+    })(),
     Reason.DomCallback,
     params.reason,
   );

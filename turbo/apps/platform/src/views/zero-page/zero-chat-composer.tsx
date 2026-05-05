@@ -540,11 +540,12 @@ function MicButton({
     }
     if (recording) {
       detach(
-        stopAndTranscribe(signal).then((text) => {
+        (async () => {
+          const text = await stopAndTranscribe(signal);
           if (text) {
             onTranscribed(text);
           }
-        }),
+        })(),
         Reason.DomCallback,
       );
     } else {

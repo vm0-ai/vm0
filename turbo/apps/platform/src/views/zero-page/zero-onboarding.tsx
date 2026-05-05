@@ -274,9 +274,10 @@ function ConnectStepContent() {
       setSelectedConnector(type);
     } else {
       detach(
-        connect(type, {}, pageSignal).then(() => {
-          return clearPermissionDialog(null);
-        }),
+        (async () => {
+          await connect(type, {}, pageSignal);
+          await clearPermissionDialog(null);
+        })(),
         Reason.DomCallback,
       );
     }

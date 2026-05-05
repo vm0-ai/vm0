@@ -718,9 +718,10 @@ function JobInstructionsTab() {
       onDiscard={discard}
       onBuild={() => {
         detach(
-          build(pageSignal).then(() => {
-            return toast.success("Instructions saved");
-          }),
+          (async () => {
+            await build(pageSignal);
+            toast.success("Instructions saved");
+          })(),
           Reason.DomCallback,
         );
       }}

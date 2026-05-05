@@ -41,9 +41,10 @@ export function CustomConnectorRenameDialog({
       return;
     }
     detach(
-      submit({ id, displayName: trimmed }, signal).then(() => {
+      (async () => {
+        await submit({ id, displayName: trimmed }, signal);
         closeDialog();
-      }),
+      })(),
       Reason.DomCallback,
     );
   };

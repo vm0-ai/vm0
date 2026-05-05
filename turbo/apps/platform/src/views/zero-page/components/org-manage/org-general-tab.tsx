@@ -229,15 +229,13 @@ function ProfileSection({
     }
     setLogoLoaded(true);
     detach(
-      fetchFn("/api/zero/org/logo")
-        .then((r) => {
-          return r.json();
-        })
-        .then((data: { logoUrl: string | null }) => {
-          if (data.logoUrl) {
-            setLogoUrl(data.logoUrl);
-          }
-        }),
+      (async () => {
+        const response = await fetchFn("/api/zero/org/logo");
+        const data = (await response.json()) as { logoUrl: string | null };
+        if (data.logoUrl) {
+          setLogoUrl(data.logoUrl);
+        }
+      })(),
       Reason.DomCallback,
     );
   };

@@ -150,17 +150,18 @@ export function CustomConnectorCreateDialog() {
       return;
     }
     detach(
-      submit(
-        {
-          displayName: form.displayName.trim(),
-          prefixes,
-          headerName: form.headerName.trim(),
-          headerTemplate: form.headerTemplate,
-        },
-        signal,
-      ).then(() => {
+      (async () => {
+        await submit(
+          {
+            displayName: form.displayName.trim(),
+            prefixes,
+            headerName: form.headerName.trim(),
+            headerTemplate: form.headerTemplate,
+          },
+          signal,
+        );
         close();
-      }),
+      })(),
       Reason.DomCallback,
     );
   };

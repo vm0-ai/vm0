@@ -961,13 +961,16 @@ function AddTelegramBotDialogInner({
     const target = getPendingSetupCheckTarget(setupState);
     if (target) {
       detach(
-        checkSetup(target, getTelegramLoginOrigin(), pageSignal).then(
-          (verified) => {
-            if (verified) {
-              advanceStep();
-            }
-          },
-        ),
+        (async () => {
+          const verified = await checkSetup(
+            target,
+            getTelegramLoginOrigin(),
+            pageSignal,
+          );
+          if (verified) {
+            advanceStep();
+          }
+        })(),
         Reason.DomCallback,
       );
       return;
@@ -1013,13 +1016,16 @@ function AddTelegramBotDialogInner({
     }
 
     detach(
-      registerBot(
-        {
-          botToken: botToken.trim(),
-          defaultAgentId: agentId,
-        },
-        pageSignal,
-      ).then(handleRegisteredBot),
+      (async () => {
+        const bot = await registerBot(
+          {
+            botToken: botToken.trim(),
+            defaultAgentId: agentId,
+          },
+          pageSignal,
+        );
+        handleRegisteredBot(bot);
+      })(),
       Reason.DomCallback,
     );
   };

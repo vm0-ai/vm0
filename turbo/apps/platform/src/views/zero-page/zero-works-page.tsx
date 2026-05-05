@@ -254,9 +254,10 @@ function SlackCard({ displayName }: { displayName: string }) {
               disabled={uninstalling}
               onClick={() => {
                 detach(
-                  uninstall(pageSignal).then(() => {
+                  (async () => {
+                    await uninstall(pageSignal);
                     setShowUninstallDialog(false);
-                  }),
+                  })(),
                   Reason.DomCallback,
                 );
               }}

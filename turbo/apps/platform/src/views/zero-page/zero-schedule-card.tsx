@@ -391,24 +391,25 @@ export function ZeroScheduleCard({
   const handleCreateSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
-        onSave({
-          prompt: values.prompt.trim(),
-          description: values.description.trim() || undefined,
-          freq: values.freq,
-          date: values.date,
-          hour: values.hour,
-          minute: values.minute,
-          timezone: values.timezone,
-          intervalSeconds: values.loopMinutes * 60,
-          dayOfWeek:
-            values.freq === "every_week" ? values.dayOfWeek : undefined,
-          dayOfMonth:
-            values.freq === "every_month" ? values.dayOfMonth : undefined,
-          modelProviderId: values.modelProviderId,
-          selectedModel: values.selectedModel,
-        }).then(() => {
-          return setAddScheduleOpen(false, signal);
-        }),
+        (async () => {
+          await onSave({
+            prompt: values.prompt.trim(),
+            description: values.description.trim() || undefined,
+            freq: values.freq,
+            date: values.date,
+            hour: values.hour,
+            minute: values.minute,
+            timezone: values.timezone,
+            intervalSeconds: values.loopMinutes * 60,
+            dayOfWeek:
+              values.freq === "every_week" ? values.dayOfWeek : undefined,
+            dayOfMonth:
+              values.freq === "every_month" ? values.dayOfMonth : undefined,
+            modelProviderId: values.modelProviderId,
+            selectedModel: values.selectedModel,
+          });
+          await setAddScheduleOpen(false, signal);
+        })(),
         Reason.DomCallback,
       );
       return;
@@ -439,25 +440,26 @@ export function ZeroScheduleCard({
   const handleEditSave = (values: ScheduleFormValues) => {
     if (onSave) {
       detach(
-        onSave({
-          prompt: values.prompt.trim(),
-          description: values.description.trim() || undefined,
-          freq: values.freq,
-          date: values.date,
-          hour: values.hour,
-          minute: values.minute,
-          timezone: values.timezone,
-          intervalSeconds: values.loopMinutes * 60,
-          dayOfWeek:
-            values.freq === "every_week" ? values.dayOfWeek : undefined,
-          dayOfMonth:
-            values.freq === "every_month" ? values.dayOfMonth : undefined,
-          editName: editingEntry?.name,
-          modelProviderId: values.modelProviderId,
-          selectedModel: values.selectedModel,
-        }).then(() => {
-          return setEditingScheduleId(null, signal);
-        }),
+        (async () => {
+          await onSave({
+            prompt: values.prompt.trim(),
+            description: values.description.trim() || undefined,
+            freq: values.freq,
+            date: values.date,
+            hour: values.hour,
+            minute: values.minute,
+            timezone: values.timezone,
+            intervalSeconds: values.loopMinutes * 60,
+            dayOfWeek:
+              values.freq === "every_week" ? values.dayOfWeek : undefined,
+            dayOfMonth:
+              values.freq === "every_month" ? values.dayOfMonth : undefined,
+            editName: editingEntry?.name,
+            modelProviderId: values.modelProviderId,
+            selectedModel: values.selectedModel,
+          });
+          await setEditingScheduleId(null, signal);
+        })(),
         Reason.DomCallback,
       );
       return;

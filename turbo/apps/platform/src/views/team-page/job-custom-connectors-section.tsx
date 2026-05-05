@@ -90,14 +90,11 @@ export function JobCustomConnectorsSection() {
       ? addCustom(id, pageSignal)
       : removeCustom(id, pageSignal);
     detach(
-      mutate
-        .then(() => {
-          return save(pageSignal);
-        })
-        .then(() => {
-          toast.success("Custom connectors saved");
-          return undefined;
-        }),
+      (async () => {
+        await mutate;
+        await save(pageSignal);
+        toast.success("Custom connectors saved");
+      })(),
       Reason.DomCallback,
     );
   };
