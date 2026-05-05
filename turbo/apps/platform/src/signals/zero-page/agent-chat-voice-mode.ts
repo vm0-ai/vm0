@@ -34,9 +34,9 @@ export const enterAgentChatVoiceMode$ = command(
  * session row is left alone — next entry resumes via get-or-create.
  */
 export const exitAgentChatVoiceMode$ = command(
-  async ({ set }, _signal: AbortSignal) => {
+  async ({ set }, signal: AbortSignal) => {
     set(internalVoiceMode$, "off");
-    await set(endVoiceChat$, _signal);
+    await set(endVoiceChat$, signal);
   },
 );
 

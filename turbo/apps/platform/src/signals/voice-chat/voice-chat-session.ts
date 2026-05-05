@@ -649,11 +649,12 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   await requestAndTrack();
 });
 
-const releaseWakeLock$ = command(async ({ get, set }, _signal: AbortSignal) => {
+const releaseWakeLock$ = command(async ({ get, set }, signal: AbortSignal) => {
   const lock = get(internalWakeLock$);
   if (lock) {
     await lock.release();
-    await set(internalWakeLock$, null);
+    signal.throwIfAborted();
+    set(internalWakeLock$, null);
   }
 });
 
@@ -911,9 +912,9 @@ export const startVoiceChat$ = command(
  * (user, agent) it will resume this one via get-or-create.
  */
 export const endVoiceChat$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
-    await set(resetSessionSignal$);
-    await set(releaseWakeLock$, _signal);
+  async ({ get, set }, signal: AbortSignal) => {
+    set(resetSessionSignal$);
+    await set(releaseWakeLock$, signal);
 
     const dc = get(internalDc$);
     if (dc) {

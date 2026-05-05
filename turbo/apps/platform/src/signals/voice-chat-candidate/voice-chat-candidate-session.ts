@@ -10,7 +10,6 @@ import {
   resetSignal,
   throwIfAbort,
 } from "../utils.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -661,11 +660,12 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   await requestAndTrack();
 });
 
-const releaseWakeLock$ = command(async ({ get, set }, _signal: AbortSignal) => {
+const releaseWakeLock$ = command(async ({ get, set }, signal: AbortSignal) => {
   const lock = get(internalWakeLock$);
   if (lock) {
     await lock.release();
-    await set(internalWakeLock$, null);
+    signal.throwIfAborted();
+    set(internalWakeLock$, null);
   }
 });
 
@@ -922,9 +922,9 @@ export const startVoiceChatCandidate$ = command(
  * the same (user, agent) it will resume this one via get-or-create.
  */
 export const endVoiceChatCandidate$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
-    await set(resetSessionSignal$);
-    await set(releaseWakeLock$, get(rootSignal$));
+  async ({ get, set }, signal: AbortSignal) => {
+    set(resetSessionSignal$);
+    await set(releaseWakeLock$, signal);
 
     const dc = get(internalDc$);
     if (dc) {

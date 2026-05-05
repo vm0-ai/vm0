@@ -68,9 +68,8 @@ function createChatAttachment(file: File): ZeroChatAttachment {
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
-    parentSignal.throwIfAborted();
+    signal.throwIfAborted();
 
     // Step 2: PUT the file bytes straight to R2 using the presigned URL.
     // Do NOT forward auth headers or cookies — the URL's signature is the
