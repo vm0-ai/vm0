@@ -7,9 +7,6 @@
 -- every new org that went through Stripe checkout received 100,000
 -- untracked credits with no matching credit_expires_record and no expiry.
 --
--- This migration creates one credit_expires_record per affected org for
--- the current untracked balance, expiring 1 month after the org_metadata
--- row was first created.
 -- Pay-as-you-go (auto_recharge) credits are unaffected: they have their
 -- own credit_expires_record entries (source='auto_recharge',
 -- expires_at=2999-12-31) and are excluded from the gap by the LEFT JOIN.
