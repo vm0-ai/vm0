@@ -263,7 +263,8 @@ function ConnectModalContent({
   const pollingType = useGet(pollingConnectorType$);
   const settling = settleLoadable.state === "loading";
   const credentialSubmitting =
-    apiTokenLoadable.state === "loading" || platformLoadable.state === "loading";
+    apiTokenLoadable.state === "loading" ||
+    platformLoadable.state === "loading";
   const isPolling = pollingType === item.type;
 
   const config = CONNECTOR_TYPES[item.type];
