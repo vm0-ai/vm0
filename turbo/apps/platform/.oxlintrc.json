@@ -56,6 +56,12 @@
       }
     },
     {
+      "files": ["public/**/*.*"],
+      "rules": {
+        "prefer-await-to-then": "allow"
+      }
+    },
+    {
       "files": ["**/__tests__/**/*.{ts,tsx}", "src/test/mocks/**/*.{ts,tsx}"],
       "plugins": ["jest", "vitest"],
       "rules": {
