@@ -4240,6 +4240,80 @@
           "Bitten Sie Zero, Meinungsverschiedenheiten zwischen Gästen hervorzuheben. Die wertvollsten Erkenntnisse liegen oft in der Spannung zwischen konkurrierenden Ansichten zum selben Thema.",
           "Teilen Sie den App-Link sofort mit Ihrem Team. Das Frontend, das Zero erstellt, ist eine echte deployte Website, die sie erkunden können — keine PDF zum Überfliegen und Vergessen."
         ]
+      },
+      "summarize-shared-articles": {
+        "title": "Sofortige Zusammenfassungen von Artikeln und Links aus Slack erhalten",
+        "description": "Teilen Sie eine URL in einem beliebigen Slack-Kanal und Zero liest den vollstaendigen Artikel, extrahiert die wichtigsten Punkte und postet eine strukturierte Zusammenfassung im Thread. Kein Tab-Wechsel, kein Ueberfliegen, keine Lesezeichen, die nie geoeffnet werden.",
+        "timeSaved": "~10 Min. pro Artikel gespart",
+        "scenario": "Jemand teilt einen Link zu einem Blogbeitrag oder Fachartikel in Ihrem Team-Kanal. Es sieht relevant aus, aber Sie sind gerade mitten in etwas anderem und der Tab bleibt tagelang offen. Bis Sie dazu kommen, ist die Unterhaltung laengst weitergezogen und niemand erinnert sich, warum es wichtig war. Zero liest den Artikel in dem Moment, in dem er geteilt wird. Es extrahiert das Problem, den Loesungsansatz, wichtige Design-Entscheidungen und warum die Arbeit fuer Ihr Team relevant ist. Die Zusammenfassung erscheint direkt im Thread, in dem der Link gepostet wurde.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero lies diesen Artikel und fasse die wichtigsten Punkte zusammen. Beschreibe das Problem, den technischen Ansatz und relevante Erkenntnisse fuer unser Team."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero lies das und gib mir eine kurze Zusammenfassung."
+          },
+          {
+            "label": "In Notion speichern",
+            "prompt": "@Zero fasse diesen Artikel zusammen und speichere die wichtigsten Erkenntnisse in unserer Research-Datenbank in Notion."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero read this https://x.com/denusumesh/status/203976..."
+          },
+          {
+            "name": "Zero",
+            "text": "Hier ist die Zusammenfassung von \"Building a Virtual Filesystem for Mintlify's AI Assistant\" von Denu Sumesh:\n\nDas Problem: Mintlifys RAG-basierter Doc-Assistent hatte Schwierigkeiten mit mehrseitigen Antworten und virtuellen Syntax-Lookups.\n\nDie Loesung: Ein virtuelles Dateisystem, das UNIX-Befehle abfaengt und in Abfragen gegen die Chroma-Vektordatenbank uebersetzt.\n- Session-Erstellung sank von 46s auf 100ms\n- Marginale Rechenkosten: 0 $\n\nEin cleverer Ansatz, um Agenten Dateisystem-aehnliche Exploration von Dokumentation zu ermoeglichen."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero ruft den vollstaendigen Inhalt ab",
+            "description": "Wenn jemand eine URL teilt, folgt Zero dem Link, ruft den vollstaendigen Artikel ab und analysiert ihn. Es verarbeitet Blogbeitraege, Tweets, technische Berichte und Dokumentationsseiten."
+          },
+          {
+            "title": "Zero extrahiert eine strukturierte Zusammenfassung",
+            "description": "Zero identifiziert das Kernproblem, den Ansatz, wichtige technische Entscheidungen und bemerkenswerte Ergebnisse. Die Zusammenfassung ist so aufgebaut, dass Leser den Kern in Sekunden erfassen."
+          },
+          {
+            "title": "Zusammenfassung wird im Thread gepostet",
+            "description": "Die Zusammenfassung erscheint direkt im Slack-Thread, in dem der Link geteilt wurde. Alle im Kanal erhalten den Kontext, ohne einen neuen Tab oeffnen zu muessen."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Erkenntnisse speichern",
+            "description": "Die Zusammenfassung in einer Notion-Datenbank archivieren",
+            "examplePrompt": "@Zero speichere diese Zusammenfassung im Research Log in Notion mit Tags fuer Thema und Quelle."
+          },
+          {
+            "title": "Mit eigenem Ansatz vergleichen",
+            "description": "Zero bitten, den Ansatz des Artikels mit Ihrer Codebasis zu vergleichen",
+            "examplePrompt": "@Zero wie verhaelt sich dieser Ansatz im Vergleich zu unserem Dokumenten-Retrieval?"
+          },
+          {
+            "title": "Mit einem anderen Team teilen",
+            "description": "Die Zusammenfassung an einen relevanten Kanal weiterleiten",
+            "examplePrompt": "@Zero poste diese Zusammenfassung in #engineering mit dem Hinweis, dass es fuer unsere Sucharchitektur relevant ist."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack ist der Ort der Unterhaltung. Zero liest geteilte URLs aus Nachrichten und postet Zusammenfassungen zurueck in denselben Thread."
+          },
+          {
+            "description": "Notion ist optional. Verbinden Sie es, wenn Zero Artikel-Zusammenfassungen in einer Research-Datenbank speichern soll."
+          }
+        ],
+        "tips": [
+          "Geben Sie genau an, was Sie extrahiert haben moechten. 'Fasse den technischen Ansatz und die Performance-Ergebnisse zusammen' liefert bessere Ergebnisse als ein generisches 'Lies das.'",
+          "Nutzen Sie dies zusammen mit Ihrem Wettbewerber-Audit. Wenn jemand einen relevanten Artikel eines Wettbewerbers entdeckt, erhalten Sie sofort die Zusammenfassung.",
+          "Bitten Sie Zero bei langen Artikeln, sich auf einen bestimmten Aspekt zu konzentrieren. 'Was sind die Kostenimplikationen?' schneidet durch den Informationsueberschuss."
+        ]
       }
     },
     "filter": {

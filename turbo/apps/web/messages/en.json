@@ -4240,6 +4240,80 @@
           "Ask Zero to highlight where guests disagree. The richest insights are often in the tension between competing views on the same topic.",
           "Share the app link with your team immediately. The frontend Zero builds is a real deployed site they can explore — not a PDF to skim and forget."
         ]
+      },
+      "summarize-shared-articles": {
+        "title": "Get instant summaries of articles and links shared in Slack",
+        "description": "Drop a URL into any Slack channel and Zero reads the full article, extracts key points, and posts a structured summary in the thread. No tab-switching, no skimming, no bookmarks that never get opened.",
+        "timeSaved": "~10 min saved per article",
+        "scenario": "Someone drops a link to a blog post or technical article in your team channel. It looks relevant, but you are in the middle of something and that tab will stay open for days. By the time you get to it, the conversation has moved on and nobody remembers why it mattered. Zero reads the article the moment it is shared. It pulls out the problem being solved, the approach taken, key design decisions, and why the work matters to your team. The summary lands right in the thread where the link was posted, so context stays together and everyone can act on it immediately.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero read this article and summarize the key points. Include the problem being solved, the technical approach, and any takeaways relevant to our team."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero read this and give me a quick summary."
+          },
+          {
+            "label": "Save to Notion",
+            "prompt": "@Zero summarize this article and save the key findings to our Research database in Notion."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero read this https://x.com/denusumesh/status/203976..."
+          },
+          {
+            "name": "Zero",
+            "text": "Here's the summary of \"Building a Virtual Filesystem for Mintlify's AI Assistant\" by Denu Sumesh:\n\nThe Problem: Mintlify's RAG-based doc assistant struggled with multi-page answers and virtual syntax lookups. They needed agents that could explore docs like a codebase.\n\nThe Solution: A virtual filesystem that intercepts UNIX commands and translates them into queries against their Chroma vector database.\n- Session creation dropped from 46s to 100ms\n- Marginal compute cost: $0\n- Built on just-root (TypeScript bash with pluggable filesystem)\n\nThis is a clever approach for giving agents filesystem-like exploration of docs without the overhead of real sandboxes."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero fetches and reads the full content",
+            "description": "When someone shares a URL, Zero follows the link, retrieves the full article or post, and parses it. It handles blog posts, tweets, technical write-ups, and documentation pages."
+          },
+          {
+            "title": "Zero extracts a structured summary",
+            "description": "Zero identifies the core problem, the approach or solution, key technical decisions, and notable results. It organizes the summary so readers can get the point in seconds without losing important detail."
+          },
+          {
+            "title": "Summary posted back in the thread",
+            "description": "The summary appears directly in the Slack thread where the link was shared. Everyone in the channel gets the context without opening a new tab, and the discussion can continue with shared understanding."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Save findings for later",
+            "description": "Archive the summary to a Notion database for long-term reference",
+            "examplePrompt": "@Zero save this summary to the Research Log in Notion with tags for the topic and source."
+          },
+          {
+            "title": "Compare with your own approach",
+            "description": "Ask Zero to evaluate how the article's approach relates to your codebase",
+            "examplePrompt": "@Zero how does this approach compare to how we handle document retrieval in our own product?"
+          },
+          {
+            "title": "Share with another team",
+            "description": "Forward the summary to a relevant channel",
+            "examplePrompt": "@Zero post this summary to #engineering with a note that it's relevant to our search architecture."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack is where the conversation happens. Zero reads shared URLs from messages and posts summaries back into the same thread so context stays together."
+          },
+          {
+            "description": "Notion is optional. Connect it if you want Zero to save article summaries to a research database for long-term reference and search."
+          }
+        ],
+        "tips": [
+          "Be specific about what you want extracted. 'Summarize the technical approach and performance results' gives you a more useful summary than a generic 'read this.'",
+          "Use this alongside your competitor audit workflow. When someone spots a relevant article from a competitor, get the summary immediately and log it to your research database.",
+          "For long or dense articles, ask Zero to focus on a specific angle. 'What are the cost implications?' or 'What's the architecture pattern?' cuts through noise."
+        ]
       }
     },
     "filter": {

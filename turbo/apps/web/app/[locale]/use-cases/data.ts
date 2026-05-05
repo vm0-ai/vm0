@@ -1900,6 +1900,39 @@ export const USE_CASES: UseCase[] = [
     promptVariantCount: 3,
     slackPreviewCount: 2,
   },
+
+  {
+    slug: "summarize-shared-articles",
+    color: "#5c9eb8",
+    screenshots: ["/assets/use-cases/summarize-shared-articles.png"],
+    avatar: {
+      rotation: 2,
+      skin: 3,
+      hairStyle: 4,
+      hairColor: 2,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["everyone"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, NOTION],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "document-decisions",
+      "slack-triage",
+      "competitor-audit",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
 ];
 
 // ---------------------------------------------------------------------------

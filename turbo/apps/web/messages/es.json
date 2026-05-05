@@ -4240,6 +4240,80 @@
           "Pide a Zero que destaque dónde los invitados discrepan. Las ideas más valiosas suelen estar en la tensión entre puntos de vista opuestos sobre el mismo tema.",
           "Comparte el enlace de la aplicación con tu equipo inmediatamente. El frontend que Zero construye es un sitio real desplegado que pueden explorar — no un PDF para ojear y olvidar."
         ]
+      },
+      "summarize-shared-articles": {
+        "title": "Obtiene resumenes instantaneos de articulos y enlaces compartidos en Slack",
+        "description": "Comparte una URL en cualquier canal de Slack y Zero lee el articulo completo, extrae los puntos clave y publica un resumen estructurado en el hilo. Sin cambiar de pestana, sin leer por encima, sin marcadores que nunca se abren.",
+        "timeSaved": "~10 min ahorrados por articulo",
+        "scenario": "Alguien comparte un enlace a un articulo tecnico o post de blog en el canal de tu equipo. Parece relevante, pero estas en medio de otra cosa y esa pestana se quedara abierta durante dias. Para cuando llegas a leerlo, la conversacion ya avanzo y nadie recuerda por que importaba. Zero lee el articulo en el momento en que se comparte. Extrae el problema que se resuelve, el enfoque adoptado, las decisiones de diseno clave y por que el trabajo es relevante para tu equipo. El resumen aparece directamente en el hilo donde se publico el enlace, manteniendo el contexto unido.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero lee este articulo y resume los puntos clave. Incluye el problema que resuelve, el enfoque tecnico y las conclusiones relevantes para nuestro equipo."
+          },
+          {
+            "label": "Rapido",
+            "prompt": "@Zero lee esto y dame un resumen rapido."
+          },
+          {
+            "label": "Guardar en Notion",
+            "prompt": "@Zero resume este articulo y guarda los hallazgos clave en nuestra base de datos de investigacion en Notion."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero read this https://x.com/denusumesh/status/203976..."
+          },
+          {
+            "name": "Zero",
+            "text": "Aqui esta el resumen de \"Building a Virtual Filesystem for Mintlify's AI Assistant\" por Denu Sumesh:\n\nEl problema: El asistente de documentacion RAG de Mintlify tenia dificultades con respuestas de multiples paginas y busquedas de sintaxis virtual.\n\nLa solucion: Un sistema de archivos virtual que intercepta comandos UNIX y los traduce en consultas contra su base de datos vectorial Chroma.\n- Creacion de sesion reducida de 46s a 100ms\n- Costo computacional marginal: $0\n\nUn enfoque ingenioso para dar a los agentes exploracion tipo sistema de archivos de la documentacion sin la sobrecarga de sandboxes reales."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero obtiene y lee el contenido completo",
+            "description": "Cuando alguien comparte una URL, Zero sigue el enlace, recupera el articulo completo y lo analiza. Maneja posts de blog, tweets, articulos tecnicos y paginas de documentacion."
+          },
+          {
+            "title": "Zero extrae un resumen estructurado",
+            "description": "Zero identifica el problema central, el enfoque, las decisiones tecnicas clave y los resultados destacados. Organiza el resumen para que los lectores capten el punto en segundos sin perder detalles importantes."
+          },
+          {
+            "title": "El resumen se publica en el hilo",
+            "description": "El resumen aparece directamente en el hilo de Slack donde se compartio el enlace. Todos en el canal obtienen el contexto sin abrir una nueva pestana, y la discusion puede continuar con entendimiento compartido."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Guardar hallazgos",
+            "description": "Archivar el resumen en una base de datos de Notion para referencia a largo plazo",
+            "examplePrompt": "@Zero guarda este resumen en el registro de investigacion en Notion con etiquetas de tema y fuente."
+          },
+          {
+            "title": "Comparar con tu enfoque",
+            "description": "Pedir a Zero que evalue como se relaciona el enfoque del articulo con tu codigo",
+            "examplePrompt": "@Zero como se compara este enfoque con nuestra forma de manejar la recuperacion de documentos en nuestro producto?"
+          },
+          {
+            "title": "Compartir con otro equipo",
+            "description": "Reenviar el resumen a un canal relevante",
+            "examplePrompt": "@Zero publica este resumen en #engineering con una nota de que es relevante para nuestra arquitectura de busqueda."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack es donde ocurre la conversacion. Zero lee las URLs compartidas en los mensajes y publica resumenes en el mismo hilo para mantener el contexto unido."
+          },
+          {
+            "description": "Notion es opcional. Conectalo si quieres que Zero guarde los resumenes de articulos en una base de datos de investigacion para referencia a largo plazo."
+          }
+        ],
+        "tips": [
+          "Se especifico sobre lo que quieres extraer. 'Resume el enfoque tecnico y los resultados de rendimiento' da un resumen mas util que un generico 'lee esto.'",
+          "Usalo junto con tu flujo de auditoria competitiva. Cuando alguien detecte un articulo relevante de un competidor, obtiene el resumen inmediatamente y registralo en tu base de datos de investigacion.",
+          "Para articulos largos o densos, pide a Zero que se enfoque en un angulo especifico. 'Cuales son las implicaciones de costo?' o 'Cual es el patron de arquitectura?' corta el ruido."
+        ]
       }
     },
     "filter": {
