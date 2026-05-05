@@ -59,7 +59,7 @@ pub struct SandboxConfig {
 /// Reference to a pre-built snapshot for fast VM boot.
 /// The backend resolves individual artifact paths from the output directory.
 pub struct SnapshotRef {
-    /// Directory containing snapshot artifacts (snapshot.bin, memory.bin, cow.img).
+    /// Directory containing backend-specific snapshot artifacts.
     pub output_dir: PathBuf,
     /// Content hash of the snapshot, used as an identifier for path derivation.
     pub hash: String,

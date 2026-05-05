@@ -23,4 +23,6 @@ pub use paths::{
 };
 pub use runtime::{FirecrackerRuntime, FirecrackerRuntimeProvider};
 pub use sandbox::FirecrackerSandbox;
-pub use snapshot::{FirecrackerSnapshotProvider, SnapshotError, create_snapshot};
+pub use snapshot::{
+    FirecrackerSnapshotProvider, SNAPSHOT_COMPLETE_MARKER_CONTENT, SnapshotError, create_snapshot,
+};

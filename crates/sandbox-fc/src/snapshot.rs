@@ -27,7 +27,7 @@ const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
 /// Timeout for waiting for the guest to connect via vsock after start.
 const VSOCK_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
-const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
+pub const SNAPSHOT_COMPLETE_MARKER_CONTENT: &[u8] = b"snapshot-complete-v1\n";
 
 use crate::factory::{DESTROY_RETRIES, DESTROY_RETRY_DELAY};
 

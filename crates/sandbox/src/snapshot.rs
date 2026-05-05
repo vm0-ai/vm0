@@ -99,6 +99,6 @@ pub trait SnapshotProvider: Send + Sync {
     /// Used by the runner to build a composite cache key for snapshots.
     fn config_hash(&self) -> String;
 
-    /// Check whether all expected snapshot artifacts exist in the output directory.
+    /// Check whether the output directory contains a complete provider-specific snapshot.
     async fn is_complete(&self, output_dir: &Path) -> Result<bool, SnapshotError>;
 }

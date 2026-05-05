@@ -217,6 +217,19 @@ async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
     Ok(())
 }
 
+async fn check_snapshot_complete_marker(path: &Path, label: &str) -> RunnerResult<()> {
+    let content = tokio::fs::read(path)
+        .await
+        .map_err(|e| RunnerError::Config(format!("read {label}: {e}")))?;
+    if content != sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT {
+        return Err(RunnerError::Config(format!(
+            "{label} is invalid: {}",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
 async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
     // Pure-CPU checks first — fail fast before any filesystem I/O.
     crate::group::validate_or_err(&config.group)?;
@@ -269,6 +282,11 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
         for path in snapshot_paths.expected_files() {
             check_path_exists(&path, &format!("profile {name} snapshot")).await?;
         }
+        check_snapshot_complete_marker(
+            &snapshot_paths.complete_marker(),
+            &format!("profile {name} snapshot complete marker"),
+        )
+        .await?;
     }
 
     validate_concurrency_factor(config.sandbox.concurrency_factor)?;
@@ -361,10 +379,15 @@ mod tests {
                     snapshot.memory_bin(),
                     snapshot.cow_img(),
                     snapshot.cow_bitmap(),
-                    snapshot.complete_marker(),
                 ] {
                     tokio::fs::write(&path, b"").await.unwrap();
                 }
+                tokio::fs::write(
+                    snapshot.complete_marker(),
+                    sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+                )
+                .await
+                .unwrap();
             }
         }
         home
@@ -1018,6 +1041,68 @@ profiles:
         assert!(
             err.to_string().contains(".snapshot-complete"),
             "expected missing complete marker error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn load_rejects_snapshot_with_malformed_complete_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let rootfs = RootfsPaths::new(&home, TEST_ROOTFS_HASH);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
+        let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
+        tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
+        for path in [
+            snapshot.snapshot_bin(),
+            snapshot.memory_bin(),
+            snapshot.cow_img(),
+            snapshot.cow_bitmap(),
+        ] {
+            tokio::fs::write(&path, b"").await.unwrap();
+        }
+        tokio::fs::write(snapshot.complete_marker(), b"partial marker")
+            .await
+            .unwrap();
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(
+            err.to_string().contains("complete marker") && err.to_string().contains("invalid"),
+            "expected invalid complete marker error, got: {err}"
         );
     }
 
