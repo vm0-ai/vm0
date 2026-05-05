@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EVENT } from "@axiomhq/logging";
 import { flushLogs, logger, __resetForTest } from "../log";
 import { testContext } from "../../__tests__/test-helpers";
 
@@ -19,7 +20,7 @@ describe("logToAxiom level dispatch", () => {
     expect(axiomLogging.debug).toHaveBeenCalledWith("hello", {
       key: "value",
       context: "test-debug",
-      source: "api",
+      [EVENT]: { source: "api" },
     });
   });
 
@@ -29,7 +30,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.info).toHaveBeenCalledWith("info msg", {
       context: "test-info",
-      source: "api",
+      [EVENT]: { source: "api" },
     });
   });
 
@@ -39,7 +40,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.warn).toHaveBeenCalledWith("warning", {
       context: "test-warn",
-      source: "api",
+      [EVENT]: { source: "api" },
     });
   });
 
@@ -49,7 +50,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.error).toHaveBeenCalledWith("boom", {
       context: "test-err",
-      source: "api",
+      [EVENT]: { source: "api" },
     });
   });
 
@@ -59,7 +60,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.error).toHaveBeenCalledWith("dead", {
       context: "test-fatal",
-      source: "api",
+      [EVENT]: { source: "api" },
     });
   });
 
@@ -70,12 +71,12 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.info).toHaveBeenCalledWith(
       String(obj),
-      expect.objectContaining({ source: "api" }),
+      expect.objectContaining({ [EVENT]: { source: "api" } }),
     );
   });
 });
 
-// ── Axiom log calls include source: "api" ───────────────────────────────────
+// ── Axiom log calls include [EVENT]: { source: "api" } ───────────────────────────────────
 
 describe("Axiom log source field", () => {
   it("includes source: api in info logs", () => {
@@ -84,7 +85,7 @@ describe("Axiom log source field", () => {
 
     expect(axiomLogging.info).toHaveBeenCalledWith(
       "msg",
-      expect.objectContaining({ source: "api" }),
+      expect.objectContaining({ [EVENT]: { source: "api" } }),
     );
   });
 
@@ -95,7 +96,7 @@ describe("Axiom log source field", () => {
 
     expect(axiomLogging.error).toHaveBeenCalledWith(
       "fail",
-      expect.objectContaining({ source: "api" }),
+      expect.objectContaining({ [EVENT]: { source: "api" } }),
     );
   });
 
@@ -106,7 +107,7 @@ describe("Axiom log source field", () => {
     // context should be from the logger name, not from user fields
     expect(axiomLogging.warn).toHaveBeenCalledWith("msg", {
       context: "ctx-test",
-      source: "api",
+      [EVENT]: { source: "api" },
     });
   });
 });
@@ -153,7 +154,7 @@ describe("serializeError via logging", () => {
           message: "test error",
           stack: expect.any(String),
         }),
-        source: "api",
+        [EVENT]: { source: "api" },
       }),
     );
   });
@@ -222,7 +223,7 @@ describe("extractFields via logging", () => {
     expect(axiomLogging.info).toHaveBeenCalledWith("data", {
       count: 42,
       context: "extract-obj",
-      source: "api",
+      [EVENT]: { source: "api" },
     });
   });
 

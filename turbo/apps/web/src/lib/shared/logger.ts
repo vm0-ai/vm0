@@ -26,7 +26,11 @@
  *   - Console output is preserved for Vercel logs (dual-write)
  */
 import "server-only";
-import { EVENT, Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
+import {
+  EVENT,
+  Logger as AxiomLogger,
+  AxiomJSTransport,
+} from "@axiomhq/logging";
 import { formatMessage, extractFields } from "@vm0/core";
 import { getDatasetName, DATASETS } from "./axiom/datasets";
 import { getTelemetryInstance } from "./axiom/instances";

@@ -1,4 +1,8 @@
-import { EVENT, Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
+import {
+  EVENT,
+  Logger as AxiomLogger,
+  AxiomJSTransport,
+} from "@axiomhq/logging";
 import { Axiom } from "@axiomhq/js";
 
 import { formatMessage, extractFields } from "@vm0/core";
@@ -139,7 +143,11 @@ function logToAxiom(level: Level, name: string, args: unknown[]): void {
   }
 
   const message = formatMessage(args);
-  const data = { [EVENT]: { source: "api" }, ...extractFields(args), context: name };
+  const data = {
+    [EVENT]: { source: "api" },
+    ...extractFields(args),
+    context: name,
+  };
 
   switch (level) {
     case Level.Debug: {

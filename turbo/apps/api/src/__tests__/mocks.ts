@@ -238,6 +238,7 @@ vi.mock("@axiomhq/js", () => {
 
 vi.mock("@axiomhq/logging", () => {
   return {
+    EVENT: Symbol("EVENT"),
     Logger: vi.fn(function () {
       return {
         debug: apiTestMocks.axiomLogging.debug,
