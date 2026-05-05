@@ -114,6 +114,7 @@ import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { onyxHandler } from "./providers/onyx-handler";
 import { openaiHandler } from "./providers/openai-handler";
+import { chatgptOauthHandler } from "./providers/chatgpt-oauth-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
@@ -292,6 +293,7 @@ export const PROVIDER_HANDLERS: Record<
   notion: notionHandler,
   onyx: onyxHandler,
   openai: openaiHandler,
+  "chatgpt-oauth": chatgptOauthHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,

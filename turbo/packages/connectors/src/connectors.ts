@@ -82,6 +82,7 @@ import { metaAds } from "./connectors/meta-ads";
 import { stripe } from "./connectors/stripe";
 import { onyx } from "./connectors/onyx";
 import { openai } from "./connectors/openai";
+import { chatgptOauth } from "./connectors/chatgpt-oauth";
 import { similarweb } from "./connectors/similarweb";
 import { perplexity } from "./connectors/perplexity";
 import { pipedrive } from "./connectors/pipedrive";
@@ -459,6 +460,7 @@ const CONNECTOR_TYPES_DEF = {
   ...stripe,
   ...onyx,
   ...openai,
+  ...chatgptOauth,
   ...similarweb,
   ...perplexity,
   ...pipedrive,
