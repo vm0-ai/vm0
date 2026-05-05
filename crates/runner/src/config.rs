@@ -1052,6 +1052,111 @@ profiles:
     }
 
     #[tokio::test]
+    async fn load_defers_malformed_complete_marker_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let rootfs = RootfsPaths::new(&home, TEST_ROOTFS_HASH);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
+        let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
+        tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
+        for path in [
+            snapshot.snapshot_bin(),
+            snapshot.memory_bin(),
+            snapshot.cow_img(),
+            snapshot.cow_bitmap(),
+        ] {
+            tokio::fs::write(&path, b"").await.unwrap();
+        }
+        tokio::fs::write(snapshot.complete_marker(), b"partial marker")
+            .await
+            .unwrap();
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let config = load_with_home(&config_path, &home, false).await.unwrap();
+        let profile = config.profiles.get("vm0/default").unwrap();
+        let err = validate_profile_image_artifacts("vm0/default", profile, &home)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("complete marker") && err.to_string().contains("invalid"),
+            "expected deferred invalid complete marker error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_profile_image_artifacts_rejects_missing_cow_bitmap() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let rootfs = RootfsPaths::new(&home, TEST_ROOTFS_HASH);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"").await.unwrap();
+        let snapshot = rootfs.snapshot(TEST_SNAPSHOT_HASH);
+        tokio::fs::create_dir_all(snapshot.dir()).await.unwrap();
+        for path in [
+            snapshot.snapshot_bin(),
+            snapshot.memory_bin(),
+            snapshot.cow_img(),
+        ] {
+            tokio::fs::write(&path, b"").await.unwrap();
+        }
+        tokio::fs::write(
+            snapshot.complete_marker(),
+            sandbox_fc::SNAPSHOT_COMPLETE_MARKER_CONTENT,
+        )
+        .await
+        .unwrap();
+
+        let profile = ProfileConfig {
+            rootfs_hash: TEST_ROOTFS_HASH.into(),
+            snapshot_hash: TEST_SNAPSHOT_HASH.into(),
+            vcpu: 2,
+            memory_mb: 4096,
+            disk_mb: 16384,
+        };
+        let err = validate_profile_image_artifacts("vm0/default", &profile, &home)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("cow.img.bitmap"),
+            "expected missing cow bitmap error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
     async fn load_rejects_snapshot_without_complete_marker() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
