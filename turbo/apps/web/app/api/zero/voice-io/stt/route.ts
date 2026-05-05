@@ -118,6 +118,10 @@ export async function POST(request: Request): Promise<Response> {
   const file = formData.get("file");
 
   if (!file || !(file instanceof File)) {
+    log.warn("STT validation rejected: no file", {
+      hasField: file !== null,
+      fieldType: typeof file,
+    });
     return NextResponse.json(
       { error: { message: "No audio file provided", code: "BAD_REQUEST" } },
       { status: 400 },
@@ -126,6 +130,10 @@ export async function POST(request: Request): Promise<Response> {
 
   // 5. Validate file size
   if (file.size > MAX_FILE_SIZE) {
+    log.warn("STT validation rejected: file too large", {
+      fileSize: file.size,
+      fileMime: file.type,
+    });
     return NextResponse.json(
       {
         error: {
@@ -140,6 +148,11 @@ export async function POST(request: Request): Promise<Response> {
   // 6. Validate file type (strip codec suffix, e.g. "audio/webm;codecs=opus" → "audio/webm")
   const baseMimeType = file.type.split(";")[0] ?? file.type;
   if (!ALLOWED_MIME_TYPES.has(baseMimeType)) {
+    log.warn("STT validation rejected: unsupported mime", {
+      fileMime: file.type,
+      baseMimeType,
+      fileSize: file.size,
+    });
     return NextResponse.json(
       {
         error: {
@@ -158,6 +171,12 @@ export async function POST(request: Request): Promise<Response> {
     durationSeconds !== null &&
     durationSeconds > MAX_REQUEST_DURATION_SECONDS
   ) {
+    log.warn("STT validation rejected: duration too long", {
+      durationSeconds,
+      maxSeconds: MAX_REQUEST_DURATION_SECONDS,
+      fileMime: file.type,
+      fileSize: file.size,
+    });
     return NextResponse.json(
       {
         error: {

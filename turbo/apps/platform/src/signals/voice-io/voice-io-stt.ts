@@ -223,21 +223,28 @@ export const stopAndTranscribe$ = command(
       });
 
       if (!response.ok) {
-        if (response.status === 402) {
-          const body = (await response.json().catch(() => {
-            return null;
-          })) as {
-            error?: { code?: string };
-          } | null;
-          if (body?.error?.code === "AUDIO_INPUT_QUOTA_EXCEEDED") {
-            set(refreshAudioInputQuota$);
-            set(setActiveOrgManageTab$, "billing");
-            set(setBillingSubPage$, true);
-            await set(setOrgManageDialogOpen$, true, signal);
-            return "";
-          }
+        const body = (await response.json().catch(() => {
+          return null;
+        })) as {
+          error?: { code?: string; message?: string };
+        } | null;
+        const code = body?.error?.code;
+
+        if (response.status === 402 && code === "AUDIO_INPUT_QUOTA_EXCEEDED") {
+          set(refreshAudioInputQuota$);
+          set(setActiveOrgManageTab$, "billing");
+          set(setBillingSubPage$, true);
+          await set(setOrgManageDialogOpen$, true, signal);
+          return "";
         }
-        L.error("STT API error", { status: response.status });
+
+        L.error("STT API error", {
+          status: response.status,
+          code,
+          message: body?.error?.message,
+          recordedMime: mimeType,
+          recordedSize: blob.size,
+        });
         toast.error("Transcription failed");
         return "";
       }
