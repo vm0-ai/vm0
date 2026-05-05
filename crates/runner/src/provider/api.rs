@@ -118,9 +118,18 @@ impl JobProvider for ApiProvider {
 
             match poll_result {
                 Ok(Some(job)) => {
-                    self.poll_wakeups
+                    let record = self
+                        .poll_wakeups
                         .record_poll_result(due, PollOutcome::JobFound, POLL_WAKEUP_RETRY)
                         .await;
+                    if record.defer_job_return() {
+                        info!(
+                            run_id = %job.run_id,
+                            poll_reason = ?reason,
+                            "poll: job found while target-other defer arrived, retrying after defer"
+                        );
+                        continue;
+                    }
                     if self.cancel.is_cancelled() {
                         return None;
                     }
