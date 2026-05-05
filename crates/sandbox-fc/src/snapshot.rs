@@ -148,6 +148,7 @@ async fn cleanup_existing_snapshot_sock_dir(sock_dir: &Path) {
 async fn cleanup_snapshot_sock_dir(sock_dir: &Path, warning: &'static str) -> bool {
     match tokio::fs::remove_dir_all(sock_dir).await {
         Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
         Err(e) => {
             tracing::warn!(error = %e, "{warning}");
             false
@@ -1501,6 +1502,20 @@ mod tests {
             !tokio::fs::try_exists(&sock_dir).await.unwrap(),
             "snapshot cancellation cleanup should remove runtime socket directory"
         );
+    }
+
+    #[tokio::test]
+    async fn snapshot_attempt_drop_handoff_treats_missing_sock_dir_as_cleaned() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        attempt.notify_cleanup_complete_for_test(tx);
+
+        drop(attempt);
+        let report = wait_for_snapshot_cleanup(rx).await;
+
+        assert!(report.sock_dir_cleaned);
     }
 
     #[tokio::test]
