@@ -25,8 +25,6 @@
 //! - the first heartbeat and idle-cleanup ticks are deferred;
 //! - teardown drops discovery before provider shutdown.
 
-#[cfg(test)]
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
@@ -1335,6 +1333,7 @@ mod tests {
         LifecycleController, handle_drain_signal, handle_resume_signal, handle_stopping_signal,
     };
     use super::*;
+    use std::collections::BTreeMap;
     use std::fmt;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
