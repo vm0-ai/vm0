@@ -8,6 +8,7 @@
 //! The sibling modules keep focused responsibilities out of this orchestration
 //! file:
 //! - `factory_lifecycle`: sandbox factory startup and shutdown.
+//! - `idle_lifecycle`: idle-pool lifecycle, status updates, and destroy helpers.
 //! - `identity`: persistent runner id storage.
 //! - `job_lifecycle`: cleanup, budget, and completion ownership state.
 //! - `mitm_restart`: mitmproxy crash restart and backoff.
@@ -33,7 +34,7 @@ use futures_util::FutureExt;
 use sandbox::{RuntimeProvider, Sandbox, SandboxFactory, SandboxId, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 use crate::ids::RunId;
 
@@ -45,9 +46,8 @@ use crate::executor::{self, ExecutorConfig};
 use crate::host;
 use crate::http::HttpClient;
 use crate::idle_pool::{
-    DestroyOutcome, IdleDestroyJob, IdleDestroyPayload, IdlePool, IdlePoolConfig, IdlePoolSnapshot,
-    IdleUnparkResult, ParkCandidate, ParkCandidateParts, ParkResult, ParkingGate,
-    ReusableIdleSandbox, StorageFingerprints,
+    DestroyOutcome, IdlePool, IdlePoolConfig, IdlePoolSnapshot, IdleUnparkResult, ParkCandidate,
+    ParkCandidateParts, ParkResult, ParkingGate, ReusableIdleSandbox, StorageFingerprints,
 };
 use crate::kmsg_log;
 use crate::lock;
@@ -67,6 +67,7 @@ use crate::types::{ExecutionContext, SandboxReuseResult};
 mod factory_lifecycle;
 mod heartbeat;
 mod identity;
+mod idle_lifecycle;
 mod job_lifecycle;
 mod mitm_restart;
 mod orphan_reap;
@@ -75,6 +76,12 @@ mod signals;
 use factory_lifecycle::{SharedFactory, shutdown_factories, start_factories};
 use heartbeat::{HEARTBEAT_PERIOD, HeartbeatContext, collect_heartbeat_state, send_heartbeat};
 use identity::load_or_generate_runner_id;
+use idle_lifecycle::{
+    SharedIdlePool, add_run_with_idle_status_snapshot, cleanup_expired_idle_entries,
+    destroy_idle_jobs_and_wait, destroy_idle_payload_and_wait, drain_idle_pool,
+    evict_expired_idle_entries, evict_oldest_idle_entry, set_idle_status_snapshot,
+    spawn_idle_destroy_job,
+};
 use job_lifecycle::{
     ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady, RunCleanupDisposition,
     RunCleanupState,
@@ -816,18 +823,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             () = sleep_until_retry(&mitm_retry.restart_at) => {}
             // Idle pool cleanup: evict expired VMs and update status
             _ = idle_cleanup.tick(), if can_discover => {
-                let mut pool = idle_pool.lock().await;
-                let expired = pool.evict_expired();
-                for entry in &expired {
-                    info!(
-                        profile = %entry.profile_name(),
-                        "idle VM expired, destroying"
-                    );
-                }
-                // Update status with current idle pool state
-                let snapshot = pool.status_snapshot();
-                drop(pool);
-                set_idle_status_snapshot(&status, snapshot).await;
+                let expired = cleanup_expired_idle_entries(&idle_pool, &status).await;
                 for entry in expired {
                     spawn_idle_destroy_job(&mut destroy_tasks, entry, "idle_expired");
                 }
@@ -1212,8 +1208,6 @@ struct JobProfile {
     factory: SharedFactory,
     cancel: CancellationToken,
 }
-
-type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
 
 /// Shared state passed to each spawned job task.
 struct SpawnContext {
@@ -1802,93 +1796,6 @@ fn active_cleanup_reason(
     }
 }
 
-/// Drain the idle pool: destroy every entry captured at drain start in parallel
-/// and wait for all destroys to complete before returning (budgets released).
-/// Called from both Draining mode (soft-drain entry) and teardown.
-///
-/// A SIGUSR2 resume can reopen parking while a soft-drain destroy is still in
-/// progress, so write the current post-destroy pool snapshot rather than
-/// blindly clearing `idle_vms`.
-///
-/// `context` is logged alongside the destroyed count for operator clarity
-/// (e.g. "draining" vs "shutdown").
-async fn drain_idle_pool(
-    idle_pool: &SharedIdlePool,
-    status: &StatusTracker,
-    context: &'static str,
-) {
-    let jobs = idle_pool.lock().await.drain();
-    if !jobs.is_empty() {
-        info!(count = jobs.len(), context, "destroying idle VMs");
-        destroy_idle_jobs_and_wait(jobs, context).await;
-    }
-    let snapshot = idle_pool.lock().await.status_snapshot();
-    set_idle_status_snapshot(status, snapshot).await;
-}
-
-/// Remove expired idle entries and update status to match the new pool state.
-async fn evict_expired_idle_entries(
-    idle_pool: &SharedIdlePool,
-    status: &StatusTracker,
-) -> Vec<IdleDestroyJob> {
-    let mut pool = idle_pool.lock().await;
-    let expired = pool.evict_expired();
-    if expired.is_empty() {
-        return expired;
-    }
-    let snapshot = pool.status_snapshot();
-    drop(pool);
-    set_idle_status_snapshot(status, snapshot).await;
-    expired
-}
-
-/// Remove the oldest idle entry and update status to match the new pool state.
-async fn evict_oldest_idle_entry(
-    idle_pool: &SharedIdlePool,
-    status: &StatusTracker,
-) -> Option<IdleDestroyJob> {
-    let mut pool = idle_pool.lock().await;
-    let evicted = pool.evict_oldest()?;
-    let snapshot = pool.status_snapshot();
-    drop(pool);
-    set_idle_status_snapshot(status, snapshot).await;
-    Some(evicted)
-}
-
-async fn set_idle_status_snapshot(status: &StatusTracker, snapshot: IdlePoolSnapshot) {
-    let applied = status
-        .set_idle_info_at_revision(snapshot.revision, snapshot.idle_vms)
-        .await;
-    if !applied {
-        debug!(
-            revision = snapshot.revision,
-            "ignored stale idle pool status snapshot"
-        );
-    }
-}
-
-async fn add_run_with_idle_status_snapshot(
-    status: &StatusTracker,
-    run_id: RunId,
-    sandbox_id: SandboxId,
-    snapshot: IdlePoolSnapshot,
-) {
-    let applied = status
-        .add_run_with_idle_info_at_revision(
-            run_id,
-            sandbox_id,
-            snapshot.revision,
-            snapshot.idle_vms,
-        )
-        .await;
-    if !applied {
-        debug!(
-            revision = snapshot.revision,
-            "ignored stale idle pool status snapshot while adding active run"
-        );
-    }
-}
-
 async fn cleanup_panicked_job(
     run_id: RunId,
     sandbox_id: SandboxId,
@@ -1917,49 +1824,6 @@ async fn cleanup_panicked_job(
                 "outer job task panicked before sandbox ownership was proven; leaving active run visible for orphan reconciliation"
             );
             orphaned_active_runs.insert(run_id, sandbox_id).await;
-        }
-    }
-}
-
-fn spawn_idle_destroy_job(
-    destroy_tasks: &mut JoinSet<()>,
-    job: IdleDestroyJob,
-    context: &'static str,
-) {
-    destroy_tasks.spawn(destroy_idle_job(job, context));
-}
-
-/// Destroy idle entries in parallel and wait until their leases are dropped.
-async fn destroy_idle_jobs_and_wait(jobs: Vec<IdleDestroyJob>, context: &'static str) {
-    // Destroy in parallel — each `stop_and_destroy` is ~1–3s (FC shutdown +
-    // cgroup/NBD/netns teardown). Serial destroy blows past shutdown and
-    // budget-pressure recovery budgets on multi-VM cleanup.
-    let mut set = tokio::task::JoinSet::new();
-    for job in jobs {
-        set.spawn(destroy_idle_job(job, context));
-    }
-    while let Some(result) = set.join_next().await {
-        if let Err(e) = result {
-            warn!(context, error = %e, "idle entry destroy task panicked");
-        }
-    }
-}
-
-/// Destroy an idle sandbox entry. Its budget lease is released by Drop.
-async fn destroy_idle_job(job: IdleDestroyJob, _context: &'static str) {
-    job.run().await;
-}
-
-async fn destroy_idle_payload_and_wait(
-    payload: IdleDestroyPayload,
-    context: &'static str,
-) -> DestroyOutcome {
-    let handle = tokio::spawn(payload.stop_and_destroy());
-    match handle.await {
-        Ok(outcome) => outcome,
-        Err(e) => {
-            warn!(context, error = %e, "idle payload destroy task panicked");
-            DestroyOutcome::Uncertain
         }
     }
 }

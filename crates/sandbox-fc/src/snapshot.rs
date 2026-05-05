@@ -191,8 +191,8 @@ async fn release_snapshot_netns(
     }
 }
 
-fn spawn_stdout_forwarder(child: &mut tokio::process::Child) {
-    if let Some(stdout) = child.stdout.take() {
+fn spawn_stdout_forwarder(child: &mut tokio::process::Child) -> Option<JoinHandle<()>> {
+    child.stdout.take().map(|stdout| {
         // Intentionally detached: stdout has no cleanup decision input, and
         // EOF on the child pipe ends the task after Firecracker exits.
         tokio::spawn(async move {
@@ -202,8 +202,8 @@ fn spawn_stdout_forwarder(child: &mut tokio::process::Child) {
                     info!(target: "firecracker", "{line}");
                 }
             }
-        });
-    }
+        })
+    })
 }
 
 fn spawn_stderr_forwarder(
@@ -295,6 +295,306 @@ async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevic
     }
 }
 
+/// Snapshot-local owner for resources acquired while producing one snapshot.
+///
+/// This owner centralizes the explicit success/failure cleanup path for
+/// snapshot creation. It intentionally does not participate in the factory
+/// leak-cleaner path used by sandbox creation: a snapshot attempt owns a
+/// one-shot netns pool, a single COW device, and one Firecracker child only
+/// until `finish_workflow`, `cleanup_netns_pool`, and `cleanup_sock_dir` run.
+///
+/// Drop is diagnostic-only in this PR. Cancellation-safe handoff to detached
+/// cleanup is tracked separately and should not be hidden here.
+struct SnapshotAttempt {
+    paths: SandboxPaths,
+    sock_paths: SockPaths,
+    output: SnapshotOutputPaths,
+    netns_pool: NetnsPool,
+    cow_device: Option<PooledNbdCowDevice>,
+    network: Option<NetnsLease>,
+    child: Option<tokio::process::Child>,
+    stdout_handle: Option<JoinHandle<()>>,
+    stderr_handle: Option<JoinHandle<()>>,
+    stderr_buf: StderrBuf,
+}
+
+impl SnapshotAttempt {
+    fn new(
+        paths: SandboxPaths,
+        sock_paths: SockPaths,
+        output: SnapshotOutputPaths,
+        netns_pool: NetnsPool,
+        cow_device: PooledNbdCowDevice,
+    ) -> Self {
+        Self {
+            paths,
+            sock_paths,
+            output,
+            netns_pool,
+            cow_device: Some(cow_device),
+            network: None,
+            child: None,
+            stdout_handle: None,
+            stderr_handle: None,
+            stderr_buf: Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES))),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_without_cow_for_test(
+        paths: SandboxPaths,
+        sock_paths: SockPaths,
+        output: SnapshotOutputPaths,
+    ) -> Self {
+        Self {
+            paths,
+            sock_paths,
+            output,
+            netns_pool: NetnsPool::inactive_for_test(),
+            cow_device: None,
+            network: None,
+            child: None,
+            stdout_handle: None,
+            stderr_handle: None,
+            stderr_buf: Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES))),
+        }
+    }
+
+    fn paths(&self) -> &SandboxPaths {
+        &self.paths
+    }
+
+    fn sock_paths(&self) -> &SockPaths {
+        &self.sock_paths
+    }
+
+    fn output(&self) -> &SnapshotOutputPaths {
+        &self.output
+    }
+
+    async fn prepare_firecracker_files(&mut self) -> Result<(), SnapshotError> {
+        // Filesystem pre-requisites that don't require the netns: do these
+        // *before* `netns_pool.acquire()` so that a transient fs error
+        // (mkdir, write) doesn't leak an acquired netns. A checked-out netns
+        // lease requires explicit release, and `netns_pool.cleanup()` only
+        // drains queued (not acquired) entries.
+        //
+        // The empty bind target file is consumed by `mount --bind` inside
+        // `unshare --mount` at spawn time; file content is irrelevant
+        // because the bind overlay is what FC reads.
+        if let Err(e) = tokio::fs::create_dir_all(self.sock_paths.dir()).await {
+            self.destroy_cow_after_setup_error("mkdir sock dir").await;
+            return Err(SnapshotError::Setup(format!("mkdir sock dir: {e}")));
+        }
+
+        let drive_bind = self.paths.cow_device_bind();
+        if let Err(e) = tokio::fs::write(&drive_bind, b"").await {
+            self.destroy_cow_after_setup_error("create bind target")
+                .await;
+            return Err(SnapshotError::Setup(format!("create bind target: {e}")));
+        }
+
+        Ok(())
+    }
+
+    async fn acquire_network(&mut self) -> Result<(), SnapshotError> {
+        let network = match self.netns_pool.acquire().await {
+            Ok(network) => network,
+            Err(e) => {
+                self.destroy_cow_after_setup_error("acquire netns").await;
+                return Err(SnapshotError::Setup(format!("acquire netns: {e}")));
+            }
+        };
+
+        info!(netns = %network.info().name(), "namespace acquired");
+        self.network = Some(network);
+        Ok(())
+    }
+
+    async fn spawn_firecracker(
+        &mut self,
+        config: &SnapshotCreateConfig,
+    ) -> Result<(), SnapshotError> {
+        let api_sock = self.sock_paths.api_sock();
+        let drive_bind = self.paths.cow_device_bind();
+        let cow_device_path = self
+            .cow_device
+            .as_ref()
+            .ok_or_else(|| {
+                SnapshotError::Setup("snapshot attempt missing COW device before spawn".into())
+            })?
+            .device_path()
+            .to_path_buf();
+        let network_name = self
+            .network
+            .as_ref()
+            .ok_or_else(|| {
+                SnapshotError::Setup("snapshot attempt missing netns before spawn".into())
+            })?
+            .info()
+            .name()
+            .to_string();
+
+        info!(
+            netns = %network_name,
+            binary = %config.binary_path.display(),
+            api_sock = %api_sock.display(),
+            "spawning firecracker"
+        );
+
+        // Spawn Firecracker inside `unshare --mount` so the COW-device bind
+        // mount lives in a private mount namespace and dies with the process.
+        // Mirrors the spawn pattern in `sandbox.rs::start_from_snapshot`.
+        // Inner command is [`SPAWN_INNER_CMD`].
+        let spawn_result = tokio::process::Command::new("unshare")
+            .args(UNSHARE_MOUNT_ARGS)
+            .args(["bash", "-c", SPAWN_INNER_CMD, "_"])
+            .arg(&cow_device_path) // $1
+            .arg(&drive_bind) // $2
+            .arg(&network_name) // $3
+            .arg(&config.binary_path) // $4
+            .arg(&api_sock) // $5
+            .current_dir(self.paths.workspace())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .process_group(0)
+            .kill_on_drop(true)
+            .spawn();
+
+        let mut child = match spawn_result {
+            Ok(child) => child,
+            Err(e) => {
+                // Release the checked-out netns before returning —
+                // `netns_pool.cleanup()` only drains queued entries, not
+                // already-acquired ones.
+                self.release_network("failed to release netns after spawn failure")
+                    .await;
+                self.destroy_cow_after_setup_error("spawn firecracker")
+                    .await;
+                return Err(SnapshotError::Process(format!("spawn firecracker: {e}")));
+            }
+        };
+
+        // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
+        // Stderr is also retained in a bounded ring buffer so that an early
+        // spawn-chain exit (mount failure inside unshare bash, etc.) can be
+        // reported with its real cause instead of just an API timeout.
+        self.stdout_handle = spawn_stdout_forwarder(&mut child);
+        // The stderr forwarder handle is retained so that, on detected early
+        // exit, we can wait a bounded time for it to drain buffered lines
+        // before snapshotting the ring buffer for the error message. Without
+        // this join, the most informative lines (mount: bind failed, etc.)
+        // can race the `try_wait` observation and be missed.
+        self.stderr_handle = spawn_stderr_forwarder(&mut child, &self.stderr_buf);
+        self.child = Some(child);
+
+        Ok(())
+    }
+
+    async fn finish_workflow(
+        &mut self,
+        result: Result<SnapshotConfig, SnapshotError>,
+    ) -> Result<SnapshotConfig, SnapshotError> {
+        // Probe for early spawn-chain exit *before* killing the process. This
+        // distinguishes "firecracker is still running, error was an API/setup
+        // issue" (try_wait → None) from "firecracker already died, error is
+        // the downstream symptom of that" (try_wait → Some(non-zero)).
+        let child_status = self
+            .child
+            .as_mut()
+            .map_or(Ok(None), tokio::process::Child::try_wait);
+        self.stderr_handle =
+            drain_stderr_forwarder_after_spawn_exit(&child_status, self.stderr_handle.take()).await;
+        let result = rewrap_spawn_chain_exit(result, child_status, &self.stderr_buf);
+
+        // Kill Firecracker first — it holds the NBD device fd open.
+        if let Some(child) = self.child.as_mut() {
+            kill_and_reap_firecracker(child).await;
+        }
+        self.child.take();
+
+        // Release network namespace back to the pool before teardown.
+        // Without this, the namespace resources (veth, iptables) leak because
+        // cleanup() only drains pool-owned namespaces, not checked-out leases.
+        self.release_network("failed to release netns").await;
+
+        // Tear down NBD COW device.
+        //
+        // After kill_process_group + child.wait(), the kernel may still be
+        // releasing the NBD device fd. Retry destroy until all references are
+        // released. The COW-device bind mount lived inside the FC process's
+        // private mount namespace and was auto-cleaned when the process exited.
+        if result.is_ok() {
+            self.finalize_success().await?;
+        } else {
+            self.cleanup_failure().await;
+        }
+
+        self.drop_forwarder_handles();
+        result
+    }
+
+    async fn cleanup_netns_pool(&mut self) {
+        if let Err(e) = self.netns_pool.cleanup().await {
+            tracing::warn!(error = %e, "failed to cleanup netns pool");
+        }
+    }
+
+    async fn cleanup_sock_dir(&self) {
+        cleanup_snapshot_sock_dir(self.sock_paths.dir(), "failed to cleanup sock dir").await;
+    }
+
+    async fn destroy_cow_after_setup_error(&mut self, context: &'static str) {
+        if let Some(cow_device) = self.cow_device.take() {
+            destroy_snapshot_cow_after_error(context, cow_device).await;
+        }
+    }
+
+    async fn release_network(&mut self, warning: &'static str) {
+        if self.network.is_some() {
+            release_snapshot_netns(&mut self.netns_pool, &mut self.network, warning).await;
+        }
+    }
+
+    async fn finalize_success(&mut self) -> Result<(), SnapshotError> {
+        let cow_device = self.cow_device.take().ok_or_else(|| {
+            SnapshotError::Teardown("snapshot attempt missing COW device before finalize".into())
+        })?;
+        finalize_snapshot_cow_output(cow_device, &self.output).await
+    }
+
+    async fn cleanup_failure(&mut self) {
+        if let Some(cow_device) = self.cow_device.take() {
+            destroy_snapshot_cow_after_workflow_error(cow_device).await;
+        }
+    }
+
+    fn drop_forwarder_handles(&mut self) {
+        self.stdout_handle.take();
+        self.stderr_handle.take();
+    }
+
+    fn has_owned_cleanup_resources(&self) -> bool {
+        self.cow_device.is_some() || self.network.is_some() || self.child.is_some()
+    }
+}
+
+impl Drop for SnapshotAttempt {
+    fn drop(&mut self) {
+        if !self.has_owned_cleanup_resources() {
+            return;
+        }
+
+        tracing::warn!(
+            has_cow_device = self.cow_device.is_some(),
+            has_network = self.network.is_some(),
+            has_child = self.child.is_some(),
+            "snapshot attempt dropped without explicit async cleanup; Drop handoff is intentionally deferred"
+        );
+    }
+}
+
 /// Create a snapshot by booting a fresh VM, configuring it, and capturing state.
 ///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
@@ -372,7 +672,7 @@ pub async fn create_snapshot(
     info!(device = %cow_device.device_path().display(), "NBD COW device created");
 
     // 3. Create network namespace (pool of 1, index auto-allocated via flock).
-    let mut netns_pool = match NetnsPool::create_checked(netns_config).await {
+    let netns_pool = match NetnsPool::create_checked(netns_config).await {
         Ok(pool) => pool,
         Err(e) => {
             cleanup_after_netns_pool_failure(cow_device, &device_pool, &sock_dir).await;
@@ -380,23 +680,12 @@ pub async fn create_snapshot(
         }
     };
 
-    // Guard: ensure netns cleanup on any exit path.
-    let result = run_snapshot_workflow(
-        &config,
-        &paths,
-        &sock_paths,
-        &output,
-        &mut netns_pool,
-        cow_device,
-    )
-    .await;
+    let mut attempt = SnapshotAttempt::new(paths, sock_paths, output, netns_pool, cow_device);
+    let result = run_snapshot_workflow(&config, &mut attempt).await;
 
     device_pool.cleanup().await;
-    if let Err(e) = netns_pool.cleanup().await {
-        tracing::warn!(error = %e, "failed to cleanup netns pool");
-    }
-
-    cleanup_snapshot_sock_dir(&sock_dir, "failed to cleanup sock dir").await;
+    attempt.cleanup_netns_pool().await;
+    attempt.cleanup_sock_dir().await;
 
     result
 }
@@ -490,139 +779,21 @@ fn rewrap_spawn_chain_exit(
 /// Inner workflow, separated so the caller can always run cleanup.
 async fn run_snapshot_workflow(
     config: &SnapshotCreateConfig,
-    paths: &SandboxPaths,
-    sock_paths: &SockPaths,
-    output: &SnapshotOutputPaths,
-    netns_pool: &mut NetnsPool,
-    cow_device: PooledNbdCowDevice,
+    attempt: &mut SnapshotAttempt,
 ) -> Result<SnapshotConfig, SnapshotError> {
-    // Filesystem pre-requisites that don't require the netns: do these
-    // *before* `netns_pool.acquire()` so that a transient fs error
-    // (mkdir, write) doesn't leak an acquired netns. A checked-out netns lease
-    // requires explicit release, and `netns_pool.cleanup()`
-    // only drains queued (not acquired) entries.
-    //
-    // The empty bind target file is consumed by `mount --bind` inside
-    // `unshare --mount` at spawn time; file content is irrelevant
-    // because the bind overlay is what FC reads.
-    if let Err(e) = tokio::fs::create_dir_all(sock_paths.dir()).await {
-        destroy_snapshot_cow_after_error("mkdir sock dir", cow_device).await;
-        return Err(SnapshotError::Setup(format!("mkdir sock dir: {e}")));
-    }
-    let api_sock = sock_paths.api_sock();
+    attempt.prepare_firecracker_files().await?;
+    attempt.acquire_network().await?;
+    attempt.spawn_firecracker(config).await?;
 
-    let drive_bind = paths.cow_device_bind();
-    if let Err(e) = tokio::fs::write(&drive_bind, b"").await {
-        destroy_snapshot_cow_after_error("create bind target", cow_device).await;
-        return Err(SnapshotError::Setup(format!("create bind target: {e}")));
-    }
-
-    // 4. Acquire the network namespace and spawn Firecracker into it.
-    let network = match netns_pool.acquire().await {
-        Ok(network) => network,
-        Err(e) => {
-            destroy_snapshot_cow_after_error("acquire netns", cow_device).await;
-            return Err(SnapshotError::Setup(format!("acquire netns: {e}")));
-        }
-    };
-
-    let network_info = network.info().clone();
-
-    info!(netns = %network_info.name(), "namespace acquired");
-
-    info!(
-        netns = %network_info.name(),
-        binary = %config.binary_path.display(),
-        api_sock = %api_sock.display(),
-        "spawning firecracker"
-    );
-
-    // Spawn Firecracker inside `unshare --mount` so the COW-device bind
-    // mount lives in a private mount namespace and dies with the process.
-    // Mirrors the spawn pattern in `sandbox.rs::start_from_snapshot`.
-    // Inner command is [`SPAWN_INNER_CMD`].
-    let cow_device_path = cow_device.device_path().to_path_buf();
-    let spawn_result = tokio::process::Command::new("unshare")
-        .args(UNSHARE_MOUNT_ARGS)
-        .args(["bash", "-c", SPAWN_INNER_CMD, "_"])
-        .arg(&cow_device_path) // $1
-        .arg(&drive_bind) // $2
-        .arg(network_info.name()) // $3
-        .arg(&config.binary_path) // $4
-        .arg(&api_sock) // $5
-        .current_dir(paths.workspace())
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .process_group(0)
-        .kill_on_drop(true)
-        .spawn();
-    let mut child = match spawn_result {
-        Ok(c) => c,
-        Err(e) => {
-            // Release the checked-out netns before returning —
-            // `netns_pool.cleanup()` (called by the outer `create_snapshot`)
-            // only drains queued entries, not already-acquired ones.
-            let mut network = Some(network);
-            release_snapshot_netns(
-                netns_pool,
-                &mut network,
-                "failed to release netns after spawn failure",
-            )
-            .await;
-            destroy_snapshot_cow_after_error("spawn firecracker", cow_device).await;
-            return Err(SnapshotError::Process(format!("spawn firecracker: {e}")));
-        }
-    };
-
-    // Stream stdout/stderr lines to tracing (same pattern as sandbox.rs).
-    // Stderr is also retained in a bounded ring buffer so that an early
-    // spawn-chain exit (mount failure inside unshare bash, etc.) can be
-    // reported with its real cause instead of just an API timeout.
-    let stderr_buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
-    spawn_stdout_forwarder(&mut child);
-    // The stderr forwarder handle is retained so that, on detected early
-    // exit, we can wait a bounded time for it to drain buffered lines
-    // before snapshotting the ring buffer for the error message. Without
-    // this join, the most informative lines (mount: bind failed, etc.)
-    // can race the `try_wait` observation and be missed.
-    let stderr_handle = spawn_stderr_forwarder(&mut child, &stderr_buf);
-
-    // Guard: ensure process and NBD cleanup on any exit path.
-    let result = run_with_firecracker(config, paths, sock_paths, output).await;
-
-    // Probe for early spawn-chain exit *before* killing the process. This
-    // distinguishes "firecracker is still running, error was an API/setup
-    // issue" (try_wait → None) from "firecracker already died, error is
-    // the downstream symptom of that" (try_wait → Some(non-zero)).
-    let child_status = child.try_wait();
-    let _stderr_handle =
-        drain_stderr_forwarder_after_spawn_exit(&child_status, stderr_handle).await;
-    let result = rewrap_spawn_chain_exit(result, child_status, &stderr_buf);
-
-    // Kill Firecracker first — it holds the NBD device fd open.
-    kill_and_reap_firecracker(&mut child).await;
-
-    // Release network namespace back to the pool before teardown.
-    // Without this, the namespace resources (veth, iptables) leak
-    // because cleanup() only drains pool-owned namespaces, not checked-out
-    // leases.
-    let mut network = Some(network);
-    release_snapshot_netns(netns_pool, &mut network, "failed to release netns").await;
-
-    // Tear down NBD COW device.
-    //
-    // After kill_process_group + child.wait(), the kernel may still be
-    // releasing the NBD device fd. Retry destroy until all references are
-    // released. The COW-device bind mount lived inside the FC process's
-    // private mount namespace and was auto-cleaned when the process exited.
-    if result.is_ok() {
-        finalize_snapshot_cow_output(cow_device, output).await?;
-    } else {
-        destroy_snapshot_cow_after_workflow_error(cow_device).await;
-    }
-
-    result
+    // Guard: ensure process and NBD cleanup on any explicit exit path.
+    let result = run_with_firecracker(
+        config,
+        attempt.paths(),
+        attempt.sock_paths(),
+        attempt.output(),
+    )
+    .await;
+    attempt.finish_workflow(result).await
 }
 
 /// Inner workflow that runs while Firecracker is alive.
@@ -859,6 +1030,31 @@ mod tests {
         );
 
         cleanup_existing_snapshot_sock_dir(&sock_dir).await;
+    }
+
+    #[tokio::test]
+    async fn snapshot_attempt_routes_socket_cleanup_through_owner() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        let paths = SandboxPaths::new(output.work_dir());
+        let sock_dir = dir.path().join("sock");
+        let sock_paths = SockPaths::new(sock_dir.clone());
+        let stale_socket = sock_dir.join("api.sock");
+        let attempt = SnapshotAttempt::new_without_cow_for_test(paths, sock_paths, output);
+
+        tokio::fs::create_dir_all(&sock_dir)
+            .await
+            .expect("create sock dir");
+        tokio::fs::write(&stale_socket, b"stale")
+            .await
+            .expect("write stale socket placeholder");
+
+        attempt.cleanup_sock_dir().await;
+
+        assert!(
+            !tokio::fs::try_exists(&sock_dir).await.unwrap(),
+            "snapshot attempt should own runtime socket cleanup"
+        );
     }
 
     #[tokio::test]
