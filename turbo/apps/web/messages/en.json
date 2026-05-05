@@ -414,28 +414,28 @@
         ]
       },
       "kol-cold-outreach": {
-        "title": "Research a KOL on X and draft a personalized cold email",
+        "title": "Research a partner on X and draft a personalized cold email",
         "description": "Give Zero an X handle. It reads their last 30 posts, understands their style and interests, writes a personalized outreach email under 150 words, and saves it as a Gmail draft.",
         "timeSaved": "~20 min saved",
-        "scenario": "You found a KOL who'd be perfect for a partnership, but writing a cold email that doesn't feel generic takes 20 minutes of research, reading their posts, understanding what they care about, finding the right angle. You give Zero their X handle and get a personalized draft in seconds.",
+        "scenario": "You found someone who'd be perfect for a partnership, but writing a cold email that doesn't feel generic takes 20 minutes of research, reading their posts, understanding what they care about, finding the right angle. You give Zero their X handle and get a personalized draft in seconds.",
         "promptVariants": [
           {
             "label": "Detailed",
-            "prompt": "@Zero read @swyx's last 30 X posts to understand their style and interests. Write a personalized cold outreach email under 150 words about a VM0 partnership. Reference something specific they posted recently. Save it as a Gmail draft."
+            "prompt": "@Zero read @swyx's last 30 X posts to understand their style and interests. Write a personalized cold outreach email under 150 words about a partnership. Reference something specific they posted recently. Save it as a Gmail draft."
           },
           {
             "label": "Quick",
-            "prompt": "@Zero draft a cold email to @swyx about VM0, based on their X posts. Save as Gmail draft."
+            "prompt": "@Zero draft a cold email to @swyx based on their X posts. Save as Gmail draft."
           },
           {
             "label": "Batch",
-            "prompt": "@Zero for each handle in my Notion KOL list marked as \"Not contacted\", research their X profile and draft a personalized outreach email. Save all as Gmail drafts."
+            "prompt": "@Zero for each handle in my Notion partner list marked as \"Not contacted\", research their X profile and draft a personalized outreach email. Save all as Gmail drafts."
           }
         ],
         "slackPreview": [
           {
             "name": "Scarlett",
-            "text": "@Zero read @swyx's last 30 X posts, understand his style, and draft a cold outreach email for a VM0 partnership. Save as Gmail draft."
+            "text": "@Zero read @swyx's last 30 X posts, understand his style, and draft a cold outreach email for a partnership. Save as Gmail draft."
           },
           {
             "name": "Zero",
@@ -444,43 +444,43 @@
         ],
         "steps": [
           {
-            "title": "Zero reads the KOL's X profile",
+            "title": "Zero reads their X profile",
             "description": "Zero pulls the last 30 posts, analyzes content themes, tone, audience, and engagement patterns to build a profile of what this person cares about."
           },
           {
             "title": "Personalized email drafted",
-            "description": "Zero writes a concise outreach email that references specific content the KOL posted, explains the relevance of your product, and uses a tone that matches their style."
+            "description": "Zero writes a concise outreach email that references specific content the person posted, explains the relevance of your product, and uses a tone that matches their style."
           },
           {
             "title": "Draft saved to Gmail",
-            "description": "The email is saved as a Gmail draft ready for your review. Zero also updates the KOL's status in your Notion CRM if connected."
+            "description": "The email is saved as a Gmail draft ready for your review. Zero also updates the contact's status in your Notion CRM if connected."
           }
         ],
         "nextActions": [
           {
-            "title": "Score KOL fit",
-            "description": "Rate how well a KOL matches your audience",
-            "examplePrompt": "@Zero analyze @swyx's audience overlap with VM0's ICP. Score 1-10 with reasoning and save to Notion."
+            "title": "Score partner fit",
+            "description": "Rate how well a potential partner matches your audience",
+            "examplePrompt": "@Zero analyze @swyx's audience overlap with our ICP. Score 1-10 with reasoning and save to Notion."
           },
           {
             "title": "Batch outreach",
-            "description": "Draft emails for multiple KOLs at once",
-            "examplePrompt": "@Zero for the top 10 KOLs in my Notion list, research each and draft personalized outreach emails."
+            "description": "Draft emails for multiple partners at once",
+            "examplePrompt": "@Zero for the top 10 partners in my Notion list, research each and draft personalized outreach emails."
           }
         ],
         "integrations": [
           {
-            "description": "Zero reads public posts to understand the KOL's style and interests."
+            "description": "Zero reads public posts to understand the person's style and interests."
           },
           {
             "description": "Zero saves the drafted email to your Gmail drafts."
           },
           {
-            "description": "Optional, track KOL status and fit scores in your Notion CRM."
+            "description": "Optional, track partner status and fit scores in your Notion CRM."
           }
         ],
         "tips": [
-          "Give Zero context about your product angle. \"focus on how VM0 helps developer tool companies\".",
+          "Give Zero context about your product angle. \"focus on how we help developer tool companies\".",
           "Ask for multiple variants. \"draft 2 versions: one casual, one professional\".",
           "Always review before sending. Zero gets the research right, but the final voice should be yours."
         ]

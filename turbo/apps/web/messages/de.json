@@ -414,10 +414,10 @@
         ]
       },
       "kol-cold-outreach": {
-        "title": "KOL auf X recherchieren und eine personalisierte Cold-E-Mail verfassen",
+        "title": "Partner auf X recherchieren und eine personalisierte Cold-E-Mail verfassen",
         "description": "Geben Sie Zero einen X-Handle. Zero liest die letzten 30 Posts, versteht Stil und Interessen, schreibt eine personalisierte Outreach-E-Mail unter 150 Wörtern und speichert sie als Gmail-Entwurf.",
         "timeSaved": "~20 Min. gespart",
-        "scenario": "Sie haben einen KOL gefunden, der perfekt für eine Partnerschaft wäre, aber eine Cold-E-Mail zu schreiben, die nicht generisch wirkt, dauert 20 Minuten Recherche – Posts lesen, verstehen, was ihnen wichtig ist, den richtigen Ansatz finden. Sie geben Zero den X-Handle und erhalten in Sekunden einen personalisierten Entwurf.",
+        "scenario": "Sie haben einen Partner gefunden, der perfekt für eine Zusammenarbeit wäre, aber eine Cold-E-Mail zu schreiben, die nicht generisch wirkt, dauert 20 Minuten Recherche – Posts lesen, verstehen, was ihnen wichtig ist, den richtigen Ansatz finden. Sie geben Zero den X-Handle und erhalten in Sekunden einen personalisierten Entwurf.",
         "promptVariants": [
           {
             "label": "Detailliert",
@@ -429,7 +429,7 @@
           },
           {
             "label": "Batch",
-            "prompt": "@Zero recherchiere für jeden Handle in meiner Notion-KOL-Liste mit Status „Nicht kontaktiert“ das X-Profil und verfasse eine personalisierte Outreach-E-Mail. Alle als Gmail-Entwürfe speichern."
+            “prompt”: “@Zero recherchiere für jeden Handle in meiner Notion-Partner-Liste mit Status „Nicht kontaktiert” das X-Profil und verfasse eine personalisierte Outreach-E-Mail. Alle als Gmail-Entwürfe speichern.”
           }
         ],
         "slackPreview": [
@@ -444,39 +444,39 @@
         ],
         "steps": [
           {
-            "title": "Zero liest das X-Profil des KOL",
+            "title": "Zero liest das X-Profil des Partners",
             "description": "Zero ruft die letzten 30 Posts ab, analysiert Inhaltsthemen, Ton, Zielgruppe und Engagement-Muster, um ein Profil dessen zu erstellen, was dieser Person wichtig ist."
           },
           {
             "title": "Personalisierte E-Mail verfasst",
-            "description": "Zero schreibt eine prägnante Outreach-E-Mail, die auf spezifische Inhalte des KOL verweist, die Relevanz Ihres Produkts erklärt und einen zum Stil passenden Ton verwendet."
+            "description": "Zero schreibt eine prägnante Outreach-E-Mail, die auf spezifische Inhalte des Partners verweist, die Relevanz Ihres Produkts erklärt und einen zum Stil passenden Ton verwendet."
           },
           {
             "title": "Entwurf in Gmail gespeichert",
-            "description": "Die E-Mail wird als Gmail-Entwurf gespeichert und ist bereit für Ihre Überprüfung. Zero aktualisiert auch den KOL-Status in Ihrem Notion-CRM, falls verbunden."
+            "description": "Die E-Mail wird als Gmail-Entwurf gespeichert und ist bereit für Ihre Überprüfung. Zero aktualisiert auch den Partner-Status in Ihrem Notion-CRM, falls verbunden."
           }
         ],
         "nextActions": [
           {
-            "title": "KOL-Fit bewerten",
-            "description": "Bewerten, wie gut ein KOL zu Ihrer Zielgruppe passt",
+            "title": "Partner-Fit bewerten",
+            "description": "Bewerten, wie gut ein Partner zu Ihrer Zielgruppe passt",
             "examplePrompt": "@Zero analysiere die Zielgruppenüberschneidung von @swyx mit VM0s ICP. Bewerte 1-10 mit Begründung und speichere in Notion."
           },
           {
             "title": "Batch-Outreach",
-            "description": "E-Mails für mehrere KOLs gleichzeitig verfassen",
-            "examplePrompt": "@Zero recherchiere für die Top 10 KOLs in meiner Notion-Liste jeden einzelnen und verfasse personalisierte Outreach-E-Mails."
+            "description": "E-Mails für mehrere Partner gleichzeitig verfassen",
+            "examplePrompt": "@Zero recherchiere für die Top 10 Partner in meiner Notion-Liste jeden einzelnen und verfasse personalisierte Outreach-E-Mails."
           }
         ],
         "integrations": [
           {
-            "description": "Zero liest öffentliche Posts, um den Stil und die Interessen des KOL zu verstehen."
+            "description": "Zero liest öffentliche Posts, um den Stil und die Interessen der Person zu verstehen."
           },
           {
             "description": "Zero speichert die verfasste E-Mail in Ihren Gmail-Entwürfen."
           },
           {
-            "description": "Optional – KOL-Status und Fit-Scores in Ihrem Notion-CRM verfolgen."
+            "description": "Optional – Partner-Status und Fit-Scores in Ihrem Notion-CRM verfolgen."
           }
         ],
         "tips": [

@@ -414,10 +414,10 @@
         ]
       },
       "kol-cold-outreach": {
-        "title": "Investiga un KOL en X y redacta un correo de contacto personalizado",
+        "title": "Investiga un socio potencial en X y redacta un correo de contacto personalizado",
         "description": "Dale a Zero un handle de X. Lee sus últimos 30 posts, entiende su estilo e intereses, redacta un correo de contacto personalizado de menos de 150 palabras y lo guarda como borrador en Gmail.",
         "timeSaved": "~20 min ahorrados",
-        "scenario": "Encontraste un KOL perfecto para una asociación, pero escribir un correo frío que no se sienta genérico toma 20 minutos de investigación: leer sus posts, entender qué les importa, encontrar el ángulo correcto. Le das a Zero su handle de X y obtienes un borrador personalizado en segundos.",
+        "scenario": "Encontraste un socio potencial perfecto para una colaboración, pero escribir un correo frío que no se sienta genérico toma 20 minutos de investigación: leer sus posts, entender qué les importa, encontrar el ángulo correcto. Le das a Zero su handle de X y obtienes un borrador personalizado en segundos.",
         "promptVariants": [
           {
             "label": "Detallado",
@@ -429,7 +429,7 @@
           },
           {
             "label": "Lote",
-            "prompt": "@Zero para cada handle en mi lista de KOL de Notion marcado como \"No contactado\", investiga su perfil de X y redacta un correo de contacto personalizado. Guardar todos como borradores de Gmail."
+            "prompt": "@Zero para cada handle en mi lista de socios de Notion marcado como \"No contactado\", investiga su perfil de X y redacta un correo de contacto personalizado. Guardar todos como borradores de Gmail."
           }
         ],
         "slackPreview": [
@@ -444,39 +444,39 @@
         ],
         "steps": [
           {
-            "title": "Zero lee el perfil de X del KOL",
+            "title": "Zero lee el perfil de X del socio potencial",
             "description": "Zero obtiene los últimos 30 posts, analiza temas de contenido, tono, audiencia y patrones de engagement para crear un perfil de lo que le importa a esta persona."
           },
           {
             "title": "Correo personalizado redactado",
-            "description": "Zero escribe un correo de contacto conciso que hace referencia a contenido específico publicado por el KOL, explica la relevancia de tu producto y usa un tono que coincide con su estilo."
+            "description": "Zero escribe un correo de contacto conciso que hace referencia a contenido específico publicado por el socio potencial, explica la relevancia de tu producto y usa un tono que coincide con su estilo."
           },
           {
             "title": "Borrador guardado en Gmail",
-            "description": "El correo se guarda como borrador de Gmail listo para tu revisión. Zero también actualiza el estado del KOL en tu Notion CRM si está conectado."
+            "description": "El correo se guarda como borrador de Gmail listo para tu revisión. Zero también actualiza el estado del socio en tu Notion CRM si está conectado."
           }
         ],
         "nextActions": [
           {
-            "title": "Evaluar compatibilidad del KOL",
-            "description": "Calificar qué tan bien coincide un KOL con tu audiencia",
+            "title": "Evaluar compatibilidad del socio",
+            "description": "Calificar qué tan bien coincide un socio potencial con tu audiencia",
             "examplePrompt": "@Zero analiza la superposición de audiencia de @swyx con el ICP de VM0. Puntúa de 1 a 10 con justificación y guarda en Notion."
           },
           {
             "title": "Contacto en lote",
-            "description": "Redactar correos para múltiples KOLs a la vez",
-            "examplePrompt": "@Zero para los 10 principales KOLs en mi lista de Notion, investiga cada uno y redacta correos de contacto personalizados."
+            "description": "Redactar correos para múltiples socios a la vez",
+            "examplePrompt": "@Zero para los 10 principales socios en mi lista de Notion, investiga cada uno y redacta correos de contacto personalizados."
           }
         ],
         "integrations": [
           {
-            "description": "Zero lee posts públicos para entender el estilo e intereses del KOL."
+            "description": "Zero lee posts públicos para entender el estilo e intereses del socio potencial."
           },
           {
             "description": "Zero guarda el correo redactado en tus borradores de Gmail."
           },
           {
-            "description": "Opcional: rastrea el estado del KOL y puntuaciones de compatibilidad en tu Notion CRM."
+            "description": "Opcional: rastrea el estado del socio y puntuaciones de compatibilidad en tu Notion CRM."
           }
         ],
         "tips": [
