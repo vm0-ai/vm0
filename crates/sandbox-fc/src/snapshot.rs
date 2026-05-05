@@ -164,6 +164,18 @@ fn create_sparse_cow_file(path: &Path, size: u64) -> Result<(), SnapshotError> {
     Ok(())
 }
 
+fn snapshot_attempt_token() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
+}
+
+fn snapshot_attempt_dir(work_dir: &Path, token: &str) -> PathBuf {
+    work_dir.join("attempts").join(token)
+}
+
+fn snapshot_attempt_cow_file(work_dir: &Path, token: &str) -> PathBuf {
+    snapshot_attempt_dir(work_dir, token).join("cow.img")
+}
+
 async fn cleanup_after_netns_pool_failure(
     cow_device: PooledNbdCowDevice,
     device_pool: &DevicePoolHandle,
@@ -368,6 +380,10 @@ async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevic
 /// snapshot cleanup finalizer when a Tokio runtime is available.
 struct SnapshotAttempt {
     paths: SandboxPaths,
+    // Socket paths are cleaned only by the explicit path while the caller still
+    // holds the snapshot build lock. A detached Drop finalizer must not remove
+    // this stable snapshot-id directory after cancellation, because another
+    // runner may already be rebuilding the same snapshot.
     sock_paths: Option<SockPaths>,
     output: SnapshotOutputPaths,
     netns_pool: Option<NetnsPool>,
@@ -710,7 +726,6 @@ impl SnapshotAttempt {
     fn has_cleanup_work(&self) -> bool {
         self.device_pool.is_some()
             || self.netns_pool.is_some()
-            || self.sock_paths.is_some()
             || self.cow_device.is_some()
             || self.network.is_some()
             || self.child.is_some()
@@ -724,7 +739,6 @@ impl SnapshotAttempt {
         }
 
         Some(SnapshotCleanupFinalizer {
-            sock_paths: self.sock_paths.take(),
             netns_pool: self.netns_pool.take(),
             device_pool: self.device_pool.take(),
             cow_device: self.cow_device.take(),
@@ -746,11 +760,9 @@ struct SnapshotCleanupReport {
     cow_destroyed: bool,
     device_pool_cleaned: bool,
     netns_pool_cleaned: bool,
-    sock_dir_cleaned: bool,
 }
 
 struct SnapshotCleanupFinalizer {
-    sock_paths: Option<SockPaths>,
     netns_pool: Option<NetnsPool>,
     device_pool: Option<DevicePoolHandle>,
     cow_device: Option<PooledNbdCowDevice>,
@@ -788,7 +800,6 @@ impl SnapshotCleanupFinalizer {
         let cow_destroyed = self.destroy_cow().await;
         let device_pool_cleaned = self.cleanup_device_pool().await;
         let netns_pool_cleaned = self.cleanup_netns_pool().await;
-        let sock_dir_cleaned = self.cleanup_sock_dir().await;
 
         let report = SnapshotCleanupReport {
             child_reaped,
@@ -798,7 +809,6 @@ impl SnapshotCleanupFinalizer {
             cow_destroyed,
             device_pool_cleaned,
             netns_pool_cleaned,
-            sock_dir_cleaned,
         };
 
         tracing::info!(
@@ -809,7 +819,6 @@ impl SnapshotCleanupFinalizer {
             cow_destroyed = report.cow_destroyed,
             device_pool_cleaned = report.device_pool_cleaned,
             netns_pool_cleaned = report.netns_pool_cleaned,
-            sock_dir_cleaned = report.sock_dir_cleaned,
             "snapshot cancellation cleanup complete"
         );
 
@@ -878,23 +887,9 @@ impl SnapshotCleanupFinalizer {
         true
     }
 
-    async fn cleanup_sock_dir(&mut self) -> bool {
-        let Some(sock_paths) = self.sock_paths.as_ref() else {
-            return true;
-        };
-        let cleaned = cleanup_snapshot_sock_dir(
-            sock_paths.dir(),
-            "failed to cleanup sock dir during snapshot cancellation cleanup",
-        )
-        .await;
-        self.sock_paths.take();
-        cleaned
-    }
-
     fn has_cleanup_work(&self) -> bool {
         self.device_pool.is_some()
             || self.netns_pool.is_some()
-            || self.sock_paths.is_some()
             || self.cow_device.is_some()
             || self.network.is_some()
             || self.child.is_some()
@@ -912,7 +907,6 @@ impl Drop for SnapshotCleanupFinalizer {
         tracing::warn!(
             has_device_pool = self.device_pool.is_some(),
             has_netns_pool = self.netns_pool.is_some(),
-            has_sock_paths = self.sock_paths.is_some(),
             has_cow_device = self.cow_device.is_some(),
             has_network = self.network.is_some(),
             has_child = self.child.is_some(),
@@ -930,19 +924,25 @@ impl Drop for SnapshotAttempt {
         };
         let has_device_pool = finalizer.device_pool.is_some();
         let has_netns_pool = finalizer.netns_pool.is_some();
-        let has_sock_paths = finalizer.sock_paths.is_some();
         let has_cow_device = finalizer.cow_device.is_some();
         let has_network = finalizer.network.is_some();
         let has_child = finalizer.child.is_some();
         let has_stdout_forwarder = finalizer.stdout_handle.is_some();
         let has_stderr_forwarder = finalizer.stderr_handle.is_some();
 
+        if let Some(child) = finalizer.child.as_ref() {
+            // The outer snapshot build lock can be released as soon as the
+            // cancelled future is dropped. Signal the process group before the
+            // async handoff so a later build of the same snapshot does not race
+            // a still-running Firecracker process. Reaping remains async.
+            kill_process_group(child);
+        }
+
         match tokio::runtime::Handle::try_current() {
             Ok(runtime) => {
                 tracing::info!(
                     has_device_pool,
                     has_netns_pool,
-                    has_sock_paths,
                     has_cow_device,
                     has_network,
                     has_child,
@@ -958,7 +958,6 @@ impl Drop for SnapshotAttempt {
                 error = %e,
                 has_device_pool,
                 has_netns_pool,
-                has_sock_paths,
                 has_cow_device,
                 has_network,
                 has_child,
@@ -1027,13 +1026,21 @@ pub async fn create_snapshot(
     .map_err(|e| SnapshotError::Setup(e.to_string()))?;
 
     // 2. Create NBD COW device backed by the rootfs image.
-    let cow_file = paths.workspace().join("cow.img");
     let base_size = tokio::fs::metadata(&config.rootfs_path)
         .await
         .map_err(|e| SnapshotError::Setup(format!("base image metadata: {e}")))?
         .len();
 
-    // Create sparse COW file.
+    // The stable `work/cow-device-bind` path is baked into the snapshot for
+    // restore, but the temporary COW backing file is not. Keep the COW under an
+    // attempt-scoped directory so a cancelled attempt's detached finalizer cannot
+    // unlink a later rebuild's COW after the outer snapshot lock has been released.
+    let attempt_token = snapshot_attempt_token();
+    let attempt_dir = snapshot_attempt_dir(paths.workspace(), &attempt_token);
+    tokio::fs::create_dir_all(&attempt_dir)
+        .await
+        .map_err(|e| SnapshotError::Setup(format!("create snapshot attempt dir: {e}")))?;
+    let cow_file = snapshot_attempt_cow_file(paths.workspace(), &attempt_token);
     create_sparse_cow_file(&cow_file, base_size)?;
 
     let device_pool =
@@ -1398,6 +1405,20 @@ mod tests {
         );
     }
 
+    #[test]
+    fn snapshot_attempt_cow_file_is_attempt_scoped() {
+        let work = std::path::Path::new("/tmp/snapshot-work");
+
+        assert_eq!(
+            snapshot_attempt_cow_file(work, "abc123ef"),
+            work.join("attempts").join("abc123ef").join("cow.img")
+        );
+        assert_ne!(
+            snapshot_attempt_cow_file(work, "abc123ef"),
+            work.join("cow.img")
+        );
+    }
+
     #[tokio::test]
     async fn cleanup_existing_snapshot_sock_dir_removes_existing_dir() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1481,7 +1502,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn snapshot_attempt_drop_handoff_releases_netns_and_cleans_sock_dir() {
+    async fn snapshot_attempt_drop_handoff_releases_netns_without_unlocked_sock_cleanup() {
         let dir = tempfile::tempdir().expect("tempdir");
         let (mut attempt, sock_dir) = snapshot_attempt_for_test(&dir);
         let (tx, rx) = tokio::sync::oneshot::channel();
@@ -1497,25 +1518,10 @@ mod tests {
 
         assert!(report.network_released);
         assert!(report.netns_pool_cleaned);
-        assert!(report.sock_dir_cleaned);
         assert!(
-            !tokio::fs::try_exists(&sock_dir).await.unwrap(),
-            "snapshot cancellation cleanup should remove runtime socket directory"
+            tokio::fs::try_exists(&sock_dir).await.unwrap(),
+            "detached cleanup must not remove the stable snapshot socket directory without the outer snapshot lock"
         );
-    }
-
-    #[tokio::test]
-    async fn snapshot_attempt_drop_handoff_treats_missing_sock_dir_as_cleaned() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
-        let (tx, rx) = tokio::sync::oneshot::channel();
-
-        attempt.notify_cleanup_complete_for_test(tx);
-
-        drop(attempt);
-        let report = wait_for_snapshot_cleanup(rx).await;
-
-        assert!(report.sock_dir_cleaned);
     }
 
     #[tokio::test]
@@ -1537,10 +1543,9 @@ mod tests {
 
         assert!(report.child_reaped);
         assert!(report.network_released);
-        assert!(report.sock_dir_cleaned);
         assert!(
-            !tokio::fs::try_exists(&sock_dir).await.unwrap(),
-            "snapshot cancellation cleanup should remove runtime socket directory"
+            tokio::fs::try_exists(&sock_dir).await.unwrap(),
+            "detached cleanup must not remove the stable snapshot socket directory without the outer snapshot lock"
         );
     }
 
@@ -1562,7 +1567,10 @@ mod tests {
 
         assert!(report.stdout_forwarder_finished);
         assert!(report.stderr_forwarder_finished);
-        assert!(report.sock_dir_cleaned);
+        assert!(
+            tokio::fs::try_exists(&sock_dir).await.unwrap(),
+            "detached cleanup must not remove the stable snapshot socket directory without the outer snapshot lock"
+        );
     }
 
     #[tokio::test]
