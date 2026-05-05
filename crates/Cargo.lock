@@ -1254,6 +1254,7 @@ dependencies = [
  "api-contracts",
  "base64",
  "bytes",
+ "chrono",
  "flate2",
  "guest-common",
  "hex",

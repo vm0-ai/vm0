@@ -87,6 +87,7 @@ static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
 static CLI_AGENT_TYPE: LazyLock<String> = LazyLock::new(|| env_or_empty("CLI_AGENT_TYPE"));
 static OPENAI_API_KEY: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_API_KEY"));
 static OPENAI_MODEL: LazyLock<String> = LazyLock::new(|| env_or_empty("OPENAI_MODEL"));
+static CHATGPT_ACCOUNT_ID: LazyLock<String> = LazyLock::new(|| env_or_empty("CHATGPT_ACCOUNT_ID"));
 
 /// `USE_MOCK_CODEX` accepts both `"true"` and `"1"` (matches the Codex
 /// epic's documented invocation shape `USE_MOCK_CODEX=1`). The
@@ -304,6 +305,19 @@ pub fn openai_api_key() -> &'static str {
 /// OpenAI model from `OPENAI_MODEL`; empty string means unset.
 pub fn openai_model() -> &'static str {
     &OPENAI_MODEL
+}
+/// ChatGPT workspace account id from `CHATGPT_ACCOUNT_ID`; empty string
+/// means unset. Presence is the signal that the sandbox is running in
+/// ChatGPT-OAuth mode (see `is_chatgpt_oauth_mode`); the value itself is
+/// not consumed by the guest-agent — the firewall replaces the
+/// placeholder bytes in `auth.json` on egress.
+pub fn chatgpt_account_id() -> &'static str {
+    &CHATGPT_ACCOUNT_ID
+}
+/// Whether the sandbox should bootstrap codex into ChatGPT-OAuth mode
+/// instead of the API-key path. True iff `CHATGPT_ACCOUNT_ID` is set.
+pub fn is_chatgpt_oauth_mode() -> bool {
+    !CHATGPT_ACCOUNT_ID.is_empty()
 }
 /// Whether `USE_MOCK_CODEX` is `"true"` or `"1"`; unset or any other value is
 /// false.
