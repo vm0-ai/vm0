@@ -221,10 +221,20 @@ async fn acquire_rootfs_lock_for_image_build(
     rootfs_hash: &str,
     rootfs_paths: &RootfsPaths,
 ) -> RunnerResult<RootfsImageLock> {
+    acquire_rootfs_lock_for_image_build_inner(paths, rootfs_hash, rootfs_paths, || {}).await
+}
+
+async fn acquire_rootfs_lock_for_image_build_inner(
+    paths: &HomePaths,
+    rootfs_hash: &str,
+    rootfs_paths: &RootfsPaths,
+    mut before_shared_lock: impl FnMut(),
+) -> RunnerResult<RootfsImageLock> {
     let rootfs_lock_path = paths.rootfs_lock(rootfs_hash);
 
     loop {
         if is_rootfs_present(rootfs_paths).await? {
+            before_shared_lock();
             tracing::info!(
                 "acquiring shared rootfs lock for image build: {}",
                 rootfs_lock_path.display()
@@ -2115,6 +2125,30 @@ exit 1
             .await
             .unwrap();
 
+        assert!(image_lock.is_exclusive());
+    }
+
+    #[tokio::test]
+    async fn rootfs_image_lock_retries_exclusive_when_existing_rootfs_disappears() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs_hash = "disappearing-rootfs-hash";
+        let rootfs = RootfsPaths::new(&home, rootfs_hash);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs(), b"rootfs").await.unwrap();
+
+        let mut removed = false;
+        let image_lock =
+            acquire_rootfs_lock_for_image_build_inner(&home, rootfs_hash, &rootfs, || {
+                if !removed {
+                    std::fs::remove_file(rootfs.rootfs()).unwrap();
+                    removed = true;
+                }
+            })
+            .await
+            .unwrap();
+
+        assert!(removed);
         assert!(image_lock.is_exclusive());
     }
 
