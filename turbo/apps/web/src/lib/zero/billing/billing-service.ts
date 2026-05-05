@@ -116,7 +116,7 @@ async function getOrCreateStripeCustomer(orgId: string): Promise<string> {
 
     await tx
       .insert(orgMetadata)
-      .values({ orgId, stripeCustomerId: customer.id })
+      .values({ orgId, stripeCustomerId: customer.id, credits: 0 })
       .onConflictDoUpdate({
         target: orgMetadata.orgId,
         set: { stripeCustomerId: customer.id, updatedAt: new Date() },
