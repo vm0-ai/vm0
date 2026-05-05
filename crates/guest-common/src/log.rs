@@ -95,6 +95,9 @@ fn default_system_log_file() -> &'static str {
 
 /// Override the system log file used by future log lines.
 ///
+/// Updating this path drops any cached file handle, including same-path
+/// updates. This lets callers force the next write to reopen the path.
+///
 /// The write is synchronous and completes before the logging macro returns.
 /// This matters for guest-agent's final telemetry upload, which reads the
 /// same file immediately after some fatal-path log lines are emitted.
@@ -162,6 +165,7 @@ macro_rules! log_error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     static LOG_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -382,12 +386,18 @@ mod tests {
 
         let content = std::fs::read_to_string(path).unwrap();
         let lines: Vec<_> = content.lines().collect();
+        let expected: HashSet<_> = (0..8)
+            .flat_map(|thread_id| {
+                (0..20).map(move |line_id| {
+                    format!(
+                        "[timestamp] [INFO] [sandbox:guest-agent] concurrent {thread_id}-{line_id}"
+                    )
+                })
+            })
+            .collect();
+        let actual: HashSet<_> = lines.iter().map(|line| (*line).to_owned()).collect();
         assert_eq!(lines.len(), 160);
+        assert_eq!(actual, expected);
         assert!(content.ends_with('\n'));
-        assert!(
-            lines
-                .iter()
-                .all(|line| { line.contains("[INFO] [sandbox:guest-agent] concurrent ") })
-        );
     }
 }
