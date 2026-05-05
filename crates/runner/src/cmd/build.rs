@@ -37,7 +37,7 @@ const TEMPLATE_CACHE_VERSION: u32 = 1;
 const ROOTFS_CACHE_VERSION: u32 = 1;
 
 /// Bump to invalidate all cached snapshots (local only; R2 stores only the template).
-const SNAPSHOT_CACHE_VERSION: u32 = 1;
+const SNAPSHOT_CACHE_VERSION: u32 = 2;
 
 #[cfg(bundled_guests)]
 mod embedded {
