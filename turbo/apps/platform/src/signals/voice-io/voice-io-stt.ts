@@ -11,13 +11,14 @@ import {
 } from "../zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../zero-page/settings/org-manage-dialog.ts";
 import { logger } from "../log.ts";
-import { createDeferredPromise } from "../utils.ts";
+import { createDeferredPromise, resetSignal } from "../utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { stopTts$ } from "./voice-io-tts.ts";
 import { accept } from "../../lib/accept.ts";
 
 const L = logger("VoiceIO:STT");
 
+const resetRecord$ = resetSignal();
 // ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
@@ -108,32 +109,40 @@ const refreshAudioInputQuota$ = command(({ set }) => {
   });
 });
 
+async function openMedia(signal: AbortSignal) {
+  // confirmed by ethan@vm0.ai
+  // eslint-disable-next-line no-restricted-syntax -- getUserMedia rejects on permission denied
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    signal.throwIfAborted();
+    return stream;
+  } catch (error) {
+    L.error("Microphone access denied", error);
+    toast.error("Microphone access denied");
+    return;
+  }
+}
+
 export const startRecording$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async ({ get, set }, parentSignal: AbortSignal) => {
     if (get(internalRecording$) || get(internalTranscribing$)) {
       return;
     }
 
-    // Stop any ongoing TTS playback to prevent recording AI voice
     set(stopTts$);
-    signal.throwIfAborted();
 
-    let stream: MediaStream;
-    // eslint-disable-next-line no-restricted-syntax -- getUserMedia rejects on permission denied
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-    } catch (error) {
-      L.error("Microphone access denied", error);
-      toast.error("Microphone access denied");
+    const signal = set(resetRecord$, parentSignal);
+
+    const stream = await openMedia(signal);
+    if (!stream) {
       return;
     }
-    signal.throwIfAborted();
 
     const mimeType = chooseMimeType();
     const recorder = mimeType
@@ -149,6 +158,14 @@ export const startRecording$ = command(
       }
     };
 
+    signal.addEventListener("abort", () => {
+      if (recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      stopAllTracks(stream);
+      set(resetState$);
+    });
+
     recorder.start();
     set(internalRecording$, true);
     set(internalStream$, stream);
@@ -163,9 +180,7 @@ export const stopAndTranscribe$ = command(
     }
 
     const recorder = get(internalRecorder$);
-    const stream = get(internalStream$);
 
-    // Stop recording and wait for final data
     if (recorder && recorder.state !== "inactive") {
       const stopDeferred = createDeferredPromise<void>(signal);
       recorder.addEventListener(
@@ -181,13 +196,10 @@ export const stopAndTranscribe$ = command(
 
     set(internalRecording$, false);
 
-    // Release mic hardware
-    stopAllTracks(stream);
-
     // Collect recorded audio
     const chunks = get(internalChunks$);
     if (chunks.length === 0) {
-      set(resetState$);
+      set(resetRecord$);
       return "";
     }
 
@@ -202,7 +214,6 @@ export const stopAndTranscribe$ = command(
     const extension = mimeType.includes("mp4") ? "mp4" : "webm";
     formData.append("file", blob, `recording.${extension}`);
 
-    let text = "";
     // eslint-disable-next-line no-restricted-syntax -- raw fetch for FormData upload (not a ts-rest contract)
     try {
       const response = await fetchFn("/api/zero/voice-io/stt", {
@@ -223,28 +234,24 @@ export const stopAndTranscribe$ = command(
             set(setActiveOrgManageTab$, "billing");
             set(setBillingSubPage$, true);
             await set(setOrgManageDialogOpen$, true, signal);
-            set(resetState$);
             return "";
           }
         }
         L.error("STT API error", { status: response.status });
         toast.error("Transcription failed");
-        set(resetState$);
         return "";
       }
 
       const result = (await response.json()) as { text: string };
-      text = result.text.trim();
       // Refresh cached quota so the UI reflects the new count for free-tier users.
       set(refreshAudioInputQuota$);
+      return result.text.trim();
     } catch (error) {
       L.error("STT fetch failed", error);
       toast.error("Transcription failed");
-      set(resetState$);
       return "";
+    } finally {
+      set(resetRecord$);
     }
-
-    set(resetState$);
-    return text;
   },
 );
