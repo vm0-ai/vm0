@@ -110,7 +110,7 @@ const loadDraft$ = command(
  */
 const resolvePaneThread$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       spec: PaneSpec;
       thread: ReturnType<typeof createChatThreadSignals>;
@@ -122,7 +122,7 @@ const resolvePaneThread$ = command(
     const { spec, thread, isNew, matchingOptimistic } = args;
 
     if (matchingOptimistic) {
-      await thread.groupedChatMessages$;
+      await get(thread.groupedChatMessages$);
       signal.throwIfAborted();
       set(thread.hideSkeleton$);
       set(spec.setPaneThread$, thread);
@@ -173,11 +173,19 @@ const setupPaneThread$ = command(
       : createRemoteChatThreadDataSource(threadId);
     const thread = createChatThreadSignals(threadId, draft, dataSource);
     onIdbMiss = () => {
+      // When a matching optimistic thread is already filling this pane, its
+      // pendingThread holds the visible state until `resolvePaneThread$`
+      // hands the pane over to this remote-backed thread. Showing a skeleton
+      // on this thread would flash through that hand-over.
+      if (matchingOptimistic) {
+        return;
+      }
       set(thread.showSkeleton$);
     };
-    if (!idbEnabled) {
+    if (!idbEnabled && !matchingOptimistic) {
       // No local cache — every load goes to the network, so the skeleton is
-      // unconditional.
+      // unconditional. With a matching optimistic the pane is showing the
+      // pending thread until the hand-over, so the skeleton is unwanted.
       set(thread.showSkeleton$);
     }
 

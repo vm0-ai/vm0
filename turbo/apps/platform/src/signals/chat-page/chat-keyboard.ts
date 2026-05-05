@@ -7,7 +7,18 @@ import {
 } from "./chat-thread-panes.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import type { ChatThreadSignals } from "./create-chat-thread.ts";
-import { sidebarChatThreads$ } from "./optimistic-chat-thread-page.ts";
+
+/**
+ * Snapshot row shape consumed by `navigateToAdjacentThread$`. The caller
+ * passes the already-resolved sidebar list (via `useLastResolved`) so the
+ * keyboard command stays synchronous on the read side — awaiting
+ * `sidebarChatThreads$` here would block the keypress on whatever async
+ * work that signal is currently doing (e.g. an IDB miss + remote refetch).
+ */
+interface NavigableThread {
+  readonly id: string;
+  readonly agent: { readonly id: string };
+}
 
 export const navigateToAdjacentThread$ = command(
   async (
@@ -15,6 +26,7 @@ export const navigateToAdjacentThread$ = command(
     args: {
       currentThreadId: string;
       direction: "prev" | "next";
+      threads: readonly NavigableThread[];
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -26,14 +38,8 @@ export const navigateToAdjacentThread$ = command(
       return;
     }
 
-    // Use the merged sidebar list (persisted + optimistic, deduped/sorted) so
-    // mod+shift+arrow navigation works on a freshly-created optimistic thread
-    // before the server's `threadListChanged` reload pulls it into
-    // `chatThreads$`.
-    const threads = await get(sidebarChatThreads$);
-    signal.throwIfAborted();
     const excludedThreadId = inMainPane ? rightThreadId : leftThreadId;
-    const availableThreads = threads.filter((thread) => {
+    const availableThreads = args.threads.filter((thread) => {
       return thread.id !== excludedThreadId;
     });
     const idx = availableThreads.findIndex((t) => {

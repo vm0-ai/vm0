@@ -136,6 +136,7 @@ import {
   navigateToAdjacentThread$,
   scrollCurrentThread$,
 } from "../../signals/chat-page/chat-keyboard.ts";
+import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
   type ArtifactGoogleDriveSyncFile,
   syncArtifactFilesToGoogleDrive,
@@ -1514,8 +1515,13 @@ function useChatThreadKeyDown(thread: ChatThreadSignals) {
   const scrollCurrentThread = useSet(scrollCurrentThread$);
   const navigateToAdjacentThread = useSet(navigateToAdjacentThread$);
   const setShortcutHelpOpen = useSet(setChatShortcutHelpOpen$);
+  // Snapshot the sidebar list on the read side so the keyboard command stays
+  // sync — awaiting `sidebarChatThreads$` inside the command would block the
+  // keypress on whatever async work that signal is currently doing
+  // (e.g. an IDB miss + remote refetch).
+  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
 
-  return (event: ReactKeyboardEvent<HTMLElement>) => {
+  return onDomEventFn(async (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented) {
       return;
     }
@@ -1531,37 +1537,34 @@ function useChatThreadKeyDown(thread: ChatThreadSignals) {
     }
     if (matchShortcut("mod+shift+arrowup", event)) {
       event.preventDefault();
-      detach(
-        navigateToAdjacentThread(
-          {
-            currentThreadId: thread.threadId,
-            direction: "prev",
-          },
-          pageSignal,
-        ),
-        Reason.DomCallback,
+      await navigateToAdjacentThread(
+        {
+          currentThreadId: thread.threadId,
+          direction: "prev",
+          threads: sidebarThreads,
+        },
+        pageSignal,
       );
       return;
     }
     if (matchShortcut("mod+shift+arrowdown", event)) {
       event.preventDefault();
-      detach(
-        navigateToAdjacentThread(
-          {
-            currentThreadId: thread.threadId,
-            direction: "next",
-          },
-          pageSignal,
-        ),
-        Reason.DomCallback,
+      await navigateToAdjacentThread(
+        {
+          currentThreadId: thread.threadId,
+          direction: "next",
+          threads: sidebarThreads,
+        },
+        pageSignal,
       );
       return;
     }
+
     if (matchShortcut("shift+/", event) && !isEditableTarget(event.target)) {
       event.preventDefault();
       setShortcutHelpOpen(true);
     }
-  };
+  });
 }
 
 function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
