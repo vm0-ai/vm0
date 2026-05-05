@@ -3781,6 +3781,88 @@
           "Nutzen Sie dies zusammen mit Ihrem Wettbewerber-Audit. Wenn jemand einen relevanten Artikel eines Wettbewerbers entdeckt, erhalten Sie sofort die Zusammenfassung.",
           "Bitten Sie Zero bei langen Artikeln, sich auf einen bestimmten Aspekt zu konzentrieren. 'Was sind die Kostenimplikationen?' schneidet durch den Informationsueberschuss."
         ]
+      },
+      "automate-blog-production": {
+        "title": "Blog-Produktion automatisieren -- vom Briefing bis zur mehrsprachigen Veroeffentlichung",
+        "description": "Von einer Drei-Satz-Idee zum veroeffentlichungsreifen Blogbeitrag -- Keyword-optimiert, mit markenkonformem Titelbild, als Entwurf im CMS und in mehrere Sprachen uebersetzt.",
+        "timeSaved": "~3 Stunden gespart pro Beitrag",
+        "headings": {
+          "scenario": "Warum Blog-Produktion den ganzen Tag frisst",
+          "prompt": "So briefen Sie Zero fuer den naechsten Beitrag",
+          "steps": "Wie Zero die Produktions-Pipeline abarbeitet",
+          "nextActions": "Aus Entwuerfen wird ein Veroeffentlichungsrhythmus",
+          "integrations": "Erforderliche Integrationen: Slack und Ihr CMS",
+          "tips": "Best Practices fuer automatisierte Blog-Produktion"
+        },
+        "scenario": "Ein neuer Blogbeitrag sollte eine Stunde dauern. In Wirklichkeit ist es fast ein ganzer Tag. Keyword-Recherche, Kampf mit einer leeren Seite, Briefing fuer das Titelbild, fuenfzehn CMS-Felder ausfuellen -- und dann alles nochmal fuer jede Sprache, die Sie unterstuetzen. Bis der Beitrag live ist, ist die Idee veraltet und der Kalender gesprengt. Zero komprimiert die gesamte Pipeline. Geben Sie ein Drei-Satz-Briefing und Zero uebernimmt Keyword-Auswahl, Titelbild-Erstellung, Texterstellung, CMS-Befuellung und mehrsprachige Uebersetzung -- mit einer Vorschau-URL, die Sie in Minuten pruefen koennen.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero schreibe einen Blogbeitrag ueber [Thema]. Zielgruppe: [Zielgruppe]. Muss [Kernpunkte] abdecken. SEO-optimiert, Titelbild generieren, als Entwurf ins CMS, auf Deutsch, Japanisch und Spanisch uebersetzen, und schick mir die Vorschau-URL."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero Blogbeitrag ueber [Thema]. Entwurf ins CMS mit Titelbild und Uebersetzungen. Vorschau-Link wenn fertig."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero pruefe jeden Montag um 9 Uhr unseren Content-Kalender und erstelle den naechsten geplanten Beitrag im CMS mit Titelbild und allen Uebersetzungen."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero schreibe einen Tutorial-Blogbeitrag ueber die Automatisierung von Weekly Standups mit KI. Decke Setup, typische Fehler und Tipps zur Team-Adoption ab. SEO-freundlich, CMS-Entwurf mit Titelbild und allen Uebersetzungen."
+          },
+          {
+            "name": "Zero",
+            "text": "Erledigt. Hier ist, was ich gemacht habe:\n\n1. **Keyword-Recherche** -- 'automate weekly standups' ausgewaehlt (KD 24, 880 Suchanfragen/Monat)\n2. **Titelbild** -- generiert und auf CDN hochgeladen\n3. **Entwurf** -- 1.800 Woerter, 6 Abschnitte, CTA inklusive\n4. **Uebersetzungen** -- DE, JA, ES Varianten erstellt\n\nVorschau: https://yoursite.com/de/blog/posts/automate-weekly-standups?status=draft\n\nBereit fuer Ihre Pruefung."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero recherchiert Keywords und waehlt das beste Ziel",
+            "description": "Zero holt Keyword-Kandidaten aus Ihrem SEO-Tool, filtert nach Schwierigkeitsgrad passend zu Ihrer Domain-Autoritaet und gleicht mit vorhandenen Inhalten ab, um Kannibalisierung zu vermeiden. Es waehlt das volumenstaerkste Keyword, fuer das Sie realistisch ranken koennen, und setzt es in Titel, Ueberschriften und Einleitung ein."
+          },
+          {
+            "title": "Zero erstellt das Titelbild und schreibt den vollstaendigen Beitrag",
+            "description": "Ein integrierter Bild-Skill erzeugt eine markenkonforme Titelillustration -- nur die Metapher aendert sich zwischen Beitraegen, die visuelle Identitaet bleibt gewahrt. Zero gliedert dann den Beitrag, schreibt jeden Abschnitt in Ihrer Markensprache, verfasst die Meta-Beschreibung und fuellt alle CMS-Felder aus."
+          },
+          {
+            "title": "Zero veroeffentlicht im CMS und uebersetzt alle Sprachversionen",
+            "description": "Zero laedt das Titelbild hoch, erstellt einen Entwurf im CMS mit allen ausgefuellten Feldern und liefert eine Vorschau-URL. Anschliessend erstellt es Sprachvarianten -- mit natuerlich angepassten Redewendungen, kulturell abgestimmtem CTA-Ton und Titeln unter dem SERP-Zeichenlimit. Ein kanonischer Slug fuer alle Sprachen schuetzt Ihr Backlink-Profil."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Entwurf ueberarbeiten",
+            "description": "Lassen Sie Zero einen bestimmten Abschnitt umschreiben, ohne von vorne zu beginnen.",
+            "examplePrompt": "@Zero schreibe die Einleitung um -- starte mit einem konkreten Kundenproblem statt einer Statistik. Rest beibehalten."
+          },
+          {
+            "title": "Uebersetzungen zur Muttersprachler-Pruefung weiterleiten",
+            "description": "Senden Sie jede Sprachvariante an einen Muttersprachler fuer einen schnellen Ton-Check.",
+            "examplePrompt": "@Zero sende den deutschen Entwurf nach #content-de zur Pruefung und den japanischen nach #content-ja."
+          },
+          {
+            "title": "Als wiederkehrende Pipeline einrichten",
+            "description": "Verknuepfen Sie die Blog-Produktion mit Ihrem Content-Kalender, damit Beitraege sich automatisch entwerfen.",
+            "examplePrompt": "@Zero pruefe jeden Montag unseren Content-Kalender und erstelle den naechsten geplanten Beitrag mit Titelbild und allen Uebersetzungen."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack oder Web-Chat. Zero nimmt das Briefing entgegen und liefert die Vorschau-URL. Der gesamte Workflow laeuft in einem einzigen Gespraechsthread."
+          },
+          {
+            "description": "CMS (Strapi oder vergleichbar). Zero benoetigt API-Zugriff zum Erstellen von Entwuerfen, Hochladen von Bildern und Verwalten von Sprachvarianten. Empfohlen: nur Entwurfs-Berechtigungen, damit die finale Veroeffentlichung manuell bleibt."
+          }
+        ],
+        "tips": [
+          "Halten Sie Ihr Briefing auf drei Saetze: Thema, Zielgruppe und Einschraenkungen. Zeros Grundkonfiguration traegt Stimme, Struktur und SEO-Regeln. Kurze Prompts liefern bessere Entwuerfe als ueberladene Anweisungen.",
+          "Pruefen Sie den Beitrag ueber die Vorschau-URL, nicht im CMS-Admin. Formatierungsprobleme und Lesefluss zeigen sich erst, wenn der Beitrag auf der tatsaechlichen Seite gerendert wird.",
+          "Fixieren Sie Ihr Titelbild-Template -- Farbpalette, Komposition, Logo-Platzierung -- und variieren Sie nur die Metapher. Konsistentes visuelles Branding baut sich ueber die Zeit auf und verhindert Design-Drift."
+        ]
       }
     },
     "filter": {

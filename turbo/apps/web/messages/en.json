@@ -3781,6 +3781,88 @@
           "Use this alongside your competitor audit workflow. When someone spots a relevant article from a competitor, get the summary immediately and log it to your research database.",
           "For long or dense articles, ask Zero to focus on a specific angle. 'What are the cost implications?' or 'What's the architecture pattern?' cuts through noise."
         ]
+      },
+      "automate-blog-production": {
+        "title": "Automate blog production from brief to multilingual publish",
+        "description": "Go from a three-sentence idea to a publish-ready blog post -- keyword-optimized, with branded cover art, drafted in your CMS, and translated into multiple languages.",
+        "timeSaved": "~3 hours saved per post",
+        "headings": {
+          "scenario": "Why blog production eats your whole day",
+          "prompt": "How to brief Zero on your next post",
+          "steps": "How Zero handles the production pipeline",
+          "nextActions": "Turn drafts into a publishing rhythm",
+          "integrations": "Required integrations: Slack and your CMS",
+          "tips": "Best practices for automated blog production"
+        },
+        "scenario": "A new blog post should take an hour. In reality, it takes most of a day. You research keywords, wrestle with a blank page, brief a designer for cover art, populate fifteen CMS fields, then repeat the whole thing for every locale you support. By the time it ships, the idea is stale and your calendar is wrecked. Zero compresses the production pipeline. Give it a three-sentence brief and it handles keyword selection, cover image generation, full-draft writing, CMS population, and multilingual translation -- returning a preview URL you can review in minutes, not hours.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero write a blog post about [topic]. Target audience: [audience]. Must cover [key points]. SEO-optimized, generate a cover image, draft it in our CMS, translate into German, Japanese, and Spanish, and send me the preview URL."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero blog post on [topic]. Draft it in the CMS with cover art and translations. Preview link when ready."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every Monday at 9am, check our content calendar and draft the next scheduled post into the CMS with cover art and translations."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero write a tutorial-style blog post about automating weekly standups with AI. Cover the setup, common pitfalls, and team adoption tips. SEO-friendly, CMS draft with cover art and all translations."
+          },
+          {
+            "name": "Zero",
+            "text": "On it. Here's what I did:\n\n1. **Keyword research** -- selected 'automate weekly standups' (KD 24, 880 mo. searches)\n2. **Cover image** -- generated and uploaded to CDN\n3. **Draft** -- 1,800 words, 6 sections, CTA included\n4. **Translations** -- DE, JA, ES locale variants created\n\nPreview: https://yoursite.com/en/blog/posts/automate-weekly-standups?status=draft\n\nReady for your review."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero researches keywords and picks the best target",
+            "description": "Zero pulls keyword candidates from your SEO tool, filters by difficulty threshold suitable for your domain authority, and cross-references your existing content to avoid cannibalization. It selects the highest-volume keyword you can realistically rank for and applies it to the title, headings, and opening paragraph."
+          },
+          {
+            "title": "Zero generates cover art and drafts the full post",
+            "description": "A built-in image skill produces a brand-consistent cover illustration -- only the metaphor changes between posts, keeping visual identity locked. Zero then outlines the post, expands each section in your brand voice, writes the meta description, and fills in all required CMS fields."
+          },
+          {
+            "title": "Zero publishes to your CMS and translates every locale",
+            "description": "Zero uploads the cover image, creates a draft in your CMS with all fields populated, and returns a preview URL. Then it creates locale variants -- adapting idioms naturally, adjusting CTA tone per culture, and keeping translated titles under the SERP character limit. One canonical slug across all locales preserves your backlink profile."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Iterate on the draft",
+            "description": "Ask Zero to rewrite a specific section without starting from scratch.",
+            "examplePrompt": "@Zero rewrite the intro to lead with a customer pain point instead of a statistic. Keep the rest."
+          },
+          {
+            "title": "Route translations for native review",
+            "description": "Send each locale variant to a native speaker for a quick tone check.",
+            "examplePrompt": "@Zero send the German draft to #content-de for review, and the Japanese draft to #content-ja."
+          },
+          {
+            "title": "Make it a recurring pipeline",
+            "description": "Tie blog production to your content calendar so posts draft themselves on schedule.",
+            "examplePrompt": "@Zero every Monday, check our content calendar and draft the next scheduled post with cover art and all translations."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack or web chat. Zero takes the brief and delivers the preview URL. The entire workflow runs from a single conversation thread."
+          },
+          {
+            "description": "CMS (Strapi or equivalent). Zero needs API access to create drafts, upload images, and manage locale variants. Draft-only permissions recommended so final publish stays manual."
+          }
+        ],
+        "tips": [
+          "Keep your brief to three sentences: topic, audience, and constraints. Zero's standing instructions carry voice, structure, and SEO rules. Short prompts produce better drafts than over-specified ones.",
+          "Review in the preview URL, not the CMS admin panel. Formatting, pacing, and readability issues only surface when the post renders on the actual page.",
+          "Lock down your cover art template -- palette, composition, logo placement -- and only vary the metaphor. Consistent visual branding compounds over time and prevents design drift across posts."
+        ]
       }
     },
     "filter": {

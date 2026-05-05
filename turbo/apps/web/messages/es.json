@@ -3781,6 +3781,88 @@
           "Usalo junto con tu flujo de auditoria competitiva. Cuando alguien detecte un articulo relevante de un competidor, obtiene el resumen inmediatamente y registralo en tu base de datos de investigacion.",
           "Para articulos largos o densos, pide a Zero que se enfoque en un angulo especifico. 'Cuales son las implicaciones de costo?' o 'Cual es el patron de arquitectura?' corta el ruido."
         ]
+      },
+      "automate-blog-production": {
+        "title": "Automatiza la produccion de blogs -- del brief a la publicacion multilingue",
+        "description": "De una idea en tres frases a un articulo listo para publicar -- optimizado para SEO, con portada de marca, redactado en tu CMS y traducido a varios idiomas.",
+        "timeSaved": "~3 horas ahorradas por articulo",
+        "headings": {
+          "scenario": "Por que la produccion de blogs consume todo el dia",
+          "prompt": "Como darle a Zero el brief de tu proximo articulo",
+          "steps": "Como Zero gestiona el pipeline de produccion",
+          "nextActions": "Convierte borradores en un ritmo de publicacion",
+          "integrations": "Integraciones necesarias: Slack y tu CMS",
+          "tips": "Mejores practicas para la produccion automatizada de blogs"
+        },
+        "scenario": "Un nuevo articulo deberia tomar una hora. En realidad, consume casi todo el dia. Investigas palabras clave, luchas con una pagina en blanco, coordinas la portada con diseno, llenas quince campos del CMS y luego repites todo para cada idioma que soportas. Para cuando se publica, la idea ya perdio frescura y tu agenda esta destrozada. Zero comprime todo el pipeline de produccion. Dale un brief de tres frases y se encarga de la seleccion de keywords, generacion de portada, redaccion completa, publicacion en el CMS y traduccion multilingue -- devolviendo una URL de vista previa que puedes revisar en minutos.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero escribe un articulo de blog sobre [tema]. Audiencia: [audiencia]. Debe cubrir [puntos clave]. Optimizado para SEO, genera portada, publico como borrador en el CMS, traduce a aleman, japones y espanol, y enviame la URL de vista previa."
+          },
+          {
+            "label": "Rapido",
+            "prompt": "@Zero articulo de blog sobre [tema]. Borrador en el CMS con portada y traducciones. Link de vista previa cuando este listo."
+          },
+          {
+            "label": "Programado",
+            "prompt": "@Zero cada lunes a las 9am, revisa nuestro calendario de contenido y redacta el proximo articulo programado en el CMS con portada y todas las traducciones."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Riley",
+            "text": "@Zero escribe un articulo estilo tutorial sobre automatizar standups semanales con IA. Cubre el setup, errores comunes y consejos de adopcion del equipo. SEO-friendly, borrador en CMS con portada y todas las traducciones."
+          },
+          {
+            "name": "Zero",
+            "text": "Listo. Esto es lo que hice:\n\n1. **Investigacion de keywords** -- seleccione 'automate weekly standups' (KD 24, 880 busquedas/mes)\n2. **Portada** -- generada y subida al CDN\n3. **Borrador** -- 1,800 palabras, 6 secciones, CTA incluido\n4. **Traducciones** -- variantes DE, JA, ES creadas\n\nVista previa: https://yoursite.com/es/blog/posts/automate-weekly-standups?status=draft\n\nListo para tu revision."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero investiga keywords y selecciona el mejor objetivo",
+            "description": "Zero obtiene candidatos de palabras clave de tu herramienta SEO, filtra por dificultad adecuada a la autoridad de tu dominio y cruza con tu contenido existente para evitar canibalizacion. Selecciona el keyword de mayor volumen por el que puedas posicionar realistamente y lo aplica al titulo, encabezados y parrafo inicial."
+          },
+          {
+            "title": "Zero genera la portada y redacta el articulo completo",
+            "description": "Un skill de imagen integrado produce una ilustracion de portada consistente con tu marca -- solo cambia la metafora entre articulos, manteniendo la identidad visual. Zero estructura el articulo, desarrolla cada seccion con la voz de tu marca, escribe la meta descripcion y completa todos los campos del CMS."
+          },
+          {
+            "title": "Zero publica en el CMS y traduce todos los idiomas",
+            "description": "Zero sube la portada, crea un borrador en tu CMS con todos los campos completados y devuelve una URL de vista previa. Luego crea las variantes por idioma -- adaptando modismos de forma natural, ajustando el tono del CTA por cultura y manteniendo los titulos traducidos dentro del limite de caracteres SERP. Un slug canonico en todos los idiomas protege tu perfil de backlinks."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Iterar sobre el borrador",
+            "description": "Pide a Zero que reescriba una seccion especifica sin empezar de cero.",
+            "examplePrompt": "@Zero reescribe la introduccion para comenzar con un problema del cliente en vez de una estadistica. Mantiene el resto."
+          },
+          {
+            "title": "Enviar traducciones a revision nativa",
+            "description": "Envia cada variante de idioma a un hablante nativo para una revision rapida de tono.",
+            "examplePrompt": "@Zero envia el borrador en aleman a #content-de para revision, y el japones a #content-ja."
+          },
+          {
+            "title": "Configurar como pipeline recurrente",
+            "description": "Vincula la produccion de blogs a tu calendario de contenido para que los articulos se redacten automaticamente.",
+            "examplePrompt": "@Zero cada lunes, revisa nuestro calendario de contenido y redacta el proximo articulo programado con portada y todas las traducciones."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Slack o chat web. Zero recibe el brief y entrega la URL de vista previa. Todo el flujo de trabajo se ejecuta desde un unico hilo de conversacion."
+          },
+          {
+            "description": "CMS (Strapi o equivalente). Zero necesita acceso API para crear borradores, subir imagenes y gestionar variantes de idioma. Se recomienda permisos solo de borrador para que la publicacion final sea manual."
+          }
+        ],
+        "tips": [
+          "Mantiene tu brief en tres frases: tema, audiencia y restricciones. Las instrucciones base de Zero llevan la voz, estructura y reglas SEO. Los prompts cortos producen mejores borradores que los demasiado detallados.",
+          "Revisa en la URL de vista previa, no en el panel de administracion del CMS. Los problemas de formato, ritmo y legibilidad solo se notan cuando el articulo se renderiza en la pagina real.",
+          "Fija tu plantilla de portada -- paleta de colores, composicion, ubicacion del logo -- y solo varia la metafora. Un branding visual consistente se acumula con el tiempo y previene la deriva de diseno entre articulos."
+        ]
       }
     },
     "filter": {

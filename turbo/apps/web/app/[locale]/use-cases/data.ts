@@ -1673,6 +1673,38 @@ export const USE_CASES: UseCase[] = [
     promptVariantCount: 3,
     slackPreviewCount: 2,
   },
+
+  {
+    slug: "automate-blog-production",
+    color: "#d4915e",
+    avatar: {
+      rotation: 2,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 2,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["marketing"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, STRAPI],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: STRAPI, required: true },
+    ],
+    relatedSlugs: [
+      "brief-to-draft-content",
+      "multilingual-cms-publishing",
+      "content-performance-report",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
 ];
 
 // ---------------------------------------------------------------------------
