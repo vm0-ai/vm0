@@ -1333,7 +1333,12 @@ impl SnapshotProvider for FirecrackerSnapshotProvider {
 
     async fn is_complete(&self, output_dir: &Path) -> Result<bool, sandbox::SnapshotError> {
         let output = SnapshotOutputPaths::new(output_dir.to_path_buf());
-        for path in [output.snapshot(), output.memory(), output.cow()] {
+        for path in [
+            output.snapshot(),
+            output.memory(),
+            output.cow(),
+            output.cow_bitmap(),
+        ] {
             let exists = tokio::fs::try_exists(&path).await?;
             if !exists {
                 return Ok(false);
@@ -1403,6 +1408,32 @@ mod tests {
             tokio::fs::try_exists(unrelated).await.unwrap(),
             "non-snapshot output-dir contents should be preserved"
         );
+    }
+
+    #[tokio::test]
+    async fn snapshot_provider_requires_cow_bitmap_for_complete_snapshot() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+
+        for artifact in [output.snapshot(), output.memory(), output.cow()] {
+            tokio::fs::write(&artifact, b"snapshot artifact")
+                .await
+                .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));
+        }
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(
+            !provider.is_complete(output.dir()).await.unwrap(),
+            "snapshot without dirty bitmap sidecar must be incomplete"
+        );
+
+        tokio::fs::write(output.cow_bitmap(), b"bitmap")
+            .await
+            .expect("write cow bitmap");
+        assert!(provider.is_complete(output.dir()).await.unwrap());
     }
 
     #[test]
