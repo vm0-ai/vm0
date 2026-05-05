@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.331.0](https://github.com/vm0-ai/vm0/compare/web-v12.330.8...web-v12.331.0) (2026-05-05)
+
+
+### Features
+
+* **api:** stream API logs to Axiom web-logs dataset ([#11807](https://github.com/vm0-ai/vm0/issues/11807)) ([5983cab](https://github.com/vm0-ai/vm0/commit/5983cab54210551cab9de486e257a65f529fc567))
+
+
+### Bug Fixes
+
+* use resolved admission provider type for credit check ([#11840](https://github.com/vm0-ai/vm0/issues/11840)) ([c661927](https://github.com/vm0-ai/vm0/commit/c66192752d081c76c01a295c00e7e48c3e78c856))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.256.0
+
 ## [12.330.8](https://github.com/vm0-ai/vm0/compare/web-v12.330.7...web-v12.330.8) (2026-05-03)
 
 

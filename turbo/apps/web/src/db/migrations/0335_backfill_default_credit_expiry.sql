@@ -10,6 +10,10 @@
 -- This migration creates one credit_expires_record per affected org for
 -- the current untracked balance, expiring 1 month after the org_metadata
 -- row was first created.
+-- Pay-as-you-go (auto_recharge) credits are unaffected: they have their
+-- own credit_expires_record entries (source='auto_recharge',
+-- expires_at=2999-12-31) and are excluded from the gap by the LEFT JOIN.
+-- Only credits with no matching record receive the 1-month expiry.
 INSERT INTO credit_expires_record (
   id, org_id, source, stripe_invoice_id, amount, remaining, expires_at, created_at
 )
@@ -33,6 +37,11 @@ FROM (
     AND cer.remaining > 0
     AND cer.expires_at > NOW()
   WHERE om.stripe_customer_id IS NOT NULL
+    -- Limit to orgs created during the migration-0257→0284 window.
+    -- 0257 went out ≈2026-04; 0284 reverted the default ≈2026-04.
+    -- Use a generous window to avoid edge cases.
+    AND om.created_at >= '2026-03-01'
+    AND om.created_at < '2026-06-01'
   GROUP BY om.org_id, om.credits, om.created_at
   HAVING om.credits - COALESCE(SUM(cer.remaining), 0) > 0
 ) gap

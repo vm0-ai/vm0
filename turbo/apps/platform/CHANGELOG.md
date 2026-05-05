@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.324.0](https://github.com/vm0-ai/vm0/compare/app-v0.323.0...app-v0.324.0) (2026-05-05)
+
+
+### Features
+
+* network-first navigation in service worker for offline app shell ([#11759](https://github.com/vm0-ai/vm0/issues/11759)) ([818f8de](https://github.com/vm0-ai/vm0/commit/818f8dedfa30ccb9df004f291387f97f69d6d10f))
+
+
+### Bug Fixes
+
+* improve artifact media icons ([#11606](https://github.com/vm0-ai/vm0/issues/11606)) ([e59326d](https://github.com/vm0-ai/vm0/commit/e59326d6fb4c9d1c21520c309a53f681e1dd36d5))
+
+
+### Refactoring
+
+* move text preview loading from onRef into data pipeline ([#11772](https://github.com/vm0-ai/vm0/issues/11772)) ([1c28786](https://github.com/vm0-ai/vm0/commit/1c287861bec2570911ac317022d3a27c58390eb9))
+* remove all promise .then/.catch from business code ([#11769](https://github.com/vm0-ai/vm0/issues/11769)) ([1b95941](https://github.com/vm0-ai/vm0/commit/1b95941921c526206e3414ce2f3c366a66a7f823))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.256.0
+
 ## [0.323.0](https://github.com/vm0-ai/vm0/compare/app-v0.322.1...app-v0.323.0) (2026-05-03)
 
 

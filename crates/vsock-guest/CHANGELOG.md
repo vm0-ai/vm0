@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.10.11](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.10...vsock-guest-v0.10.11) (2026-05-05)
+
+
+### Bug Fixes
+
+* **vsock-guest:** cancel background work on disconnect ([#11796](https://github.com/vm0-ai/vm0/issues/11796)) ([f96303b](https://github.com/vm0-ai/vm0/commit/f96303b5ccf210391373390302720eaad0adc3bc))
+* **vsock-guest:** keep drain cancellation bounded ([#11777](https://github.com/vm0-ai/vm0/issues/11777)) ([c14f457](https://github.com/vm0-ai/vm0/commit/c14f457aee90a4d03a474bfdd87cff64a4e0d2e3))
+* **vsock-guest:** run write file command in process group ([#11803](https://github.com/vm0-ai/vm0/issues/11803)) ([ff6560a](https://github.com/vm0-ai/vm0/commit/ff6560a96ecce4e20c56445495b7afec3508bdbe))
+
+
+### Documentation
+
+* expand vsock guest log docs ([#11808](https://github.com/vm0-ai/vm0/issues/11808)) ([2d59f01](https://github.com/vm0-ai/vm0/commit/2d59f015afa141c8d5873f3e320dc1e09d798710))
+
 ## [0.10.10](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.9...vsock-guest-v0.10.10) (2026-05-03)
 
 

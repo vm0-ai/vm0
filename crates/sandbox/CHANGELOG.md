@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.11](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.10...sandbox-v0.12.11) (2026-05-05)
+
+
+### Documentation
+
+* **sandbox:** document runtime module ([#11804](https://github.com/vm0-ai/vm0/issues/11804)) ([b20407e](https://github.com/vm0-ai/vm0/commit/b20407e748feb70cb0a1fc2f7eecd1071d881bc4))
+
 ## [0.12.10](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.9...sandbox-v0.12.10) (2026-05-01)
 
 

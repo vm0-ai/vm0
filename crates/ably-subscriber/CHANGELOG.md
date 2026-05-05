@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.7](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.6...ably-subscriber-v0.7.7) (2026-05-05)
+
+
+### Bug Fixes
+
+* **runner:** escalate prolonged ably disconnects ([#11839](https://github.com/vm0-ai/vm0/issues/11839)) ([40b7d97](https://github.com/vm0-ai/vm0/commit/40b7d979c02f820a85950f0cb449fddc47461af7))
+
 ## [0.7.6](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.5...ably-subscriber-v0.7.6) (2026-05-03)
 
 
