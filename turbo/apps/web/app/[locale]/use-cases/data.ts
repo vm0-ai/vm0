@@ -180,25 +180,6 @@ const INSTANTLY: ConnectorRef = {
   icon: "/assets/connectors/instantly.svg",
 };
 
-const FIGMA: ConnectorRef = {
-  id: "figma",
-  label: "Figma",
-  icon: "/assets/connectors/figma.svg",
-  dark: true,
-};
-
-const AHREFS: ConnectorRef = {
-  id: "ahrefs",
-  label: "Ahrefs",
-  icon: "/assets/connectors/ahref.svg",
-};
-
-const FAL_AI: ConnectorRef = {
-  id: "fal",
-  label: "Fal.ai",
-  icon: "/assets/connectors/fal.svg",
-};
-
 const HEYGEN: ConnectorRef = {
   id: "heygen",
   label: "HeyGen",
