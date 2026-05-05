@@ -1034,6 +1034,59 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn target_other_runner_deferred_poll_cap_resets_after_deadline() {
+        let wakeups = PollWakeups::new(true);
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+
+        wakeups
+            .request_deferred_poll_after(Duration::from_secs(2))
+            .await;
+        let initial_cap = wakeups
+            .snapshot()
+            .await
+            .deferred_poll_cap_at
+            .expect("initial defer cap");
+        for _ in 0..9 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            wakeups
+                .request_deferred_poll_after(Duration::from_secs(2))
+                .await;
+        }
+
+        tokio::time::sleep_until(initial_cap).await;
+        let reason = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+        assert_eq!(poll_reason(reason), Some(PollReason::Deferred));
+        let snapshot = wakeups.snapshot().await;
+        assert!(snapshot.deferred_poll_at.is_none());
+        assert!(snapshot.deferred_poll_cap_at.is_none());
+
+        wakeups
+            .request_deferred_poll_after(Duration::from_secs(2))
+            .await;
+        let snapshot = wakeups.snapshot().await;
+        let next_deadline = snapshot
+            .deferred_poll_at
+            .expect("next defer deadline should be scheduled");
+        let next_cap = snapshot
+            .deferred_poll_cap_at
+            .expect("next defer cap should be scheduled");
+        assert!(next_deadline > initial_cap);
+        assert!(next_cap > next_deadline);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn target_other_runner_deferred_poll_blocks_pending_immediate_until_deadline() {
         let wakeups = Arc::new(PollWakeups::new(true));
         let initial = wakeups
