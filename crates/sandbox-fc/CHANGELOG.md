@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.27.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.10...sandbox-fc-v0.27.11) (2026-05-05)
+
+
+### Refactoring
+
+* **sandbox-fc:** dedupe pipe collection ([#11813](https://github.com/vm0-ai/vm0/issues/11813)) ([479117e](https://github.com/vm0-ai/vm0/commit/479117ea14d473805446e4364e69d047f90fb6b0))
+* **sandbox-fc:** extract snapshot cleanup helpers ([#11821](https://github.com/vm0-ai/vm0/issues/11821)) ([65fe05b](https://github.com/vm0-ai/vm0/commit/65fe05b6fa896d9ddb063fae1c2bb9e40eebfa1d))
+* **sandbox-fc:** introduce snapshot attempt owner ([#11829](https://github.com/vm0-ai/vm0/issues/11829)) ([93bec65](https://github.com/vm0-ai/vm0/commit/93bec65f3036a4816ba6d9dc16dc2ec22728cde3))
+
 ## [0.27.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.9...sandbox-fc-v0.27.10) (2026-05-03)
 
 

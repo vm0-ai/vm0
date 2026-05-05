@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.7](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.6...vsock-proto-v0.9.7) (2026-05-05)
+
+
+### Refactoring
+
+* **vsock-proto:** dedupe output payload codec ([#11809](https://github.com/vm0-ai/vm0/issues/11809)) ([03bc395](https://github.com/vm0-ai/vm0/commit/03bc395366e299ddb481f6c548d26be350453bf0))
+
 ## [0.9.6](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.9.5...vsock-proto-v0.9.6) (2026-05-03)
 
 

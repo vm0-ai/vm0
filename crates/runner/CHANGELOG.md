@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.99.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.10...runner-rs-v0.99.11) (2026-05-05)
+
+
+### Bug Fixes
+
+* mark truncated decompressed network bodies ([#11793](https://github.com/vm0-ai/vm0/issues/11793)) ([bd2efd7](https://github.com/vm0-ai/vm0/commit/bd2efd759baf04a8bb789b224f8f9dca84864bc2))
+* **runner:** escalate prolonged ably disconnects ([#11839](https://github.com/vm0-ai/vm0/issues/11839)) ([40b7d97](https://github.com/vm0-ai/vm0/commit/40b7d979c02f820a85950f0cb449fddc47461af7))
+
+
+### Documentation
+
+* document runner exec entry points ([#11812](https://github.com/vm0-ai/vm0/issues/11812)) ([2f8d87f](https://github.com/vm0-ai/vm0/commit/2f8d87faf2c9019f1fd14c675288dda8f73d0393))
+* **runner:** document setup command ([#11810](https://github.com/vm0-ai/vm0/issues/11810)) ([35b5f2e](https://github.com/vm0-ai/vm0/commit/35b5f2ecf275b7a4a8feb32d634414ce32ad0f23))
+
+
+### Refactoring
+
+* **runner:** split start factory lifecycle ([#11828](https://github.com/vm0-ai/vm0/issues/11828)) ([e8e88c0](https://github.com/vm0-ai/vm0/commit/e8e88c0296b50f8ee4cc2d6c0b1b7144ebacb9de))
+* **runner:** split start heartbeat module ([#11801](https://github.com/vm0-ai/vm0/issues/11801)) ([19ad6d4](https://github.com/vm0-ai/vm0/commit/19ad6d4d7af13fe45f50fe568dac279ee210c8bb))
+* **runner:** split start idle lifecycle ([#11835](https://github.com/vm0-ai/vm0/issues/11835)) ([4e99ccb](https://github.com/vm0-ai/vm0/commit/4e99ccbec568b4b9186b32ab0c37bf9d1078d0e7))
+* **runner:** split start orphan reaper ([#11820](https://github.com/vm0-ai/vm0/issues/11820)) ([71a4bec](https://github.com/vm0-ai/vm0/commit/71a4bec7963be662c15a90868373808dd4951302))
+
+
+### Performance Improvements
+
+* bound brotli body capture decompression ([#11799](https://github.com/vm0-ai/vm0/issues/11799)) ([92af5b4](https://github.com/vm0-ai/vm0/commit/92af5b4d73095bef1b5b40c3af8b1e0ff8e49b1b))
+
 ## [0.99.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.9...runner-rs-v0.99.10) (2026-05-03)
 
 

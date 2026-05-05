@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.256.0](https://github.com/vm0-ai/vm0/compare/core-v8.255.0...core-v8.256.0) (2026-05-05)
+
+
+### Features
+
+* **api:** stream API logs to Axiom web-logs dataset ([#11807](https://github.com/vm0-ai/vm0/issues/11807)) ([5983cab](https://github.com/vm0-ai/vm0/commit/5983cab54210551cab9de486e257a65f529fc567))
+
 ## [8.255.0](https://github.com/vm0-ai/vm0/compare/core-v8.254.0...core-v8.255.0) (2026-05-03)
 
 
