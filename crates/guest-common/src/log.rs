@@ -14,6 +14,10 @@ static DEFAULT_SYSTEM_LOG_FILE: LazyLock<String> =
     LazyLock::new(|| format!("/tmp/vm0-system-{}.log", &*RUN_ID));
 static SYSTEM_LOG: Mutex<SystemLogState> = Mutex::new(SystemLogState::disabled());
 
+/// Process-global guest system log state.
+///
+/// The cached handle is dropped on every path update, including same-path
+/// updates, so callers can force a reopen if the path was externally replaced.
 struct SystemLogState {
     path: Option<PathBuf>,
     file: Option<File>,
@@ -42,20 +46,12 @@ impl SystemLogState {
             return Ok(());
         };
 
-        if self.file.is_none() {
-            self.file = Some(
-                OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(path)
-                    .map_err(|e| {
-                        std::io::Error::new(e.kind(), format!("{}: {e}", path.display()))
-                    })?,
-            );
-        }
-
-        let Some(file) = self.file.as_mut() else {
-            return Ok(());
+        let file = match self.file.as_mut() {
+            Some(file) => file,
+            None => {
+                let file = open_system_log_file(path)?;
+                self.file.insert(file)
+            }
         };
 
         let mut line = line.as_bytes().to_vec();
@@ -68,6 +64,14 @@ impl SystemLogState {
 
         result
     }
+}
+
+fn open_system_log_file(path: &Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", path.display())))
 }
 
 /// Get current timestamp in RFC3339 format with milliseconds.
@@ -346,10 +350,6 @@ mod tests {
         };
 
         assert!(state.append_line("fails").is_err());
-        assert!(
-            state.file.is_none(),
-            "write failure should drop cached system log handle",
-        );
 
         state.append_line("recovers").unwrap();
         let content = std::fs::read_to_string(path).unwrap();
