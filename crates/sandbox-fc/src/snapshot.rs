@@ -35,19 +35,24 @@ fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
     }
 }
 
-async fn destroy_snapshot_cow_after_error(context: &'static str, cow_device: PooledNbdCowDevice) {
+async fn destroy_snapshot_cow_and_cleanup_attempt_dir(
+    cow_device: PooledNbdCowDevice,
+) -> nbd_cow::error::Result<()> {
     let cow_file = cow_device.cow_file().to_path_buf();
-    if let Err(e) = cow_device
+    cow_device
         .destroy_with_retries(cow_destroy_retry_policy())
-        .await
-    {
+        .await?;
+    cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
+    Ok(())
+}
+
+async fn destroy_snapshot_cow_after_error(context: &'static str, cow_device: PooledNbdCowDevice) {
+    if let Err(e) = destroy_snapshot_cow_and_cleanup_attempt_dir(cow_device).await {
         tracing::warn!(
             error = %e,
             context,
             "failed to destroy COW device after snapshot setup error"
         );
-    } else {
-        cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
     }
 }
 
@@ -414,14 +419,8 @@ async fn finalize_snapshot_cow_output(
 }
 
 async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevice) {
-    let cow_file = cow_device.cow_file().to_path_buf();
-    if let Err(e) = cow_device
-        .destroy_with_retries(cow_destroy_retry_policy())
-        .await
-    {
+    if let Err(e) = destroy_snapshot_cow_and_cleanup_attempt_dir(cow_device).await {
         tracing::warn!(error = %e, "failed to destroy COW device after snapshot error");
-    } else {
-        cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
     }
 }
 
