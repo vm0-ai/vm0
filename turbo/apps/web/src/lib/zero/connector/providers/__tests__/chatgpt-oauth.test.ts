@@ -516,5 +516,29 @@ describe("connector/providers/chatgpt-oauth", () => {
       );
       expect(connector.oauth?.scopes.join(" ")).toBe(CHATGPT_OAUTH_SCOPES);
     });
+
+    it("connector oauth entry exposes only authorizationUrl/tokenUrl/scopes (PKCE-only, no clientId)", () => {
+      // Wave 2's refresh pipeline reads client identity through the handler,
+      // not the registry — assert structurally that the registry oauth entry
+      // does not leak a `clientId` (or any unexpected key) so the PKCE-only
+      // boundary stays explicit.
+      const oauth = CONNECTOR_TYPES["chatgpt-oauth"].oauth;
+      expect(oauth).toBeDefined();
+      expect(Object.keys(oauth ?? {}).sort()).toEqual([
+        "authorizationUrl",
+        "scopes",
+        "tokenUrl",
+      ]);
+    });
+
+    it("handler client identity matches the implementation constant (PKCE-only)", () => {
+      // Pair check: registry has no clientId, handler resolves to the
+      // canonical Codex public client_id, and getClientSecret stays undefined.
+      const env = {} as Parameters<typeof chatgptOauthHandler.getClientId>[0];
+      expect(chatgptOauthHandler.getClientId(env)).toBe(
+        CHATGPT_OAUTH_CLIENT_ID,
+      );
+      expect(chatgptOauthHandler.getClientSecret(env)).toBeUndefined();
+    });
   });
 });
