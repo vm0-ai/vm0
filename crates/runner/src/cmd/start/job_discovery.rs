@@ -64,9 +64,10 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     else {
         return;
     };
-    // Insert cancel token before claiming so it is available when discover()
-    // next processes a buffered Ably cancel event. Skip duplicates from push +
-    // poll races; overwriting would break cancel delivery for the executor.
+    // Insert cancel token before claiming so provider-side cancel channels
+    // (Ably supervisor for ApiProvider, `.cancel` scan for LocalProvider) can
+    // find the active job. Skip duplicate discoveries; overwriting would break
+    // cancel delivery for the executor.
     let job_cancel = CancellationToken::new();
     {
         let mut tokens = ctx.cancel_tokens.lock().await;

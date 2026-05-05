@@ -5,6 +5,7 @@
 //! changing the executor or main loop.
 
 mod api;
+mod api_ably_supervisor;
 mod local;
 #[cfg(test)]
 pub mod mock;
@@ -23,7 +24,8 @@ use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
 /// The runner main loop calls [`discover()`](JobProvider::discover) to find work,
 /// [`claim()`](JobProvider::claim) to claim it, and
 /// [`complete()`](JobProvider::complete) to report results. All transport
-/// details (Ably push, HTTP poll, WebSocket, etc.) are hidden behind this trait.
+/// details (Ably control-plane notifications, HTTP poll, WebSocket, etc.) are
+/// hidden behind this trait.
 ///
 /// `discover()` and `claim()` are deliberately separate so that `discover()`
 /// can live as a cancellable `select!` branch future while `claim()` runs
