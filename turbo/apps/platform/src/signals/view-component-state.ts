@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { maybePageSignal$ } from "./page-signal.ts";
 import { reloadTelegramConnectLinkStatus$ } from "./zero-page/telegram-connect-signals.ts";
-import { onRef } from "./utils.ts";
+import { onRef, throwIfAbort } from "./utils.ts";
 import { fetchPreviewText } from "./chat-page/parse-body-blocks.ts";
 
 type ImageLoadStatus = "loading" | "loaded" | "error";
@@ -87,17 +86,13 @@ export const toggleTextPreviewCollapsed$ = command(({ set }, key: string) => {
   });
 });
 
-const loadTextPreviewOnRef$ = command(
-  ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
+export const textPreviewLoaderRef$ = onRef(
+  command(async ({ set }, el: HTMLElement, signal: AbortSignal) => {
     const key = el.dataset.textPreviewKey;
     const url = el.dataset.textPreviewUrl;
     if (!key || !url) {
       return;
     }
-    const pageSignal = get(maybePageSignal$);
-    const fetchSignal = pageSignal
-      ? AbortSignal.any([signal, pageSignal])
-      : signal;
 
     set(internalTextPreviewLoadStateByKey$, (current) => {
       const next = { ...current };
@@ -105,29 +100,30 @@ const loadTextPreviewOnRef$ = command(
       return next;
     });
 
-    return fetchPreviewText(url, fetchSignal)
-      .then((text) => {
-        if (!fetchSignal.aborted) {
-          set(internalTextPreviewLoadStateByKey$, (current) => {
-            const next = { ...current };
-            next[key] = { status: "loaded", text };
-            return next;
-          });
-        }
-      })
-      .catch(() => {
-        if (!fetchSignal.aborted) {
-          set(internalTextPreviewLoadStateByKey$, (current) => {
-            const next = { ...current };
-            next[key] = { status: "error", text: "" };
-            return next;
-          });
-        }
-      });
-  },
-);
+    // The try-catch block here can probably be removed. Currently, the internal
+    // textPreviewLoadStateByKey seems to have some issues, but let's prioritize
+    // fixing the pointCache (upvote cache) problem first.
+    // For now, I'll just add a TODO for the try-catch issue.
+    // confirmed by ethan@vm0.ai
+    // eslint-disable-next-line no-restricted-syntax
+    try {
+      const text = await fetchPreviewText(url, signal);
 
-export const textPreviewLoaderRef$ = onRef(loadTextPreviewOnRef$);
+      set(internalTextPreviewLoadStateByKey$, (current) => {
+        const next = { ...current };
+        next[key] = { status: "loaded", text };
+        return next;
+      });
+    } catch (error) {
+      throwIfAbort(error);
+      set(internalTextPreviewLoadStateByKey$, (current) => {
+        const next = { ...current };
+        next[key] = { status: "error", text: "" };
+        return next;
+      });
+    }
+  }),
+);
 
 const resetTypewriterDisplayed$ = command(({ set }, key: string) => {
   set(internalTypewriterDisplayedByKey$, (current) => {
