@@ -1,0 +1,219 @@
+//! Job discovery branch handling and idle-reuse admission.
+//!
+//! `run()` owns the provider discovery future and reactor scheduling. This
+//! module owns the body that turns a discovered job into a claimed spawned job.
+
+use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
+
+use sandbox::SandboxId;
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
+use tracing::{info, warn};
+
+use super::factory_lifecycle::SharedFactory;
+use super::idle_lifecycle::{
+    SharedIdlePool, add_run_with_idle_status_snapshot, spawn_idle_destroy_job,
+};
+use super::{JobProfile, SpawnContext, spawn_job};
+use crate::config::ProfileConfig;
+use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
+use crate::ids::RunId;
+use crate::resource_budget::{BudgetLease, ResourceBudget};
+use crate::status::{RunnerMode, StatusTracker};
+use crate::types::{ExecutionContext, SandboxReuseResult};
+
+pub(super) struct DiscoveredJob {
+    pub(super) run_id: RunId,
+    pub(super) profile_name: String,
+}
+
+pub(super) struct DiscoveredJobContext<'a> {
+    pub(super) profiles: &'a BTreeMap<String, ProfileConfig>,
+    pub(super) factories: &'a BTreeMap<String, (SharedFactory, bool)>,
+    pub(super) budget: &'a Arc<ResourceBudget>,
+    pub(super) idle_pool: &'a SharedIdlePool,
+    pub(super) status: &'a StatusTracker,
+    pub(super) mode_rx: &'a tokio::sync::watch::Receiver<RunnerMode>,
+    pub(super) cancel_tokens: &'a Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    pub(super) spawn_ctx: &'a SpawnContext,
+    pub(super) destroy_tasks: &'a mut JoinSet<()>,
+    pub(super) jobs: &'a mut JoinSet<Option<RunId>>,
+}
+
+pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: DiscoveredJobContext<'_>) {
+    let DiscoveredJob {
+        run_id,
+        profile_name,
+    } = job;
+    // Look up profile config for resource requirements.
+    let Some(profile_config) = ctx.profiles.get(&profile_name) else {
+        warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
+        return;
+    };
+    let job_vcpu = profile_config.vcpu;
+    let job_memory = profile_config.memory_mb;
+    // Look up factory for this profile.
+    let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
+        warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
+        return;
+    };
+    // Reserve resources before claiming so we don't waste a job that another
+    // runner could handle.
+    let Some(job_lease) = ResourceBudget::try_reserve_lease(ctx.budget, job_vcpu, job_memory)
+    else {
+        return;
+    };
+    // Insert cancel token before claiming so it is available when discover()
+    // next processes a buffered Ably cancel event. Skip duplicates from push +
+    // poll races; overwriting would break cancel delivery for the executor.
+    let job_cancel = CancellationToken::new();
+    {
+        let mut tokens = ctx.cancel_tokens.lock().await;
+        if tokens.contains_key(&run_id) {
+            drop(job_lease);
+            return;
+        }
+        tokens.insert(run_id, job_cancel.clone());
+    }
+    // Close a TOCTOU race against hard shutdown: the signal handler sends
+    // Stopping before locking cancel_tokens. Re-read mode after inserting so a
+    // newly claimed job sees the stop and self-cancels.
+    if matches!(*ctx.mode_rx.borrow(), RunnerMode::Stopping) {
+        job_cancel.cancel();
+    }
+    // claim() runs in the branch handler: non-interruptible, so a successful
+    // claim is always paired with complete().
+    let Some(context) = ctx.spawn_ctx.provider.claim(run_id).await else {
+        // None means the job won't run here: either lost the race to another
+        // runner, or the provider rejected the job. Release the reservation and
+        // cancel token so the runner can continue.
+        ctx.cancel_tokens.lock().await.remove(&run_id);
+        drop(job_lease);
+        return;
+    };
+    info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
+
+    let (reuse_entry, active_lease, reuse_result, idle_snapshot) =
+        try_reuse_from_pool(run_id, &profile_name, &context, job_lease, &mut ctx).await;
+
+    // Determine sandbox_id after the reuse decision. On reuse, the sandbox keeps
+    // its original identity; on a fresh create, allocate a new UUID for the
+    // executor's SandboxConfig. This is the join key for doctor and kill.
+    let sandbox_id = match &reuse_entry {
+        Some(entry) => entry.sandbox_id(),
+        None => SandboxId::new_v4(),
+    };
+    if let Some(snapshot) = idle_snapshot {
+        add_run_with_idle_status_snapshot(ctx.status, run_id, sandbox_id, snapshot).await;
+    } else {
+        ctx.status.add_run(run_id, sandbox_id).await;
+    }
+
+    let job_profile = JobProfile {
+        profile_name,
+        vcpu: job_vcpu,
+        memory_mb: job_memory,
+        budget_lease: active_lease,
+        restore_guest_state: *restore_guest_state,
+        factory: Arc::clone(factory),
+        cancel: job_cancel,
+    };
+    spawn_job(
+        context,
+        sandbox_id,
+        job_profile,
+        reuse_entry,
+        reuse_result,
+        ctx.spawn_ctx,
+        ctx.jobs,
+    );
+}
+
+async fn try_reuse_from_pool(
+    run_id: RunId,
+    profile_name: &str,
+    context: &ExecutionContext,
+    job_lease: BudgetLease,
+    ctx: &mut DiscoveredJobContext<'_>,
+) -> (
+    Option<ReusableIdleSandbox>,
+    BudgetLease,
+    SandboxReuseResult,
+    Option<IdlePoolSnapshot>,
+) {
+    let Some(session_id) = context.session_id() else {
+        return (None, job_lease, SandboxReuseResult::NoSessionId, None);
+    };
+
+    // Take the entry under the pool lock, then drop the lock before any awaits
+    // so unpark does not block other take/park operations.
+    let (taken, snapshot) = {
+        let mut pool = ctx.idle_pool.lock().await;
+        let taken = pool.take(session_id);
+        let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
+        (taken, snapshot)
+    };
+    match taken {
+        Some(entry) if entry.profile_name() == profile_name => match entry.try_unpark().await {
+            IdleUnparkResult::Reused {
+                sandbox,
+                budget_lease,
+            } => {
+                info!(
+                    run_id = %run_id,
+                    session_id,
+                    "reusing idle VM for session"
+                );
+                // Idle entry already holds budget. Drop the speculative
+                // fresh-job lease and move the idle lease to the outer job
+                // task before handing the sandbox to the executor.
+                drop(job_lease);
+                (
+                    Some(sandbox),
+                    budget_lease,
+                    SandboxReuseResult::Reused,
+                    snapshot,
+                )
+            }
+            IdleUnparkResult::Failed { destroy_job, error } => {
+                warn!(
+                    run_id = %run_id,
+                    session_id,
+                    error = %error,
+                    "unpark failed, destroying idle VM and falling through to fresh create"
+                );
+                spawn_idle_destroy_job(ctx.destroy_tasks, destroy_job, "reuse_unpark_failed");
+                (None, job_lease, SandboxReuseResult::UnparkFailed, snapshot)
+            }
+        },
+        Some(stale) => {
+            info!(
+                run_id = %run_id,
+                session_id,
+                old_profile = %stale.profile_name(),
+                new_profile = %profile_name,
+                "idle VM profile mismatch, destroying"
+            );
+            spawn_idle_destroy_job(
+                ctx.destroy_tasks,
+                stale.into_destroy_job(),
+                "reuse_profile_mismatch",
+            );
+            (
+                None,
+                job_lease,
+                SandboxReuseResult::ProfileMismatch,
+                snapshot,
+            )
+        }
+        None => {
+            info!(
+                run_id = %run_id,
+                session_id,
+                "no idle VM found for session"
+            );
+            (None, job_lease, SandboxReuseResult::PoolMiss, None)
+        }
+    }
+}
