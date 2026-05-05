@@ -189,6 +189,11 @@ impl SnapshotOutputPaths {
         self.output_dir.join("cow.img.bitmap")
     }
 
+    /// Commit marker written only after all snapshot artifacts are published.
+    pub fn complete_marker(&self) -> PathBuf {
+        self.output_dir.join(".snapshot-complete")
+    }
+
     /// Work directory used during snapshot creation.
     /// Its layout is preserved as bind-mount targets during restore.
     pub fn work_dir(&self) -> PathBuf {
@@ -307,6 +312,15 @@ mod tests {
             output.cow_bitmap(),
             expected,
             "cow_bitmap() must be cow() + \".bitmap\" suffix"
+        );
+    }
+
+    #[test]
+    fn complete_marker_path_is_hidden_in_output_dir() {
+        let output = SnapshotOutputPaths::new(PathBuf::from("/data/images/abc123"));
+        assert_eq!(
+            output.complete_marker(),
+            PathBuf::from("/data/images/abc123/.snapshot-complete")
         );
     }
 }

@@ -268,7 +268,7 @@ impl RootfsPaths {
 
 /// Paths for a snapshot build output, nested under a [`RootfsPaths`].
 ///
-/// Layout: `<images_dir>/<rootfs_hash>/snapshots/<snapshot_hash>/{snapshot.bin,memory.bin,cow.img}`
+/// Layout: `<images_dir>/<rootfs_hash>/snapshots/<snapshot_hash>/{snapshot.bin,memory.bin,cow.img,cow.img.bitmap,.snapshot-complete}`
 ///
 /// Constructed via [`RootfsPaths::snapshot`].
 pub struct SnapshotPaths {
@@ -292,9 +292,23 @@ impl SnapshotPaths {
         self.dir.join("cow.img")
     }
 
+    pub fn cow_bitmap(&self) -> PathBuf {
+        self.dir.join("cow.img.bitmap")
+    }
+
+    pub fn complete_marker(&self) -> PathBuf {
+        self.dir.join(".snapshot-complete")
+    }
+
     /// All files that must exist for the snapshot to be considered complete.
-    pub fn expected_files(&self) -> [PathBuf; 3] {
-        [self.snapshot_bin(), self.memory_bin(), self.cow_img()]
+    pub fn expected_files(&self) -> [PathBuf; 5] {
+        [
+            self.snapshot_bin(),
+            self.memory_bin(),
+            self.cow_img(),
+            self.cow_bitmap(),
+            self.complete_marker(),
+        ]
     }
 }
 
@@ -459,7 +473,15 @@ mod tests {
             sp.cow_img(),
             PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img")
         );
-        assert_eq!(sp.expected_files().len(), 3);
+        assert_eq!(
+            sp.cow_bitmap(),
+            PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img.bitmap")
+        );
+        assert_eq!(
+            sp.complete_marker(),
+            PathBuf::from("/test/images/aaa/snapshots/bbb/.snapshot-complete")
+        );
+        assert_eq!(sp.expected_files().len(), 5);
     }
 
     #[test]
