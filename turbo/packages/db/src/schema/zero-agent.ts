@@ -7,6 +7,7 @@ import {
   uniqueIndex,
   index,
   jsonb,
+  boolean,
 } from "drizzle-orm/pg-core";
 import type {
   RawPermissionPolicies,
@@ -55,6 +56,9 @@ export const zeroAgents = pgTable(
       { onDelete: "set null" },
     ),
     selectedModel: varchar("selected_model", { length: 255 }),
+    preferPersonalProvider: boolean("prefer_personal_provider")
+      .notNull()
+      .default(false),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

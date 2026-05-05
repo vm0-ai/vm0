@@ -312,6 +312,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "letting components render with their own loading states.",
     enabled: true,
   },
+  [FeatureSwitchKey.PersonalModelProvider]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable per-user (BYOK) model providers in addition to org-level. " +
+      "When off: Personal tab in Preferences is hidden; personal-tier API " +
+      "endpoints return 404; the prefer_personal_provider checkbox on " +
+      "agents/schedules is hidden; the resolver ignores the flag (treats " +
+      "as false). Staff-only during rollout; per-user toggle via Lab.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

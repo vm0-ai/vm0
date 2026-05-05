@@ -75,6 +75,9 @@ export const zeroAgentSchedules = pgTable(
       { onDelete: "set null" },
     ),
     selectedModel: varchar("selected_model", { length: 255 }),
+    preferPersonalProvider: boolean("prefer_personal_provider")
+      .notNull()
+      .default(false),
 
     // State
     enabled: boolean("enabled").default(true).notNull(),

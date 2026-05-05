@@ -55,4 +55,5 @@ export enum FeatureSwitchKey {
   CodexBeta = "codexBeta",
   IdbMessage = "idbMessage",
   SkeletonNoPreload = "skeletonNoPreload",
+  PersonalModelProvider = "personalModelProvider",
 }

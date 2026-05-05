@@ -2353,6 +2353,13 @@
       "when": 1777830000000,
       "tag": "0335_backfill_default_credit_expiry",
       "breakpoints": true
+    },
+    {
+      "idx": 336,
+      "version": "7",
+      "when": 1778000439624,
+      "tag": "0336_lethal_bedlam",
+      "breakpoints": true
     }
   ]
 }
