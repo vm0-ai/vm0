@@ -1849,6 +1849,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const isQueued = latestRunStatus === "queued";
   const openQueueDrawer = useSet(openQueueDrawer$);
+  const pageSignal = useGet(pageSignal$);
 
   const thinkingLabel = isQueued ? (
     <p className="zero-shimmer-text text-xs truncate">
@@ -1856,7 +1857,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
       <button
         type="button"
         onClick={() => {
-          openQueueDrawer();
+          openQueueDrawer(pageSignal);
         }}
         className="cursor-pointer underline underline-offset-2"
       >

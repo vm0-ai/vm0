@@ -49,7 +49,7 @@ function queueResponse(overrides?: {
 function openDrawer() {
   mockHomeAPIs();
   detachedSetupPage({ context, path: "/" });
-  context.store.set(openQueueDrawer$);
+  context.store.set(openQueueDrawer$, context.signal);
 }
 
 describe("queue drawer", () => {

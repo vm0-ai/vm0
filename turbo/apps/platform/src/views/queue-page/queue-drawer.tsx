@@ -217,6 +217,7 @@ function QueueDrawerContent() {
 
 export function QueueDrawer() {
   const open = useGet(queueDrawerOpen$);
+  const pageSignal = useGet(pageSignal$);
   const setOpen = useSet(setQueueDrawerOpen$);
 
   return (
@@ -224,7 +225,7 @@ export function QueueDrawer() {
       open={open}
       onOpenChange={(v) => {
         if (!v) {
-          setOpen(false);
+          setOpen(false, pageSignal);
         }
       }}
     >

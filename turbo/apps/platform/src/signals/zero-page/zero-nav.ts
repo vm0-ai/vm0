@@ -81,28 +81,30 @@ export function isChatRoute(key: RouteKey | null): boolean {
   );
 }
 
-export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
-  if (id === "queues") {
-    set(openQueueDrawer$);
-  } else {
-    const navRoutes = {
-      chat: ROUTES.home,
-      agents: ROUTES.agents,
-      connectors: ROUTES.connectors,
-      schedules: ROUTES.schedules,
-      activities: ROUTES.activities,
-      insights: ROUTES.insights,
-      works: ROUTES.works,
-      settings: ROUTES.settings,
-      lab: ROUTES.lab,
-    } satisfies Record<
-      Exclude<SidebarNavId, "queues">,
-      (typeof ROUTES)[keyof typeof ROUTES]
-    >;
-    set(detachedNavigateTo$, navRoutes[id]);
-  }
-  set(internalShowAboutPage$, false);
-});
+export const handleZeroNavSelect$ = command(
+  ({ set }, id: SidebarNavId, signal: AbortSignal) => {
+    if (id === "queues") {
+      set(openQueueDrawer$, signal);
+    } else {
+      const navRoutes = {
+        chat: ROUTES.home,
+        agents: ROUTES.agents,
+        connectors: ROUTES.connectors,
+        schedules: ROUTES.schedules,
+        activities: ROUTES.activities,
+        insights: ROUTES.insights,
+        works: ROUTES.works,
+        settings: ROUTES.settings,
+        lab: ROUTES.lab,
+      } satisfies Record<
+        Exclude<SidebarNavId, "queues">,
+        (typeof ROUTES)[keyof typeof ROUTES]
+      >;
+      set(detachedNavigateTo$, navRoutes[id]);
+    }
+    set(internalShowAboutPage$, false);
+  },
+);
 
 export type ZeroAccountAction =
   | "preferences"

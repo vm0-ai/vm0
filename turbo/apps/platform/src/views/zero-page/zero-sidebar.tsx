@@ -198,8 +198,9 @@ function SidebarNavContent() {
   };
   const rawOnSelect = useSet(handleZeroNavSelect$);
   const onAccountAction = useSet(handleZeroAccountAction$);
+  const pageSignal = useGet(pageSignal$);
   const onSelect = (id: SidebarNavId) => {
-    rawOnSelect(id);
+    rawOnSelect(id, pageSignal);
     setExpanded(false);
   };
   const isScrolled = useGet(isScrolled$);
