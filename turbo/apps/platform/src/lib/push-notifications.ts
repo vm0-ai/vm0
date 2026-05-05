@@ -9,6 +9,7 @@ import { command, state } from "ccstate";
 import { pwaOfflineCacheEnabled$ } from "../signals/external/feature-switch.ts";
 import { clerk$ } from "../signals/auth.ts";
 import { apiBase$ } from "../signals/fetch.ts";
+import { bestEffort } from "../signals/utils.ts";
 
 const swRegistration$ = state<ServiceWorkerRegistration | null>(null);
 const subscribing$ = state(false);
@@ -23,23 +24,20 @@ export const registerServiceWorker$ = command(
       return;
     }
 
-    const pwaOfflineEnabled = await get(pwaOfflineCacheEnabled$);
+    const pwaOfflineEnabled = get(pwaOfflineCacheEnabled$);
     signal.throwIfAborted();
-    // Registration can reject for reasons outside our control: private
-    // browsing, enterprise/browser policy, user-disabled SW, etc. Push
-    // notifications are a non-critical enhancement, so swallow the
-    // rejection to avoid aborting bootstrap.
-    let registration: ServiceWorkerRegistration;
-    try {
-      registration = await navigator.serviceWorker.register(
-        "/sw.js",
-        pwaOfflineEnabled ? { updateViaCache: "none" } : undefined,
-      );
-    } catch {
-      return;
-    }
-    signal.throwIfAborted();
-    set(swRegistration$, registration);
+
+    bestEffort(
+      (async () => {
+        const registration = await navigator.serviceWorker.register(
+          "/sw.js",
+          pwaOfflineEnabled ? { updateViaCache: "none" } : undefined,
+        );
+
+        signal.throwIfAborted();
+        set(swRegistration$, registration);
+      })(),
+    );
   },
 );
 
@@ -62,6 +60,8 @@ export const ensurePushSubscription$ = command(
       return;
     }
     set(subscribing$, true);
+    // TODO: The try-catch block here needs to be cleaned up. confirmed by ethan@vm0.ai
+    // eslint-disable-next-line no-restricted-syntax
     try {
       const clerkPromise = get(clerk$);
       const apiBase = await get(apiBase$);

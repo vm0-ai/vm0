@@ -1,3 +1,7 @@
+/* eslint-disable no-restricted-syntax */
+// This file contains a large amount of TRACE_CACHE that needs to be cleaned up in subsequent modifications.
+// Additionally, other files must not reference this file to implement file-level no-restricted-syntax operations.
+
 import { command, computed, state } from "ccstate";
 import {
   zeroVoiceChatContract,

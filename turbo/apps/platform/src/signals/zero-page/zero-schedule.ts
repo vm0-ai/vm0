@@ -1,3 +1,7 @@
+/* eslint-disable no-restricted-syntax */
+// This file contains a large amount of TRACE_CACHE that needs to be cleaned up in subsequent modifications.
+// Additionally, other files must not reference this file to implement file-level no-restricted-syntax operations.
+
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { createElement } from "react";
@@ -20,6 +24,7 @@ import {
 } from "./cron.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
 import { throwIfAbort } from "../utils.ts";
+import { defaultAgentId$ } from "../agent.ts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -261,27 +266,16 @@ export interface ZeroScheduleSaveParams {
 
 export const saveZeroSchedule$ = command(
   async ({ get, set }, params: ZeroScheduleSaveParams, signal: AbortSignal) => {
-    try {
-      const status = await get(zeroOnboardingStatus$);
-      signal.throwIfAborted();
-      const composeId = status.defaultAgentId;
-      if (!composeId) {
-        throw new Error("No default agent configured");
-      }
-
-      const body = buildScheduleBody(composeId, params);
-
-      const client = get(zeroClient$)(zeroSchedulesMainContract);
-      await accept(client.deploy({ body }), [200, 201]);
-      signal.throwIfAborted();
-    } catch (error: unknown) {
-      throwIfAbort(error);
-      if (!(error instanceof ApiError)) {
-        const message = error instanceof Error ? error.message : "Save failed";
-        toast.error(message);
-      }
-      throw error;
+    const defaultAgentId = await get(defaultAgentId$);
+    signal.throwIfAborted();
+    if (!defaultAgentId) {
+      throw new Error("No default agent configured");
     }
+
+    const body = buildScheduleBody(defaultAgentId, params);
+
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");

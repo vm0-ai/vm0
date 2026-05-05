@@ -29,8 +29,7 @@ import {
 } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { delay } from "signal-timers";
-import { jsonParseOr, raceUnderSignal } from "../../utils.ts";
+import { jsonParseOr } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
@@ -462,25 +461,6 @@ export function isStandaloneMode(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
-/**
- * Resolve when `authWindow` is observed closed. In standalone mode
- * `authWindow` is null (iOS Safari opens an external browser, no handle)
- * — this promise then never resolves and is only unblocked via signal abort
- * (which rejects the `delay` call).
- */
-const POPUP_WATCHDOG_INTERVAL_MS = 500;
-async function watchPopupClosed(
-  authWindow: Window | null,
-  signal: AbortSignal,
-): Promise<void> {
-  for (;;) {
-    await delay(POPUP_WATCHDOG_INTERVAL_MS, { signal });
-    if (authWindow?.closed) {
-      return;
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Connect command
 // ---------------------------------------------------------------------------
@@ -512,12 +492,8 @@ export const connectConnector$ = command(
       throw new Error("Failed to open authorization window");
     }
 
-    // Wait for either the OAuth flow to complete (Ably publishes
-    // `connector:changed` from the callback) or the popup to close. Cross-
-    // origin popups (platform on app.*, callback on www.*) have no
-    // reliable close event, so we also watch `authWindow.closed` as a
-    // fallback for user abandonment.
-    //
+    // Wait for the OAuth flow to complete. The callback publishes
+    // `connector:changed`, and the subscription rechecks the server state.
     // Snapshot taken on the first body invocation: `null` marks "no
     // connector yet" and an `updatedAt` value marks "reconnect scenario —
     // wait for it to change". The snapshot must happen *inside* the loop
@@ -562,17 +538,7 @@ export const connectConnector$ = command(
     await set(onConnectorChanged$, signal);
     signal.throwIfAborted();
 
-    await raceUnderSignal(signal, (childSignal) => {
-      return [
-        set(
-          setAblyLoop$,
-          "connector:changed",
-          onConnectorChanged$,
-          childSignal,
-        ),
-        watchPopupClosed(authWindow, childSignal),
-      ];
-    });
+    await set(setAblyLoop$, "connector:changed", onConnectorChanged$, signal);
     signal.throwIfAborted();
 
     // Refresh the connectors$ cache so UI picks up the latest state.

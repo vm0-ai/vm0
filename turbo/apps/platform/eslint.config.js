@@ -208,49 +208,6 @@ export default [
       ],
     },
   },
-  // utils.ts is the centralised infrastructure file for try/catch patterns:
-  // JSON.parse guard, best-effort wrappers, polling with transient-error backoff,
-  // and race-under-signal finally cleanup. All try statements here are intentional.
-  {
-    files: ["src/signals/utils.ts"],
-    rules: {
-      "no-restricted-syntax": "off",
-    },
-  },
-  // voice-chat-session.ts wraps three browser APIs that are specified
-  // to throw: JSON.parse on untrusted Realtime DC event data, navigator.wakeLock.request
-  // (OS deny or hidden document), and navigator.mediaDevices.getUserMedia (permission
-  // denied or no hardware). Each try block has recovery logic that cannot use accept()
-  // or useLoadableSet.
-  {
-    files: [
-      "src/signals/voice-chat/voice-chat-session.ts",
-      "src/signals/voice-chat-candidate/voice-chat-candidate-session.ts",
-    ],
-    rules: {
-      "no-restricted-syntax": "off",
-    },
-  },
-  // push-notifications.ts handles navigator.serviceWorker.register() which can
-  // reject for reasons outside our control (private browsing, enterprise policy,
-  // user-disabled SW, etc.). The catch block silently returns — push is a
-  // non-critical enhancement so rejections should not abort bootstrap.
-  {
-    files: ["src/lib/push-notifications.ts"],
-    rules: {
-      "no-restricted-syntax": "off",
-    },
-  },
-  // zero-schedule.ts uses try/catch to surface non-API validation errors
-  // (e.g. past atTime from buildScheduleBody) as user-visible toasts, and
-  // to show error toasts when runScheduleNow$ fails. ApiError from accept()
-  // already toasts; only non-ApiError exceptions are caught here.
-  {
-    files: ["src/signals/zero-page/zero-schedule.ts"],
-    rules: {
-      "no-restricted-syntax": "off",
-    },
-  },
   {
     ignores: [
       "dist/**",

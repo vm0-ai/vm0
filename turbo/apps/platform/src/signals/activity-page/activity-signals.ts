@@ -7,7 +7,6 @@ import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
-import { raceUnderSignal } from "../utils.ts";
 import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
 import {
@@ -273,12 +272,11 @@ export const setupActivityLogLoop$ = command(
       return;
     }
 
-    await raceUnderSignal(signal, (childSignal) => {
-      return [
-        set(setAblyLoop$, `run:changed:${runId}`, onRunChanged$, childSignal),
-        set(setAblyLoop$, "queue:changed", onRunChanged$, childSignal),
-      ];
-    });
+    await Promise.all([
+      set(setAblyLoop$, `run:changed:${runId}`, onRunChanged$, signal),
+      set(setAblyLoop$, "queue:changed", onRunChanged$, signal),
+    ]);
+    signal.throwIfAborted();
   },
 );
 

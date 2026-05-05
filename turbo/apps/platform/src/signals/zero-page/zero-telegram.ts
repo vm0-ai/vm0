@@ -443,7 +443,6 @@ export const updateTelegramBotAgent$ = command(
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
     set(reloadTelegramBots$);
