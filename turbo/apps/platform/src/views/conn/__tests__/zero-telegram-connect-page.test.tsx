@@ -239,7 +239,11 @@ describe("zero telegram connect page", () => {
     click(buttonWithText("Continue with Telegram"));
 
     await waitFor(() => {
-      expect(openSpy).toHaveBeenCalled();
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("https://oauth.telegram.org/auth"),
+        "telegram_login",
+        expect.stringContaining("width=550"),
+      );
     });
     const rawAuthUrl = String(openSpy.mock.calls[0]?.[0]);
     const authUrl = new URL(rawAuthUrl);

@@ -35,7 +35,7 @@ export async function fetchFreshToken(
   return freshToken;
 }
 
-export async function handleUnauthorizedRedirect(clerk: ClerkLike) {
+export function handleUnauthorizedRedirect(clerk: ClerkLike) {
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line ccstate/no-detach-in-signals
   detach(clerk.redirectToSignIn(), Reason.Entrance);

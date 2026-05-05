@@ -27,7 +27,7 @@ export const registerServiceWorker$ = command(
     const pwaOfflineEnabled = get(pwaOfflineCacheEnabled$);
     signal.throwIfAborted();
 
-    bestEffort(
+    await bestEffort(
       (async () => {
         const registration = await navigator.serviceWorker.register(
           "/sw.js",
