@@ -761,8 +761,8 @@ export const USE_CASES: UseCase[] = [
     slug: "multilingual-cms-publishing",
     color: "#8E75FF",
     screenshots: [
-      "/assets/use-cases/multilingual-cms-publishing.png",
       "/assets/use-cases/multilingual-cms-publishing-2.png",
+      "/assets/use-cases/multilingual-cms-publishing.png",
     ],
     avatar: {
       rotation: 2,
