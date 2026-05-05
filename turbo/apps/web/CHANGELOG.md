@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.331.1](https://github.com/vm0-ai/vm0/compare/web-v12.331.0...web-v12.331.1) (2026-05-05)
+
+
+### Bug Fixes
+
+* prevent silent credit grant from column default in stripe customer creation ([#11841](https://github.com/vm0-ai/vm0/issues/11841)) ([f97447e](https://github.com/vm0-ai/vm0/commit/f97447e5fb7083f893590d0bdeb4192dd97245af))
+* **voice-io:** log error code and rejection reason for stt 400s ([#11850](https://github.com/vm0-ai/vm0/issues/11850)) ([1071eed](https://github.com/vm0-ai/vm0/commit/1071eed335e9ec3491b815a6125baf131449216c)), closes [#11847](https://github.com/vm0-ai/vm0/issues/11847)
+
 ## [12.331.0](https://github.com/vm0-ai/vm0/compare/web-v12.330.8...web-v12.331.0) (2026-05-05)
 
 

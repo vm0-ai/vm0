@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.324.1](https://github.com/vm0-ai/vm0/compare/app-v0.324.0...app-v0.324.1) (2026-05-05)
+
+
+### Bug Fixes
+
+* **voice-io:** log error code and rejection reason for stt 400s ([#11850](https://github.com/vm0-ai/vm0/issues/11850)) ([1071eed](https://github.com/vm0-ai/vm0/commit/1071eed335e9ec3491b815a6125baf131449216c)), closes [#11847](https://github.com/vm0-ai/vm0/issues/11847)
+
 ## [0.324.0](https://github.com/vm0-ai/vm0/compare/app-v0.323.0...app-v0.324.0) (2026-05-05)
 
 
