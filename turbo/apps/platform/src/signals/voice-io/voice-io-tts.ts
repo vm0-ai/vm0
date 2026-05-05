@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command } from "ccstate";
 import { onDomEventFn, resetSignal } from "../utils.ts";
 import { fetch$ } from "../fetch.ts";
 import { fetchTtsAudio } from "../../lib/voice-io/tts-fetch.ts";
@@ -7,11 +7,6 @@ import { logger } from "../log.ts";
 const L = logger("AudioOutput:TTS");
 
 const resetPlay$ = resetSignal();
-const internalPlayingRunId$ = state<string | null>(null);
-
-export const ttsPlayingRunId$ = computed((get) => {
-  return get(internalPlayingRunId$);
-});
 
 function stripMarkdown(text: string): string {
   return text
@@ -31,23 +26,13 @@ function stripMarkdown(text: string): string {
 }
 
 const fetchAndPlay$ = command(
-  async (
-    { get, set },
-    runId: string,
-    text: string,
-    parentSignal: AbortSignal,
-  ) => {
+  async ({ get, set }, text: string, parentSignal: AbortSignal) => {
     const signal = set(resetPlay$, parentSignal);
 
     const plainText = stripMarkdown(text);
     if (!plainText) {
       return;
     }
-
-    set(internalPlayingRunId$, runId);
-    signal.addEventListener("abort", () => {
-      set(internalPlayingRunId$, null);
-    });
 
     const fetchFn = get(fetch$);
     const response = await fetchTtsAudio(fetchFn, plainText, signal);
@@ -75,7 +60,6 @@ const fetchAndPlay$ = command(
     );
 
     let nextStartTime = audioCtx.currentTime;
-    let lastSource: AudioBufferSourceNode | null = null;
     let carry: Uint8Array | null = null;
 
     while (!signal.aborted) {
@@ -127,18 +111,6 @@ const fetchAndPlay$ = command(
       }
       source.start(nextStartTime);
       nextStartTime += audioBuffer.duration;
-      lastSource = source;
-    }
-
-    if (lastSource) {
-      lastSource.addEventListener(
-        "ended",
-        onDomEventFn(() => {
-          set(internalPlayingRunId$, null);
-        }),
-      );
-    } else {
-      set(internalPlayingRunId$, null);
     }
   },
 );
@@ -152,10 +124,7 @@ export const stopTts$ = command(({ set }) => {
 });
 
 export const playTts$ = command(
-  async ({ get, set }, runId: string, text: string, signal: AbortSignal) => {
-    if (get(internalPlayingRunId$) === runId) {
-      return;
-    }
-    await set(fetchAndPlay$, runId, text, signal);
+  async ({ set }, text: string, signal: AbortSignal) => {
+    await set(fetchAndPlay$, text, signal);
   },
 );

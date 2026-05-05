@@ -65,11 +65,7 @@ import docPdfIcon from "./assets/doc-pdf.svg";
 import docTxtIcon from "./assets/doc-txt.svg";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import {
-  ttsPlayingRunId$,
-  playTts$,
-  stopTts$,
-} from "../../signals/voice-io/voice-io-tts.ts";
+import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
 import {
   autoReadEnabled$,
   toggleAutoRead$,
@@ -2716,13 +2712,12 @@ function PagedGroupActions({
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
   const messageStartButtonEnabled =
     features?.[FeatureSwitchKey.ChatMessageStartButton] ?? false;
-  const playingRunId = useGet(ttsPlayingRunId$);
   const firstRunId = group.messages.find((m) => {
     return m.runId;
   })?.runId;
   const hasContent = content.length > 0;
-  const isPlayingThis = !!firstRunId && playingRunId === firstRunId;
-  const playTts = useSet(playTts$);
+  const [ttsLoadable, playTts] = useLoadableSet(playTts$);
+  const isPlayingThis = ttsLoadable.state === "loading";
   const stopTts = useSet(stopTts$);
 
   if (group.role === "user") {
@@ -2750,7 +2745,7 @@ function PagedGroupActions({
     if (isPlayingThis) {
       stopTts();
     } else {
-      detach(playTts(firstRunId, content, pageSignal), Reason.DomCallback);
+      detach(playTts(content, pageSignal), Reason.DomCallback);
     }
   };
 
