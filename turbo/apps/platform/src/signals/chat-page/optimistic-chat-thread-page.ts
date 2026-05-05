@@ -381,7 +381,9 @@ const sendNewThreadMessage$ = command(
       running: true,
       pendingThread: localThread,
       sendResult,
-      settleResult: sendResult.then(() => {}),
+      settleResult: (async (): Promise<void> => {
+        await sendResult;
+      })(),
     };
   },
 );

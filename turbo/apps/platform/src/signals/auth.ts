@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
 import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
+import { bestEffort, onDomEventFn } from "./utils.ts";
 
 const reload$ = state(0);
 const clerkVersion$ = state(0);
@@ -133,46 +134,35 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
 
   // Listener stays `() => void`: Clerk's `ListenerCallback` signature
   // is not awaited, and returning a promise from it would trip
-  // `typescript/no-misused-promises`. The promise chain below handles
-  // both fulfillment and rejection in `.then(reload, reload)`, which
-  // satisfies `typescript/no-floating-promises` and ensures the
-  // reload still fires even if the token rotation rejects.
-  const unsubscribe = clerk.addListener(() => {
-    const newOrgId = clerk.organization?.id ?? undefined;
-    if (newOrgId === prevOrgId) {
-      return;
-    }
-    prevOrgId = newOrgId;
-    persistOrgId(newOrgId);
-    // On mobile, Clerk can transiently clear clerk.organization to
-    // undefined during a background token refresh before restoring it on
-    // the next event. Guard against that by only reloading when the
-    // session is landing on a concrete org (org_A→org_B or
-    // undefined→org_A). An org disappearing to undefined is treated as a
-    // transient state; the listener will fire again with the real org_id.
-    if (!newOrgId) {
-      return;
-    }
-    // Force a JWT rotation so the __session cookie carries the new
-    // org_id claim before the reload — a brand-new tab opened in
-    // parallel would otherwise read the stale cookie JWT (which bakes
-    // org_id at mint time) and see the old org until the ~60s TTL
-    // expires. Passing the same reload handler as both fulfilled and
-    // rejected callbacks to `.then` guarantees the reload runs in
-    // both cases: on success the fresh JWT is already in the cookie;
-    // on failure the full page load will re-establish Clerk state
-    // regardless. This form also satisfies
-    // `typescript/no-floating-promises`, which requires a rejection
-    // handler on the terminal call.
-    const reload = (): void => {
-      // Full page load is required because server-side data (agents,
-      // jobs, secrets, etc.) is scoped to the active organization and
-      // multiple signal trees depend on the org context established
-      // at bootstrap time.
+  // `typescript/no-misused-promises`. `onDomEventFn` detaches the async
+  // work, and `bestEffort` keeps reload behavior even when token rotation
+  // rejects.
+  const unsubscribe = clerk.addListener(
+    onDomEventFn(async () => {
+      const newOrgId = clerk.organization?.id ?? undefined;
+      if (newOrgId === prevOrgId) {
+        return;
+      }
+      prevOrgId = newOrgId;
+      persistOrgId(newOrgId);
+      // On mobile, Clerk can transiently clear clerk.organization to
+      // undefined during a background token refresh before restoring it on
+      // the next event. Guard against that by only reloading when the
+      // session is landing on a concrete org (org_A→org_B or
+      // undefined→org_A). An org disappearing to undefined is treated as a
+      // transient state; the listener will fire again with the real org_id.
+      if (!newOrgId) {
+        return;
+      }
+
+      await bestEffort(
+        (async () => {
+          return await clerk.session?.getToken({ skipCache: true });
+        })(),
+      );
       location.href = "/";
-    };
-    clerk.session?.getToken({ skipCache: true }).then(reload, reload);
-  });
+    }),
+  );
   signal.addEventListener("abort", unsubscribe);
 });
 

@@ -297,9 +297,15 @@ describe("setupRealtime$ authCallback", () => {
     // the AbortError would be forwarded and the promise would reject.
     let reauthOutcome: "pending" | "resolved" | "rejected" = "pending";
     triggerAblyReauth()
+      // The initial ESLint disable comments below have not been addressed yet due to a lack of time.
+      // confirmed by ethan@vm0.ai
+      // oxlint-disable-next-line promise/prefer-await-to-then
       .then(() => {
         reauthOutcome = "resolved";
       })
+      // The initial ESLint disable comments below have not been addressed yet due to a lack of time.
+      // confirmed by ethan@vm0.ai
+      // oxlint-disable-next-line promise/prefer-await-to-then
       .catch(() => {
         reauthOutcome = "rejected";
       });
