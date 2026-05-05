@@ -429,7 +429,7 @@
           },
           {
             "label": "Batch",
-            “prompt”: “@Zero recherchiere für jeden Handle in meiner Notion-Partner-Liste mit Status „Nicht kontaktiert” das X-Profil und verfasse eine personalisierte Outreach-E-Mail. Alle als Gmail-Entwürfe speichern.”
+            "prompt": "@Zero recherchiere für jeden Handle in meiner Notion-Partner-Liste mit Status 'Nicht kontaktiert' das X-Profil und verfasse eine personalisierte Outreach-E-Mail. Alle als Gmail-Entwürfe speichern."
           }
         ],
         "slackPreview": [
