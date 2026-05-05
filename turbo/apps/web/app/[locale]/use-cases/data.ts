@@ -1921,11 +1921,7 @@ export const USE_CASES: UseCase[] = [
       { connector: SLACK, required: true },
       { connector: NOTION, required: false },
     ],
-    relatedSlugs: [
-      "document-decisions",
-      "slack-triage",
-      "competitor-audit",
-    ],
+    relatedSlugs: ["document-decisions", "slack-triage", "competitor-audit"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
