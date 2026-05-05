@@ -253,6 +253,31 @@ mod tests {
     }
 
     #[test]
+    fn emit_appends_to_existing_system_log_file_without_truncating() {
+        let _guard = LOG_TEST_MUTEX.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("system.log");
+        std::fs::write(&path, "existing line\n").unwrap();
+        let _system_log = SystemLogFileGuard::set(&path);
+
+        emit(
+            "INFO",
+            "sandbox:guest-agent",
+            format_args!("new line after existing content"),
+        );
+
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(
+            content.starts_with("existing line\n"),
+            "existing content should be preserved: {content:?}",
+        );
+        assert!(
+            content.contains("[INFO] [sandbox:guest-agent] new line after existing content"),
+            "new log line should be appended: {content:?}",
+        );
+    }
+
+    #[test]
     fn emit_continues_when_system_log_append_fails() {
         let _guard = LOG_TEST_MUTEX.lock().unwrap();
         let dir = tempfile::tempdir().unwrap();
