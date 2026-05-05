@@ -26,7 +26,7 @@ import {
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
 import { isApiError, providerDeleted } from "@vm0/api-services/errors";
-import { getModelProviderByIdForOrg } from "../../../../../src/lib/zero/model-provider/model-provider-service";
+import { getModelProviderById } from "../../../../../src/lib/zero/model-provider/model-provider-service";
 import {
   createChatThread,
   getChatThread,
@@ -102,6 +102,7 @@ interface ResolvedThread {
  */
 async function resolveRunModelOverride(
   orgId: string,
+  userId: string,
   threadId: string,
   agent: { modelProviderId: string | null; selectedModel: string | null },
   modelSelection:
@@ -132,8 +133,9 @@ async function resolveRunModelOverride(
       .where(eq(chatThreads.id, threadId))
       .limit(1);
     if (thread?.modelProviderId && thread.selectedModel) {
-      const provider = await getModelProviderByIdForOrg(
+      const provider = await getModelProviderById(
         orgId,
+        userId,
         thread.modelProviderId,
       );
       if (!provider) {
@@ -420,6 +422,7 @@ const router = tsr.router(chatMessagesContract, {
       const overrideT = await timed(async () => {
         return resolveRunModelOverride(
           callerOrg.orgId,
+          authCtx.userId,
           threadId,
           {
             modelProviderId: agent.modelProviderId,

@@ -35,7 +35,12 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     const userId = uniqueId("explicit-codex");
     const orgId = await setupOrg(userId);
 
-    const result = await resolveModelProviderSecrets(orgId, "codex", true);
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      true,
+    );
 
     expect(result.secrets).toBeUndefined();
     expect(result.injectedEnvironment).toBeUndefined();
@@ -49,6 +54,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
     const result = await resolveModelProviderSecrets(
       orgId,
+      userId,
       "claude-code",
       true,
     );
@@ -64,7 +70,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     const orgId = await setupOrg(userId);
 
     await expect(
-      resolveModelProviderSecrets(orgId, "codex", false),
+      resolveModelProviderSecrets(orgId, userId, "codex", false),
     ).rejects.toSatisfy((err: unknown) => {
       return isNoModelProvider(err);
     });
@@ -78,6 +84,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     // Secret value is absent — resolver returns the metadata without secrets.
     const result = await resolveModelProviderSecrets(
       orgId,
+      userId,
       "claude-code",
       false,
     );
@@ -106,6 +113,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
     const result = await resolveModelProviderSecrets(
       orgId,
+      userId,
       "codex",
       false,
       "openai-api-key",
@@ -143,6 +151,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
     const result = await resolveModelProviderSecrets(
       orgId,
+      userId,
       "codex",
       false,
       "openai-api-key",
@@ -168,6 +177,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
     const result = await resolveModelProviderSecrets(
       orgId,
+      userId,
       "claude-code",
       false,
       undefined,

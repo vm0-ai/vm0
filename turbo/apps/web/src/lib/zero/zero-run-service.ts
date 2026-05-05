@@ -656,6 +656,7 @@ async function createZeroRunRecord(
   const composeFramework = composeAgents[0]?.framework ?? "claude-code";
   const admissionProviderType = await resolveProviderTypeForAdmission({
     orgId: resolved.orgId,
+    userId: params.userId,
     modelProvider: params.modelProvider,
     modelProviderId: runParams.modelProviderId,
     composeFramework,

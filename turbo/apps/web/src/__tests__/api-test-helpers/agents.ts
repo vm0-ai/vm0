@@ -1,12 +1,18 @@
 import { updateChatThreadTitle } from "../../lib/zero/chat-thread";
 import { POST as createComposeRoute } from "../../../app/api/agent/composes/route";
 import { POST as upsertOrgModelProviderRoute } from "../../../app/api/zero/model-providers/route";
+// eslint-disable-next-line web/no-direct-db-in-tests -- Personal-tier (BYOK) HTTP routes land in Wave 2 of Epic #11868; until then, user-tier seeders must call the service directly.
+import {
+  upsertUserModelProvider,
+  upsertUserMultiAuthModelProvider,
+} from "../../lib/zero/model-provider/model-provider-service";
 import {
   createTestRequest,
   createDefaultComposeConfig,
   type ComposeConfigOptions,
 } from "./core";
 import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
+import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
 import { ensureZeroAgentRow } from "../db-test-seeders/agents";
 
 // ---------------------------------------------------------------------------
@@ -187,4 +193,77 @@ export async function updateTestChatThreadTitle(
   title: string,
 ): Promise<void> {
   return updateChatThreadTitle(threadId, userId, title);
+}
+
+/**
+ * Create a test user-level (BYOK) model provider via direct service call.
+ *
+ * The user-tier HTTP route lands in Wave 2 (#a3); this helper lets
+ * service-layer tests exercise user-tier behavior in the meantime by
+ * calling `upsertUserModelProvider` directly.
+ */
+export async function createTestUserModelProvider(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+  secretValue: string,
+  selectedModel?: string,
+): Promise<{
+  id: string;
+  type: string;
+  isDefault: boolean;
+  selectedModel: string | null;
+}> {
+  const result = await upsertUserModelProvider(
+    orgId,
+    userId,
+    type,
+    secretValue,
+    selectedModel,
+  );
+  return {
+    id: result.provider.id,
+    type: result.provider.type,
+    isDefault: result.provider.isDefault,
+    selectedModel: result.provider.selectedModel,
+  };
+}
+
+/**
+ * Create a test user-level multi-auth model provider via direct service call.
+ *
+ * Mirrors `createTestUserModelProvider` for multi-auth providers (e.g.,
+ * aws-bedrock).
+ */
+export async function createTestUserMultiAuthModelProvider(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+  authMethod: string,
+  secretValues: Record<string, string>,
+  selectedModel?: string,
+): Promise<{
+  id: string;
+  type: string;
+  authMethod: string | null;
+  secretNames: string[] | null;
+  isDefault: boolean;
+  selectedModel: string | null;
+}> {
+  const result = await upsertUserMultiAuthModelProvider(
+    orgId,
+    userId,
+    type,
+    authMethod,
+    secretValues,
+    selectedModel,
+  );
+  return {
+    id: result.provider.id,
+    type: result.provider.type,
+    authMethod: result.provider.authMethod ?? null,
+    secretNames: result.provider.secretNames ?? null,
+    isDefault: result.provider.isDefault,
+    selectedModel: result.provider.selectedModel,
+  };
 }

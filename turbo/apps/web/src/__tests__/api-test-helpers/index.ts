@@ -67,6 +67,8 @@ export {
   createTestCompose,
   createTestOrgModelProvider,
   createTestOrgMultiAuthModelProvider,
+  createTestUserModelProvider,
+  createTestUserMultiAuthModelProvider,
   updateTestChatThreadTitle,
 } from "./agents";
 export {
