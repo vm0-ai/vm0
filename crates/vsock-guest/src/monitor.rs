@@ -2,7 +2,6 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
-use std::time::Duration;
 
 use vsock_proto::{self, MSG_ERROR, MSG_PROCESS_EXIT, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK};
 
@@ -11,8 +10,8 @@ use crate::error::to_io_error;
 use crate::exec::{prepend_env, spawn_with_pipes, truncate_preview};
 use crate::log::log;
 use crate::wait::{
-    DRAIN_DEADLINE_SECS, KillWatchdog, await_drain_deadline, finalize_buffered_result,
-    finalize_wait_outcome, resolve_wait_outcome, wait_with_drain_and_timeout,
+    DRAIN_DEADLINE_SECS, await_drain_deadline, finalize_buffered_result, finalize_wait_outcome,
+    wait_with_drain_and_timeout_or_cancelled, wait_with_kill_timeout_or_cancelled,
 };
 use crate::writer::GuestWriter;
 
@@ -43,6 +42,7 @@ pub(crate) fn handle_spawn_watch(
     request: SpawnWatchRequest<'_>,
     seq: u32,
     writer: GuestWriter,
+    connection_cancel: Arc<AtomicBool>,
 ) -> io::Result<()> {
     log(
         "INFO",
@@ -105,11 +105,12 @@ pub(crate) fn handle_spawn_watch(
             stdout_pipe,
             request.stdout_log_path.map(str::to_owned),
             writer,
+            connection_cancel,
         );
     } else {
         // Buffered mode: stdout/stderr drained via cancellable helper, sent
         // in a single MSG_PROCESS_EXIT after wait.
-        spawn_buffered_monitor(pid, child, request.timeout_ms, writer);
+        spawn_buffered_monitor(pid, child, request.timeout_ms, writer, connection_cancel);
     }
 
     Ok(())
@@ -120,10 +121,10 @@ pub(crate) fn handle_spawn_watch(
 /// against `child.wait()`.
 ///
 /// Architecture:
-/// - Timeout killer thread: kills process group after deadline
+/// - Monitor thread: waits for child exit, timeout, or connection cancellation
 /// - Stderr reader thread: drains stderr into a `Vec<u8>` (cancellable)
 /// - Stdout reader thread: streams chunks to log + vsock (cancellable)
-/// - Monitor thread: waits for `child.wait()`, then applies drain deadline
+/// - Drain deadline: after child wait completes, bounds lingering pipe readers
 ///
 /// If a grandchild keeps pipe fds open past child exit, the deadline fires
 /// the cancel flag — both reader threads exit promptly, dropping their fds
@@ -138,18 +139,9 @@ fn spawn_streaming_monitor(
     stdout_pipe: Option<std::process::ChildStdout>,
     log_path: Option<String>,
     writer: GuestWriter,
+    connection_cancel: Arc<AtomicBool>,
 ) {
     thread::spawn(move || {
-        // Set up timeout BEFORE the stdout loop — if the process runs past the
-        // deadline it must be killed even while we are still reading output.
-        let child_id = child.id();
-        let mut watchdog = if timeout_ms > 0 {
-            let timeout = Duration::from_millis(u64::from(timeout_ms));
-            Some(KillWatchdog::spawn(child_id, timeout))
-        } else {
-            None
-        };
-
         let cancel = Arc::new(AtomicBool::new(false));
         let (drain_done_tx, drain_done_rx) = std::sync::mpsc::channel::<()>();
 
@@ -234,14 +226,12 @@ fn spawn_streaming_monitor(
         };
         drop(drain_done_tx); // so recv returns Disconnected when both threads die
 
-        // child.wait() is now UNBLOCKED — no pipe fds held by this thread.
-        let status = child.wait();
-
-        // Signal timeout thread that process completed. This must happen
-        // before drain cleanup; otherwise a cleanly exited process could be
-        // killed while we are still draining its pipes.
-        if let Some(watchdog) = watchdog.as_mut() {
-            watchdog.stand_down();
+        // child wait is now UNBLOCKED — no pipe fds are held by this thread.
+        let outcome = wait_with_kill_timeout_or_cancelled(child, timeout_ms, &connection_cancel);
+        if matches!(outcome, crate::wait::WaitOutcome::Cancelled)
+            || connection_cancel.load(Ordering::Acquire)
+        {
+            cancel.store(true, Ordering::Release);
         }
 
         // Shared drain deadline: stdout + stderr share a single budget.
@@ -268,8 +258,6 @@ fn spawn_streaming_monitor(
             let _ = h.join();
         }
 
-        let outcome =
-            resolve_wait_outcome(status, watchdog.map(KillWatchdog::join).unwrap_or(false));
         let (exit_code, stderr) = finalize_wait_outcome(outcome, stderr);
 
         log(
@@ -293,9 +281,11 @@ fn spawn_buffered_monitor(
     child: std::process::Child,
     timeout_ms: u32,
     writer: GuestWriter,
+    connection_cancel: Arc<AtomicBool>,
 ) {
     thread::spawn(move || {
-        let (outcome, stdout, stderr_buf) = wait_with_drain_and_timeout(child, timeout_ms);
+        let (outcome, stdout, stderr_buf) =
+            wait_with_drain_and_timeout_or_cancelled(child, timeout_ms, &connection_cancel);
         let (exit_code, stdout, stderr) = finalize_buffered_result(outcome, stdout, stderr_buf);
 
         log(

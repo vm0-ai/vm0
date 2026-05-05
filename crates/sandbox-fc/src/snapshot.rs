@@ -1,19 +1,21 @@
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::io::AsyncBufReadExt;
+use tokio::task::JoinHandle;
 use tracing::info;
 
+use nbd_cow::pool::DevicePoolHandle;
 use nbd_cow::{DestroyRetryPolicy, PooledNbdCowDevice};
 use sandbox::{SnapshotCreateConfig, SnapshotOutput, SnapshotProvider};
 
 use crate::api::{ApiClient, ApiError};
 use crate::config::SnapshotConfig;
 use crate::factory::{InvariantConfig, config_hash};
-use crate::network::{NetnsPool, NetnsPoolConfig};
+use crate::network::{NetnsLease, NetnsPool, NetnsPoolConfig};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
 use crate::prerequisites;
 use crate::process::kill_process_group;
@@ -116,6 +118,183 @@ impl SnapshotError {
     }
 }
 
+async fn prepare_snapshot_output(output: &SnapshotOutputPaths) -> Result<PathBuf, SnapshotError> {
+    // Paths inside work_dir get baked into the snapshot and are used as
+    // bind-mount targets during restore, so they must be deterministic.
+    //
+    // Only remove snapshot-specific artifacts, not the entire output directory.
+    let work = output.work_dir();
+    let _ = tokio::fs::remove_dir_all(&work).await;
+    for stale in [
+        output.snapshot(),
+        output.memory(),
+        output.cow(),
+        output.cow_bitmap(),
+    ] {
+        let _ = tokio::fs::remove_file(&stale).await;
+    }
+    tokio::fs::create_dir_all(&work).await?;
+    Ok(work)
+}
+
+async fn cleanup_existing_snapshot_sock_dir(sock_dir: &Path) {
+    if sock_dir.exists()
+        && let Err(e) = tokio::fs::remove_dir_all(sock_dir).await
+    {
+        tracing::warn!(error = %e, "failed to clean stale sock dir");
+    }
+}
+
+async fn cleanup_snapshot_sock_dir(sock_dir: &Path, warning: &'static str) {
+    if let Err(e) = tokio::fs::remove_dir_all(sock_dir).await {
+        tracing::warn!(error = %e, "{warning}");
+    }
+}
+
+fn create_sparse_cow_file(path: &Path, size: u64) -> Result<(), SnapshotError> {
+    let file = std::fs::File::create(path)
+        .map_err(|e| SnapshotError::Setup(format!("create COW file: {e}")))?;
+    file.set_len(size)
+        .map_err(|e| SnapshotError::Setup(format!("set COW file size: {e}")))?;
+    Ok(())
+}
+
+async fn cleanup_after_netns_pool_failure(
+    cow_device: PooledNbdCowDevice,
+    device_pool: &DevicePoolHandle,
+    sock_dir: &Path,
+) {
+    if let Err(cleanup_err) = cow_device
+        .destroy_with_retries(cow_destroy_retry_policy())
+        .await
+    {
+        tracing::warn!(
+            error = %cleanup_err,
+            "failed to destroy COW device after netns pool failure"
+        );
+    }
+    device_pool.cleanup().await;
+    cleanup_snapshot_sock_dir(
+        sock_dir,
+        "failed to cleanup sock dir after netns pool failure",
+    )
+    .await;
+}
+
+async fn release_snapshot_netns(
+    netns_pool: &mut NetnsPool,
+    network: &mut Option<NetnsLease>,
+    warning: &'static str,
+) {
+    if let Err(e) = netns_pool.release(network).await {
+        tracing::warn!(error = %e, "{warning}");
+    }
+}
+
+fn spawn_stdout_forwarder(child: &mut tokio::process::Child) {
+    if let Some(stdout) = child.stdout.take() {
+        // Intentionally detached: stdout has no cleanup decision input, and
+        // EOF on the child pipe ends the task after Firecracker exits.
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.is_empty() {
+                    info!(target: "firecracker", "{line}");
+                }
+            }
+        });
+    }
+}
+
+fn spawn_stderr_forwarder(
+    child: &mut tokio::process::Child,
+    stderr_buf: &StderrBuf,
+) -> Option<JoinHandle<()>> {
+    child.stderr.take().map(|stderr| {
+        let buf = Arc::clone(stderr_buf);
+        // The caller retains this handle only for the early-exit drain path.
+        // Otherwise EOF on the child pipe ends the task after Firecracker exits.
+        tokio::spawn(async move {
+            let mut lines = tokio::io::BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if !line.is_empty() {
+                    tracing::warn!(target: "firecracker", "stderr: {line}");
+                    if let Ok(mut g) = buf.lock() {
+                        if g.len() == STDERR_BUF_LINES {
+                            g.pop_front();
+                        }
+                        g.push_back(line);
+                    }
+                }
+            }
+        })
+    })
+}
+
+async fn drain_stderr_forwarder_after_spawn_exit(
+    child_status: &std::io::Result<Option<std::process::ExitStatus>>,
+    stderr_handle: Option<JoinHandle<()>>,
+) -> Option<JoinHandle<()>> {
+    if matches!(child_status, Ok(Some(status)) if !status.success())
+        && let Some(handle) = stderr_handle
+    {
+        // Child's write end of stderr is closed; wait briefly for the
+        // forwarder to finish reading so the captured buffer contains
+        // the crash's final lines.
+        let _ = tokio::time::timeout(STDERR_DRAIN_TIMEOUT, handle).await;
+        None
+    } else {
+        stderr_handle
+    }
+}
+
+async fn kill_and_reap_firecracker(child: &mut tokio::process::Child) {
+    kill_process_group(child);
+    let _ = child.wait().await;
+}
+
+async fn finalize_snapshot_cow_output(
+    cow_device: PooledNbdCowDevice,
+    output: &SnapshotOutputPaths,
+) -> Result<(), SnapshotError> {
+    let kept_cow = cow_device
+        .destroy_keep_cow_with_retries(cow_destroy_retry_policy())
+        .await
+        .map_err(|e| {
+            SnapshotError::Teardown(format!(
+                "destroy_keep_cow exhausted retries; device abandoned, snapshot aborted (last error: {e})"
+            ))
+        })?;
+    // destroy_keep_cow succeeded, so save_bitmap succeeded — the bitmap
+    // sidecar is on disk. Rename is unconditional: if the sidecar is
+    // missing we want to fail loudly, not silently produce a
+    // bitmap-less snapshot.
+    tokio::fs::rename(&kept_cow.bitmap_file, &output.cow_bitmap()).await?;
+    tokio::fs::rename(&kept_cow.cow_file, &output.cow()).await?;
+    // Persist the output directory so all four final dir entries
+    // (snapshot.bin and memory.bin written by Firecracker via the API,
+    // cow.img and cow.img.bitmap just renamed in) are durable. Without
+    // this fsync, rename(2) and Firecracker's creates return once the
+    // update is journaled but the entry may not hit disk until the FS's
+    // next commit (~5s on ext4 data=ordered). A crash in that window can
+    // leave is_complete() returning true while one or more files are
+    // missing or rolled back — worst case, cow.img present but
+    // cow.img.bitmap absent, which silently corrupts restore reads
+    // (same failure class as #9794, one layer up).
+    let dir = tokio::fs::File::open(output.dir()).await?;
+    dir.sync_all().await?;
+    Ok(())
+}
+
+async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevice) {
+    if let Err(e) = cow_device
+        .destroy_with_retries(cow_destroy_retry_policy())
+        .await
+    {
+        tracing::warn!(error = %e, "failed to destroy COW device after snapshot error");
+    }
+}
+
 /// Create a snapshot by booting a fresh VM, configuring it, and capturing state.
 ///
 /// This is the Rust equivalent of the TS `commands/snapshot.ts` workflow:
@@ -149,34 +328,12 @@ pub async fn create_snapshot(
     let output = SnapshotOutputPaths::new(config.output_dir.clone());
 
     // 1. Clean stale snapshot output from a previous failed attempt and create work dir.
-    //    Paths inside work_dir get baked into the snapshot and are used
-    //    as bind-mount targets during restore, so they must be deterministic.
-    //
-    //    Only remove snapshot-specific artifacts (work/, snapshot.bin, memory.bin,
-    //    cow.img) — not the entire output directory.
-    let work = output.work_dir();
-
-    // Remove stale snapshot artifacts individually (not rm -rf on the
-    // entire output directory) — work dir tree first, then individual files.
-    let _ = tokio::fs::remove_dir_all(&output.work_dir()).await;
-    for stale in [
-        output.snapshot(),
-        output.memory(),
-        output.cow(),
-        output.cow_bitmap(),
-    ] {
-        let _ = tokio::fs::remove_file(&stale).await;
-    }
-    tokio::fs::create_dir_all(&work).await?;
+    let work = prepare_snapshot_output(&output).await?;
 
     // Socket directory under /run, keyed by config id so concurrent builds don't collide.
     let runtime_paths = RuntimePaths::new();
     let sock_dir = runtime_paths.sock_dir(&config.id);
-    if sock_dir.exists()
-        && let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await
-    {
-        tracing::warn!(error = %e, "failed to clean stale sock dir");
-    }
+    cleanup_existing_snapshot_sock_dir(&sock_dir).await;
 
     let paths = SandboxPaths::new(work);
     let sock_paths = SockPaths::new(sock_dir.clone());
@@ -202,12 +359,7 @@ pub async fn create_snapshot(
         .len();
 
     // Create sparse COW file.
-    {
-        let f = std::fs::File::create(&cow_file)
-            .map_err(|e| SnapshotError::Setup(format!("create COW file: {e}")))?;
-        f.set_len(base_size)
-            .map_err(|e| SnapshotError::Setup(format!("set COW file size: {e}")))?;
-    }
+    create_sparse_cow_file(&cow_file, base_size)?;
 
     let device_pool =
         nbd_cow::pool::DevicePoolHandle::new(nbd_cow::pool::DevicePoolConfig::default());
@@ -223,22 +375,7 @@ pub async fn create_snapshot(
     let mut netns_pool = match NetnsPool::create_checked(netns_config).await {
         Ok(pool) => pool,
         Err(e) => {
-            if let Err(cleanup_err) = cow_device
-                .destroy_with_retries(cow_destroy_retry_policy())
-                .await
-            {
-                tracing::warn!(
-                    error = %cleanup_err,
-                    "failed to destroy COW device after netns pool failure"
-                );
-            }
-            device_pool.cleanup().await;
-            if let Err(cleanup_err) = tokio::fs::remove_dir_all(&sock_dir).await {
-                tracing::warn!(
-                    error = %cleanup_err,
-                    "failed to cleanup sock dir after netns pool failure"
-                );
-            }
+            cleanup_after_netns_pool_failure(cow_device, &device_pool, &sock_dir).await;
             return Err(SnapshotError::Setup(format!("netns pool: {e}")));
         }
     };
@@ -259,10 +396,7 @@ pub async fn create_snapshot(
         tracing::warn!(error = %e, "failed to cleanup netns pool");
     }
 
-    // Cleanup runtime socket directory.
-    if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
-        tracing::warn!(error = %e, "failed to cleanup sock dir");
-    }
+    cleanup_snapshot_sock_dir(&sock_dir, "failed to cleanup sock dir").await;
 
     result
 }
@@ -430,9 +564,12 @@ async fn run_snapshot_workflow(
             // `netns_pool.cleanup()` (called by the outer `create_snapshot`)
             // only drains queued entries, not already-acquired ones.
             let mut network = Some(network);
-            if let Err(re) = netns_pool.release(&mut network).await {
-                tracing::warn!(error = %re, "failed to release netns after spawn failure");
-            }
+            release_snapshot_netns(
+                netns_pool,
+                &mut network,
+                "failed to release netns after spawn failure",
+            )
+            .await;
             destroy_snapshot_cow_after_error("spawn firecracker", cow_device).await;
             return Err(SnapshotError::Process(format!("spawn firecracker: {e}")));
         }
@@ -443,38 +580,13 @@ async fn run_snapshot_workflow(
     // spawn-chain exit (mount failure inside unshare bash, etc.) can be
     // reported with its real cause instead of just an API timeout.
     let stderr_buf: StderrBuf = Arc::new(Mutex::new(VecDeque::with_capacity(STDERR_BUF_LINES)));
-    if let Some(stdout) = child.stdout.take() {
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    info!(target: "firecracker", "{line}");
-                }
-            }
-        });
-    }
+    spawn_stdout_forwarder(&mut child);
     // The stderr forwarder handle is retained so that, on detected early
     // exit, we can wait a bounded time for it to drain buffered lines
     // before snapshotting the ring buffer for the error message. Without
     // this join, the most informative lines (mount: bind failed, etc.)
     // can race the `try_wait` observation and be missed.
-    let stderr_handle = child.stderr.take().map(|stderr| {
-        let buf = Arc::clone(&stderr_buf);
-        tokio::spawn(async move {
-            let mut lines = tokio::io::BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    tracing::warn!(target: "firecracker", "stderr: {line}");
-                    if let Ok(mut g) = buf.lock() {
-                        if g.len() == STDERR_BUF_LINES {
-                            g.pop_front();
-                        }
-                        g.push_back(line);
-                    }
-                }
-            }
-        })
-    });
+    let stderr_handle = spawn_stderr_forwarder(&mut child, &stderr_buf);
 
     // Guard: ensure process and NBD cleanup on any exit path.
     let result = run_with_firecracker(config, paths, sock_paths, output).await;
@@ -484,28 +596,19 @@ async fn run_snapshot_workflow(
     // issue" (try_wait → None) from "firecracker already died, error is
     // the downstream symptom of that" (try_wait → Some(non-zero)).
     let child_status = child.try_wait();
-    if matches!(&child_status, Ok(Some(status)) if !status.success())
-        && let Some(handle) = stderr_handle
-    {
-        // Child's write end of stderr is closed; wait briefly for the
-        // forwarder to finish reading so the captured buffer contains
-        // the crash's final lines.
-        let _ = tokio::time::timeout(STDERR_DRAIN_TIMEOUT, handle).await;
-    }
+    let _stderr_handle =
+        drain_stderr_forwarder_after_spawn_exit(&child_status, stderr_handle).await;
     let result = rewrap_spawn_chain_exit(result, child_status, &stderr_buf);
 
     // Kill Firecracker first — it holds the NBD device fd open.
-    kill_process_group(&child);
-    let _ = child.wait().await;
+    kill_and_reap_firecracker(&mut child).await;
 
     // Release network namespace back to the pool before teardown.
     // Without this, the namespace resources (veth, iptables) leak
     // because cleanup() only drains pool-owned namespaces, not checked-out
     // leases.
     let mut network = Some(network);
-    if let Err(e) = netns_pool.release(&mut network).await {
-        tracing::warn!(error = %e, "failed to release netns");
-    }
+    release_snapshot_netns(netns_pool, &mut network, "failed to release netns").await;
 
     // Tear down NBD COW device.
     //
@@ -514,37 +617,9 @@ async fn run_snapshot_workflow(
     // released. The COW-device bind mount lived inside the FC process's
     // private mount namespace and was auto-cleaned when the process exited.
     if result.is_ok() {
-        let kept_cow = cow_device
-            .destroy_keep_cow_with_retries(cow_destroy_retry_policy())
-            .await
-            .map_err(|e| {
-                SnapshotError::Teardown(format!(
-                    "destroy_keep_cow exhausted retries; device abandoned, snapshot aborted (last error: {e})"
-                ))
-            })?;
-        // destroy_keep_cow succeeded, so save_bitmap succeeded — the bitmap
-        // sidecar is on disk. Rename is unconditional: if the sidecar is
-        // missing we want to fail loudly, not silently produce a
-        // bitmap-less snapshot.
-        tokio::fs::rename(&kept_cow.bitmap_file, &output.cow_bitmap()).await?;
-        tokio::fs::rename(&kept_cow.cow_file, &output.cow()).await?;
-        // Persist the output directory so all four final dir entries
-        // (snapshot.bin and memory.bin written by Firecracker via the API,
-        // cow.img and cow.img.bitmap just renamed in) are durable. Without
-        // this fsync, rename(2) and Firecracker's creates return once the
-        // update is journaled but the entry may not hit disk until the FS's
-        // next commit (~5s on ext4 data=ordered). A crash in that window can
-        // leave is_complete() returning true while one or more files are
-        // missing or rolled back — worst case, cow.img present but
-        // cow.img.bitmap absent, which silently corrupts restore reads
-        // (same failure class as #9794, one layer up).
-        let dir = tokio::fs::File::open(output.dir()).await?;
-        dir.sync_all().await?;
-    } else if let Err(e) = cow_device
-        .destroy_with_retries(cow_destroy_retry_policy())
-        .await
-    {
-        tracing::warn!(error = %e, "failed to destroy COW device after snapshot error");
+        finalize_snapshot_cow_output(cow_device, output).await?;
+    } else {
+        destroy_snapshot_cow_after_workflow_error(cow_device).await;
     }
 
     result
@@ -704,6 +779,129 @@ impl SnapshotProvider for FirecrackerSnapshotProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn prepare_snapshot_output_removes_snapshot_artifacts_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().to_path_buf());
+        let stale_work_file = output.work_dir().join("nested").join("stale.txt");
+        let unrelated = dir.path().join("keep.txt");
+
+        tokio::fs::create_dir_all(stale_work_file.parent().expect("parent"))
+            .await
+            .expect("create stale work dir");
+        tokio::fs::write(&stale_work_file, b"stale")
+            .await
+            .expect("write stale work file");
+        tokio::fs::write(&unrelated, b"keep")
+            .await
+            .expect("write unrelated file");
+        for artifact in [
+            output.snapshot(),
+            output.memory(),
+            output.cow(),
+            output.cow_bitmap(),
+        ] {
+            tokio::fs::write(&artifact, b"stale")
+                .await
+                .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));
+        }
+
+        let work = prepare_snapshot_output(&output)
+            .await
+            .expect("prepare output");
+
+        assert_eq!(work, output.work_dir());
+        assert!(
+            tokio::fs::try_exists(output.work_dir()).await.unwrap(),
+            "work dir should be recreated"
+        );
+        assert!(
+            !tokio::fs::try_exists(stale_work_file).await.unwrap(),
+            "stale work contents should be removed"
+        );
+        for artifact in [
+            output.snapshot(),
+            output.memory(),
+            output.cow(),
+            output.cow_bitmap(),
+        ] {
+            assert!(
+                !tokio::fs::try_exists(&artifact).await.unwrap(),
+                "stale artifact should be removed: {}",
+                artifact.display()
+            );
+        }
+        assert!(
+            tokio::fs::try_exists(unrelated).await.unwrap(),
+            "non-snapshot output-dir contents should be preserved"
+        );
+    }
+
+    #[tokio::test]
+    async fn cleanup_existing_snapshot_sock_dir_removes_existing_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let sock_dir = dir.path().join("sock");
+        let stale_socket = sock_dir.join("api.sock");
+
+        tokio::fs::create_dir_all(&sock_dir)
+            .await
+            .expect("create sock dir");
+        tokio::fs::write(&stale_socket, b"stale")
+            .await
+            .expect("write stale socket placeholder");
+
+        cleanup_existing_snapshot_sock_dir(&sock_dir).await;
+
+        assert!(
+            !tokio::fs::try_exists(&sock_dir).await.unwrap(),
+            "stale socket directory should be removed"
+        );
+
+        cleanup_existing_snapshot_sock_dir(&sock_dir).await;
+    }
+
+    #[tokio::test]
+    async fn drain_stderr_forwarder_after_spawn_exit_waits_for_failed_status() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let drained = Arc::new(AtomicBool::new(false));
+        let drained_for_task = Arc::clone(&drained);
+        let handle = tokio::spawn(async move {
+            drained_for_task.store(true, Ordering::SeqCst);
+        });
+
+        let returned =
+            drain_stderr_forwarder_after_spawn_exit(&Ok(Some(exit_status_nonzero())), Some(handle))
+                .await;
+
+        assert!(returned.is_none());
+        assert!(drained.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn drain_stderr_forwarder_after_spawn_exit_preserves_other_handles() {
+        async fn assert_handle_preserved(
+            child_status: std::io::Result<Option<std::process::ExitStatus>>,
+        ) {
+            let handle = tokio::spawn(std::future::pending::<()>());
+
+            let returned = drain_stderr_forwarder_after_spawn_exit(&child_status, Some(handle))
+                .await
+                .expect("handle should be preserved");
+
+            assert!(
+                !returned.is_finished(),
+                "helper should not join or abort the forwarder"
+            );
+            returned.abort();
+            let _ = returned.await;
+        }
+
+        assert_handle_preserved(Ok(None)).await;
+        assert_handle_preserved(Ok(Some(exit_status_zero()))).await;
+        assert_handle_preserved(Err(std::io::Error::from(std::io::ErrorKind::Interrupted))).await;
+    }
 
     /// Empty stderr buffer should produce a sentinel string rather than
     /// an empty error body. Verifies the early-exit error path is

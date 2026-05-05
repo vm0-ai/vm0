@@ -1,3 +1,8 @@
+import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
+import { Axiom } from "@axiomhq/js";
+
+import { formatMessage, extractFields } from "@vm0/core";
+
 import { env } from "./env";
 import { singleton } from "./singleton";
 
@@ -108,6 +113,63 @@ function writeError(...args: unknown[]): void {
   console.error(...args);
 }
 
+// ── Axiom integration ────────────────────────────────────────────────────
+
+const getAxiomLogger = singleton((): AxiomLogger | null => {
+  const token = env("AXIOM_TOKEN_TELEMETRY");
+  if (!token) {
+    return null;
+  }
+
+  const axiom = new Axiom({ token });
+  return new AxiomLogger({
+    transports: [
+      new AxiomJSTransport({
+        axiom,
+        dataset: `vm0-web-logs-${env("AXIOM_DATASET_SUFFIX")}`,
+      }),
+    ],
+  });
+});
+
+function logToAxiom(level: Level, name: string, args: unknown[]): void {
+  const alog = getAxiomLogger();
+  if (!alog) {
+    return;
+  }
+
+  const message = formatMessage(args);
+  const fields = { ...extractFields(args), context: name, source: "api" };
+
+  switch (level) {
+    case Level.Debug: {
+      alog.debug(message, fields);
+      break;
+    }
+    case Level.Info: {
+      alog.info(message, fields);
+      break;
+    }
+    case Level.Warn: {
+      alog.warn(message, fields);
+      break;
+    }
+    case Level.Error:
+    case Level.Fatal: {
+      alog.error(message, fields);
+      break;
+    }
+  }
+}
+
+export async function flushLogs(): Promise<void> {
+  await getAxiomLogger()
+    ?.flush()
+    ?.catch(() => {});
+}
+
+// ── Logger creation ──────────────────────────────────────────────────────
+
 function createLogger(name: string): Logger {
   const loggerInstance: Logger = {
     level: getInitialLevel(name),
@@ -120,26 +182,31 @@ function createLogger(name: string): Logger {
       if (loggerInstance.shouldLog(Level.Debug)) {
         writeLog(...formatArgs(Level.Debug, name, args));
       }
+      logToAxiom(Level.Debug, name, args);
     },
     info: (...args: unknown[]) => {
       if (loggerInstance.shouldLog(Level.Info)) {
         writeLog(...formatArgs(Level.Info, name, args));
       }
+      logToAxiom(Level.Info, name, args);
     },
     warn: (...args: unknown[]) => {
       if (loggerInstance.shouldLog(Level.Warn)) {
         writeLog(...formatArgs(Level.Warn, name, args));
       }
+      logToAxiom(Level.Warn, name, args);
     },
     error: (...args: unknown[]) => {
       if (loggerInstance.shouldLog(Level.Error)) {
         writeError(...formatArgs(Level.Error, name, args));
       }
+      logToAxiom(Level.Error, name, args);
     },
     fatal: (...args: unknown[]) => {
       if (loggerInstance.shouldLog(Level.Fatal)) {
         writeError(...formatArgs(Level.Fatal, name, args));
       }
+      logToAxiom(Level.Fatal, name, args);
     },
   };
 
@@ -156,4 +223,10 @@ export function logger(name: string): Logger {
   const loggerInstance = createLogger(name);
   registry.set(name, loggerInstance);
   return loggerInstance;
+}
+
+// eslint-disable-next-line @typescript-eslint/naming-convention
+export function __resetForTest(): void {
+  getAxiomLogger.reset();
+  loggerRegistry.reset();
 }

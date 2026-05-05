@@ -1,4 +1,3 @@
-use std::io;
 use std::process::{Child, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
@@ -16,74 +15,23 @@ pub(crate) const EXIT_CODE_TIMEOUT: i32 = 124;
 /// `send_process_exit()` anyway to prevent indefinite hangs when orphaned
 /// child processes hold pipe fds open.
 pub(crate) const DRAIN_DEADLINE_SECS: u64 = 5;
+const WAIT_CANCEL_POLL_INTERVAL_MS: u64 = 50;
 
-/// Outcome of [`wait_with_kill_timeout`].
+/// Outcome of child wait helpers.
 pub(crate) enum WaitOutcome {
     /// Child exited with this status.
     Exited(ExitStatus),
-    /// Child was killed by the timeout watchdog.
+    /// Child was killed after its timeout elapsed.
     TimedOut,
+    /// Child was killed because its owning connection was cancelled.
+    Cancelled,
     /// `wait()` itself failed; carries the error message.
     WaitFailed(String),
 }
 
-pub(crate) fn resolve_wait_outcome(
-    status: io::Result<ExitStatus>,
-    killed_by_timeout: bool,
-) -> WaitOutcome {
-    match status {
-        // Timeout is a deadline verdict: if the watchdog fired and the kill
-        // syscall succeeded, the child was not observed as complete before the
-        // deadline. Preserve that timeout verdict even if wait() races back
-        // with a status around the same boundary.
-        Ok(_) if killed_by_timeout => WaitOutcome::TimedOut,
-        Ok(s) => WaitOutcome::Exited(s),
-        // A real wait() failure is more actionable than the watchdog verdict.
-        // Do not hide wait/reap errors behind timeout classification.
-        Err(e) => WaitOutcome::WaitFailed(e.to_string()),
-    }
-}
-
-/// Watchdog that kills a child process tree if it is not stood down before
-/// `timeout` elapses.
-#[must_use = "watchdogs must be stood down and joined so timeout verdicts are observed"]
-pub(crate) struct KillWatchdog {
-    done_tx: Option<mpsc::Sender<()>>,
-    handle: thread::JoinHandle<bool>,
-}
-
-impl KillWatchdog {
-    pub(crate) fn spawn(child_id: u32, timeout: Duration) -> Self {
-        let (done_tx, done_rx) = mpsc::channel::<()>();
-        let handle = thread::spawn(move || -> bool {
-            if done_rx.recv_timeout(timeout).is_err() {
-                // SAFETY: child_id is a valid PID from Command::spawn.
-                return unsafe { kill_process_tree(child_id) };
-            }
-            false
-        });
-
-        Self {
-            done_tx: Some(done_tx),
-            handle,
-        }
-    }
-
-    /// Stand the watchdog down without joining it yet.
-    ///
-    /// This lets callers preserve existing timing where the child has exited,
-    /// the watchdog is disarmed immediately, and the join verdict is collected
-    /// after other cleanup work.
-    pub(crate) fn stand_down(&mut self) {
-        if let Some(done_tx) = self.done_tx.take() {
-            let _ = done_tx.send(());
-        }
-    }
-
-    pub(crate) fn join(mut self) -> bool {
-        self.stand_down();
-        self.handle.join().unwrap_or(false)
-    }
+enum KillReason {
+    Timeout,
+    Cancelled,
 }
 
 /// Wait for drain workers to complete within the shared drain deadline, then
@@ -118,19 +66,75 @@ pub(crate) fn await_drain_deadline(
 /// deadlock on its next write while we wait.
 pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitOutcome {
     if timeout_ms == 0 {
-        return resolve_wait_outcome(child.wait(), false);
+        return match child.wait() {
+            Ok(status) => WaitOutcome::Exited(status),
+            Err(e) => WaitOutcome::WaitFailed(e.to_string()),
+        };
     }
 
-    let timeout = Duration::from_millis(u64::from(timeout_ms));
+    let cancel = AtomicBool::new(false);
+    wait_with_kill_timeout_or_cancelled(child, timeout_ms, &cancel)
+}
+
+/// Wait for `child` to exit, killing and reaping it when either the configured
+/// timeout expires or `cancel` is signalled.
+///
+/// `timeout_ms == 0` still means "no timeout"; cancellation remains active so
+/// work tied to a disconnected host connection cannot outlive that connection
+/// indefinitely.
+pub(crate) fn wait_with_kill_timeout_or_cancelled(
+    mut child: Child,
+    timeout_ms: u32,
+    cancel: &AtomicBool,
+) -> WaitOutcome {
     let child_id = child.id();
+    let deadline = if timeout_ms > 0 {
+        let now = Instant::now();
+        Some(
+            now.checked_add(Duration::from_millis(u64::from(timeout_ms)))
+                .unwrap_or(now),
+        )
+    } else {
+        None
+    };
+    let poll_interval = Duration::from_millis(WAIT_CANCEL_POLL_INTERVAL_MS);
 
-    // Watchdog: kills the process tree if the child does not report exit
-    // before the timeout. Its return value is the timeout verdict.
-    let watchdog = KillWatchdog::spawn(child_id, timeout);
-    let status = child.wait();
-    let killed_by_timeout = watchdog.join();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return WaitOutcome::Exited(status),
+            Ok(None) => {}
+            Err(e) => return WaitOutcome::WaitFailed(e.to_string()),
+        }
 
-    resolve_wait_outcome(status, killed_by_timeout)
+        let now = Instant::now();
+        let reason = if deadline.is_some_and(|deadline| now >= deadline) {
+            Some(KillReason::Timeout)
+        } else if cancel.load(Ordering::Acquire) {
+            Some(KillReason::Cancelled)
+        } else {
+            None
+        };
+
+        if let Some(reason) = reason {
+            // SAFETY: child_id is a valid PID from Command::spawn.
+            let killed = unsafe { kill_process_tree(child_id) } || child.kill().is_ok();
+            return match child.wait() {
+                Err(e) => WaitOutcome::WaitFailed(e.to_string()),
+                Ok(status) if !killed => WaitOutcome::Exited(status),
+                Ok(_) => match reason {
+                    KillReason::Timeout => WaitOutcome::TimedOut,
+                    KillReason::Cancelled => WaitOutcome::Cancelled,
+                },
+            };
+        }
+
+        let sleep_for = deadline
+            .map(|deadline| deadline.saturating_duration_since(now).min(poll_interval))
+            .unwrap_or(poll_interval);
+        if !sleep_for.is_zero() {
+            thread::sleep(sleep_for);
+        }
+    }
 }
 
 /// Coordinate child wait + concurrent stdout/stderr drain + timeout-driven kill.
@@ -144,9 +148,10 @@ pub(crate) fn wait_with_kill_timeout(mut child: Child, timeout_ms: u32) -> WaitO
 /// which drops the read end of the pipe. The orphan's next write then sees
 /// EPIPE / SIGPIPE, so neither kernel pipe buffers nor our heap accumulate
 /// further bytes.
-pub(crate) fn wait_with_drain_and_timeout(
+pub(crate) fn wait_with_drain_and_timeout_or_cancelled(
     mut child: Child,
     timeout_ms: u32,
+    external_cancel: &AtomicBool,
 ) -> (WaitOutcome, Vec<u8>, Vec<u8>) {
     // Defensive: if either pipe is missing the caller broke the
     // `spawn_with_pipes` invariant. Reap the child before returning so we
@@ -199,7 +204,10 @@ pub(crate) fn wait_with_drain_and_timeout(
     };
     drop(done_tx); // so recv returns Disconnected if both drain threads die
 
-    let outcome = wait_with_kill_timeout(child, timeout_ms);
+    let outcome = wait_with_kill_timeout_or_cancelled(child, timeout_ms, external_cancel);
+    if matches!(outcome, WaitOutcome::Cancelled) || external_cancel.load(Ordering::Acquire) {
+        cancel.store(true, Ordering::Release);
+    }
 
     let _ = await_drain_deadline(&done_rx, 2, &cancel);
 
@@ -215,6 +223,7 @@ pub(crate) fn wait_with_drain_and_timeout(
 pub(crate) fn finalize_wait_outcome(outcome: WaitOutcome, stderr_buf: Vec<u8>) -> (i32, Vec<u8>) {
     match outcome {
         WaitOutcome::TimedOut => (EXIT_CODE_TIMEOUT, b"Timeout".to_vec()),
+        WaitOutcome::Cancelled => (1, b"Connection cancelled".to_vec()),
         WaitOutcome::Exited(s) => (extract_exit_code(s), stderr_buf),
         WaitOutcome::WaitFailed(msg) => (1, format!("Failed to wait: {msg}").into_bytes()),
     }
@@ -239,42 +248,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_wait_outcome_keeps_status_when_watchdog_did_not_fire() {
-        match resolve_wait_outcome(Ok(successful_status()), false) {
-            WaitOutcome::Exited(status) => assert_eq!(extract_exit_code(status), 0),
-            WaitOutcome::TimedOut => panic!("watchdog did not fire"),
-            WaitOutcome::WaitFailed(msg) => panic!("wait unexpectedly failed: {msg}"),
-        }
-    }
-
-    #[test]
-    fn resolve_wait_outcome_timeout_wins_over_observed_status() {
-        match resolve_wait_outcome(Ok(successful_status()), true) {
-            WaitOutcome::TimedOut => {}
-            WaitOutcome::Exited(_) => panic!("timeout should win over boundary status"),
-            WaitOutcome::WaitFailed(msg) => panic!("wait unexpectedly failed: {msg}"),
-        }
-    }
-
-    #[test]
-    fn resolve_wait_outcome_preserves_wait_error_without_timeout() {
-        match resolve_wait_outcome(Err(io::Error::other("wait failed")), false) {
-            WaitOutcome::WaitFailed(msg) => assert_eq!(msg, "wait failed"),
-            WaitOutcome::Exited(_) => panic!("wait error should not produce status"),
-            WaitOutcome::TimedOut => panic!("watchdog did not fire"),
-        }
-    }
-
-    #[test]
-    fn resolve_wait_outcome_preserves_wait_error_when_watchdog_fired() {
-        match resolve_wait_outcome(Err(io::Error::other("wait failed")), true) {
-            WaitOutcome::WaitFailed(msg) => assert_eq!(msg, "wait failed"),
-            WaitOutcome::Exited(_) => panic!("wait error should not produce status"),
-            WaitOutcome::TimedOut => panic!("wait error should not be hidden by timeout"),
-        }
-    }
-
-    #[test]
     fn finalize_wait_outcome_preserves_exit_status_and_stderr() {
         let stderr = b"stderr bytes".to_vec();
 
@@ -291,6 +264,14 @@ mod tests {
 
         assert_eq!(code, EXIT_CODE_TIMEOUT);
         assert_eq!(stderr, b"Timeout".to_vec());
+    }
+
+    #[test]
+    fn finalize_wait_outcome_cancelled_reports_connection_cancelled() {
+        let (code, stderr) = finalize_wait_outcome(WaitOutcome::Cancelled, b"real stderr".to_vec());
+
+        assert_eq!(code, 1);
+        assert_eq!(stderr, b"Connection cancelled".to_vec());
     }
 
     #[test]

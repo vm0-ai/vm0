@@ -84,7 +84,7 @@ pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
         let err = std::io::Error::last_os_error();
         log(
             "WARN",
-            &format!("timeout kill(-{child_id}, SIGKILL) failed: {err}"),
+            &format!("process-tree kill(-{child_id}, SIGKILL) failed: {err}"),
         );
         return false;
     }
@@ -101,7 +101,7 @@ pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
             let err = std::io::Error::last_os_error();
             log(
                 "WARN",
-                &format!("timeout kill(-{pgid}, SIGKILL) for su child group failed: {err}"),
+                &format!("process-tree kill(-{pgid}, SIGKILL) for su child group failed: {err}"),
             );
         }
     }

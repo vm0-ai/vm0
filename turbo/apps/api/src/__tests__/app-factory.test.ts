@@ -2,12 +2,29 @@ import { initContract } from "@ts-rest/core";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
-
+import { vi } from "vitest";
 import { createApp } from "../app-factory";
 import { mockEnv } from "../lib/env";
 import { ROUTES } from "../signals/route";
 import { useUndiciMock } from "./setup";
 import { accept, setupApp, testContext } from "./test-helpers";
+
+// eslint-disable-next-line api/no-test-vi-mocks
+const { mockFlushLogs } = vi.hoisted(() => {
+  return {
+    // eslint-disable-next-line api/no-test-vi-mocks
+    mockFlushLogs: vi.fn(),
+  };
+});
+
+mockFlushLogs.mockResolvedValue(undefined);
+
+// eslint-disable-next-line api/no-test-vi-mocks
+vi.mock("../lib/log", async () => {
+  const actual =
+    await vi.importActual<typeof import("../lib/log")>("../lib/log");
+  return { ...actual, flushLogs: mockFlushLogs };
+});
 
 function headerValue(headers: unknown, name: string): string | undefined {
   if (!headers) {
@@ -430,6 +447,23 @@ describe("createApp", () => {
 
       expect(response.headers.get("access-control-allow-origin")).toBe(
         "https://app.vm7.ai:8443",
+      );
+    });
+  });
+
+  describe("flush middleware", () => {
+    it("calls flushLogs after a successful response", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", { method: "GET" });
+
+      expect(response.status).toBe(200);
+      // flushLogs is called via waitUntil after the response, so we need to
+      // wait a tick for the async work to be scheduled.
+      await vi.waitFor(
+        () => {
+          expect(mockFlushLogs).toHaveBeenCalledWith();
+        },
+        { timeout: 5000 },
       );
     });
   });

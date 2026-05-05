@@ -26,8 +26,21 @@ describe("use cases data", () => {
 type MessagesShape = {
   useCases: {
     content: Record<string, unknown>;
+    [key: string]: unknown;
   };
 };
+
+const SHARED_HEADING_KEYS = [
+  "whatZeroDelivers",
+  "whatTheProblemIs",
+  "howZeroFixesIt",
+  "stepConnectYourTools",
+  "stepAskZero",
+  "stepTakeItFurther",
+  "tipsForBetterResults",
+  "connectLabel",
+  "tryIt",
+];
 
 const messagesByLocale: Record<Locale, MessagesShape> = {
   en: enMessages,
@@ -41,18 +54,23 @@ const messagesByLocale: Record<Locale, MessagesShape> = {
 // locale crashed SSR in production (issue #10059, Sentry WEB-2F) — this test
 // turns that class of content drift into a red CI check.
 describe("use cases translation coverage", () => {
+  it("every locale has shared section heading keys", () => {
+    const problems: string[] = [];
+    for (const locale of locales) {
+      const uc = messagesByLocale[locale].useCases;
+      for (const key of SHARED_HEADING_KEYS) {
+        const value = (uc as Record<string, unknown>)[key];
+        if (typeof value !== "string" || value.length === 0) {
+          problems.push(`${locale} :: shared key ${key} missing or empty`);
+        }
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+
   it("every (slug, locale) has the runtime-required translation shape", () => {
     const problems: string[] = [];
     const STRING_KEYS = ["title", "description", "scenario", "timeSaved"];
-    const HEADING_KEYS = [
-      "scenario",
-      "prompt",
-      "steps",
-      "nextActions",
-      "integrations",
-      "tips",
-    ];
-
     for (const locale of locales) {
       const content = messagesByLocale[locale].useCases.content;
 
@@ -72,23 +90,6 @@ describe("use cases translation coverage", () => {
             problems.push(
               `${prefix} :: ${key} is not a non-empty string (${typeof value})`,
             );
-          }
-        }
-
-        const headings = e.headings;
-        if (!headings || typeof headings !== "object") {
-          problems.push(
-            `${prefix} :: headings is not an object (${typeof headings})`,
-          );
-        } else {
-          const h = headings as Record<string, unknown>;
-          for (const hKey of HEADING_KEYS) {
-            const value = h[hKey];
-            if (typeof value !== "string" || value.length === 0) {
-              problems.push(
-                `${prefix} :: headings.${hKey} is not a non-empty string (${typeof value})`,
-              );
-            }
           }
         }
 

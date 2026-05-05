@@ -354,6 +354,77 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Screenshot carousel
+   --------------------------------------------------------------------------- */
+
+.uc-carousel {
+  position: relative;
+}
+
+.uc-carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.5;
+  transition:
+    opacity 0.2s,
+    background 0.2s;
+  z-index: 2;
+}
+
+.uc-carousel-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.uc-carousel-btn--left {
+  left: 12px;
+}
+
+.uc-carousel-btn--right {
+  right: 12px;
+}
+
+.uc-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.uc-carousel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: hsl(var(--gray-300));
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.uc-carousel-dot:hover {
+  background: hsl(var(--gray-500));
+}
+
+.uc-carousel-dot--active,
+.uc-carousel-dot--active:hover {
+  background: #ed4e01;
+}
+
+/* ---------------------------------------------------------------------------
    Detail sections
    --------------------------------------------------------------------------- */
 

@@ -7,6 +7,13 @@ export interface ApiTestMocks {
   readonly axiom: {
     readonly query: AsyncMock;
   };
+  readonly axiomLogging: {
+    readonly debug: SyncMock;
+    readonly info: SyncMock;
+    readonly warn: SyncMock;
+    readonly error: SyncMock;
+    readonly flush: AsyncMock;
+  };
   readonly clerk: {
     readonly authenticateRequest: AsyncMock;
     readonly organizations: {
@@ -93,8 +100,17 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     getFile: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
   };
 
+  const axiomLogging = {
+    debug: vi.fn<(...args: unknown[]) => void>(),
+    info: vi.fn<(...args: unknown[]) => void>(),
+    warn: vi.fn<(...args: unknown[]) => void>(),
+    error: vi.fn<(...args: unknown[]) => void>(),
+    flush: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+  };
+
   return {
     axiom,
+    axiomLogging,
     clerk,
     s3: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -212,12 +228,42 @@ vi.mock("../signals/external/axiom", () => {
   };
 });
 
+vi.mock("@axiomhq/js", () => {
+  return {
+    Axiom: vi.fn(function () {
+      return {};
+    }),
+  };
+});
+
+vi.mock("@axiomhq/logging", () => {
+  return {
+    Logger: vi.fn(function () {
+      return {
+        debug: apiTestMocks.axiomLogging.debug,
+        info: apiTestMocks.axiomLogging.info,
+        warn: apiTestMocks.axiomLogging.warn,
+        error: apiTestMocks.axiomLogging.error,
+        flush: apiTestMocks.axiomLogging.flush,
+      };
+    }),
+    AxiomJSTransport: vi.fn(function () {
+      return {};
+    }),
+  };
+});
+
 export function getApiTestMocks(): ApiTestMocks {
   return apiTestMocks;
 }
 
 export function resetApiTestMocks(): void {
   apiTestMocks.axiom.query.mockReset();
+  apiTestMocks.axiomLogging.debug.mockReset();
+  apiTestMocks.axiomLogging.info.mockReset();
+  apiTestMocks.axiomLogging.warn.mockReset();
+  apiTestMocks.axiomLogging.error.mockReset();
+  apiTestMocks.axiomLogging.flush.mockReset();
   apiTestMocks.clerk.authenticateRequest.mockReset();
   apiTestMocks.clerk.organizations.getOrganization.mockReset();
   apiTestMocks.clerk.organizations.getOrganizationDomainList.mockReset();

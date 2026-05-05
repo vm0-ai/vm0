@@ -343,15 +343,6 @@
         "title": "リリースPRを、チームのスケジュールに合わせて自動マージ追いかける必要はもうない",
         "description": "いつリリースPRを出すか、どのPRはスキップするか。Zeroに一度伝えておくだけ。チームのペースに合わせてチェックを走らせ、リスクのあるPRはスキップ、残りは自動でマージします - チームが「人力cron」から解放されます。",
         "timeSaved": "1リリースあたり約15分短縮",
-        "headings": {
-          "scenario": "リリースPRを追い回すと、オンコール担当の集中力が削られる理由",
-          "prompt": "リリースPRの出荷をZeroに頼む方法",
-          "steps": "ZeroがリリースPRをマージする流れ",
-          "nextActions": "ポリシーを強化する、リスクのあるものはエスカレーション、または頻度を上げる",
-          "integrations": "必要なインテグレーション：GitHub と Slack",
-          "tips": "自律的なリリースマージのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "mainブランチに一定数のコミットが溜まるたび、新しいリリースPRが開かれます - ほとんどのチームでは1日に1〜2回。誰かが diff を確認し、CI が緑かチェックし、changelog に怖いものが混ざっていないか判断し、Merge を押し、そのあとデプロイを見守る必要があります。その人が会議中だったり、寝ていたり、時差の向こう側にいたりすると、リリースは止まります。コミットが積み上がり、changelog は膨らみ、マージは危なくなる。Zeroに一度だけ伝えておけば - 1営業日に1回リリースチェックを走らせ、リスクのあるものはスキップし、稼働時間内にマージし、リリースチャンネルに報告 - あとは出荷がチームの時計に合わせて自動で回り続けます。",
         "promptVariants": [
           {
@@ -426,15 +417,6 @@
         "title": "Sentryのノイズを優先順位付きアクションリストに変換",
         "description": "Zeroに未解決のSentryエラーを頻度順に取得するよう依頼します。Zeroがスタックトレースを読み、根本原因を分かりやすく説明し、最初に修正すべきファイルを教えてくれます。",
         "timeSaved": "約25分の節約",
-        "headings": {
-          "scenario": "Sentryトリアージがエンジニアリング時間を浪費する理由",
-          "prompt": "ステップ2：Zeroに聞く",
-          "steps": "ステップ3：Zeroの動作",
-          "nextActions": "ステップ4：アクションを起こす",
-          "integrations": "必要な連携: SentryとGitHub",
-          "tips": "自動Sentryトリアージのベストプラクティス",
-          "connect": "ステップ1：ツールを接続する"
-        },
         "scenario": "月曜の朝。Slackを開くと#devに十数件のSentryアラートが届いています。ほとんどはノイズ - 不安定なテスト、既知の問題、自然に解消する一時的なエラー。しかしその中には本物があるかもしれません：壊れた連携、課金バグ、実際のユーザーに影響するクラッシュ。Sentryのダッシュボードを開いてIssueを一つずつクリックしたくはありません。知りたいのは：どれが重要で、どれくらい深刻で、何が原因なのか。",
         "promptVariants": [
           {
@@ -509,15 +491,6 @@
         "title": "複数のアプリを開かずにスタンドアップを準備",
         "description": "Zeroがカレンダー、メール、Linearからデータを取得し、チームスレッドにそのまま貼り付けられる共有可能なサマリーを作成します。",
         "timeSaved": "約20分の節約",
-        "headings": {
-          "scenario": "Calendar、Gmail、Linearを行き来する毎日のスタンドアップの混乱",
-          "prompt": "Zeroにスタンドアップサマリーを依頼する方法",
-          "steps": "Zeroが3つのツールから作業サマリーをまとめる仕組み",
-          "nextActions": "Slackに投稿、ブロッカー追加、または毎日自動化",
-          "integrations": "必要な連携: Google Calendar、Gmail、Linear",
-          "tips": "AI生成スタンドアップサマリーのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "午前9時50分、スタンドアップまでああ10分。まだカレンダーを確認していません。Zeroに昨日の会議、メール、Linearタスクを取得するよう頼むと、チームスレッドにそのまま貼り付けられるサマリーを書いてくれます。",
         "promptVariants": [
           {
@@ -595,15 +568,6 @@
         "title": "XでKOLをリサーチし、パーソナライズされたコールドメールを作成",
         "description": "ZeroにXのハンドルを伝えます。直近30件の投稿を読み、スタイルと関心を理解し、150語以下のパーソナライズされたアウトリーチメールを作成してGmailの下書きに保存します。",
         "timeSaved": "約20分の節約",
-        "headings": {
-          "scenario": "一般的なコールドアウトリーチが無視される理由",
-          "prompt": "KOLをリサーチしパーソナライズされたアウトリーチを作成する方法",
-          "steps": "ZeroがXプロフィールを分析しカスタムメールを作成する仕組み",
-          "nextActions": "KOL適合度を評価、一括アウトリーチ、またはNotion CRMで追跡",
-          "integrations": "必要な連携: X、Gmail、Notion",
-          "tips": "AI支援KOLアウトリーチのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "パートナーシップにぴったりのKOLを見つけましたが、ありきたりに感じないコールドメールを書くには20分のリサーチが必要 - 投稿を読み、何に関心があるか理解し、適切な切り口を見つける。ZeroにXハンドルを伝えれば、数秒でパーソナライズされた下書きが得られます。",
         "promptVariants": [
           {
@@ -676,15 +640,6 @@
         "title": "コンテキストを切り替えずにSlackからバグを報告",
         "description": "自然言語で問題を説明するだけ。Zeroがフォーマット済みのGitHub Issueを作成し、ラベルを付け、適切な人に割り当てます。",
         "timeSaved": "即座",
-        "headings": {
-          "scenario": "SlackからGitHub Issueを作成するとコンテキスト切り替えが節約される理由",
-          "prompt": "SlackメッセージからGitHub Issueを作成する方法",
-          "steps": "Zeroがメッセージを解析しフォーマット済みIssueを作成する仕組み",
-          "nextActions": "詳細を追加、一括Issue作成、またはトリアージを自動化",
-          "integrations": "必要な連携: GitHubとSlack",
-          "tips": "Slack経由でバグを報告するベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "デモ中にUXバグに気づきました。GitHubを開いてリポジトリを探し、フォーマット済みのIssueを書いて誰かに割り当てる代わりに、Slackで説明します。ZeroがIssueを作成し、ラベルを追加し、適切な人を割り当てます。会話を離れる必要はありません。",
         "promptVariants": [
           {
@@ -759,15 +714,6 @@
         "title": "Slackのノイズを突破し、注意が必要なものを表面化",
         "description": "Zeroが未読のSlackメッセージをスキャンし、ボットとノイズをフィルタリングして、今日実際にアクションが必要なメッセージだけを緊急度順に表示します。",
         "timeSaved": "約10分の節約",
-        "headings": {
-          "scenario": "Slackの過負荷がアクションアイテムの見落としを引き起こす理由",
-          "prompt": "Zeroに未読Slackメッセージのトリアージを依頼する方法",
-          "steps": "Zeroがノイズをフィルタリングしアクション可能なメッセージを抽出する仕組み",
-          "nextActions": "直接返信、タスク作成、または日次トリアージを自動化",
-          "integrations": "必要な連携: Slack",
-          "tips": "Slackメッセージトリアージのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "2時間の集中ブロック後にSlackを開くと、12チャンネルに47件の未読メッセージがあります。ほとんどはボット通知、自動アラート、自分に関係のない会話です。ノイズの中に実際に返信が必要な3つのことがあります。全てをスクロールする代わりに、Zeroに重要なものを見つけてもらいます。",
         "promptVariants": [
           {
@@ -840,15 +786,6 @@
         "title": "Slackメッセージ1つで新しいチームメイトをオンボーディング",
         "description": "Zeroに誰がいつ入社するか伝えます。Notionのオンボーディングページを作成し、Google Calendarでウェルカムミーティングをスケジュールし、Slackで紹介を投稿し、初週のアジェンダをDMで送ります。",
         "timeSaved": "約45分の節約",
-        "headings": {
-          "scenario": "手動のオンボーディングチェックリストが常に何かを見落とす理由",
-          "prompt": "Zeroで新入社員のオンボーディングを自動化する方法",
-          "steps": "Zeroが新しいチームメイトのためにNotion、Calendar、Slackを設定する仕組み",
-          "nextActions": "アクセス設定を追加またはロール別にカスタマイズ",
-          "integrations": "必要な連携: Slack、Notion、Google Calendar、Gmail",
-          "tips": "自動従業員オンボーディングのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "新しいチームメイトが来週月曜に入社します。誰かがオンボーディングドキュメントを作成し、5人との紹介ミーティングをスケジュールし、ウェルカムメッセージを投稿し、初週のアジェンダを送る必要があります。毎回同じように行われる45分の調整作業です。Zeroに一度伝えれば全て対応してくれます。",
         "promptVariants": [
           {
@@ -924,15 +861,6 @@
         "title": "Slackのアイデアを即座にインタラクティブなプロトタイプに変換",
         "description": "会話の途中でアイデアが浮かんだら、Zeroに説明します。v0を使ってクリック可能なReactプロトタイプを生成し、ライブプレビューリンクをスレッドに投稿します - ディスカッションが先に進む前に。",
         "timeSaved": "数時間 → 数秒",
-        "headings": {
-          "scenario": "誰にも見せられないままアイデアが消えてしまう理由",
-          "prompt": "ZeroでSlackのアイデアをプロトタイプに変える方法",
-          "steps": "Zeroがあなたの説明からライブでクリック可能なUIを作る仕組み",
-          "nextActions": "改良、共有、またはエンジニアリングに引き継ぎ",
-          "integrations": "必要な連携: v0",
-          "tips": "v0を使った迅速なアイデアプロトタイピングのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "Slackスレッドで機能の動作方法を議論しています。誰かが新しいUIパターンを提案 - コマンドパレット、設定パネル、マルチステップウィザード。言葉では伝わりません。ホワイトボードに描くオプションもありません。Figmaセッションをスケジュールすると決定が来週に延期されます。Zeroに自然言語でアイデアを説明します。v0を呼び出し、完全にインタラクティブなReactプロトタイプを生成し、ライブプレビューリンクをスレッドに投稿します - 1分以内に。会話が先に進む前に全員がクリックスルーできます。",
         "promptVariants": [
           {
@@ -1007,15 +935,6 @@
         "title": "Slackで行われたすべての重要な決定を自動的に記録",
         "description": "ZeroがSlackチャンネルを監視し、決定が行われた瞬間にキャプチャします。スレッドをスキャンし、何が決定されたかを特定し、コンテキスト、リンク、カテゴリと共にNotionに記録するので、ノイズに埋もれることがありません。",
         "timeSaved": "週あたり約30分節約",
-        "headings": {
-          "scenario": "重要な決定がSlackスレッドに埋もれてしまう理由",
-          "prompt": "ZeroにSlackからの決定をキャプチャさせる方法",
-          "steps": "Zeroが決定を見つけ、解釈し、Notionに記録する方法",
-          "nextActions": "決定ログのレビュー、カテゴリ分け、共有",
-          "integrations": "必要な連携: SlackとNotion",
-          "tips": "自動化された決定キャプチャのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "プロダクトミーティングが終了。3つの決定がされました：ある機能がカット、ローンチ日が2週間延期、価格モデルが変更。誰かがドキュメントにまとめると言いました。1週間後、そのドキュメントはまだ存在せず、エンジニアはカットされた機能をそのまま作り、2人は何が決定されたか異なる記憶を持っています。Zeroがチャンネルを監視。決定が発生すると、スレッドリンク、発言者、理由と共にすぐに記録します。",
         "promptVariants": [
           {
@@ -1090,15 +1009,6 @@
         "title": "スタンドアップ前に完全なプロダクトヘルスブリーフィングを受け取る",
         "description": "Zeroに何を監視するか伝えてください。毎朝、システムステータス、エンジニアリングの進捗、主要なアップデートを取得し、Slackに簡潔なブリーフィングを投稿し、誰もがラップトップを開く前に共有可能なスタンドアップ資料を生成します。",
         "timeSaved": "毎日約40分節約",
-        "headings": {
-          "scenario": "共有されたプロダクトビューがないと朝が遅くなる理由",
-          "prompt": "Zeroでデイリープロダクトヘルスブリーフィングを設定する方法",
-          "steps": "Zeroが複数のソースからモーニングブリーフィングを組み立てる方法",
-          "nextActions": "ブリーフィングのカスタマイズ、より広い共有、プレゼンテーションへの変換",
-          "integrations": "必要な連携: Linear、GitHub、Slack、Calendar",
-          "tips": "自動化されたモーニングブリーフィングのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "午前9時50分。スタンドアップまであと10分。PMはLinearを更新中、テックリードは夜間のPRをGitHubでチェック中、誰かがインシデントダッシュボードを開いています。まだ誰も全体像を把握していません。午前9時にSlackにこれらすべてが待っていることもできたはずです。Zeroがあなたが気にするすべてのソースからデータを取得し、ブリーフィングを書き、誰もがログインする前に投稿します。",
         "promptVariants": [
           {
@@ -1179,15 +1089,6 @@
         "title": "コードベース全体の技術的負債をスキャンしてGitHub issueを作成",
         "description": "Zeroにリポジトリを渡してください。クローンし、完全な技術的負債スキャンを実行し、すべての発見を重要度別に分類し、完全な内訳を含む構造化されたGitHub issueを作成します - すべて1つのメッセージから。",
         "timeSaved": "監査ごとに約2時間節約",
-        "headings": {
-          "scenario": "技術的負債が追跡されずに蓄積する理由",
-          "prompt": "Zeroにコードベースの技術的負債を監査させる方法",
-          "steps": "Zeroが技術的負債の発見をスキャン、分類、文書化する方法",
-          "nextActions": "発見の割り当て、負債スプリントのスケジュール、定期スキャンの設定",
-          "integrations": "必要な連携: GitHub",
-          "tips": "自動化された技術的負債監査のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "技術的負債はすべてのコードベースに存在します。問題はそれが蓄積することではなく、静かに蓄積することです。チケットなし、オーナーなし、優先度なし。遅いPR、不安定なテスト、誰もスケジュールしなかったリファクタリングとして現れます。Zeroにリポジトリをスキャンするよう伝えます。クローンし、コードを読み、負債を見つけ、重要度別にランク付けし、チームが実際に確認して対処できるよう構造化されたGitHub issueを1つ作成します。",
         "promptVariants": [
           {
@@ -1259,15 +1160,6 @@
         "title": "Xとウェブ全体で週次の競合分析を実行",
         "description": "Zeroに競合リストを渡してください。Xアカウントを監視し、ウェブサイトの更新をスクレイピングし、すべての発見をNotionに保存し、スケジュールに従って毎週Slackにダイジェストを投稿します。",
         "timeSaved": "週あたり約3時間節約",
-        "headings": {
-          "scenario": "自動化なしで競合追跡が崩壊する理由",
-          "prompt": "Zeroで週次競合監査を設定する方法",
-          "steps": "Zeroが競合の活動を監視、収集、要約する方法",
-          "nextActions": "発見を深掘り、スコープの調整、リーダーシップとの共有",
-          "integrations": "必要な連携: X、Notion、Slack",
-          "tips": "自動化された競合モニタリングのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "競合を把握することは週次の習慣であるべきです。実際には、誰かがXで何かを見つけ、ツイートをSlackに転送し、2日後にアクションなしでスレッドが消えるときに起こります。Zeroがプロセス全体を引き受けます。競合リストを渡してください。Xアカウントをチェックし、プロダクトページの変更を読み、すべてをNotionの構造化されたログに保存し、頼まなくても毎週月曜にSlackにダイジェストを投稿します。",
         "promptVariants": [
           {
@@ -1345,15 +1237,6 @@
         "title": "Sentryを開かずに毎朝プロダクションエラーを分類",
         "description": "Zeroを毎日実行するようスケジュールします。SentryとAxiomから未解決のエラーを取得し、ソース間で重複排除し、完全なスタックトレース付きのGitHub issueを開き、自動的に適切なエンジニアにアサインします。",
         "timeSaved": "毎日約25分節約",
-        "headings": {
-          "scenario": "朝のエラー分類がエンジニアリング時間の最初の1時間を消費する理由",
-          "prompt": "Zeroで毎日の自動エラー分類を設定する方法",
-          "steps": "ZeroがSentryとAxiomからエラーを取得、重複排除、記録する方法",
-          "nextActions": "issueのアサイン、閾値の調整、スタンドアップブリーフィングとの統合",
-          "integrations": "必要な連携: Sentry、GitHub、Axiom",
-          "tips": "スケジュールされたプロダクションエラー分類のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "毎朝、誰かがSentryを開き、未解決のエラーをスクロールし、どれが新しく、どれが重複で、どれが本当に深刻かを判断し、各エラーの担当者を決めなければなりません。それは実際の作業が始まる前の20〜30分の集中したエンジニアリング時間です。Zeroは午前8時45分に実行し、SentryとAxiomをチェックし、両方のソースで重複排除し、重要なエラーを選び、完全なスタックトレースが添付されたGitHub issueを開き、誰もがラップトップを開く前に各issueをアサインします。",
         "promptVariants": [
           {
@@ -1431,15 +1314,6 @@
         "title": "洗練されたマーケティングメールをSlackから配信",
         "description": "ZeroにマーケティングメールのドラフトをNotionとLinearの文脈から作成してもらい、Slackでプレビュー、承認後にResendから配信。ダッシュボード切り替え不要。",
         "timeSaved": "約45分の節約",
-        "headings": {
-          "scenario": "マーケティングメール運用に午後が溶ける理由",
-          "prompt": "Zeroにキャンペーンのドラフトと配信を依頼する方法",
-          "steps": "Zeroが文脈を送信済みメールに変える仕組み",
-          "nextActions": "改善、ターゲティング、定例化",
-          "integrations": "必要な連携: ResendとSlack",
-          "tips": "Zeroが作成するマーケティングメールのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "木曜の午後。購読者に今週のプロダクトアップデートをまだ届けていません。Linearには今週リリース済みの機能が3つ、Notionにはローンチティザーのメモ。次のミーティングまで15分。白紙のドキュメントを開いて、変更履歴をコピペして、新しいコピーを手書きし、Resendにログインし、HTMLをアップロードし、件名を考え、配信先タグを3回確認する--そんなことはしたくありません。ブランドに合った、きれいなメールが、正しい配信先に、今日の残りを溶かさずに届けばいいのです。",
         "promptVariants": [
           {
@@ -1520,15 +1394,6 @@
         "title": "Zero のひと言でStrapi多言語コンテンツを一括公開",
         "description": "書きたい内容をZeroに伝えるだけ。英語・中国語・日本語で各市場向けに適応（単純翻訳ではなく）したコンテンツを生成し、3言語すべてをStrapiにドラフトとして一括投稿します。",
         "timeSaved": "約60分の節約",
-        "headings": {
-          "scenario": "多言語CMS公開がなぜ午後を丸ごと奪うのか",
-          "prompt": "Zeroに多言語コンテンツの作成・公開を依頼する方法",
-          "steps": "ZeroがStrapiへコンテンツを執筆・ローカライズ・同期する仕組み",
-          "nextActions": "定期投稿のスケジュール化、コンテンツカレンダーの一括処理、既存コンテンツのローカライズ",
-          "integrations": "必要な連携: StrapiとNotion",
-          "tips": "AIを活用した多言語コンテンツ公開のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "新機能をリリースしました。グローバルサイト向けの英語、アジア市場向けの中国語、日本ブログ向けの日本語、3言語での記事が必要です。通常の手順は：英語版を書く、翻訳ツールを開く、各ロケールのStrapiにコピペする、フォーマットを整える、フィールドの漏れを確認する。たった1本の投稿に最低45分かかります。Zeroに箇条書きと対象ロケールを渡すだけで、完了です。",
         "promptVariants": [
           {
@@ -1603,15 +1468,6 @@
         "title": "異常検知付きデイリーエンジニアリングブリーフ",
         "description": "@Zeroに毎朝GitHub、Linear、Sentry、Plausibleからリアルタイムデータを取得させ、7日間の移動平均を算出し、異常値をフラグ付けして、フォーマットされた4セクションのブリーフをSlackチャンネルに自動投稿します。",
         "timeSaved": "毎日約20分の時間削減",
-        "headings": {
-          "scenario": "分散したダッシュボードが朝の同期を遅らせる理由",
-          "prompt": "@Zeroでクロスツールのデイリーエンジニアリングブリーフを設定する方法",
-          "steps": "@Zeroがリアルタイムデータを取得し、ベースラインを算出し、異常を検知する仕組み",
-          "nextActions": "異常の深掘り、壊れたコネクタの修復、またはブリーフの拡張",
-          "integrations": "必須連携: GitHubとSlack。オプション: Linear、Sentry、Plausible",
-          "tips": "スケジュール型マルチツールエンジニアリングブリーフのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "毎朝誰かが4つのタブを開きます。GitHubでPRアクティビティ、Linearでスプリント進捗、Sentryで夜間エラー、Plausibleでトラフィック傾向を確認します。今日の数値を先週の記憶と手動で比較し、スタンドアップ前に異常がないか見つけようとします。この照合作業には15〜20分かかり、記憶に頼っています。@Zeroはスタンドアップ前に実行され、4つすべてのソースからリアルタイムデータを取得し、7日間の移動平均を算出し、大幅な偏差をフラグ付けし、誰もラップトップを開く前にSlackに整理された4セクションのブリーフを投稿します。",
         "promptVariants": [
           {
@@ -1699,15 +1555,6 @@
         "title": "競合の料金ページを監視し、変更を毎週フラグ付け",
         "description": "@Zeroに競合の料金ページURLリストを渡します。毎週月曜日に各ページをスクレイピングし、先週のNotionスナップショットと差分を比較し、検出された各変更のインパクトサマリーを作成し、完全なレポートをNotionに保存し、ダイジェストをSlackに投稿します。",
         "timeSaved": "週あたり約2時間の時間削減",
-        "headings": {
-          "scenario": "料金変更がチームの不意を突く理由",
-          "prompt": "@Zeroで週次の競合料金モニタリングを設定する方法",
-          "steps": "@Zeroがスクレイピング、差分比較、レポート作成を行う仕組み",
-          "nextActions": "特定の変更を深掘り、監視リストを調整、またはリーダーシップと共有",
-          "integrations": "必須連携: NotionとSlack",
-          "tips": "自動化された料金インテリジェンスのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "競合がひっそりと無料プランを廃止します。別の競合が新しいエンタープライズプランを追加します。3週間後、すでにその競合を選んだ見込み客から知ることになります。@Zeroは毎週月曜日に競合の料金ページをチェックし、先週からの変更を比較し、検出された各変更の明確なインパクトサマリーを作成し、チームの週が始まる前にSlackにダイジェストを投稿します。",
         "promptVariants": [
           {
@@ -1782,15 +1629,6 @@
         "title": "会議や更新コールの前に顧客の全体像を構築",
         "description": "@Zeroに顧客名または企業名を渡します。Gmail、Calendar、Slack、Linear、GitHubを同時に検索し、構造化されたブリーフを返します：関係ステージ、直近のアクティビティ、未解決事項、推奨アクション付きのエグゼクティブサマリー。",
         "timeSaved": "顧客レビューごとに約30分の時間削減",
-        "headings": {
-          "scenario": "ツール間で顧客コンテキストが失われる理由",
-          "prompt": "@ZeroにCustomer 360ブリーフを依頼する方法",
-          "steps": "@Zeroが5つのソースから顧客コンテキストを検索・統合する仕組み",
-          "nextActions": "特定のミーティングに備える、レビューサイクルでバッチ実行する、またはリスクのみを表面化する",
-          "integrations": "必須連携: Gmail、Calendar、Slack",
-          "tips": "顧客コンテキストクエリのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "QBRまであと1時間。先月サポートの問題があったこと、いくつかのメールスレッドが停滞していたこと、どこかに機能リクエストが登録されていたことを覚えています。12分と4つのツールで確認する必要があります。@Zeroはすべてを一度に検索し - メール、カレンダー、Slack、チケット - 1つのブリーフで返します：彼らは誰か、最近何が起きたか、何が未解決か、コールで何を取り上げるべきか。",
         "promptVariants": [
           {
@@ -1878,15 +1716,6 @@
         "title": "誰もが気づく前に新興トレンドをキャッチ",
         "description": "Xアカウントとslackチャンネルを対象に日次スキャンを設定します。@Zeroはブレイクアウトトピック - 2つ以上のソースに出現するか、急激な速度スパイクを示すもの - のみをフラグ付けし、ランク付けされたダイジェストをチャンネルに投稿します。該当するものがなければ投稿は送信されません。",
         "timeSaved": "毎日約1時間の時間削減",
-        "headings": {
-          "scenario": "シグナル閾値がないとトレンドモニタリングが失敗する理由",
-          "prompt": "@Zeroでデイリートピックレーダーを設定する方法",
-          "steps": "@Zeroがソースをポーリングし、シグナルを検出し、ダイジェストを配信する仕組み",
-          "nextActions": "ソースリストの拡張、トピックの深掘り、またはオンデマンド実行",
-          "integrations": "必須連携: X (Twitter)とSlack",
-          "tips": "デイリートレンドモニタリングのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "チームはトレンドにもっと早く対応したいと思っています。現在のプロセス：誰かがSlackにリンクを共有し、3つのリアクションがつき、3日後には何も起こっていません。問題は注意力ではなく、シグナルの質です。すべてのソースがノイズを生み出します。閾値がなければ、すべてを読んでいるのに何にも行動できません。@Zeroはソースを監視し、速度フィルターを適用し、実際にブレイクアウトしている場合のみ投稿します。",
         "promptVariants": [
           {
@@ -1968,15 +1797,6 @@
         "title": "自分でデータを引き出さずに週次コンテンツパフォーマンスレポートを取得",
         "description": "毎週月曜日に@Zeroが過去7日間の投稿指標をXから取得し、各投稿をエンゲージメントでスコアリングし、短いナラティブレポートを作成します：トップパフォーマー、最大のアンダーパフォーマー、前週比の変化、1つの具体的な推奨事項。ナラティブはSlackに投稿され、完全なデータはNotionにアーカイブされます。",
         "timeSaved": "毎週約2時間の時間削減",
-        "headings": {
-          "scenario": "週次コンテンツレビューが一貫して行われない理由",
-          "prompt": "@Zeroで定期的なコンテンツパフォーマンスレポートを設定する方法",
-          "steps": "@Zeroが指標を取得し、投稿をスコアリングし、ナラティブを作成する仕組み",
-          "nextActions": "オンデマンドで取得、コンテンツフォーマットの比較、またはエグゼクティブサマリーの作成",
-          "integrations": "必須連携: X (Twitter)、Slack、Notion - トラフィック相関にはPlausibleも",
-          "tips": "自動化されたコンテンツパフォーマンスレポートのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "コンテンツパフォーマンスを毎週レビューすべきだとわかっています。しかし3週間やっていません。Xから数値を引き出し、フォーマットし、ナラティブを書くのに90分かかり、月曜の朝にはその時間がないからです。@Zeroはすべてをスケジュール通りに実行します。数値を取得し、スコアリング式を実行し、ナラティブを書き、Slackに投稿し、生データをNotionにアーカイブします - すべて最初のミーティングの前に完了します。",
         "promptVariants": [
           {
@@ -2057,102 +1877,10 @@
           "2週間スプリントの終了時にフォーマット実験の振り返りを行い、どのコンテンツフォーマットをスケールし、反復し、または廃止するかを決定しましょう。"
         ]
       },
-      "kb-ingest": {
-        "title": "Capture knowledge from Slack without leaving the conversation",
-        "description": "Drop a link in Slack and ask Zero to ingest it. Zero fetches the content, summarizes it, and stores it in your team knowledge base - no context switch required.",
-        "timeSaved": "~15 min saved",
-        "headings": {
-          "scenario": "Why good content gets lost in Slack",
-          "prompt": "How to ask Zero to ingest a link into the KB",
-          "steps": "How Zero fetches, summarizes, and stores the content",
-          "nextActions": "Query the KB, compile articles, or chain into a weekly digest",
-          "integrations": "Required integrations: Slack and GitHub",
-          "tips": "Best practices for building a living team knowledge base",
-          "connect": "ツールを接続する"
-        },
-        "scenario": "Someone shares a good article, a competitor announcement, or a research paper in #news. It gets a few reacts, maybe a comment, and then it's gone. Three weeks later someone asks 'didn't we read something about this?' and nobody can find it. Zero turns any shared link into a permanent entry in your team KB - fetched, summarized, and categorized from a single Slack message.",
-        "promptVariants": [
-          {
-            "label": "Basic",
-            "prompt": "@Zero kb ingest https://x.com/example/status/123456"
-          },
-          {
-            "label": "With context",
-            "prompt": "@Zero kb ingest https://github.com/example/repo - focus on the architecture section, we might borrow this pattern."
-          },
-          {
-            "label": "Batch",
-            "prompt": "@Zero kb ingest the top 5 links shared in #news this week."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Ethan",
-            "text": "@Zero kb ingest https://x.com/anthropicai/status/2044138481790648323"
-          },
-          {
-            "name": "Zero",
-            "text": "Ingested. File: anthropic-automated-alignment-researchers.md → vm0-kb/raw/\n\nSummary: Anthropic's new Automated Alignment Researchers experiment ran 9 instances of Claude Opus 4.6 as autonomous researchers on interpretability. Key finding: AI-assisted alignment research can compress months of human work."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero fetches the content",
-            "description": "Zero retrieves the full text of the linked page - X thread, GitHub repo, blog post, or documentation - and extracts the meaningful content."
-          },
-          {
-            "title": "Zero summarizes and categorizes",
-            "description": "Zero writes a concise summary capturing the key insight, source, and date. It adds context from the Slack thread if relevant."
-          },
-          {
-            "title": "Stored in the team KB",
-            "description": "The article is saved to your team knowledge base as a markdown file, ready to be queried, compiled into wiki articles, or surfaced in future searches."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Query what was ingested",
-            "description": "Ask Zero to find relevant KB content on a topic",
-            "examplePrompt": "@Zero what does the KB say about sandbox isolation approaches?"
-          },
-          {
-            "title": "Compile a KB article",
-            "description": "Turn raw ingested content into a structured wiki article",
-            "examplePrompt": "@Zero compile a KB article on agentic AI trends from the last month of ingested content."
-          },
-          {
-            "title": "Schedule weekly ingestion",
-            "description": "Automatically ingest top links from a channel on a schedule",
-            "examplePrompt": "@Zero every Friday, ingest the top 3 most-reacted links shared in #news this week."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Slack is where the link is shared and where Zero receives the ingest command."
-          },
-          {
-            "description": "GitHub is optional. Zero commits the markdown file directly to your KB repository."
-          }
-        ],
-        "tips": [
-          "Add a note after the URL to give Zero context: 'kb ingest [url] - this is relevant to our sandbox architecture.' The note gets included in the stored file.",
-          "Set up a dedicated #news or #kb-ingest channel so your team has a shared habit of dropping links for Zero to capture.",
-          "Pair with a weekly KB compile to turn raw ingested articles into structured, searchable wiki entries."
-        ]
-      },
       "pr-review": {
         "title": "Get a PR reviewed with severity-ranked issues before you merge",
         "description": "Ask Zero to review any pull request. Zero reads the diff, flags critical issues as P0, improvement opportunities as P1, and surfaces them in Slack so the team can act before merging.",
         "timeSaved": "~30 min saved per PR",
-        "headings": {
-          "scenario": "Why PRs get merged before they should",
-          "prompt": "How to ask Zero to review a pull request",
-          "steps": "How Zero reads the diff and ranks its findings",
-          "nextActions": "Create GitHub issues, request fixes, or verify CI status",
-          "integrations": "Required integrations: GitHub",
-          "tips": "Best practices for AI-assisted code review",
-          "connect": "ツールを接続する"
-        },
         "scenario": "PRs pile up. Reviewers are busy. Someone hits 'approve' to clear their queue and a subtle bug ships. Zero gives every PR a thorough read without the queue. Point it at any PR number, and it returns a structured review - critical issues that must be fixed before merge, plus lower-priority suggestions - posted directly in Slack.",
         "promptVariants": [
           {
@@ -2227,15 +1955,6 @@
         "title": "Investigate API performance and surface slow endpoints before they page you",
         "description": "Ask Zero to pull TP95 data from Axiom for any API endpoint. Zero surfaces the slowest events, identifies patterns, and creates a GitHub issue with findings - all from one Slack message.",
         "timeSaved": "~45 min saved",
-        "headings": {
-          "scenario": "Why API slowdowns stay invisible until they become incidents",
-          "prompt": "How to ask Zero to investigate an API endpoint",
-          "steps": "How Zero pulls metrics, surfaces slow events, and creates an issue",
-          "nextActions": "Assign the issue, schedule monitoring, or dig into a specific event",
-          "integrations": "Required integrations: Axiom and GitHub",
-          "tips": "Best practices for proactive API performance monitoring",
-          "connect": "ツールを接続する"
-        },
         "scenario": "TP95 spikes don't always page you. They sit in your metrics dashboards, quietly degrading user experience while your team is focused on shipping. Zero makes it easy to check any endpoint's performance on demand - pull the last 7 days of TP95 data, see which requests are slow, and get a GitHub issue filed automatically so nothing gets dropped.",
         "promptVariants": [
           {
@@ -2310,15 +2029,6 @@
         "title": "Analyze your traffic channels and surface growth insights from Plausible",
         "description": "Ask Zero to pull your Plausible traffic data and tell you what's working. Zero breaks down sources, channels, and trends - then surfaces the insight you actually need to act on.",
         "timeSaved": "~20 min saved",
-        "headings": {
-          "scenario": "Why traffic analysis stays on the to-do list",
-          "prompt": "How to ask Zero to analyze your Plausible traffic",
-          "steps": "How Zero pulls, analyzes, and delivers traffic insights",
-          "nextActions": "Dig into a channel, schedule a weekly report, or correlate with content",
-          "integrations": "Required integrations: Plausible and Slack",
-          "tips": "Best practices for marketing analytics with Zero",
-          "connect": "ツールを接続する"
-        },
         "scenario": "You know your traffic dashboard exists. You even open it occasionally. But turning raw pageview counts into an actionable insight takes time you don't have. Zero reads your Plausible data and delivers the answer - which channels are growing, which are flat, where the bounce rate spiked - in plain language, in Slack, on demand.",
         "promptVariants": [
           {
@@ -2393,15 +2103,6 @@
         "title": "Query live production data in plain English without touching a database client",
         "description": "Ask Zero a question about your production data. Zero writes the SQL, runs it read-only against your live database, and returns the answer in Slack - no credentials, no client, no risk of a mutating query.",
         "timeSaved": "~20 min saved",
-        "headings": {
-          "scenario": "Why answering a simple data question takes longer than it should",
-          "prompt": "How to ask Zero to query production data",
-          "steps": "How Zero translates your question into a safe read-only query",
-          "nextActions": "Export results, schedule recurring counts, or file an issue from findings",
-          "integrations": "Required integrations: vm0 (production database skill)",
-          "tips": "Best practices for safe production data access",
-          "connect": "ツールを接続する"
-        },
         "scenario": "A stakeholder asks how many users completed onboarding in the last 30 days. It's a simple question, but answering it means opening a DB client, finding the right table, writing a query, making sure you're on read-only credentials, running it, and formatting the result. Zero handles the whole chain - just ask the question in Slack.",
         "promptVariants": [
           {
@@ -2476,15 +2177,6 @@
         "title": "Research your infrastructure for compliance requirements in one Slack thread",
         "description": "Ask Zero to audit your infrastructure setup against a compliance requirement. Zero checks your config across GitHub, cloud providers, and documentation - and posts a structured findings brief.",
         "timeSaved": "~2 hrs saved",
-        "headings": {
-          "scenario": "Why compliance audits take days instead of hours",
-          "prompt": "How to ask Zero to research a compliance question",
-          "steps": "How Zero gathers, cross-references, and summarizes compliance findings",
-          "nextActions": "Document findings to Notion, create remediation issues, or schedule periodic audits",
-          "integrations": "Required integrations: GitHub",
-          "tips": "Best practices for AI-assisted compliance research",
-          "connect": "ツールを接続する"
-        },
         "scenario": "Your compliance team flags a question: where is customer data stored, and does it meet regional requirements? Answering it means checking your cloud provider configs, reading your deployment settings, cross-referencing documentation, and writing a summary. Zero does all of this from one Slack message - checking your Vercel regions, Cloudflare R2 config, and infrastructure files, then posting a structured brief.",
         "promptVariants": [
           {
@@ -2559,15 +2251,6 @@
         "title": "Get a unified status brief on any project from multiple platforms",
         "description": "Ask Zero about the current status of any project, feature, or topic. Zero searches across your tools in parallel, synthesizes a 4-part brief - state, owner, blockers, last update - and flags if sources disagree.",
         "timeSaved": "~25 min saved",
-        "headings": {
-          "scenario": "Why project status is scattered across four tools",
-          "prompt": "How to ask Zero for a cross-tool status brief",
-          "steps": "How Zero searches, synthesizes, and surfaces the brief",
-          "nextActions": "Log the brief to Notion, schedule weekly updates, or escalate blockers",
-          "integrations": "Required integrations: Slack and Linear",
-          "tips": "Best practices for cross-tool status queries",
-          "connect": "ツールを接続する"
-        },
         "scenario": "Someone asks about the status of the Stripe integration. The last Slack thread is from two weeks ago. There's a Linear ticket but the status says 'In Progress' with no update. The Notion doc has a decision log from last month. GitHub has three open PRs. None of these sources tell the full story alone. Zero searches all four in parallel and gives you one answer.",
         "promptVariants": [
           {
@@ -2652,15 +2335,6 @@
         "title": "受信箱を2分で仕分け2時間ではなく",
         "description": "ZeroがGmailを読み込み、ノイズを除外し、優先順位付きのSlackサマリーを送信 - 朝の始まりはメールに埋もれるのではなく、把握した状態で。",
         "timeSaved": "毎日約20分節約",
-        "headings": {
-          "scenario": "メール過多がなぜ朝の勢いを殺ぐのか",
-          "prompt": "Zeroに受信箱の仕分けを頼む方法",
-          "steps": "Zeroが200通のメールを2分で読めるサマリーに変える仕組み",
-          "nextActions": "受信箱サマリーを次のアクションに繋ぐ",
-          "integrations": "必要な連携: GmailとSlack",
-          "tips": "自動メール仕分けのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "月曜の朝、8時59分。Gmailを開くと200通以上の未読。そのほとんどはノイズ - GitHubの通知、自動アラート、読むことのないマーケティングメール。その中に埋もれているのは：リポジトリで検出された認証情報漏洩のセキュリティアラート、クラウドプロバイダーからの支払い失敗通知、そして今日中に返信が必要なクライアントからの依頼。30分かけて件名をざっと目を通すか、Zeroに緊急度を仕分けさせて、コーヒーが冷める前にSlackで綺麗なサマリーを届けてもらうか。",
         "promptVariants": [
           {
@@ -2735,15 +2409,6 @@
         "title": "毎日のコード変更のテストを自動作成一晩で",
         "description": "Zeroがマージ済みPRをスキャンしてテスト未カバーのファイルを見つけ、プロジェクトの規約に沿ったテストを作成してPRを開きます - 毎朝、カバレッジが向上した状態で仕事を始められます。",
         "timeSaved": "毎日約45分節約",
-        "headings": {
-          "scenario": "テストカバレッジが常に低下する理由 - そしてその解決策",
-          "prompt": "Zeroにテスト自動生成を頼む方法",
-          "steps": "Zeroが寝ている間にテストを書く仕組み",
-          "nextActions": "カバレッジを継続的に向上させる",
-          "integrations": "必要な連携: GitHubとSlack",
-          "tips": "自動テスト生成のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "火曜日の朝。CIがレッドです - カバレッジが昨晩82%から79%に低下しました。誰かがテストゼロで新機能をマージしたからです。また。作業を中断して、そのコードを読み、自分でテストを書くこともできます。あるいは、Zeroに毎日午前4時にやってもらえば、座ったときには既にレビュー待ちのテストPRが用意されています。",
         "promptVariants": [
           {
@@ -2818,15 +2483,6 @@
         "title": "毎日のプロダクト分析手動クエリゼロ",
         "description": "Zeroがスケジュールに従って本番DBにクエリを実行し、ユーザー行動を分析して構造化レポートをSlackに投稿 - トレンドが問題になる前に気づけます。",
         "timeSaved": "毎日約30分節約",
-        "headings": {
-          "scenario": "なぜ変化に最後に気づくのはいつもあなたなのか",
-          "prompt": "Zeroに毎日のユーザー分析を頼む方法",
-          "steps": "Zeroが生のクエリを朝のレポートに変える仕組み",
-          "nextActions": "データをプロダクトの意思決定に活かす",
-          "integrations": "必要な連携: vm0（本番DBアクセス）とSlack",
-          "tips": "自動プロダクト分析のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "水曜日の午前10時。パワーユーザーがチャーンしたのに全く気づいていませんでした。過去1週間で利用率が80%低下していましたが、誰も適切なメトリクスを監視していませんでした。SQLクエリを書くこともできますが、スキーマを覚えて、6つのテーブルをJOINして、結果をエクスポートして、レポートをフォーマットする必要があります。あるいは、Zeroに毎朝同じ分析を実行させ、ユーザーが去る前に異常を検出させることもできます。",
         "promptVariants": [
           {
@@ -2901,15 +2557,6 @@
         "title": "チームの1日まとめを自動で夕方に",
         "description": "Zeroがその日のSlack会話、マージ済みPR、クローズされたIssueをまとめ、チームチャンネルにダイジェストを投稿 - 50件のメッセージをスクロールしなくても、何がリリースされたか全員が把握できます。",
         "timeSaved": "毎日約15分節約",
-        "headings": {
-          "scenario": "なぜ「今日何を出荷した？」が午後6時に一番難しい質問なのか",
-          "prompt": "Zeroにイブニングブリーフの作成を頼む方法",
-          "steps": "Zeroが1日の活動をダイジェストにまとめる仕組み",
-          "nextActions": "イブニングブリーフをさらに活用する",
-          "integrations": "必要な連携: SlackとGitHub",
-          "tips": "自動デイリーダイジェストのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "金曜日の午後6時。CEOが全社チャンネルで聞きます：「今週何を出荷した？」誰かがSlackをスクロールし始め、別の誰かがGitHubを開き、15分後に大まかなリストができあがりますが、3つのPRが漏れていて2つの機能の担当者が間違っています。Zeroはこれを自動で行います - 毎晩、その日の活動を読み取り、人とプロジェクトごとに分類し、誰も聞く前にクリーンなサマリーを投稿します。",
         "promptVariants": [
           {
@@ -2984,15 +2631,6 @@
         "title": "品質を落とさずにAIコストを削減",
         "description": "Zeroがエージェントの実行を監査し、タスクを複雑度で分類し、モデルの切り替えを推奨 - Opusで十分なタスクにSonnetを使うのを止められます。",
         "timeSaved": "週約20分節約",
-        "headings": {
-          "scenario": "なぜAIの請求額がじわじわ増え続けるのか",
-          "prompt": "ZeroにAIコストの最適化を頼む方法",
-          "steps": "Zeroが節約機会を特定する仕組み",
-          "nextActions": "コスト最適化を安全に実施する",
-          "integrations": "必要な連携: vm0とSlack",
-          "tips": "AIコスト最適化のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "月末。AIインフラの請求書が届きました：今月は$17K、先月は$12Kでした。調べてみると、毎日のテックデブトスキャン - 数個のgrepスクリプトを実行してGitHub Issueを作成するだけ - がClaude Opusを使っています。マージキューモニターも、CIがグリーンか確認してSlackに投稿するだけなのにOpusです。どちらのタスクもOpusを必要とするようなものではありません。全スケジュールを手動で監査することもできますし、Zeroに各タスクを複雑度で分類させ、ダウングレードを推奨させることもできます。",
         "promptVariants": [
           {
@@ -3067,15 +2705,6 @@
         "title": "詰まったPRがリリースをブロックする前に検知",
         "description": "ZeroがGitHubマージキューを監視し、PRが詰まっている原因を診断し、適切な担当者にアラート - リリースパイプラインが音もなく止まることはもうありません。",
         "timeSaved": "毎日約10分節約",
-        "headings": {
-          "scenario": "なぜリリースパイプラインが止まっても誰も気づかないのか",
-          "prompt": "Zeroにマージキューの監視を頼む方法",
-          "steps": "Zeroが詰まったPRを検出・診断する仕組み",
-          "nextActions": "パイプラインを流れ続ける状態に保つ",
-          "integrations": "必要な連携: GitHubとSlack",
-          "tips": "マージキュー監視のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "PR #9842がマージキューに2時間入っています。CIはPRの変更とは無関係な不安定なテストで失敗し続けています。後ろにさらに3つのPRが積み上がっています。全員が自分の作業に没頭しているため誰も気づかず、GitHubはPRがキューで詰まっても通知を送りません。リリースがブロックされています。午後4時に誰かが気づく頃には、その日のデプロイウィンドウの半分が過ぎています。Zeroは数分でこれを検知します。",
         "promptVariants": [
           {
@@ -3150,15 +2779,6 @@
         "title": "音声でコーディングタスクを起動。キーボードは不要",
         "description": "Zeroに音声で指示するだけで、サンドボックスを立ち上げ、リポジトリをクローンし、セットアップを実行し、タスクを処理します。Zeroがバックグラウンドエージェントを起動し、進捗をSlackに報告します。",
         "timeSaved": "ハンズフリータスクあたり約20分短縮",
-        "headings": {
-          "scenario": "今日のあらゆるタスクがキーボードを要求する理由",
-          "prompt": "Zeroに音声でコーディングタスクを依頼する方法",
-          "steps": "Zeroが音声起動タスクを実行する流れ",
-          "nextActions": "スケールアップ、連結、またはルーティン化",
-          "integrations": "必要なインテグレーション：Slack とマネージドエージェントランタイム",
-          "tips": "ハンズフリーなエージェントワークフローのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "最高のアイデアは、机の前ではめったに生まれません。歩いている最中、移動中、会議と会議の合間、まさに座ってリポジトリを開き、サンドボックスを立ち上げ、タスクを実行するのが現実的でないタイミングに、ひらめきます。キーボードの前に戻る頃には、アイデアは冷めています。Zeroとの音声チャットはこのギャップを埋めます。タスクを声に出して伝えれば、マネージドエージェントがそれを受け取り、リポジトリをクローンし、セットアップを実行し、指示された内容を処理し、結果を投稿します。コンテキストスイッチなし、勢いを失うこともなし。",
         "promptVariants": [
           {
@@ -3236,15 +2856,6 @@
         "title": "オンコールエンジニアを巻き込まずに、開発者からの質問に回答",
         "description": "Zero が開発者サポートの質問を受け取り、既存のIssueとPRで重複をチェックし、ドキュメントから直接答えるか、チーム向けに適切にスコープされたIssueを作成します。",
         "timeSaved": "サポート質問あたり約30分短縮",
-        "headings": {
-          "scenario": "開発者サポートの質問が、オンコールエンジニアの1日を食い尽くす理由",
-          "prompt": "Zero にサポート質問の対応を依頼する方法",
-          "steps": "Zero が開発者の質問をトリアージする流れ",
-          "nextActions": "専門家にルーティング、チケット起票、または重複を自動クローズ",
-          "integrations": "必要なインテグレーション：GitHub、Slack、Gmail",
-          "tips": "開発者サポートトリアージのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "開発者向けのどの会社にも、「なんでこれ失敗するの？」という質問が Slack、メール、GitHub に絶え間なく届きます。半分は既存Issueの重複、4分の1はドキュメントに書かれている、残りは本物のバグ。でも、仕分けるだけでオンコールエンジニアの朝は1時間潰れます。Zero は受信した質問を読み、Issue、PR、ドキュメントを検索し、リンクを添えて直接答えるか、きれいで再現可能なチケットを起票します。オンコールエンジニアは受信箱ではなく、整理されたキューに向かって目覚めます。",
         "promptVariants": [
           {
@@ -3322,15 +2933,6 @@
         "title": "5つのタブではなく、1つのダイジェストで毎日を始める",
         "description": "カレンダー、Issueトラッカー、チャット、フィード、コードホストを1つの朝のサマリーにまとめた、朝会前のブリーフ。朝会に入る頃には、すでにキャッチアップ済みです。",
         "timeSaved": "毎朝約20分短縮",
-        "headings": {
-          "scenario": "毎朝5つのタブを開いて始める理由",
-          "prompt": "Zero に朝のブリーフを依頼する方法",
-          "steps": "Zero が朝のブリーフを組み立てる流れ",
-          "nextActions": "パーソナライズ、チームチャンネルに送信、またはシグナル調整",
-          "integrations": "必要なインテグレーション：カレンダー、Issueトラッカー、Slack",
-          "tips": "役に立つ朝のブリーフのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "毎朝は同じ流れで始まります。次の予定を確認するカレンダー、動きを見るための Linear、夜間の議論に追いつくための Slack、業界ニュースの X、何がマージされたか見る GitHub。最初の実タスクに入る前に20分が消えます。朝のブリーフはそれを1つの Slack メッセージに凝縮します。重要な会議、動いたIssue、返信が必要なスレッド、関連するニュース、昨夜マージされたPR。すべてが Slack を開いたときに待っている、コンパクトな1ブロックに。",
         "promptVariants": [
           {
@@ -3414,15 +3016,6 @@
         "title": "新着メールが届いたらDMで通知。リードを逃さない",
         "description": "Zero が指定したペースで Gmail をポーリングし、フィルターに一致する新着があればDMで知らせます。Slack を離れずに、バックグラウンドで永続監視。",
         "timeSaved": "メールサイクルあたり約15分短縮",
-        "headings": {
-          "scenario": "「受信箱ゼロ」がいつも1時間先にある理由",
-          "prompt": "Zero に Gmail ポーリングを依頼する方法",
-          "steps": "Zero が受信箱を監視する流れ",
-          "nextActions": "フィルター調整、自動返信、または重要メールを転送",
-          "integrations": "必要なインテグレーション：Gmail と Slack",
-          "tips": "バックグラウンド受信箱監視のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "本業に集中しているところ。でも、メールも待っている。リード、署名済み契約書、プロポーザルへの顧客の返事。Gmail にタブを切り替え続けたくはないが、6時間も見逃したくはない。Gmail ポーリングDMはまさにそれを解決します。Zero が数分ごとに受信箱を確認し、フィルターに一致する新着が届いた瞬間、1行サマリーをDMします。集中を保ったまま、重要なメールはほぼリアルタイムで届く。",
         "promptVariants": [
           {
@@ -3497,15 +3090,6 @@
         "title": "手動確認なしで、リリースが出荷可能か把握",
         "description": "Zero がリリースパイプラインを監視し、CIゲートとバージョンバンプを確認し、リリースPRが準備完了した瞬間を、あるいはブロッカーを、正確に伝えます。",
         "timeSaved": "リリースチェックあたり約15分短縮",
-        "headings": {
-          "scenario": "「このリリース出せる？」の答えが15分かかる理由",
-          "prompt": "Zero にリリース準備状況を依頼する方法",
-          "steps": "Zero がリリース準備状況を検証する流れ",
-          "nextActions": "ゲートを強化、チームに通知、または緑信号で自動マージ",
-          "integrations": "必要なインテグレーション：GitHub と Slack",
-          "tips": "リリース準備状況監視のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "リリース前には毎回、誰かが確認する必要があります：CIチェックすべて緑、バージョンが正しくバンプ、changelog 生成済み、ブロッカーラベルなし、特別なケアが必要なマイグレーションなし。タブをまたいでクリックすること10分、どこで問題が浮上してもおかしくない。リリース準備状況チェックはそれを1つのプロンプトに変えます。Zero がPRを読み、すべてのゲートを検証し、欠けているものを浮き彫りにし、はっきりと伝えます：準備OK、または X でブロック。OKならチームは Slack で青信号を受け取り、NGなら何を直すべきか正確に分かります。",
         "promptVariants": [
           {
@@ -3580,15 +3164,6 @@
         "title": "繰り返し来るサポート質問を、自動でドキュメント更新に",
         "description": "同じサポート質問が3回出たら、Zero がドキュメント更新をドラフトし、サイトにPRを出します。次の人が聞く前に答えが見つかるように。",
         "timeSaved": "ドキュメント更新サイクルあたり約45分短縮",
-        "headings": {
-          "scenario": "同じ5つのサポート質問が何度も戻ってくる理由",
-          "prompt": "Zero にシグナルからドキュメントを更新させる方法",
-          "steps": "Zero が質問をドキュメントに変える流れ",
-          "nextActions": "適切なレビュアーにルーティング、公開、またはカバレッジ拡大",
-          "integrations": "必要なインテグレーション：Slack と GitHub",
-          "tips": "シグナル駆動のドキュメント更新のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "どのサポートチャンネルにも、死なない5〜6個の質問があります。製品がわかりにくいからではなく、ドキュメントに書かれていないから。それらのスレッドを手動で追い、更新をドラフトし、PRを出す作業は、いつも後回しになる類のもの。ドキュメント自動更新はサポートチャンネルを監視し、繰り返し来る質問をカウントし、異なる3人以上から同じ質問が来た瞬間、ドキュメント更新をドラフトしてPRを出します。レビュアーは2分で承認。同じ質問を持つ次の人は、聞かずに答えを見つけます。",
         "promptVariants": [
           {
@@ -3666,15 +3241,6 @@
         "title": "監査前の「火消し」なしで、セキュリティコントロールを定期検証",
         "description": "Zero が指定したペースでセキュリティ設定をチェックし、各コントロールが正しく設定されていることを検証し、監査週の前にコンプライアンスチームへ差分を報告します。",
         "timeSaved": "検証サイクルあたり約2時間短縮",
-        "headings": {
-          "scenario": "すべての監査が2週間の火消しになる理由",
-          "prompt": "Zero にコントロール検証を依頼する方法",
-          "steps": "Zero がセキュリティコントロールを検証する流れ",
-          "nextActions": "差分を是正、カバレッジ拡大、またはスケジュール固定",
-          "integrations": "必要なインテグレーション：GitHub、Notion、Slack",
-          "tips": "継続的コントロール検証のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "監査はかつて四半期ごとの全社火消しでした。すべてのファイアウォールルール、IAMポリシー、アクセスレビューのスクリーンショットを、監査人が来る直前の1週間で手作業で集める。コントロールは誰にも気づかれずにドリフトし、是正は危機モードで行われました。継続的コントロール検証は、安定したペースでチェックを回し、ドリフトは監査の前週ではなく発生した週に捕捉されます。コンプライアンスチームには日付入り・署名入りの検査記録、エンジニアリングにはドリフト時のアラート、監査人にはすでに整理された証拠が届きます。",
         "promptVariants": [
           {
@@ -3752,15 +3318,6 @@
         "title": "ラフなブリーフを、プレビューURL付きの公開可能なドラフトに",
         "description": "Slack でラフなアイデアを話すだけ。Zero があなたにインタビューし、CMS にドラフトを作成し、プレビューURLを返します。レビューの起点が白紙ではなく、形のあるものに。",
         "timeSaved": "投稿あたり約2時間短縮",
-        "headings": {
-          "scenario": "最初のドラフトがいつも時間がかかりすぎる理由",
-          "prompt": "Zero にコンテンツのドラフトを依頼する方法",
-          "steps": "Zero がブリーフをドラフトに変える流れ",
-          "nextActions": "反復、翻訳、または公開スケジュール",
-          "integrations": "必要なインテグレーション：Slack とCMS",
-          "tips": "ブリーフからドラフトへのワークフローのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "どのコンテンツもゆるいアイデアから始まります：「音声駆動ワークフローに対する我々の考えについて何か書くべきだ」。そのアイデアから公開可能なドラフトまでの間に、白紙を3時間見つめ、2回やり直し、構成が合っているか悩む時間があります。ブリーフからドラフトへはそれを圧縮します。Slack にいる状態で5分 Zero と話すと、Zero が主要な論点を引き出し、CMS に正しい構成のフル投稿をドラフトし、プレビューURLを送ります。点滅するカーソルではなく、実際のものをレビューすることになります。",
         "promptVariants": [
           {
@@ -3838,15 +3395,6 @@
         "title": "オンブランドのカバーアートを、すべての投稿に秒速で生成",
         "description": "Zero があなたのビジュアルシステムに合ったカバーアートを生成します（一貫したスタイル、一貫したタイポグラフィ、一貫したパレット）。コンテンツワークフローに直接組み込みます。",
         "timeSaved": "投稿あたり約45分短縮",
-        "headings": {
-          "scenario": "すべての投稿が「あとはカバー画像だけ」で終わる理由",
-          "prompt": "Zero にカバーアート生成を依頼する方法",
-          "steps": "Zero がオンブランドのアートを生成する流れ",
-          "nextActions": "スタイル調整、バッチ生成、または Figma にエクスポート",
-          "integrations": "必要なインテグレーション：Slack とデザインシステム",
-          "tips": "一貫したカバーアートのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "ドラフトが完成、コピーは鋭い、そして思い出します：カバー画像。Figma で1時間を溶かすか、他の投稿と同じようなストック写真で妥協するか、すでに多忙なデザイナーに頼むか。カバーアート生成はその中間に立ちます：Zero がビジュアルシステム（同じパレット、同じイラストスタイル、同じタイポグラフィ）に合ったアートを数秒で生成します。出力は汎用的なストックではなく、一貫してあなたのものです。",
         "promptVariants": [
           {
@@ -3924,15 +3472,6 @@
         "title": "リサーチ → ドラフト → スコアリングのコンテンツループをフル自動化",
         "description": "Zero がトレンドトピックをリサーチし、投稿バリアントをドラフトし、公開後のパフォーマンスを追跡し、green/yellow/red レポートを届けます。何をスケール、反復、停止すべきか分かるように。",
         "timeSaved": "コンテンツサイクルあたり約6時間短縮",
-        "headings": {
-          "scenario": "コンテンツ戦略がアイデアと数字のギャップで死ぬ理由",
-          "prompt": "Zero にコンテンツループの実行を依頼する方法",
-          "steps": "Zero がリサーチ → ドラフト → スコアリングを回す流れ",
-          "nextActions": "勝者をスケール、yellow を反復、red を停止",
-          "integrations": "必要なインテグレーション：X、Notion、Slack",
-          "tips": "クローズドループコンテンツ実験のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "コンテンツ戦略は中間で破綻します：アイデアは生まれ、投稿は公開され、そして何が実際に効いたか誰も見ない。2ヶ月後、負けた投稿フォーマットがリサイクルされる。誰が勝ったか追跡されていなかったから。コンテンツ実験エンジンはループを閉じます。Zero がソース間でトレンドテーマをリサーチし、毎サイクル約8バリアントをドラフトし、公開後のパフォーマンスを追跡し、スコア付きレポート（green はスケールすべき、yellow は反復、red は停止）を届けます。ループは固定ペースで回るので、週が潰れても続きます。",
         "promptVariants": [
           {
@@ -4010,15 +3549,6 @@
         "title": "スクリプトから短編動画を制作。エンドツーエンドで",
         "description": "Zero が動画制作パイプライン全体をオーケストレーション（スクリプト、絵コンテ、スライド、アバター、ナレーション、編集、字幕）。単一プロンプトから公開可能な動画を返します。",
         "timeSaved": "動画あたり約8時間短縮",
-        "headings": {
-          "scenario": "短編動画が1分あたり丸1日かかる理由",
-          "prompt": "Zero に動画制作を依頼する方法",
-          "steps": "Zero が動画パイプラインを回す流れ",
-          "nextActions": "スクリプト調整、フレーム反復、またはシリーズをスケジュール",
-          "integrations": "必要なインテグレーション：Slack とマネージドエージェントランタイム",
-          "tips": "エージェントオーケストレーション動画制作のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "60秒の製品動画は手作業で丸1日かかります。スクリプト、絵コンテ、スライド、ナレーション収録、つなぎ合わせ、字幕追加、カラーコレクション、レンダリング、エクスポート。動画を出荷しないチームが多いのは、1本あたりのコストが高すぎるから。エージェントオーケストレーション動画制作はそれを圧縮します：1つのプロンプトがマネージドエージェントを起動し、各ツールを駆動します（あるものでスクリプト、別のものでスライド、3つ目でアバターナレーション、4つ目で最終編集）。そして公開可能な MP4 を返します。100のマイクロ判断ではなく、1つの動画をレビューします。",
         "promptVariants": [
           {
@@ -4096,15 +3626,6 @@
         "title": "ライブ指標と出荷状況から月次の取締役会向けアップデートを自動ドラフト",
         "description": "Zeroが月間のプロダクト指標、出荷履歴、カスタマーウィンを取得し、あなたのボイスで取締役会向けのアップデートをドラフトします。深夜11時にゼロから書くのではなく、ニュアンスを整えて送るだけで済みます。",
         "timeSaved": "月次アップデートあたり約4時間短縮",
-        "headings": {
-          "scenario": "取締役会向けアップデートが毎回週末プロジェクトになる理由",
-          "prompt": "Zeroに取締役会向けアップデートのドラフトを依頼する方法",
-          "steps": "Zeroが取締役会向けアップデートを組み立てる流れ",
-          "nextActions": "フォーマットの調整、投資家への配信追加、配信頻度のスケジュール化",
-          "integrations": "必要な連携：Issueトラッカー、GitHub、アナリティクス",
-          "tips": "投資家向け自動アップデートのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "取締役会向けアップデートは、カレンダー上では簡単そうに見えて、前夜になると難題になります。誰かが月間の出荷状況をまとめ、実際にコミットした内容と突き合わせ、トラフィックと利用状況の数字を掘り起こし、変更ログのようにならないストーリーを書かなければなりません。たいてい毎月、深夜に4時間が消えていきます。Zeroは生データ（クローズされたIssue、マージされたPR、トラフィック、売上、Slackでタグ付けされたカスタマーウィン）を取り込み、あなたのボイスで全文ドラフトを書き上げます。あとはニュアンスを整えて送るだけです。",
         "promptVariants": [
           {
@@ -4188,15 +3709,6 @@
         "title": "受信トレイを開く前に、すべてのリードをスコアリングしてフォローアップをドラフト",
         "description": "Zeroが新規インバウンドリードを読み、理想顧客プロファイル（ICP）に照らしてスコアリングし、見込み客自身のシグナルを使ってカスタマイズしたフォローアップをドラフトします。誰に送るかはあなたが決めます。",
         "timeSaved": "リードあたり約15分短縮",
-        "headings": {
-          "scenario": "リードフォローアップが毎回48時間遅れる理由",
-          "prompt": "Zeroにリードのスコアリングとフォローアップのドラフトを依頼する方法",
-          "steps": "Zeroがインバウンドリードを処理する流れ",
-          "nextActions": "スコアリングの精緻化、高スコアの自動送信、CRMへのログ",
-          "integrations": "必要な連携：GmailとNotion",
-          "tips": "リードフォローアップ自動化のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "良いリードは48時間で冷めます。Gmailで気づき、LinkedInと会社サイトをさっと調べ、当たり障りのない返信ではないフォローアップを書くまでに、だいたいそれくらいかかるからです。あなたの返信が届く頃には、見込み客はすでに競合2社と話しています。Lead Follow-upsはそのギャップを埋めます。Zeroが新規インバウンドリードをすべて読み、ICPに照らしてスコアリングし、見込み客のシグナル（会社、役職、ステージ）から取れるものを引き出し、フォローアップをドラフトします。あなたがレビューして送信。リードは2日ではなく1時間以内にパーソナルな返信を受け取ります。",
         "promptVariants": [
           {
@@ -4271,15 +3783,6 @@
         "title": "顧客が実際に読むリリースノートを作成",
         "description": "Zeroがリリースに含まれるコミットとマージされたPRを読み、顧客インパクトごとにクラスタリングし、明確で具体的な、出荷可能な顧客向けリリースノートをドラフトします。",
         "timeSaved": "リリースあたり約1時間短縮",
-        "headings": {
-          "scenario": "リリースノートが駆け足で書かれるか、完全にスキップされる理由",
-          "prompt": "Zeroにリリースノートのドラフトを依頼する方法",
-          "steps": "Zeroがコミットを顧客向けノートに変換する流れ",
-          "nextActions": "ボイスの洗練、公開と連結、翻訳",
-          "integrations": "必要な連携：GitHubとSlack",
-          "tips": "リリースノート自動化のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "リリースノートは常に、最後に書かれ、リリースが押した時に真っ先にカットされるものです。原因は素材にあります：エンジニア向けに書かれたコミットメッセージ、暗黙知を前提にしたPRタイトル、個別ではユーザーがほぼ気にしない30件のマージ済みPR。Release Notes Generatorはワークフローを反転させます。ZeroがコミットとPR説明を読み、顧客に見える変更だけを残し、テーマ（新機能、改善、修正）でまとめ、顧客が実際に読むボイスでノートを書きます。あなたがレビューすれば、次のリリースは沈黙ではなくノート付きで出荷されます。",
         "promptVariants": [
           {
@@ -4354,15 +3857,6 @@
         "title": "すべての会議を、担当者付きのクリーンなアクションアイテムリストに変換",
         "description": "Zeroが会議の文字起こしを読み、担当者と期限付きのアクションアイテムを抽出し、適切なSlackチャンネルやタスクトラッカーに投稿します。",
         "timeSaved": "会議あたり約20分短縮",
-        "headings": {
-          "scenario": "アクションアイテムが抜け落ちてしまう理由",
-          "prompt": "Zeroに会議のアクションアイテム抽出を依頼する方法",
-          "steps": "Zeroが会議をトラッキング可能な仕事に変える流れ",
-          "nextActions": "タスクへのルーティング、担当者なしのエスカレーション、週次ロールアップ",
-          "integrations": "必要な連携：カレンダー、Slack、Notion",
-          "tips": "会議フォロースルーのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "どの会議もアクションアイテムを生みますが、そのほとんどは追跡されません。会議が終わると、みんな自分のデスクに戻り、Caseyが今週引き受けた3つのことは記憶の中だけに残ります。1週間後には誰が何を担当していたか誰も覚えておらず、次の会議は「どこまで話したっけ？」から始まります。Meeting Action Itemsは、ステップを増やさずにこれを解決します。Zeroが会議の文字起こしを読み、担当者と期限付きでアクションアイテムを抽出し、適切なSlackチャンネルかタスクトラッカーに投稿します。全員が同じリストを持って部屋を出ます。",
         "promptVariants": [
           {
@@ -4440,15 +3934,6 @@
         "title": "生の画面収録から洗練されたプロモビデオを作成",
         "description": "無音の画面収録が入ったGoogle Driveフォルダを指定するだけ。Zeroがナレーションスクリプトの作成、音楽の選定、トランジションの追加を行い、30〜90秒のSaaSプロモーションショートをエクスポートします。",
         "timeSaved": "動画1本あたり約2時間節約",
-        "headings": {
-          "scenario": "画面収録からプロモビデオを作るのに時間がかかる理由",
-          "prompt": "Zeroに収録からプロモビデオを作成させる方法",
-          "steps": "Zeroが生素材を洗練されたプロモーションショートに変える方法",
-          "nextActions": "カットの修正、他チャネルへの転用、バッチ処理のスケジュール",
-          "integrations": "必要な連携: Slack、Google Drive、Notion",
-          "tips": "Zeroでのプロモビデオ制作のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "新機能のウォークスルーを収録し終えたところ——3つの無音の画面キャプチャがGoogle Driveフォルダに置いてあります。ここからが大変な部分です。ナレーションスクリプトを書き、BGMを選び、トランジションのタイミングを合わせ、すべてを60秒のプロモに編集する必要があります。午後いっぱいビデオエディタで過ごすこともできますが、そのフォルダをZeroに指定することもできます。Google Driveの収録を指定し、動画で何を伝えたいかを伝えれば、Zeroが洗練されたSaaSプロモショート——ナレーション、音楽、トランジションすべて込み——を投稿可能な状態で納品します。",
         "promptVariants": [
           {
@@ -4526,15 +4011,6 @@
         "title": "キーワードリサーチとAI画像でSEO最適化ブログ記事を作成",
         "description": "ZeroがAhrefsからキーワードデータを取得し、高チャンスの検索語をターゲットにブログ記事を執筆、Fal.aiでアイキャッチ画像を生成し、すべてをStrapiにドラフトとして公開します。ワンプロンプトでエンドツーエンド。",
         "timeSaved": "約90分の節約",
-        "headings": {
-          "scenario": "なぜブログ1本の執筆に3つのツールと午前中の半分が必要なのか",
-          "prompt": "Zeroにブログ記事のリサーチ・執筆・公開を依頼する方法",
-          "steps": "Zeroがキーワードデータから公開可能なドラフトを作る仕組み",
-          "nextActions": "コンテンツ配信スケジュールの設定、チャネル展開、ランキング追跡",
-          "integrations": "必要な連携: Ahrefs、Strapi、Fal.ai",
-          "tips": "AIを活用したSEOブログ執筆のベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "実際に検索上位を取れるブログ記事が必要です。つまり、Ahrefsを開いてボリュームがあり難易度の低いキーワードをフィルタリングし、コンテンツ戦略に合うものを選び、1,500語の記事を書き、アイキャッチ画像を用意し、CMSに合わせてフォーマットし、公開する。終わる頃には午前中が消えています。しかも今週はあと2本予定があります。Zeroにトピック領域とドメインを伝えるだけ。キーワードデータの取得、記事の執筆、カバー画像の生成、Strapiへのドラフト公開まですべて完了。あとはレビューして公開ボタンを押すだけです。",
         "promptVariants": [
           {
@@ -4612,15 +4088,6 @@
         "title": "ICPから受信トレイまで、コールドメールキャンペーンを自動実行",
         "description": "理想の顧客プロファイルを記述し、InstantlyのキャンペーンIDをZeroに渡すだけ。Apolloで条件に合うリードを検索し、メールを検証し、各企業のWebサイトを分析してコンテキストを取得、AIでパーソナライズされた冒頭文を生成し、すべてをInstantlyにアップロードします — すぐに送信可能です。",
         "timeSaved": "約45分の時間節約",
-        "headings": {
-          "scenario": "手動のリード探しが貴重な営業時間を浪費する理由",
-          "prompt": "1つのメッセージでコールドアウトリーチパイプラインを起動する方法",
-          "steps": "Zeroがリードを見つけ、強化し、パーソナライズし、登録する仕組み",
-          "nextActions": "ターゲティングの改善、セグメント拡大、定期実行のスケジュール",
-          "integrations": "必要な連携: ApolloとInstantly",
-          "tips": "AI活用コールドアウトリーチのベストプラクティス",
-          "connect": "ツールを接続する"
-        },
         "scenario": "月曜日の朝。今週のキャンペーンに30件の有望リードが必要です。Apolloでフィルターを調整し、CSVをエクスポートし、企業Webサイトを確認してテンプレートっぽくない冒頭文を書き、それをInstantlyにアップロードする — 最初のメールが送信される頃には午前中の半分が終わっています。Zeroなら、ICPを自然な言葉で説明するだけで、完全にパーソナライズされたキャンペーン用リードリストが数分で手に入ります。",
         "promptVariants": [
           {
@@ -4704,7 +4171,12 @@
       "sales": "セールス",
       "support": "サポート",
       "compliance": "コンプライアンス"
-    }
+    },
+    "whatTheProblemIs": "課題",
+    "stepConnectYourTools": "ステップ1：ツールを接続する",
+    "stepAskZero": "ステップ2：Zeroに聞く",
+    "stepTakeItFurther": "ステップ3：さらに活用する",
+    "tipsForBetterResults": "より良い結果のためのヒント"
   },
   "landing": {
     "hero": {

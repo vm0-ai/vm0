@@ -47,7 +47,7 @@ export interface UseCase {
   capability: Capability;
   model: string;
   videoId?: string;
-  screenshot?: string;
+  screenshots?: string[];
   connectors: ConnectorRef[];
   integrations: IntegrationData[];
   relatedSlugs: string[];
@@ -207,6 +207,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "auto-merge-releases",
     color: "#4fa68b",
+    screenshots: ["/assets/use-cases/auto-merge-releases.png"],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -240,7 +241,7 @@ export const USE_CASES: UseCase[] = [
     slug: "sentry-triage",
     color: "#d4a96a",
     videoId: "iTYhvVp5z5k",
-    screenshot: "/assets/use-cases/sentry-triage.png",
+    screenshots: ["/assets/use-cases/sentry-triage.png"],
     avatar: {
       rotation: 1,
       skin: 1,
@@ -274,6 +275,7 @@ export const USE_CASES: UseCase[] = [
     slug: "standup-summary",
     color: "#c89090",
     videoId: "0D7ScfH4fwk",
+    screenshots: ["/assets/use-cases/standup-summary.png"],
     avatar: {
       rotation: 2,
       skin: 3,
@@ -308,6 +310,7 @@ export const USE_CASES: UseCase[] = [
     slug: "kol-cold-outreach",
     color: "#c4a08a",
     videoId: "aignt_fZSVo",
+    screenshots: ["/assets/use-cases/kol-cold-outreach.png"],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -338,6 +341,7 @@ export const USE_CASES: UseCase[] = [
     slug: "file-bugs-from-slack",
     color: "#c08050",
     videoId: "E08Bc02tDIM",
+    screenshots: ["/assets/use-cases/file-bugs-from-slack.png"],
     avatar: {
       rotation: 4,
       skin: 4,
@@ -367,6 +371,7 @@ export const USE_CASES: UseCase[] = [
     slug: "slack-triage",
     color: "#7c9885",
     videoId: "XcqnMX1U0xY",
+    screenshots: ["/assets/use-cases/slack-triage.png"],
     avatar: {
       rotation: 3,
       skin: 2,
@@ -397,6 +402,7 @@ export const USE_CASES: UseCase[] = [
     slug: "employee-onboarding",
     color: "#6b8cae",
     videoId: "2YA7Iff4XHs",
+    screenshots: ["/assets/use-cases/employee-onboarding.png"],
     avatar: {
       rotation: 5,
       skin: 5,
@@ -427,6 +433,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "build-with-v0",
     color: "#7c8cbe",
+    screenshots: [
+      "/assets/use-cases/build-with-v0.png",
+      "/assets/use-cases/build-with-v0-2.png",
+    ],
     avatar: {
       rotation: 3,
       skin: 1,
@@ -459,6 +469,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "document-decisions",
     color: "#8a7cbe",
+    screenshots: [
+      "/assets/use-cases/document-decisions.png",
+      "/assets/use-cases/document-decisions-2.png",
+    ],
     avatar: {
       rotation: 2,
       skin: 3,
@@ -487,6 +501,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "product-health-briefing",
     color: "#6b9e8c",
+    screenshots: ["/assets/use-cases/product-health-briefing.png"],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -517,6 +532,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "tech-debt-scan",
     color: "#7c9ebe",
+    screenshots: ["/assets/use-cases/tech-debt-scan.png"],
     avatar: {
       rotation: 4,
       skin: 2,
@@ -542,6 +558,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "competitor-audit",
     color: "#be7c9a",
+    screenshots: ["/assets/use-cases/competitor-audit.png"],
     avatar: {
       rotation: 3,
       skin: 5,
@@ -575,6 +592,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "daily-engineering-brief",
     color: "#7c9ebe",
+    screenshots: ["/assets/use-cases/daily-engineering-brief.png"],
     avatar: {
       rotation: 2,
       skin: 4,
@@ -610,6 +628,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "competitor-pricing-monitor",
     color: "#7cbeab",
+    screenshots: ["/assets/use-cases/competitor-pricing-monitor.png"],
     avatar: {
       rotation: 5,
       skin: 2,
@@ -642,6 +661,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "customer-360",
     color: "#9e8abe",
+    screenshots: [
+      "/assets/use-cases/customer-360.png",
+      "/assets/use-cases/customer-360-2.png",
+    ],
     avatar: {
       rotation: 1,
       skin: 5,
@@ -677,6 +700,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "trending-topic-radar",
     color: "#be9a5c",
+    screenshots: ["/assets/use-cases/trending-topic-radar.png"],
     avatar: {
       rotation: 5,
       skin: 3,
@@ -710,6 +734,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "content-performance-report",
     color: "#7cbe9e",
+    screenshots: ["/assets/use-cases/content-performance-report.png"],
     avatar: {
       rotation: 2,
       skin: 4,
@@ -744,6 +769,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "error-triage-daily",
     color: "#9abe7c",
+    screenshots: ["/assets/use-cases/error-triage-daily.png"],
     avatar: {
       rotation: 2,
       skin: 1,
@@ -777,6 +803,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "marketing-emails",
     color: "#d68c7c",
+    screenshots: ["/assets/use-cases/marketing-emails.png"],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -811,6 +838,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "multilingual-cms-publishing",
     color: "#8E75FF",
+    screenshots: [
+      "/assets/use-cases/multilingual-cms-publishing.png",
+      "/assets/use-cases/multilingual-cms-publishing-2.png",
+    ],
     avatar: {
       rotation: 2,
       skin: 2,
@@ -841,36 +872,12 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "kb-ingest",
-    color: "#a07abe",
-    avatar: {
-      rotation: 2,
-      skin: 3,
-      hairStyle: 1,
-      hairColor: 4,
-      expression: 3,
-      intensity: "m",
-    },
-    roles: ["support"],
-    capability: "instant",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, GITHUB],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: GITHUB, required: false },
-    ],
-    relatedSlugs: ["document-decisions", "competitor-audit", "standup-summary"],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "pr-review",
     color: "#5a8a7a",
+    screenshots: [
+      "/assets/use-cases/pr-review.png",
+      "/assets/use-cases/pr-review-2.png",
+    ],
     avatar: {
       rotation: 4,
       skin: 1,
@@ -899,6 +906,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "api-performance",
     color: "#c07890",
+    screenshots: [
+      "/assets/use-cases/api-performance.png",
+      "/assets/use-cases/api-performance-2.png",
+    ],
     avatar: {
       rotation: 1,
       skin: 4,
@@ -931,6 +942,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "marketing-analytics",
     color: "#7cbe9a",
+    screenshots: ["/assets/use-cases/marketing-analytics.png"],
     avatar: {
       rotation: 3,
       skin: 2,
@@ -963,6 +975,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "production-db-query",
     color: "#be8a5a",
+    screenshots: [
+      "/assets/use-cases/production-db-query.png",
+      "/assets/use-cases/production-db-query-2.png",
+    ],
     avatar: {
       rotation: 5,
       skin: 5,
@@ -991,6 +1007,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "security-compliance",
     color: "#be7c5a",
+    screenshots: [
+      "/assets/use-cases/security-compliance.png",
+      "/assets/use-cases/security-compliance-2.png",
+    ],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -1023,6 +1043,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "daily-email-triage",
     color: "#be8a5c",
+    screenshots: ["/assets/use-cases/daily-email-triage.png"],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -1051,6 +1072,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "auto-test-coverage",
     color: "#5abe7c",
+    screenshots: ["/assets/use-cases/auto-test-coverage.png"],
     avatar: {
       rotation: 3,
       skin: 1,
@@ -1080,6 +1102,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "daily-user-analysis",
     color: "#5a8abe",
+    screenshots: [
+      "/assets/use-cases/daily-user-analysis.png",
+      "/assets/use-cases/daily-user-analysis-2.png",
+    ],
     avatar: {
       rotation: 5,
       skin: 4,
@@ -1112,6 +1138,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "evening-brief",
     color: "#9a7c5a",
+    screenshots: ["/assets/use-cases/evening-brief.png"],
     avatar: {
       rotation: 2,
       skin: 3,
@@ -1144,6 +1171,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cost-optimizer",
     color: "#8a5abe",
+    screenshots: ["/assets/use-cases/cost-optimizer.png"],
     avatar: {
       rotation: 4,
       skin: 5,
@@ -1176,6 +1204,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "merge-queue-monitor",
     color: "#5a9abe",
+    screenshots: ["/assets/use-cases/merge-queue-monitor.png"],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -1204,6 +1233,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "investor-board-updates",
     color: "#3e7abe",
+    screenshots: ["/assets/use-cases/investor-board-updates.png"],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1239,6 +1269,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "lead-followups",
     color: "#be5a4f",
+    screenshots: ["/assets/use-cases/lead-followups.png"],
     avatar: {
       rotation: 1,
       skin: 3,
@@ -1267,6 +1298,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "release-notes-generator",
     color: "#5abe8e",
+    screenshots: ["/assets/use-cases/release-notes-generator.png"],
     avatar: {
       rotation: 4,
       skin: 2,
@@ -1299,6 +1331,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "meeting-action-items",
     color: "#be9a3a",
+    screenshots: ["/assets/use-cases/meeting-action-items.png"],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -1328,6 +1361,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "promo-video-from-recordings",
     color: "#c86478",
+    screenshots: ["/assets/use-cases/promo-video-from-recordings.png"],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1361,6 +1395,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cross-tool-context",
     color: "#7abebe",
+    screenshots: ["/assets/use-cases/cross-tool-context.png"],
     avatar: {
       rotation: 2,
       skin: 5,
@@ -1395,6 +1430,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "voice-driven-agent",
     color: "#6b7fbf",
+    screenshots: ["/assets/use-cases/voice-driven-agent.png"],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -1428,6 +1464,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "developer-support-triage",
     color: "#8abe9a",
+    screenshots: ["/assets/use-cases/developer-support-triage.png"],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1457,6 +1494,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "morning-brief",
     color: "#d4a06b",
+    screenshots: ["/assets/use-cases/morning-brief.png"],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -1492,6 +1530,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "gmail-poll-dm",
     color: "#b88cbe",
+    screenshots: ["/assets/use-cases/gmail-poll-dm.png"],
     avatar: {
       rotation: 2,
       skin: 5,
@@ -1520,6 +1559,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "release-readiness-check",
     color: "#6bbe9a",
+    screenshots: ["/assets/use-cases/release-readiness-check.png"],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1548,6 +1588,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "docs-auto-update",
     color: "#c28a9e",
+    screenshots: ["/assets/use-cases/docs-auto-update.png"],
     avatar: {
       rotation: 5,
       skin: 2,
@@ -1565,7 +1606,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GITHUB, required: true },
       { connector: NOTION, required: false },
     ],
-    relatedSlugs: ["kb-ingest", "customer-360", "document-decisions"],
+    relatedSlugs: ["customer-360", "document-decisions"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,
@@ -1577,6 +1618,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "control-verification",
     color: "#5a7cbe",
+    screenshots: ["/assets/use-cases/control-verification.png"],
     avatar: {
       rotation: 1,
       skin: 5,
@@ -1610,6 +1652,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "brief-to-draft-content",
     color: "#8ebe5a",
+    screenshots: ["/assets/use-cases/brief-to-draft-content.png"],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -1643,6 +1686,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cover-art-generation",
     color: "#be7c3a",
+    screenshots: ["/assets/use-cases/cover-art-generation.png"],
     avatar: {
       rotation: 3,
       skin: 5,
@@ -1676,6 +1720,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "content-experiment-engine",
     color: "#5abeab",
+    screenshots: ["/assets/use-cases/content-experiment-engine.png"],
     avatar: {
       rotation: 1,
       skin: 4,
@@ -1709,6 +1754,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "agent-video-production",
     color: "#ab5abe",
+    screenshots: ["/assets/use-cases/agent-video-production.png"],
     avatar: {
       rotation: 5,
       skin: 2,
@@ -1742,6 +1788,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "seo-blog-writing",
     color: "#c47a9e",
+    screenshots: ["/assets/use-cases/seo-blog-writing.png"],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1775,6 +1822,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cold-outreach-pipeline",
     color: "#d07a5c",
+    screenshots: ["/assets/use-cases/cold-outreach-pipeline.png"],
     avatar: {
       rotation: 3,
       skin: 4,

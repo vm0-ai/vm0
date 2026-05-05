@@ -51,6 +51,98 @@ function Section({
   );
 }
 
+function ScreenshotCarousel({
+  screenshots,
+  alt,
+}: {
+  screenshots: string[];
+  alt: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const showControls = screenshots.length > 1;
+
+  return (
+    <div className="uc-carousel">
+      <div className="uc-screenshot-frame">
+        <Image
+          src={screenshots[activeIndex]!}
+          alt={`${alt} — screenshot ${activeIndex + 1}`}
+          width={800}
+          height={450}
+          className="uc-screenshot-img"
+          priority
+        />
+      </div>
+      {showControls && (
+        <>
+          <button
+            className="uc-carousel-btn uc-carousel-btn--left"
+            onClick={() => {
+              setActiveIndex(
+                (activeIndex - 1 + screenshots.length) % screenshots.length,
+              );
+            }}
+            aria-label="Previous screenshot"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M10 12L6 8L10 4"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            className="uc-carousel-btn uc-carousel-btn--right"
+            onClick={() => {
+              setActiveIndex((activeIndex + 1) % screenshots.length);
+            }}
+            aria-label="Next screenshot"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M6 4L10 8L6 12"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <div className="uc-carousel-dots">
+            {screenshots.map((_, i) => {
+              return (
+                <button
+                  key={i}
+                  className={`uc-carousel-dot${i === activeIndex ? " uc-carousel-dot--active" : ""}`}
+                  onClick={() => {
+                    setActiveIndex(i);
+                  }}
+                  aria-label={`Go to screenshot ${i + 1}`}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TryItLink({ href, label }: { href: string; label: string }) {
   return (
     <div className="mt-4 flex justify-start">
@@ -161,32 +253,26 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
           </header>
 
           {/* Section 1: What Zero delivers */}
-          {useCase.screenshot && (
+          {(useCase.screenshots?.length ?? 0) > 0 && (
             <Section title={t("whatZeroDelivers")}>
-              <div className="uc-screenshot-frame">
-                <Image
-                  src={useCase.screenshot}
-                  alt={`${title} — sample output from Zero`}
-                  width={800}
-                  height={450}
-                  className="uc-screenshot-img"
-                  priority
-                />
-              </div>
+              <ScreenshotCarousel
+                screenshots={useCase.screenshots!}
+                alt={`${title} — sample output from Zero`}
+              />
             </Section>
           )}
 
-          {/* Section 2: The problem */}
-          <Section title={t(`content.${slug}.headings.scenario`)}>
+          {/* Section 2: What the problem is */}
+          <Section title={t("whatTheProblemIs")}>
             <p className="uc-section-body">{t(`content.${slug}.scenario`)}</p>
           </Section>
 
           {/* Section 3: How Zero fixes it */}
           <Section title={t("howZeroFixesIt")}>
-            {/* Connect your tools */}
+            {/* Step 1: Connect your tools */}
             <div className="uc-subsection">
               <h3 className="uc-subsection-title">
-                {t(`content.${slug}.headings.connect`)}
+                {t("stepConnectYourTools")}
               </h3>
               <div className="uc-connect-grid">
                 {useCase.integrations.map((integration, i) => {
@@ -239,25 +325,16 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
               </div>
             </div>
 
-            {/* Prompt */}
+            {/* Step 2: Ask Zero (prompts + what Zero does) */}
             <div className="uc-subsection">
-              <h3 className="uc-subsection-title">
-                {t(`content.${slug}.headings.prompt`)}
-              </h3>
+              <h3 className="uc-subsection-title">{t("stepAskZero")}</h3>
               <PromptVariants
                 variants={promptVariants}
                 connectors={useCase.connectors}
                 platformUrl={platformUrl}
                 tryItLabel={t("tryIt")}
               />
-            </div>
-
-            {/* Steps */}
-            <div className="uc-subsection">
-              <h3 className="uc-subsection-title">
-                {t(`content.${slug}.headings.steps`)}
-              </h3>
-              <div className="uc-steps">
+              <div className="uc-steps" style={{ marginTop: 24 }}>
                 {steps.map((step, i) => {
                   return (
                     <div key={i} className="uc-step">
@@ -269,11 +346,9 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
               </div>
             </div>
 
-            {/* Next actions */}
+            {/* Step 3: Take it further */}
             <div className="uc-subsection">
-              <h3 className="uc-subsection-title">
-                {t(`content.${slug}.headings.nextActions`)}
-              </h3>
+              <h3 className="uc-subsection-title">{t("stepTakeItFurther")}</h3>
               <div className="uc-next-actions">
                 {nextActions.map((action, i) => {
                   return (
@@ -300,11 +375,8 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             </div>
           </Section>
 
-          {/* Tips */}
-          <div className="uc-section">
-            <h2 className="uc-section-title" style={{ marginBottom: 16 }}>
-              {t(`content.${slug}.headings.tips`)}
-            </h2>
+          {/* Tips for better results */}
+          <Section title={t("tipsForBetterResults")}>
             <div className="uc-tips">
               {tips.map((tip, i) => {
                 return (
@@ -315,7 +387,7 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                 );
               })}
             </div>
-          </div>
+          </Section>
         </article>
       </main>
 

@@ -12,7 +12,8 @@ import { request as undiciRequest, type Dispatcher } from "undici";
 
 import { corsMiddleware } from "./lib/cors";
 import { env } from "./lib/env";
-import { logger } from "./lib/log";
+import { flushLogs, logger } from "./lib/log";
+import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
 import { ROUTES, type RouteEntry } from "./signals/route";
 import { isAbortError } from "./signals/utils";
@@ -201,6 +202,13 @@ export function createApp({ routes = ROUTES, signal }: CreateAppOptions): Hono {
   // matching a registered method, and so registered route responses receive
   // Access-Control-Allow-Origin without relying on the legacy web proxy.
   app.use("*", corsMiddleware);
+
+  // Flush buffered Axiom logs after the response is sent so logging doesn't
+  // add latency to the user-visible request.
+  app.use("*", async (c, next) => {
+    await next();
+    waitUntil(flushLogs());
+  });
 
   for (const { route, handler } of routes) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));

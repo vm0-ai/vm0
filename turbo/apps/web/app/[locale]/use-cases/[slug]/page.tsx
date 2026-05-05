@@ -28,7 +28,7 @@ export async function generateMetadata({
 
   const url = `${BASE_URL}/${locale}/use-cases/${slug}`;
 
-  const ogImage = useCase?.screenshot ?? "/og-image.png";
+  const ogImage = useCase?.screenshots?.[0] ?? "/og-image.png";
 
   return {
     title: `${title} — VM0 Use Case`,

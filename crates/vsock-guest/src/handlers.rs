@@ -1,5 +1,5 @@
 use std::io::{self, Write};
-use std::process::Stdio;
+use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::thread;
@@ -11,13 +11,15 @@ use vsock_proto::{
 
 use crate::drain::drain_into_vec_cancellable;
 use crate::error::to_io_error;
-use crate::exec::{build_exec_command, prepend_env, spawn_with_pipes, truncate_preview};
+use crate::exec::{
+    build_exec_command, prepend_env, spawn_in_own_process_group, spawn_with_pipes, truncate_preview,
+};
 use crate::log::log;
 use crate::process::extract_exit_code;
 use crate::shutdown::handle_shutdown;
 use crate::wait::{
-    WaitOutcome, await_drain_deadline, finalize_buffered_result, wait_with_drain_and_timeout,
-    wait_with_kill_timeout,
+    WaitOutcome, await_drain_deadline, finalize_buffered_result,
+    wait_with_drain_and_timeout_or_cancelled, wait_with_kill_timeout,
 };
 
 pub(crate) enum MessageOutcome {
@@ -31,6 +33,7 @@ pub(crate) fn handle_exec(
     command: &str,
     env: &[(&str, &str)],
     sudo: bool,
+    connection_cancel: &AtomicBool,
 ) -> (i32, Vec<u8>, Vec<u8>) {
     log(
         "INFO",
@@ -55,7 +58,8 @@ pub(crate) fn handle_exec(
         }
     };
 
-    let (outcome, stdout, stderr_buf) = wait_with_drain_and_timeout(child, timeout_ms);
+    let (outcome, stdout, stderr_buf) =
+        wait_with_drain_and_timeout_or_cancelled(child, timeout_ms, connection_cancel);
     let result = finalize_buffered_result(outcome, stdout, stderr_buf);
 
     log(
@@ -113,12 +117,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
         }
     };
 
-    let mut child = match build_exec_command(&write_cmd, use_sudo)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+    let mut child = match spawn_write_file_command(&write_cmd, use_sudo) {
         Ok(c) => c,
         Err(e) => return (false, format!("Failed to spawn write command: {e}")),
     };
@@ -138,8 +137,8 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
     // child exits, the drain thread either reaches EOF naturally or — if a
     // grandchild somehow still holds stderr — is cut at the deadline so its
     // last write returns EPIPE.
-    // Defensive: same invariant as wait_with_drain_and_timeout — reap the
-    // child if its stderr is somehow already gone, so we don't leave a zombie.
+    // Defensive: same invariant as the exec drain helper — reap the child if
+    // its stderr is somehow already gone, so we don't leave a zombie.
     let stderr_pipe = match child.stderr.take() {
         Some(p) => p,
         None => {
@@ -166,6 +165,7 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
 
     match outcome {
         WaitOutcome::TimedOut => (false, "write timed out".to_string()),
+        WaitOutcome::Cancelled => (false, "write cancelled".to_string()),
         WaitOutcome::WaitFailed(msg) => (false, format!("write wait failed: {msg}")),
         WaitOutcome::Exited(s) => {
             let exit_code = extract_exit_code(s);
@@ -176,6 +176,15 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
             (true, String::new())
         }
     }
+}
+
+fn spawn_write_file_command(write_cmd: &str, use_sudo: bool) -> io::Result<Child> {
+    let mut command = build_exec_command(write_cmd, use_sudo);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    spawn_in_own_process_group(&mut command)
 }
 
 /// Handle incoming message and return the connection-loop outcome.
@@ -210,5 +219,23 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
                 vsock_proto::encode(MSG_ERROR, msg.seq, &payload).map_err(to_io_error)?,
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn write_file_command_starts_as_process_group_leader() {
+        let mut child = spawn_write_file_command("sleep 10", false).unwrap();
+        let pid = child.id();
+
+        let pgid = unsafe { libc::getpgid(pid as libc::pid_t) };
+        let _ = unsafe { crate::process::kill_process_tree(pid) };
+        let _ = child.wait();
+
+        assert_eq!(pgid, pid as libc::pid_t);
     }
 }
