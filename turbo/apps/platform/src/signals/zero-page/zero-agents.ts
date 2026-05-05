@@ -16,10 +16,14 @@ export const createSubagent$ = command(
   ) => {
     const createClient = get(zeroClient$);
 
-    await createZeroAgent(createClient, {
-      displayName,
-      avatarUrl,
-    });
+    await createZeroAgent(
+      createClient,
+      {
+        displayName,
+        avatarUrl,
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
     // Refresh the agents list so the new agent appears immediately

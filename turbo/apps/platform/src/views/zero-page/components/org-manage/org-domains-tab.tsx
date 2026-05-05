@@ -32,13 +32,12 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import type {
   OrgDomain,
   OrgEnrollmentMode,
 } from "@vm0/api-contracts/contracts/org-members";
 import { orgDomains$ } from "../../../../signals/external/org-domains.ts";
-import { detach, Reason } from "../../../../signals/utils.ts";
+import { onDomEventFn } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   addDomainDialogOpen$,
@@ -164,16 +163,9 @@ function AddDomainDialog() {
       trimmed,
     );
 
-  const handleAdd = () => {
-    detach(
-      doAdd(trimmed, enrollmentMode, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to add domain";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
-  };
+  const handleAdd = onDomEventFn(async () => {
+    await doAdd(trimmed, enrollmentMode, pageSignal);
+  });
 
   return (
     <Dialog
@@ -274,27 +266,13 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
   const isVerified = domain.verification.status === "verified";
   const pageSignal = useGet(pageSignal$);
 
-  const handleRemove = () => {
-    detach(
-      doRemove(domain.id, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to remove domain";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
-  };
+  const handleRemove = onDomEventFn(async () => {
+    await doRemove(domain.id, pageSignal);
+  });
 
-  const handleSetVerified = (verified: boolean) => {
-    detach(
-      doSetVerified(domain.id, verified, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to update domain";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
-  };
+  const handleSetVerified = onDomEventFn(async (verified: boolean) => {
+    await doSetVerified(domain.id, verified, pageSignal);
+  });
 
   return (
     <div data-testid="domain-row" className={cn(ROW_GRID, "py-3 px-5")}>

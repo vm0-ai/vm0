@@ -32,7 +32,7 @@ import {
   sortedAgents$,
 } from "../../signals/agent.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { detach, Reason } from "../../signals/utils.ts";
+import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import {
   AgentAvatarImg,
@@ -70,29 +70,16 @@ export function AgentsPage() {
     agentsLoadable.state === "hasData" ? agentsLoadable.data.length : 0;
   const atLimit = agentCount >= 7;
 
-  const handleCreateTeammate = (avatarUrl: string) => {
+  const handleCreateTeammate = onDomEventFn(async (avatarUrl: string) => {
     const trimmed = newName.trim();
     if (!trimmed || creating) {
       return;
     }
-    detach(
-      createSubagentFn(trimmed, avatarUrl, pageSignal).then(
-        () => {
-          setDialogOpen(false);
-          resetDialog();
-          toast.success(`${trimmed} created successfully`);
-        },
-        (error: unknown) => {
-          toast.error(
-            error instanceof Error
-              ? error.message
-              : "Failed to create sub-agent",
-          );
-        },
-      ),
-      Reason.DomCallback,
-    );
-  };
+    await createSubagentFn(trimmed, avatarUrl, pageSignal);
+    setDialogOpen(false);
+    resetDialog();
+    toast.success(`${trimmed} created successfully`);
+  });
 
   return (
     <div className="flex flex-1 flex-col min-h-0">

@@ -9,7 +9,6 @@ import {
   SelectValue,
 } from "@vm0/ui/components/ui/select";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { IconClock, IconLoader2 } from "@tabler/icons-react";
 import {
   userPreferences$,
@@ -19,6 +18,7 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../../../signals/zero-page/cron.ts";
+import { onDomEventFn } from "../../../../signals/utils.ts";
 
 export function TimezoneSettings() {
   const preferences = useLastResolved(userPreferences$);
@@ -27,11 +27,9 @@ export function TimezoneSettings() {
 
   const loading = tzLoadable.state === "loading";
 
-  const handleChange = (value: string) => {
-    updatePreference({ timezone: value }, pageSignal).catch(() => {
-      toast.error("Failed to update timezone");
-    });
-  };
+  const handleChange = onDomEventFn(async (value: string) => {
+    await updatePreference({ timezone: value }, pageSignal);
+  });
 
   if (!preferences) {
     return <Skeleton className="h-[76px] w-full rounded-xl" />;

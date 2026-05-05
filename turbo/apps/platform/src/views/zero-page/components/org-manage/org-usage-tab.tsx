@@ -11,7 +11,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { UnsavedBar } from "./unsaved-bar.tsx";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { usageMembersAsync$ } from "../../../../signals/usage-page/usage-signals.ts";
@@ -389,9 +388,9 @@ function OverviewSection() {
 
   const handleSave = () => {
     detach(
-      doBatchCommit(members, pageSignal).catch(() => {
-        toast.error("Failed to update credit caps. Please try again.");
-      }),
+      (async () => {
+        await doBatchCommit(members, pageSignal);
+      })(),
       Reason.DomCallback,
     );
   };
