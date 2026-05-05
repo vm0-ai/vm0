@@ -126,9 +126,6 @@ describe("sidebar new-chat skeleton flash", () => {
     }
     observer.disconnect();
 
-    expect(
-      skeletonSeen,
-      "the chat-thread skeleton should never be in the DOM during the optimistic create flow",
-    ).toEqual({ mutation: 0, microtask: 0 });
+    expect(skeletonSeen).toStrictEqual({ mutation: 0, microtask: 0 });
   });
 });
