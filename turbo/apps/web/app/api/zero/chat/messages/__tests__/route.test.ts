@@ -6,8 +6,10 @@ import {
   createTestRequest,
   createTestCompose,
   insertOrgDefaultModelProvider,
+  insertOrgNonDefaultModelProvider,
   deleteTestModelProvider,
   setTestZeroAgentModelProvider,
+  setOrgCredits,
   findTestCallbacksByRunId,
   findTestRunnerJobEntry,
   getTestRun,
@@ -1000,6 +1002,36 @@ describe("POST /api/zero/chat/messages", () => {
           }),
         );
         expect(response.status).toBe(400);
+      });
+    });
+
+    describe("credit check with modelSelection", () => {
+      it("rejects vm0 provider via modelSelection when org credits depleted", async () => {
+        await setOrgCredits(user.orgId, 0);
+        await insertOrgNonDefaultModelProvider(user.orgId, "vm0");
+        const vm0ProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "vm0",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId,
+              prompt: "should be rejected due to credits",
+              modelSelection: {
+                modelProviderId: vm0ProviderId,
+                selectedModel: "claude-opus-4-7",
+              },
+            }),
+          }),
+        );
+
+        expect(response.status).toBe(402);
+        const data = await response.json();
+        expect(data.error.code).toBe("INSUFFICIENT_CREDITS");
       });
     });
 

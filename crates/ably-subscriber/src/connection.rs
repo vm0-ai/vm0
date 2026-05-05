@@ -936,7 +936,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                         }
                         Some(Err(e)) => {
                             let reason = websocket_error_reason(&e);
-                            tracing::warn!(%reason, "WebSocket error");
+                            tracing::info!(%reason, "WebSocket error, reconnecting");
                             disconnect_reason = Some(reason);
                             immediate_retry = true;
                             close_before_reconnect = true;
@@ -956,7 +956,7 @@ pub(crate) async fn run_event_loop(mut p: EventLoopState, mut close_rx: oneshot:
                     disconnect_reason = Some(format!("heartbeat timeout after {idle_timeout:?}"));
                     immediate_retry = true;
                     close_before_reconnect = true;
-                    tracing::warn!("Heartbeat timeout");
+                    tracing::info!("Heartbeat timeout, reconnecting");
                     break; // → reconnect
                 }
             }
