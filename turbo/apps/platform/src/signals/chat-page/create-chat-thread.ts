@@ -13,9 +13,11 @@ import { createScrollSignals } from "../auto-scroll.ts";
 import {
   createDraftSignals,
   type DraftSignals,
-  type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
-import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
+import {
+  collectSuccessfulAttachmentInfos,
+  prepareUserMessageFromDraft$,
+} from "./resolve-draft-attachments.ts";
 import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
@@ -490,35 +492,24 @@ function createDraftSync(
       const content = input.trim() || null;
       const attachments = get(draft.attachments$);
 
-      const infos = await Promise.all(
+      const infos = await Promise.allSettled(
         attachments.map((a) => {
           return get(a.fileInfo$);
         }),
       );
       signal.throwIfAborted();
-      const persisted = attachments
-        .map((a, i) => {
-          return { a, info: infos[i] };
-        })
-        .filter(
-          (
-            r,
-          ): r is {
-            a: ZeroChatAttachment;
-            info: { id: string; url: string };
-          } => {
-            return r.info !== null;
-          },
-        )
-        .map((r) => {
-          return {
-            id: r.info.id,
-            url: r.info.url,
-            filename: r.a.filename,
-            contentType: r.a.contentType,
-            size: r.a.size,
-          };
-        });
+      const persisted = collectSuccessfulAttachmentInfos(
+        attachments,
+        infos,
+      ).map((r) => {
+        return {
+          id: r.info.id,
+          url: r.info.url,
+          filename: r.attachment.filename,
+          contentType: r.attachment.contentType,
+          size: r.attachment.size,
+        };
+      });
 
       await set(
         dataSource.patchDraft$,

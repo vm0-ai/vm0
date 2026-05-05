@@ -33,6 +33,30 @@ interface PreparedUserMessage {
   hasTextContent: boolean;
 }
 
+interface AttachmentFileInfo {
+  id: string;
+  url: string;
+}
+
+interface ResolvedDraftAttachment {
+  attachment: ZeroChatAttachment;
+  info: AttachmentFileInfo;
+}
+
+export function collectSuccessfulAttachmentInfos(
+  attachments: readonly ZeroChatAttachment[],
+  results: readonly PromiseSettledResult<AttachmentFileInfo | null>[],
+): ResolvedDraftAttachment[] {
+  return results.flatMap((result, index) => {
+    const attachment = attachments[index];
+    if (!attachment || result.status !== "fulfilled" || result.value === null) {
+      return [];
+    }
+
+    return [{ attachment, info: result.value }];
+  });
+}
+
 /**
  * Resolves a draft's pending attachments (waits for uploads to finish,
  * filters out cancelled/failed entries) and shapes the result into both the
@@ -54,27 +78,14 @@ export const prepareUserMessageFromDraft$ = command(
     signal: AbortSignal,
   ): Promise<PreparedUserMessage | null> => {
     const allAttachments = get(draft.attachments$);
-    const allInfos = await Promise.all(
+    const allInfos = await Promise.allSettled(
       allAttachments.map((a) => {
         return get(a.fileInfo$);
       }),
     );
     signal.throwIfAborted();
 
-    const ready = allAttachments
-      .map((a, i) => {
-        return { attachment: a, info: allInfos[i] };
-      })
-      .filter(
-        (
-          r,
-        ): r is {
-          attachment: ZeroChatAttachment;
-          info: { id: string; url: string };
-        } => {
-          return r.info !== null;
-        },
-      );
+    const ready = collectSuccessfulAttachmentInfos(allAttachments, allInfos);
 
     const trimmedPrompt = prompt.trim();
     if (!trimmedPrompt && ready.length === 0) {

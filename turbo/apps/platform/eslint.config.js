@@ -241,16 +241,6 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
-  // chat-draft.ts handles upload failures (file too large, network errors,
-  // R2 put failures) in the try/catch block around attachment.upload$. The
-  // catch removes the orphaned chip from the UI and shows a toast so the
-  // user knows the upload failed and can retry.
-  {
-    files: ["src/signals/zero-page/chat-draft.ts"],
-    rules: {
-      "no-restricted-syntax": "off",
-    },
-  },
   // zero-schedule.ts uses try/catch to surface non-API validation errors
   // (e.g. past atTime from buildScheduleBody) as user-visible toasts, and
   // to show error toasts when runScheduleNow$ fails. ApiError from accept()
@@ -261,14 +251,11 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
-  // slack-connect-signals.ts and telegram-connect-signals.ts use try/catch
-  // to convert API errors into signal state (status/errorMsg) so the UI can
-  // render error states without the error propagating to component boundaries.
+  // telegram-connect-signals.ts uses try/catch to convert API errors into
+  // signal state (status/errorMsg) so the UI can render error states without
+  // the error propagating to component boundaries.
   {
-    files: [
-      "src/signals/zero-page/slack-connect-signals.ts",
-      "src/signals/zero-page/telegram-connect-signals.ts",
-    ],
+    files: ["src/signals/zero-page/telegram-connect-signals.ts"],
     rules: {
       "no-restricted-syntax": "off",
     },

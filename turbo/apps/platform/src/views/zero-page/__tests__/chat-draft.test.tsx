@@ -210,7 +210,7 @@ describe("chat draft persistence across thread navigation", () => {
     });
   });
 
-  it("should toast and drop the chip when prepare returns an error", async () => {
+  it("should toast and keep the chip when prepare returns an error", async () => {
     const user = userEvent.setup();
     mockThreads();
     server.use(
@@ -247,10 +247,10 @@ describe("chat draft persistence across thread navigation", () => {
         expect.stringContaining("File too large"),
       );
     });
-    expect(screen.queryByLabelText(/huge\.png/)).toBeNull();
+    expect(screen.getByLabelText("Remove huge.png")).toBeInTheDocument();
   });
 
-  it("should toast and drop the chip when the R2 put fails", async () => {
+  it("should keep the chip when the R2 put fails", async () => {
     const user = userEvent.setup();
     mockThreads();
     server.use(
@@ -284,10 +284,8 @@ describe("chat draft persistence across thread navigation", () => {
     await user.upload(fileInput, file);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(
-        expect.stringContaining("storage returned 500"),
-      );
+      expect(screen.getByLabelText("Remove fail.png")).toBeInTheDocument();
     });
-    expect(screen.queryByLabelText(/fail\.png/)).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

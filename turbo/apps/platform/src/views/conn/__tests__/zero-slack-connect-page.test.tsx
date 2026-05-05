@@ -13,6 +13,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   setMockSlackConnectData,
   resetMockSlackConnect,
@@ -156,6 +157,48 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
         workspaceId: "ws1",
         slackUserId: "u1",
       });
+    });
+  });
+
+  it("shows loading while connect is pending", async () => {
+    const connectDeferred = createDeferredPromise<void>(context.signal);
+
+    server.use(
+      mockApi(zeroSlackConnectContract.connect, async ({ respond }) => {
+        await connectDeferred.promise;
+        return respond(200, {
+          success: true,
+          connectionId: "conn-001",
+          role: "member",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Link your account to this Slack workspace/i),
+      ).toBeInTheDocument();
+    });
+
+    const connectButton = screen.getAllByRole("button").find((el) => {
+      return /^Connect$/i.test(el.textContent ?? "");
+    })!;
+
+    click(connectButton);
+
+    await waitFor(() => {
+      const loadingButton = screen.getAllByRole("button").find((el) => {
+        return /Connecting.../i.test(el.textContent ?? "");
+      });
+      expect(loadingButton).toBeDisabled();
+    });
+
+    connectDeferred.resolve();
+
+    await waitFor(() => {
+      expect(window.location.href).toBe("slack://open");
     });
   });
 });
