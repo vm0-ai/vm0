@@ -191,6 +191,15 @@ pub(crate) fn setup_codex_chatgpt_inner(
 
 #[cfg(test)]
 mod tests {
+    //! Integration tests against the single public entry point
+    //! `setup_codex_chatgpt_inner`. We deliberately avoid testing the
+    //! private builders (`make_placeholder_jwt`, `build_access_token_claims`,
+    //! etc.) directly: every property they care about (3-segment JWTs,
+    //! HS256 header, ChatGPT-namespace claims, far-future `exp`,
+    //! plan_type ≠ free, id_token shape, no real-token shapes) is asserted
+    //! against the file the public function writes. This keeps the internal
+    //! shape of the builders refactorable without churning tests, per the
+    //! project's "Integration Tests Only" rule.
     use super::*;
 
     use std::os::unix::fs::PermissionsExt;
@@ -207,147 +216,120 @@ mod tests {
     fn decode_segment(segment: &str) -> Value {
         let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
             .decode(segment)
-            .expect("payload segment must be base64url");
-        serde_json::from_slice(&bytes).expect("payload segment must be JSON")
+            .expect("JWT segment must be base64url");
+        serde_json::from_slice(&bytes).expect("JWT segment must be JSON")
     }
 
-    // -----------------------------------------------------------------
-    // make_placeholder_jwt
-    // -----------------------------------------------------------------
-
-    #[test]
-    fn make_placeholder_jwt_produces_three_non_empty_segments() {
-        let payload = json!({"hello": "world"});
-        let jwt = make_placeholder_jwt(&payload).unwrap();
-        let segments: Vec<&str> = jwt.split('.').collect();
-        assert_eq!(segments.len(), 3, "JWT must have 3 segments: {jwt}");
-        for (i, seg) in segments.iter().enumerate() {
-            assert!(!seg.is_empty(), "segment {i} must be non-empty: {jwt}");
-        }
+    /// Run `setup_codex_chatgpt_inner` against a temp dir and return the
+    /// parsed `auth.json` plus the path it was written to.
+    fn run_setup_and_parse(tmp: &TempDir, now: DateTime<Utc>) -> (Value, std::path::PathBuf) {
+        setup_codex_chatgpt_inner(tmp.path(), now).unwrap();
+        let auth_path = tmp.path().join(".codex").join("auth.json");
+        let body = std::fs::read_to_string(&auth_path).unwrap();
+        let parsed: Value = serde_json::from_str(&body).unwrap();
+        (parsed, auth_path)
     }
 
+    /// Asserts the three independent ChatGPT-mode signals, the placeholder
+    /// account_id, both JWT shapes (3 segments + HS256 header), the
+    /// ChatGPT-namespace claims (account id, plan type ≠ free, user id,
+    /// fedramp flag), the far-future `exp`, the empty refresh token, and
+    /// the RFC3339 `last_refresh` — i.e. everything the private builders
+    /// previously asserted in isolation, asserted here against the
+    /// fabricated file.
     #[test]
-    fn make_placeholder_jwt_payload_round_trips() {
-        let payload = json!({"foo": 42, "bar": ["a", "b"]});
-        let jwt = make_placeholder_jwt(&payload).unwrap();
-        let segments: Vec<&str> = jwt.split('.').collect();
-        let decoded = decode_segment(segments[1]);
-        assert_eq!(decoded, payload);
-    }
+    fn setup_codex_chatgpt_inner_writes_well_formed_chatgpt_auth_json() {
+        let tmp = TempDir::new().unwrap();
+        let now = fixed_now();
+        let (auth, auth_path) = run_setup_and_parse(&tmp, now);
 
-    #[test]
-    fn make_placeholder_jwt_header_uses_hs256_not_none() {
-        let jwt = make_placeholder_jwt(&json!({})).unwrap();
-        let segments: Vec<&str> = jwt.split('.').collect();
-        let header = decode_segment(segments[0]);
-        assert_eq!(header["alg"], "HS256");
-        assert_eq!(header["typ"], "JWT");
-    }
-
-    // -----------------------------------------------------------------
-    // build_access_token_claims / build_id_token_claims
-    // -----------------------------------------------------------------
-
-    #[test]
-    fn build_access_token_claims_has_chatgpt_namespace() {
-        let claims = build_access_token_claims(fixed_now());
-        let auth_ns = &claims["https://api.openai.com/auth"];
+        // File created with mode 0o600 (mask off file-type bits).
+        let mode = std::fs::metadata(&auth_path).unwrap().permissions().mode();
         assert_eq!(
-            auth_ns["chatgpt_account_id"],
-            PLACEHOLDER_CHATGPT_ACCOUNT_ID
+            mode & 0o7777,
+            0o600,
+            "auth.json must be mode 0o600 (got {mode:o})"
         );
-        assert_eq!(auth_ns["chatgpt_plan_type"], PLACEHOLDER_PLAN_TYPE);
-    }
 
-    #[test]
-    fn build_access_token_claims_far_future_exp() {
-        let now = fixed_now();
-        let claims = build_access_token_claims(now);
-        let exp = claims["exp"].as_i64().expect("exp must be i64");
-        // At least 50 years in the future — far enough that any real
-        // run finishes well before codex would consider refresh.
-        let fifty_years_secs = 50 * 365 * 24 * 3600;
-        assert!(
-            exp > now.timestamp() + fifty_years_secs,
-            "exp {exp} not far enough in future from now {}",
-            now.timestamp()
-        );
-    }
-
-    #[test]
-    fn build_access_token_claims_iat_is_now() {
-        let now = fixed_now();
-        let claims = build_access_token_claims(now);
-        assert_eq!(claims["iat"].as_i64().unwrap(), now.timestamp());
-    }
-
-    #[test]
-    fn build_id_token_claims_plan_type_not_free() {
-        let claims = build_id_token_claims(fixed_now());
-        let plan_type = claims["https://api.openai.com/auth"]["chatgpt_plan_type"]
-            .as_str()
-            .expect("chatgpt_plan_type must be a string");
-        assert_ne!(plan_type, "free", "codex rejects free plan type");
-    }
-
-    #[test]
-    fn build_id_token_claims_includes_user_id_and_fedramp_flag() {
-        let claims = build_id_token_claims(fixed_now());
-        let auth_ns = &claims["https://api.openai.com/auth"];
-        assert!(auth_ns["chatgpt_user_id"].is_string());
-        assert_eq!(auth_ns["chatgpt_account_is_fedramp"], false);
-    }
-
-    // -----------------------------------------------------------------
-    // build_auth_json
-    // -----------------------------------------------------------------
-
-    #[test]
-    fn build_auth_json_contains_three_chatgpt_signals() {
-        let auth = build_auth_json(fixed_now()).unwrap();
-        // 1. Explicit auth_mode
+        // Three independent ChatGPT-mode signals.
         assert_eq!(auth["auth_mode"], "Chatgpt");
-        // 2. OPENAI_API_KEY explicitly null
         assert_eq!(auth["OPENAI_API_KEY"], Value::Null);
-        // 3. tokens populated with valid 3-segment JWT
-        let access_token = auth["tokens"]["access_token"]
-            .as_str()
-            .expect("access_token must be string");
-        assert_eq!(access_token.split('.').count(), 3);
-    }
+        assert!(auth["tokens"].is_object(), "tokens must be populated");
 
-    #[test]
-    fn build_auth_json_account_id_is_placeholder() {
-        let auth = build_auth_json(fixed_now()).unwrap();
+        // tokens.account_id and refresh_token shape.
         assert_eq!(auth["tokens"]["account_id"], PLACEHOLDER_CHATGPT_ACCOUNT_ID);
-    }
-
-    #[test]
-    fn build_auth_json_id_token_has_three_segments() {
-        let auth = build_auth_json(fixed_now()).unwrap();
-        let id_token = auth["tokens"]["id_token"].as_str().unwrap();
-        assert_eq!(id_token.split('.').count(), 3);
-    }
-
-    #[test]
-    fn build_auth_json_refresh_token_is_empty_string() {
-        let auth = build_auth_json(fixed_now()).unwrap();
         assert_eq!(auth["tokens"]["refresh_token"], "");
-    }
 
-    #[test]
-    fn build_auth_json_last_refresh_is_rfc3339() {
-        let auth = build_auth_json(fixed_now()).unwrap();
+        // last_refresh is RFC3339-parseable.
         let last_refresh = auth["last_refresh"].as_str().unwrap();
         DateTime::parse_from_rfc3339(last_refresh).expect("last_refresh must be RFC3339");
+
+        // Both JWTs: 3 non-empty segments, HS256 header, far-future exp,
+        // ChatGPT-namespace claims with non-free plan type.
+        let fifty_years_secs = 50 * 365 * 24 * 3600;
+        for token_field in ["access_token", "id_token"] {
+            let jwt = auth["tokens"][token_field]
+                .as_str()
+                .unwrap_or_else(|| panic!("{token_field} must be a string"));
+            let segments: Vec<&str> = jwt.split('.').collect();
+            assert_eq!(segments.len(), 3, "{token_field} must be a 3-segment JWT");
+            for (i, seg) in segments.iter().enumerate() {
+                assert!(
+                    !seg.is_empty(),
+                    "{token_field} segment {i} must be non-empty"
+                );
+            }
+
+            let header = decode_segment(segments[0]);
+            assert_eq!(
+                header["alg"], "HS256",
+                "{token_field} header must use HS256"
+            );
+            assert_eq!(header["typ"], "JWT");
+
+            let claims = decode_segment(segments[1]);
+            let auth_ns = &claims["https://api.openai.com/auth"];
+            assert_eq!(
+                auth_ns["chatgpt_account_id"], PLACEHOLDER_CHATGPT_ACCOUNT_ID,
+                "{token_field} must carry placeholder account id"
+            );
+            let plan_type = auth_ns["chatgpt_plan_type"]
+                .as_str()
+                .unwrap_or_else(|| panic!("{token_field} must declare chatgpt_plan_type"));
+            assert_ne!(
+                plan_type, "free",
+                "{token_field} plan type must not be 'free' (codex rejects)"
+            );
+            assert_eq!(claims["iat"].as_i64().unwrap(), now.timestamp());
+            let exp = claims["exp"].as_i64().expect("exp must be i64");
+            assert!(
+                exp > now.timestamp() + fifty_years_secs,
+                "{token_field} exp must be at least 50 years in future"
+            );
+        }
+
+        // id_token-only fields parsed by codex's IdTokenInfo struct
+        // (chatgpt_user_id, chatgpt_account_is_fedramp). Decode again
+        // for clarity rather than threading through the loop above.
+        let id_jwt = auth["tokens"]["id_token"].as_str().unwrap();
+        let id_claims = decode_segment(id_jwt.split('.').nth(1).unwrap());
+        let id_ns = &id_claims["https://api.openai.com/auth"];
+        assert!(
+            id_ns["chatgpt_user_id"].is_string(),
+            "id_token must include chatgpt_user_id"
+        );
+        assert_eq!(id_ns["chatgpt_account_is_fedramp"], false);
     }
 
+    /// The serialized `auth.json` must never contain real OpenAI /
+    /// Anthropic / Google bearer-token shapes — guards against a future
+    /// refactor accidentally embedding live credentials in the
+    /// fabricated bootstrap file.
     #[test]
-    fn auth_json_contains_no_real_token_shapes() {
-        let auth = build_auth_json(fixed_now()).unwrap();
-        let serialized = serde_json::to_string(&auth).unwrap();
-        // Real OpenAI/Anthropic/Google token prefixes that must never
-        // appear in our fabricated auth.json.
+    fn setup_codex_chatgpt_inner_writes_no_real_token_shapes() {
+        let tmp = TempDir::new().unwrap();
+        let (_, auth_path) = run_setup_and_parse(&tmp, fixed_now());
+        let serialized = std::fs::read_to_string(&auth_path).unwrap();
         for needle in ["sk-proj-", "sk-ant-", "Bearer ya29.", "eyJhbGciOiJSUzI1NiI"] {
             assert!(
                 !serialized.contains(needle),
@@ -356,36 +338,12 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
-    // setup_codex_chatgpt_inner
-    // -----------------------------------------------------------------
-
-    #[test]
-    fn setup_codex_chatgpt_inner_writes_auth_json_with_0600_perms() {
-        let tmp = TempDir::new().unwrap();
-        setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
-
-        let auth_path = tmp.path().join(".codex").join("auth.json");
-        assert!(auth_path.exists(), "auth.json must be created");
-
-        let mode = std::fs::metadata(&auth_path).unwrap().permissions().mode();
-        // Mask off the file-type bits (0o170000) — leaves just permissions.
-        assert_eq!(
-            mode & 0o7777,
-            0o600,
-            "auth.json must be mode 0o600 (got {mode:o})"
-        );
-
-        let body = std::fs::read_to_string(&auth_path).unwrap();
-        let parsed: Value = serde_json::from_str(&body).unwrap();
-        assert_eq!(parsed["auth_mode"], "Chatgpt");
-        assert_eq!(parsed["OPENAI_API_KEY"], Value::Null);
-        assert_eq!(
-            parsed["tokens"]["account_id"],
-            PLACEHOLDER_CHATGPT_ACCOUNT_ID
-        );
-    }
-
+    /// CAUTION: this test mutates global env via `unsafe { set_var }`
+    /// inside `setup_codex_chatgpt_inner`. Cargo runs tests in parallel
+    /// by default; the var is single-write within this crate's tests so
+    /// the race is benign, but any future test that *reads*
+    /// `CODEX_REFRESH_TOKEN_URL_OVERRIDE` should not run alongside this
+    /// one. Same precedent as `artifact.rs:826`.
     #[test]
     fn setup_codex_chatgpt_inner_sets_refresh_url_override_env() {
         let tmp = TempDir::new().unwrap();
