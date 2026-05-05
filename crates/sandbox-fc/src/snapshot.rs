@@ -1532,6 +1532,23 @@ mod tests {
         );
     }
 
+    #[test]
+    fn snapshot_attempt_dir_guard_disarm_preserves_owned_attempt_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let attempt_dir = dir.path().join("work").join("attempts").join("abc123ef");
+        std::fs::create_dir_all(&attempt_dir).expect("create attempt dir");
+
+        {
+            let mut guard = SnapshotAttemptDirGuard::new(attempt_dir.clone());
+            guard.disarm();
+        }
+
+        assert!(
+            attempt_dir.exists(),
+            "disarmed attempt dir guard should leave the owned dir intact"
+        );
+    }
+
     #[tokio::test]
     async fn cleanup_snapshot_attempt_dir_removes_empty_token_dir() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1549,6 +1566,14 @@ mod tests {
             !tokio::fs::try_exists(&attempt_dir).await.unwrap(),
             "empty attempt token dir should be removed after cow cleanup"
         );
+    }
+
+    #[tokio::test]
+    async fn cleanup_snapshot_attempt_dir_treats_missing_dir_as_clean() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let cow = snapshot_attempt_cow_file(&dir.path().join("work"), "missing");
+
+        assert!(cleanup_snapshot_attempt_dir_for_cow(&cow).await);
     }
 
     #[tokio::test]
