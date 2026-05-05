@@ -93,6 +93,48 @@ function findDurationInSegment(buf: Uint8Array, pos: number): number | null {
   return null;
 }
 
+// WebM Info element children we care about. Per spec, Duration is stored in
+// TimecodeScale units (not nanoseconds), and may be a 4- or 8-byte float; the
+// previous implementation hard-read 8 bytes and treated the value as ns, which
+// for Chrome MediaRecorder output (4-byte float, ms units) yielded values on
+// the order of 1e21 seconds and tripped the AUDIO_DURATION_TOO_LONG guard.
+const DEFAULT_TIMECODE_SCALE_NS = 1_000_000;
+
+function readDurationFloat(
+  buf: Uint8Array,
+  valuePos: number,
+  valueSize: number,
+): number | null {
+  // Duration: float in TimecodeScale units (4 or 8 bytes per EBML spec)
+  if (valuePos + valueSize > buf.length) return null;
+  const view = new DataView(buf.buffer, buf.byteOffset + valuePos, valueSize);
+  let value: number;
+  if (valueSize === 8) {
+    value = view.getFloat64(0, false);
+  } else if (valueSize === 4) {
+    value = view.getFloat32(0, false);
+  } else {
+    return null;
+  }
+  if (Number.isNaN(value) || value < 0) return null;
+  return value;
+}
+
+function readTimecodeScale(
+  buf: Uint8Array,
+  valuePos: number,
+  valueSize: number,
+): number | null {
+  // TimecodeScale: unsigned int in nanoseconds (default 1,000,000 = 1 ms)
+  if (valuePos + valueSize > buf.length) return null;
+  if (valueSize <= 0 || valueSize > 8) return null;
+  let scale = 0;
+  for (let i = 0; i < valueSize; i++) {
+    scale = scale * 256 + (buf[valuePos + i] ?? 0);
+  }
+  return scale > 0 ? scale : null;
+}
+
 function findDurationInInfo(
   buf: Uint8Array,
   dataStart: number,
@@ -100,6 +142,9 @@ function findDurationInInfo(
 ): number | null {
   const end = Math.min(dataStart + dataLen, buf.length);
   let pos = dataStart;
+  let durationInScale: number | null = null;
+  let timecodeScaleNs = DEFAULT_TIMECODE_SCALE_NS;
+
   while (pos + 2 <= end) {
     const idLen = vintLen(buf[pos] ?? 0);
     if (idLen === null || pos + idLen > end) return null;
@@ -108,20 +153,27 @@ function findDurationInInfo(
 
     const elemStart = pos;
     const valuePos = sizeResult.next;
+    const valueSize = sizeResult.value;
 
-    // Duration element ID: 0x44 0x89
     if (idLen === 2 && buf[elemStart] === 0x44 && buf[elemStart + 1] === 0x89) {
-      if (valuePos + 8 > buf.length) return null;
-      // Duration is a float64 in nanoseconds
-      const view = new DataView(buf.buffer, buf.byteOffset + valuePos, 8);
-      const nanos = view.getFloat64(0, false);
-      if (Number.isNaN(nanos) || nanos < 0) return null;
-      return Math.ceil(nanos / 1_000_000_000);
+      const value = readDurationFloat(buf, valuePos, valueSize);
+      if (value === null) return null;
+      durationInScale = value;
+    } else if (
+      idLen === 3 &&
+      buf[elemStart] === 0x2a &&
+      buf[elemStart + 1] === 0xd7 &&
+      buf[elemStart + 2] === 0xb1
+    ) {
+      const scale = readTimecodeScale(buf, valuePos, valueSize);
+      if (scale !== null) timecodeScaleNs = scale;
     }
 
-    pos = valuePos + Math.min(sizeResult.value, buf.length - valuePos);
+    pos = valuePos + Math.min(valueSize, buf.length - valuePos);
   }
-  return null;
+
+  if (durationInScale === null) return null;
+  return Math.ceil((durationInScale * timecodeScaleNs) / 1_000_000_000);
 }
 
 function parseWavDuration(buf: Uint8Array): number | null {
