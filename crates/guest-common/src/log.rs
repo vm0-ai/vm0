@@ -98,9 +98,10 @@ fn default_system_log_file() -> &'static str {
 /// Updating this path drops any cached file handle, including same-path
 /// updates. This lets callers force the next write to reopen the path.
 ///
-/// The write is synchronous and completes before the logging macro returns.
-/// This matters for guest-agent's final telemetry upload, which reads the
-/// same file immediately after some fatal-path log lines are emitted.
+/// The file is still opened lazily by the next log line. System log writes are
+/// synchronous and complete before the logging macro returns. This matters for
+/// guest-agent's final telemetry upload, which reads the same file immediately
+/// after some fatal-path log lines are emitted.
 pub fn set_system_log_file(path: impl AsRef<Path>) {
     let mut guard = SYSTEM_LOG.lock().unwrap_or_else(|e| e.into_inner());
     guard.set_path(path.as_ref().to_path_buf());
