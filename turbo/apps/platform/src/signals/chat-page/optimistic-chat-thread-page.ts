@@ -34,6 +34,7 @@ import {
   type OptimisticChatPane,
   type PendingChatThread,
 } from "./optimistic-chat-thread-state.ts";
+import { toVoid } from "../utils.ts";
 
 export type { OptimisticChatPane };
 export { optimisticChatThread$ };
@@ -381,9 +382,7 @@ const sendNewThreadMessage$ = command(
       running: true,
       pendingThread: localThread,
       sendResult,
-      settleResult: (async (): Promise<void> => {
-        await sendResult;
-      })(),
+      settleResult: toVoid(sendResult),
     };
   },
 );
