@@ -212,6 +212,12 @@ const ELEVENLABS: ConnectorRef = {
   dark: true,
 };
 
+const GAMMA: ConnectorRef = {
+  id: "gamma",
+  label: "Gamma",
+  icon: "/assets/connectors/gamma.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -1513,7 +1519,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "morning-brief",
     color: "#d4a06b",
-    screenshots: ["/assets/use-cases/morning-brief.png"],
+    screenshots: [
+      "/assets/use-cases/morning-brief.png",
+      "/assets/use-cases/morning-brief-2.png",
+    ],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -1525,13 +1534,14 @@ export const USE_CASES: UseCase[] = [
     roles: ["everyone"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
-    connectors: [GOOGLE_CALENDAR, LINEAR, SLACK, X_TWITTER, GITHUB],
+    connectors: [GOOGLE_CALENDAR, LINEAR, SLACK, X_TWITTER, GITHUB, GAMMA],
     integrations: [
       { connector: GOOGLE_CALENDAR, required: true },
       { connector: LINEAR, required: true },
       { connector: SLACK, required: true },
       { connector: X_TWITTER, required: false },
       { connector: GITHUB, required: false },
+      { connector: GAMMA, required: false },
     ],
     relatedSlugs: [
       "standup-summary",
@@ -1540,7 +1550,7 @@ export const USE_CASES: UseCase[] = [
     ],
     stepCount: 3,
     nextActionCount: 3,
-    integrationCount: 5,
+    integrationCount: 6,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,

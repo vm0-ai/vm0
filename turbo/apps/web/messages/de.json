@@ -3004,6 +3004,9 @@
           },
           {
             "description": "GitHub - Optional. Zero listet PRs, die über Nacht nach main gemergt wurden, damit du weißt was ausgeliefert wurde."
+          },
+          {
+            "description": "Gamma. Optional. Zero erstellt aus dem Morning Brief eine ansprechende Prasentationsfolie, damit du fertige Slides zum Standup mitbringen kannst."
           }
         ],
         "tips": [

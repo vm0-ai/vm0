@@ -3004,6 +3004,9 @@
           },
           {
             "description": "GitHub (opcional). Zero lista los PRs mergeados a main durante la noche para que entres sabiendo qué salió."
+          },
+          {
+            "description": "Gamma. Opcional. Zero genera una presentacion lista para compartir a partir del resumen matutino, para que llegues al standup con las diapositivas preparadas."
           }
         ],
         "tips": [

@@ -3004,6 +3004,9 @@
           },
           {
             "description": "GitHub. Optional. Zero lists PRs merged to main overnight so you walk in knowing what shipped."
+          },
+          {
+            "description": "Gamma. Optional. Zero generates a polished presentation deck from the morning brief, so you can walk into standup with slides ready to share."
           }
         ],
         "tips": [
