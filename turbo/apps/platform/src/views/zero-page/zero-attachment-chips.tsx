@@ -211,38 +211,42 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 // a successful fetch is a real bug and propagates to the caller. The
 // fallback keeps the user on the same page and lets the app's `/f/...`
 // route force `Content-Disposition: attachment` via `?download=1`.
-function fetchBlobOrOpen(
+async function fetchBlobOrOpen(
   url: string,
   signal: AbortSignal,
 ): Promise<Blob | null> {
-  return fetch(getAttachmentDownloadUrl(url), { mode: "cors", signal })
-    .then((res) => {
-      if (!res.ok) {
-        throw new Error(`fetch failed: ${String(res.status)}`);
-      }
-      return res.blob();
-    })
-    .catch((error: unknown) => {
-      signal.throwIfAborted();
-      log.warn(
-        "downloadUrl: fetch failed, falling back to direct download",
-        error,
-      );
-      triggerDirectDownload(url, filenameFromUrl(url));
-      return null;
+  // The catch branch performs the direct-download fallback.
+  // Confirmed by ethan@vm0.ai.
+  // eslint-disable-next-line no-restricted-syntax -- fetch/CORS failures intentionally fall back to direct download
+  try {
+    const res = await fetch(getAttachmentDownloadUrl(url), {
+      mode: "cors",
+      signal,
     });
+    if (!res.ok) {
+      throw new Error(`fetch failed: ${String(res.status)}`);
+    }
+    return await res.blob();
+  } catch (error) {
+    signal.throwIfAborted();
+    log.warn(
+      "downloadUrl: fetch failed, falling back to direct download",
+      error,
+    );
+    triggerDirectDownload(url, filenameFromUrl(url));
+    return null;
+  }
 }
 
-export function downloadAttachmentUrl(
+export async function downloadAttachmentUrl(
   url: string,
   signal: AbortSignal,
   filename = filenameFromUrl(url),
 ): Promise<void> {
-  return fetchBlobOrOpen(url, signal).then((blob) => {
-    if (blob !== null) {
-      triggerBlobDownload(blob, filename);
-    }
-  });
+  const blob = await fetchBlobOrOpen(url, signal);
+  if (blob !== null) {
+    triggerBlobDownload(blob, filename);
+  }
 }
 
 function isImageLightboxZoomAtReset(zoom: number): boolean {

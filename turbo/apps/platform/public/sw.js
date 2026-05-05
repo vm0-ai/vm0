@@ -1,8 +1,3 @@
-// Service worker for Web Push Notifications and static asset caching.
-
-// Per-deployment cache names: each SW update creates new caches, and the
-// activate handler deletes old ones, preventing unbounded growth from
-// content-hashed assets piling up across deploys.
 const CACHE_VERSION = String(Date.now());
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
 

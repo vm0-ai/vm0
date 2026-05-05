@@ -518,35 +518,34 @@ async function copyArtifactLinkToClipboard(
   toast.error("Failed to copy link");
 }
 
-function downloadArtifactItemsAsZip(params: {
+async function downloadArtifactItemsAsZip(params: {
   readonly items: readonly ChatArtifactItem[];
   readonly signal: AbortSignal;
   readonly threadId: string;
 }): Promise<void> {
   const toastId = toast.loading(`Preparing ${params.items.length} files...`);
-  return Promise.all(
-    params.items.map((item) => {
-      return fetchArtifactZipEntry(item, params.signal);
-    }),
-  ).then(
-    (entries) => {
-      const zip = createZipBlob(entries);
-      triggerArtifactZipDownload(zip, `vm0-artifact-${params.threadId}.zip`);
-      toast.success("Downloaded artifacts", { id: toastId });
-    },
-    (error: unknown) => {
-      params.signal.throwIfAborted();
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Failed to prepare artifact download",
-        { id: toastId },
-      );
-    },
-  );
+  // eslint-disable-next-line no-restricted-syntax -- zip download must replace the loading toast on success or failure
+  try {
+    const entries = await Promise.all(
+      params.items.map((item) => {
+        return fetchArtifactZipEntry(item, params.signal);
+      }),
+    );
+    const zip = createZipBlob(entries);
+    triggerArtifactZipDownload(zip, `vm0-artifact-${params.threadId}.zip`);
+    toast.success("Downloaded artifacts", { id: toastId });
+  } catch (error) {
+    params.signal.throwIfAborted();
+    toast.error(
+      error instanceof Error
+        ? error.message
+        : "Failed to prepare artifact download",
+      { id: toastId },
+    );
+  }
 }
 
-function fetchArtifactZipEntry(
+async function fetchArtifactZipEntry(
   item: ChatArtifactItem,
   signal: AbortSignal,
 ): Promise<{
@@ -554,23 +553,19 @@ function fetchArtifactZipEntry(
   readonly data: ArrayBuffer;
   readonly modifiedAt: Date;
 }> {
-  return fetch(getAttachmentRawUrl(item.file.url), {
+  const response = await fetch(getAttachmentRawUrl(item.file.url), {
     mode: "cors",
     signal,
-  })
-    .then((response) => {
-      if (!response.ok) {
-        throw new Error(`Failed to download ${item.file.filename}`);
-      }
-      return response.arrayBuffer();
-    })
-    .then((data) => {
-      return {
-        filename: item.file.filename,
-        data,
-        modifiedAt: new Date(item.file.createdAt),
-      };
-    });
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to download ${item.file.filename}`);
+  }
+  const data = await response.arrayBuffer();
+  return {
+    filename: item.file.filename,
+    data,
+    modifiedAt: new Date(item.file.createdAt),
+  };
 }
 
 function triggerArtifactZipDownload(blob: Blob, filename: string): void {

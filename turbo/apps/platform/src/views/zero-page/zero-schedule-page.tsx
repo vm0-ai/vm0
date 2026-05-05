@@ -585,6 +585,10 @@ export function ZeroSchedulePage() {
       toggleEnabled(
         { name, enabled, agentId: entry.agentId },
         pageSignal,
+        // TODO: for yuma@vm0.ai
+        // It looks like we are maintaining some temporary states within the View,
+        // which should be refactored into a CCState pattern.
+        // oxlint-disable-next-line promise/prefer-await-to-then
       ).finally(() => {
         setTogglingIds((prev) => {
           const next = new Set(prev);
