@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.324.2](https://github.com/vm0-ai/vm0/compare/app-v0.324.1...app-v0.324.2) (2026-05-05)
+
+
+### Bug Fixes
+
+* **platform:** suppress optimistic-create skeleton; pass sidebar snapshot to keyboard nav ([#11866](https://github.com/vm0-ai/vm0/issues/11866)) ([2ed3363](https://github.com/vm0-ai/vm0/commit/2ed336383cd9203a4bef9be29dc87d48b62886f6))
+* **platform:** unify sidebar list so optimistic threads render once and keyboard nav reaches them ([#11860](https://github.com/vm0-ai/vm0/issues/11860)) ([da7218d](https://github.com/vm0-ai/vm0/commit/da7218d9d6cd688102cd66d383cd7618abf1d257))
+
 ## [0.324.1](https://github.com/vm0-ai/vm0/compare/app-v0.324.0...app-v0.324.1) (2026-05-05)
 
 

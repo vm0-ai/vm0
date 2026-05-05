@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.331.2](https://github.com/vm0-ai/vm0/compare/web-v12.331.1...web-v12.331.2) (2026-05-05)
+
+
+### Bug Fixes
+
+* use EVENT symbol to override top-level source field in Axiom logs ([#11853](https://github.com/vm0-ai/vm0/issues/11853)) ([4e199aa](https://github.com/vm0-ai/vm0/commit/4e199aa35911ae8950939ee44a72905b9acfcc64))
+* **voice-io:** parse webm duration per spec (4 or 8 byte float, timecodescale units) ([#11865](https://github.com/vm0-ai/vm0/issues/11865)) ([65b41a9](https://github.com/vm0-ai/vm0/commit/65b41a9128ee75c1dbe0b610832344bcd7fa7ac3)), closes [#11847](https://github.com/vm0-ai/vm0/issues/11847)
+
 ## [12.331.1](https://github.com/vm0-ai/vm0/compare/web-v12.331.0...web-v12.331.1) (2026-05-05)
 
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.99.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.11...runner-rs-v0.99.12) (2026-05-05)
+
+
+### Refactoring
+
+* **runner:** split ably control plane from discovery ([#11856](https://github.com/vm0-ai/vm0/issues/11856)) ([b1468f1](https://github.com/vm0-ai/vm0/commit/b1468f1ae6085e13ebb34e4a53bc33270471bb58))
+* **runner:** split start job discovery ([#11859](https://github.com/vm0-ai/vm0/issues/11859)) ([6139fc4](https://github.com/vm0-ai/vm0/commit/6139fc4e74e28ead4aac2784e582ca49290a8758))
+* **runner:** split start job spawn ([#11862](https://github.com/vm0-ai/vm0/issues/11862)) ([89e78e8](https://github.com/vm0-ai/vm0/commit/89e78e89f39949ab25cb5237431881439d0d0acc))
+* **runner:** split start sandbox finalization ([#11854](https://github.com/vm0-ai/vm0/issues/11854)) ([afd5117](https://github.com/vm0-ai/vm0/commit/afd51176d3d6d92cf0daa65999ad1140d88de9a4))
+* **sandbox-fc:** add snapshot cleanup Drop finalizer ([#11843](https://github.com/vm0-ai/vm0/issues/11843)) ([8c3bfdd](https://github.com/vm0-ai/vm0/commit/8c3bfdd257b592737d39eecf5c6eacb1ca2ee861))
+
 ## [0.99.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.10...runner-rs-v0.99.11) (2026-05-05)
 
 

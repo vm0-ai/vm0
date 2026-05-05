@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.13](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.12...nbd-cow-v0.4.13) (2026-05-05)
+
+
+### Documentation
+
+* **nbd-cow:** clarify device lease authority ([#11864](https://github.com/vm0-ai/vm0/issues/11864)) ([56c40a8](https://github.com/vm0-ai/vm0/commit/56c40a85cbfeb026b485426f464dbdeecc9a44ff))
+
 ## [0.4.12](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.11...nbd-cow-v0.4.12) (2026-05-03)
 
 

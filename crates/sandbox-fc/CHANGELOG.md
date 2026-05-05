@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.11...sandbox-fc-v0.27.12) (2026-05-05)
+
+
+### Refactoring
+
+* **sandbox-fc:** add snapshot cleanup Drop finalizer ([#11843](https://github.com/vm0-ai/vm0/issues/11843)) ([8c3bfdd](https://github.com/vm0-ai/vm0/commit/8c3bfdd257b592737d39eecf5c6eacb1ca2ee861))
+
 ## [0.27.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.10...sandbox-fc-v0.27.11) (2026-05-05)
 
 
