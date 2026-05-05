@@ -10,7 +10,8 @@ use crate::config;
 use crate::deps::MITMPROXY_VERSION;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor;
-use crate::paths::{HomePaths, RunnerPaths};
+use crate::lock;
+use crate::paths::{HomePaths, RootfsPaths, RunnerPaths};
 use crate::prefetch;
 use crate::proxy;
 
@@ -78,9 +79,17 @@ pub async fn run_benchmark(
     let profile_config = runner_config.profiles.get(profile_name).ok_or_else(|| {
         RunnerError::Config(format!("profile '{profile_name}' not found in config"))
     })?;
+
+    let rootfs_lock = lock::acquire_shared(home.rootfs_lock(&profile_config.rootfs_hash)).await?;
+    let rootfs_paths = RootfsPaths::new(&home, &profile_config.rootfs_hash);
+    let snapshot_lock =
+        lock::acquire_shared(home.snapshot_lock(&profile_config.snapshot_hash)).await?;
+    config::validate_profile_image_artifacts(profile_name, profile_config, &home).await?;
+    let _resource_locks = (rootfs_lock, snapshot_lock);
+
     // Block until memory.bin is in page cache so benchmark numbers are stable.
     {
-        let path = crate::paths::RootfsPaths::new(&home, &profile_config.rootfs_hash)
+        let path = rootfs_paths
             .snapshot(&profile_config.snapshot_hash)
             .memory_bin();
         let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;

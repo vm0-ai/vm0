@@ -8,9 +8,11 @@
 //! # Lifecycle
 //! 1. [`load`] reads the YAML, deserializes into [`RunnerConfig`], and
 //!    resolves any relative paths against the config file's parent directory.
-//! 2. `validate` checks group name, profile names, image hashes, on-disk
-//!    artifacts, resource ceilings, and the concurrency factor.
-//! 3. Callers derive runtime objects (e.g. [`sandbox::FactoryConfig`]) from
+//! 2. `validate` checks group name, profile names, image hashes, static host
+//!    paths, resource ceilings, and the concurrency factor.
+//! 3. Callers that consume image artifacts hold the relevant rootfs/snapshot
+//!    locks and call [`validate_profile_image_artifacts`].
+//! 4. Callers derive runtime objects (e.g. [`sandbox::FactoryConfig`]) from
 //!    the loaded config.
 //!
 //! # Image identity: two content hashes per profile
@@ -158,10 +160,16 @@ pub struct ServerConfig {
 /// Relative paths in the config are resolved against the config file's parent directory.
 pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
     let home = HomePaths::new()?;
-    load_with_home(path, &home).await
+    // Image artifacts are mutable cache outputs. Runtime callers validate
+    // them only after acquiring the matching shared rootfs/snapshot locks.
+    load_with_home(path, &home, false).await
 }
 
-async fn load_with_home(path: &Path, home: &HomePaths) -> RunnerResult<RunnerConfig> {
+async fn load_with_home(
+    path: &Path,
+    home: &HomePaths,
+    validate_image_artifacts: bool,
+) -> RunnerResult<RunnerConfig> {
     let content = tokio::fs::read_to_string(path)
         .await
         .map_err(|e| RunnerError::Config(format!("read {}: {e}", path.display())))?;
@@ -170,7 +178,7 @@ async fn load_with_home(path: &Path, home: &HomePaths) -> RunnerResult<RunnerCon
     if let Some(config_dir) = path.parent() {
         config.resolve_relative_paths(config_dir);
     }
-    validate(&config, home).await?;
+    validate(&config, home, validate_image_artifacts).await?;
     Ok(config)
 }
 
@@ -230,7 +238,34 @@ async fn check_snapshot_complete_marker(path: &Path, label: &str) -> RunnerResul
     Ok(())
 }
 
-async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
+pub(crate) async fn validate_profile_image_artifacts(
+    name: &str,
+    profile: &ProfileConfig,
+    home: &HomePaths,
+) -> RunnerResult<()> {
+    // Validate rootfs files exist on disk.
+    let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
+    for path in rootfs_paths.expected_files() {
+        check_path_exists(&path, &format!("profile {name} rootfs")).await?;
+    }
+    // Validate snapshot files exist on disk.
+    let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
+    for path in snapshot_paths.expected_files() {
+        check_path_exists(&path, &format!("profile {name} snapshot")).await?;
+    }
+    check_snapshot_complete_marker(
+        &snapshot_paths.complete_marker(),
+        &format!("profile {name} snapshot complete marker"),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn validate(
+    config: &RunnerConfig,
+    home: &HomePaths,
+    validate_image_artifacts: bool,
+) -> RunnerResult<()> {
     // Pure-CPU checks first — fail fast before any filesystem I/O.
     crate::group::validate_or_err(&config.group)?;
     if config.profiles.is_empty() {
@@ -272,21 +307,9 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
                 profile.disk_mb
             )));
         }
-        // Validate rootfs files exist on disk.
-        let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
-        for path in rootfs_paths.expected_files() {
-            check_path_exists(&path, &format!("profile {name} rootfs")).await?;
+        if validate_image_artifacts {
+            validate_profile_image_artifacts(name, profile, home).await?;
         }
-        // Validate snapshot files exist on disk.
-        let snapshot_paths = rootfs_paths.snapshot(&profile.snapshot_hash);
-        for path in snapshot_paths.expected_files() {
-            check_path_exists(&path, &format!("profile {name} snapshot")).await?;
-        }
-        check_snapshot_complete_marker(
-            &snapshot_paths.complete_marker(),
-            &format!("profile {name} snapshot complete marker"),
-        )
-        .await?;
     }
 
     validate_concurrency_factor(config.sandbox.concurrency_factor)?;
@@ -454,7 +477,7 @@ server:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let config = load_with_home(&config_path, &home).await.unwrap();
+        let config = load_with_home(&config_path, &home, true).await.unwrap();
         assert_eq!(config.name, "test-runner");
         assert_eq!(config.profiles.len(), 1);
         let default = &config.profiles["vm0/default"];
@@ -506,7 +529,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let config = load_with_home(&config_path, &home).await.unwrap();
+        let config = load_with_home(&config_path, &home, true).await.unwrap();
         assert_eq!(config.sandbox.max_concurrent, DEFAULT_MAX_CONCURRENT);
         assert!(
             (config.sandbox.concurrency_factor - DEFAULT_CONCURRENCY_FACTOR).abs() < f64::EPSILON
@@ -544,7 +567,7 @@ profiles: {{}}
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(
             err.to_string().contains("profiles must not be empty"),
             "got: {err}"
@@ -589,7 +612,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(
             err.to_string().contains("invalid profile name"),
             "got: {err}"
@@ -636,7 +659,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(err.to_string().contains("invalid image hash"), "got: {err}");
     }
 
@@ -677,7 +700,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(err.to_string().contains("invalid image hash"), "got: {err}");
     }
 
@@ -719,7 +742,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(err.to_string().contains("non-zero"), "got: {err}");
     }
 
@@ -761,7 +784,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(err.to_string().contains("non-zero"), "got: {err}");
     }
 
@@ -805,7 +828,7 @@ profiles:
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
         // vcpu == MAX_VCPU should be accepted (validation uses >, not >=)
-        let result = load_with_home(&config_path, &home).await;
+        let result = load_with_home(&config_path, &home, true).await;
         assert!(result.is_ok(), "got: {}", result.unwrap_err());
     }
 
@@ -847,7 +870,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
     }
 
@@ -889,7 +912,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
     }
 
@@ -931,7 +954,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
     }
 
@@ -978,11 +1001,54 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(
             err.to_string().contains("not found"),
             "expected missing file error, got: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn load_defers_missing_image_checks() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    rootfs_hash: {hash}
+    snapshot_hash: {snap_hash}
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+            hash = TEST_ROOTFS_HASH,
+            snap_hash = TEST_SNAPSHOT_HASH,
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let config = load(&config_path).await.unwrap();
+        let profile = config.profiles.get("vm0/default").unwrap();
+        assert_eq!(profile.rootfs_hash, TEST_ROOTFS_HASH);
+        assert_eq!(profile.snapshot_hash, TEST_SNAPSHOT_HASH);
     }
 
     #[tokio::test]
@@ -1037,7 +1103,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(
             err.to_string().contains(".snapshot-complete"),
             "expected missing complete marker error, got: {err}"
@@ -1099,7 +1165,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        let err = load_with_home(&config_path, &home, true).await.unwrap_err();
         assert!(
             err.to_string().contains("complete marker") && err.to_string().contains("invalid"),
             "expected invalid complete marker error, got: {err}"
@@ -1149,7 +1215,7 @@ sandbox:
             let config_path = dir.path().join("runner.yaml");
             tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-            let err = load_with_home(&config_path, &home).await.unwrap_err();
+            let err = load_with_home(&config_path, &home, true).await.unwrap_err();
             assert!(
                 err.to_string().contains("concurrency_factor"),
                 "expected concurrency_factor error for {bad_value}, got: {err}"
@@ -1189,7 +1255,7 @@ sandbox:
 
         generate(&config).await.unwrap();
 
-        let loaded = load_with_home(&runner_dir.join("runner.yaml"), &home)
+        let loaded = load_with_home(&runner_dir.join("runner.yaml"), &home, true)
             .await
             .unwrap();
         assert_eq!(loaded, config);
@@ -1231,7 +1297,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, yaml).await.unwrap();
 
-        let config = load_with_home(&config_path, &home).await.unwrap();
+        let config = load_with_home(&config_path, &home, true).await.unwrap();
 
         assert!(config.base_dir.is_absolute());
         assert_eq!(config.base_dir, dir.path().join("my-runner"));
@@ -1303,7 +1369,7 @@ profiles:
 
         generate(&config).await.unwrap();
 
-        let loaded = load_with_home(&runner_dir.join("runner.yaml"), &home)
+        let loaded = load_with_home(&runner_dir.join("runner.yaml"), &home, true)
             .await
             .unwrap();
         assert_eq!(loaded.sandbox.idle_timeout_secs, 600);
@@ -1351,7 +1417,7 @@ profiles:
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
-        let config = load_with_home(&config_path, &home).await.unwrap();
+        let config = load_with_home(&config_path, &home, true).await.unwrap();
         assert_eq!(config.sandbox.idle_timeout_secs, DEFAULT_IDLE_TIMEOUT_SECS);
         assert_eq!(config.sandbox.max_idle, 0);
     }
