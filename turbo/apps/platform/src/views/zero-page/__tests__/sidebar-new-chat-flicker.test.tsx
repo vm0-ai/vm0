@@ -109,7 +109,7 @@ describe("sidebar new-chat flicker", () => {
 
     // Drive the optimistic-create flow through the actual sidebar button.
     const newChatBtn = within(getSidebar()).getByLabelText(/^New chat with /i);
-    await act(async () => {
+    await act(() => {
       click(newChatBtn);
     });
 
@@ -122,7 +122,7 @@ describe("sidebar new-chat flicker", () => {
         "[data-chat-thread-id]",
       );
       expect(rows.length).toBeGreaterThan(0);
-      const id = rows[0].getAttribute("data-chat-thread-id");
+      const id = rows[0].dataset.chatThreadId ?? null;
       expect(id).toBeTruthy();
       newThreadId = id ?? "";
     });
@@ -158,7 +158,7 @@ describe("sidebar new-chat flicker", () => {
       },
     ];
 
-    await act(async () => {
+    await act(() => {
       triggerAblyEvent("threadListChanged");
     });
 
@@ -192,10 +192,7 @@ describe("sidebar new-chat flicker", () => {
     const collided = snapshots.filter((c) => {
       return c > 1;
     }).length;
-    expect(
-      { snapshots, dropped, collided },
-      "the new chat row must remain rendered exactly once at every mutation",
-    ).toMatchObject({
+    expect({ snapshots, dropped, collided }).toMatchObject({
       dropped: 0,
       collided: 0,
     });
