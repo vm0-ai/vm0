@@ -251,15 +251,6 @@ export default [
       "no-restricted-syntax": "off",
     },
   },
-  // telegram-connect-signals.ts uses try/catch to convert API errors into
-  // signal state (status/errorMsg) so the UI can render error states without
-  // the error propagating to component boundaries.
-  {
-    files: ["src/signals/zero-page/telegram-connect-signals.ts"],
-    rules: {
-      "no-restricted-syntax": "off",
-    },
-  },
   {
     ignores: [
       "dist/**",

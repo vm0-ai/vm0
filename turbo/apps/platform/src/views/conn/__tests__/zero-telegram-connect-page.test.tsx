@@ -238,6 +238,9 @@ describe("zero telegram connect page", () => {
     });
     click(buttonWithText("Continue with Telegram"));
 
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalled();
+    });
     const rawAuthUrl = String(openSpy.mock.calls[0]?.[0]);
     const authUrl = new URL(rawAuthUrl);
     expect(`${authUrl.origin}${authUrl.pathname}`).toBe(

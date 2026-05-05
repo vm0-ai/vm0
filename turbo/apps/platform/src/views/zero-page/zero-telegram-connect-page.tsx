@@ -1,10 +1,5 @@
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useLoadable,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import type { JSX, ReactNode } from "react";
 import {
   IconAlertCircle,
@@ -14,15 +9,11 @@ import {
 } from "@tabler/icons-react";
 import { Button, CopyButton } from "@vm0/ui";
 import { clerk$, resolveWebOrigin } from "../../signals/auth.ts";
-import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
   connectTelegramAccount$,
-  telegramConnectError$,
   telegramConnectLinkStatus$,
-  telegramConnectStatus$,
-  telegramConnectSuccess$,
 } from "../../signals/zero-page/telegram-connect-signals.ts";
 import {
   telegramAutoOpenRef$,
@@ -32,7 +23,6 @@ import {
   parseTelegramConnectParams,
   type TelegramConnectParams,
 } from "../../signals/zero-page/telegram-connect-params.ts";
-import { openTelegramLoginPopup } from "../../signals/zero-page/telegram-login-popup.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
@@ -222,6 +212,12 @@ function getTelegramLoginDomain(): string {
   return location.hostname;
 }
 
+function getTelegramConnectErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "We couldn't connect Telegram. Try again from Telegram.";
+}
+
 function DomainStatusPolling() {
   const domainStatusPollerRef = useSet(telegramDomainStatusPollerRef$);
 
@@ -310,27 +306,17 @@ function DomainSetupState({
 
 function ConnectActions({
   parsed,
-  apiBase,
   connecting,
-  onConnectSigned,
+  onConnect,
 }: {
   parsed: TelegramConnectParams;
-  apiBase: string;
   connecting: boolean;
-  onConnectSigned: () => void;
+  onConnect: () => void;
 }) {
-  const openLogin = () => {
-    openTelegramLoginPopup(parsed.telegramBotId, apiBase);
-  };
-
   if (parsed.connectSignature) {
     return (
       <div className="flex w-full flex-col gap-3">
-        <Button
-          className="w-full"
-          disabled={connecting}
-          onClick={onConnectSigned}
-        >
+        <Button className="w-full" disabled={connecting} onClick={onConnect}>
           {connecting ? (
             <IconLoader2 size={16} className="animate-spin" />
           ) : null}
@@ -341,11 +327,7 @@ function ConnectActions({
   }
 
   return (
-    <Button
-      className="w-full"
-      disabled={connecting || !apiBase}
-      onClick={openLogin}
-    >
+    <Button className="w-full" disabled={connecting} onClick={onConnect}>
       {connecting ? <IconLoader2 size={16} className="animate-spin" /> : null}
       {connecting ? "Connecting..." : "Continue with Telegram"}
     </Button>
@@ -354,16 +336,20 @@ function ConnectActions({
 
 export function ZeroTelegramConnectPage(): JSX.Element {
   const params = useGet(searchParams$);
-  const apiBase = useLastResolved(apiBaseForNavigation$);
   const parsed = parseTelegramConnectParams(params);
   const clerkLoadable = useLoadable(clerk$);
   const linkStatusLoadable = useLastLoadable(telegramConnectLinkStatus$);
-  const status = useGet(telegramConnectStatus$);
-  const error = useGet(telegramConnectError$);
-  const success = useGet(telegramConnectSuccess$);
-  const connectTelegram = useSet(connectTelegramAccount$);
+  const [connectLoadable, connectTelegram] = useLoadableSet(
+    connectTelegramAccount$,
+  );
   const pageSignal = useGet(pageSignal$);
-  const connecting = status === "connecting";
+  const connecting = connectLoadable.state === "loading";
+  const success =
+    connectLoadable.state === "hasData" ? connectLoadable.data : null;
+  const error =
+    connectLoadable.state === "hasError"
+      ? getTelegramConnectErrorMessage(connectLoadable.error)
+      : null;
 
   if (!parsed.ok) {
     return (
@@ -458,13 +444,9 @@ export function ZeroTelegramConnectPage(): JSX.Element {
       <div className="flex w-full flex-col gap-4">
         <ConnectActions
           parsed={parsed.params}
-          apiBase={apiBase ?? ""}
           connecting={connecting}
-          onConnectSigned={() => {
-            detach(
-              connectTelegram(parsed.params, pageSignal),
-              Reason.DomCallback,
-            );
+          onConnect={() => {
+            detach(connectTelegram(pageSignal), Reason.DomCallback);
           }}
         />
         <div className="flex justify-center">
