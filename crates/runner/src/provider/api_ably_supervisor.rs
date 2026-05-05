@@ -14,6 +14,8 @@ const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
 const ABLY_DISCONNECT_ERROR_AFTER: Duration = Duration::from_secs(60);
 const TARGETED_RUNNER_DEFER: Duration = Duration::from_secs(2);
+// Bound repeated target-other notifications so one runner is not starved forever.
+const TARGETED_RUNNER_DEFER_MAX: Duration = Duration::from_secs(10);
 
 type AblyConnectHandle =
     tokio::task::JoinHandle<Result<ably_subscriber::Subscription, ably_subscriber::Error>>;
@@ -75,6 +77,7 @@ struct PollWakeupsInner {
     ably_connected: bool,
     poll_now: bool,
     deferred_poll_at: Option<tokio::time::Instant>,
+    deferred_poll_cap_at: Option<tokio::time::Instant>,
     wakeup_retry_at: Option<tokio::time::Instant>,
     /// Bumped whenever a new wakeup is recorded. This keeps an older HTTP poll
     /// result from clearing a wakeup that arrived after the poll started.
@@ -100,6 +103,7 @@ impl PollWakeups {
                 ably_connected,
                 poll_now: true,
                 deferred_poll_at: None,
+                deferred_poll_cap_at: None,
                 wakeup_retry_at: None,
                 generation: 0,
             }),
@@ -125,18 +129,30 @@ impl PollWakeups {
     }
 
     async fn request_deferred_poll_after(&self, delay: Duration) {
-        self.request_deferred_poll_at(tokio::time::Instant::now() + delay)
+        let now = tokio::time::Instant::now();
+        self.request_deferred_poll_capped_at(now + delay, now + TARGETED_RUNNER_DEFER_MAX)
             .await;
     }
 
-    async fn request_deferred_poll_at(&self, at: tokio::time::Instant) {
+    async fn request_deferred_poll_capped_at(
+        &self,
+        at: tokio::time::Instant,
+        cap_at: tokio::time::Instant,
+    ) {
         let mut inner = self.inner.lock().await;
-        if inner.deferred_poll_at.is_none_or(|existing| at < existing) {
+        let cap_at = *inner.deferred_poll_cap_at.get_or_insert(cap_at);
+        let at = at.min(cap_at);
+        if inner.deferred_poll_at.is_none_or(|existing| at > existing) {
             inner.deferred_poll_at = Some(at);
         }
         inner.bump_generation();
         drop(inner);
         self.notify.notify_waiters();
+    }
+
+    #[cfg(test)]
+    async fn request_deferred_poll_at(&self, at: tokio::time::Instant) {
+        self.request_deferred_poll_capped_at(at, at).await;
     }
 
     #[cfg(test)]
@@ -160,6 +176,7 @@ impl PollWakeups {
                 inner.poll_now = true;
                 if !has_new_wakeup {
                     inner.deferred_poll_at = None;
+                    inner.deferred_poll_cap_at = None;
                     inner.wakeup_retry_at = None;
                 }
                 inner.bump_generation();
@@ -168,6 +185,7 @@ impl PollWakeups {
             PollOutcome::Empty => {
                 if !has_new_wakeup {
                     inner.deferred_poll_at = None;
+                    inner.deferred_poll_cap_at = None;
                     inner.wakeup_retry_at = None;
                 }
             }
@@ -201,6 +219,7 @@ impl PollWakeups {
                 let now = tokio::time::Instant::now();
                 if inner.deferred_poll_at.is_some_and(|at| at <= now) {
                     inner.deferred_poll_at = None;
+                    inner.deferred_poll_cap_at = None;
                     inner.poll_now = false;
                     return Some(PollDue {
                         reason: PollReason::Deferred,
@@ -294,6 +313,7 @@ impl PollWakeups {
             PollReason::Deferred => {
                 if inner.deferred_poll_at.is_some_and(|at| at <= now) {
                     inner.deferred_poll_at = None;
+                    inner.deferred_poll_cap_at = None;
                     inner.poll_now = false;
                     true
                 } else {
@@ -331,6 +351,7 @@ impl PollWakeups {
             ably_connected: inner.ably_connected,
             poll_now: inner.poll_now,
             deferred_poll_at: inner.deferred_poll_at,
+            deferred_poll_cap_at: inner.deferred_poll_cap_at,
             wakeup_retry_at: inner.wakeup_retry_at,
         }
     }
@@ -342,6 +363,7 @@ struct PollWakeupsSnapshot {
     ably_connected: bool,
     poll_now: bool,
     deferred_poll_at: Option<tokio::time::Instant>,
+    deferred_poll_cap_at: Option<tokio::time::Instant>,
     wakeup_retry_at: Option<tokio::time::Instant>,
 }
 
@@ -925,7 +947,54 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn target_other_runner_deferred_poll_keeps_earliest_deadline() {
+    async fn target_other_runner_deferred_poll_extends_until_latest_deadline() {
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let _ = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await;
+
+        wakeups
+            .request_deferred_poll_after(Duration::from_secs(2))
+            .await;
+        let first_deadline = wakeups
+            .snapshot()
+            .await
+            .deferred_poll_at
+            .expect("first defer deadline");
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        wakeups
+            .request_deferred_poll_after(Duration::from_secs(2))
+            .await;
+        let extended_deadline = wakeups
+            .snapshot()
+            .await
+            .deferred_poll_at
+            .expect("extended defer deadline");
+
+        assert!(extended_deadline > first_deadline);
+        let wakeups_for_wait = Arc::clone(&wakeups);
+        let cancel = CancellationToken::new();
+        let wait = tokio::spawn(async move {
+            wakeups_for_wait
+                .wait_for_poll_due(&cancel, Duration::from_secs(30), Duration::from_secs(5))
+                .await
+        });
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert!(
+            !wait.is_finished(),
+            "new target-other notification should extend the defer window"
+        );
+
+        tokio::time::sleep_until(extended_deadline).await;
+        assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Deferred));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn target_other_runner_deferred_poll_extension_is_bounded() {
         let wakeups = PollWakeups::new(true);
         let _ = wakeups
             .wait_for_poll_due(
@@ -935,13 +1004,25 @@ mod tests {
             )
             .await;
 
-        let later = tokio::time::Instant::now() + Duration::from_secs(10);
-        let earlier = tokio::time::Instant::now() + Duration::from_secs(3);
-        wakeups.request_deferred_poll_at(later).await;
-        wakeups.request_deferred_poll_at(earlier).await;
+        wakeups
+            .request_deferred_poll_after(Duration::from_secs(2))
+            .await;
+        let cap = wakeups
+            .snapshot()
+            .await
+            .deferred_poll_cap_at
+            .expect("defer cap");
+        for _ in 0..9 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            wakeups
+                .request_deferred_poll_after(Duration::from_secs(2))
+                .await;
+        }
 
-        assert_eq!(wakeups.snapshot().await.deferred_poll_at, Some(earlier));
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        let snapshot = wakeups.snapshot().await;
+        assert_eq!(snapshot.deferred_poll_at, Some(cap));
+        assert_eq!(snapshot.deferred_poll_cap_at, Some(cap));
+        tokio::time::sleep_until(cap).await;
         let reason = wakeups
             .wait_for_poll_due(
                 &CancellationToken::new(),
