@@ -38,10 +38,11 @@ impl CooldownSlot {
     }
 }
 
-/// Owned authority for a checked-out NBD device index.
+/// Owned authority for a checked-out NBD device.
 ///
-/// This intentionally does not implement `Clone` or `Copy`: returning an index
-/// to the pool must consume the lease, not copied diagnostic metadata.
+/// This is intentionally move-only: releasing, discarding, or retiring the
+/// device must consume the lease, which owns the underlying `NbdDeviceClaim`.
+/// The copied device index is only diagnostic metadata, not pool authority.
 pub struct DeviceLease {
     index: u32,
     claim: Option<NbdDeviceClaim>,
