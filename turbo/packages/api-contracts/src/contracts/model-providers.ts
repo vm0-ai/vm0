@@ -11,6 +11,13 @@ export interface SecretFieldConfig {
   required: boolean;
   placeholder?: string;
   helpText?: string;
+  /**
+   * When true, this secret is persisted server-side and MUST NOT flow to the
+   * runner/sandbox. Used for OAuth refresh tokens and ID tokens that the
+   * server holds for refresh + plan-type validation but the sandbox must
+   * never see (per #7365). Honored by `resolveMultiAuthProviderSecrets`.
+   */
+  serverOnly?: boolean;
 }
 
 /**
@@ -345,6 +352,52 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "gpt-5.5",
   },
+  "chatgpt-oauth-token": {
+    framework: "codex" as const,
+    label: "ChatGPT (Sign in)",
+    helpText:
+      "Sign in with ChatGPT (Plus / Pro / Business / Edu / Enterprise). " +
+      "Workspace selection happens on auth.openai.com.",
+    authMethods: {
+      oauth: {
+        label: "Sign in with ChatGPT",
+        secrets: {
+          CHATGPT_ACCESS_TOKEN: {
+            label: "CHATGPT_ACCESS_TOKEN",
+            required: true,
+          },
+          CHATGPT_REFRESH_TOKEN: {
+            label: "CHATGPT_REFRESH_TOKEN",
+            required: true,
+            serverOnly: true,
+          },
+          CHATGPT_ACCOUNT_ID: {
+            label: "CHATGPT_ACCOUNT_ID",
+            required: true,
+          },
+          CHATGPT_ID_TOKEN: {
+            label: "CHATGPT_ID_TOKEN",
+            required: true,
+            serverOnly: true,
+          },
+        },
+      },
+    } as Record<string, AuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      CHATGPT_ACCESS_TOKEN: "$secrets.CHATGPT_ACCESS_TOKEN",
+      CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
+      OPENAI_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.3-codex",
+      "gpt-5.2",
+    ] as string[],
+    defaultModel: "gpt-5.5",
+  },
   "azure-foundry": {
     framework: "claude-code" as const,
     label: "Azure Foundry",
@@ -507,9 +560,13 @@ export function getSelectableProviderTypes(): ModelProviderType[] {
 const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 
 function getFirewallBaseUrl(type: ModelProviderType): string {
-  // Codex providers use OpenAI's Responses API — the only inference endpoint
-  // codex hits today. Scoping to /v1/responses keeps token replacement narrow
-  // (admin endpoints like /v1/files don't see the placeholder swap).
+  // chatgpt-oauth-token targets ChatGPT's backend, not the public OpenAI API.
+  if (type === "chatgpt-oauth-token") {
+    return "https://chatgpt.com/backend-api/codex";
+  }
+  // Other codex providers use OpenAI's Responses API — the only inference
+  // endpoint codex hits today. Scoping to /v1/responses keeps token
+  // replacement narrow (admin endpoints like /v1/files don't see the swap).
   if (getFrameworkForType(type) === "codex") {
     return "https://api.openai.com/v1/responses";
   }
@@ -526,8 +583,19 @@ function getFirewallBaseUrl(type: ModelProviderType): string {
  * (single source of truth), so callers never specify it — eliminating
  * any possibility of mismatch between auth header templates and placeholders.
  */
+// Helper accepts only single-secret providers — multi-auth firewall configs
+// (e.g., chatgpt-oauth-token) declare their entries inline because they need
+// multiple headers and/or multiple API entries.
+type LegacySingleSecretProvider = {
+  [K in FirewallSupportedProvider]: (typeof MODEL_PROVIDER_TYPES)[K] extends {
+    secretName: string;
+  }
+    ? K
+    : never;
+}[FirewallSupportedProvider];
+
 function mpFirewall(
-  type: FirewallSupportedProvider,
+  type: LegacySingleSecretProvider,
   authHeader: { name: string; valuePrefix?: string },
   placeholderValue: string,
 ): ExpandedFirewallConfig {
@@ -627,6 +695,51 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     { name: "Authorization", valuePrefix: "Bearer" },
     "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
   ),
+  // ChatGPT OAuth provider — multi-header injection + auth.openai.com deny.
+  // Sandbox holds placeholder JWTs (written by guest-agent — see #11877);
+  // firewall replaces them with real tokens at egress. The auth.openai.com
+  // entry is defense-in-depth: codex's CODEX_REFRESH_TOKEN_URL_OVERRIDE
+  // already prevents in-sandbox refreshes, but if codex ever ignores it,
+  // this firewall denies the egress at the proxy layer.
+  //
+  // Placeholder JWT format aligned with guest-agent (#11877):
+  //   - alg=HS256 header (avoids alg:none antipattern)
+  //   - account_id literal "ws_VM0_PLACEHOLDER_DO_NOT_TRUST" — MUST equal
+  //     the string guest-agent writes into ~/.codex/auth.json so future
+  //     readers don't see drift across the two surfaces
+  //   - exp=4102444800 (year 2100) so codex never tries to refresh
+  //   - signature: arbitrary fake bytes (firewall replaces whole token)
+  "chatgpt-oauth-token": {
+    name: "model-provider:chatgpt-oauth-token",
+    apis: [
+      {
+        base: "https://chatgpt.com/backend-api/codex",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+            "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
+          },
+        },
+        permissions: [],
+      },
+      {
+        base: "https://auth.openai.com",
+        auth: { headers: {} },
+        permissions: [{ name: "denied", rules: ["ANY /*"] }],
+      },
+    ],
+    defaultPolicies: {
+      deny: ["denied"],
+      unknownPolicy: "deny",
+    },
+    placeholders: {
+      // Header  : {"alg":"HS256","typ":"JWT"}
+      // Payload : {"chatgpt_account_id":"ws_VM0_PLACEHOLDER_DO_NOT_TRUST","chatgpt_plan_type":"plus","exp":4102444800}
+      CHATGPT_ACCESS_TOKEN:
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJ3c19WTTBfUExBQ0VIT0xERVJfRE9fTk9UX1RSVVNUIiwiY2hhdGdwdF9wbGFuX3R5cGUiOiJwbHVzIiwiZXhwIjo0MTAyNDQ0ODAwfQ.VM0PlaceholderSignatureDoNotTrustVM0PlaceholderSignature",
+      CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+    },
+  },
 };
 
 /**
@@ -657,6 +770,7 @@ export const modelProviderTypeSchema = z.enum([
   "zai-api-key",
   "vercel-ai-gateway",
   "openai-api-key",
+  "chatgpt-oauth-token",
   "azure-foundry",
   "aws-bedrock",
   "vm0",

@@ -35,6 +35,35 @@ export async function insertTestOrgSentinelSecret(params: {
 }
 
 /**
+ * Insert an org-sentinel model-provider secret directly in the database.
+ *
+ * Used by tests that exercise multi-auth model-provider resolution: the
+ * resolver reads secrets of type "model-provider" via `getSecretValues`,
+ * and seeding them through the user-secret API would store them under the
+ * wrong type (`user`) and userId (real user, not ORG_SENTINEL_USER_ID).
+ *
+ * @why-db-direct Org-sentinel + type="model-provider" is not reachable
+ * via the public secrets API.
+ */
+export async function insertTestOrgModelProviderSecret(params: {
+  orgId: string;
+  name: string;
+  value: string;
+}): Promise<void> {
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const encrypted = encryptSecretValue(params.value, SECRETS_ENCRYPTION_KEY);
+  await globalThis.services.db.insert(secrets).values({
+    name: params.name,
+    encryptedValue: encrypted,
+    type: "model-provider",
+    userId: ORG_SENTINEL_USER_ID,
+    orgId: params.orgId,
+    description: "test seed",
+  });
+}
+
+/**
  * Insert an org-level sentinel variable directly in the database.
  *
  * @why-db-direct The variables API creates user-scoped variables, not

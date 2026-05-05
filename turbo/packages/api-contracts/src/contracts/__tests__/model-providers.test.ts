@@ -9,6 +9,9 @@ import {
   getFrameworkForType,
   getVm0VisibleModels,
   normalizeVm0ModelId,
+  getSelectableProviderTypes,
+  getAuthMethodsForType,
+  getSecretsForAuthMethod,
   VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   modelProviderTypeSchema,
@@ -248,4 +251,142 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
       expect(config.apis[0]!.base).toBe(expectedBase);
     },
   );
+});
+
+describe("chatgpt-oauth-token codex provider", () => {
+  it("declares codex framework", () => {
+    expect(getFrameworkForType("chatgpt-oauth-token")).toBe("codex");
+  });
+
+  it("appears in selectable provider types", () => {
+    expect(getSelectableProviderTypes()).toContain("chatgpt-oauth-token");
+  });
+
+  it("uses multi-auth shape with oauth method and four secrets", () => {
+    const methods = getAuthMethodsForType("chatgpt-oauth-token");
+    expect(methods).toBeDefined();
+    expect(Object.keys(methods!)).toEqual(["oauth"]);
+    const secrets = methods!.oauth!.secrets;
+    expect(Object.keys(secrets).sort()).toEqual([
+      "CHATGPT_ACCESS_TOKEN",
+      "CHATGPT_ACCOUNT_ID",
+      "CHATGPT_ID_TOKEN",
+      "CHATGPT_REFRESH_TOKEN",
+    ]);
+  });
+
+  it("marks refresh and id tokens as serverOnly", () => {
+    const secrets = getSecretsForAuthMethod("chatgpt-oauth-token", "oauth")!;
+    expect(secrets.CHATGPT_REFRESH_TOKEN!.serverOnly).toBe(true);
+    expect(secrets.CHATGPT_ID_TOKEN!.serverOnly).toBe(true);
+    // Access token + account ID are NOT server-only — they reach the sandbox
+    expect(secrets.CHATGPT_ACCESS_TOKEN!.serverOnly).not.toBe(true);
+    expect(secrets.CHATGPT_ACCOUNT_ID!.serverOnly).not.toBe(true);
+  });
+
+  it("environmentMapping does NOT reference refresh or id tokens", () => {
+    const mapping = getEnvironmentMapping("chatgpt-oauth-token")!;
+    const values = Object.values(mapping).join(" ");
+    expect(values).not.toContain("CHATGPT_REFRESH_TOKEN");
+    expect(values).not.toContain("CHATGPT_ID_TOKEN");
+  });
+
+  it("environmentMapping injects access token, account id, and model", () => {
+    const mapping = getEnvironmentMapping("chatgpt-oauth-token")!;
+    expect(mapping.CHATGPT_ACCESS_TOKEN).toBe("$secrets.CHATGPT_ACCESS_TOKEN");
+    expect(mapping.CHATGPT_ACCOUNT_ID).toBe("$secrets.CHATGPT_ACCOUNT_ID");
+    expect(mapping.OPENAI_MODEL).toBe("$model");
+  });
+
+  it("offers gpt-5.x models with gpt-5.5 default", () => {
+    expect(getModels("chatgpt-oauth-token")).toContain("gpt-5.5");
+    expect(getModels("chatgpt-oauth-token")).toContain("gpt-5.3-codex");
+    expect(getDefaultModel("chatgpt-oauth-token")).toBe("gpt-5.5");
+  });
+
+  it("supports model selection", () => {
+    expect(hasModelSelection("chatgpt-oauth-token")).toBe(true);
+  });
+
+  it("getProviderBaseUrl returns null (codex provider, no ANTHROPIC_BASE_URL)", () => {
+    expect(getProviderBaseUrl("chatgpt-oauth-token")).toBeNull();
+  });
+
+  it("firewall entry has both ChatGPT and auth.openai.com APIs", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    expect(config.apis).toHaveLength(2);
+    expect(config.apis[0]!.base).toBe("https://chatgpt.com/backend-api/codex");
+    expect(config.apis[1]!.base).toBe("https://auth.openai.com");
+  });
+
+  it("firewall injects Authorization and ChatGPT-Account-ID headers", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    expect(config.apis[0]!.auth.headers).toEqual({
+      Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+      "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
+    });
+  });
+
+  it("firewall denies auth.openai.com via defaultPolicies + permission rule", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    expect(config.defaultPolicies?.deny).toContain("denied");
+    expect(config.defaultPolicies?.unknownPolicy).toBe("deny");
+    expect(config.apis[1]!.permissions).toEqual([
+      { name: "denied", rules: ["ANY /*"] },
+    ]);
+  });
+
+  it("placeholder access token is a parseable JWT with HS256 alg and far-future exp", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    const token = config.placeholders!.CHATGPT_ACCESS_TOKEN!;
+    const parts = token.split(".");
+    expect(parts).toHaveLength(3);
+    const decode = (s: string): Record<string, unknown> => {
+      return JSON.parse(Buffer.from(s, "base64url").toString("utf8")) as Record<
+        string,
+        unknown
+      >;
+    };
+    const header = decode(parts[0]!);
+    // HS256 cross-cut alignment with #11877 (avoids alg:none antipattern)
+    expect(header.alg).toBe("HS256");
+    const payload = decode(parts[1]!);
+    expect(payload.exp).toBeGreaterThan(Date.now() / 1000 + 86400 * 365);
+    // account_id placeholder MUST equal #11877's literal so future readers
+    // don't see drift across the two surfaces
+    expect(payload.chatgpt_account_id).toBe("ws_VM0_PLACEHOLDER_DO_NOT_TRUST");
+  });
+
+  it("CHATGPT_ACCOUNT_ID placeholder equals #11877's literal", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    expect(config.placeholders!.CHATGPT_ACCOUNT_ID).toBe(
+      "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+    );
+  });
+
+  it("modelProviderTypeSchema accepts chatgpt-oauth-token", () => {
+    expect(
+      modelProviderTypeSchema.safeParse("chatgpt-oauth-token").success,
+    ).toBe(true);
+  });
+});
+
+describe("getFirewallBaseUrl regression — existing providers unchanged", () => {
+  // Snapshot of every firewall-supported provider's base URL after the
+  // per-provider refactor in #11878. Catches accidental URL changes for
+  // existing providers when a new codex-framework provider is added.
+  it.each([
+    ["anthropic-api-key", "https://api.anthropic.com/v1/messages"],
+    ["claude-code-oauth-token", "https://api.anthropic.com/v1/messages"],
+    ["openrouter-api-key", "https://openrouter.ai/api/v1/messages"],
+    ["moonshot-api-key", "https://api.moonshot.ai/anthropic/v1/messages"],
+    ["minimax-api-key", "https://api.minimax.io/anthropic/v1/messages"],
+    ["deepseek-api-key", "https://api.deepseek.com/anthropic/v1/messages"],
+    ["zai-api-key", "https://api.z.ai/api/anthropic/v1/messages"],
+    ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
+    ["openai-api-key", "https://api.openai.com/v1/responses"],
+    ["chatgpt-oauth-token", "https://chatgpt.com/backend-api/codex"],
+  ] as const)("%s firewall base URL is %s", (type, expected) => {
+    expect(MODEL_PROVIDER_FIREWALL_CONFIGS[type]!.apis[0]!.base).toBe(expected);
+  });
 });

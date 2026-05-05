@@ -6,9 +6,11 @@ import {
   createTestOrg,
   insertOrgDefaultModelProvider,
   insertOrgNonDefaultModelProvider,
+  insertOrgMultiAuthModelProvider,
 } from "../../../../__tests__/api-test-helpers";
 import { getTestModelProviderIdByType } from "../../../../__tests__/db-test-assertions/org";
 import { mockClerk } from "../../../../__tests__/clerk-mock";
+import { insertTestOrgModelProviderSecret } from "../../../../__tests__/db-test-seeders/secrets";
 
 const context = testContext();
 
@@ -160,6 +162,41 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     expect(result.resolvedModelProvider).toBe("openai-api-key");
     expect(result.framework).toBe("codex");
     expect(result.selectedModel).toBe("gpt-5.4-mini");
+  });
+
+  it("filters serverOnly secrets out of the runner-bound map for chatgpt-oauth-token (#11878)", async () => {
+    // Epic constraint #7365: refresh tokens and id tokens MUST stay
+    // server-side; they cannot leak into the sandbox via ExecutionContext.
+    // The chatgpt-oauth-token registry marks CHATGPT_REFRESH_TOKEN and
+    // CHATGPT_ID_TOKEN as serverOnly; the resolver filter drops them from
+    // the result.secrets map before it flows into the runner job context.
+    const userId = uniqueId("chatgpt-oauth-leak");
+    const orgId = await setupOrg(userId);
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+    );
+    for (const [name, value] of [
+      ["CHATGPT_ACCESS_TOKEN", "real-access"],
+      ["CHATGPT_REFRESH_TOKEN", "real-refresh-server-only"],
+      ["CHATGPT_ACCOUNT_ID", "ws_real_account"],
+      ["CHATGPT_ID_TOKEN", "real-id-server-only"],
+    ] as const) {
+      await insertTestOrgModelProviderSecret({ orgId, name, value });
+    }
+
+    const result = await resolveModelProviderSecrets(orgId, "codex", false);
+
+    expect(result.resolvedModelProvider).toBe("chatgpt-oauth-token");
+    expect(result.framework).toBe("codex");
+    expect(result.secrets).toBeDefined();
+    expect(Object.keys(result.secrets!).sort()).toEqual([
+      "CHATGPT_ACCESS_TOKEN",
+      "CHATGPT_ACCOUNT_ID",
+    ]);
+    expect(result.secrets!.CHATGPT_REFRESH_TOKEN).toBeUndefined();
+    expect(result.secrets!.CHATGPT_ID_TOKEN).toBeUndefined();
   });
 
   it("provider's framework wins when modelProviderId pin disagrees with compose framework (#11616)", async () => {

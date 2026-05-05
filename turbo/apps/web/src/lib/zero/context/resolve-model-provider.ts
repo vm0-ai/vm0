@@ -5,6 +5,7 @@ import {
   getDefaultModel,
   hasAuthMethods,
   getSecretNamesForAuthMethod,
+  getSecretsForAuthMethod,
   MODEL_PROVIDER_TYPES,
   getVm0ConcreteProviderType,
   getVm0Vendor,
@@ -244,11 +245,23 @@ async function resolveMultiAuthProviderSecrets(
     return undefined;
   }
 
+  // Filter out serverOnly secrets (e.g., OAuth refresh tokens, ID tokens)
+  // before forwarding to the runner — these stay server-side per #7365.
+  // The full secrets map is still consumed by the OAuth/persistence path
+  // (write side); only this build-context (read side) drops them.
+  const secretConfigs = getSecretsForAuthMethod(providerType, authMethod);
+  const forwardableSecrets: Record<string, string> = {};
+  for (const [name, value] of Object.entries(secretsMap)) {
+    if (!secretConfigs?.[name]?.serverOnly) {
+      forwardableSecrets[name] = value;
+    }
+  }
+
   const injectedEnvironment = resolveEnvironmentMapping(
     providerType,
     undefined,
     selectedModel,
-    new Set(secretNames),
+    new Set(Object.keys(forwardableSecrets)),
   );
 
   log.debug(
@@ -256,7 +269,7 @@ async function resolveMultiAuthProviderSecrets(
   );
 
   return {
-    secrets: secretsMap,
+    secrets: forwardableSecrets,
     injectedEnvironment,
     resolvedModelProvider: providerType,
     framework: getFrameworkForType(providerType),

@@ -233,6 +233,46 @@ export async function insertOrgDefaultModelProvider(
 }
 
 /**
+ * Insert an org-level multi-auth model provider (e.g., chatgpt-oauth-token,
+ * aws-bedrock) directly in the database with the given authMethod.
+ *
+ * Companion to `insertOrgDefaultModelProvider` for tests that need to
+ * exercise the multi-auth resolver path. Production multi-auth providers
+ * are created via `upsertMultiAuthModelProvider`, which requires a full
+ * web request flow; this helper bypasses that for unit-style tests of
+ * downstream resolution.
+ *
+ * @why-db-direct Multi-auth provider creation API requires a full web
+ * request; tests need a direct insert with a specific authMethod set.
+ */
+export async function insertOrgMultiAuthModelProvider(
+  orgId: string,
+  type: string,
+  authMethod: string,
+  selectedModel?: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    );
+  await globalThis.services.db.insert(modelProviders).values({
+    type,
+    userId: ORG_SENTINEL_USER_ID,
+    orgId,
+    isDefault: true,
+    authMethod,
+    selectedModel: selectedModel ?? null,
+  });
+}
+
+/**
  * Insert an org-level non-default model provider directly in the database.
  *
  * Companion to `insertOrgDefaultModelProvider` for tests that need to seed

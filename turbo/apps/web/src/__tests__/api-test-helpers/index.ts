@@ -25,6 +25,7 @@ export {
   insertOrgMembersEntry,
   insertOrgDefaultModelProvider,
   insertOrgNonDefaultModelProvider,
+  insertOrgMultiAuthModelProvider,
   deleteTestModelProvider,
   setOrgCredits,
   lockOrgAndSetCredits,

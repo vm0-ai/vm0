@@ -24,6 +24,7 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "moonshot-api-key": kimiIcon,
     "vercel-ai-gateway": vercelIcon,
     "openai-api-key": openaiIcon,
+    "chatgpt-oauth-token": openaiIcon,
     "azure-foundry": azureIcon,
     "aws-bedrock": bedrockIcon,
     vm0: vm0Icon,
