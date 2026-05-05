@@ -33,6 +33,8 @@ const POLL_FAST: Duration = Duration::from_secs(5);
 const ABLY_BACKOFF_INITIAL: Duration = Duration::from_secs(5);
 /// Maximum backoff between Ably reconnection attempts.
 const ABLY_BACKOFF_MAX: Duration = Duration::from_secs(60);
+/// Log one error if Ably has not recovered within this window.
+const ABLY_DISCONNECT_ERROR_AFTER: Duration = Duration::from_secs(60);
 
 // ---------------------------------------------------------------------------
 // ApiProvider
@@ -70,6 +72,9 @@ struct DiscoveryState {
     ably: Option<ably_subscriber::Subscription>,
     ably_retry: RetryState<AblyReconnectHandle>,
     ably_connected: bool,
+    ably_disconnected_at: Option<tokio::time::Instant>,
+    ably_disconnect_error_logged: bool,
+    ably_disconnect_reason: Option<String>,
     poll_now: bool,
     /// When set, schedules a deferred poll so non-targeted runners can pick up
     /// jobs that the targeted runner may not have claimed.
@@ -95,17 +100,19 @@ impl ApiProvider {
             RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None);
 
         let ably_config = make_ably_config(&api, &group);
-        let (ably, ably_connected) = match ably_subscriber::subscribe(ably_config).await {
-            Ok(sub) => {
-                info!("ably connected");
-                (Some(sub), true)
-            }
-            Err(e) => {
-                warn!(error = %e, "ably unavailable, will retry");
-                ably_retry.record_initial_failure();
-                (None, false)
-            }
-        };
+        let (ably, ably_connected, ably_disconnect_reason) =
+            match ably_subscriber::subscribe(ably_config).await {
+                Ok(sub) => {
+                    info!("ably connected");
+                    (Some(sub), true, None)
+                }
+                Err(e) => {
+                    let reason = e.to_string();
+                    warn!(error = %e, "ably unavailable, will retry");
+                    ably_retry.record_initial_failure();
+                    (None, false, Some(reason))
+                }
+            };
 
         Arc::new(Self {
             api,
@@ -116,6 +123,13 @@ impl ApiProvider {
                 ably,
                 ably_retry,
                 ably_connected,
+                ably_disconnected_at: if ably_connected {
+                    None
+                } else {
+                    Some(tokio::time::Instant::now())
+                },
+                ably_disconnect_error_logged: false,
+                ably_disconnect_reason,
                 poll_now: true, // immediate first poll
                 deferred_poll_at: None,
             }),
@@ -142,12 +156,21 @@ impl JobProvider for ApiProvider {
                 ref mut ably,
                 ref mut ably_retry,
                 ref mut ably_connected,
+                ref mut ably_disconnected_at,
+                ref mut ably_disconnect_error_logged,
+                ref mut ably_disconnect_reason,
                 ref mut poll_now,
                 ref mut deferred_poll_at,
             } = *state;
 
             // Spawn Ably reconnection when timer fires
             maybe_spawn_ably_reconnect(ably, &self.api, &self.group, ably_retry);
+
+            let ably_disconnect_error_at = if !*ably_connected && !*ably_disconnect_error_logged {
+                ably_disconnected_at.map(|at| at + ABLY_DISCONNECT_ERROR_AFTER)
+            } else {
+                None
+            };
 
             let sleep_dur = if *poll_now {
                 Duration::ZERO
@@ -210,22 +233,43 @@ impl JobProvider for ApiProvider {
                                 *ably_connected = true;
                                 info!("ably reconnected");
                             }
+                            *ably_disconnected_at = None;
+                            *ably_disconnect_error_logged = false;
+                            *ably_disconnect_reason = None;
                         }
                         Some(ably_subscriber::Event::Disconnected { reason }) => {
-                            *ably_connected = false;
-                            let reason = reason.as_deref().unwrap_or("unknown");
-                            warn!(reason = %reason, "ably disconnected, switching to fast poll");
+                            let reason = reason.as_deref().unwrap_or("unknown").to_owned();
+                            record_ably_disconnected(
+                                ably_connected,
+                                ably_disconnected_at,
+                                ably_disconnect_error_logged,
+                                ably_disconnect_reason,
+                                reason.clone(),
+                            );
+                            info!(reason = %reason, "ably disconnected, switching to fast poll");
                         }
                         Some(ably_subscriber::Event::Error { code, message }) => {
                             error!(code, message = %message, "ably fatal error, will reconnect");
+                            record_ably_disconnected(
+                                ably_connected,
+                                ably_disconnected_at,
+                                ably_disconnect_error_logged,
+                                ably_disconnect_reason,
+                                message.clone(),
+                            );
                             *ably = None;
-                            *ably_connected = false;
                             ably_retry.schedule();
                         }
                         None => {
                             warn!("ably subscription closed, will reconnect");
+                            record_ably_disconnected(
+                                ably_connected,
+                                ably_disconnected_at,
+                                ably_disconnect_error_logged,
+                                ably_disconnect_reason,
+                                "subscription closed".to_string(),
+                            );
                             *ably = None;
-                            *ably_connected = false;
                             ably_retry.schedule();
                         }
                     }
@@ -263,10 +307,38 @@ impl JobProvider for ApiProvider {
                 }
                 // Ably reconnection result
                 result = recv_retry(&mut ably_retry.handle) => {
-                    handle_ably_reconnect_result(result, ably, ably_connected, ably_retry);
+                    let reconnect_error =
+                        handle_ably_reconnect_result(result, ably, ably_connected, ably_retry);
+                    if *ably_connected {
+                        *ably_disconnected_at = None;
+                        *ably_disconnect_error_logged = false;
+                        *ably_disconnect_reason = None;
+                    } else if let Some(reason) = reconnect_error {
+                        record_ably_disconnected(
+                            ably_connected,
+                            ably_disconnected_at,
+                            ably_disconnect_error_logged,
+                            ably_disconnect_reason,
+                            reason,
+                        );
+                    }
                 }
                 // Ably retry timer
                 () = sleep_until_retry(&ably_retry.restart_at) => {}
+                () = sleep_until_optional(ably_disconnect_error_at), if ably_disconnect_error_at.is_some() => {
+                    *ably_disconnect_error_logged = true;
+                    let disconnected_secs = ably_disconnected_at
+                        .map(|at| at.elapsed().as_secs())
+                        .unwrap_or_else(|| ABLY_DISCONNECT_ERROR_AFTER.as_secs());
+                    let reason = ably_disconnect_reason
+                        .as_deref()
+                        .unwrap_or("unknown");
+                    error!(
+                        reason = %reason,
+                        disconnected_secs,
+                        "ably disconnected for too long, continuing fast poll"
+                    );
+                }
             }
         }
     }
@@ -318,6 +390,9 @@ impl JobProvider for ApiProvider {
             // Drop Ably subscription to close WebSocket
             state.ably = None;
             state.ably_connected = false;
+            state.ably_disconnected_at = None;
+            state.ably_disconnect_error_logged = false;
+            state.ably_disconnect_reason = None;
             // Take the in-flight reconnection task before awaiting its abort.
             state.ably_retry.handle.take()
         };
@@ -435,6 +510,28 @@ async fn recv_ably(
     }
 }
 
+async fn sleep_until_optional(deadline: Option<tokio::time::Instant>) {
+    match deadline {
+        Some(deadline) => tokio::time::sleep_until(deadline).await,
+        None => std::future::pending().await,
+    }
+}
+
+fn record_ably_disconnected(
+    ably_connected: &mut bool,
+    ably_disconnected_at: &mut Option<tokio::time::Instant>,
+    ably_disconnect_error_logged: &mut bool,
+    ably_disconnect_reason: &mut Option<String>,
+    reason: String,
+) {
+    if *ably_connected || ably_disconnected_at.is_none() {
+        *ably_disconnected_at = Some(tokio::time::Instant::now());
+        *ably_disconnect_error_logged = false;
+    }
+    *ably_connected = false;
+    *ably_disconnect_reason = Some(reason);
+}
+
 /// Create a fresh `SubscribeConfig` for Ably connection.
 ///
 /// `SubscribeConfig` is consumed by `subscribe()` and is not `Clone`,
@@ -462,7 +559,7 @@ fn handle_ably_reconnect_result(
     ably: &mut Option<ably_subscriber::Subscription>,
     ably_connected: &mut bool,
     retry: &mut RetryState<AblyReconnectHandle>,
-) {
+) -> Option<String> {
     match result {
         Ok(sub) => {
             if retry.consecutive_failures() > 0 {
@@ -476,22 +573,20 @@ fn handle_ably_reconnect_result(
             *ably = Some(sub);
             *ably_connected = true;
             retry.on_success();
+            None
         }
         Err(e) => {
             // Capture before on_failure() — matches the delay actually scheduled.
             let next_secs = retry.backoff().as_secs();
             // Ably retries forever (max_failures = None), so this always returns true.
             let _ = retry.on_failure();
-            if retry.consecutive_failures() >= 10 {
-                error!(
-                    error = %e,
-                    failures = retry.consecutive_failures(),
-                    next_attempt_secs = next_secs,
-                    "ably reconnection failing persistently"
-                );
-            } else {
-                warn!(error = %e, next_attempt_secs = next_secs, "ably reconnect failed");
-            }
+            warn!(
+                error = %e,
+                failures = retry.consecutive_failures(),
+                next_attempt_secs = next_secs,
+                "ably reconnect failed"
+            );
+            Some(e)
         }
     }
 }
@@ -754,6 +849,9 @@ mod tests {
                 ably: None,
                 ably_retry,
                 ably_connected: true,
+                ably_disconnected_at: None,
+                ably_disconnect_error_logged: false,
+                ably_disconnect_reason: None,
                 poll_now: false,
                 deferred_poll_at: None,
             }),
@@ -806,6 +904,9 @@ mod tests {
                 ably: None,
                 ably_retry: RetryState::new(ABLY_BACKOFF_INITIAL, ABLY_BACKOFF_MAX, None),
                 ably_connected: false,
+                ably_disconnected_at: Some(tokio::time::Instant::now()),
+                ably_disconnect_error_logged: false,
+                ably_disconnect_reason: Some("test disconnected".to_string()),
                 poll_now: true,
                 deferred_poll_at: None,
             }),
@@ -833,6 +934,41 @@ mod tests {
 
         server_task.abort();
         let _ = server_task.await;
+    }
+
+    #[test]
+    fn record_ably_disconnected_preserves_one_shot_escalation_state() {
+        let mut ably_connected = true;
+        let mut ably_disconnected_at = None;
+        let mut ably_disconnect_error_logged = false;
+        let mut ably_disconnect_reason = None;
+
+        record_ably_disconnected(
+            &mut ably_connected,
+            &mut ably_disconnected_at,
+            &mut ably_disconnect_error_logged,
+            &mut ably_disconnect_reason,
+            "first disconnect".to_string(),
+        );
+
+        let first_disconnected_at = ably_disconnected_at;
+        ably_disconnect_error_logged = true;
+
+        record_ably_disconnected(
+            &mut ably_connected,
+            &mut ably_disconnected_at,
+            &mut ably_disconnect_error_logged,
+            &mut ably_disconnect_reason,
+            "second disconnect event".to_string(),
+        );
+
+        assert!(!ably_connected);
+        assert_eq!(ably_disconnected_at, first_disconnected_at);
+        assert!(ably_disconnect_error_logged);
+        assert_eq!(
+            ably_disconnect_reason.as_deref(),
+            Some("second disconnect event")
+        );
     }
 
     #[tokio::test]
