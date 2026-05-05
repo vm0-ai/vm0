@@ -101,10 +101,11 @@ impl ApiProvider {
 impl JobProvider for ApiProvider {
     async fn discover(&self) -> Option<(RunId, String)> {
         loop {
-            let reason = self
+            let due = self
                 .poll_wakeups
                 .wait_for_poll_due(&self.cancel, POLL_SLOW, POLL_FAST)
                 .await?;
+            let reason = due.reason();
 
             let sessions = self.held_sessions.lock().await.clone();
             let poll_result = tokio::select! {
@@ -118,7 +119,7 @@ impl JobProvider for ApiProvider {
             match poll_result {
                 Ok(Some(job)) => {
                     self.poll_wakeups
-                        .record_poll_result(reason, PollOutcome::JobFound, POLL_WAKEUP_RETRY)
+                        .record_poll_result(due, PollOutcome::JobFound, POLL_WAKEUP_RETRY)
                         .await;
                     if self.cancel.is_cancelled() {
                         return None;
@@ -133,12 +134,12 @@ impl JobProvider for ApiProvider {
                 }
                 Ok(None) => {
                     self.poll_wakeups
-                        .record_poll_result(reason, PollOutcome::Empty, POLL_WAKEUP_RETRY)
+                        .record_poll_result(due, PollOutcome::Empty, POLL_WAKEUP_RETRY)
                         .await;
                 }
                 Err(e) => {
                     self.poll_wakeups
-                        .record_poll_result(reason, PollOutcome::Failure, POLL_WAKEUP_RETRY)
+                        .record_poll_result(due, PollOutcome::Failure, POLL_WAKEUP_RETRY)
                         .await;
                     error!(error = %e, poll_reason = ?reason, "poll failed");
                 }

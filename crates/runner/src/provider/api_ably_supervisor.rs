@@ -34,6 +34,20 @@ impl PollReason {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct PollDue {
+    reason: PollReason,
+    /// Wakeup generation observed immediately before starting the HTTP poll.
+    /// Poll results must not clear wakeups that arrive while that request is in flight.
+    generation: u64,
+}
+
+impl PollDue {
+    pub(super) fn reason(self) -> PollReason {
+        self.reason
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PollOutcome {
     JobFound,
     Empty,
@@ -51,6 +65,15 @@ struct PollWakeupsInner {
     poll_now: bool,
     deferred_poll_at: Option<tokio::time::Instant>,
     wakeup_retry_at: Option<tokio::time::Instant>,
+    /// Bumped whenever a new wakeup is recorded. This keeps an older HTTP poll
+    /// result from clearing a wakeup that arrived after the poll started.
+    generation: u64,
+}
+
+impl PollWakeupsInner {
+    fn bump_generation(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -67,6 +90,7 @@ impl PollWakeups {
                 poll_now: true,
                 deferred_poll_at: None,
                 wakeup_retry_at: None,
+                generation: 0,
             }),
             notify: Notify::new(),
         }
@@ -83,7 +107,9 @@ impl PollWakeups {
     }
 
     async fn request_immediate_poll(&self) {
-        self.inner.lock().await.poll_now = true;
+        let mut inner = self.inner.lock().await;
+        inner.poll_now = true;
+        inner.bump_generation();
         self.notify.notify_waiters();
     }
 
@@ -97,31 +123,39 @@ impl PollWakeups {
         if inner.deferred_poll_at.is_none_or(|existing| at < existing) {
             inner.deferred_poll_at = Some(at);
         }
+        inner.bump_generation();
         drop(inner);
         self.notify.notify_waiters();
     }
 
     pub(super) async fn record_poll_result(
         &self,
-        reason: PollReason,
+        due: PollDue,
         outcome: PollOutcome,
         wakeup_retry_delay: Duration,
     ) {
         let mut should_notify = false;
         let mut inner = self.inner.lock().await;
+        let has_new_wakeup = inner.generation != due.generation;
         match outcome {
             PollOutcome::JobFound => {
                 inner.poll_now = true;
-                inner.deferred_poll_at = None;
-                inner.wakeup_retry_at = None;
+                if !has_new_wakeup {
+                    inner.deferred_poll_at = None;
+                    inner.wakeup_retry_at = None;
+                }
+                inner.bump_generation();
                 should_notify = true;
             }
             PollOutcome::Empty => {
-                inner.deferred_poll_at = None;
-                inner.wakeup_retry_at = None;
+                if !has_new_wakeup {
+                    inner.deferred_poll_at = None;
+                    inner.wakeup_retry_at = None;
+                }
             }
-            PollOutcome::Failure if reason.is_wakeup() => {
+            PollOutcome::Failure if due.reason.is_wakeup() => {
                 inner.wakeup_retry_at = Some(tokio::time::Instant::now() + wakeup_retry_delay);
+                inner.bump_generation();
                 should_notify = true;
             }
             PollOutcome::Failure => {}
@@ -137,7 +171,7 @@ impl PollWakeups {
         cancel: &CancellationToken,
         slow_interval: Duration,
         fast_interval: Duration,
-    ) -> Option<PollReason> {
+    ) -> Option<PollDue> {
         loop {
             let notified = self.notify.notified();
             tokio::pin!(notified);
@@ -148,15 +182,24 @@ impl PollWakeups {
                 let now = tokio::time::Instant::now();
                 if inner.poll_now {
                     inner.poll_now = false;
-                    return Some(PollReason::Immediate);
+                    return Some(PollDue {
+                        reason: PollReason::Immediate,
+                        generation: inner.generation,
+                    });
                 }
                 if inner.wakeup_retry_at.is_some_and(|at| at <= now) {
                     inner.wakeup_retry_at = None;
-                    return Some(PollReason::WakeupRetry);
+                    return Some(PollDue {
+                        reason: PollReason::WakeupRetry,
+                        generation: inner.generation,
+                    });
                 }
                 if inner.deferred_poll_at.is_some_and(|at| at <= now) {
                     inner.deferred_poll_at = None;
-                    return Some(PollReason::Deferred);
+                    return Some(PollDue {
+                        reason: PollReason::Deferred,
+                        generation: inner.generation,
+                    });
                 }
                 Self::next_scheduled(&inner, now, slow_interval, fast_interval)
             };
@@ -167,8 +210,8 @@ impl PollWakeups {
                 }
                 () = &mut notified => {}
                 () = tokio::time::sleep_until(scheduled.at) => {
-                    if self.consume_scheduled(scheduled).await {
-                        return Some(scheduled.reason);
+                    if let Some(due) = self.consume_scheduled(scheduled).await {
+                        return Some(due);
                     }
                 }
             }
@@ -213,11 +256,11 @@ impl PollWakeups {
         scheduled
     }
 
-    async fn consume_scheduled(&self, scheduled: ScheduledPoll) -> bool {
+    async fn consume_scheduled(&self, scheduled: ScheduledPoll) -> Option<PollDue> {
         let mut inner = self.inner.lock().await;
         let now = tokio::time::Instant::now();
 
-        match scheduled.reason {
+        let is_due = match scheduled.reason {
             PollReason::Immediate => false,
             PollReason::WakeupRetry => {
                 if inner.wakeup_retry_at.is_some_and(|at| at <= now) {
@@ -241,7 +284,11 @@ impl PollWakeups {
             PollReason::Fast => {
                 !inner.ably_connected && !inner.poll_now && !Self::has_due_wakeup(&inner, now)
             }
-        }
+        };
+        is_due.then_some(PollDue {
+            reason: scheduled.reason,
+            generation: inner.generation,
+        })
     }
 
     fn has_due_wakeup(inner: &PollWakeupsInner, now: tokio::time::Instant) -> bool {
@@ -685,6 +732,10 @@ mod tests {
         }
     }
 
+    fn poll_reason(due: Option<PollDue>) -> Option<PollReason> {
+        due.map(PollDue::reason)
+    }
+
     #[tokio::test(start_paused = true)]
     async fn wait_for_poll_due_consumes_stateful_immediate_wakeup() {
         let wakeups = PollWakeups::new(true);
@@ -697,7 +748,7 @@ mod tests {
             )
             .await;
 
-        assert_eq!(reason, Some(PollReason::Immediate));
+        assert_eq!(poll_reason(reason), Some(PollReason::Immediate));
         let snapshot = wakeups.snapshot().await;
         assert!(snapshot.ably_connected);
         assert!(!snapshot.poll_now);
@@ -729,25 +780,37 @@ mod tests {
                 Duration::from_secs(5),
             )
             .await;
-        assert_eq!(reason, Some(PollReason::WakeupRetry));
+        assert_eq!(poll_reason(reason), Some(PollReason::WakeupRetry));
     }
 
     #[tokio::test(start_paused = true)]
     async fn regular_poll_failure_does_not_schedule_wakeup_retry() {
         let wakeups = PollWakeups::new(false);
-        let _ = wakeups
+        let due = wakeups
             .wait_for_poll_due(
                 &CancellationToken::new(),
                 Duration::from_secs(30),
                 Duration::from_secs(5),
             )
-            .await;
+            .await
+            .unwrap();
         wakeups
-            .record_poll_result(
-                PollReason::Fast,
-                PollOutcome::Failure,
+            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        let due = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
                 Duration::from_secs(5),
             )
+            .await
+            .unwrap();
+        assert_eq!(due.reason(), PollReason::Fast);
+
+        wakeups
+            .record_poll_result(due, PollOutcome::Failure, Duration::from_secs(5))
             .await;
         assert!(wakeups.snapshot().await.wakeup_retry_at.is_none());
     }
@@ -755,19 +818,16 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn disconnected_state_uses_fast_poll_interval() {
         let wakeups = Arc::new(PollWakeups::new(false));
-        let _ = wakeups
+        let due = wakeups
             .wait_for_poll_due(
                 &CancellationToken::new(),
                 Duration::from_secs(30),
                 Duration::from_secs(5),
             )
-            .await;
+            .await
+            .unwrap();
         wakeups
-            .record_poll_result(
-                PollReason::Immediate,
-                PollOutcome::Empty,
-                Duration::from_secs(5),
-            )
+            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
             .await;
 
         let wakeups_for_wait = Arc::clone(&wakeups);
@@ -779,25 +839,22 @@ mod tests {
         });
         tokio::time::sleep(Duration::from_secs(5)).await;
 
-        assert_eq!(wait.await.unwrap(), Some(PollReason::Fast));
+        assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Fast));
     }
 
     #[tokio::test(start_paused = true)]
     async fn connected_state_uses_slow_poll_interval() {
         let wakeups = Arc::new(PollWakeups::new(true));
-        let _ = wakeups
+        let due = wakeups
             .wait_for_poll_due(
                 &CancellationToken::new(),
                 Duration::from_secs(30),
                 Duration::from_secs(5),
             )
-            .await;
+            .await
+            .unwrap();
         wakeups
-            .record_poll_result(
-                PollReason::Immediate,
-                PollOutcome::Empty,
-                Duration::from_secs(5),
-            )
+            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
             .await;
 
         let wakeups_for_wait = Arc::clone(&wakeups);
@@ -809,7 +866,7 @@ mod tests {
         });
         tokio::time::sleep(Duration::from_secs(30)).await;
 
-        assert_eq!(wait.await.unwrap(), Some(PollReason::Slow));
+        assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Slow));
     }
 
     #[tokio::test]
@@ -836,7 +893,7 @@ mod tests {
                 Duration::from_secs(5),
             )
             .await;
-        assert_eq!(reason, Some(PollReason::Immediate));
+        assert_eq!(poll_reason(reason), Some(PollReason::Immediate));
     }
 
     #[tokio::test(start_paused = true)]
@@ -864,7 +921,63 @@ mod tests {
                 Duration::from_secs(5),
             )
             .await;
-        assert_eq!(reason, Some(PollReason::Deferred));
+        assert_eq!(poll_reason(reason), Some(PollReason::Deferred));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn empty_poll_keeps_deferred_wakeup_created_after_poll_started() {
+        let wakeups = PollWakeups::new(true);
+        let due = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+        let deferred_at = tokio::time::Instant::now() + Duration::from_secs(2);
+        wakeups.request_deferred_poll_at(deferred_at).await;
+        wakeups
+            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        assert_eq!(wakeups.snapshot().await.deferred_poll_at, Some(deferred_at));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn empty_poll_clears_deferred_wakeup_seen_by_poll() {
+        let wakeups = PollWakeups::new(true);
+        let initial = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(initial, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        wakeups
+            .request_deferred_poll_at(tokio::time::Instant::now() + Duration::from_secs(2))
+            .await;
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        let deferred = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+
+        wakeups
+            .record_poll_result(deferred, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        assert!(wakeups.snapshot().await.deferred_poll_at.is_none());
     }
 
     #[test]
@@ -936,7 +1049,7 @@ mod tests {
                 Duration::from_secs(5),
             )
             .await;
-        assert_eq!(reason, Some(PollReason::Immediate));
+        assert_eq!(poll_reason(reason), Some(PollReason::Immediate));
         assert!(!wakeups.snapshot().await.poll_now);
     }
 

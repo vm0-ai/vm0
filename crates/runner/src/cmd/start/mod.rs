@@ -3619,7 +3619,7 @@ mod tests {
         // Wait for job to be claimed and executing (cancel_tokens now has run_id).
         tokio::time::sleep(Duration::from_millis(100)).await;
 
-        // Push the same run_id again (simulates Ably push + poll race).
+        // Push the same run_id again (simulates duplicate discovery).
         // Budget has room, but cancel_tokens already contains this run_id →
         // the duplicate is rejected and budget is released.
         env.handle
