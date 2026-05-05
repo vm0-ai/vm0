@@ -36,6 +36,7 @@ fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
 }
 
 async fn destroy_snapshot_cow_after_error(context: &'static str, cow_device: PooledNbdCowDevice) {
+    let cow_file = cow_device.cow_file().to_path_buf();
     if let Err(e) = cow_device
         .destroy_with_retries(cow_destroy_retry_policy())
         .await
@@ -45,6 +46,8 @@ async fn destroy_snapshot_cow_after_error(context: &'static str, cow_device: Poo
             context,
             "failed to destroy COW device after snapshot setup error"
         );
+    } else {
+        cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
     }
 }
 
@@ -176,11 +179,61 @@ fn snapshot_attempt_cow_file(work_dir: &Path, token: &str) -> PathBuf {
     snapshot_attempt_dir(work_dir, token).join("cow.img")
 }
 
+struct SnapshotAttemptDirGuard {
+    dir: Option<PathBuf>,
+}
+
+impl SnapshotAttemptDirGuard {
+    fn new(dir: PathBuf) -> Self {
+        Self { dir: Some(dir) }
+    }
+
+    fn disarm(&mut self) {
+        self.dir.take();
+    }
+}
+
+impl Drop for SnapshotAttemptDirGuard {
+    fn drop(&mut self) {
+        let Some(dir) = self.dir.take() else {
+            return;
+        };
+        if let Err(e) = std::fs::remove_dir_all(&dir)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(
+                error = %e,
+                dir = %dir.display(),
+                "failed to cleanup unowned snapshot attempt dir"
+            );
+        }
+    }
+}
+
+async fn cleanup_snapshot_attempt_dir_for_cow(cow_file: &Path) -> bool {
+    let Some(dir) = cow_file.parent() else {
+        return true;
+    };
+    match tokio::fs::remove_dir(dir).await {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                dir = %dir.display(),
+                "failed to cleanup snapshot attempt dir"
+            );
+            false
+        }
+    }
+}
+
 async fn cleanup_after_netns_pool_failure(
     cow_device: PooledNbdCowDevice,
     device_pool: &DevicePoolHandle,
     sock_dir: &Path,
 ) {
+    let cow_file = cow_device.cow_file().to_path_buf();
     if let Err(cleanup_err) = cow_device
         .destroy_with_retries(cow_destroy_retry_policy())
         .await
@@ -189,6 +242,8 @@ async fn cleanup_after_netns_pool_failure(
             error = %cleanup_err,
             "failed to destroy COW device after netns pool failure"
         );
+    } else {
+        cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
     }
     device_pool.cleanup().await;
     cleanup_snapshot_sock_dir(
@@ -342,6 +397,7 @@ async fn finalize_snapshot_cow_output(
     // bitmap-less snapshot.
     tokio::fs::rename(&kept_cow.bitmap_file, &output.cow_bitmap()).await?;
     tokio::fs::rename(&kept_cow.cow_file, &output.cow()).await?;
+    cleanup_snapshot_attempt_dir_for_cow(&kept_cow.cow_file).await;
     // Persist the output directory so all four final dir entries
     // (snapshot.bin and memory.bin written by Firecracker via the API,
     // cow.img and cow.img.bitmap just renamed in) are durable. Without
@@ -358,11 +414,14 @@ async fn finalize_snapshot_cow_output(
 }
 
 async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevice) {
+    let cow_file = cow_device.cow_file().to_path_buf();
     if let Err(e) = cow_device
         .destroy_with_retries(cow_destroy_retry_policy())
         .await
     {
         tracing::warn!(error = %e, "failed to destroy COW device after snapshot error");
+    } else {
+        cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
     }
 }
 
@@ -851,11 +910,15 @@ impl SnapshotCleanupFinalizer {
         let Some(cow_device) = self.cow_device.take() else {
             return true;
         };
+        let cow_file = cow_device.cow_file().to_path_buf();
         match cow_device
             .destroy_with_retries(cow_destroy_retry_policy())
             .await
         {
-            Ok(()) => true,
+            Ok(()) => {
+                cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
+                true
+            }
             Err(e) => {
                 tracing::warn!(
                     error = %e,
@@ -1040,6 +1103,7 @@ pub async fn create_snapshot(
     tokio::fs::create_dir_all(&attempt_dir)
         .await
         .map_err(|e| SnapshotError::Setup(format!("create snapshot attempt dir: {e}")))?;
+    let mut attempt_dir_guard = SnapshotAttemptDirGuard::new(attempt_dir);
     let cow_file = snapshot_attempt_cow_file(paths.workspace(), &attempt_token);
     create_sparse_cow_file(&cow_file, base_size)?;
 
@@ -1070,6 +1134,7 @@ pub async fn create_snapshot(
         device_pool,
         cow_device,
     );
+    attempt_dir_guard.disarm();
     let result = run_snapshot_workflow(&config, &mut attempt).await;
 
     attempt.cleanup_device_pool().await;
@@ -1447,6 +1512,62 @@ mod tests {
         assert_ne!(
             snapshot_attempt_cow_file(work, "abc123ef"),
             work.join("cow.img")
+        );
+    }
+
+    #[test]
+    fn snapshot_attempt_dir_guard_removes_unowned_attempt_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let attempt_dir = dir.path().join("work").join("attempts").join("abc123ef");
+        std::fs::create_dir_all(&attempt_dir).expect("create attempt dir");
+        std::fs::write(attempt_dir.join("cow.img"), b"partial cow").expect("write cow");
+
+        {
+            let _guard = SnapshotAttemptDirGuard::new(attempt_dir.clone());
+        }
+
+        assert!(
+            !attempt_dir.exists(),
+            "unowned attempt dir should be removed on cancellation"
+        );
+    }
+
+    #[tokio::test]
+    async fn cleanup_snapshot_attempt_dir_removes_empty_token_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let work = dir.path().join("work");
+        let cow = snapshot_attempt_cow_file(&work, "abc123ef");
+        let attempt_dir = cow.parent().expect("attempt dir").to_path_buf();
+        tokio::fs::create_dir_all(&attempt_dir)
+            .await
+            .expect("create attempt dir");
+        tokio::fs::write(&cow, b"cow").await.expect("write cow");
+        tokio::fs::remove_file(&cow).await.expect("remove cow");
+
+        assert!(cleanup_snapshot_attempt_dir_for_cow(&cow).await);
+        assert!(
+            !tokio::fs::try_exists(&attempt_dir).await.unwrap(),
+            "empty attempt token dir should be removed after cow cleanup"
+        );
+    }
+
+    #[tokio::test]
+    async fn cleanup_snapshot_attempt_dir_reports_nonempty_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let work = dir.path().join("work");
+        let cow = snapshot_attempt_cow_file(&work, "abc123ef");
+        let attempt_dir = cow.parent().expect("attempt dir").to_path_buf();
+        tokio::fs::create_dir_all(&attempt_dir)
+            .await
+            .expect("create attempt dir");
+        tokio::fs::write(attempt_dir.join("extra"), b"keep")
+            .await
+            .expect("write extra");
+
+        assert!(!cleanup_snapshot_attempt_dir_for_cow(&cow).await);
+        assert!(
+            tokio::fs::try_exists(&attempt_dir).await.unwrap(),
+            "nonempty attempt dir should not be force removed"
         );
     }
 
