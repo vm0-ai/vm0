@@ -1,0 +1,357 @@
+//! Claimed job task spawning, completion, and panic cleanup.
+//!
+//! Discovery and idle reuse decide when a claimed job should start. This module
+//! owns the spawned task body: executor orchestration, provider completion,
+//! deferred telemetry/network-log uploads, and outer-task panic cleanup.
+
+use std::collections::HashMap;
+use std::panic::AssertUnwindSafe;
+use std::sync::Arc;
+
+use futures_util::FutureExt;
+use sandbox::SandboxId;
+use tokio::task::JoinSet;
+use tokio_util::sync::CancellationToken;
+use tracing::{error, info, warn};
+
+use super::factory_lifecycle::SharedFactory;
+use super::idle_lifecycle::{SharedIdlePool, set_idle_status_snapshot};
+use super::job_lifecycle::{
+    ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState,
+};
+use super::orphan_reap::OrphanedActiveRuns;
+use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
+#[cfg(test)]
+use super::{OuterJobPanicPoint, maybe_panic_outer_job};
+use crate::executor::{self, ExecutorConfig};
+use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
+use crate::ids::RunId;
+use crate::network_logs;
+use crate::provider::JobProvider;
+use crate::resource_budget::BudgetLease;
+use crate::status::StatusTracker;
+use crate::telemetry::JobTelemetry;
+use crate::types::{ExecutionContext, SandboxReuseResult};
+
+/// Per-job profile parameters resolved from the profile config.
+pub(super) struct JobProfile {
+    pub(super) profile_name: String,
+    pub(super) vcpu: u32,
+    pub(super) memory_mb: u32,
+    pub(super) budget_lease: BudgetLease,
+    pub(super) restore_guest_state: bool,
+    pub(super) factory: SharedFactory,
+    pub(super) cancel: CancellationToken,
+}
+
+/// Shared state passed to each spawned job task.
+pub(super) struct SpawnContext {
+    pub(super) provider: Arc<dyn JobProvider>,
+    pub(super) exec_config: Arc<ExecutorConfig>,
+    pub(super) idle_pool: SharedIdlePool,
+    pub(super) status: Arc<StatusTracker>,
+    pub(super) cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    pub(super) orphaned_active_runs: OrphanedActiveRuns,
+    /// Current lifecycle parking permission. This is checked at job
+    /// completion so soft-drain/resume races do not depend on a stale
+    /// spawn-time mode snapshot.
+    pub(super) parking_gate: ParkingGate,
+    /// Notifies the main loop to send an immediate heartbeat after parking a VM.
+    /// This eliminates the up-to-10s blind spot where the server doesn't know
+    /// which runner holds a newly-parked session.
+    pub(super) park_notify: Arc<tokio::sync::Notify>,
+    #[cfg(test)]
+    pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
+}
+
+/// Spawn a job executor task.
+///
+/// The provider has already claimed the job and the caller has reserved
+/// resources in the budget: this function spawns the executor, reports
+/// completion via the provider, and releases the budget when done.
+///
+/// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
+/// Otherwise it creates a new one via the factory.
+///
+/// After a successful execution with a session ID available, the sandbox
+/// is parked in the idle pool instead of being destroyed.
+pub(super) fn spawn_job(
+    context: ExecutionContext,
+    sandbox_id: SandboxId,
+    job_profile: JobProfile,
+    reuse_entry: Option<ReusableIdleSandbox>,
+    reuse_result: SandboxReuseResult,
+    ctx: &SpawnContext,
+    jobs: &mut JoinSet<Option<RunId>>,
+) {
+    let run_id = context.run_id;
+    let session_id = context.session_id().map(String::from);
+    let vcpu = job_profile.vcpu;
+    let memory_mb = job_profile.memory_mb;
+    let active_lease = job_profile.budget_lease;
+    let profile_name = job_profile.profile_name;
+    let factory = job_profile.factory;
+    let job_cancel = job_profile.cancel;
+    let params = executor::JobParams {
+        vcpu,
+        memory_mb,
+        restore_guest_state: job_profile.restore_guest_state,
+    };
+
+    let storage_fingerprints = context
+        .storage_manifest
+        .as_ref()
+        .map(crate::idle_pool::StorageFingerprints::from_manifest)
+        .unwrap_or_default();
+
+    let provider = Arc::clone(&ctx.provider);
+    let exec_config = Arc::clone(&ctx.exec_config);
+    let status = Arc::clone(&ctx.status);
+    let idle_pool = Arc::clone(&ctx.idle_pool);
+    let park_notify = Arc::clone(&ctx.park_notify);
+    let parking_gate = ctx.parking_gate.clone();
+    let factory_for_cleanup = Arc::clone(&factory);
+    let cleanup_state = RunCleanupState::new();
+    let cleanup_state_for_body = cleanup_state.clone();
+    let cleanup_state_for_panic = cleanup_state.clone();
+    let cancel_tokens_for_panic = Arc::clone(&ctx.cancel_tokens);
+    let status_for_panic = Arc::clone(&status);
+    let idle_pool_for_panic = Arc::clone(&idle_pool);
+    let orphaned_active_runs_for_panic = ctx.orphaned_active_runs.clone();
+    #[cfg(test)]
+    let outer_job_panic = ctx.outer_job_panic;
+
+    // Captured for the post-complete deferred work below: the panic-arm
+    // empty `JobTelemetry` construction, the final `telemetry.flush()`, and
+    // the network-log upload. `context` gets moved into the inner executor
+    // task and `exec_config` with it, so we snapshot the token and bump the
+    // Arc before spawning.
+    let sandbox_token = context.sandbox_token.clone();
+    let exec_config_for_deferred = Arc::clone(&exec_config);
+
+    let reused = reuse_entry.is_some();
+
+    jobs.spawn(async move {
+        let body = async move {
+            #[cfg(test)]
+            maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
+
+            // Inner spawn isolates panics: if execute_job panics, the outer task
+            // still reports completion and releases budget.
+            let cancel = job_cancel.clone();
+
+            let inner = tokio::spawn(async move {
+                if let Some(idle_entry) = reuse_entry {
+                    executor::execute_job_reuse(idle_entry, context, &exec_config, cancel).await
+                } else {
+                    executor::execute_job(
+                        &**factory,
+                        context,
+                        executor::NewSandboxDispatch {
+                            id: sandbox_id,
+                            reuse_result,
+                        },
+                        &exec_config,
+                        &params,
+                        cancel,
+                    )
+                    .await
+                }
+            });
+
+            let (
+                exit_code,
+                err,
+                sandbox,
+                source_ip,
+                network_log_session,
+                guest_session_id,
+                telemetry,
+            ) = match inner.await {
+                Ok((outcome, telemetry)) => {
+                    let err = if job_cancel.is_cancelled() {
+                        Some("cancelled by user".to_string())
+                    } else {
+                        outcome.error
+                    };
+                    (
+                        outcome.exit_code,
+                        err,
+                        outcome.sandbox,
+                        outcome.source_ip,
+                        outcome.network_log_session,
+                        outcome.guest_session_id,
+                        telemetry,
+                    )
+                }
+                Err(e) => {
+                    // Panic lost the in-flight telemetry buffer; substitute an
+                    // empty collector so the post-complete flush path stays
+                    // unconditional. `flush` early-returns on empty pending_ops.
+                    let empty_telemetry = JobTelemetry::new(
+                        exec_config_for_deferred.http.clone(),
+                        run_id,
+                        sandbox_token.clone(),
+                    );
+                    (
+                        1,
+                        Some(format!("executor task panicked: {e}")),
+                        None,
+                        String::new(),
+                        None,
+                        None,
+                        empty_telemetry,
+                    )
+                }
+            };
+
+            // Single sink for any claimed job's terminal state. Cancellation gets
+            // its own info marker; everything else with `err` set is a failure
+            // (panics, executor internal errors, non-zero exits with
+            // stderr/guest error file); otherwise the job finished normally.
+            let cancelled_for_log = job_cancel.is_cancelled();
+            match (cancelled_for_log, err.as_deref()) {
+                (true, _) => info!(run_id = %run_id, exit_code, reused, "job cancelled"),
+                (false, Some(e)) => {
+                    error!(run_id = %run_id, exit_code, reused, error = %e, "job execution failed");
+                }
+                (false, None) => info!(run_id = %run_id, exit_code, reused, "job finished"),
+            }
+
+            let completion_payload =
+                CompletionPayload::new(run_id, exit_code, err, sandbox_id, reuse_result);
+            // Cancellation can arrive after terminal logging or while
+            // `sandbox.park()` is in flight. Pass the live token so finalization
+            // can re-check immediately before idle-pool ownership transfer.
+            let completion_ready = finalize_sandbox_for_completion(
+                sandbox,
+                ActiveBudgetLease::new(active_lease),
+                completion_payload,
+                FinalizeContext {
+                    run_id,
+                    sandbox_id,
+                    profile_name,
+                    session_id,
+                    guest_session_id,
+                    source_ip,
+                    network_log_session,
+                    storage_fingerprints,
+                    factory: factory_for_cleanup,
+                    idle_pool,
+                    status: Arc::clone(&status),
+                    park_notify,
+                    parking_gate,
+                    network_log_drain: exec_config_for_deferred.network_log_drain.clone(),
+                    exit_code,
+                    cancel: job_cancel,
+                    cleanup_state: cleanup_state_for_body.clone(),
+                    #[cfg(test)]
+                    outer_job_panic,
+                },
+            )
+            .await;
+
+            // Structural guarantee: claim (in provider) is always paired with complete.
+            completion_ready
+                .complete_and_release(provider.as_ref(), status.as_ref(), &cleanup_state_for_body)
+                .await;
+
+            // Best-effort telemetry, deferred past `provider.complete` so the
+            // user-visible run-complete signal isn't blocked on these uploads.
+            // They're still awaited (not spawned) so the surrounding `jobs`
+            // JoinSet drains them on graceful shutdown: no data loss on SIGTERM.
+            // Telemetry flush runs concurrently with best-effort network-log upload.
+            // The job finalizer already closed the local Rust-side DNS/kmsg
+            // session before sandbox reuse/release. Keep this flush as a
+            // defensive no-op for any accepted writes still finishing.
+            let network_log_path = exec_config_for_deferred.log_paths.network_log(run_id);
+            let network_log_upload = async {
+                exec_config_for_deferred
+                    .network_log_manager
+                    .flush_path(&network_log_path)
+                    .await;
+                network_logs::upload_network_logs(
+                    &exec_config_for_deferred.http,
+                    run_id,
+                    &sandbox_token,
+                    &network_log_path,
+                )
+                .await;
+            };
+            tokio::join!(telemetry.flush(), network_log_upload,);
+
+            Some(run_id)
+        };
+
+        match AssertUnwindSafe(body).catch_unwind().await {
+            Ok(result) => result,
+            Err(payload) => {
+                let cleanup = cleanup_panicked_job(
+                    run_id,
+                    sandbox_id,
+                    cancel_tokens_for_panic,
+                    status_for_panic,
+                    idle_pool_for_panic,
+                    cleanup_state_for_panic,
+                    orphaned_active_runs_for_panic,
+                );
+                if AssertUnwindSafe(cleanup).catch_unwind().await.is_err() {
+                    error!(
+                        run_id = %run_id,
+                        sandbox_id = %sandbox_id,
+                        "outer job panic cleanup panicked"
+                    );
+                }
+                std::panic::resume_unwind(payload);
+            }
+        }
+    });
+}
+
+pub(super) async fn cleanup_panicked_job(
+    run_id: RunId,
+    sandbox_id: SandboxId,
+    cancel_tokens: Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+    status: Arc<StatusTracker>,
+    idle_pool: SharedIdlePool,
+    cleanup_state: RunCleanupState,
+    orphaned_active_runs: OrphanedActiveRuns,
+) {
+    cancel_tokens.lock().await.remove(&run_id);
+
+    match cleanup_state.disposition() {
+        RunCleanupDisposition::StatusRemoved => {}
+        RunCleanupDisposition::DestroyCompleted => {
+            status.remove_run_if_matching(run_id, sandbox_id).await;
+        }
+        RunCleanupDisposition::IdlePoolOwned => {
+            let snapshot = idle_pool.lock().await.status_snapshot();
+            set_idle_status_snapshot(&status, snapshot).await;
+            status.remove_run_if_matching(run_id, sandbox_id).await;
+        }
+        RunCleanupDisposition::ActiveOrUnknown => {
+            warn!(
+                run_id = %run_id,
+                sandbox_id = %sandbox_id,
+                "outer job task panicked before sandbox ownership was proven; leaving active run visible for orphan reconciliation"
+            );
+            orphaned_active_runs.insert(run_id, sandbox_id).await;
+        }
+    }
+}
+
+/// Handle a completed job from the JoinSet, cleaning up cancel tokens.
+pub(super) async fn handle_job_result(
+    result: Option<Result<Option<RunId>, tokio::task::JoinError>>,
+    cancel_tokens: &Arc<tokio::sync::Mutex<HashMap<RunId, CancellationToken>>>,
+) {
+    match result {
+        Some(Ok(Some(run_id))) => {
+            cancel_tokens.lock().await.remove(&run_id);
+        }
+        Some(Err(e)) => {
+            error!(error = %e, "job task panicked");
+        }
+        _ => {}
+    }
+}

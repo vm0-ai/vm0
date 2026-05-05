@@ -15,7 +15,7 @@ use super::factory_lifecycle::SharedFactory;
 use super::idle_lifecycle::{
     SharedIdlePool, add_run_with_idle_status_snapshot, spawn_idle_destroy_job,
 };
-use super::{JobProfile, SpawnContext, spawn_job};
+use super::job_spawn::{JobProfile, SpawnContext, spawn_job};
 use crate::config::ProfileConfig;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;

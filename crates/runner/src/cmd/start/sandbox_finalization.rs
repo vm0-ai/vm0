@@ -1,8 +1,8 @@
 //! Sandbox finalization after executor completion.
 //!
 //! This module owns the post-executor decision to park or destroy a sandbox.
-//! `spawn_job` remains in the parent module because it coordinates executor
-//! orchestration, provider completion, deferred uploads, and panic boundaries.
+//! The job spawn module coordinates executor orchestration, provider completion,
+//! deferred uploads, and panic boundaries.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
