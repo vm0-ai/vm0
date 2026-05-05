@@ -1860,7 +1860,6 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const latestRunStatus = useLastResolved(thread.latestRunStatus$);
   const isQueued = latestRunStatus === "queued";
   const openQueueDrawer = useSet(openQueueDrawer$);
-  const rootSignal = useGet(rootSignal$);
 
   const thinkingLabel = isQueued ? (
     <p className="zero-shimmer-text text-xs truncate">
@@ -1868,7 +1867,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
       <button
         type="button"
         onClick={() => {
-          detach(openQueueDrawer(rootSignal), Reason.DomCallback);
+          openQueueDrawer();
         }}
         className="cursor-pointer underline underline-offset-2"
       >
@@ -2749,7 +2748,7 @@ function PagedGroupActions({
       return;
     }
     if (isPlayingThis) {
-      detach(stopTts(), Reason.DomCallback);
+      stopTts();
     } else {
       detach(playTts(firstRunId, content, pageSignal), Reason.DomCallback);
     }

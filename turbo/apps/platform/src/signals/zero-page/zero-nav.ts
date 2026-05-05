@@ -5,13 +5,11 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 
-export const navigateToChat$ = command(
-  ({ set }, chatThreadId: string, _signal: AbortSignal) => {
-    set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: chatThreadId },
-    });
-  },
-);
+export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
+  set(detachedNavigateTo$, "/chats/:threadId", {
+    pathParams: { threadId: chatThreadId },
+  });
+});
 
 const internalShowAboutPage$ = state(false);
 
@@ -83,30 +81,28 @@ export function isChatRoute(key: RouteKey | null): boolean {
   );
 }
 
-export const handleZeroNavSelect$ = command(
-  async ({ set }, id: SidebarNavId, signal: AbortSignal) => {
-    if (id === "queues") {
-      await set(openQueueDrawer$, signal);
-    } else {
-      const navRoutes = {
-        chat: ROUTES.home,
-        agents: ROUTES.agents,
-        connectors: ROUTES.connectors,
-        schedules: ROUTES.schedules,
-        activities: ROUTES.activities,
-        insights: ROUTES.insights,
-        works: ROUTES.works,
-        settings: ROUTES.settings,
-        lab: ROUTES.lab,
-      } satisfies Record<
-        Exclude<SidebarNavId, "queues">,
-        (typeof ROUTES)[keyof typeof ROUTES]
-      >;
-      set(detachedNavigateTo$, navRoutes[id]);
-    }
-    set(internalShowAboutPage$, false);
-  },
-);
+export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
+  if (id === "queues") {
+    set(openQueueDrawer$);
+  } else {
+    const navRoutes = {
+      chat: ROUTES.home,
+      agents: ROUTES.agents,
+      connectors: ROUTES.connectors,
+      schedules: ROUTES.schedules,
+      activities: ROUTES.activities,
+      insights: ROUTES.insights,
+      works: ROUTES.works,
+      settings: ROUTES.settings,
+      lab: ROUTES.lab,
+    } satisfies Record<
+      Exclude<SidebarNavId, "queues">,
+      (typeof ROUTES)[keyof typeof ROUTES]
+    >;
+    set(detachedNavigateTo$, navRoutes[id]);
+  }
+  set(internalShowAboutPage$, false);
+});
 
 export type ZeroAccountAction =
   | "preferences"
@@ -116,7 +112,7 @@ export type ZeroAccountAction =
   | "signout";
 
 export const handleZeroAccountAction$ = command(
-  ({ set }, action: ZeroAccountAction, _signal: AbortSignal) => {
+  ({ set }, action: ZeroAccountAction) => {
     if (action === "signout" || action === "manage") {
       return;
     }

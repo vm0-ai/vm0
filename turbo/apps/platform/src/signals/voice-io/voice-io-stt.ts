@@ -115,7 +115,7 @@ export const startRecording$ = command(
     }
 
     // Stop any ongoing TTS playback to prevent recording AI voice
-    await set(stopTts$);
+    set(stopTts$);
     signal.throwIfAborted();
 
     let stream: MediaStream;

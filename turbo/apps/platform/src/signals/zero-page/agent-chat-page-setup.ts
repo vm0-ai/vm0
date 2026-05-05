@@ -86,7 +86,7 @@ export const setupAgentChatPage$ = command(
       set(updateSearchParams$, next);
     }
     if (queue === "1") {
-      await set(openQueueDrawer$, signal);
+      set(openQueueDrawer$);
     }
   },
 );

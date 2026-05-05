@@ -511,7 +511,7 @@ export const runScheduleNow$ = command(
       return toast.dismiss(toastId);
     });
     const client = get(zeroClient$)(zeroScheduleRunContract);
-    let data: { run: { id: string } };
+    let data: { runId: string };
     try {
       const result = await accept(client.run({ body: { scheduleId } }), [201], {
         toast: false,

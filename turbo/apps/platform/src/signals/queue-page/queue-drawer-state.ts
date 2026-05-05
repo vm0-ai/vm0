@@ -11,36 +11,35 @@ export const queueDrawerOpen$ = computed((get) => {
   return get(internalQueueDrawerOpen$);
 });
 
-export const setQueueDrawerOpen$ = command(
-  async ({ get, set }, open: boolean, _signal: AbortSignal) => {
-    await set(internalQueueDrawerOpen$, open);
-    const pageSignal = get(maybePageSignal$);
+export const setQueueDrawerOpen$ = command(({ get, set }, open: boolean) => {
+  set(internalQueueDrawerOpen$, open);
+  const pageSignal = get(maybePageSignal$);
 
-    const params = get(searchParams$);
-    const next = new URLSearchParams(params);
+  const params = get(searchParams$);
+  const next = new URLSearchParams(params);
 
-    if (open) {
-      if (!next.has("queue")) {
-        next.set("queue", "1");
-        await set(replaceSearchParams$, next);
-      }
-      const signal = pageSignal
-        ? set(resetQueuePollingSignal$, pageSignal)
-        : set(resetQueuePollingSignal$);
-      // eslint-disable-next-line ccstate/no-detach-in-signals -- polling is a long-running background task, fire-and-forget by design
-      detach(set(startQueuePolling$, signal), Reason.Entrance);
-    } else {
-      if (next.has("queue")) {
-        next.delete("queue");
-        await set(replaceSearchParams$, next);
-      }
-      await set(resetQueuePollingSignal$);
+  if (open) {
+    if (!next.has("queue")) {
+      next.set("queue", "1");
+      set(replaceSearchParams$, next);
     }
-  },
-);
 
-export const openQueueDrawer$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    await set(setQueueDrawerOpen$, true, signal);
-  },
-);
+    const signal = pageSignal
+      ? set(resetQueuePollingSignal$, pageSignal)
+      : set(resetQueuePollingSignal$);
+
+    // confirmed by ethan@vm0.ai
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- polling is a long-running background task, fire-and-forget by design
+    detach(set(startQueuePolling$, signal), Reason.Entrance);
+  } else {
+    if (next.has("queue")) {
+      next.delete("queue");
+      set(replaceSearchParams$, next);
+    }
+    set(resetQueuePollingSignal$);
+  }
+});
+
+export const openQueueDrawer$ = command(({ set }) => {
+  set(setQueueDrawerOpen$, true);
+});

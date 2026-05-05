@@ -11,7 +11,7 @@ const navigateToFirstThread$ = command(
     if (threads.length === 0) {
       return;
     }
-    await set(navigateToChat$, threads[0]!.id, signal);
+    set(navigateToChat$, threads[0]!.id);
   },
 );
 

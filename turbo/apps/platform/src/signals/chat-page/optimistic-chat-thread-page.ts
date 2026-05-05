@@ -83,7 +83,7 @@ interface SendNewThreadMessagePending extends PendingChatThread {
 }
 
 const routeMainOptimisticChatThread$ = command(
-  ({ get, set }, pending: PendingChatThread, _signal: AbortSignal) => {
+  ({ get, set }, pending: PendingChatThread) => {
     const next = new URLSearchParams(get(searchParams$));
     if (next.get(SIDEBAR_PARAM) === pending.threadId) {
       next.delete(SIDEBAR_PARAM);
@@ -104,12 +104,6 @@ const routeSidebarOptimisticChatThread$ = command(
     if (!get(currentChatThreadId$)) {
       return;
     }
-
-    // Funnel through loadRightThread$ so the optimistic flow goes through
-    // the same setup as URL-driven loads (settleResult swap, draft seeding,
-    // Ably subscription). loadRightThread$ reads sidebarOptimisticChatThread$
-    // synchronously and publishes pending.pendingThread before its first
-    // await, so the sidebar paints without delay.
     await set(loadRightThread$, pending.threadId, signal);
   },
 );
@@ -122,7 +116,7 @@ const showExistingOptimisticChatThread$ = command(
   ): Promise<void> => {
     if (pending.pane === "main") {
       if (get(currentChatThreadId$) !== pending.threadId) {
-        await set(routeMainOptimisticChatThread$, pending, signal);
+        set(routeMainOptimisticChatThread$, pending);
       }
       return;
     }
@@ -143,7 +137,7 @@ const routeOptimisticChatThread$ = command(
     set(registerOptimisticChatThread$, pending);
 
     if (pending.pane === "main") {
-      await set(routeMainOptimisticChatThread$, pending, signal);
+      set(routeMainOptimisticChatThread$, pending);
     } else {
       await set(routeSidebarOptimisticChatThread$, pending, signal);
     }

@@ -169,11 +169,7 @@ describe("zero-nav", () => {
       const pushStateMock = await setupNav();
 
       context.store.set(setZeroShowAboutPage$, true);
-      await context.store.set(
-        handleZeroNavSelect$,
-        "schedules",
-        context.signal,
-      );
+      context.store.set(handleZeroNavSelect$, "schedules");
 
       expect(pushStateMock).toHaveBeenCalledWith({}, "", "/schedules");
       expect(context.store.get(activeRoute$)).toBe("schedules");
@@ -218,11 +214,7 @@ describe("zero-nav", () => {
         context.signal,
       );
 
-      await context.store.set(
-        handleZeroAccountAction$,
-        "preferences",
-        context.signal,
-      );
+      context.store.set(handleZeroAccountAction$, "preferences");
 
       expect(context.store.get(activeRoute$)).toBe("settings");
     });
@@ -244,35 +236,23 @@ describe("zero-nav", () => {
         context.signal,
       );
 
-      await context.store.set(
-        handleZeroAccountAction$,
-        "usage",
-        context.signal,
-      );
+      context.store.set(handleZeroAccountAction$, "usage");
 
       expect(context.store.get(activeRoute$)).toBe("usage");
     });
 
-    it("should do nothing for 'signout' action", async () => {
+    it("should do nothing for 'signout' action", () => {
       mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
-      await context.store.set(
-        handleZeroAccountAction$,
-        "signout",
-        context.signal,
-      );
+      context.store.set(handleZeroAccountAction$, "signout");
 
       expect(context.store.get(activeRoute$)).toBe("schedules");
     });
 
-    it("should do nothing for 'manage' action", async () => {
+    it("should do nothing for 'manage' action", () => {
       mockLocation({ pathname: "/schedules", search: "" }, context.signal);
 
-      await context.store.set(
-        handleZeroAccountAction$,
-        "manage",
-        context.signal,
-      );
+      context.store.set(handleZeroAccountAction$, "manage");
 
       expect(context.store.get(activeRoute$)).toBe("schedules");
     });

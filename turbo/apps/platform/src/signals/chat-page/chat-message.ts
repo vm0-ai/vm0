@@ -76,18 +76,13 @@ export const deleteChatThread$ = command(
       });
       if (remaining.length === 0) {
         set(detachedNavigateTo$, "/");
-        await set(reloadChatThreads$);
       } else {
         const nextThread = remaining[idx] ?? remaining[remaining.length - 1];
-        await Promise.all([
-          set(navigateToChat$, nextThread.id, signal),
-          set(reloadChatThreads$),
-        ]);
+        set(navigateToChat$, nextThread.id);
       }
-      return;
     }
 
-    await set(reloadChatThreads$);
+    set(reloadChatThreads$);
   },
 );
 

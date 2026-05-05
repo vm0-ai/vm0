@@ -65,11 +65,7 @@ import {
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
-import {
-  handleZeroAccountAction$,
-  type ZeroAccountAction,
-} from "../../signals/zero-page/zero-nav.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
+import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 
 // ---------------------------------------------------------------------------
 // Progress bar
@@ -868,11 +864,7 @@ function OnboardingIllustrationPanel() {
 }
 
 function OnboardingAccountDropdown() {
-  const onAccountActionRaw = useSet(handleZeroAccountAction$);
-  const rootSignal = useGet(rootSignal$);
-  const onAccountAction = (action: ZeroAccountAction) => {
-    detach(onAccountActionRaw(action, rootSignal), Reason.DomCallback);
-  };
+  const onAccountAction = useSet(handleZeroAccountAction$);
   return <AccountDropdown onAccountAction={onAccountAction} hidePreferences />;
 }
 

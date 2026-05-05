@@ -4,11 +4,7 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { getAvatarPresets } from "./zero-avatars.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import {
-  handleZeroAccountAction$,
-  type ZeroAccountAction,
-} from "../../signals/zero-page/zero-nav.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
+import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   orgManageDialogOpen$,
   setOrgManageDialogOpen$,
@@ -19,11 +15,7 @@ import { AccountDropdown } from "./zero-sidebar.tsx";
 import { Link } from "../router/link.tsx";
 
 export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
-  const onAccountActionRaw = useSet(handleZeroAccountAction$);
-  const rootSignal = useGet(rootSignal$);
-  const onAccountAction = (action: ZeroAccountAction) => {
-    detach(onAccountActionRaw(action, rootSignal), Reason.DomCallback);
-  };
+  const onAccountAction = useSet(handleZeroAccountAction$);
   const dialogOpen = useGet(orgManageDialogOpen$);
   const setDialogOpen = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);

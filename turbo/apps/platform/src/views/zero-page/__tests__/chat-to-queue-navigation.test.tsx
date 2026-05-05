@@ -90,8 +90,8 @@ describe("chat to queue navigation", () => {
     });
 
     // Open queue drawer (simulates clicking the queues nav item)
-    await act(async () => {
-      await context.store.set(openQueueDrawer$, context.signal);
+    act(() => {
+      context.store.set(openQueueDrawer$);
     });
 
     // The queue drawer should open and show concurrency info
