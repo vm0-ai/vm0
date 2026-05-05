@@ -139,6 +139,11 @@ impl PollWakeups {
         self.notify.notify_waiters();
     }
 
+    #[cfg(test)]
+    pub(super) async fn request_deferred_poll_after_for_test(&self, delay: Duration) {
+        self.request_deferred_poll_after(delay).await;
+    }
+
     pub(super) async fn record_poll_result(
         &self,
         due: PollDue,

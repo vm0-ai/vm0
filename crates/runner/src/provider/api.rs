@@ -414,7 +414,7 @@ mod tests {
     use super::*;
     use httpmock::Method::POST;
     use httpmock::MockServer;
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
@@ -449,6 +449,27 @@ mod tests {
             held_sessions: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
+    }
+
+    async fn read_http_request(socket: &mut tokio::net::TcpStream) {
+        let mut buf = [0_u8; 4096];
+        let _ = socket.read(&mut buf).await.unwrap();
+    }
+
+    async fn write_poll_job_response(socket: &mut tokio::net::TcpStream, run_id: RunId) {
+        let body = serde_json::json!({
+            "job": {
+                "runId": run_id,
+                "experimentalProfile": "vm0/default"
+            }
+        })
+        .to_string();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        socket.write_all(response.as_bytes()).await.unwrap();
     }
 
     #[tokio::test]
@@ -516,6 +537,53 @@ mod tests {
 
         assert_eq!(discovered, (run_id, "vm0/default".to_string()));
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn discover_defers_job_return_when_target_other_wakeup_arrives_during_poll() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let first_run_id: RunId = "00000000-0000-0000-0000-000000000004".parse().unwrap();
+        let second_run_id: RunId = "00000000-0000-0000-0000-000000000005".parse().unwrap();
+        let (first_accepted_tx, first_accepted_rx) = tokio::sync::oneshot::channel();
+        let (release_first_tx, release_first_rx) = tokio::sync::oneshot::channel();
+        let server_task = tokio::spawn(async move {
+            let (mut first_socket, _) = listener.accept().await.unwrap();
+            read_http_request(&mut first_socket).await;
+            let _ = first_accepted_tx.send(());
+            release_first_rx.await.unwrap();
+            write_poll_job_response(&mut first_socket, first_run_id).await;
+            drop(first_socket);
+
+            let (mut second_socket, _) = listener.accept().await.unwrap();
+            read_http_request(&mut second_socket).await;
+            write_poll_job_response(&mut second_socket, second_run_id).await;
+        });
+        let wakeups = Arc::new(PollWakeups::new(false));
+        let provider =
+            api_provider_for_test(api_url, CancellationToken::new(), Arc::clone(&wakeups));
+        let provider_for_discover = Arc::clone(&provider);
+        let discover_task = tokio::spawn(async move { provider_for_discover.discover().await });
+
+        tokio::time::timeout(Duration::from_secs(1), first_accepted_rx)
+            .await
+            .expect("first poll should reach the server")
+            .unwrap();
+        wakeups
+            .request_deferred_poll_after_for_test(Duration::from_millis(10))
+            .await;
+        release_first_tx.send(()).unwrap();
+        tokio::task::yield_now().await;
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let discovered = tokio::time::timeout(Duration::from_secs(1), discover_task)
+            .await
+            .expect("discover should retry after target-other defer")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(discovered, (second_run_id, "vm0/default".to_string()));
+        server_task.await.unwrap();
     }
 
     #[tokio::test]
