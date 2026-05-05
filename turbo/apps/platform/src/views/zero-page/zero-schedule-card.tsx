@@ -31,7 +31,12 @@ import {
   TabsList,
   TabsTrigger,
 } from "@vm0/ui";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   ScheduleFormDialog,
@@ -352,41 +357,35 @@ export function ZeroScheduleCard({
   const setRunningIds = useSet(setRunningIds$);
 
   const handleRunNow = onRunNow
-    ? (entry: ScheduleEntry) => {
+    ? onDomEventFn(async (entry: ScheduleEntry) => {
         const id = entry.id;
         setRunningIds((prev) => {
           return new Set([...prev, id]);
         });
-        detach(
-          onRunNow(entry).finally(() => {
-            setRunningIds((prev) => {
-              const next = new Set(prev);
-              next.delete(id);
-              return next;
-            });
-          }),
-          Reason.DomCallback,
-        );
-      }
+        await bestEffort(onRunNow(entry));
+        setRunningIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      })
     : undefined;
 
-  const confirmDelete = () => {
+  const confirmDelete = onDomEventFn(async () => {
     const entry = pendingDelete;
     if (!entry?.name || !onDelete) {
       return;
     }
+    const name = entry.name;
     setDeleting(true);
-    detach(
-      onDelete(entry.name)
-        .then(() => {
-          setPendingDelete(null);
-        })
-        .finally(() => {
-          setDeleting(false);
-        }),
-      Reason.DomCallback,
+    await bestEffort(
+      (async () => {
+        await onDelete(name);
+        setPendingDelete(null);
+      })(),
     );
-  };
+    setDeleting(false);
+  });
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     if (onSave) {
@@ -541,13 +540,7 @@ export function ZeroScheduleCard({
             onEdit={openEditSchedule}
             onToggle={handleToggle}
             onDelete={handleDelete}
-            onRunNow={
-              handleRunNow
-                ? (entry) => {
-                    detach(handleRunNow(entry), Reason.DomCallback);
-                  }
-                : undefined
-            }
+            onRunNow={handleRunNow}
             onOpenDetails={onOpenDetails}
           />
         )}

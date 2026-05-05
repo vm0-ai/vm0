@@ -73,7 +73,12 @@ import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
 import { currentAgent$ } from "../../signals/agent.ts";
@@ -452,7 +457,7 @@ function JobPermissionsTab({
   });
   const authorizedSet = new Set(authorizedConnectors);
 
-  const handleToggle = (type: string, checked: boolean) => {
+  const handleToggle = async (type: string, checked: boolean) => {
     if (savingType !== null) {
       return;
     }
@@ -460,19 +465,14 @@ function JobPermissionsTab({
       ? authorizeFn(type, pageSignal)
       : deauthorizeFn(type, pageSignal);
     setSavingType(type);
-    detach(
-      modify
-        .then(() => {
-          return saveConnectors(pageSignal);
-        })
-        .then(() => {
-          toast.success("Connectors saved");
-        })
-        .finally(() => {
-          setSavingType(null);
-        }),
-      Reason.DomCallback,
+    await bestEffort(
+      (async () => {
+        await modify;
+        await saveConnectors(pageSignal);
+        toast.success("Connectors saved");
+      })(),
     );
+    setSavingType(null);
   };
 
   if (allTypesLoadable.state !== "hasData" || connectorsLoading) {
@@ -597,9 +597,9 @@ function JobPermissionsTab({
                     key={c.type}
                     connector={c}
                     enabled={authorizedSet.has(c.type)}
-                    onToggle={(checked) => {
-                      return handleToggle(c.type, checked);
-                    }}
+                    onToggle={onDomEventFn(async (checked) => {
+                      await handleToggle(c.type, checked);
+                    })}
                     loading={savingType === c.type}
                     showManage={hasConnectorPermissions(c.type)}
                     onManage={() => {

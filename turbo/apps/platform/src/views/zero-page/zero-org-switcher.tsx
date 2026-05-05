@@ -18,7 +18,12 @@ import {
   IconMail,
 } from "@tabler/icons-react";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { org$ } from "../../signals/org.ts";
@@ -80,20 +85,16 @@ function InvitationRow({
   const refreshInvitations = useSet(refreshUserInvitations$);
   const isAccepting = acceptingId === invitation.id;
 
-  const handleAccept = () => {
+  const handleAccept = onDomEventFn(async () => {
     setAcceptingId(invitation.id);
-    detach(
-      invitation
-        .accept()
-        .then(() => {
-          refreshInvitations();
-        })
-        .finally(() => {
-          setAcceptingId(null);
-        }),
-      Reason.DomCallback,
+    await bestEffort(
+      (async () => {
+        await invitation.accept();
+        refreshInvitations();
+      })(),
     );
-  };
+    setAcceptingId(null);
+  });
 
   return (
     <div className="flex items-center gap-3 px-3 py-2.5">
@@ -123,24 +124,20 @@ function CreateWorkspaceItem() {
   const creatingOrg = useGet(creatingOrg$);
   const setCreating = useSet(setCreatingOrg$);
 
-  const handleCreateOrg = () => {
+  const handleCreateOrg = onDomEventFn(async () => {
     if (!clerk) {
       return;
     }
     setCreating(true);
     const slug = `workspace-${crypto.randomUUID().slice(0, 8)}`;
-    detach(
-      clerk
-        .createOrganization({ name: slug, slug })
-        .then((org) => {
-          return clerk.setActive({ organization: org.id });
-        })
-        .finally(() => {
-          setCreating(false);
-        }),
-      Reason.DomCallback,
+    await bestEffort(
+      (async () => {
+        const org = await clerk.createOrganization({ name: slug, slug });
+        await clerk.setActive({ organization: org.id });
+      })(),
     );
-  };
+    setCreating(false);
+  });
 
   return (
     <>

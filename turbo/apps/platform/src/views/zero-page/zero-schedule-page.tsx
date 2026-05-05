@@ -37,7 +37,12 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  Reason,
+  onDomEventFn,
+} from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -591,22 +596,18 @@ export function ZeroSchedulePage() {
     );
   };
 
-  const handleRunNow = (entry: CombinedEntry) => {
+  const handleRunNow = onDomEventFn(async (entry: CombinedEntry) => {
     const id = entry.id;
     setRunningIds((prev) => {
       return new Set([...prev, id]);
     });
-    detach(
-      runScheduleNow(entry.id, pageSignal).finally(() => {
-        setRunningIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }),
-      Reason.DomCallback,
-    );
-  };
+    await bestEffort(runScheduleNow(entry.id, pageSignal));
+    setRunningIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  });
 
   const handleDelete = (entry: CombinedEntry) => {
     setPendingDelete(entry);

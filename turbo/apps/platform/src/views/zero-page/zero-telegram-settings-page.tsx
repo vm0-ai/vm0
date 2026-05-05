@@ -98,7 +98,12 @@ import {
   type TelegramSetupCheckTarget,
 } from "../../signals/zero-page/zero-telegram.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { BetaBadge } from "./components/settings/beta-badge.tsx";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
@@ -1288,21 +1293,19 @@ function TelegramBotAgentSelect({
     <Select
       value={bot.agent?.id ?? ""}
       disabled={disabled || options.length === 0}
-      onValueChange={(nextAgentId) => {
+      onValueChange={onDomEventFn(async (nextAgentId) => {
         if (nextAgentId === bot.agent?.id) {
           return;
         }
         setSavingBotId(bot.id);
-        detach(
+        await bestEffort(
           updateBotAgent(
             { botId: bot.id, defaultAgentId: nextAgentId },
             pageSignal,
-          ).finally(() => {
-            setSavingBotId(null);
-          }),
-          Reason.DomCallback,
+          ),
         );
-      }}
+        setSavingBotId(null);
+      })}
     >
       <SelectTrigger
         aria-label={`Default agent for ${bot.username ?? bot.id}`}
@@ -1419,15 +1422,11 @@ function TelegramBotActions({
                 aria-label={`Disconnect ${botLabel}`}
                 disabled={unlinking}
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-                onClick={() => {
+                onClick={onDomEventFn(async () => {
                   setUnlinkingBotId(bot.id);
-                  detach(
-                    disconnectAccount(bot.id, pageSignal).finally(() => {
-                      setUnlinkingBotId(null);
-                    }),
-                    Reason.DomCallback,
-                  );
-                }}
+                  await bestEffort(disconnectAccount(bot.id, pageSignal));
+                  setUnlinkingBotId(null);
+                })}
               >
                 {unlinking ? "Disconnecting..." : "Disconnect"}
               </button>
@@ -1557,26 +1556,26 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
         </DialogHeader>
         <form
           className="flex flex-col gap-4"
-          onSubmit={(event) => {
+          onSubmit={onDomEventFn(async (event) => {
             event.preventDefault();
             if (!bot || !canSubmit) {
               return;
             }
             setReinstallingBotId(bot.id);
-            detach(
-              reinstallBot(
-                { botId: bot.id, botToken: token.trim() },
-                pageSignal,
-              )
-                .then(() => {
-                  setReinstallDialogBotId(null);
-                })
-                .finally(() => {
-                  setReinstallingBotId(null);
-                }),
-              Reason.DomCallback,
+
+            await bestEffort(
+              (async () => {
+                await reinstallBot(
+                  { botId: bot.id, botToken: token.trim() },
+                  pageSignal,
+                );
+
+                setReinstallDialogBotId(null);
+              })(),
             );
-          }}
+
+            setReinstallingBotId(null);
+          })}
         >
           <div>
             <label
@@ -1669,22 +1668,19 @@ function TelegramUninstallDialog({ bot }: { bot: TelegramBot | null }) {
           <Button
             variant="destructive"
             disabled={!bot || uninstalling}
-            onClick={() => {
+            onClick={onDomEventFn(async () => {
               if (!bot) {
                 return;
               }
               setUninstallingBotId(bot.id);
-              detach(
-                uninstallBot(bot.id, pageSignal)
-                  .then(() => {
-                    setUninstallDialogBotId(null);
-                  })
-                  .finally(() => {
-                    setUninstallingBotId(null);
-                  }),
-                Reason.DomCallback,
+              await bestEffort(
+                (async () => {
+                  await uninstallBot(bot.id, pageSignal);
+                  setUninstallDialogBotId(null);
+                })(),
               );
-            }}
+              setUninstallingBotId(null);
+            })}
           >
             {uninstalling ? "Uninstalling..." : "Uninstall"}
           </Button>

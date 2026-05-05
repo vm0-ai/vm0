@@ -40,7 +40,12 @@ import {
   cn,
   processShortcut,
 } from "@vm0/ui";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
 import { toggleSidebarOff$ } from "../../signals/zero-page/zero-nav.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
@@ -359,7 +364,7 @@ function ConnectorsPopoverButton({
   connectorsLoading: boolean;
   savingType: string | null;
   onOpenAddDialog: () => void;
-  onToggle: (type: string, checked: boolean) => void;
+  onToggle: (type: string, checked: boolean) => void | Promise<void>;
 }) {
   const search = useGet(popoverSearch$);
   const setSearch = useSet(setPopoverSearch$);
@@ -469,9 +474,9 @@ function ConnectorsPopoverButton({
                       </span>
                       <LoadingSwitch
                         checked={item.authorized}
-                        onCheckedChange={(checked) => {
-                          onToggle(item.type, checked);
-                        }}
+                        onCheckedChange={onDomEventFn(async (checked) => {
+                          await onToggle(item.type, checked);
+                        })}
                         loading={savingType === item.type}
                         ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
                         size="sm"
@@ -906,17 +911,12 @@ export function ZeroChatComposer({
     });
   };
 
-  const handleToggle = (type: string, checked: boolean) => {
+  const handleToggle = async (type: string, checked: boolean) => {
     setSavingType(type);
-    detach(
-      (checked
-        ? authorizeFn(type, pageSignal)
-        : deauthorizeFn(type, pageSignal)
-      ).finally(() => {
-        setSavingType(null);
-      }),
-      Reason.DomCallback,
+    await bestEffort(
+      checked ? authorizeFn(type, pageSignal) : deauthorizeFn(type, pageSignal),
     );
+    setSavingType(null);
   };
 
   const handleSend = () => {

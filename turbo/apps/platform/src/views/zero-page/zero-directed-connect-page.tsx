@@ -25,7 +25,12 @@ import {
   tokenFormValuesFor$,
   setTokenFormSubmitting$,
 } from "../../signals/zero-page/settings/connectors.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import {
   directedConnectType$,
   directedConnectAgentId$,
@@ -138,23 +143,20 @@ function ApiTokenForm({
     return !cfg.required || secretValues[name];
   });
 
-  const handleSubmit = () => {
+  const handleSubmit = onDomEventFn(async () => {
     if (!allFilled || submitting) {
       return;
     }
     setSubmitting(type);
-    detach(
+    await bestEffort(
       (async () => {
         await submit(type, secretValues, {}, pageSignal);
-        setSubmitting(null);
         clearForm(type);
         onSuccess();
-      })().catch(() => {
-        setSubmitting(null);
-      }),
-      Reason.DomCallback,
+      })(),
     );
-  };
+    setSubmitting(null);
+  });
 
   return (
     <div className="flex w-full flex-col gap-3 text-left">

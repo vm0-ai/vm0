@@ -20,7 +20,12 @@ import {
 } from "@tabler/icons-react";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import {
   type Step,
   AVATAR_MAKER_STEPS,
@@ -321,21 +326,16 @@ function AvatarMakerDialogBody({
   const closeMaker = useSet(closeAvatarMaker$);
   const setSaving = useSet(setAvatarMakerSaving$);
 
-  const handleConfirm = () => {
+  const handleConfirm = onDomEventFn(async () => {
     setSaving(true);
-    detach(
-      onConfirm(config).then(
-        () => {
-          setSaving(false);
-          closeMaker();
-        },
-        () => {
-          setSaving(false);
-        },
-      ),
-      Reason.DomCallback,
+    await bestEffort(
+      (async () => {
+        await onConfirm(config);
+        closeMaker();
+      })(),
     );
-  };
+    setSaving(false);
+  });
 
   return (
     <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg p-0 gap-0 overflow-hidden">
