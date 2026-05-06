@@ -55,7 +55,7 @@ export async function getComputerUseHost(): Promise<{
   const config = await getClientConfig();
   const client = initClient(zeroComputerUseHostContract, config);
 
-  const result = await client.getHost({});
+  const result = await client.getHost({ headers: {} });
 
   if (result.status === 200) {
     return result.body;

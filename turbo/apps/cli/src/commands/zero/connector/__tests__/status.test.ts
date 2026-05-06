@@ -193,6 +193,39 @@ describe("zero connector status command", () => {
       expect(logCalls).not.toContain("[Authorize github]");
     });
 
+    it("shows connect and doctor guidance when connector is authorized but not connected", async () => {
+      server.use(
+        stubConnector(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          404,
+        ),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, ["github"]),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("not connected");
+      expect(logCalls).toContain(
+        `The github connector is authorized for agent maya (${AGENT_UUID}), but it is not connected.`,
+      );
+      expect(logCalls).toContain("[Connect github](");
+      expect(logCalls).toContain(
+        `/connectors/github/connect?agentId=${AGENT_UUID}`,
+      );
+      expect(logCalls).toContain(
+        "zero doctor check-connector --env-name GH_TOKEN",
+      );
+      expect(logCalls).not.toContain("[Authorize github]");
+    });
+
     it("uses $ZERO_AGENT_ID when --agent flag is not provided", async () => {
       vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
       server.use(

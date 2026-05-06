@@ -11,7 +11,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
 export async function listSkills(): Promise<ZeroAgentCustomSkill[]> {
   const config = await getClientConfig();
   const client = initClient(zeroSkillsCollectionContract, config);
-  const result = await client.list();
+  const result = await client.list({ headers: {} });
   if (result.status === 200) return result.body;
   handleError(result, "Failed to list skills");
 }
