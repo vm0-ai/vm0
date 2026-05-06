@@ -4,7 +4,6 @@ import {
   IconChevronUp,
   IconDownload,
   IconEye,
-  IconFile,
   IconFileMusic,
   IconLoader2,
 } from "@tabler/icons-react";
@@ -20,7 +19,10 @@ import {
   classifyChatAttachment,
   EMPTY_TEXT$,
 } from "../../signals/chat-page/parse-body-blocks.ts";
-import { getFileTypeIcon } from "./zero-attachment-chips.tsx";
+import {
+  FilePreviewIcon,
+  getFilePreviewAccentClass,
+} from "./zero-file-preview-icon.tsx";
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
@@ -229,6 +231,52 @@ function DocumentThumbnailPreview({
   );
 }
 
+function FileThumbnailPreview({
+  filename,
+  url,
+  contentType,
+}: {
+  filename: string;
+  url: string;
+  contentType?: string;
+}) {
+  const accentClass = getFilePreviewAccentClass(filename, contentType);
+
+  return (
+    <a
+      href={toDownloadUrl(url)}
+      download={filename}
+      title={filename}
+      data-testid="attachment-preview-file"
+      aria-label={`Download ${filename}`}
+      className="group/doc-preview inline-flex w-fit self-start align-top text-left"
+    >
+      <div
+        className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${accentClass}`}
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
+        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
+          <FilePreviewIcon
+            filename={filename}
+            contentType={contentType}
+            testId="attachment-preview-file-icon"
+          />
+        </div>
+        <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+          <IconDownload size={10} />
+          Download
+        </div>
+        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-medium">{filename}</div>
+          </div>
+        </div>
+      </div>
+    </a>
+  );
+}
+
 function AudioPreview({ filename, url }: { filename: string; url: string }) {
   return (
     <div
@@ -261,52 +309,6 @@ function AudioPreview({ filename, url }: { filename: string; url: string }) {
         className="block w-full"
         aria-label={`Audio preview for ${filename}`}
       />
-    </div>
-  );
-}
-
-function GenericFilePreview({
-  filename,
-  url,
-  contentType,
-}: {
-  filename: string;
-  url: string;
-  contentType?: string;
-}) {
-  const iconSrc = getFileTypeIcon(filename, contentType);
-
-  return (
-    <div
-      className="relative flex w-full max-w-md items-center gap-3 rounded-xl border border-foreground/10 bg-background/60 p-3"
-      data-testid="attachment-preview-file"
-    >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground">
-        {iconSrc ? (
-          <img
-            alt=""
-            aria-hidden="true"
-            src={iconSrc}
-            className="h-7 w-7 object-contain opacity-90"
-          />
-        ) : (
-          <IconFile size={22} stroke={1.6} />
-        )}
-      </div>
-      <div className="min-w-0 flex-1 pr-10">
-        <div className="truncate text-sm font-medium text-foreground">
-          {filename}
-        </div>
-      </div>
-      <a
-        href={toDownloadUrl(url)}
-        download={filename}
-        title={filename}
-        aria-label={`Download ${filename}`}
-        className="absolute right-3 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-background/90 text-muted-foreground hover:text-foreground"
-      >
-        <IconDownload size={12} />
-      </a>
     </div>
   );
 }
@@ -384,7 +386,7 @@ export function AttachmentPreview({
     }
     case "file": {
       return (
-        <GenericFilePreview
+        <FileThumbnailPreview
           filename={attachment.filename}
           url={attachment.url}
           contentType={attachment.contentType}

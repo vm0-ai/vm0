@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
@@ -54,7 +54,7 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
     });
   });
 
-  it("renders generic file icon for unknown file extension", async () => {
+  it("renders a thumbnail preview block for unknown file extension", async () => {
     mockChatLifecycle({
       chatMessages: [
         {
@@ -74,9 +74,11 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
     await waitFor(() => {
       const link = document.querySelector('a[download="archive.zip"]');
       expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute("data-testid", "attachment-preview-file");
       expect(
-        link?.querySelector('img[aria-hidden="true"]'),
-      ).not.toBeInTheDocument();
+        within(link as HTMLElement).getByTestId("attachment-preview-file-icon"),
+      ).toBeInTheDocument();
+      expect(within(link as HTMLElement).getByText("ZIP")).toBeInTheDocument();
     });
   });
 });

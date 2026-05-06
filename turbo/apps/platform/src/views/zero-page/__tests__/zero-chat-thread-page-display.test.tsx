@@ -613,7 +613,7 @@ describe("zero chat thread page display - body link document preview", () => {
     },
   );
 
-  it("renders non-inline platform file links as generic file previews", async () => {
+  it("renders non-inline platform file links as thumbnail preview blocks", async () => {
     const docUrl =
       "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/budget.xlsx";
     mockChatLifecycle({
@@ -629,10 +629,54 @@ describe("zero chat thread page display - body link document preview", () => {
     detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByTestId("attachment-preview-file")).toBeInTheDocument();
+      const preview = screen.getByTestId("attachment-preview-file");
+      expect(preview).toBeInTheDocument();
+      expect(
+        within(preview).getByTestId("attachment-preview-file-icon"),
+      ).toBeInTheDocument();
+      expect(within(preview).getByText("XLSX")).toBeInTheDocument();
       expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
         "href",
         `${docUrl}?download=1`,
+      );
+    });
+  });
+
+  it("renders structured non-inline attached files as thumbnail preview blocks", async () => {
+    const fileUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/budget.xlsx";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Please review",
+          createdAt: "2026-03-10T00:00:00Z",
+          attachFiles: [
+            {
+              id: "file-budget",
+              filename: "budget.xlsx",
+              contentType:
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              size: 2048,
+              url: fileUrl,
+            },
+          ],
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      const preview = screen.getByTestId("attachment-preview-file");
+      expect(preview).toBeInTheDocument();
+      expect(
+        within(preview).getByTestId("attachment-preview-file-icon"),
+      ).toBeInTheDocument();
+      expect(within(preview).getByText("XLSX")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
+        "href",
+        `${fileUrl}?download=1`,
       );
     });
   });
@@ -888,6 +932,19 @@ describe("zero chat thread page display - artifacts drawer", () => {
           headers: { "Content-Type": "text/csv" },
         });
       }),
+      http.get("https://example.com/deck.pptx", () => {
+        return new HttpResponse(
+          new Blob(["ppt"], {
+            type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          }),
+          {
+            headers: {
+              "Content-Type":
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            },
+          },
+        );
+      }),
       mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
         artifactsRequests += 1;
         return respond(200, {
@@ -909,6 +966,15 @@ describe("zero chat thread page display - artifacts drawer", () => {
                   contentType: "text/csv",
                   size: 2048,
                   url: "https://example.com/data.csv",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+                {
+                  id: "file-3",
+                  filename: "deck.pptx",
+                  contentType:
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                  size: 3072,
+                  url: "https://example.com/deck.pptx",
                   createdAt: "2026-03-10T00:00:00Z",
                 },
               ],
@@ -966,6 +1032,9 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(zipText).toContain("data.csv");
     expect(screen.getAllByText("chart.png").length).toBeGreaterThan(0);
     expect(screen.getByText("data.csv")).toBeInTheDocument();
+    const deckButton = screen.getByLabelText("Select deck.pptx");
+    expect(deckButton).toBeInTheDocument();
+    expect(within(deckButton).getByText("PPTX")).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Preview chart.png"));
 

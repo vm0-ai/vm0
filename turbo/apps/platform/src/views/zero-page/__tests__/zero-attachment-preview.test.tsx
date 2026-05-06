@@ -7,7 +7,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { computed } from "ccstate";
 import { server } from "../../../mocks/server.ts";
@@ -137,15 +143,20 @@ describe("attachment preview component", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("should render generic file preview for non-inline upload file types (.zip)", () => {
+  it("should render a thumbnail preview block for non-inline upload file types", () => {
     renderPreview({
-      filename: "archive.zip",
-      url: "https://example.com/archive.zip",
+      filename: "budget.xlsx",
+      url: "https://example.com/budget.xlsx",
     });
-    expect(screen.getByTestId("attachment-preview-file")).toBeInTheDocument();
-    expect(screen.getByLabelText("Download archive.zip")).toHaveAttribute(
+    const preview = screen.getByTestId("attachment-preview-file");
+    expect(preview).toBeInTheDocument();
+    expect(
+      within(preview).getByTestId("attachment-preview-file-icon"),
+    ).toBeInTheDocument();
+    expect(within(preview).getByText("XLSX")).toBeInTheDocument();
+    expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
       "href",
-      "https://example.com/archive.zip?download=1",
+      "https://example.com/budget.xlsx?download=1",
     );
   });
 

@@ -192,7 +192,7 @@ function getFileTypeIconByContentType(contentType: string): string | null {
 /**
  * Return the icon path for a known file extension, or null for unknown types.
  */
-export function getFileTypeIcon(
+function getFileTypeIcon(
   filename: string,
   contentType?: string,
 ): string | null {

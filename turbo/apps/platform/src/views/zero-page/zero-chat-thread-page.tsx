@@ -74,7 +74,6 @@ import {
   CsvPreviewTable,
   downloadAttachmentUrl,
   FileAttachmentChip,
-  getFileTypeIcon,
   getAttachmentRawUrl,
   parseCsvRows,
   PreviewableFileAttachmentChip,
@@ -88,6 +87,7 @@ import {
   type BodyRenderBlock,
 } from "../../signals/chat-page/parse-body-blocks.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
+import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
   openDocumentLightbox$ as openAttachmentDocumentLightbox$,
@@ -392,11 +392,6 @@ function artifactItemKey(item: ChatArtifactItem): string {
   return `${item.runId}:${item.file.id}:${item.file.url}`;
 }
 
-function getFileExtension(filename: string): string {
-  const ext = filename.split(".").pop();
-  return ext && ext !== filename ? ext.toUpperCase() : "FILE";
-}
-
 function getArtifactPreviewKind(
   file: ChatThreadArtifactFile,
 ): ArtifactPreviewKind {
@@ -438,34 +433,21 @@ function flattenArtifactRuns(
   });
 }
 
-function getArtifactFileIconSrc(file: ChatThreadArtifactFile): string | null {
-  return getFileTypeIcon(file.filename, file.contentType);
-}
-
 function ArtifactFileIcon({
   file,
-  className,
+  size = "sm",
 }: {
   file: ChatThreadArtifactFile;
-  className?: string;
+  size?: "sm" | "md";
 }) {
-  const iconSrc = getArtifactFileIconSrc(file);
-  if (iconSrc) {
-    return (
-      <img
-        alt=""
-        aria-hidden="true"
-        src={iconSrc}
-        className={cn("h-5 w-5 object-contain opacity-90", className)}
-      />
-    );
-  }
-
-  const previewKind = getArtifactPreviewKind(file);
-  if (previewKind === "image") {
-    return <IconPhoto size={18} stroke={1.5} />;
-  }
-  return <IconFile size={18} stroke={1.5} />;
+  return (
+    <FilePreviewIcon
+      filename={file.filename}
+      contentType={file.contentType}
+      size={size}
+      testId="artifact-file-icon"
+    />
+  );
 }
 
 function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
@@ -1213,7 +1195,7 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
     if (!documentPreviewKind) {
       return (
         <div className="flex h-full w-full items-center justify-center bg-muted/40">
-          <ArtifactFileIcon file={file} className="h-10 w-10" />
+          <ArtifactFileIcon file={file} size="md" />
         </div>
       );
     }
@@ -1254,13 +1236,10 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-muted/40 p-8 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground shadow-sm">
-        <ArtifactFileIcon file={file} className="h-10 w-10" />
+        <ArtifactFileIcon file={file} size="md" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          {getFileExtension(file.filename)}
-        </p>
-        <p className="mt-1 max-w-[260px] truncate text-sm text-foreground">
+        <p className="max-w-[260px] truncate text-sm text-foreground">
           {file.filename}
         </p>
       </div>
@@ -1298,8 +1277,6 @@ function ArtifactPreviewPanel({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span>{formatBytes(file.size)}</span>
-            <span aria-hidden>·</span>
-            <span>{getFileExtension(file.filename)}</span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -1338,12 +1315,7 @@ function ArtifactThumbnail({
       {previewKind === "image" ? (
         <ArtifactThumbnailImage url={file.url} />
       ) : (
-        <span className="flex flex-col items-center gap-0.5 text-muted-foreground">
-          <ArtifactFileIcon file={file} />
-          <span className="max-w-14 truncate text-[10px] font-medium">
-            {getFileExtension(file.filename)}
-          </span>
-        </span>
+        <ArtifactFileIcon file={file} />
       )}
     </div>
   );
@@ -1428,8 +1400,6 @@ function ArtifactFileRow({
           </span>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <span>{formatBytes(file.size)}</span>
-            <span aria-hidden>·</span>
-            <span>{getFileExtension(file.filename)}</span>
             <span aria-hidden>·</span>
             <span>{formatArtifactTime(file.createdAt)}</span>
           </div>
@@ -2617,12 +2587,23 @@ function UserMessageAttachments({
         }
         if (
           a.kind === "markdown" ||
-          a.kind === "text" ||
-          a.kind === "json" ||
           a.kind === "csv" ||
           a.kind === "pdf" ||
-          a.kind === "html"
+          a.kind === "html" ||
+          a.kind === "file"
         ) {
+          return (
+            <AttachmentPreview
+              key={a.url}
+              attachment={{
+                filename: a.filename,
+                url: a.url,
+                contentType: a.contentType,
+              }}
+            />
+          );
+        }
+        if (a.kind === "text" || a.kind === "json") {
           return (
             <PreviewableFileAttachmentChip
               key={a.url}
