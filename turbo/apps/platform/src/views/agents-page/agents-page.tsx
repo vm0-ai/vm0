@@ -148,14 +148,14 @@ export function AgentsPage() {
               <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
                 <TabsTrigger
                   value="grid"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  className="gap-1.5 text-[15px] sm:text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconLayoutGrid size={14} stroke={1.5} />
                   Grid
                 </TabsTrigger>
                 <TabsTrigger
                   value="list"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  className="gap-1.5 text-[15px] sm:text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconList size={14} stroke={1.5} />
                   List

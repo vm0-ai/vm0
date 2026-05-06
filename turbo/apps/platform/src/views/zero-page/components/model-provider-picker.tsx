@@ -225,7 +225,7 @@ function InheritToggleRow({
         Use {sourceLabel} default
       </SelectItem>
       <div
-        className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm cursor-pointer hover:bg-accent transition-colors"
+        className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-[15px] sm:text-sm cursor-pointer hover:bg-accent transition-colors"
         onClick={(e) => {
           e.preventDefault();
           onToggle(!isInheriting);
@@ -236,7 +236,7 @@ function InheritToggleRow({
             Use {sourceLabel} default
           </span>
           {effectiveDefault && (
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5 text-[13px] sm:text-xs text-muted-foreground">
               <span className="truncate">
                 {getModelDisplayName(effectiveDefault.selectedModel)}
               </span>
@@ -318,7 +318,7 @@ function TriggerLabel({
   const label = (
     <span className="flex items-center gap-1.5 min-w-0">
       <span className="truncate">{displayName}</span>
-      <span className="shrink-0 text-xs text-muted-foreground">
+      <span className="shrink-0 text-[13px] sm:text-xs text-muted-foreground">
         · {getUILabel(provider.type)}
       </span>
       {multiplier !== undefined && <MultiplierBadge multiplier={multiplier} />}
@@ -428,7 +428,7 @@ function DisabledPickerLabel({
     <span
       aria-label={triggerAriaLabel}
       className={cn(
-        "inline-flex items-center px-2 text-sm text-muted-foreground cursor-default",
+        "inline-flex items-center px-2 text-[15px] sm:text-sm text-muted-foreground cursor-default",
         stripInteractiveClasses(triggerClassName),
       )}
     >
@@ -504,7 +504,7 @@ function ShowMoreToggleRow({
       role="button"
       tabIndex={0}
       aria-expanded={expanded}
-      className="rounded-md px-2 py-1.5 text-sm text-muted-foreground cursor-pointer hover:bg-accent transition-colors"
+      className="rounded-md px-2 py-1.5 text-[15px] sm:text-sm text-muted-foreground cursor-pointer hover:bg-accent transition-colors"
       onClick={(e) => {
         e.preventDefault();
         onToggle();

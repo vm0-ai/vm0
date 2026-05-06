@@ -227,7 +227,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
 }
 
 const TAB_TRIGGER_CLASS =
-  "gap-1.5 text-sm data-[state=active]:bg-background px-3";
+  "gap-1.5 text-[15px] sm:text-sm data-[state=active]:bg-background px-3";
 
 /** Coerce hidden tabs back to "authorization" for non-admin default-agent view. */
 function resolveVisibleTab(
@@ -262,17 +262,25 @@ function AgentTabNav({
       {/* Mobile: Select dropdown */}
       <div className="sm:hidden">
         <Select value={activeTab} onValueChange={onTabChange}>
-          <SelectTrigger className="h-9 w-full">
+          <SelectTrigger className="h-11 w-full text-[17px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="authorization">Authorization</SelectItem>
-            <SelectItem value="schedule">Scheduled</SelectItem>
+            <SelectItem value="authorization" className="text-[17px] py-2.5">
+              Authorization
+            </SelectItem>
+            <SelectItem value="schedule" className="text-[17px] py-2.5">
+              Scheduled
+            </SelectItem>
             {showProfileAndInstructions && (
-              <SelectItem value="profile">Profile</SelectItem>
+              <SelectItem value="profile" className="text-[17px] py-2.5">
+                Profile
+              </SelectItem>
             )}
             {showProfileAndInstructions && (
-              <SelectItem value="instructions">Instructions</SelectItem>
+              <SelectItem value="instructions" className="text-[17px] py-2.5">
+                Instructions
+              </SelectItem>
             )}
           </SelectContent>
         </Select>
