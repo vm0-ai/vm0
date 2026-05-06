@@ -44,13 +44,16 @@ setup_file() {
     # triggers a refresh on any in-sandbox request.
     seed_chatgpt_oauth "$INITIAL_AT" "$INITIAL_RT" "$INITIAL_ACC" "id-tok" -60
 
-    # Compose codex agent
+    # OPENAI_API_KEY placeholder satisfies validateFrameworkApiKey for codex
+    # framework — see t54-chatgpt-oauth-sandbox.bats for the full rationale.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "ChatGPT OAuth refresh rotation test"
     framework: codex
+    environment:
+      OPENAI_API_KEY: "ignored-when-using-chatgpt-oauth-token-provider"
     working_dir: /home/user/workspace
 EOF
     $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null
@@ -77,7 +80,6 @@ teardown_file() {
     # regression in the firewall webhook pipeline and should be triaged
     # before disabling this test.
     run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider "chatgpt-oauth-token" \
         -- "Reply with exactly RESULT=ok"
 
     # Two acceptable outcomes:

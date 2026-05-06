@@ -72,12 +72,20 @@ setup_file() {
         "$CHATGPT_AUDIT_FORBIDDEN_ID_TOKEN"
 
     # Compose codex-framework agent that mounts the audit artifact.
+    # OPENAI_API_KEY env declaration satisfies validateFrameworkApiKey for the
+    # codex framework. The placeholder value is never used at runtime — the
+    # chatgpt-oauth-token firewall injects real auth headers at egress —
+    # but the validator requires the env key to be present (or the provider
+    # to be a single-secret provider whose secretName matches; chatgpt-oauth-
+    # token is multi-auth so getSecretNameForType returns undefined).
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 agents:
   ${AGENT_NAME}:
     description: "ChatGPT OAuth sandbox audit agent"
     framework: codex
+    environment:
+      OPENAI_API_KEY: "ignored-when-using-chatgpt-oauth-token-provider"
     artifacts:
       - ${AUDIT_ARTIFACT_NAME}:/artifacts
     working_dir: /home/user/workspace
@@ -98,7 +106,6 @@ teardown_file() {
 # (per plan phase Q1 decision: A2 — synthetic + MSW for CI).
 @test "t54-1: codex agent run completes with chatgpt-oauth provider" {
     run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider "chatgpt-oauth-token" \
         -- "Reply with exactly RESULT=579"
 
     assert_success
@@ -142,7 +149,6 @@ teardown_file() {
 # ever ignores the override, this firewall rule still prevents egress.
 @test "t54-7: sandbox cannot reach auth.openai.com" {
     run $VM0_CLI run "$AGENT_NAME" \
-        --model-provider "chatgpt-oauth-token" \
         -- "Run this exact Bash command and include its output:
 curl -sS -m 10 -o /tmp/curl-out.txt -w 'HTTP_CODE=%{http_code} EXIT=%{exitcode}' https://auth.openai.com/oauth/token; echo
 cat /tmp/curl-out.txt 2>/dev/null || echo 'NO_RESPONSE_BODY'"
