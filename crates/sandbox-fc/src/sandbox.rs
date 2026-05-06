@@ -259,6 +259,59 @@ impl ProcessMonitorHandle {
     }
 }
 
+#[derive(Default)]
+struct SandboxRuntimeHandles {
+    process: Option<ProcessMonitorHandle>,
+    control: Option<control::ControlServerHandle>,
+    balloon: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl SandboxRuntimeHandles {
+    fn set_process(&mut self, process: ProcessMonitorHandle) {
+        self.process = Some(process);
+    }
+
+    fn set_control(&mut self, control: control::ControlServerHandle) {
+        self.control = Some(control);
+    }
+
+    fn set_balloon(&mut self, balloon: tokio::task::JoinHandle<()>) {
+        self.balloon = Some(balloon);
+    }
+
+    fn balloon_mut(&mut self) -> &mut Option<tokio::task::JoinHandle<()>> {
+        &mut self.balloon
+    }
+
+    async fn shutdown_services(&mut self) {
+        if let Some(mut control) = self.control.take() {
+            control.shutdown().await;
+        }
+        if let Some(balloon) = self.balloon.take() {
+            balloon.abort();
+        }
+    }
+
+    async fn kill_process(&mut self) {
+        if let Some(process) = self.process.take() {
+            process.kill();
+            process.wait().await;
+        }
+    }
+
+    fn abort_for_drop(&mut self) {
+        if let Some(mut control) = self.control.take() {
+            control.abort();
+        }
+        if let Some(balloon) = self.balloon.take() {
+            balloon.abort();
+        }
+        if let Some(process) = self.process.take() {
+            process.kill();
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum ProcessLogStream {
     Stdout,
@@ -397,7 +450,8 @@ pub struct FirecrackerSandbox {
     pub(crate) network: SandboxNetwork,
     /// NBD COW device (torn down on destroy).
     pub(crate) cow_device: Option<PooledNbdCowDevice>,
-    process_monitor: Option<ProcessMonitorHandle>,
+    /// Per-sandbox runtime task handles.
+    runtime: SandboxRuntimeHandles,
     /// Process-group leader PID for the spawned Firecracker wrapper.
     /// Captured at spawn time for cleanup and best-effort host-side OOM
     /// correlation.
@@ -417,10 +471,6 @@ pub struct FirecrackerSandbox {
     /// Wrapped in `Arc` so operations can clone the handle and release the
     /// mutex immediately, allowing concurrent vsock operations.
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
-    /// Control socket server for `runner exec`.
-    control_server: Option<control::ControlServerHandle>,
-    /// Balloon memory reclaim controller.
-    balloon_controller: Option<tokio::task::JoinHandle<()>>,
     /// Sender for leaked resource cleanup. When Drop fires without prior
     /// `factory.destroy()`, pool resources are sent here for async cleanup.
     leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
@@ -489,14 +539,12 @@ impl FirecrackerSandbox {
             sock_paths,
             network: SandboxNetwork::from_lease(network),
             cow_device: Some(cow_device),
-            process_monitor: None,
+            runtime: SandboxRuntimeHandles::default(),
             process_group_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
             state_publish_lock: Arc::new(Mutex::new(())),
             state_tx: watch::channel(SandboxState::Created).0,
             guest: Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>)),
-            control_server: None,
-            balloon_controller: None,
             leak_tx,
             delete_workspace_on_leak_cleanup: true,
             destroyed: false,
@@ -684,7 +732,7 @@ impl FirecrackerSandbox {
             })?;
 
         self.process_group_pid = child.id();
-        self.process_monitor = Some(monitor_process(
+        self.runtime.set_process(monitor_process(
             &self.id,
             child,
             Arc::clone(&self.state),
@@ -801,7 +849,7 @@ impl FirecrackerSandbox {
             })?;
 
         self.process_group_pid = child.id();
-        self.process_monitor = Some(monitor_process(
+        self.runtime.set_process(monitor_process(
             &self.id,
             child,
             Arc::clone(&self.state),
@@ -849,23 +897,6 @@ impl FirecrackerSandbox {
         info!(id = %self.id, "snapshot loaded and resumed");
         Ok(())
     }
-
-    /// Ask the process monitor to kill and reap the process tree.
-    async fn kill_process(&mut self) {
-        if let Some(monitor) = self.process_monitor.take() {
-            monitor.kill();
-            monitor.wait().await;
-        }
-    }
-
-    async fn shutdown_runtime_tasks(&mut self) {
-        if let Some(mut h) = self.control_server.take() {
-            h.shutdown().await;
-        }
-        if let Some(h) = self.balloon_controller.take() {
-            h.abort();
-        }
-    }
 }
 
 async fn abort_and_join<T>(task: tokio::task::JoinHandle<T>) {
@@ -875,19 +906,9 @@ async fn abort_and_join<T>(task: tokio::task::JoinHandle<T>) {
 
 impl Drop for FirecrackerSandbox {
     fn drop(&mut self) {
-        if let Some(mut h) = self.control_server.take() {
-            h.abort();
-        }
-        if let Some(h) = self.balloon_controller.take() {
-            h.abort();
-        }
-        // If the process is still alive (e.g. owning task panicked before
-        // explicit cleanup), ask the monitor to kill the process group before
-        // it reaps the child. This avoids signalling by a cached PID after the
-        // child could have exited and been reused by the OS.
-        if let Some(monitor) = self.process_monitor.take() {
-            monitor.kill();
-        }
+        // Drop cannot await async teardown, so fall back to synchronous
+        // runtime aborts and ask the monitor to kill the process group.
+        self.runtime.abort_for_drop();
         // Dropping the task handle detaches it; the monitor still owns and
         // reaps the `Child` while the runtime is alive.
 
@@ -1121,7 +1142,7 @@ impl Sandbox for FirecrackerSandbox {
 
         if let Err(e) = start_result {
             abort_and_join(vsock_task).await;
-            self.kill_process().await;
+            self.runtime.kill_process().await;
             return Err(e);
         }
 
@@ -1131,13 +1152,13 @@ impl Sandbox for FirecrackerSandbox {
                 match result {
                     Ok(Ok(g)) => g,
                     Ok(Err(e)) => {
-                        self.kill_process().await;
+                        self.runtime.kill_process().await;
                         return Err(SandboxError::Start {
                             message: format!("vsock connection: {e}"),
                         });
                     }
                     Err(e) => {
-                        self.kill_process().await;
+                        self.runtime.kill_process().await;
                         return Err(SandboxError::Start {
                             message: format!("vsock task: {e}"),
                         });
@@ -1146,7 +1167,7 @@ impl Sandbox for FirecrackerSandbox {
             }
             state = wait_for_process_exit(self.state_tx.subscribe()) => {
                 abort_and_join(vsock_task).await;
-                self.kill_process().await;
+                self.runtime.kill_process().await;
                 return Err(SandboxError::Start {
                     message: format!("process exited before vsock connected (state={state})"),
                 });
@@ -1161,7 +1182,7 @@ impl Sandbox for FirecrackerSandbox {
                 Ok(server) => server,
                 Err(e) => {
                     self.guest.lock().await.take();
-                    self.kill_process().await;
+                    self.runtime.kill_process().await;
                     return Err(SandboxError::Start {
                         message: format!(
                             "control socket bind {}: {e}",
@@ -1177,17 +1198,18 @@ impl Sandbox for FirecrackerSandbox {
         if !self.transition(SandboxState::Created, SandboxState::Running) {
             self.guest.lock().await.take();
             control_server.close();
-            self.kill_process().await;
+            self.runtime.kill_process().await;
             return Err(SandboxError::Start {
                 message: "process exited during startup".into(),
             });
         }
 
         // Start control socket server for `runner exec`.
-        self.control_server = Some(control_server.spawn(runtime_cancel));
+        self.runtime
+            .set_control(control_server.spawn(runtime_cancel));
 
         // Spawn balloon controller to reclaim unused guest memory.
-        self.balloon_controller = Some(balloon::spawn(
+        self.runtime.set_balloon(balloon::spawn(
             self.sock_paths.api_sock().to_owned(),
             self.config.resources.memory_mb,
             self.state_tx.subscribe(),
@@ -1200,14 +1222,14 @@ impl Sandbox for FirecrackerSandbox {
     async fn stop(&mut self) -> sandbox::Result<()> {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
-                self.shutdown_runtime_tasks().await;
+                self.runtime.shutdown_services().await;
                 self.guest.lock().await.take();
-                self.kill_process().await;
+                self.runtime.kill_process().await;
             }
             return Ok(());
         }
 
-        self.shutdown_runtime_tasks().await;
+        self.runtime.shutdown_services().await;
         // The control server is awaited so its socket path becomes
         // undiscoverable before teardown continues. The balloon controller is
         // only aborted: stop() is about to kill the FC process entirely, so
@@ -1231,7 +1253,7 @@ impl Sandbox for FirecrackerSandbox {
             }
         }
 
-        self.kill_process().await;
+        self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
         info!(id = %self.id, "sandbox stopped");
         Ok(())
@@ -1240,15 +1262,15 @@ impl Sandbox for FirecrackerSandbox {
     async fn kill(&mut self) -> sandbox::Result<()> {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
-                self.shutdown_runtime_tasks().await;
+                self.runtime.shutdown_services().await;
                 self.guest.lock().await.take();
-                self.kill_process().await;
+                self.runtime.kill_process().await;
             }
             return Ok(());
         }
-        self.shutdown_runtime_tasks().await;
+        self.runtime.shutdown_services().await;
         self.guest.lock().await.take();
-        self.kill_process().await;
+        self.runtime.kill_process().await;
         self.publish_state(SandboxState::Stopped);
         info!(id = %self.id, "sandbox killed");
         Ok(())
@@ -1287,7 +1309,7 @@ impl Sandbox for FirecrackerSandbox {
         park_inner(
             &mut self.is_parked,
             self.config.resources.memory_mb,
-            &mut self.balloon_controller,
+            self.runtime.balloon_mut(),
             &self.sock_paths.api_sock(),
             &self.id,
         )
@@ -1298,7 +1320,7 @@ impl Sandbox for FirecrackerSandbox {
         unpark_inner(
             &mut self.is_parked,
             self.config.resources.memory_mb,
-            &mut self.balloon_controller,
+            self.runtime.balloon_mut(),
             &self.sock_paths.api_sock(),
             self.state_tx.subscribe(),
             &self.id,
