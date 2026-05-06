@@ -71,22 +71,42 @@ async function updateInstructions(
     .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, compose.name)))
     .limit(1);
 
+  if (!agent) {
+    return {
+      status: 200 as const,
+      body: {
+        agentId: result.composeId,
+        ownerId: userId,
+        description: null,
+        displayName: null,
+        sound: null,
+        avatarUrl: null,
+        permissionPolicies: toFirewallPolicies(undefined, undefined),
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+        customSkills: [],
+      },
+    };
+  }
+
   return {
     status: 200 as const,
     body: {
       agentId: result.composeId,
-      ownerId: agent?.owner ?? userId,
-      description: agent?.description ?? null,
-      displayName: agent?.displayName ?? null,
-      sound: agent?.sound ?? null,
-      avatarUrl: agent?.avatarUrl ?? null,
+      ownerId: agent.owner,
+      description: agent.description,
+      displayName: agent.displayName,
+      sound: agent.sound,
+      avatarUrl: agent.avatarUrl,
       permissionPolicies: toFirewallPolicies(
-        agent?.permissionPolicies,
-        agent?.unknownPermissionPolicies,
+        agent.permissionPolicies,
+        agent.unknownPermissionPolicies,
       ),
-      modelProviderId: agent?.modelProviderId ?? null,
-      selectedModel: agent?.selectedModel ?? null,
-      customSkills: agent?.customSkills ?? [],
+      modelProviderId: agent.modelProviderId,
+      selectedModel: agent.selectedModel,
+      preferPersonalProvider: agent.preferPersonalProvider,
+      customSkills: agent.customSkills,
     },
   };
 }

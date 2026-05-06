@@ -33,6 +33,7 @@ export const scheduleResponseSchema = z.object({
   updatedAt: z.string(),
   modelProviderId: z.string().uuid().nullable().default(null),
   selectedModel: z.string().nullable().default(null),
+  preferPersonalProvider: z.boolean().default(false),
 });
 
 export const scheduleListResponseSchema = z.object({
@@ -62,6 +63,7 @@ const zeroDeployScheduleRequestSchema = z
     enabled: z.boolean().optional(),
     modelProviderId: z.string().uuid().nullable().optional(),
     selectedModel: z.string().nullable().optional(),
+    preferPersonalProvider: z.boolean().optional(),
   })
   .refine(
     (data) => {

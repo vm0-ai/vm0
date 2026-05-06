@@ -46,6 +46,7 @@ const router = tsr.router(zeroSchedulesMainContract, {
         volumeVersions: body.volumeVersions,
         modelProviderId: body.modelProviderId,
         selectedModel: body.selectedModel,
+        preferPersonalProvider: body.preferPersonalProvider,
       });
 
       return {

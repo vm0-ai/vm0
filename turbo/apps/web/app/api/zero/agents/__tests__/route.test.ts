@@ -1731,6 +1731,53 @@ describe("Zero Agents API", () => {
     });
   });
 
+  describe("preferPersonalProvider", () => {
+    it("should default to false when omitted on POST", async () => {
+      const response = await postAgent(
+        { displayName: "default-prefer" },
+        testCliToken,
+      );
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.preferPersonalProvider).toBe(false);
+    });
+
+    it("should round-trip true and false on PUT", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      let response = await putAgent(
+        created.agentId,
+        { preferPersonalProvider: true },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).preferPersonalProvider).toBe(true);
+
+      response = await putAgent(
+        created.agentId,
+        { preferPersonalProvider: false },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).preferPersonalProvider).toBe(false);
+    });
+
+    it("should round-trip via PATCH updateMetadata and persist on GET", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const patchResponse = await patchAgent(
+        created.agentId,
+        { preferPersonalProvider: true },
+        testCliToken,
+      );
+      expect(patchResponse.status).toBe(200);
+      expect((await patchResponse.json()).preferPersonalProvider).toBe(true);
+
+      const got = await (await getAgent(created.agentId, testCliToken)).json();
+      expect(got.preferPersonalProvider).toBe(true);
+    });
+  });
+
   describe("schedule run integration", () => {
     it("should execute schedule for agent created via POST /api/zero/agents", async () => {
       // Regression: serverSideCompose was called without instructions param,

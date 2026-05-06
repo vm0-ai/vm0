@@ -53,6 +53,7 @@ export interface ScheduleResponse {
   updatedAt: string;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 }
 
 /**
@@ -85,6 +86,7 @@ interface DeployScheduleRequest {
   volumeVersions?: Record<string, string>;
   modelProviderId?: string | null;
   selectedModel?: string | null;
+  preferPersonalProvider?: boolean;
 }
 
 /**
@@ -157,6 +159,7 @@ function toResponse(
     updatedAt: schedule.updatedAt.toISOString(),
     modelProviderId: schedule.modelProviderId ?? null,
     selectedModel: schedule.selectedModel ?? null,
+    preferPersonalProvider: schedule.preferPersonalProvider ?? false,
   };
 }
 
@@ -271,6 +274,7 @@ async function updateExistingSchedule(
       updatedAt: new Date(),
       modelProviderId: request.modelProviderId ?? null,
       selectedModel: request.selectedModel ?? null,
+      preferPersonalProvider: request.preferPersonalProvider ?? false,
     })
     .where(eq(zeroAgentSchedules.id, existingId))
     .returning();
@@ -318,6 +322,7 @@ async function insertNewSchedule(
       updatedAt: now,
       modelProviderId: request.modelProviderId ?? null,
       selectedModel: request.selectedModel ?? null,
+      preferPersonalProvider: request.preferPersonalProvider ?? false,
     })
     .returning();
 
