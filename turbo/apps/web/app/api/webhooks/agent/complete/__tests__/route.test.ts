@@ -43,8 +43,37 @@ import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { transitionRunStatus } from "../../../../../../src/lib/infra/run/run-status";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { conversations } from "@vm0/db/schema/conversation";
+import { eq, sql } from "drizzle-orm";
 
 const context = testContext();
+
+async function waitForBlockedAgentRunsQuery(): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const [row] = await globalThis.services.db
+      .select({
+        blocked: sql<boolean>`EXISTS (
+          SELECT 1
+          FROM pg_locks l
+          JOIN pg_stat_activity a ON a.pid = l.pid
+          WHERE NOT l.granted
+            AND a.datname = current_database()
+            AND a.query ILIKE '%agent_runs%'
+        )`,
+      })
+      .from(agentRuns)
+      .limit(1);
+
+    if (row?.blocked) {
+      return;
+    }
+  }
+
+  throw new Error("complete webhook did not wait for held agent_runs lock");
+}
 
 describe("POST /api/webhooks/agent/complete", () => {
   let user: UserContext;
@@ -590,6 +619,110 @@ describe("POST /api/webhooks/agent/complete", () => {
         checkpointId: checkpoint.checkpointId,
         agentSessionId: checkpoint.agentSessionId,
         conversationId: checkpoint.conversationId,
+        artifact: {
+          "test-artifact": "v1",
+        },
+      });
+    });
+
+    it("should wait for an in-flight checkpoint transaction before completing", async () => {
+      const artifactSnapshots = [
+        {
+          name: "test-artifact",
+          version: "v1",
+          mountPath: "/home/user/workspace",
+        },
+      ];
+      const completeRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 0,
+          }),
+        },
+      );
+
+      let completePromise: Promise<Response> | undefined;
+      let checkpointId: string | undefined;
+      let conversationId: string | undefined;
+
+      await globalThis.services.db.transaction(async (tx) => {
+        const [run] = await tx
+          .select()
+          .from(agentRuns)
+          .where(eq(agentRuns.id, testRunId))
+          .for("update")
+          .limit(1);
+
+        if (!run?.agentComposeVersionId) {
+          throw new Error("test run is missing agentComposeVersionId");
+        }
+
+        const [conversation] = await tx
+          .insert(conversations)
+          .values({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "in-flight-checkpoint-session",
+            cliAgentSessionHistoryHash:
+              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
+          })
+          .returning();
+
+        if (!conversation) {
+          throw new Error("failed to seed in-flight conversation");
+        }
+
+        const [checkpoint] = await tx
+          .insert(checkpoints)
+          .values({
+            runId: testRunId,
+            conversationId: conversation.id,
+            agentComposeSnapshot: {
+              agentComposeVersionId: run.agentComposeVersionId,
+            },
+            artifactSnapshots,
+            volumeVersionsSnapshot: null,
+          })
+          .returning();
+
+        if (!checkpoint) {
+          throw new Error("failed to seed in-flight checkpoint");
+        }
+
+        await tx
+          .update(agentSessions)
+          .set({
+            conversationId: conversation.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(agentSessions.id, run.sessionId));
+
+        checkpointId = checkpoint.id;
+        conversationId = conversation.id;
+        completePromise = POST(completeRequest);
+
+        // Hold the uncommitted checkpoint until /complete reaches its own
+        // agent_runs lock. Without this ordering, old code could sometimes
+        // read the checkpoint after commit and miss the regression.
+        await waitForBlockedAgentRunsQuery();
+      });
+
+      const response = await completePromise;
+
+      expect(response?.status).toBe(200);
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.status).toBe("completed");
+      expect(run!.result).toMatchObject({
+        checkpointId,
+        agentSessionId: run!.sessionId,
+        conversationId,
         artifact: {
           "test-artifact": "v1",
         },

@@ -8,14 +8,14 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { eq, and, isNull } from "drizzle-orm";
-import {
-  transitionRunStatus,
-  dispatchTerminalSideEffects,
-} from "../../../../../src/lib/infra/run/run-status";
+import { eq, and, inArray } from "drizzle-orm";
+import { dispatchTerminalSideEffects } from "../../../../../src/lib/infra/run/run-status";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { buildRunResultFromCheckpoint } from "../../../../../src/lib/infra/run/run-result";
-import type { RunResult } from "../../../../../src/lib/infra/run/types";
+import type {
+  RunResult,
+  RunStatus,
+} from "../../../../../src/lib/infra/run/types";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
   drainOrgQueue,
@@ -26,8 +26,11 @@ import { waitForAgentEventPrefixVisible } from "../../../../../src/lib/infra/run
 import { publishRunChangedForUserSafely } from "../../../../../src/lib/infra/run/run-realtime";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
+import type { Database } from "../../../../../src/types/global";
 
 const log = logger("webhook:complete");
+
+const COMPLETABLE_RUN_STATUSES: RunStatus[] = ["pending", "running", "timeout"];
 
 /**
  * Schedule terminal side effects in a non-blocking after() block.
@@ -53,8 +56,9 @@ function scheduleTerminalSideEffects(
 
 async function buildRunResultForRun(
   runId: string,
+  db: Pick<Database, "select"> = globalThis.services.db,
 ): Promise<RunResult | undefined> {
-  const [checkpoint] = await globalThis.services.db
+  const [checkpoint] = await db
     .select()
     .from(checkpoints)
     .where(eq(checkpoints.runId, runId))
@@ -65,7 +69,7 @@ async function buildRunResultForRun(
   }
 
   // Get agent session for the conversation
-  const [session] = await globalThis.services.db
+  const [session] = await db
     .select()
     .from(agentSessions)
     .where(eq(agentSessions.conversationId, checkpoint.conversationId))
@@ -73,6 +77,14 @@ async function buildRunResultForRun(
 
   return buildRunResultFromCheckpoint(checkpoint, session?.id);
 }
+
+type CompleteTransitionResult =
+  | { kind: "not-found" }
+  | { kind: "already-terminal"; status: "completed" | "failed" }
+  | { kind: "missing-checkpoint"; transitioned: boolean }
+  | { kind: "completed"; result: RunResult }
+  | { kind: "failed"; errorMessage: string; result?: RunResult }
+  | { kind: "skipped"; status: "completed" | "failed" };
 
 const router = tsr.router(webhookCompleteContract, {
   complete: async ({ body, headers }) => {
@@ -128,52 +140,7 @@ const router = tsr.router(webhookCompleteContract, {
       };
     }
 
-    let finalStatus: "completed" | "failed";
-    let errorMessage: string | undefined;
-    let finalResult: RunResult | undefined;
-
     if (body.exitCode === 0) {
-      // Success: query checkpoint and store result in run table
-      const result = await buildRunResultForRun(body.runId);
-
-      if (!result) {
-        const transitioned = await transitionRunStatus(
-          body.runId,
-          {
-            status: "failed",
-            completedAt: new Date(),
-            error: "Checkpoint for run not found",
-            sandboxId: body.sandboxId,
-            sandboxReuseResult: body.sandboxReuseResult,
-          },
-          ["pending", "running", "timeout"],
-        );
-
-        // Dispatch callbacks so the user gets notified about the failure
-        // (previously this path returned without dispatching)
-        if (transitioned) {
-          await publishRunChangedForUserSafely(run.userId, body.runId, {
-            status: "failed",
-          });
-          scheduleTerminalSideEffects(
-            body.runId,
-            "failed",
-            run.orgId,
-            "Checkpoint for run not found",
-          );
-        }
-
-        return {
-          status: 404 as const,
-          body: {
-            error: {
-              message: "Checkpoint for run not found",
-              code: "NOT_FOUND",
-            },
-          },
-        };
-      }
-
       if (body.lastEventSequence !== undefined) {
         const visibility = await waitForAgentEventPrefixVisible(
           body.runId,
@@ -192,86 +159,203 @@ const router = tsr.router(webhookCompleteContract, {
           });
         }
       }
+    }
 
-      // Atomically transition to "completed". Also accept "timeout" so a
-      // sandbox that eventually reports success after a heartbeat-timeout
-      // sweep can still upgrade the run state.
-      const transitioned = await transitionRunStatus(
-        body.runId,
-        {
-          status: "completed",
-          completedAt: new Date(),
-          result,
-          sandboxId: body.sandboxId,
-          sandboxReuseResult: body.sandboxReuseResult,
+    const transitionResult =
+      await globalThis.services.db.transaction<CompleteTransitionResult>(
+        async (tx) => {
+          // Serialize the terminal decision with checkpoint writes. A checkpoint
+          // webhook can hold this row lock while inserting the checkpoint row;
+          // reading checkpoint before waiting for that lock can falsely decide
+          // that a recoverable checkpoint is missing.
+          const [lockedRun] = await tx
+            .select()
+            .from(agentRuns)
+            .where(
+              and(eq(agentRuns.id, body.runId), eq(agentRuns.userId, userId)),
+            )
+            .for("update")
+            .limit(1);
+
+          if (!lockedRun) {
+            return { kind: "not-found" };
+          }
+
+          if (
+            lockedRun.status === "completed" ||
+            lockedRun.status === "failed"
+          ) {
+            return {
+              kind: "already-terminal",
+              status: lockedRun.status as "completed" | "failed",
+            };
+          }
+
+          if (body.exitCode === 0) {
+            // Success: query checkpoint under the same run lock used for the
+            // terminal transition, then store the result in agent_runs.
+            const result = await buildRunResultForRun(body.runId, tx);
+
+            if (!result) {
+              const [updated] = await tx
+                .update(agentRuns)
+                .set({
+                  status: "failed",
+                  completedAt: new Date(),
+                  error: "Checkpoint for run not found",
+                  sandboxId: body.sandboxId,
+                  sandboxReuseResult: body.sandboxReuseResult,
+                })
+                .where(
+                  and(
+                    eq(agentRuns.id, body.runId),
+                    inArray(agentRuns.status, COMPLETABLE_RUN_STATUSES),
+                  ),
+                )
+                .returning({ id: agentRuns.id });
+
+              return {
+                kind: "missing-checkpoint",
+                transitioned: Boolean(updated),
+              };
+            }
+
+            const [updated] = await tx
+              .update(agentRuns)
+              .set({
+                status: "completed",
+                completedAt: new Date(),
+                result,
+                sandboxId: body.sandboxId,
+                sandboxReuseResult: body.sandboxReuseResult,
+              })
+              .where(
+                and(
+                  eq(agentRuns.id, body.runId),
+                  inArray(agentRuns.status, COMPLETABLE_RUN_STATUSES),
+                ),
+              )
+              .returning({ id: agentRuns.id });
+
+            if (!updated) {
+              return { kind: "skipped", status: "completed" };
+            }
+
+            return { kind: "completed", result };
+          }
+
+          const reportUrl = `${env().NEXT_PUBLIC_APP_URL}/runs/${body.runId}/report-error`;
+          const errorMessage = `An unexpected error occurred. [Report this issue](${reportUrl})`;
+          const result = await buildRunResultForRun(body.runId, tx);
+          const update = {
+            status: "failed" as const,
+            completedAt: new Date(),
+            error: errorMessage,
+            sandboxId: body.sandboxId,
+            sandboxReuseResult: body.sandboxReuseResult,
+            ...(result ? { result } : {}),
+          };
+
+          const [updated] = await tx
+            .update(agentRuns)
+            .set(update)
+            .where(
+              and(
+                eq(agentRuns.id, body.runId),
+                inArray(agentRuns.status, COMPLETABLE_RUN_STATUSES),
+              ),
+            )
+            .returning({ id: agentRuns.id });
+
+          if (!updated) {
+            return { kind: "skipped", status: "failed" };
+          }
+
+          return { kind: "failed", errorMessage, result };
         },
-        ["pending", "running", "timeout"],
       );
 
-      if (!transitioned) {
+    if (transitionResult.kind === "not-found") {
+      return {
+        status: 404 as const,
+        body: {
+          error: { message: "Agent run not found", code: "NOT_FOUND" },
+        },
+      };
+    }
+
+    if (transitionResult.kind === "already-terminal") {
+      log.debug(
+        `Run ${body.runId} already ${transitionResult.status}, skipping duplicate completion`,
+      );
+      return {
+        status: 200 as const,
+        body: {
+          success: true,
+          status: transitionResult.status,
+        },
+      };
+    }
+
+    if (transitionResult.kind === "missing-checkpoint") {
+      // Dispatch callbacks so the user gets notified about the failure
+      // (previously this path returned without dispatching).
+      if (transitionResult.transitioned) {
+        await publishRunChangedForUserSafely(run.userId, body.runId, {
+          status: "failed",
+        });
+        scheduleTerminalSideEffects(
+          body.runId,
+          "failed",
+          run.orgId,
+          "Checkpoint for run not found",
+        );
+      }
+
+      return {
+        status: 404 as const,
+        body: {
+          error: {
+            message: "Checkpoint for run not found",
+            code: "NOT_FOUND",
+          },
+        },
+      };
+    }
+
+    if (transitionResult.kind === "skipped") {
+      if (transitionResult.status === "completed") {
         log.debug(
           `Run ${body.runId} already transitioned, skipping duplicate completion`,
         );
-        return {
-          status: 200 as const,
-          body: { success: true, status: "completed" as const },
-        };
-      }
-
-      await publishRunChangedForUserSafely(run.userId, body.runId, {
-        status: "completed",
-      });
-      finalResult = result;
-      finalStatus = "completed";
-      log.debug(`Run ${body.runId} completed successfully`);
-    } else {
-      // Failure: store error in run table
-      const reportUrl = `${env().NEXT_PUBLIC_APP_URL}/runs/${body.runId}/report-error`;
-      errorMessage = `An unexpected error occurred. [Report this issue](${reportUrl})`;
-
-      // Also accept "timeout" so the sandbox's own exit-code-based error
-      // (with the report-error link) supersedes a stale "Run timed out
-      // (no heartbeat)" stamped earlier by the cleanup cron.
-      const transitioned = await transitionRunStatus(
-        body.runId,
-        {
-          status: "failed",
-          completedAt: new Date(),
-          error: errorMessage,
-          sandboxId: body.sandboxId,
-          sandboxReuseResult: body.sandboxReuseResult,
-        },
-        ["pending", "running", "timeout"],
-      );
-
-      if (!transitioned) {
+      } else {
         log.debug(
           `Run ${body.runId} already transitioned, skipping duplicate failure`,
         );
-        return {
-          status: 200 as const,
-          body: { success: true, status: "failed" as const },
-        };
       }
+      return {
+        status: 200 as const,
+        body: { success: true, status: transitionResult.status },
+      };
+    }
 
-      const result = await buildRunResultForRun(body.runId);
-      if (result) {
-        finalResult = result;
-        await globalThis.services.db
-          .update(agentRuns)
-          .set({ result })
-          .where(
-            and(
-              eq(agentRuns.id, body.runId),
-              eq(agentRuns.status, "failed"),
-              isNull(agentRuns.result),
-            ),
-          );
-      }
+    const finalStatus =
+      transitionResult.kind === "completed" ? "completed" : "failed";
+    const errorMessage =
+      transitionResult.kind === "failed"
+        ? transitionResult.errorMessage
+        : undefined;
+    const finalResult = transitionResult.result;
+
+    if (finalStatus === "completed") {
+      await publishRunChangedForUserSafely(run.userId, body.runId, {
+        status: "completed",
+      });
+      log.debug(`Run ${body.runId} completed successfully`);
+    } else {
       await publishRunChangedForUserSafely(run.userId, body.runId, {
         status: "failed",
       });
-      finalStatus = "failed";
       log.warn(`Run ${body.runId} failed: ${errorMessage}`);
     }
 
