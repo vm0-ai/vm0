@@ -64,6 +64,37 @@ export async function insertTestOrgModelProviderSecret(params: {
 }
 
 /**
+ * Insert a user-level (personal) model-provider secret directly in the
+ * database. Resolver tests use this to verify that `secretUserId` is
+ * derived from the resolved row's owner — they assert the resolved secret
+ * value matches the personal row's stored value rather than the org's
+ * (Epic #11868 — personal model providers).
+ *
+ * @why-db-direct Personal-tier secrets are upsert-routed through the API
+ * which couples them to a model provider's lifecycle; tests need an
+ * id-scoped writer to set up scenarios where personal and org secrets
+ * have distinct values for the same name.
+ */
+export async function insertTestUserModelProviderSecret(params: {
+  orgId: string;
+  userId: string;
+  name: string;
+  value: string;
+}): Promise<void> {
+  initServices();
+  const { SECRETS_ENCRYPTION_KEY } = globalThis.services.env;
+  const encrypted = encryptSecretValue(params.value, SECRETS_ENCRYPTION_KEY);
+  await globalThis.services.db.insert(secrets).values({
+    name: params.name,
+    encryptedValue: encrypted,
+    type: "model-provider",
+    userId: params.userId,
+    orgId: params.orgId,
+    description: "test seed",
+  });
+}
+
+/**
  * Insert an org-level sentinel variable directly in the database.
  *
  * @why-db-direct The variables API creates user-scoped variables, not

@@ -6,6 +6,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { getTestAuthContext } from "../api-test-helpers/core";
 import { ensureOrgRow } from "../test-helpers";
@@ -387,4 +388,110 @@ export async function lockOrgAndSetCredits(
   });
 
   return { release, ready, done };
+}
+
+// ============================================================================
+// User-Level (BYOK) Model Provider Seeders — Epic #11868
+// ============================================================================
+
+/**
+ * Insert a user-level (personal) default model provider directly in the
+ * database. Personal default is workspace-scoped per (orgId, userId), so it
+ * coexists with the org default — paired with the partial unique index
+ * `idx_model_providers_one_default_per_user`. Mirrors the org seeder's
+ * "clear existing default for the same scope first" semantics.
+ *
+ * @why-db-direct Inserts user-tier provider bypassing API validation;
+ * resolver tests need to seed personal-tier rows without secrets routing
+ * through the public upsert flow.
+ */
+export async function insertUserDefaultModelProvider(
+  orgId: string,
+  userId: string,
+  type: string,
+  selectedModel?: string,
+): Promise<string> {
+  initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.isDefault, true),
+      ),
+    );
+  const [row] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      type,
+      userId,
+      orgId,
+      isDefault: true,
+      selectedModel: selectedModel ?? null,
+    })
+    .returning({ id: modelProviders.id });
+  if (!row) throw new Error("insertUserDefaultModelProvider: insert failed");
+  return row.id;
+}
+
+/**
+ * Insert a user-level non-default model provider directly in the database.
+ * Companion to `insertUserDefaultModelProvider` for tests that need to seed
+ * a coexisting personal-tier row that the workspace's single-default
+ * invariant precludes from being marked default.
+ *
+ * @why-db-direct Tests need a non-default user-level provider; the public
+ * setUserModelProviderDefault API marks the inserted row as default.
+ */
+export async function insertUserNonDefaultModelProvider(
+  orgId: string,
+  userId: string,
+  type: string,
+  selectedModel?: string,
+): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      type,
+      userId,
+      orgId,
+      isDefault: false,
+      selectedModel: selectedModel ?? null,
+    })
+    .returning({ id: modelProviders.id });
+  if (!row) throw new Error("insertUserNonDefaultModelProvider: insert failed");
+  return row.id;
+}
+
+/**
+ * Enable the `personalModelProvider` feature switch for a specific user via
+ * the per-user override store. The static registry entry has the switch off
+ * + staff-only (`STAFF_ORG_ID_HASHES`); test orgs do not match those
+ * hashes, so test seeding must use the override path.
+ *
+ * @why-db-direct Tests need to flip the switch deterministically without
+ * mutating the static registry or computing a real org-id hash.
+ */
+export async function enablePersonalModelProviderForUser(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { personalModelProvider: true },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: {
+        switches: { personalModelProvider: true },
+        updatedAt: new Date(),
+      },
+    });
 }
