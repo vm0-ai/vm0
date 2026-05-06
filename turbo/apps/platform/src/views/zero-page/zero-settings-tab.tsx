@@ -7,7 +7,6 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   Dialog,
   DialogClose,
   DialogContent,
@@ -17,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
   Input,
+  Switch,
   cn,
 } from "@vm0/ui";
 import { IconTrash } from "@tabler/icons-react";
@@ -350,11 +350,9 @@ export function ZeroSettingsTab({
                 description="Use the caller's personal provider when available, fall back to the selected one above."
                 alignControls="center"
               >
-                <Checkbox
+                <Switch
                   checked={preferPersonalProvider}
-                  onCheckedChange={(v) => {
-                    setPreferPersonalProvider(v === true);
-                  }}
+                  onCheckedChange={setPreferPersonalProvider}
                   aria-label="Use personal provider"
                 />
               </InlineSettingsRow>

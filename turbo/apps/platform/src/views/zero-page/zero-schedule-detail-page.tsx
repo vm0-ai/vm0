@@ -22,7 +22,6 @@ import {
   Button,
   Card,
   CardContent,
-  Checkbox,
   cn,
   Dialog,
   DialogContent,
@@ -36,6 +35,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Switch,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -524,10 +524,10 @@ function ScheduleSettingsForm({
               description="Use the caller's personal provider when available, fall back to the selected one above."
               alignControls="center"
             >
-              <Checkbox
+              <Switch
                 checked={form.preferPersonalProvider}
                 onCheckedChange={(v) => {
-                  updateForm({ preferPersonalProvider: v === true });
+                  updateForm({ preferPersonalProvider: v });
                 }}
                 aria-label="Use personal provider"
               />

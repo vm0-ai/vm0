@@ -5,13 +5,13 @@ import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import {
   Button,
-  Checkbox,
   Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Switch,
 } from "@vm0/ui";
 import {
   Dialog,
@@ -788,11 +788,11 @@ function ScheduleFormDialogInner({
 
           {personalProviderEnabled && (
             <div className="flex items-start gap-2">
-              <Checkbox
+              <Switch
                 id="schedule-prefer-personal"
                 checked={form.preferPersonalProvider}
                 onCheckedChange={(v) => {
-                  updateForm({ preferPersonalProvider: v === true });
+                  updateForm({ preferPersonalProvider: v });
                 }}
                 aria-label="Use personal provider"
                 className="mt-0.5"
