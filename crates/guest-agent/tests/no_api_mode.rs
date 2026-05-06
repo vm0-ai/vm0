@@ -11,6 +11,21 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+struct SystemLogOverrideGuard;
+
+impl SystemLogOverrideGuard {
+    fn set(path: &std::path::Path) -> Self {
+        guest_common::log::set_system_log_file(path.to_string_lossy().as_ref());
+        Self
+    }
+}
+
+impl Drop for SystemLogOverrideGuard {
+    fn drop(&mut self) {
+        guest_common::log::clear_system_log_file();
+    }
+}
+
 #[tokio::test]
 async fn no_api_mode_drains_background_webhook_users_without_network_client()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -65,7 +80,15 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "session-no-api"
     );
 
+    let complete_log_path = tmp.path().join("complete-system.log");
+    let complete_log_guard = SystemLogOverrideGuard::set(&complete_log_path);
     guest_agent::complete::report_success(&http, "sandbox-no-api", "reused", Some(1)).await;
+    drop(complete_log_guard);
+    let complete_log = std::fs::read_to_string(&complete_log_path).unwrap_or_default();
+    assert!(
+        !complete_log.contains("Complete webhook failed"),
+        "no-API complete path must return before touching the disabled HTTP client: {complete_log}"
+    );
 
     let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
     let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
