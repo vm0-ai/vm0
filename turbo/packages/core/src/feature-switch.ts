@@ -222,6 +222,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
     enabled: false,
   },
+  [FeatureSwitchKey.QueueMessage]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Allow keyboard sends during an active chat thread run to append the draft to that thread's pending message queue.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ChatThreadPin]: {
     maintainer: "ethan@vm0.ai",
     description:

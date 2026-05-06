@@ -21,6 +21,7 @@ export function createPendingChatThread(
     isLegacySession: false,
     draftContent: null,
     draftAttachments: null,
+    pendingMessage: null,
     modelProviderId: null,
     selectedModel: null,
   };

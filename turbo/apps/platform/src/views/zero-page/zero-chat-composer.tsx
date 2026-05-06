@@ -11,6 +11,7 @@ import {
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
   IconArrowUp,
+  IconFile,
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
@@ -62,7 +63,10 @@ import {
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  PendingMessage,
+  PersistedAttachment,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   CONNECTOR_TYPES,
@@ -150,7 +154,10 @@ interface ZeroChatComposerProps {
   input: string;
   onInputChange: (value: string) => void;
   onSend: (message: string) => void;
+  onQueue?: (message: string) => void;
   sending?: boolean;
+  queueWhileSending?: boolean;
+  pendingMessage?: PendingMessage | null;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
   displayName: string;
@@ -264,12 +271,19 @@ function resolveComposerModelForSelection(
   return resolveProviderSelection(defaultProvider);
 }
 
+interface VisualAttachmentUnsupportedState {
+  currentModelName: string;
+}
+
+interface VisualAttachmentCandidate {
+  contentType: string;
+  filename: string;
+}
+
 function getVisualAttachmentUnsupportedState(
   modelPicker: ComposerModelPicker | undefined,
   selection: ModelProviderSelection | null = modelPicker?.value ?? null,
-): {
-  currentModelName: string;
-} | null {
+): VisualAttachmentUnsupportedState | null {
   const currentModel = resolveComposerModelForSelection(modelPicker, selection);
   if (
     getModelImageInputSupport(currentModel?.selectedModel) !== "unsupported" ||
@@ -289,13 +303,37 @@ function isVisualAttachmentFile(file: File): boolean {
   });
 }
 
-function showVisualAttachmentUnsupportedToast(state: {
-  currentModelName: string;
-}): void {
+function showVisualAttachmentUnsupportedToast(
+  state: VisualAttachmentUnsupportedState,
+): void {
   toast.error(
     `${state.currentModelName} cannot recognize images or videos. Switch to a vision-capable model to attach them.`,
     { id: "visual-attachment-unsupported" },
   );
+}
+
+function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
+  attachments: T[],
+  visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null,
+): T[] {
+  if (!visualAttachmentUnsupported) {
+    return attachments;
+  }
+  return attachments.filter((attachment) => {
+    return !isVisualAttachment(attachment);
+  });
+}
+
+function resolveComposerCanSend({
+  draftCanSend,
+  input,
+  visibleAttachmentCount,
+}: {
+  draftCanSend: boolean;
+  input: string;
+  visibleAttachmentCount: number;
+}): boolean {
+  return draftCanSend && (input.trim() !== "" || visibleAttachmentCount > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -787,6 +825,80 @@ function toPersistedAttachments(
     });
 }
 
+function hasPendingMessageContent(
+  pendingMessage: PendingMessage | null,
+): pendingMessage is PendingMessage {
+  return (
+    pendingMessage !== null &&
+    ((pendingMessage.content?.trim() ?? "") !== "" ||
+      (pendingMessage.attachments?.length ?? 0) > 0)
+  );
+}
+
+function PendingMessagePreview({
+  pendingMessage,
+}: {
+  pendingMessage: PendingMessage;
+}) {
+  const content = pendingMessage.content?.trim() ?? "";
+  const attachments = pendingMessage.attachments ?? [];
+  return (
+    <div
+      className="border-b border-border/50 bg-muted/30 px-4 py-3"
+      aria-label="Queued message"
+    >
+      <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+        Queued
+      </div>
+      {content && (
+        <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-5 text-foreground">
+          {content}
+        </p>
+      )}
+      {attachments.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {attachments.map((attachment) => {
+            return (
+              <span
+                key={attachment.id}
+                className="inline-flex max-w-[14rem] items-center gap-1 rounded-md bg-background/80 px-2 py-1 text-xs text-muted-foreground zero-border"
+                title={attachment.filename}
+              >
+                <IconFile size={13} stroke={1.5} className="shrink-0" />
+                <span className="truncate">{attachment.filename}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type KeyboardSendAction = "none" | "send" | "queue";
+
+function resolveKeyboardSendAction({
+  canSend,
+  sending,
+  queueWhileSending,
+  hasQueueHandler,
+}: {
+  canSend: boolean;
+  sending: boolean | undefined;
+  queueWhileSending: boolean;
+  hasQueueHandler: boolean;
+}): KeyboardSendAction {
+  if (!canSend || (sending && (!queueWhileSending || !hasQueueHandler))) {
+    return "none";
+  }
+  return sending ? "queue" : "send";
+}
+
+function composerTextareaMinHeight(hasPendingMessage: boolean): string {
+  return hasPendingMessage ? "min-h-[116px]" : "min-h-[96px]";
+}
+
 // ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
@@ -795,7 +907,10 @@ export function ZeroChatComposer({
   input,
   onInputChange,
   onSend,
+  onQueue,
   sending,
+  queueWhileSending = false,
+  pendingMessage = null,
   onCancel,
   displayName,
   className,
@@ -835,13 +950,15 @@ export function ZeroChatComposer({
   const rootSignal = useGet(rootSignal$);
   const visualAttachmentUnsupported =
     getVisualAttachmentUnsupportedState(modelPicker);
-  const visibleAttachments = visualAttachmentUnsupported
-    ? attachments.filter((attachment) => {
-        return !isVisualAttachment(attachment);
-      })
-    : attachments;
-  const canSend =
-    draftCanSend && (input.trim() !== "" || visibleAttachments.length > 0);
+  const visibleAttachments = resolveVisibleAttachments(
+    attachments,
+    visualAttachmentUnsupported,
+  );
+  const canSend = resolveComposerCanSend({
+    draftCanSend,
+    input,
+    visibleAttachmentCount: visibleAttachments.length,
+  });
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1045,6 +1162,24 @@ export function ZeroChatComposer({
     onSend(input.trim());
   };
 
+  const handleKeyboardSend = () => {
+    const handlers: Record<KeyboardSendAction, (() => void) | undefined> = {
+      none: undefined,
+      send: handleSend,
+      queue: () => {
+        onQueue?.(input.trim());
+      },
+    };
+    handlers[
+      resolveKeyboardSendAction({
+        canSend,
+        sending,
+        queueWhileSending,
+        hasQueueHandler: onQueue !== undefined,
+      })
+    ]?.();
+  };
+
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
@@ -1055,7 +1190,7 @@ export function ZeroChatComposer({
       return;
     }
     const send = () => {
-      handleSend();
+      handleKeyboardSend();
     };
     processShortcut(
       {
@@ -1103,6 +1238,7 @@ export function ZeroChatComposer({
     }
     e.target.value = "";
   };
+  const hasPendingMessage = hasPendingMessageContent(pendingMessage);
 
   const handleModelPickerChange = (
     selection: ModelProviderSelection | null,
@@ -1144,6 +1280,9 @@ export function ZeroChatComposer({
       >
         <CardContent className="p-0">
           <div className="flex flex-col">
+            {hasPendingMessage && (
+              <PendingMessagePreview pendingMessage={pendingMessage} />
+            )}
             {visibleAttachments.length > 0 && (
               <AttachmentChips
                 attachments={visibleAttachments}
@@ -1160,7 +1299,10 @@ export function ZeroChatComposer({
                 }
                 setInputRef?.(el);
               }}
-              className="w-full resize-none bg-transparent px-4 pt-4 pb-0 text-sm text-foreground placeholder:text-muted-foreground/40 border-0 min-h-[96px] focus:outline-none focus:ring-0"
+              className={cn(
+                "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-sm text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0",
+                composerTextareaMinHeight(hasPendingMessage),
+              )}
               rows={3}
               placeholder={
                 sending

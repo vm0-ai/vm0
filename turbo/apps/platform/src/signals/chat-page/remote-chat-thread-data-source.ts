@@ -3,6 +3,7 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
+  chatThreadPendingMessageAppendContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept } from "../../lib/accept.ts";
@@ -14,6 +15,7 @@ import type {
   CancelRunsArgs,
   ChatThreadDataSource,
   InitialPage,
+  AppendPendingMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
@@ -38,6 +40,32 @@ const patchDraft$ = command(
       }),
       [204],
     );
+  },
+);
+
+const appendPendingMessage$ = command(
+  async (
+    { get },
+    { threadId, content, attachments }: AppendPendingMessageArgs,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatThreadPendingMessageAppendContract, {
+      apiBase: "api",
+    });
+    const body = {
+      ...(content !== undefined ? { content } : {}),
+      ...(attachments !== undefined ? { attachments } : {}),
+    };
+    const result = await accept(
+      client.append({
+        params: { id: threadId },
+        body,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return result.body.pendingMessage;
   },
 );
 
@@ -197,6 +225,7 @@ export function createRemoteChatThreadDataSource(
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
+      pendingMessage: body.pendingMessage ?? null,
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
     };
@@ -233,6 +262,7 @@ export function createRemoteChatThreadDataSource(
     reloadThread$,
     initialPage$,
     patchDraft$,
+    appendPendingMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
     cancelRuns$,

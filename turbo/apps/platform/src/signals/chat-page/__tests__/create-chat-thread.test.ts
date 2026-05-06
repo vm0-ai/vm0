@@ -14,8 +14,10 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   type PagedChatMessage,
+  type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
+  AppendPendingMessageArgs,
   ChatThreadDataSource,
   PatchDraftArgs,
   CancelRunsArgs,
@@ -24,6 +26,15 @@ import type {
 
 const context = testContext();
 const mockApi = createMockApi(context);
+
+function createEmptyPendingMessage(): PendingMessage {
+  return {
+    content: null,
+    attachments: null,
+    createdAt: "2026-05-01T00:00:00Z",
+    updatedAt: "2026-05-01T00:00:00Z",
+  };
+}
 
 /**
  * Base MSW handlers required for setupChatPage$ to complete:
@@ -234,6 +245,7 @@ describe("fetchNextPage$ cursor", () => {
           isLegacySession: false,
           draftContent: null,
           draftAttachments: null,
+          pendingMessage: null,
           modelProviderId: null,
           selectedModel: null,
         });
@@ -248,6 +260,11 @@ describe("fetchNextPage$ cursor", () => {
       patchDraft$: command(
         (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {
           return Promise.resolve();
+        },
+      ),
+      appendPendingMessage$: command(
+        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve(createEmptyPendingMessage());
         },
       ),
       listMessagesAfter$: command((_, args) => {
@@ -349,6 +366,7 @@ describe("fetchNextPage$ cursor", () => {
           isLegacySession: false,
           draftContent: null,
           draftAttachments: null,
+          pendingMessage: null,
           modelProviderId: null,
           selectedModel: null,
         });
@@ -363,6 +381,11 @@ describe("fetchNextPage$ cursor", () => {
       patchDraft$: command(
         (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {
           return Promise.resolve();
+        },
+      ),
+      appendPendingMessage$: command(
+        (_ctx, _args: AppendPendingMessageArgs, _signal: AbortSignal) => {
+          return Promise.resolve(createEmptyPendingMessage());
         },
       ),
       listMessagesAfter$: command((_ctx, _args) => {

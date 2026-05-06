@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadsContract,
   type ChatThreadListItem,
+  type PendingMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderType } from "@vm0/api-contracts/contracts/model-providers";
@@ -70,6 +71,7 @@ export interface ChatThread {
   isLegacySession: boolean;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
+  pendingMessage: PendingMessage | null;
   /**
    * Per-thread model override. Both fields set together or both null. When
    * set, the send route uses this combination, overriding the agent and org

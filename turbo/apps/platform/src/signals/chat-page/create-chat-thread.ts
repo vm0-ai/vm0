@@ -158,6 +158,7 @@ export interface ChatThreadSignals {
     Promise<void>,
     [string, ModelSelectionRequest | null, AbortSignal]
   >;
+  queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -1089,7 +1090,7 @@ function createSendMessage(deps: SendMessageDeps) {
     insertOptimisticMessage$,
     scrollToBottom$,
   } = deps;
-  const sendMessage$ = command(
+  return command(
     async (
       { get, set },
       prompt: string,
@@ -1195,7 +1196,91 @@ function createSendMessage(deps: SendMessageDeps) {
       });
     },
   );
-  return { sendMessage$ };
+}
+
+interface QueueMessageDeps {
+  threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
+  modelSelection$: Computed<Promise<ModelProviderSelection | null>>;
+  draft: DraftSignals;
+  cancelDraftSync$: Command<void, []>;
+  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  reloadThread$: Command<void, []>;
+  dataSource: ChatThreadDataSource;
+}
+
+function createQueueMessage(deps: QueueMessageDeps) {
+  const {
+    threadId,
+    threadData$,
+    modelSelection$,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    reloadThread$,
+    dataSource,
+  } = deps;
+  return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
+    L.debug("queueMessage$ start", { threadId, promptLen: prompt.length });
+    const thread = await get(threadData$);
+    signal.throwIfAborted();
+    if (!thread || thread.activeRunIds.length === 0) {
+      L.debug("queueMessage$ no active run, abort", { threadId });
+      return;
+    }
+
+    const modelSelection = await get(modelSelection$);
+    signal.throwIfAborted();
+    const result = await set(
+      prepareUserMessageFromDraft$,
+      draft,
+      prompt,
+      {
+        excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+          modelSelection?.selectedModel,
+        ),
+      },
+      signal,
+    );
+    if (!result) {
+      L.debug("queueMessage$ prepare returned null, abort", { threadId });
+      return;
+    }
+    signal.throwIfAborted();
+
+    const content = result.hasTextContent ? result.prompt : undefined;
+    const attachments = result.attachments;
+
+    set(cancelDraftSync$);
+    set(draft.clear$);
+
+    await Promise.all([
+      set(flushDraftClear$, signal),
+      set(
+        dataSource.appendPendingMessage$,
+        {
+          threadId,
+          content,
+          attachments,
+        },
+        signal,
+      ),
+    ]);
+    signal.throwIfAborted();
+
+    set(reloadThread$);
+    set(reloadChatThreads$);
+    L.debug("queueMessage$ done", { threadId });
+  });
+}
+
+interface MessageCommandsDeps extends SendMessageDeps, QueueMessageDeps {}
+
+function createMessageCommands(deps: MessageCommandsDeps) {
+  return {
+    sendMessage$: createSendMessage(deps),
+    queueMessage$: createQueueMessage(deps),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1316,14 +1401,17 @@ export function createChatThreadSignals(
     dataSource,
   });
 
-  const { sendMessage$ } = createSendMessage({
+  const { sendMessage$, queueMessage$ } = createMessageCommands({
     threadId,
     threadData$,
+    modelSelection$,
     draft,
     cancelDraftSync$,
     flushDraftClear$,
     insertOptimisticMessage$,
     scrollToBottom$,
+    reloadThread$,
+    dataSource,
   });
 
   const { setInputRef$, focusInput$ } = createInputRef();
@@ -1346,6 +1434,7 @@ export function createChatThreadSignals(
     modelSelection$,
     setModelSelection$,
     sendMessage$,
+    queueMessage$,
     cancelRun$,
     setScrollContainer$,
     autoScroll$,

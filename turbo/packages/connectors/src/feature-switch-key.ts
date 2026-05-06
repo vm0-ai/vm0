@@ -41,6 +41,7 @@ export enum FeatureSwitchKey {
 
   ChatManualHistory = "chatManualHistory",
   ChatMessageStartButton = "chatMessageStartButton",
+  QueueMessage = "queueMessage",
   ChatThreadPin = "chatThreadPin",
   ChatThreadRename = "chatThreadRename",
   FreshdeskConnector = "freshdeskConnector",

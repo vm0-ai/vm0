@@ -12,6 +12,9 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  chatThreadPendingMessageAppendContract,
+  type PendingMessage,
+  type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
@@ -205,6 +208,11 @@ export function mockChatLifecycle(options?: {
     }[];
   }[];
   threadTitle?: string | null;
+  pendingMessage?: PendingMessage | null;
+  onPendingMessageAppend?: (body: {
+    content?: string;
+    attachments?: PersistedAttachment[];
+  }) => void;
   onRunCreate?: () => void;
 }): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -220,6 +228,7 @@ export function mockChatLifecycle(options?: {
   let runPrompt: string | null = null;
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
+  let pendingMessage: PendingMessage | null = options?.pendingMessage ?? null;
   // Version counter: bumped whenever the run reaches a terminal state so
   // subsequent polls discover a "new" assistant message row (simulating the
   // real server inserting event-backed rows on run completion).
@@ -353,8 +362,33 @@ export function mockChatLifecycle(options?: {
         updatedAt: "2026-03-10T00:00:00Z",
         draftContent: null,
         draftAttachments: null,
+        pendingMessage,
       });
     }),
+    mockApi(
+      chatThreadPendingMessageAppendContract.append,
+      ({ body, respond }) => {
+        options?.onPendingMessageAppend?.(body);
+        const now = new Date().toISOString();
+        const nextContent =
+          body.content === undefined
+            ? (pendingMessage?.content ?? null)
+            : pendingMessage?.content
+              ? `${pendingMessage.content}\n\n${body.content}`
+              : body.content;
+        const nextAttachments = [
+          ...(pendingMessage?.attachments ?? []),
+          ...(body.attachments ?? []),
+        ];
+        pendingMessage = {
+          content: nextContent,
+          attachments: nextAttachments.length > 0 ? nextAttachments : null,
+          createdAt: pendingMessage?.createdAt ?? now,
+          updatedAt: now,
+        };
+        return respond(200, { pendingMessage });
+      },
+    ),
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: threadList });
     }),

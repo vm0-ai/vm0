@@ -1,5 +1,6 @@
 import type { Command, Computed } from "ccstate";
 import type {
+  PendingMessage,
   PagedChatMessage,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -19,6 +20,12 @@ export interface PatchDraftArgs {
   threadId: string;
   content: string | null;
   attachments: PersistedAttachment[] | null;
+}
+
+export interface AppendPendingMessageArgs {
+  threadId: string;
+  content: string | undefined;
+  attachments: PersistedAttachment[] | undefined;
 }
 
 export interface ListMessagesAfterArgs {
@@ -51,6 +58,10 @@ export interface ChatThreadDataSource {
   reloadThread$: Command<void, []>;
   initialPage$: Computed<Promise<InitialPage>>;
   patchDraft$: Command<Promise<void>, [PatchDraftArgs, AbortSignal]>;
+  appendPendingMessage$: Command<
+    Promise<PendingMessage>,
+    [AppendPendingMessageArgs, AbortSignal]
+  >;
   listMessagesAfter$: Command<
     Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean }>,
     [ListMessagesAfterArgs, AbortSignal]

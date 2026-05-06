@@ -1680,6 +1680,40 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 // Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
+function canQueuePendingMessage({
+  queueMessageEnabled,
+  activeRunCount,
+  allFinishedResolved,
+  allFinished,
+  queueLoading,
+}: {
+  queueMessageEnabled: boolean;
+  activeRunCount: number;
+  allFinishedResolved: boolean;
+  allFinished: boolean;
+  queueLoading: boolean;
+}): boolean {
+  return (
+    queueMessageEnabled &&
+    activeRunCount > 0 &&
+    allFinishedResolved &&
+    !allFinished &&
+    !queueLoading
+  );
+}
+
+function shouldAutoFocusComposer({
+  autoFocus,
+  hasMessages,
+}: {
+  autoFocus: boolean;
+  hasMessages: boolean;
+}): boolean {
+  return (
+    autoFocus && !hasMessages && !window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
 function ChatThreadComposer({
   thread,
   autoFocus: autoFocusProp = true,
@@ -1697,6 +1731,7 @@ function ChatThreadComposer({
   const allFinishedResolved = allFinishedLoadable.state === "hasData";
   const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
+  const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
   const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
@@ -1721,6 +1756,16 @@ function ChatThreadComposer({
   // render the whole action cluster as a skeleton so we don't flash stale
   // picker state or a wrong send/stop button.
   const skeletonVisible = useGet(thread.skeletonVisible$);
+  const features = useLastResolved(featureSwitch$);
+  const queueMessageEnabled =
+    features?.[FeatureSwitchKey.QueueMessage] ?? false;
+  const queueWhileSending = canQueuePendingMessage({
+    queueMessageEnabled,
+    activeRunCount: threadData?.activeRunIds.length ?? 0,
+    allFinishedResolved: allFinishedLoadable.state === "hasData",
+    allFinished,
+    queueLoading: queueLoadable.state === "loading",
+  });
 
   const handleInputChange = (text: string) => {
     setInput(text);
@@ -1738,6 +1783,11 @@ function ChatThreadComposer({
     detach(send(text, modelSelection, rootSignal), Reason.DomCallback);
   };
 
+  const handleQueue = (text: string) => {
+    setInput("");
+    detach(queueMessage(text, rootSignal), Reason.DomCallback);
+  };
+
   return (
     <footer
       data-chat-composer
@@ -1752,7 +1802,10 @@ function ChatThreadComposer({
             input={input}
             onInputChange={handleInputChange}
             onSend={handleSend}
+            onQueue={handleQueue}
             sending={sending}
+            queueWhileSending={queueWhileSending}
+            pendingMessage={threadData?.pendingMessage ?? null}
             onCancel={
               allFinishedResolved
                 ? () => {
@@ -1761,11 +1814,10 @@ function ChatThreadComposer({
                 : undefined
             }
             displayName={displayName}
-            autoFocus={
-              autoFocusProp &&
-              !hasMessages &&
-              !window.matchMedia("(pointer: coarse)").matches
-            }
+            autoFocus={shouldAutoFocusComposer({
+              autoFocus: autoFocusProp,
+              hasMessages,
+            })}
             onDraftChange={handleDraftChange}
             draft={thread.draft}
             composerFileInput$={thread.composerFileInput$}
