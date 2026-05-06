@@ -37,7 +37,7 @@ const VALID_BODY = {
   accessToken: "REAL-AT-7f3a82d1-9b4c-4e5f-a1b2-c3d4e5f60718",
   refreshToken: "REAL-RT-1a2b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6",
   accountId: "ws_REAL_ACCOUNT_test",
-  idToken: "eyJhbGciOiJIUzI1NiJ9.PAYLOAD.SIG",
+  idToken: "hdr.PAYLOAD.SIG",
 };
 
 function makeRequest(body: unknown): Request {

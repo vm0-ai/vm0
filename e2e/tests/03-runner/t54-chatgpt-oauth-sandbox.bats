@@ -39,7 +39,9 @@ setup_file() {
     export CHATGPT_AUDIT_FORBIDDEN_ACCESS_TOKEN="REAL-AT-7f3a82d1-9b4c-4e5f-a1b2-c3d4e5f60718-DO-NOT-LEAK"
     export CHATGPT_AUDIT_FORBIDDEN_REFRESH_TOKEN="REAL-RT-1a2b3c4d-5e6f-7g8h-9i0j-k1l2m3n4o5p6-DO-NOT-LEAK"
     export CHATGPT_AUDIT_FORBIDDEN_ACCOUNT_ID="ws_REAL_ACCOUNT_$(date +%s%N)_DO_NOT_LEAK"
-    export CHATGPT_AUDIT_FORBIDDEN_ID_TOKEN="eyJhbGciOiJIUzI1NiJ9.REAL-IDTOK-PAYLOAD-X9Z8Y7W6V5U4-DO-NOT-LEAK.signature"
+    # Note: shaped like a JWT (header.payload.signature) but with non-base64
+    # body so Semgrep's JWT detection rule does not match this fixture.
+    export CHATGPT_AUDIT_FORBIDDEN_ID_TOKEN="hdr-REAL-IDTOK-X9Z8Y7W6V5U4-DO-NOT-LEAK.body-payload.sig"
 
     export TEST_DIR="$(mktemp -d)"
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
