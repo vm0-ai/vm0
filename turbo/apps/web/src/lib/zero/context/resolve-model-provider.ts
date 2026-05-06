@@ -17,7 +17,7 @@ import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import {
   getOrgDefaultModelProvider,
   getOrgAnyDefaultModelProvider,
-  getModelProviderByIdForOrg,
+  getModelProviderById,
   getOrgModelProviderByType,
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
@@ -275,6 +275,7 @@ async function resolveMultiAuthProviderSecrets(
  */
 export async function resolveModelProviderSecrets(
   orgId: string,
+  userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
   explicitModelProvider?: string,
@@ -303,7 +304,11 @@ export async function resolveModelProviderSecrets(
   // framework propagates downstream via `resolvedFramework`.
   let defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
   if (modelProviderId) {
-    defaultProvider = await getModelProviderByIdForOrg(orgId, modelProviderId);
+    defaultProvider = await getModelProviderById(
+      orgId,
+      userId,
+      modelProviderId,
+    );
   } else {
     defaultProvider =
       (await getOrgDefaultModelProvider(orgId, framework)) ??

@@ -297,6 +297,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatgptOauthProvider]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Gate the ChatGPT-OAuth model provider in zero web (Epic #11872). " +
+      "When off, the 'Connect ChatGPT' tile is hidden in the add-provider " +
+      "dialog, server routes that initiate the OAuth dance return 404, and " +
+      "stale-provider UX is bypassed. Staff-only during rollout; per-user " +
+      "toggle via Lab.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.IdbMessage]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -3866,6 +3866,80 @@
           "Review in the preview URL, not the CMS admin panel. Formatting, pacing, and readability issues only surface when the post renders on the actual page.",
           "Lock down your cover art template -- palette, composition, logo placement -- and only vary the metaphor. Consistent visual branding compounds over time and prevents design drift across posts."
         ]
+      },
+      "publish-use-case-pages": {
+        "title": "Publish use case pages to your website from Slack",
+        "description": "Drop a link or describe a workflow in Slack and Zero writes the full use case page, translates it into four languages, and opens a PR ready to merge.",
+        "timeSaved": "~45 min saved per use case",
+        "scenario": "Your team just shipped a new workflow that customers love. Marketing wants to add it to the use cases gallery on the website, but that means writing the page copy, structuring the scenario, prompt variants, and step-by-step breakdown, translating everything into German, Japanese, and Spanish, adding the right metadata to the codebase, and opening a clean PR. By the time someone finds a spare hour, three more use cases are waiting. You paste the workflow into Slack, tag Zero, and a production-ready PR appears in minutes with the full page in all four locales, matching the site's design system.",
+        "promptVariants": [
+          {
+            "label": "Detailed",
+            "prompt": "@Zero add this to our use cases page: [paste a link or description of the workflow]. Target audience is marketing teams. Include Slack and GitHub as integrations."
+          },
+          {
+            "label": "Quick",
+            "prompt": "@Zero add this to our use cases page"
+          },
+          {
+            "label": "From a thread",
+            "prompt": "@Zero turn this Slack thread into a use case page on our website"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero add this to our use cases page"
+          },
+          {
+            "name": "Zero",
+            "text": "Done. New PR is live: vm0-ai/vm0#9261. The gallery page has a new card with avatar and integration icons, and the detail page includes headline, scenario, prompt variants, step-by-step breakdown, and best practices. All four locales (EN, DE, JA, ES) are included. CI should generate a preview automatically."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero analyzes the workflow you shared",
+            "description": "Zero reads the link, thread, or description you dropped into Slack. It identifies the persona, the problem being solved, the tools involved, and the key steps. If anything is ambiguous, it asks a clarifying question before proceeding."
+          },
+          {
+            "title": "Zero writes the full page in four languages",
+            "description": "Zero drafts every field the page needs: title, description, scenario, prompt variants, Slack preview, step-by-step breakdown, next actions, integration notes, and tips. Then it translates all of that naturally into German, Japanese, and Spanish, adapting idioms rather than translating word-for-word."
+          },
+          {
+            "title": "Zero opens a PR with all changes",
+            "description": "Zero commits the new use case entry to the data file and all four locale message files, adds any screenshot you provided, and opens a pull request on your website repo. The PR triggers CI and a deploy preview so you can see the live page before merging."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Review and refine the copy",
+            "description": "Check the deploy preview and ask Zero to adjust the tone, add details, or swap out a prompt variant.",
+            "examplePrompt": "@Zero in the PR you just opened, change the scenario to focus more on the time-saving angle and less on the translation step."
+          },
+          {
+            "title": "Batch multiple use cases",
+            "description": "Queue up several workflows and have Zero add them all in one session.",
+            "examplePrompt": "@Zero here are three more workflows we want on the use cases page: [1] ... [2] ... [3] ..."
+          },
+          {
+            "title": "Keep the gallery fresh on a schedule",
+            "description": "Set a recurring reminder to review shipped workflows and turn the best ones into pages.",
+            "examplePrompt": "@Zero every Friday, check the #shipped channel for new workflows and suggest which ones should become use case pages."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub - Zero creates a branch, commits the data and locale files, and opens a pull request on your website repository. Write access to the repo is required."
+          },
+          {
+            "description": "Slack - Zero receives the workflow description and posts back with the PR link and a summary of what was added. This is how you trigger the whole flow."
+          }
+        ],
+        "tips": [
+          "The richer the context you give Zero, the better the page. Paste a thread with real examples, screenshots, or even a short video description rather than a one-liner.",
+          "Review the deploy preview before merging. Zero gets the structure right every time, but your team knows the voice best. A quick copy pass makes the page feel native to your brand.",
+          "Pair this with the content performance report use case so you can track which pages drive the most signups and double down on those workflow categories."
+        ]
       }
     },
     "filter": {

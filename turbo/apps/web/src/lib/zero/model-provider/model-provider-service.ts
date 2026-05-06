@@ -1,4 +1,4 @@
-import { eq, and, ne, inArray, sql, notExists } from "drizzle-orm";
+import { eq, and, ne, or, inArray, sql, notExists } from "drizzle-orm";
 import {
   MODEL_PROVIDER_TYPES,
   getFrameworkForType,
@@ -31,6 +31,51 @@ interface ModelProviderInfo {
   selectedModel: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * Shared SELECT projection for reading model_providers rows joined with secrets.
+ *
+ * Centralized to prevent column drift across the 6 read paths
+ * (`listModelProviders`, `getDefaultModelProvider`, `getAnyDefaultModelProvider`,
+ * `getOrgModelProviderByType`, `getModelProviderById`, `getUserModelProviderByType`).
+ */
+function selectProviderRow(): {
+  id: typeof modelProviders.id;
+  type: typeof modelProviders.type;
+  isDefault: typeof modelProviders.isDefault;
+  selectedModel: typeof modelProviders.selectedModel;
+  authMethod: typeof modelProviders.authMethod;
+  secretName: typeof secrets.name;
+  createdAt: typeof modelProviders.createdAt;
+  updatedAt: typeof modelProviders.updatedAt;
+} {
+  return {
+    id: modelProviders.id,
+    type: modelProviders.type,
+    isDefault: modelProviders.isDefault,
+    selectedModel: modelProviders.selectedModel,
+    authMethod: modelProviders.authMethod,
+    secretName: secrets.name,
+    createdAt: modelProviders.createdAt,
+    updatedAt: modelProviders.updatedAt,
+  };
+}
+
+/**
+ * Defense-in-depth check rejecting vm0 user-tier writes (Epic #11868 Decision 4).
+ *
+ * vm0 is a no-secret meta-provider and is org-only — the personal tier is BYOK
+ * only. Called from both `upsertModelProvider` and `upsertNoSecretModelProvider`
+ * since vm0 normally flows through the latter, but the former must also reject
+ * user-tier vm0 attempts as defense-in-depth alongside frontend filtering.
+ */
+function assertVm0OrgOnly(type: ModelProviderType, userId: string): void {
+  if (type === "vm0" && userId !== ORG_SENTINEL_USER_ID) {
+    throw badRequest(
+      "VM0 managed provider is org-only and cannot be configured per-user",
+    );
+  }
 }
 
 /**
@@ -134,16 +179,7 @@ async function listModelProviders(
 ): Promise<ModelProviderInfo[]> {
   // Use leftJoin to include multi-auth providers that don't have secretId
   const result = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -181,6 +217,8 @@ async function upsertModelProvider(
   secret: string,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
+  assertVm0OrgOnly(type, userId);
+
   // Multi-auth providers need different handling
   if (hasAuthMethods(type)) {
     throw badRequest(
@@ -525,6 +563,8 @@ async function upsertNoSecretModelProvider(
   type: ModelProviderType,
   selectedModel?: string,
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
+  assertVm0OrgOnly(type, userId);
+
   log.debug("upserting no-secret model provider", {
     orgId,
     type,
@@ -837,16 +877,7 @@ async function getDefaultModelProvider(
 ): Promise<ModelProviderInfo | null> {
   // Use leftJoin to include multi-auth providers that don't have secretId
   const allProviders = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -888,16 +919,7 @@ async function getAnyDefaultModelProvider(
   userId: string,
 ): Promise<ModelProviderInfo | null> {
   const allProviders = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -1127,10 +1149,6 @@ export async function getOrgAnyDefaultModelProviderType(
 }
 
 /**
- * Get a specific model provider by ID, scoped to an org.
- * Returns null if the provider doesn't belong to the org.
- */
-/**
  * Get the org-level model provider row for a specific type.
  *
  * Used by `resolveModelProviderSecrets` when the request explicitly overrides
@@ -1147,16 +1165,7 @@ export async function getOrgModelProviderByType(
   type: ModelProviderType,
 ): Promise<ModelProviderInfo | null> {
   const [row] = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
@@ -1183,30 +1192,199 @@ export async function getOrgModelProviderByType(
   });
 }
 
-export async function getModelProviderByIdForOrg(
+/**
+ * Get a specific model provider by ID, user-aware.
+ *
+ * Org-tier rows (`userId = '__org__'`) are visible to any caller in the org.
+ * User-tier rows are visible only to their owner — an org admin querying a
+ * teammate's personal-provider id receives `null`, preserving the privacy
+ * invariant from Epic #11868 Decision 1. Returns null if no row matches or
+ * if the row's type is not in the registry.
+ */
+export async function getModelProviderById(
   orgId: string,
+  userId: string,
   providerId: string,
 ): Promise<ModelProviderInfo | null> {
   const [row] = await globalThis.services.db
-    .select({
-      id: modelProviders.id,
-      type: modelProviders.type,
-      isDefault: modelProviders.isDefault,
-      selectedModel: modelProviders.selectedModel,
-      authMethod: modelProviders.authMethod,
-      secretName: secrets.name,
-      createdAt: modelProviders.createdAt,
-      updatedAt: modelProviders.updatedAt,
-    })
+    .select(selectProviderRow())
     .from(modelProviders)
     .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
     .where(
-      and(eq(modelProviders.orgId, orgId), eq(modelProviders.id, providerId)),
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.id, providerId),
+        or(
+          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+          eq(modelProviders.userId, userId),
+        ),
+      ),
     )
     .limit(1);
 
   if (!row) return null;
 
+  if (!(row.type in MODEL_PROVIDER_TYPES)) return null;
+
+  return toModelProviderInfo({
+    id: row.id,
+    type: row.type as ModelProviderType,
+    secretName: row.secretName,
+    authMethod: row.authMethod,
+    isDefault: row.isDefault,
+    selectedModel: row.selectedModel,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
+}
+
+// ============================================================================
+// User-Level (BYOK) Model Provider Functions
+//
+// Personal tier per Epic #11868: each user owns their own model providers
+// within an org. These mirror the Org-tier wrappers but parameterize on a
+// real userId. VM0 is org-only — rejected at the generic core in
+// upsertModelProvider / upsertNoSecretModelProvider.
+// ============================================================================
+
+/**
+ * List all user-level model providers for a given user in an org
+ */
+export function listUserModelProviders(
+  orgId: string,
+  userId: string,
+): Promise<ModelProviderInfo[]> {
+  return listModelProviders(orgId, userId);
+}
+
+/**
+ * Create or update a user-level (BYOK) model provider (single-secret).
+ */
+export function upsertUserModelProvider(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+  secret: string,
+  selectedModel?: string,
+): Promise<{ provider: ModelProviderInfo; created: boolean }> {
+  return upsertModelProvider(orgId, userId, type, secret, selectedModel);
+}
+
+/**
+ * Create or update a user-level multi-auth model provider (e.g., aws-bedrock).
+ */
+export function upsertUserMultiAuthModelProvider(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+  authMethod: string,
+  secretValues: Record<string, string>,
+  selectedModel?: string,
+): Promise<{ provider: ModelProviderInfo; created: boolean }> {
+  return upsertMultiAuthModelProvider(
+    orgId,
+    userId,
+    type,
+    authMethod,
+    secretValues,
+    selectedModel,
+  );
+}
+
+// Note: NO upsertUserNoSecretModelProvider — vm0 is org-only per Epic #11868
+// Decision 4. The throw lives in upsertNoSecretModelProvider directly.
+
+/**
+ * Delete a user-level model provider and its secrets
+ */
+export function deleteUserModelProvider(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+): Promise<void> {
+  return deleteModelProvider(orgId, userId, type);
+}
+
+/**
+ * Set a user-level model provider as the user's personal default.
+ *
+ * Personal default is workspace-scoped per (orgId, userId), so a user's
+ * personal default is independent of the org default — both can coexist
+ * thanks to `idx_model_providers_one_default_per_user`.
+ */
+export function setUserModelProviderDefault(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+): Promise<ModelProviderInfo> {
+  return setModelProviderDefault(orgId, userId, type);
+}
+
+/**
+ * Update model selection for a user-level provider
+ */
+export function updateUserModelProviderModel(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+  selectedModel?: string,
+): Promise<ModelProviderInfo> {
+  return updateModelProviderModel(orgId, userId, type, selectedModel);
+}
+
+/**
+ * Get the user-level default model provider for a framework.
+ *
+ * Mirrors `getOrgDefaultModelProvider` but scoped to (orgId, userId).
+ * Used by Wave 2's resolver to honor `prefer_personal_provider` (#11868).
+ */
+export function getUserDefaultModelProvider(
+  orgId: string,
+  userId: string,
+  framework: string,
+): Promise<ModelProviderInfo | null> {
+  return getDefaultModelProvider(orgId, userId, framework);
+}
+
+/**
+ * Get the user-level default model provider regardless of framework.
+ *
+ * Cross-framework fallback for the personal tier — mirrors
+ * `getOrgAnyDefaultModelProvider` for Epic #11520's "provider's framework
+ * wins" rule applied per-user.
+ */
+export function getUserAnyDefaultModelProvider(
+  orgId: string,
+  userId: string,
+): Promise<ModelProviderInfo | null> {
+  return getAnyDefaultModelProvider(orgId, userId);
+}
+
+/**
+ * Get the user-level model provider row for a specific type.
+ *
+ * Mirrors `getOrgModelProviderByType` but scoped to (orgId, userId). Returns
+ * null when the user has no row of that type.
+ */
+export async function getUserModelProviderByType(
+  orgId: string,
+  userId: string,
+  type: ModelProviderType,
+): Promise<ModelProviderInfo | null> {
+  const [row] = await globalThis.services.db
+    .select(selectProviderRow())
+    .from(modelProviders)
+    .leftJoin(secrets, eq(modelProviders.secretId, secrets.id))
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
   if (!(row.type in MODEL_PROVIDER_TYPES)) return null;
 
   return toModelProviderInfo({

@@ -3866,6 +3866,80 @@
           "Pruefen Sie den Beitrag ueber die Vorschau-URL, nicht im CMS-Admin. Formatierungsprobleme und Lesefluss zeigen sich erst, wenn der Beitrag auf der tatsaechlichen Seite gerendert wird.",
           "Fixieren Sie Ihr Titelbild-Template -- Farbpalette, Komposition, Logo-Platzierung -- und variieren Sie nur die Metapher. Konsistentes visuelles Branding baut sich ueber die Zeit auf und verhindert Design-Drift."
         ]
+      },
+      "publish-use-case-pages": {
+        "title": "Use-Case-Seiten direkt aus Slack auf eurer Website veroeffentlichen",
+        "description": "Teilt einen Link oder beschreibt einen Workflow in Slack und Zero schreibt die komplette Use-Case-Seite, uebersetzt sie in vier Sprachen und oeffnet einen mergefertigen PR.",
+        "timeSaved": "~45 Min pro Use Case gespart",
+        "scenario": "Euer Team hat gerade einen neuen Workflow ausgeliefert, den Kunden lieben. Marketing moechte ihn in die Use-Cases-Galerie auf der Website aufnehmen, aber das bedeutet Seitentext schreiben, Szenario strukturieren, Prompt-Varianten und Schritt-fuer-Schritt-Anleitung erstellen, alles ins Deutsche, Japanische und Spanische uebersetzen, die richtigen Metadaten in die Codebase einpflegen und einen sauberen PR oeffnen. Bis jemand eine freie Stunde findet, warten schon drei weitere Use Cases. Ihr postet den Workflow in Slack, taggt Zero, und in wenigen Minuten erscheint ein produktionsreifer PR mit der vollstaendigen Seite in allen vier Sprachen, passend zum Designsystem der Website.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero fuege das als Use Case auf unserer Website hinzu: [Link oder Beschreibung des Workflows einfuegen]. Zielgruppe sind Marketing-Teams. Slack und GitHub als Integrationen einbinden."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero fuege das auf unsere Use-Cases-Seite hinzu"
+          },
+          {
+            "label": "Aus einem Thread",
+            "prompt": "@Zero mach aus diesem Slack-Thread eine Use-Case-Seite auf unserer Website"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero fuege das auf unsere Use-Cases-Seite hinzu"
+          },
+          {
+            "name": "Zero",
+            "text": "Erledigt. Neuer PR ist live: vm0-ai/vm0#9261. Die Galerie hat eine neue Karte mit Avatar und Integrations-Icons, die Detailseite enthaelt Headline, Szenario, Prompt-Varianten, Schritt-fuer-Schritt-Anleitung und Best Practices. Alle vier Sprachen (EN, DE, JA, ES) sind enthalten. CI sollte automatisch eine Vorschau generieren."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero analysiert den geteilten Workflow",
+            "description": "Zero liest den Link, Thread oder die Beschreibung, die ihr in Slack geteilt habt. Es identifiziert die Zielgruppe, das geloeste Problem, die beteiligten Tools und die wichtigsten Schritte. Bei Unklarheiten stellt es eine Rueckfrage, bevor es loslegt."
+          },
+          {
+            "title": "Zero schreibt die komplette Seite in vier Sprachen",
+            "description": "Zero verfasst alle Felder, die die Seite braucht: Titel, Beschreibung, Szenario, Prompt-Varianten, Slack-Vorschau, Schritt-fuer-Schritt-Anleitung, naechste Schritte, Integrations-Hinweise und Tipps. Anschliessend uebersetzt es alles natuerlich ins Deutsche, Japanische und Spanische, mit angepassten Redewendungen statt woertlicher Uebersetzung."
+          },
+          {
+            "title": "Zero oeffnet einen PR mit allen Aenderungen",
+            "description": "Zero committet den neuen Use-Case-Eintrag in die Datendatei und alle vier Sprach-Dateien, fuegt bereitgestellte Screenshots hinzu und oeffnet einen Pull Request im Website-Repo. Der PR loest CI und eine Deploy-Vorschau aus, damit ihr die Live-Seite vor dem Mergen pruefen koennt."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Texte pruefen und verfeinern",
+            "description": "Schaut euch die Deploy-Vorschau an und bittet Zero, den Ton anzupassen, Details zu ergaenzen oder eine Prompt-Variante auszutauschen.",
+            "examplePrompt": "@Zero aendere im gerade geoeffneten PR das Szenario so, dass die Zeitersparnis staerker betont wird und der Uebersetzungsschritt weniger Raum einnimmt."
+          },
+          {
+            "title": "Mehrere Use Cases auf einmal einreichen",
+            "description": "Sammelt mehrere Workflows und lasst Zero alle in einer Sitzung hinzufuegen.",
+            "examplePrompt": "@Zero hier sind drei weitere Workflows fuer die Use-Cases-Seite: [1] ... [2] ... [3] ..."
+          },
+          {
+            "title": "Die Galerie regelmaessig aktuell halten",
+            "description": "Richtet eine wiederkehrende Erinnerung ein, um ausgelieferte Workflows zu pruefen und die besten in Seiten umzuwandeln.",
+            "examplePrompt": "@Zero pruefe jeden Freitag den #shipped-Channel auf neue Workflows und schlage vor, welche als Use-Case-Seiten aufgenommen werden sollten."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub - Zero erstellt einen Branch, committet die Daten- und Sprach-Dateien und oeffnet einen Pull Request im Website-Repository. Schreibzugriff auf das Repo ist erforderlich."
+          },
+          {
+            "description": "Slack - Zero empfaengt die Workflow-Beschreibung und antwortet mit dem PR-Link und einer Zusammenfassung der Aenderungen. So wird der gesamte Ablauf angestossen."
+          }
+        ],
+        "tips": [
+          "Je mehr Kontext ihr Zero gebt, desto besser wird die Seite. Teilt einen Thread mit echten Beispielen, Screenshots oder einer kurzen Videobeschreibung statt nur einem Einzeiler.",
+          "Prueft die Deploy-Vorschau vor dem Mergen. Zero trifft die Struktur jedes Mal, aber euer Team kennt die Markensprache am besten. Ein kurzer Text-Check macht die Seite authentisch.",
+          "Kombiniert das mit dem Content-Performance-Report-Use-Case, um zu sehen, welche Seiten die meisten Anmeldungen bringen, und setzt auf diese Workflow-Kategorien."
+        ]
       }
     },
     "filter": {

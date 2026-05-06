@@ -1715,6 +1715,39 @@ export const USE_CASES: UseCase[] = [
     promptVariantCount: 3,
     slackPreviewCount: 2,
   },
+
+  {
+    slug: "publish-use-case-pages",
+    color: "#b06e4a",
+    screenshots: ["/assets/use-cases/publish-use-case-pages.png"],
+    avatar: {
+      rotation: 4,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 4,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["marketing"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, GITHUB],
+    integrations: [
+      { connector: GITHUB, required: true },
+      { connector: SLACK, required: true },
+    ],
+    relatedSlugs: [
+      "multilingual-cms-publishing",
+      "brief-to-draft-content",
+      "docs-auto-update",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
 ];
 
 // ---------------------------------------------------------------------------

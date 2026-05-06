@@ -217,6 +217,7 @@ describe("VM0 managed model provider", () => {
 
       const result = await resolveModelProviderSecrets(
         orgId,
+        userId,
         "claude-code",
         false,
       );
@@ -251,6 +252,7 @@ describe("VM0 managed model provider", () => {
 
       const result = await resolveModelProviderSecrets(
         orgId,
+        userId,
         "claude-code",
         false,
       );
@@ -287,6 +289,7 @@ describe("VM0 managed model provider", () => {
 
       const result = await resolveModelProviderSecrets(
         orgId,
+        userId,
         "claude-code",
         false,
       );

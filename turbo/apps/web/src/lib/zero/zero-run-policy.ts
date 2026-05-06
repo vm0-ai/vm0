@@ -20,7 +20,7 @@ import {
   getOrgDefaultModelProviderType,
   getOrgAnyDefaultModelProvider,
   getOrgAnyDefaultModelProviderType,
-  getModelProviderByIdForOrg,
+  getModelProviderById,
 } from "./model-provider/model-provider-service";
 import type { Database } from "../../types/global";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
@@ -152,6 +152,7 @@ export async function validateComposeRequirements(
  */
 export async function resolveProviderTypeForAdmission(params: {
   orgId: string;
+  userId: string;
   modelProvider?: string | null;
   modelProviderId?: string | null;
   composeFramework: string;
@@ -160,8 +161,9 @@ export async function resolveProviderTypeForAdmission(params: {
     return params.modelProvider as ModelProviderType;
   }
   if (params.modelProviderId) {
-    const row = await getModelProviderByIdForOrg(
+    const row = await getModelProviderById(
       params.orgId,
+      params.userId,
       params.modelProviderId,
     );
     return row?.type ?? null;

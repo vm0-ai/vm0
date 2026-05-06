@@ -206,6 +206,7 @@ async function resolveSecretsAndEnvironment(
     fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
     resolveModelProviderSecrets(
       orgId,
+      userId,
       framework,
       hasExplicitModelProviderConfig,
       modelProvider,

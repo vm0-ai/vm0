@@ -604,6 +604,7 @@ export async function dispatchQueuedZeroRun(
   const composeFramework = composeAgents[0]?.framework ?? "claude-code";
   const admissionProviderType = await resolveProviderTypeForAdmission({
     orgId: params.orgId,
+    userId: params.userId,
     modelProvider: params.modelProvider,
     modelProviderId: params.modelProviderId,
     composeFramework,

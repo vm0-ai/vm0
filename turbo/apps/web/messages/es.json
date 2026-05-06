@@ -3866,6 +3866,80 @@
           "Revisa en la URL de vista previa, no en el panel de administracion del CMS. Los problemas de formato, ritmo y legibilidad solo se notan cuando el articulo se renderiza en la pagina real.",
           "Fija tu plantilla de portada -- paleta de colores, composicion, ubicacion del logo -- y solo varia la metafora. Un branding visual consistente se acumula con el tiempo y previene la deriva de diseno entre articulos."
         ]
+      },
+      "publish-use-case-pages": {
+        "title": "Publicar paginas de casos de uso en tu sitio web desde Slack",
+        "description": "Comparte un enlace o describe un flujo de trabajo en Slack y Zero escribe la pagina completa del caso de uso, la traduce a cuatro idiomas y abre un PR listo para fusionar.",
+        "timeSaved": "~45 min ahorrados por caso de uso",
+        "scenario": "Tu equipo acaba de lanzar un nuevo flujo de trabajo que encanta a los clientes. Marketing quiere agregarlo a la galeria de casos de uso del sitio web, pero eso implica escribir el texto de la pagina, estructurar el escenario, crear variantes de prompt y el desglose paso a paso, traducir todo al aleman, japones y espanol, agregar los metadatos correctos al codigo y abrir un PR limpio. Para cuando alguien encuentra una hora libre, ya hay tres casos de uso mas esperando. Pegas el flujo de trabajo en Slack, etiquetas a Zero, y en minutos aparece un PR listo para produccion con la pagina completa en los cuatro idiomas, alineado con el sistema de diseno del sitio.",
+        "promptVariants": [
+          {
+            "label": "Detallado",
+            "prompt": "@Zero agrega esto a nuestra pagina de casos de uso: [pega un enlace o descripcion del flujo de trabajo]. El publico objetivo son equipos de marketing. Incluye Slack y GitHub como integraciones."
+          },
+          {
+            "label": "Rapido",
+            "prompt": "@Zero agrega esto a nuestra pagina de casos de uso"
+          },
+          {
+            "label": "Desde un hilo",
+            "prompt": "@Zero convierte este hilo de Slack en una pagina de caso de uso en nuestro sitio web"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero agrega esto a nuestra pagina de casos de uso"
+          },
+          {
+            "name": "Zero",
+            "text": "Listo. Nuevo PR publicado: vm0-ai/vm0#9261. La galeria tiene una nueva tarjeta con avatar e iconos de integracion, y la pagina de detalle incluye titular, escenario, variantes de prompt, desglose paso a paso y mejores practicas. Los cuatro idiomas (EN, DE, JA, ES) estan incluidos. CI deberia generar una vista previa automaticamente."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero analiza el flujo de trabajo compartido",
+            "description": "Zero lee el enlace, hilo o descripcion que compartiste en Slack. Identifica la persona objetivo, el problema que se resuelve, las herramientas involucradas y los pasos clave. Si algo no esta claro, hace una pregunta antes de continuar."
+          },
+          {
+            "title": "Zero escribe la pagina completa en cuatro idiomas",
+            "description": "Zero redacta todos los campos que necesita la pagina: titulo, descripcion, escenario, variantes de prompt, vista previa de Slack, desglose paso a paso, proximas acciones, notas de integracion y consejos. Luego traduce todo de forma natural al aleman, japones y espanol, adaptando expresiones en lugar de traducir palabra por palabra."
+          },
+          {
+            "title": "Zero abre un PR con todos los cambios",
+            "description": "Zero hace commit del nuevo caso de uso en el archivo de datos y los cuatro archivos de idiomas, agrega capturas de pantalla proporcionadas y abre un pull request en el repositorio del sitio web. El PR activa CI y una vista previa de despliegue para que puedas ver la pagina en vivo antes de fusionar."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Revisar y refinar el texto",
+            "description": "Revisa la vista previa del despliegue y pide a Zero que ajuste el tono, agregue detalles o cambie una variante de prompt.",
+            "examplePrompt": "@Zero en el PR que acabas de abrir, cambia el escenario para enfocarte mas en el ahorro de tiempo y menos en el paso de traduccion."
+          },
+          {
+            "title": "Enviar varios casos de uso a la vez",
+            "description": "Acumula varios flujos de trabajo y haz que Zero los agregue todos en una sesion.",
+            "examplePrompt": "@Zero aqui hay tres flujos de trabajo mas para la pagina de casos de uso: [1] ... [2] ... [3] ..."
+          },
+          {
+            "title": "Mantener la galeria actualizada con regularidad",
+            "description": "Configura un recordatorio recurrente para revisar flujos de trabajo lanzados y convertir los mejores en paginas.",
+            "examplePrompt": "@Zero cada viernes, revisa el canal #shipped en busca de nuevos flujos de trabajo y sugiere cuales deberian convertirse en paginas de casos de uso."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub - Zero crea una rama, hace commit de los archivos de datos e idiomas y abre un pull request en el repositorio del sitio web. Se requiere acceso de escritura al repositorio."
+          },
+          {
+            "description": "Slack - Zero recibe la descripcion del flujo de trabajo y responde con el enlace del PR y un resumen de lo que se agrego. Asi es como se activa todo el flujo."
+          }
+        ],
+        "tips": [
+          "Cuanto mas contexto le des a Zero, mejor sera la pagina. Comparte un hilo con ejemplos reales, capturas de pantalla o una breve descripcion de video en lugar de una sola linea.",
+          "Revisa la vista previa del despliegue antes de fusionar. Zero acierta con la estructura cada vez, pero tu equipo conoce mejor la voz de la marca. Una revision rapida del texto hace que la pagina se sienta autentica.",
+          "Combina esto con el caso de uso de informe de rendimiento de contenido para rastrear que paginas generan mas registros y apostar por esas categorias de flujos de trabajo."
+        ]
       }
     },
     "filter": {
