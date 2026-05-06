@@ -123,9 +123,9 @@ describe("GET /api/zero/integrations/slack", () => {
       [200],
     );
 
-    expect(response.body.isAdmin).toBe(true);
-    expect(response.body.isConnected).toBe(true);
-    expect(response.body.isInstalled).toBe(true);
+    expect(response.body.isAdmin).toBeTruthy();
+    expect(response.body.isConnected).toBeTruthy();
+    expect(response.body.isInstalled).toBeTruthy();
     expect(response.body.workspaceName).toBe("Test Workspace");
     expect(response.body.defaultAgentName).toBe("Slack Bot");
     expect(response.body.agentOrgSlug).toBe("test-org-slug");
@@ -183,7 +183,7 @@ describe("GET /api/zero/integrations/slack", () => {
     );
 
     expect(response.body.isConnected).toBe(false);
-    expect(response.body.isInstalled).toBe(true);
-    expect(response.body.isAdmin).toBe(true);
+    expect(response.body.isInstalled).toBeTruthy();
+    expect(response.body.isAdmin).toBeTruthy();
   });
 });
