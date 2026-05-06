@@ -1,7 +1,7 @@
 import type { ConnectorConfig } from "../connectors";
 
-export const chatgptOauth = {
-  "chatgpt-oauth": {
+export const codexOauth = {
+  "codex-oauth": {
     label: "ChatGPT (OAuth)",
     category: "ai-general-models",
     environmentMapping: {

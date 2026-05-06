@@ -28,7 +28,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/cli/auth/device/route.ts",
   "app/api/cli/auth/org/route.ts",
   "app/api/cli/auth/test-approve/route.ts",
-  "app/api/cli/auth/test-chatgpt-oauth/route.ts",
+  "app/api/cli/auth/test-codex-oauth/route.ts",
   "app/api/cli/auth/test-connector/route.ts",
   "app/api/cli/auth/test-enable-connector/route.ts",
   "app/api/cli/auth/test-token/route.ts",

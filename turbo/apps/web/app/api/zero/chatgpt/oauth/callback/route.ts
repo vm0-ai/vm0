@@ -5,11 +5,11 @@ import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { getOrigin } from "../../../../../../src/lib/shared/request/get-origin";
 import { getAppUrl } from "../../../../../../src/lib/zero/url";
 import { logger } from "../../../../../../src/lib/shared/logger";
-import { isChatgptOauthEligible } from "../../../../../../src/lib/zero/model-provider/chatgpt-oauth-eligibility";
+import { isCodexOauthEligible } from "../../../../../../src/lib/zero/model-provider/codex-oauth-eligibility";
 import {
   exchangeChatgptCode,
   isChatgptFreePlanError,
-} from "../../../../../../src/lib/zero/connector/providers/chatgpt-oauth";
+} from "../../../../../../src/lib/zero/connector/providers/codex-oauth";
 import { upsertOrgMultiAuthModelProvider } from "../../../../../../src/lib/zero/model-provider/model-provider-service";
 import {
   STATE_COOKIE_NAME,
@@ -19,7 +19,7 @@ import {
 } from "../_cookies";
 import { parseState } from "../_state";
 
-const log = logger("api:zero-chatgpt-oauth-callback");
+const log = logger("api:zero-codex-oauth-callback");
 
 /**
  * ChatGPT OAuth Callback Endpoint
@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     return clearCookies(redirectError(appUrl, "state_mismatch"));
   }
 
-  const eligible = await isChatgptOauthEligible(state.orgId, state.vm0UserId);
+  const eligible = await isCodexOauthEligible(state.orgId, state.vm0UserId);
   if (!eligible) {
     return clearCookies(redirectError(appUrl, "ineligible"));
   }

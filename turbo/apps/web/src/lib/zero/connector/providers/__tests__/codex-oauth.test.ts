@@ -18,8 +18,8 @@ import {
   CHATGPT_OAUTH_CLIENT_ID,
   CHATGPT_OAUTH_ISSUER,
   CHATGPT_OAUTH_SCOPES,
-} from "../chatgpt-oauth";
-import { chatgptOauthHandler } from "../chatgpt-oauth-handler";
+} from "../codex-oauth";
+import { codexOauthHandler } from "../codex-oauth-handler";
 
 const TOKEN_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/token`;
 const REVOKE_URL = `${CHATGPT_OAUTH_ISSUER}/oauth/revoke`;
@@ -88,7 +88,7 @@ async function sha256Base64Url(input: string): Promise<string> {
     .replace(/=+$/, "");
 }
 
-describe("connector/providers/chatgpt-oauth", () => {
+describe("connector/providers/codex-oauth", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -494,23 +494,19 @@ describe("connector/providers/chatgpt-oauth", () => {
     });
   });
 
-  describe("chatgptOauthHandler", () => {
-    it("is registered in PROVIDER_HANDLERS under chatgpt-oauth key", () => {
-      expect(PROVIDER_HANDLERS["chatgpt-oauth"]).toBe(chatgptOauthHandler);
+  describe("codexOauthHandler", () => {
+    it("is registered in PROVIDER_HANDLERS under codex-oauth key", () => {
+      expect(PROVIDER_HANDLERS["codex-oauth"]).toBe(codexOauthHandler);
     });
 
     it("getClientId returns the hardcoded Codex public client_id", () => {
-      const env = {} as Parameters<typeof chatgptOauthHandler.getClientId>[0];
-      expect(chatgptOauthHandler.getClientId(env)).toBe(
-        CHATGPT_OAUTH_CLIENT_ID,
-      );
+      const env = {} as Parameters<typeof codexOauthHandler.getClientId>[0];
+      expect(codexOauthHandler.getClientId(env)).toBe(CHATGPT_OAUTH_CLIENT_ID);
     });
 
     it("getClientSecret returns undefined (PKCE-only)", () => {
-      const env = {} as Parameters<
-        typeof chatgptOauthHandler.getClientSecret
-      >[0];
-      expect(chatgptOauthHandler.getClientSecret(env)).toBeUndefined();
+      const env = {} as Parameters<typeof codexOauthHandler.getClientSecret>[0];
+      expect(codexOauthHandler.getClientSecret(env)).toBeUndefined();
     });
 
     it("returns documented secret names", () => {
@@ -521,7 +517,7 @@ describe("connector/providers/chatgpt-oauth", () => {
 
   describe("registry/implementation drift guard", () => {
     it("connector entry oauth URLs match the implementation constants", () => {
-      const connector = CONNECTOR_TYPES["chatgpt-oauth"];
+      const connector = CONNECTOR_TYPES["codex-oauth"];
       expect(connector.oauth?.authorizationUrl).toBe(
         `${CHATGPT_OAUTH_ISSUER}/oauth/authorize`,
       );
@@ -536,7 +532,7 @@ describe("connector/providers/chatgpt-oauth", () => {
       // not the registry — assert structurally that the registry oauth entry
       // does not leak a `clientId` (or any unexpected key) so the PKCE-only
       // boundary stays explicit.
-      const oauth = CONNECTOR_TYPES["chatgpt-oauth"].oauth;
+      const oauth = CONNECTOR_TYPES["codex-oauth"].oauth;
       expect(oauth).toBeDefined();
       expect(Object.keys(oauth ?? {}).sort()).toEqual([
         "authorizationUrl",
@@ -548,11 +544,9 @@ describe("connector/providers/chatgpt-oauth", () => {
     it("handler client identity matches the implementation constant (PKCE-only)", () => {
       // Pair check: registry has no clientId, handler resolves to the
       // canonical Codex public client_id, and getClientSecret stays undefined.
-      const env = {} as Parameters<typeof chatgptOauthHandler.getClientId>[0];
-      expect(chatgptOauthHandler.getClientId(env)).toBe(
-        CHATGPT_OAUTH_CLIENT_ID,
-      );
-      expect(chatgptOauthHandler.getClientSecret(env)).toBeUndefined();
+      const env = {} as Parameters<typeof codexOauthHandler.getClientId>[0];
+      expect(codexOauthHandler.getClientId(env)).toBe(CHATGPT_OAUTH_CLIENT_ID);
+      expect(codexOauthHandler.getClientSecret(env)).toBeUndefined();
     });
   });
 });

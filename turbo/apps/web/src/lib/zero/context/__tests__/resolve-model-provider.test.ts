@@ -178,7 +178,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     // The codex-oauth-token registry marks CHATGPT_REFRESH_TOKEN and
     // CHATGPT_ID_TOKEN as serverOnly; the resolver filter drops them from
     // the result.secrets map before it flows into the runner job context.
-    const userId = uniqueId("chatgpt-oauth-leak");
+    const userId = uniqueId("codex-oauth-leak");
     const orgId = await setupOrg(userId);
     await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
     for (const [name, value] of [
@@ -500,7 +500,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     context.setupMocks();
   });
 
-  it("emits CHATGPT_ACCESS_TOKEN → 'chatgpt-oauth' for codex-oauth-token", async () => {
+  it("emits CHATGPT_ACCESS_TOKEN → 'codex-oauth' for codex-oauth-token", async () => {
     const userId = uniqueId("scm-chatgpt");
     const orgId = await setupOrg(userId);
     await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
@@ -521,7 +521,7 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     );
 
     expect(result.secretConnectorMap).toEqual({
-      CHATGPT_ACCESS_TOKEN: "chatgpt-oauth",
+      CHATGPT_ACCESS_TOKEN: "codex-oauth",
     });
   });
 

@@ -21,7 +21,7 @@ import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
-import { isChatgptRefreshError } from "./providers/chatgpt-oauth";
+import { isChatgptRefreshError } from "./providers/codex-oauth";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { publishUserSignal } from "../../infra/realtime/client";
 
@@ -763,7 +763,7 @@ export async function refreshConnectorAccessToken(
     return null;
   }
   // clientSecret may legitimately be undefined for PKCE-only handlers
-  // (e.g. chatgpt-oauth). The handler's refreshToken is the source of truth
+  // (e.g. codex-oauth). The handler's refreshToken is the source of truth
   // for credential needs — if a non-PKCE handler is misconfigured the
   // upstream call will fail and the catch below records the error.
   const clientSecret = handler.getClientSecret(env);

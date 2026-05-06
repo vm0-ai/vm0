@@ -48,7 +48,7 @@ describe("handler-key bridge tables stay in sync", () => {
 
 describe("getRefreshSourceType", () => {
   it("returns 'model-provider' for bridged handler keys", () => {
-    expect(getRefreshSourceType("chatgpt-oauth")).toBe("model-provider");
+    expect(getRefreshSourceType("codex-oauth")).toBe("model-provider");
   });
 
   it("returns 'connector' for unbridged handler keys (default)", () => {

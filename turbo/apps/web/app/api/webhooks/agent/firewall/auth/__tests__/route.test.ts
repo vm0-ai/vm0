@@ -1577,7 +1577,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             authHeaders: {
               Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
             },
-            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "chatgpt-oauth" },
+            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth" },
           },
           testToken,
         ),
@@ -1586,7 +1586,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.headers.Authorization).toBe("Bearer fresh-chatgpt-at");
-      expect(data.refreshedConnectors).toEqual(["chatgpt-oauth"]);
+      expect(data.refreshedConnectors).toEqual(["codex-oauth"]);
 
       // Rotated refresh_token persisted under type='model-provider'
       const persistedRefresh = await readChatgptRefreshTokenSecret();
@@ -1640,7 +1640,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
             authHeaders: {
               Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
             },
-            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "chatgpt-oauth" },
+            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "codex-oauth" },
           },
           testToken,
         ),
@@ -1652,7 +1652,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       expect(response.status).toBe(502);
       const data = await response.json();
       expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
-      expect(data.error.connectors).toEqual(["chatgpt-oauth"]);
+      expect(data.error.connectors).toEqual(["codex-oauth"]);
 
       // Metadata row marked stale with the typed code
       const row = await findTestModelProviderTokenState(

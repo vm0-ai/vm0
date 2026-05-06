@@ -552,7 +552,7 @@ export type NonFirewallConnectorType =
   | "minio" // AWS Signature V4
   // OAuth-only connectors used by model-provider pipelines (firewall integration
   // lives in MODEL_PROVIDER_FIREWALL_CONFIGS, not here).
-  | "chatgpt-oauth"
+  | "codex-oauth"
   // Other
   | "computer"; // not an API connector
 

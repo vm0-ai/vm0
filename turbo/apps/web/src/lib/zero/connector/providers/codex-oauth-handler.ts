@@ -7,9 +7,9 @@ import {
   getChatgptSecretName,
   refreshChatgptToken,
   revokeChatgptToken,
-} from "./chatgpt-oauth";
+} from "./codex-oauth";
 
-export const chatgptOauthHandler: ProviderHandler = {
+export const codexOauthHandler: ProviderHandler = {
   buildAuthUrl: buildChatgptAuthorizationUrl,
   async exchangeCode(
     clientId,

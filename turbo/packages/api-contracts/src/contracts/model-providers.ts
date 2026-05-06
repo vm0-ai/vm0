@@ -1064,7 +1064,7 @@ export const modelProviderResponseSchema = z.object({
   updatedAt: z.string(),
   // ChatGPT-only metadata populated by the codex-oauth-token callback.
   // Other provider types omit these. Mirrors the server-side connector
-  // shape in apps/web/src/lib/zero/connector/providers/chatgpt-oauth.ts.
+  // shape in apps/web/src/lib/zero/connector/providers/codex-oauth.ts.
   // The corresponding server route lands in #11909; declared here so the
   // platform UI does not have to bypass schema validation to read them.
   workspaceName: z.string().nullable().optional(),

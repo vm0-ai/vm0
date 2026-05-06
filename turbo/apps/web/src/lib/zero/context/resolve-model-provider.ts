@@ -169,7 +169,7 @@ interface ModelProviderSecretResult {
    *  Used for model usage billing. */
   selectedModel?: string;
   /** Maps secret/env-var names → connector handler key for refresh-capable
-   *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "chatgpt-oauth").
+   *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "codex-oauth").
    *  Merged into the wire `secretConnectorMap` AFTER `filterSecretConnectorMap`
    *  runs — the filter would otherwise drop these because they also appear in
    *  `secrets`, but model-provider entries ARE the source, not an override target. */

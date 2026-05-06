@@ -3,8 +3,8 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { getOrigin } from "../../../../../../src/lib/shared/request/get-origin";
-import { isChatgptOauthEligible } from "../../../../../../src/lib/zero/model-provider/chatgpt-oauth-eligibility";
-import { buildChatgptAuthorizationUrl } from "../../../../../../src/lib/zero/connector/providers/chatgpt-oauth";
+import { isCodexOauthEligible } from "../../../../../../src/lib/zero/model-provider/codex-oauth-eligibility";
+import { buildChatgptAuthorizationUrl } from "../../../../../../src/lib/zero/connector/providers/codex-oauth";
 import {
   STATE_COOKIE_NAME,
   PKCE_COOKIE_NAME,
@@ -28,7 +28,7 @@ import { serializeState } from "../_state";
  * never accepted from the client — so a caller cannot initiate OAuth for
  * an arbitrary org.
  *
- * Gated by `isChatgptOauthEligible(orgId, userId)` — returns 404 when
+ * Gated by `isCodexOauthEligible(orgId, userId)` — returns 404 when
  * the feature switch is off so the entire surface stays hidden.
  */
 export async function GET(request: Request) {
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
   const orgId = org.orgId;
   const vm0UserId = authCtx.userId;
 
-  const eligible = await isChatgptOauthEligible(orgId, vm0UserId);
+  const eligible = await isCodexOauthEligible(orgId, vm0UserId);
   if (!eligible) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }

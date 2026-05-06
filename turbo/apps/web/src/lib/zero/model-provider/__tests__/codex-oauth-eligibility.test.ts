@@ -3,16 +3,16 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../../__tests__/test-helpers";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
 import { updateUserFeatureSwitches } from "../../user/feature-switches-service";
-import { isChatgptOauthEligible } from "../chatgpt-oauth-eligibility";
+import { isCodexOauthEligible } from "../codex-oauth-eligibility";
 
 const context = testContext();
 
-describe("isChatgptOauthEligible", () => {
+describe("isCodexOauthEligible", () => {
   it("returns false when registry default is OFF and no per-user override exists", async () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
 
-    const result = await isChatgptOauthEligible(orgId, userId);
+    const result = await isCodexOauthEligible(orgId, userId);
 
     expect(result).toBe(false);
   });
@@ -24,7 +24,7 @@ describe("isChatgptOauthEligible", () => {
       [FeatureSwitchKey.ChatgptOauthProvider]: true,
     });
 
-    const result = await isChatgptOauthEligible(orgId, userId);
+    const result = await isCodexOauthEligible(orgId, userId);
 
     expect(result).toBe(true);
   });
@@ -36,7 +36,7 @@ describe("isChatgptOauthEligible", () => {
       [FeatureSwitchKey.ChatgptOauthProvider]: false,
     });
 
-    const result = await isChatgptOauthEligible(orgId, userId);
+    const result = await isCodexOauthEligible(orgId, userId);
 
     expect(result).toBe(false);
   });

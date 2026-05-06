@@ -6,7 +6,7 @@ import {
   testContext,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
-import { CHATGPT_OAUTH_CLIENT_ID } from "../../../../../../../src/lib/zero/connector/providers/chatgpt-oauth";
+import { CHATGPT_OAUTH_CLIENT_ID } from "../../../../../../../src/lib/zero/connector/providers/codex-oauth";
 
 vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
   const actual =

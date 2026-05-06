@@ -34,7 +34,7 @@ const bodySchema = z.object({
 const DEFAULT_EXPIRES_IN_SECS = 600;
 
 /**
- * POST /api/cli/auth/test-chatgpt-oauth?email=<email>
+ * POST /api/cli/auth/test-codex-oauth?email=<email>
  *
  * Test-only endpoint for E2E tests of the ChatGPT-OAuth Codex flow.
  * Seeds a `codex-oauth-token` model_providers row + the four secrets

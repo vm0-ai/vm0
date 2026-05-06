@@ -6,7 +6,7 @@ import { cn } from "@vm0/ui";
 
 const CONNECTOR_ICON_ALIASES = {
   "slack-webhook": "slack",
-  "chatgpt-oauth": "openai",
+  "codex-oauth": "openai",
 } as const satisfies Partial<Record<ConnectorType, ConnectorType>>;
 
 export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
