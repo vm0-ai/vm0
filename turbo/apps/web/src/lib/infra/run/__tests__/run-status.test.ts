@@ -6,10 +6,14 @@ import {
 } from "../../../../__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestCheckpoint,
   findTestRunRecord,
 } from "../../../../__tests__/api-test-helpers";
 import { transitionRunStatus } from "../run-status";
-import { seedTestRun } from "../../../../__tests__/db-test-seeders/runs";
+import {
+  seedInFlightCheckpointWhileAgentRunLocked,
+  seedTestRun,
+} from "../../../../__tests__/db-test-seeders/runs";
 
 const context = testContext();
 
@@ -106,5 +110,71 @@ describe("transitionRunStatus", () => {
 
     const run = await findTestRunRecord(runId);
     expect(["completed", "failed"]).toContain(run!.status);
+  });
+
+  it("should attach an existing checkpoint result on terminal transition", async () => {
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      status: "running",
+    });
+    const checkpoint = await createTestCheckpoint(user.userId, runId);
+
+    const result = await transitionRunStatus(
+      runId,
+      { status: "timeout", completedAt: new Date() },
+      ["pending", "running"],
+    );
+
+    expect(result).toBe(true);
+    const run = await findTestRunRecord(runId);
+    expect(run!.status).toBe("timeout");
+    expect(run!.result).toMatchObject({
+      checkpointId: checkpoint.checkpointId,
+      agentSessionId: checkpoint.agentSessionId,
+      conversationId: checkpoint.conversationId,
+    });
+  });
+
+  it("should wait for in-flight checkpoint before terminal transition", async () => {
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      status: "running",
+    });
+    const artifactSnapshots = [
+      {
+        name: "test-artifact",
+        version: "v1",
+        mountPath: "/home/user/workspace",
+      },
+    ];
+
+    const {
+      checkpointId,
+      conversationId,
+      result: transitioned,
+    } = await seedInFlightCheckpointWhileAgentRunLocked({
+      runId,
+      cliAgentSessionId: "in-flight-checkpoint-session",
+      cliAgentSessionHistoryHash:
+        "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
+      artifactSnapshots,
+      startWhileLocked: () => {
+        return transitionRunStatus(
+          runId,
+          { status: "cancelled", completedAt: new Date() },
+          ["pending", "running"],
+        );
+      },
+    });
+
+    expect(transitioned).toBe(true);
+    const run = await findTestRunRecord(runId);
+    expect(run!.status).toBe("cancelled");
+    expect(run!.result).toMatchObject({
+      checkpointId,
+      agentSessionId: run!.sessionId,
+      conversationId,
+      artifact: {
+        "test-artifact": "v1",
+      },
+    });
   });
 });
