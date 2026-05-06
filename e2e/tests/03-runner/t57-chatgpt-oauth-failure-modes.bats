@@ -29,9 +29,10 @@ setup_file() {
     # disable_* (best-effort cleanup; safe even if nothing to delete).
     disable_chatgpt_oauth_provider
 
-    local token="${VM0_TEST_TOKEN:-${ZERO_TOKEN:-${VM0_TOKEN:-}}}"
+    local token
+    token=$(_chatgpt_oauth_token)
     if [ -z "$token" ]; then
-        skip "no auth token available — VM0_TEST_TOKEN/ZERO_TOKEN/VM0_TOKEN not set"
+        skip "no auth token available — VM0_TEST_TOKEN/ZERO_TOKEN/VM0_TOKEN not set and ~/.vm0/config.json absent"
     fi
 
     local curl_args=(-s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token")
