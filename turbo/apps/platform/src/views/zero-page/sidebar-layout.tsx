@@ -686,7 +686,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const setExpanded = useSet(setSidebarExpanded$);
 
   return (
-    <div className="zero-app flex h-svh w-full bg-background">
+    <div className="zero-app flex h-svh [@media(display-mode:standalone)]:h-dvh w-full bg-background">
       <OrgManageDialogMount />
       <QueueDrawer />
       <ZeroSidebar />
