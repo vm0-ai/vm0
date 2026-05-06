@@ -2,7 +2,7 @@ use super::super::signals::{
     LifecycleController, handle_drain_signal, handle_resume_signal, handle_stopping_signal,
 };
 use super::super::*;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, future::Future};
 
 use crate::executor;
 use crate::idle_pool::{ParkCandidate, ParkCandidateParts, ParkResult, ParkingState};
@@ -439,6 +439,30 @@ pub(super) async fn seed_idle_pool_with_overrides(
     sandbox_id
 }
 
+const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+enum WaitProbe<T> {
+    Ready(T),
+    Pending(String),
+}
+
+async fn wait_for_probe<T, F, Fut>(timeout: Duration, mut probe: F) -> T
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = WaitProbe<T>>,
+{
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        match probe().await {
+            WaitProbe::Ready(value) => return value,
+            WaitProbe::Pending(message) => {
+                assert!(tokio::time::Instant::now() < deadline, "{message}");
+                tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+            }
+        }
+    }
+}
+
 /// Poll until `budget.allocated().2` (running_count) reaches `expected`.
 ///
 /// The active budget lease is dropped after `provider.complete()` in the
@@ -446,33 +470,31 @@ pub(super) async fn seed_idle_pool_with_overrides(
 /// the budget has been released yet. This helper avoids fixed sleeps as
 /// synchronization.
 pub(super) async fn wait_budget_count(budget: &ResourceBudget, expected: usize, timeout: Duration) {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        if budget.allocated().2 == expected {
-            return;
+    wait_for_probe(timeout, || async {
+        let actual = budget.allocated().2;
+        if actual == expected {
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "budget count did not reach {expected} within {timeout:?} (actual: {actual})",
+            ))
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "budget count did not reach {expected} within {timeout:?} (actual: {})",
-            budget.allocated().2,
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 }
 
 pub(super) async fn wait_idle_pool_len(pool: &SharedIdlePool, expected: usize, timeout: Duration) {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
+    wait_for_probe(timeout, || async {
         let actual = pool.lock().await.len();
         if actual == expected {
-            return;
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "idle pool length did not reach {expected} within {timeout:?} (actual: {actual})",
+            ))
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "idle pool length did not reach {expected} within {timeout:?} (actual: {actual})",
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 }
 
 /// Poll until the idle pool parking state reaches `expected`.
@@ -481,18 +503,17 @@ pub(super) async fn wait_parking_state(
     expected: ParkingState,
     timeout: Duration,
 ) {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
+    wait_for_probe(timeout, || async {
         let actual = pool.lock().await.parking_state();
         if actual == expected {
-            return;
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "idle pool parking state did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
+            ))
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "idle pool parking state did not reach {expected:?} within {timeout:?} (actual: {actual:?})",
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 }
 
 /// Pre-populate idle pool with an expired entry (parked 400s ago, timeout 300s).
@@ -588,28 +609,25 @@ pub(super) async fn wait_status_idle_sessions_and_active_runs(
     expected_idle_sessions.sort_unstable();
     let mut expected_active_runs = expected_active_runs.to_vec();
     expected_active_runs.sort_unstable();
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        let Some((idle_sessions, active_runs)) =
-            status_idle_sessions_and_active_runs_if_exists(status_path).await
-        else {
-            assert!(
-                tokio::time::Instant::now() < deadline,
+
+    wait_for_probe(timeout, || async {
+        match status_idle_sessions_and_active_runs_if_exists(status_path).await {
+            Some((idle_sessions, active_runs))
+                if idle_sessions == expected_idle_sessions
+                    && active_runs == expected_active_runs =>
+            {
+                WaitProbe::Ready(())
+            }
+            Some((idle_sessions, active_runs)) => WaitProbe::Pending(format!(
+                "status did not reach expected idle={expected_idle_sessions:?} active={expected_active_runs:?} within {timeout:?} (actual idle={idle_sessions:?} active={active_runs:?})",
+            )),
+            None => WaitProbe::Pending(format!(
                 "status file {} was not written within {timeout:?}",
                 status_path.display(),
-            );
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            continue;
-        };
-        if idle_sessions == expected_idle_sessions && active_runs == expected_active_runs {
-            return;
+            )),
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "status did not reach expected idle={expected_idle_sessions:?} active={expected_active_runs:?} within {timeout:?} (actual idle={idle_sessions:?} active={active_runs:?})",
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 }
 
 pub(super) async fn status_idle_sessions_and_active_runs_if_exists(
@@ -640,18 +658,17 @@ pub(super) async fn wait_status_idle_empty_with_active_run(
     timeout: Duration,
 ) {
     let expected = run_id.to_string();
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
+    wait_for_probe(timeout, || async {
         let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(status_path).await;
         if idle_sessions.is_empty() && active_runs.iter().any(|id| id == &expected) {
-            return;
+            WaitProbe::Ready(())
+        } else {
+            WaitProbe::Pending(format!(
+                "status did not atomically clear idle_vms and add active run {expected} within {timeout:?} (idle: {idle_sessions:?}, active: {active_runs:?})",
+            ))
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "status did not atomically clear idle_vms and add active run {expected} within {timeout:?} (idle: {idle_sessions:?}, active: {active_runs:?})",
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 }
 
 pub(super) fn mock_run_config_with_overrides(
@@ -677,17 +694,17 @@ pub(super) async fn wait_cancel_token(
     run_id: RunId,
     timeout: Duration,
 ) -> CancellationToken {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        if let Some(token) = tokens.lock().await.get(&run_id).cloned() {
-            return token;
+    wait_for_probe(timeout, || async {
+        let token = tokens.lock().await.get(&run_id).cloned();
+        if let Some(token) = token {
+            WaitProbe::Ready(token)
+        } else {
+            WaitProbe::Pending(format!(
+                "cancel token for {run_id} not found within {timeout:?}",
+            ))
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "cancel token for {run_id} not found within {timeout:?}",
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await
 }
 
 pub(super) async fn wait_cancel_token_removed(
@@ -695,15 +712,15 @@ pub(super) async fn wait_cancel_token_removed(
     run_id: RunId,
     timeout: Duration,
 ) {
-    let deadline = tokio::time::Instant::now() + timeout;
-    loop {
-        if !tokens.lock().await.contains_key(&run_id) {
-            return;
+    wait_for_probe(timeout, || async {
+        let present = tokens.lock().await.contains_key(&run_id);
+        if present {
+            WaitProbe::Pending(format!(
+                "cancel token for {run_id} still present after {timeout:?}",
+            ))
+        } else {
+            WaitProbe::Ready(())
         }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "cancel token for {run_id} still present after {timeout:?}",
-        );
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
+    })
+    .await;
 }
