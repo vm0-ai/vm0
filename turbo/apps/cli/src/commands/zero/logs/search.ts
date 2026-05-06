@@ -17,10 +17,17 @@ export interface LogsSearchCliOptions {
   afterContext?: string;
   beforeContext?: string;
   context?: string;
-  agent?: string;
+  agentId?: string;
   run?: string;
   since?: string;
   limit?: string;
+}
+
+interface LogsSearchCommandOptions extends Omit<
+  LogsSearchCliOptions,
+  "agentId"
+> {
+  agent?: string;
 }
 
 function renderEvent(event: RunEvent, renderer: EventRenderer): void {
@@ -149,7 +156,7 @@ export async function runLogsSearch(
 
   const response = await searchZeroLogs({
     keyword,
-    agent: options.agent,
+    agentId: options.agentId,
     runId: options.run,
     since,
     limit,
@@ -190,7 +197,10 @@ Examples:
   zero logs search "failed" --since 30d --limit 50`,
   )
   .action(
-    withErrorHandler(async (keyword: string, options: LogsSearchCliOptions) => {
-      await runLogsSearch(keyword, options);
-    }),
+    withErrorHandler(
+      async (keyword: string, options: LogsSearchCommandOptions) => {
+        const { agent, ...searchOptions } = options;
+        await runLogsSearch(keyword, { ...searchOptions, agentId: agent });
+      },
+    ),
   );

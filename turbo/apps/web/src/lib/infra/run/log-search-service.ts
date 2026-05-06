@@ -186,7 +186,7 @@ export async function handleSearchLogs(
   orgId: string,
   query: {
     keyword: string;
-    agent?: string;
+    agentId?: string;
     runId?: string;
     since?: number;
     limit: number;
@@ -203,7 +203,7 @@ export async function handleSearchLogs(
   }>;
   hasMore: boolean;
 }> {
-  const { keyword, agent, runId, limit, before, after } = query;
+  const { keyword, runId, limit, before, after } = query;
   const since = query.since ?? Date.now() - SEVEN_DAYS_MS;
   const sinceDate = new Date(since);
   const sinceISO = sinceDate.toISOString();
@@ -229,7 +229,7 @@ export async function handleSearchLogs(
     }
     targetRunIds = [runId];
   } else {
-    targetRunIds = await getUserRunIds(userId, orgId, sinceDate, agent);
+    targetRunIds = await getUserRunIds(userId, orgId, sinceDate, query.agentId);
     if (targetRunIds.length === 0) {
       return { results: [], hasMore: false };
     }

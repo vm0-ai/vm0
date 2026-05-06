@@ -8,7 +8,7 @@ import {
 import {
   zeroActivityData$,
   zeroActivityHasPrev$,
-  initZeroActivityAgentName$,
+  initZeroActivityAgentId$,
   setZeroActivityFilter$,
   zeroActivityDetail$,
   formatLogTime,
@@ -107,8 +107,8 @@ describe("zero-activity signals", () => {
       server.use(
         mockApi(logsListContract.list, ({ request, respond }) => {
           const url = new URL(request.url);
-          // No name filter → returns all agents' logs
-          expect(url.searchParams.has("name")).toBeFalsy();
+          // No agentId filter -> returns all agents' logs
+          expect(url.searchParams.has("agentId")).toBeFalsy();
           return respond(200, {
             data: createMockLogs(),
             pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
@@ -118,7 +118,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$, context.signal);
+      await context.store.set(initZeroActivityAgentId$, context.signal);
 
       const response = await context.store.get(zeroActivityData$);
       expect(response.data).toHaveLength(3);
@@ -138,7 +138,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$, context.signal);
+      await context.store.set(initZeroActivityAgentId$, context.signal);
 
       const response = await context.store.get(zeroActivityData$);
       expect(response.data).toHaveLength(0);
@@ -157,7 +157,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$, context.signal);
+      await context.store.set(initZeroActivityAgentId$, context.signal);
 
       await expect(context.store.get(zeroActivityData$)).rejects.toThrow(
         "Internal server error",
@@ -180,7 +180,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$, context.signal);
+      await context.store.set(initZeroActivityAgentId$, context.signal);
 
       expect(context.store.get(zeroActivityHasPrev$)).toBeFalsy();
     });
@@ -202,7 +202,7 @@ describe("zero-activity signals", () => {
       );
 
       await setup();
-      await context.store.set(initZeroActivityAgentName$, context.signal);
+      await context.store.set(initZeroActivityAgentId$, context.signal);
       context.store.set(setZeroActivityFilter$, "status", "completed");
       // The computed data$ will re-fetch with the new status param
       await context.store.get(zeroActivityData$);

@@ -137,7 +137,7 @@ describe("zero search --source logs parity with zero logs search", () => {
     expect(captured).toHaveLength(1);
     const url = captured[0]!;
     expect(url.searchParams.get("keyword")).toBe("error");
-    expect(url.searchParams.get("agent")).toBe(AGENT_ID);
+    expect(url.searchParams.get("agentId")).toBe(AGENT_ID);
     expect(url.searchParams.get("runId")).toBe(
       "abc12345-1234-1234-1234-123456789abc",
     );

@@ -53,9 +53,9 @@ interface AgentComposeContent {
 }
 
 interface LogsQuery {
+  agentId?: string;
   name?: string;
   org?: string;
-  agent?: string;
   search?: string;
   since?: number;
   status?: LogStatus;
@@ -67,16 +67,16 @@ interface LogsQuery {
 
 /**
  * Build agent filter conditions from query params.
- * name keeps the explicit compose-name filter, agent is the canonical Zero agent ID,
- * and search remains a fuzzy compose-name filter.
+ * agentId is the canonical Zero agent ID.
+ * Explicit name filtering remains separate from fuzzy search.
  */
 function buildAgentFilterConditions(query: LogsQuery): SQL[] {
   const conditions: SQL[] = [];
 
-  if (query.name) {
+  if (query.agentId) {
+    conditions.push(eq(zeroAgents.id, query.agentId));
+  } else if (query.name) {
     conditions.push(eq(agentComposes.name, query.name));
-  } else if (query.agent) {
-    conditions.push(eq(zeroAgents.id, query.agent));
   } else if (query.search) {
     conditions.push(ilike(agentComposes.name, `%${query.search}%`));
   }
@@ -185,7 +185,7 @@ async function getAvailableFilters(
       .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(and(...baseConditions)),
     db
-      .selectDistinct({ id: zeroAgents.id })
+      .selectDistinct({ agentId: zeroAgents.id })
       .from(agentRuns)
       .leftJoin(
         agentComposeVersions,
@@ -223,10 +223,10 @@ async function getAvailableFilters(
 
   const agents = agentRows
     .map((r) => {
-      return r.id;
+      return r.agentId;
     })
-    .filter((id): id is string => {
-      return id !== null;
+    .filter((agentId): agentId is string => {
+      return agentId !== null;
     });
 
   return { statuses, sources, agents };
@@ -303,7 +303,7 @@ const router = tsr.router(logsListContract, {
         completedAt: agentRuns.completedAt,
         triggerSource: zeroRuns.triggerSource,
         scheduleId: zeroRuns.scheduleId,
-        composeId: agentComposes.id,
+        agentId: zeroAgents.id,
         composeName: agentComposes.name,
         orgId: agentComposes.orgId,
         sessionId: conversations.cliAgentSessionId,
@@ -355,7 +355,7 @@ const router = tsr.router(logsListContract, {
           return {
             id: run.id,
             sessionId: run.sessionId ?? null,
-            agentId: run.composeId ?? null,
+            agentId: run.agentId ?? null,
             displayName: run.displayName ?? null,
             framework: extractFramework(run.composeContent),
             triggerSource: (run.triggerSource ?? "cli") as TriggerSource,

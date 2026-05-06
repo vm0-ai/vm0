@@ -77,12 +77,30 @@ interface LogsListParams {
   cursor?: string;
   limit?: number;
   search?: string;
-  agent?: string;
+  agentId?: string;
   name?: string;
   since?: number;
   status?: LogStatus;
   triggerSource?: TriggerSource;
   scheduleId?: string;
+}
+
+function buildAgentFilterConditions(params: {
+  agentId?: string;
+  name?: string;
+  search?: string;
+}): SQL[] {
+  const conditions: SQL[] = [];
+
+  if (params.agentId) {
+    conditions.push(eq(zeroAgents.id, params.agentId));
+  } else if (params.name) {
+    conditions.push(eq(agentComposes.name, params.name));
+  } else if (params.search) {
+    conditions.push(ilike(agentComposes.name, `%${params.search}%`));
+  }
+
+  return conditions;
 }
 
 interface LogsListData {
@@ -114,14 +132,7 @@ export function zeroLogsList(
       }
     }
 
-    // name is the explicit compose-name filter; agent is the canonical Zero agent ID.
-    if (params.name) {
-      conditions.push(eq(agentComposes.name, params.name));
-    } else if (params.agent) {
-      conditions.push(eq(zeroAgents.id, params.agent));
-    } else if (params.search) {
-      conditions.push(ilike(agentComposes.name, `%${params.search}%`));
-    }
+    conditions.push(...buildAgentFilterConditions(params));
 
     if (params.since) {
       conditions.push(gte(agentRuns.createdAt, new Date(params.since)));
@@ -150,7 +161,7 @@ export function zeroLogsList(
           completedAt: agentRuns.completedAt,
           triggerSource: zeroRuns.triggerSource,
           scheduleId: zeroRuns.scheduleId,
-          composeId: agentComposes.id,
+          agentId: zeroAgents.id,
           composeName: agentComposes.name,
           composeContent: agentComposeVersions.content,
           displayName: zeroAgents.displayName,
@@ -195,7 +206,7 @@ export function zeroLogsList(
         return {
           id: run.id,
           sessionId: run.sessionId ?? null,
-          agentId: run.composeId ?? null,
+          agentId: run.agentId ?? null,
           displayName: run.displayName ?? null,
           framework: extractFramework(run.composeContent),
           triggerSource: (run.triggerSource ?? "cli") as TriggerSource,
@@ -227,13 +238,7 @@ async function getLogsTotalCount(
     eq(agentRuns.orgId, params.orgId),
   ];
 
-  if (params.name) {
-    conditions.push(eq(agentComposes.name, params.name));
-  } else if (params.agent) {
-    conditions.push(eq(zeroAgents.id, params.agent));
-  } else if (params.search) {
-    conditions.push(ilike(agentComposes.name, `%${params.search}%`));
-  }
+  conditions.push(...buildAgentFilterConditions(params));
 
   if (params.since) {
     conditions.push(gte(agentRuns.createdAt, new Date(params.since)));
@@ -287,7 +292,7 @@ async function getAvailableFilters(
       .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(and(...baseConditions)),
     db
-      .selectDistinct({ id: zeroAgents.id })
+      .selectDistinct({ agentId: zeroAgents.id })
       .from(agentRuns)
       .leftJoin(
         agentComposeVersions,
@@ -337,10 +342,10 @@ async function getAvailableFilters(
 
   const agents = agentRows
     .map((r) => {
-      return r.id;
+      return r.agentId;
     })
-    .filter((id): id is string => {
-      return id !== null;
+    .filter((agentId): agentId is string => {
+      return agentId !== null;
     });
 
   return { statuses, sources, agents };
@@ -382,8 +387,8 @@ export function zeroLogDetail(
     const [result] = await db
       .select({
         run: agentRuns,
-        compose: agentComposes,
         composeVersion: agentComposeVersions,
+        agentId: zeroAgents.id,
         agentDisplayName: zeroAgents.displayName,
         triggerSource: zeroRuns.triggerSource,
         scheduleId: zeroRuns.scheduleId,
@@ -421,8 +426,8 @@ export function zeroLogDetail(
 
     const {
       run,
-      compose,
       composeVersion,
+      agentId,
       agentDisplayName,
       triggerSource,
       scheduleId,
@@ -437,7 +442,7 @@ export function zeroLogDetail(
     return {
       id: run.id,
       sessionId: runResult?.agentSessionId ?? null,
-      agentId: compose?.id ?? null,
+      agentId,
       displayName: agentDisplayName ?? null,
       framework: extractFramework(composeContent),
       modelProvider: modelProvider ?? null,
@@ -465,7 +470,7 @@ interface LogSearchParams {
   userId: string;
   orgId: string;
   keyword: string;
-  agent?: string;
+  agentId?: string;
   runId?: string;
   since?: number;
   limit: number;
@@ -591,7 +596,7 @@ export function zeroLogSearch(
 ): Computed<Promise<LogsSearchResponse>> {
   return computed(async (get): Promise<LogsSearchResponse> => {
     const db = get(db$);
-    const { keyword, agent, runId, limit, before, after } = params;
+    const { keyword, runId, limit, before, after } = params;
     const since = params.since ?? now() - SEVEN_DAYS_MS;
     const sinceDate = new Date(since);
     const sinceISO = sinceDate.toISOString();
@@ -622,7 +627,7 @@ export function zeroLogSearch(
         params.userId,
         params.orgId,
         sinceDate,
-        agent,
+        params.agentId,
       );
       if (targetRunIds.length === 0) {
         return { results: [], hasMore: false };

@@ -94,7 +94,7 @@ describe("zero logs list command", () => {
     expect(logCalls).toContain("No logs found");
   });
 
-  it("should pass agent filter to API", async () => {
+  it("should pass agentId filter to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
@@ -109,7 +109,7 @@ describe("zero logs list command", () => {
 
     await listCommand.parseAsync(["node", "cli", "--agent", AGENT_ID]);
 
-    expect(capturedUrl?.searchParams.get("agent")).toBe(AGENT_ID);
+    expect(capturedUrl?.searchParams.get("agentId")).toBe(AGENT_ID);
   });
 
   it("should pass status filter to API", async () => {

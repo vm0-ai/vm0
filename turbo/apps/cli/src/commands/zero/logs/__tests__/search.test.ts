@@ -131,7 +131,7 @@ describe("zero logs search command", () => {
     expect(capturedUrl?.searchParams.get("after")).toBe("5");
   });
 
-  it("should pass agent and run filters", async () => {
+  it("should pass agentId and run filters", async () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
@@ -150,7 +150,7 @@ describe("zero logs search command", () => {
       "abc12345-1234-1234-1234-123456789abc",
     ]);
 
-    expect(capturedUrl?.searchParams.get("agent")).toBe(AGENT_ID);
+    expect(capturedUrl?.searchParams.get("agentId")).toBe(AGENT_ID);
     expect(capturedUrl?.searchParams.get("runId")).toBe(
       "abc12345-1234-1234-1234-123456789abc",
     );

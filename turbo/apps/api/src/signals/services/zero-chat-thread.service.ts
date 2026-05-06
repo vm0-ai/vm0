@@ -721,7 +721,7 @@ export function zeroChatSearch(args: {
   readonly userId: string;
   readonly orgId: string;
   readonly keyword: string;
-  readonly agent?: string;
+  readonly agentId?: string;
   readonly since?: number;
   readonly limit: number;
   readonly before: number;
@@ -747,8 +747,8 @@ export function zeroChatSearch(args: {
     if (sinceDate) {
       matchConditions.push(gte(chatMessages.createdAt, sinceDate));
     }
-    if (args.agent) {
-      matchConditions.push(eq(agentComposes.name, args.agent));
+    if (args.agentId) {
+      matchConditions.push(eq(zeroAgents.id, args.agentId));
     }
 
     const matches = await db
@@ -762,6 +762,7 @@ export function zeroChatSearch(args: {
         agentComposes,
         eq(chatThreads.agentComposeId, agentComposes.id),
       )
+      .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(and(...matchConditions))
       .orderBy(desc(chatMessages.createdAt))
       .limit(args.limit + 1);

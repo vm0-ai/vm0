@@ -137,7 +137,7 @@ export const logsListContract = c.router({
     headers: authHeadersSchema,
     query: listQuerySchema.extend({
       search: z.string().optional(),
-      agent: z.string().uuid().optional(), // canonical Zero agent ID
+      agentId: z.string().uuid().optional(),
       name: z.string().optional(),
       since: z.coerce.number().optional(),
 

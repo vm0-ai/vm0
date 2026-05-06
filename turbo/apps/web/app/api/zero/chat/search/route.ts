@@ -33,6 +33,7 @@ import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 /**
  * Escape `%`, `_`, and `\` so the user-supplied keyword cannot act as a
@@ -110,7 +111,7 @@ const router = tsr.router(chatSearchContract, {
 
     const { org } = await resolveOrg(authCtx);
     const { userId } = authCtx;
-    const { keyword, agent, since, limit, before, after } = query;
+    const { keyword, agentId, since, limit, before, after } = query;
 
     const pattern = `%${escapeLikePattern(keyword)}%`;
     const sinceDate = since ? new Date(since) : undefined;
@@ -123,7 +124,7 @@ const router = tsr.router(chatSearchContract, {
       ilike(chatMessages.content, pattern),
     ];
     if (sinceDate) matchConditions.push(gte(chatMessages.createdAt, sinceDate));
-    if (agent) matchConditions.push(eq(agentComposes.name, agent));
+    if (agentId) matchConditions.push(eq(zeroAgents.id, agentId));
 
     // Fetch matches, over-fetch by 1 to detect hasMore.
     const matches = await globalThis.services.db
@@ -137,6 +138,7 @@ const router = tsr.router(chatSearchContract, {
         agentComposes,
         eq(chatThreads.agentComposeId, agentComposes.id),
       )
+      .innerJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
       .where(and(...matchConditions))
       .orderBy(desc(chatMessages.createdAt))
       .limit(limit + 1);

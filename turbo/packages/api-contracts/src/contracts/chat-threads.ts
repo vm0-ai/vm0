@@ -459,7 +459,7 @@ const chatSearchResultSchema = z.object({
  * There is intentionally no cursor/offset: `limit` is capped at 50 (see the
  * query schema below) and chat-message search is a lookup tool, not a bulk
  * export. Callers that hit `hasMore=true` should narrow the query (add
- * `agent`, `since`, or a more specific `keyword`) rather than paginate. If
+ * `agentId`, `since`, or a more specific `keyword`) rather than paginate. If
  * genuine pagination is ever needed, introduce `nextCursor` here — the
  * contract has no external consumers yet, so adding it later is safe.
  */
@@ -480,7 +480,7 @@ export const chatSearchContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       keyword: z.string().min(1),
-      agent: z.string().optional(),
+      agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
       before: z.coerce.number().min(0).max(10).default(0),

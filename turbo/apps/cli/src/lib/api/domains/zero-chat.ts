@@ -7,7 +7,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function searchZeroChat(options: {
   keyword: string;
-  agent?: string;
+  agentId?: string;
   since?: number;
   limit?: number;
   before?: number;
@@ -18,7 +18,7 @@ export async function searchZeroChat(options: {
   const result = await client.search({
     query: {
       keyword: options.keyword,
-      agent: options.agent,
+      agentId: options.agentId,
       since: options.since,
       limit: options.limit,
       before: options.before,

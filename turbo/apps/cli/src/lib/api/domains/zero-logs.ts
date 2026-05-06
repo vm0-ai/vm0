@@ -9,7 +9,7 @@ import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function listZeroLogs(options?: {
-  agent?: string;
+  agentId?: string;
   status?: string;
   since?: number;
   limit?: number;
@@ -19,7 +19,7 @@ export async function listZeroLogs(options?: {
   const client = initClient(logsListContract, config);
   const result = await client.list({
     query: {
-      agent: options?.agent,
+      agentId: options?.agentId,
       status: options?.status as LogStatus | undefined,
       since: options?.since,
       limit: options?.limit,
@@ -32,7 +32,7 @@ export async function listZeroLogs(options?: {
 
 export async function searchZeroLogs(options: {
   keyword: string;
-  agent?: string;
+  agentId?: string;
   runId?: string;
   since?: number;
   limit?: number;
@@ -44,7 +44,7 @@ export async function searchZeroLogs(options: {
   const result = await client.searchLogs({
     query: {
       keyword: options.keyword,
-      agent: options.agent,
+      agentId: options.agentId,
       runId: options.runId,
       since: options.since,
       limit: options.limit,

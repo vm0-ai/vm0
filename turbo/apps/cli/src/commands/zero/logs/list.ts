@@ -62,7 +62,7 @@ Examples:
         const since = options.since ? parseTime(options.since) : undefined;
 
         const result = await listZeroLogs({
-          agent: options.agent,
+          agentId: options.agent,
           status: options.status,
           since,
           limit,

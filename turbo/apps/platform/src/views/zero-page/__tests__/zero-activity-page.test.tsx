@@ -214,7 +214,7 @@ describe("zeroActivityPage", () => {
   });
 
   it("should filter log table when agent filter changes", async () => {
-    const captured = { name: null as string | null };
+    const captured = { agentId: null as string | null };
     setMockComposesList([
       {
         id: "agent-1",
@@ -229,10 +229,10 @@ describe("zeroActivityPage", () => {
     server.use(
       mockApi(logsListContract.list, ({ request, respond }) => {
         const url = new URL(request.url);
-        captured.name = url.searchParams.get("name");
-        const name = url.searchParams.get("name");
+        captured.agentId = url.searchParams.get("agentId");
+        const agentId = url.searchParams.get("agentId");
         const logs =
-          name === "agent-1"
+          agentId === "agent-1"
             ? [makeLog({ displayName: "Filtered Agent Log" })]
             : [makeLog({ displayName: "All Agents Log" })];
         return respond(
@@ -259,7 +259,7 @@ describe("zeroActivityPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Filtered Agent Log")).toBeInTheDocument();
     });
-    expect(captured.name).toBe("agent-1");
+    expect(captured.agentId).toBe("agent-1");
   });
 
   it("should filter log table when status filter changes", async () => {

@@ -98,7 +98,7 @@ async function runLogsSource(
     afterContext: options.afterContext,
     beforeContext: options.beforeContext,
     context: options.context,
-    agent: options.agent,
+    agentId: options.agent,
     run: options.run,
     since: options.since,
     limit: options.limit,
@@ -163,7 +163,7 @@ async function runChatSource(
 
   const response = await searchZeroChat({
     keyword: query,
-    agent: options.agent,
+    agentId: options.agent,
     since,
     limit,
     before,
@@ -200,7 +200,7 @@ export const zeroSearchCommand = new Command()
     collectSource,
     [] as string[],
   )
-  .option("--agent <agent>", "Filter by agent (logs use ID; chat uses name)")
+  .option("--agent <id>", "Filter by Zero agent ID")
   .option("--run <id>", "Filter by run ID")
   .option("--since <time>", "Time window (e.g., 7d, 2h)")
   .option("--limit <n>", "Maximum number of matches")
