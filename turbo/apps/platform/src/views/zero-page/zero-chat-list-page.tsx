@@ -8,7 +8,7 @@ import {
 } from "ccstate-react";
 import {
   IconCalendarClock,
-  IconMessageCircle,
+  IconMessage,
   IconPencil,
   IconPlus,
   IconSearch,
@@ -38,6 +38,7 @@ import {
   type OptimisticChatPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
+import { agents$ } from "../../signals/agent.ts";
 import {
   currentChatThreadId$,
   currentChatAgentId$,
@@ -237,6 +238,16 @@ function ChatList({
   const setDelete = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
 
+  // Map of agentId → displayName so each row can render the agent's name
+  // as its secondary line without extra requests. Cached via the global
+  // agents$ signal — already loaded on app boot.
+  const agentList = useLastResolved(agents$) ?? [];
+  const agentNameById = new Map(
+    agentList.map((a) => {
+      return [a.id, a.displayName ?? undefined] as const;
+    }),
+  );
+
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
       return;
@@ -285,6 +296,7 @@ function ChatList({
               isSelected={selectedRecentId === session.id}
               isOpen={swipeOpenId === session.id}
               isMobile={isMobile}
+              agentName={agentNameById.get(session.agent.id)}
               onOpen={setSwipeOpenId}
               onSelect={onRecentSelect}
               onDelete={() => {
@@ -358,23 +370,29 @@ function formatThreadDateLabel(iso: string, now: Date): string {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-// Three-state icon for the chat list avatar slot. Precedence:
-//   draft (unsent composer content) → pencil
-//   running (active non-terminal run, typically a scheduled task) → calendar/clock
-//   otherwise → chat bubble
-// Style is consistent across all states: 40px gray-100 circle, gray-700 stroke.
-function ThreadKindIcon({ session }: { session: ChatThreadListItem }) {
-  const kind = session.hasDraft
-    ? "draft"
-    : session.running
-      ? "schedule"
-      : "chat";
+type ThreadKind = "draft" | "schedule" | "chat";
+
+function threadKind(session: ChatThreadListItem): ThreadKind {
+  if (session.hasDraft) {
+    return "draft";
+  }
+  if (session.running) {
+    return "schedule";
+  }
+  return "chat";
+}
+
+// Three-state icon for the chat list avatar slot. The avatar is a 40px
+// circle with no ring; the kind controls the icon and (for drafts) a warm
+// amber tint that distinguishes "you have unfinished business here" from
+// the neutral chat / schedule states.
+function ThreadKindIcon({ kind }: { kind: ThreadKind }) {
   const Icon =
     kind === "draft"
       ? IconPencil
       : kind === "schedule"
         ? IconCalendarClock
-        : IconMessageCircle;
+        : IconMessage;
   const label =
     kind === "draft"
       ? "Draft"
@@ -385,21 +403,29 @@ function ThreadKindIcon({ session }: { session: ChatThreadListItem }) {
     <span
       aria-label={label}
       data-thread-kind={kind}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--gray-200))] ring-1 ring-border text-foreground/80"
+      className={cn(
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+        kind === "draft"
+          ? "bg-amber-100 text-amber-700"
+          : "bg-[hsl(var(--gray-200))] text-foreground/80",
+      )}
     >
       <Icon size={18} stroke={1.6} />
     </span>
   );
 }
 
-function threadSecondaryLine(session: ChatThreadListItem): string {
+function threadSecondaryLine(
+  session: ChatThreadListItem,
+  agentName: string | undefined,
+): string {
   if (session.hasDraft) {
     return "Draft";
   }
   if (session.running) {
     return "Running…";
   }
-  return "";
+  return agentName ?? "";
 }
 
 function ChatListItem({
@@ -407,6 +433,7 @@ function ChatListItem({
   isSelected,
   isOpen,
   isMobile,
+  agentName,
   onOpen,
   onSelect,
   onDelete,
@@ -415,6 +442,7 @@ function ChatListItem({
   isSelected: boolean;
   isOpen: boolean;
   isMobile: boolean;
+  agentName: string | undefined;
   onOpen: (id: string | null) => void;
   onSelect: (id: string) => void;
   onDelete: () => void;
@@ -424,6 +452,9 @@ function ChatListItem({
     new Date(),
   );
   const isUnread = !session.isRead;
+  const kind = threadKind(session);
+  const isRunning = kind === "schedule";
+  const secondary = threadSecondaryLine(session, agentName);
   // Mobile-native swipe-to-delete: track touch deltaX on the row and slide
   // the surface left to reveal a delete handle. Holds open until the user
   // taps the row, the delete, or starts another swipe.
@@ -484,25 +515,31 @@ function ChatListItem({
           onSelect(session.id);
         }}
         className={cn(
-          "flex items-center gap-3 px-2 py-3 text-left transition-transform no-underline bg-background border-b border-border/40 last:border-b-0",
+          "flex items-center gap-3 px-2 py-3 text-left transition-transform no-underline bg-background",
           isOpen ? "-translate-x-20" : "translate-x-0",
           isSelected
             ? "text-accent-foreground"
             : "text-foreground",
         )}
       >
-        {/* Fixed-width gutter holds the unread dot so titles align across
-            read and unread rows (iMessage-style). */}
+        {/* Fixed-width gutter holds the unread / running indicator so
+            titles stay aligned across rows. Running threads get a soft
+            pulsing halo (animate-ping) on top of the static dot. */}
         <span
-          aria-hidden={!isUnread}
-          aria-label={isUnread ? "Unread" : undefined}
-          className="flex w-3 shrink-0 items-center justify-center"
+          aria-hidden={!isUnread && !isRunning}
+          aria-label={
+            isRunning ? "Running" : isUnread ? "Unread" : undefined
+          }
+          className="relative flex w-3 shrink-0 items-center justify-center"
         >
-          {isUnread && (
-            <span className="h-[7px] w-[7px] rounded-full bg-blue-500" />
+          {isRunning && (
+            <span className="absolute inline-flex h-[7px] w-[7px] rounded-full bg-blue-500 opacity-75 animate-ping" />
+          )}
+          {(isUnread || isRunning) && (
+            <span className="relative h-[7px] w-[7px] rounded-full bg-blue-500" />
           )}
         </span>
-        <ThreadKindIcon session={session} />
+        <ThreadKindIcon kind={kind} />
         <span className="min-w-0 flex-1 flex flex-col gap-0.5">
           <span
             className={cn(
@@ -512,9 +549,9 @@ function ChatListItem({
           >
             {session.title ?? "New chat"}
           </span>
-          {threadSecondaryLine(session) && (
+          {secondary && (
             <span className="truncate text-xs text-muted-foreground">
-              {threadSecondaryLine(session)}
+              {secondary}
             </span>
           )}
         </span>
