@@ -56,11 +56,23 @@ def test_finish_flushes_current_event_without_blank_line() -> None:
     handler = _CaptureHandler({"target"})
     scanner = SseUsageScanner(handler)
 
-    scanner.feed(b"event: target\ndata: ok\n")
+    scanner.feed(b"event: target\ndata: ok")
     scanner.finish()
     scanner.finish()
 
     assert handler.events == [("target", b"ok")]
+
+
+def test_supports_no_optional_space_and_split_crlf() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(b"event:target\r")
+    scanner.feed(b"\ndata:payload\r")
+    scanner.feed(b"\n\r")
+    scanner.feed(b"\n")
+
+    assert handler.events == [("target", b"payload")]
 
 
 def test_can_capture_data_before_target_event_name() -> None:
@@ -117,4 +129,17 @@ def test_long_malformed_control_line_recovers_for_next_event() -> None:
 
     scanner.feed(b"x" * 5000 + b"\n" + b"event: target\n" + b"data: ok\n\n")
 
+    assert handler.events == [("target", b"ok")]
+
+
+def test_long_malformed_control_line_discards_current_event() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(
+        b"event: target\n"
+        b"data: partial\n" + b"x" * 5000 + b"\n\n" + b"event: target\n" + b"data: ok\n\n"
+    )
+
+    assert handler.discarded == ["target"]
     assert handler.events == [("target", b"ok")]

@@ -1687,11 +1687,21 @@ class TestAnthropicSseUsageExtractor:
         parse(
             b"event: message_start\n"
             b'data: {"message":{"model":"claude-sonnet-4-6",'
-            b'"usage":{"input_tokens":55}}}\n'
+            b'"usage":{"input_tokens":55}}}'
         )
         parse.finish()
         assert usage["model"] == "claude-sonnet-4-6"
         assert usage["tokens.input"] == 55
+
+    def test_accepts_sse_fields_without_optional_space(self):
+        parse, usage = create_anthropic_messages_sse_usage_extractor()
+        parse(
+            b"event:message_start\n"
+            b'data:{"message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":57}}}\n\n'
+        )
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["tokens.input"] == 57
 
     def test_accepts_event_name_after_data_line(self):
         parse, usage = create_anthropic_messages_sse_usage_extractor()
@@ -1987,11 +1997,21 @@ class TestOpenAIResponsesSseUsageExtractor:
         parse(
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.4",'
-            b'"usage":{"output_tokens":4}}}\n'
+            b'"usage":{"output_tokens":4}}}'
         )
         parse.finish()
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.output"] == 4
+
+    def test_accepts_sse_fields_without_optional_space(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event:response.completed\n"
+            b'data:{"response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":5}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 5
 
     def test_accepts_event_name_after_data_line(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
@@ -2564,6 +2584,49 @@ class TestResponseUsageReporting:
 
         mock_opener.open.assert_not_called()
         assert "model_provider_usage" not in flow.metadata
+
+    def test_full_pipeline_model_sse_finalizes_trailing_event(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        """response() must flush a trailing SSE usage event before reporting."""
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "text/event-stream"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":50,"output_tokens":20,'
+            b'"input_tokens_details":{"cached_tokens":10}}}}'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {
+            "tokens.input": 40,
+            "tokens.output": 20,
+            "tokens.cache_read": 10,
+        }
 
     def test_full_pipeline_large_model_json_uses_bounded_buffer(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
