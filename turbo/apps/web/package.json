@@ -54,7 +54,7 @@
     "html-to-text": "^9.0.5",
     "import-in-the-middle": "^3.0.0",
     "next": "^16.2.3",
-    "next-intl": "^4.9.1",
+    "next-intl": "^4.11.0",
     "pg": "^8.16.3",
     "postgres": "^3.4.9",
     "react": "^19.2.0",
