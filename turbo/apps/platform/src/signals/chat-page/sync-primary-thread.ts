@@ -1,11 +1,9 @@
 import { command } from "ccstate";
 import { currentChatAgentId$, setChatAgentId$ } from "../agent-chat.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { idbMessageEnabled$ } from "../external/feature-switch.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { resetSignal } from "../utils.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
-import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { optimisticChatThread$ } from "./optimistic-chat-thread-state.ts";
 
 const resetSyncPrimarySignal$ = resetSignal();
@@ -40,11 +38,7 @@ export const syncPrimaryThread$ = command(
     const isOptimistic = optimistic?.threadId === threadId;
     set(updateDocumentTitle$, isOptimistic ? "New chat" : "Chat");
 
-    const idbEnabled = await get(idbMessageEnabled$);
-    signal.throwIfAborted();
-    const dataSource = idbEnabled
-      ? createIdbCachedDataSource(threadId)
-      : createRemoteChatThreadDataSource(threadId);
+    const dataSource = createIdbCachedDataSource(threadId);
 
     const threadData = await get(dataSource.getThread$);
     signal.throwIfAborted();

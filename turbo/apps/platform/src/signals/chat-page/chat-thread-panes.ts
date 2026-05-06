@@ -1,6 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { currentChatThreadId$ } from "../agent-chat.ts";
-import { idbMessageEnabled$ } from "../external/feature-switch.ts";
 import {
   pushPathSilently$,
   searchParams$,
@@ -14,7 +13,6 @@ import {
   type ChatThreadSignals,
 } from "./create-chat-thread.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";
-import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import {
   clearMatchingOptimisticChatThread$,
   optimisticChatThread$,
@@ -161,16 +159,12 @@ const setupPaneThread$ = command(
     }
 
     const { draft, isNew } = set(ensureDraft$, threadId);
-    const idbEnabled = await get(idbMessageEnabled$);
-    signal.throwIfAborted();
     // Forward-reference so the data source can flip the skeleton on at the
     // moment it discovers a cache miss, before the network fetch starts.
     let onIdbMiss: () => void = () => {};
-    const dataSource = idbEnabled
-      ? createIdbCachedDataSource(threadId, () => {
-          onIdbMiss();
-        })
-      : createRemoteChatThreadDataSource(threadId);
+    const dataSource = createIdbCachedDataSource(threadId, () => {
+      onIdbMiss();
+    });
     const thread = createChatThreadSignals(threadId, draft, dataSource);
     onIdbMiss = () => {
       // When a matching optimistic thread is already filling this pane, its
@@ -182,13 +176,6 @@ const setupPaneThread$ = command(
       }
       set(thread.showSkeleton$);
     };
-    if (!idbEnabled && !matchingOptimistic) {
-      // No local cache — every load goes to the network, so the skeleton is
-      // unconditional. With a matching optimistic the pane is showing the
-      // pending thread until the hand-over, so the skeleton is unwanted.
-      set(thread.showSkeleton$);
-    }
-
     if (!matchingOptimistic) {
       set(spec.setPaneThread$, thread);
     }
