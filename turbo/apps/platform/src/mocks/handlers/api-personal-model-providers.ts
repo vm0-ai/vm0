@@ -55,6 +55,8 @@ export const apiPersonalModelProvidersHandlers = [
         selectedModel: body.selectedModel ?? null,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
+        needsReconnect: false,
+        lastRefreshErrorCode: null,
       };
 
       if (existing) {

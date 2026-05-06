@@ -49,6 +49,8 @@ function makeProvider(
     selectedModel: null,
     createdAt: now,
     updatedAt: now,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
     ...overrides,
   };
 }
