@@ -9,6 +9,7 @@ use clap::{Args, Subcommand};
 
 use crate::error::RunnerResult;
 
+/// Arguments for the `runner local` subcommand group.
 #[derive(Args)]
 pub struct LocalArgs {
     #[command(subcommand)]
@@ -23,6 +24,7 @@ enum LocalCommand {
     Cancel(cancel::CancelArgs),
 }
 
+/// Dispatch `runner local` to the selected local file-queue subcommand.
 pub async fn run_local(args: LocalArgs) -> RunnerResult<ExitCode> {
     match args.command {
         LocalCommand::Submit(args) => submit::run_submit(args).await,
