@@ -128,6 +128,7 @@ const resolvePaneThread$ = command(
       const optimisticGroups = await get(
         matchingOptimistic.pendingThread.groupedChatMessages$,
       );
+      signal.throwIfAborted();
       for (const group of optimisticGroups) {
         for (const msg of group.messages) {
           set(thread.insertOptimisticMessage$, msg);
