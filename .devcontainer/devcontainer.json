@@ -49,7 +49,7 @@
     "source=agent-browser,target=/home/vscode/.local/share/agent-browser"
   ],
   "postCreateCommand": "bash .devcontainer/setup.sh",
-  "postStartCommand": "gh auth setup-git && bash .devcontainer/start-vnc.sh",
+  "postStartCommand": "bash .devcontainer/link-agent-skills.sh && gh auth setup-git && bash .devcontainer/start-vnc.sh",
   "customizations": {
     "vscode": {
       "extensions": [
