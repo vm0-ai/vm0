@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.99.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.12...runner-rs-v0.99.13) (2026-05-06)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** require snapshot publish marker ([#11867](https://github.com/vm0-ai/vm0/issues/11867)) ([023ae4d](https://github.com/vm0-ai/vm0/commit/023ae4d86570157504a176372727cab05f5b1483))
+
+
+### Documentation
+
+* **runner:** restore start loop comments ([#11896](https://github.com/vm0-ai/vm0/issues/11896)) ([ebb0521](https://github.com/vm0-ai/vm0/commit/ebb0521fd38c8ff09f8fee296cc5de0e458bc9eb))
+
+
+### Refactoring
+
+* **runner:** split start test harness ([#11870](https://github.com/vm0-ai/vm0/issues/11870)) ([085d91f](https://github.com/vm0-ai/vm0/commit/085d91fd68f2569aae8703dc8e781a65cce4cf32))
+
 ## [0.99.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.11...runner-rs-v0.99.12) (2026-05-05)
 
 

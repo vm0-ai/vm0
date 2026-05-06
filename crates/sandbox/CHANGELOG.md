@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.12](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.11...sandbox-v0.12.12) (2026-05-06)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** require snapshot publish marker ([#11867](https://github.com/vm0-ai/vm0/issues/11867)) ([023ae4d](https://github.com/vm0-ai/vm0/commit/023ae4d86570157504a176372727cab05f5b1483))
+
 ## [0.12.11](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.10...sandbox-v0.12.11) (2026-05-05)
 
 
