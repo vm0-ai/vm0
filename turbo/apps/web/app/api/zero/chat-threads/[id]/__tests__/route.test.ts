@@ -754,6 +754,165 @@ describe("PATCH /api/zero/chat-threads/:id - Update Thread Draft", () => {
     expect(patchRes.status).toBe(404);
   });
 
+  it("publishes threadListChanged when draft transitions empty -> non-empty", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    mockAblyPublish.mockClear();
+
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: "first keystroke" }),
+        },
+      ),
+    );
+
+    expect(mockAblyPublish).toHaveBeenCalledWith("threadListChanged", null);
+  });
+
+  it("does not publish threadListChanged on continued typing within an existing draft", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    // First write — flips false -> true and publishes.
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: "hi" }),
+        },
+      ),
+    );
+    mockAblyPublish.mockClear();
+
+    // Second write — still has draft, hasDraft stays true, no publish.
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: "hi there" }),
+        },
+      ),
+    );
+
+    expect(mockAblyPublish).not.toHaveBeenCalled();
+  });
+
+  it("publishes threadListChanged when draft is cleared", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: "to be cleared" }),
+        },
+      ),
+    );
+    mockAblyPublish.mockClear();
+
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: null, draftAttachments: null }),
+        },
+      ),
+    );
+
+    expect(mockAblyPublish).toHaveBeenCalledWith("threadListChanged", null);
+  });
+
+  it("does not publish threadListChanged when patching empty over empty", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    mockAblyPublish.mockClear();
+
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftContent: "" }),
+        },
+      ),
+    );
+
+    expect(mockAblyPublish).not.toHaveBeenCalled();
+  });
+
+  it("publishes threadListChanged when only attachments toggle hasDraft", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    mockAblyPublish.mockClear();
+
+    const attachments = [
+      {
+        id: "att-1",
+        url: "https://example.com/file.txt",
+        filename: "file.txt",
+        contentType: "text/plain",
+        size: 100,
+      },
+    ];
+
+    await PATCH(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads/${threadId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftAttachments: attachments }),
+        },
+      ),
+    );
+
+    expect(mockAblyPublish).toHaveBeenCalledWith("threadListChanged", null);
+  });
+
   it("GET should return null draft fields for a new thread", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {

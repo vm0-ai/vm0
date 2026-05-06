@@ -9,20 +9,22 @@ import type {
 import { getValidatedFramework } from "@vm0/core/frameworks";
 import { expandVariablesInString } from "@vm0/core/variable-expander";
 import { getInstructionsStorageName } from "@vm0/core/storage-names";
+import { resolveFrameworkInstructionsMountPath } from "../framework/framework-config";
 
 /**
- * Get the mount path for instructions based on framework
+ * Get the mount path for instructions based on framework.
  *
  * Each framework expects instructions at a specific location:
- * - claude-code: ~/.claude/
+ * - claude-code: /home/user/.claude
+ * - codex: /home/user/.codex
  *
- * @param framework - The framework name (e.g., "claude-code")
+ * @param framework - The framework name (undefined defaults to claude-code)
  * @returns The mount path for instructions
  * @throws Error if framework is defined but not supported
  */
 function getInstructionsMountPath(framework?: string): string {
-  getValidatedFramework(framework);
-  return "/home/user/.claude";
+  const validated = getValidatedFramework(framework);
+  return resolveFrameworkInstructionsMountPath(validated);
 }
 
 /**

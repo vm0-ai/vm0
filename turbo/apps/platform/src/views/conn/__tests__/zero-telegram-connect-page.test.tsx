@@ -12,7 +12,8 @@ const mockApi = createMockApi(context);
 
 const VALID_PATH =
   "/telegram/connect?bot=bot-123&tgUser=99002&ts=1777200000&sig=" +
-  "a".repeat(64);
+  "a".repeat(64) +
+  "&tgUserName=ada_tg&tgDisplayName=Ada%20Lovelace";
 
 function buttonWithText(text: string): HTMLButtonElement {
   const button = screen.getAllByRole("button").find((element) => {
@@ -136,6 +137,8 @@ describe("zero telegram connect page", () => {
       telegramBotId: "bot-123",
       connectSignature: {
         telegramUserId: "99002",
+        telegramUsername: "ada_tg",
+        telegramDisplayName: "Ada Lovelace",
         timestamp: 1_777_200_000,
         signature: "a".repeat(64),
       },
@@ -235,6 +238,13 @@ describe("zero telegram connect page", () => {
     });
     click(buttonWithText("Continue with Telegram"));
 
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("https://oauth.telegram.org/auth"),
+        "telegram_login",
+        expect.stringContaining("width=550"),
+      );
+    });
     const rawAuthUrl = String(openSpy.mock.calls[0]?.[0]);
     const authUrl = new URL(rawAuthUrl);
     expect(`${authUrl.origin}${authUrl.pathname}`).toBe(

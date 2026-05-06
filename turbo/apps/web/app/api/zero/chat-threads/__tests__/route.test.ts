@@ -7,6 +7,8 @@ import {
   getOrgCacheEntry,
   insertTestChatMessage,
   setTestChatThreadLastReadMessageId,
+  setTestChatThreadDraft,
+  setTestChatThreadPinnedAt,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -482,6 +484,98 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
     ).toEqual([secondId, firstId]);
   });
 
+  it("floats pinned threads to the top regardless of recency", async () => {
+    const firstCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "First" }),
+      }),
+    );
+    const { id: firstId } = await firstCreate.json();
+
+    await new Promise((resolve) => {
+      return setTimeout(resolve, 10);
+    });
+
+    const secondCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Second" }),
+      }),
+    );
+    const { id: secondId } = await secondCreate.json();
+
+    await new Promise((resolve) => {
+      return setTimeout(resolve, 10);
+    });
+
+    const thirdCreate = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Third" }),
+      }),
+    );
+    const { id: thirdId } = await thirdCreate.json();
+
+    // Baseline: thirdId, secondId, firstId by recency.
+    const baseline = await (
+      await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+        ),
+      )
+    ).json();
+    expect(
+      baseline.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([thirdId, secondId, firstId]);
+
+    // Pin the middle one — it should move to the top while the others keep
+    // their relative recency order.
+    await setTestChatThreadPinnedAt(secondId, new Date());
+
+    const afterPin = await (
+      await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+        ),
+      )
+    ).json();
+    expect(
+      afterPin.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([secondId, thirdId, firstId]);
+    const pinnedRow = afterPin.threads.find((t: { id: string }) => {
+      return t.id === secondId;
+    });
+    expect(pinnedRow.pinnedAt).toEqual(expect.any(String));
+
+    // Unpin returns the order to recency-based.
+    await setTestChatThreadPinnedAt(secondId, null);
+
+    const afterUnpin = await (
+      await GET(
+        createTestRequest(
+          `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+        ),
+      )
+    ).json();
+    expect(
+      afterUnpin.threads.map((t: { id: string }) => {
+        return t.id;
+      }),
+    ).toEqual([thirdId, secondId, firstId]);
+    const unpinnedRow = afterUnpin.threads.find((t: { id: string }) => {
+      return t.id === secondId;
+    });
+    expect(unpinnedRow.pinnedAt).toBeNull();
+  });
+
   it("keeps a thread visible when only an earlier message is archived", async () => {
     const createRes = await POST(
       createTestRequest("http://localhost:3000/api/zero/chat-threads", {
@@ -619,6 +713,109 @@ describe("GET /api/zero/chat-threads - List Threads", () => {
       return t.id === threadId;
     });
     expect(thread.running).toBe(false);
+  });
+
+  it("reports hasDraft=false for a thread without draft content", async () => {
+    await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "No draft" }),
+      }),
+    );
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.threads[0].hasDraft).toBe(false);
+  });
+
+  it("reports hasDraft=true when draftContent is non-empty", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "With draft" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    await setTestChatThreadDraft(threadId, "unsent text", null);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+    const thread = data.threads.find((t: { id: string }) => {
+      return t.id === threadId;
+    });
+
+    expect(response.status).toBe(200);
+    expect(thread.hasDraft).toBe(true);
+  });
+
+  it("reports hasDraft=true when only draftAttachments are set", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Only files" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    await setTestChatThreadDraft(threadId, null, [
+      {
+        id: randomUUID(),
+        url: "https://example.com/f/file.png",
+        filename: "file.png",
+        contentType: "image/png",
+        size: 100,
+      },
+    ]);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+    const thread = data.threads.find((t: { id: string }) => {
+      return t.id === threadId;
+    });
+
+    expect(response.status).toBe(200);
+    expect(thread.hasDraft).toBe(true);
+  });
+
+  it("reports hasDraft=false when draftContent is empty string", async () => {
+    const createRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: testComposeId, title: "Empty" }),
+      }),
+    );
+    const { id: threadId } = await createRes.json();
+    await setTestChatThreadDraft(threadId, "", null);
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/chat-threads?agentId=${testComposeId}`,
+      ),
+    );
+    const data = await response.json();
+    const thread = data.threads.find((t: { id: string }) => {
+      return t.id === threadId;
+    });
+
+    expect(response.status).toBe(200);
+    expect(thread.hasDraft).toBe(false);
   });
 
   it("reports running=true when any run is non-terminal even with a terminal sibling", async () => {

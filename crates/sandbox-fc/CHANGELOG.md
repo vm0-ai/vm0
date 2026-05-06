@@ -1,5 +1,109 @@
 # Changelog
 
+## [0.27.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.12...sandbox-fc-v0.27.13) (2026-05-06)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** require snapshot publish marker ([#11867](https://github.com/vm0-ai/vm0/issues/11867)) ([023ae4d](https://github.com/vm0-ai/vm0/commit/023ae4d86570157504a176372727cab05f5b1483))
+
+## [0.27.12](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.11...sandbox-fc-v0.27.12) (2026-05-05)
+
+
+### Refactoring
+
+* **sandbox-fc:** add snapshot cleanup Drop finalizer ([#11843](https://github.com/vm0-ai/vm0/issues/11843)) ([8c3bfdd](https://github.com/vm0-ai/vm0/commit/8c3bfdd257b592737d39eecf5c6eacb1ca2ee861))
+
+## [0.27.11](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.10...sandbox-fc-v0.27.11) (2026-05-05)
+
+
+### Refactoring
+
+* **sandbox-fc:** dedupe pipe collection ([#11813](https://github.com/vm0-ai/vm0/issues/11813)) ([479117e](https://github.com/vm0-ai/vm0/commit/479117ea14d473805446e4364e69d047f90fb6b0))
+* **sandbox-fc:** extract snapshot cleanup helpers ([#11821](https://github.com/vm0-ai/vm0/issues/11821)) ([65fe05b](https://github.com/vm0-ai/vm0/commit/65fe05b6fa896d9ddb063fae1c2bb9e40eebfa1d))
+* **sandbox-fc:** introduce snapshot attempt owner ([#11829](https://github.com/vm0-ai/vm0/issues/11829)) ([93bec65](https://github.com/vm0-ai/vm0/commit/93bec65f3036a4816ba6d9dc16dc2ec22728cde3))
+
+## [0.27.10](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.9...sandbox-fc-v0.27.10) (2026-05-03)
+
+
+### Bug Fixes
+
+* **nbd-cow:** lock NBD claims across runners ([#11732](https://github.com/vm0-ai/vm0/issues/11732)) ([16d716e](https://github.com/vm0-ai/vm0/commit/16d716e1f07a77c0d93649f52d077953dd62ff16))
+
+## [0.27.9](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.8...sandbox-fc-v0.27.9) (2026-05-03)
+
+
+### Documentation
+
+* **sandbox-fc:** document network errors ([#11724](https://github.com/vm0-ai/vm0/issues/11724)) ([ab92ae8](https://github.com/vm0-ai/vm0/commit/ab92ae8c69d2c99cad1c204d3c569e909f7dfdc9))
+
+## [0.27.8](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.7...sandbox-fc-v0.27.8) (2026-05-03)
+
+## [0.27.7](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.6...sandbox-fc-v0.27.7) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+## [0.27.6](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.5...sandbox-fc-v0.27.6) (2026-05-01)
+
+
+### Refactoring
+
+* **sandbox-fc:** avoid shared netns pool lock waits ([#11598](https://github.com/vm0-ai/vm0/issues/11598)) ([2dc1c57](https://github.com/vm0-ai/vm0/commit/2dc1c57ff13d56c28ebcbe152d20a9f4ac1f0bd7))
+
+## [0.27.5](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.4...sandbox-fc-v0.27.5) (2026-04-30)
+
+
+### Refactoring
+
+* **sandbox-fc:** introduce netns lease ownership ([#11560](https://github.com/vm0-ai/vm0/issues/11560)) ([6562e9d](https://github.com/vm0-ai/vm0/commit/6562e9db08189bf5216e0263a0700460a4892929))
+
+## [0.27.4](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.3...sandbox-fc-v0.27.4) (2026-04-29)
+
+
+### Refactoring
+
+* **nbd-cow:** tie device pool leases to COW lifecycle ([#11480](https://github.com/vm0-ai/vm0/issues/11480)) ([b99a732](https://github.com/vm0-ai/vm0/commit/b99a732e7732af47b5837dc3937eeb3acdf71b2e))
+
+## [0.27.3](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.2...sandbox-fc-v0.27.3) (2026-04-29)
+
+
+### Documentation
+
+* **sandbox-fc:** document public path helpers ([#11516](https://github.com/vm0-ai/vm0/issues/11516)) ([9af94e5](https://github.com/vm0-ai/vm0/commit/9af94e5365869b35109b79fa4aaebc491a0414f3))
+* **sandbox-fc:** document snapshot error variants ([#11535](https://github.com/vm0-ai/vm0/issues/11535)) ([f9d5625](https://github.com/vm0-ai/vm0/commit/f9d5625227abb29245b0048e4052d9a6f7592157))
+
+## [0.27.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.1...sandbox-fc-v0.27.2) (2026-04-29)
+
+
+### Documentation
+
+* **sandbox-fc:** document snapshot prewarm step ([#11513](https://github.com/vm0-ai/vm0/issues/11513)) ([2ae4231](https://github.com/vm0-ai/vm0/commit/2ae423120793b67bad9318253a10c200bd88de20))
+
+## [0.27.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.0...sandbox-fc-v0.27.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** clean up outer job panic bookkeeping ([#11393](https://github.com/vm0-ai/vm0/issues/11393)) ([4ecf0b6](https://github.com/vm0-ai/vm0/commit/4ecf0b65e25c66a86eec0151a29dd4f0fa0deeb0))
+* shut down control server with sandbox runtime ([#11443](https://github.com/vm0-ai/vm0/issues/11443)) ([6b5d0cf](https://github.com/vm0-ai/vm0/commit/6b5d0cf7cca922494a02c3790f57f2e8bf4421af))
+
+## [0.27.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.14...sandbox-fc-v0.27.0) (2026-04-28)
+
+
+### Features
+
+* **rootfs:** install codex cli binary in sandbox image ([#11425](https://github.com/vm0-ai/vm0/issues/11425)) ([00914b9](https://github.com/vm0-ai/vm0/commit/00914b9c1d98027f8ca2901df58ce4e0653cfba6)), closes [#11416](https://github.com/vm0-ai/vm0/issues/11416)
+
+## [0.26.14](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.13...sandbox-fc-v0.26.14) (2026-04-28)
+
+
+### Bug Fixes
+
+* bind control socket before sandbox running ([#11394](https://github.com/vm0-ai/vm0/issues/11394)) ([aa1f515](https://github.com/vm0-ai/vm0/commit/aa1f5154a1bf22e1ef46037c9f02b2ffe2c6a1a0))
+
 ## [0.26.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.26.12...sandbox-fc-v0.26.13) (2026-04-28)
 
 

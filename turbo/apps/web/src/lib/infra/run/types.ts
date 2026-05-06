@@ -118,10 +118,23 @@ export interface ExecutionContext {
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
 
+  // Debug flag to force real Codex in mock environments (internal use only)
+  debugNoMockCodex?: boolean;
+
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies?: boolean;
 
   billableFirewalls: string[];
+
+  // Billable model identity for model usage_event reporting. Only set for
+  // vm0-managed model provider runs; BYOK/custom providers leave it unset.
+  modelUsageProvider?: string;
+
+  // Provider-derived framework when zero-layer resolution ran. Source of
+  // truth for downstream framework-aware logic (dispatch + validation).
+  // Falls back to compose framework via extractCliAgentType when undefined
+  // (CLI path, no provider context).
+  resolvedFramework?: string;
 
   // API start time for E2E timing metrics — epoch millis captured at the route
   // handler's first line by the caller (see issue #9936).

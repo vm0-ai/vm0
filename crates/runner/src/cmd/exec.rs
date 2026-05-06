@@ -14,6 +14,11 @@ use crate::process;
 // CLI args
 // ---------------------------------------------------------------------------
 
+/// Arguments for executing a command inside an already-running sandbox.
+///
+/// The target is selected with either `--run` or `--sandbox`. Command arguments
+/// after `--` are preserved as argv entries before being quoted for guest-side
+/// shell execution.
 #[derive(Args)]
 #[command(group = clap::ArgGroup::new("target").required(true))]
 pub struct ExecArgs {
@@ -75,6 +80,19 @@ fn shell_quote(arg: &str) -> String {
     }
 }
 
+/// Executes the requested command inside a running sandbox.
+///
+/// `--sandbox` targets are used directly as sandbox identifiers. `--run`
+/// targets are resolved through the current runner process state before
+/// dispatching to [`SandboxControl::exec_remote`].
+///
+/// Guest stdout and stderr are forwarded to local stdout and stderr. The guest
+/// process exit code is converted to [`ExitCode`] by truncating to `u8`,
+/// matching shell behavior for values outside the 0-255 range.
+///
+/// [`SandboxControlError::Remote`] values are printed to stderr and returned
+/// as [`ExitCode::FAILURE`]. Other sandbox-control errors are propagated as
+/// [`RunnerError::Config`].
 pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
     // Resolve the target to a sandbox_id string.
     let sandbox_id = if let Some(ref sid) = args.sandbox {

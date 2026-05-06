@@ -6,7 +6,7 @@ import {
   type LogsSearchResponse,
 } from "../../lib/api";
 import { parseTime } from "../../lib/utils/time-parser";
-import { ClaudeEventParser } from "../../lib/events/claude-event-parser";
+import { parseEvent } from "../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../lib/events/event-renderer";
 import { withErrorHandler } from "../../lib/command";
 
@@ -23,11 +23,15 @@ interface SearchOptions {
 }
 
 /**
- * Render a single agent event using EventRenderer
+ * Render a single agent event using EventRenderer.
+ *
+ * Search responses do not yet carry a per-result framework, so we let the
+ * factory default to claude-code. Codex events in search results render as
+ * nothing until the search contract is extended (tracked separately).
  */
 function renderEvent(event: RunEvent, renderer: EventRenderer): void {
   const eventData = event.eventData as Record<string, unknown>;
-  const parsed = ClaudeEventParser.parse(eventData);
+  const parsed = parseEvent(eventData);
   if (parsed) {
     parsed.timestamp = new Date(event.createdAt);
     renderer.render(parsed);

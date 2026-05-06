@@ -47,9 +47,10 @@ export function CustomConnectorConnectDialog({
       return;
     }
     detach(
-      submit({ id, value }, signal).then(() => {
+      (async () => {
+        await submit({ id, value }, signal);
         close();
-      }),
+      })(),
       Reason.DomCallback,
     );
   };

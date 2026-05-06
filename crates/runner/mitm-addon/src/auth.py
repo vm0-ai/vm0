@@ -331,7 +331,7 @@ async def get_firewall_headers(
     (run_id, api_id) coalesce into a single HTTP fetch.
 
     Cache is evicted when:
-    - The run is removed from the registry (see load_registry)
+    - The run is removed from the registry (see registry.load_registry)
     - A 401 response is received (see response handler)
     - The expiresAt timestamp from the auth endpoint has passed
     """
@@ -430,6 +430,7 @@ async def handle_firewall_request(
     flow.metadata["firewall_billable"] = match_info.get("name", "") in (
         vm_info.get("billableFirewalls") or []
     )
+    flow.metadata["model_usage_provider"] = vm_info.get("modelUsageProvider")
 
     if not encrypted_secrets:
         log_proxy_entry(

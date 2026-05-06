@@ -9,7 +9,8 @@ fn main() {
 
     // Rebuild when embedded files change (include_str! tracks deps for rustc,
     // but CI artifact caches may not — explicit rerun-if-changed ensures correctness).
-    println!("cargo::rerun-if-changed=scripts/build-rootfs.sh");
+    println!("cargo::rerun-if-changed=scripts/build-template.sh");
+    println!("cargo::rerun-if-changed=scripts/customize-rootfs.sh");
     println!("cargo::rerun-if-changed=scripts/verify-rootfs.sh");
 
     generate_addon_files();
@@ -27,6 +28,7 @@ fn main() {
         ("GUEST_DOWNLOAD_PATH", "BUNDLED_GUEST_DOWNLOAD"),
         ("GUEST_INIT_PATH", "BUNDLED_GUEST_INIT"),
         ("GUEST_MOCK_CLAUDE_PATH", "BUNDLED_GUEST_MOCK_CLAUDE"),
+        ("GUEST_MOCK_CODEX_PATH", "BUNDLED_GUEST_MOCK_CODEX"),
         ("GUEST_RESEED_PATH", "BUNDLED_GUEST_RESEED"),
     ];
 

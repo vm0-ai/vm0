@@ -4,6 +4,7 @@ export const groq = {
   groq: {
     label: "Groq",
     category: "ai-general-models",
+    generation: ["text"],
     tags: ["llm", "ai", "llama", "inference"],
     environmentMapping: {
       GROQ_TOKEN: "$secrets.GROQ_TOKEN",

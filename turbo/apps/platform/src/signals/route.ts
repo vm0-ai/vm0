@@ -5,7 +5,7 @@ import { clerk$, needsOrgSelection$, resolveWebOrigin } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { onDomEventFn, resetSignal } from "./utils.ts";
+import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
 import { logger } from "./log.ts";
 import { capturePageView, markNavigationPushState$ } from "../lib/posthog.ts";
 
@@ -37,6 +37,30 @@ export const replaceSearchParams$ = command(
   ({ set }, searchParams: URLSearchParams) => {
     const str = searchParams.toString();
     replaceState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
+    set(reloadPathname$, (x) => {
+      return x + 1;
+    });
+  },
+);
+
+/**
+ * Update the address bar to point at a different path without firing
+ * route setup. Existing search params are preserved.
+ *
+ * Use this for in-page swaps where the page itself has already loaded
+ * the new content into state — the URL just needs to catch up so
+ * sharing/bookmarking and browser back work. Going through `navigate$`
+ * instead would re-run the route setup command, which would re-bootstrap
+ * page-level signals from scratch.
+ */
+export const pushPathSilently$ = command(
+  (
+    { set },
+    pathnameTemplate: Parameters<typeof generateRouterPath>[0],
+    pathParams?: Parameters<typeof generateRouterPath>[1],
+  ) => {
+    const newPath = generateRouterPath(pathnameTemplate, pathParams);
+    pushState({}, "", `${newPath}${search()}`);
     set(reloadPathname$, (x) => {
       return x + 1;
     });
@@ -164,7 +188,7 @@ export const navigate$ = command(
     // abort the previous route's controller, which would poison any signal
     // derived from it — passing the caller's signal here causes the new
     // route's signal to be born-aborted.
-    await set(loadRoute$, get(rootSignal$).signal);
+    await set(loadRoute$, get(rootSignal$));
     signal.throwIfAborted();
   },
 );
@@ -179,19 +203,16 @@ export const detachedNavigateTo$ = command(
       replace?: boolean;
     },
   ) => {
-    const signal = get(rootSignal$).signal;
-
-    set(
-      navigate$,
-      generateRouterPath(pathname, options?.pathParams),
-      options ?? {},
-      signal,
-    ).catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      L.error("Navigation failed", error);
-    });
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- confirmed by ethan@vm0.ai
+    detach(
+      set(
+        navigate$,
+        generateRouterPath(pathname, options?.pathParams),
+        options ?? {},
+        get(rootSignal$),
+      ),
+      Reason.Entrance,
+    );
   },
 );
 

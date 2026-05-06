@@ -93,10 +93,35 @@ vi.mock("next/image", () => {
 
 // External: @tabler/icons-react (used by Navbar)
 vi.mock("@tabler/icons-react", () => {
+  const Icon = () => {
+    return <span />;
+  };
   return {
-    IconArrowRight: () => {
-      return <span />;
+    IconArrowRight: Icon,
+    IconArrowUpRight: Icon,
+    IconBrandGithub: Icon,
+    IconChevronDown: Icon,
+  };
+});
+
+// External: @radix-ui/react-popover (used by NavMenu)
+vi.mock("@radix-ui/react-popover", () => {
+  const passthrough = ({ children }: { children?: React.ReactNode }) => {
+    return <>{children}</>;
+  };
+  return {
+    Root: passthrough,
+    Trigger: ({
+      children,
+      className,
+    }: {
+      children?: React.ReactNode;
+      className?: string;
+    }) => {
+      return <button className={className}>{children}</button>;
     },
+    Portal: passthrough,
+    Content: passthrough,
   };
 });
 

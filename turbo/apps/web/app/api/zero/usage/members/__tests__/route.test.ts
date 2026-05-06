@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createTestRequest,
-  insertTestCreditUsage,
+  insertTestModelUsageEvent,
   insertTestUsageEvent,
   updateOrgStripeFields,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -108,7 +108,7 @@ describe("GET /api/zero/usage/members", () => {
       tier: "pro",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 1000,
       outputTokens: 500,
@@ -118,7 +118,7 @@ describe("GET /api/zero/usage/members", () => {
       status: "processed",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 2000,
       outputTokens: 1000,
@@ -159,7 +159,7 @@ describe("GET /api/zero/usage/members", () => {
     const user1 = uniqueId("user-alpha");
     const user2 = uniqueId("user-beta");
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId: user1,
       inputTokens: 1000,
       outputTokens: 500,
@@ -167,7 +167,7 @@ describe("GET /api/zero/usage/members", () => {
       status: "processed",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId: user2,
       inputTokens: 3000,
       outputTokens: 1500,
@@ -201,14 +201,14 @@ describe("GET /api/zero/usage/members", () => {
       tier: "pro",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 1000,
       creditsCharged: 50,
       status: "processed",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 5000,
       creditsCharged: 0,
@@ -239,7 +239,7 @@ describe("GET /api/zero/usage/members", () => {
       tier: "pro",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 1000,
       outputTokens: 500,
@@ -361,7 +361,7 @@ describe("GET /api/zero/usage/members", () => {
       tier: "pro",
     });
 
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 10,
       outputTokens: 5,
@@ -369,7 +369,7 @@ describe("GET /api/zero/usage/members", () => {
       status: "processed",
       processedAt: periodStart,
     });
-    await insertTestCreditUsage(orgId, {
+    await insertTestModelUsageEvent(orgId, {
       userId,
       inputTokens: 999,
       outputTokens: 999,

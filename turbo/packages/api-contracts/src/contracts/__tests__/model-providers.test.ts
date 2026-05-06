@@ -6,9 +6,16 @@ import {
   getModels,
   getDefaultModel,
   getEnvironmentMapping,
+  getFrameworkForType,
   getVm0VisibleModels,
+  normalizeVm0ModelId,
+  getSelectableProviderTypes,
+  getAuthMethodsForType,
+  getSecretsForAuthMethod,
   VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
+  modelProviderTypeSchema,
+  modelProviderFrameworkSchema,
   type ModelProviderType,
 } from "../model-providers";
 
@@ -18,6 +25,7 @@ describe("getProviderBaseUrl", () => {
     "anthropic-api-key",
     "azure-foundry",
     "aws-bedrock",
+    "openai-api-key",
   ] as ModelProviderType[])("returns null for %s", (type) => {
     expect(getProviderBaseUrl(type)).toBeNull();
   });
@@ -163,6 +171,68 @@ describe("getVm0VisibleModels", () => {
   });
 });
 
+describe("normalizeVm0ModelId", () => {
+  it.each([
+    ["anthropic/claude-sonnet-4.6", "claude-sonnet-4-6"],
+    ["deepseek/deepseek-v4-pro", "deepseek-v4-pro"],
+    ["z-ai/glm-5.1", "glm-5.1"],
+    ["moonshotai/kimi-k2.6", "kimi-k2.6"],
+    ["minimax/minimax-m2.7", "MiniMax-M2.7"],
+  ])("normalizes %s to %s", (model, expected) => {
+    expect(normalizeVm0ModelId(model)).toBe(expected);
+  });
+
+  it("keeps unknown model ids unchanged", () => {
+    expect(normalizeVm0ModelId("custom/model")).toBe("custom/model");
+  });
+});
+
+describe("openai-api-key codex provider", () => {
+  it("declares codex framework", () => {
+    expect(getFrameworkForType("openai-api-key")).toBe("codex");
+  });
+
+  it("maps OPENAI_API_KEY and OPENAI_MODEL via environment mapping", () => {
+    const mapping = getEnvironmentMapping("openai-api-key");
+    expect(mapping).toBeDefined();
+    expect(mapping!["OPENAI_API_KEY"]).toBe("$secret");
+    expect(mapping!["OPENAI_MODEL"]).toBe("$model");
+  });
+
+  it("offers codex-compatible models with gpt-5.5 default", () => {
+    const models = getModels("openai-api-key");
+    expect(models).toContain("gpt-5.5");
+    expect(models).toContain("gpt-5.4");
+    expect(models).toContain("gpt-5.4-mini");
+    expect(models).toContain("gpt-5.3-codex");
+    expect(models).toContain("gpt-5.2");
+    expect(getDefaultModel("openai-api-key")).toBe("gpt-5.5");
+  });
+
+  it("supports model selection", () => {
+    expect(hasModelSelection("openai-api-key")).toBe(true);
+  });
+
+  it("firewall scopes to OpenAI Responses API", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["openai-api-key"];
+    expect(config.apis).toHaveLength(1);
+    expect(config.apis[0]!.base).toBe("https://api.openai.com/v1/responses");
+    expect(config.apis[0]!.auth.headers).toEqual({
+      Authorization: "Bearer ${{ secrets.OPENAI_API_KEY }}",
+    });
+  });
+
+  it("modelProviderTypeSchema accepts openai-api-key", () => {
+    expect(modelProviderTypeSchema.safeParse("openai-api-key").success).toBe(
+      true,
+    );
+  });
+
+  it("modelProviderFrameworkSchema accepts codex", () => {
+    expect(modelProviderFrameworkSchema.safeParse("codex").success).toBe(true);
+  });
+});
+
 describe("firewall base URL scoped to /v1/messages (#9560)", () => {
   it.each([
     ["anthropic-api-key", "https://api.anthropic.com/v1/messages"],
@@ -181,4 +251,138 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
       expect(config.apis[0]!.base).toBe(expectedBase);
     },
   );
+});
+
+describe("chatgpt-oauth-token codex provider", () => {
+  it("declares codex framework", () => {
+    expect(getFrameworkForType("chatgpt-oauth-token")).toBe("codex");
+  });
+
+  it("appears in selectable provider types", () => {
+    expect(getSelectableProviderTypes()).toContain("chatgpt-oauth-token");
+  });
+
+  it("uses multi-auth shape with oauth method and four secrets", () => {
+    const methods = getAuthMethodsForType("chatgpt-oauth-token");
+    expect(methods).toBeDefined();
+    expect(Object.keys(methods!)).toEqual(["oauth"]);
+    const secrets = methods!.oauth!.secrets;
+    expect(Object.keys(secrets).sort()).toEqual([
+      "CHATGPT_ACCESS_TOKEN",
+      "CHATGPT_ACCOUNT_ID",
+      "CHATGPT_ID_TOKEN",
+      "CHATGPT_REFRESH_TOKEN",
+    ]);
+  });
+
+  it("marks refresh and id tokens as serverOnly", () => {
+    const secrets = getSecretsForAuthMethod("chatgpt-oauth-token", "oauth")!;
+    expect(secrets.CHATGPT_REFRESH_TOKEN!.serverOnly).toBe(true);
+    expect(secrets.CHATGPT_ID_TOKEN!.serverOnly).toBe(true);
+    // Access token + account ID are NOT server-only — they reach the sandbox
+    expect(secrets.CHATGPT_ACCESS_TOKEN!.serverOnly).not.toBe(true);
+    expect(secrets.CHATGPT_ACCOUNT_ID!.serverOnly).not.toBe(true);
+  });
+
+  it("environmentMapping does NOT reference refresh or id tokens", () => {
+    const mapping = getEnvironmentMapping("chatgpt-oauth-token")!;
+    const values = Object.values(mapping).join(" ");
+    expect(values).not.toContain("CHATGPT_REFRESH_TOKEN");
+    expect(values).not.toContain("CHATGPT_ID_TOKEN");
+  });
+
+  it("environmentMapping injects access token, account id, and model", () => {
+    const mapping = getEnvironmentMapping("chatgpt-oauth-token")!;
+    expect(mapping.CHATGPT_ACCESS_TOKEN).toBe("$secrets.CHATGPT_ACCESS_TOKEN");
+    expect(mapping.CHATGPT_ACCOUNT_ID).toBe("$secrets.CHATGPT_ACCOUNT_ID");
+    expect(mapping.OPENAI_MODEL).toBe("$model");
+  });
+
+  it("offers gpt-5.x models with gpt-5.5 default", () => {
+    expect(getModels("chatgpt-oauth-token")).toContain("gpt-5.5");
+    expect(getModels("chatgpt-oauth-token")).toContain("gpt-5.3-codex");
+    expect(getDefaultModel("chatgpt-oauth-token")).toBe("gpt-5.5");
+  });
+
+  it("supports model selection", () => {
+    expect(hasModelSelection("chatgpt-oauth-token")).toBe(true);
+  });
+
+  it("getProviderBaseUrl returns null (codex provider, no ANTHROPIC_BASE_URL)", () => {
+    expect(getProviderBaseUrl("chatgpt-oauth-token")).toBeNull();
+  });
+
+  it("firewall entry has both ChatGPT and auth.openai.com APIs", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    expect(config.apis).toHaveLength(2);
+    expect(config.apis[0]!.base).toBe("https://chatgpt.com/backend-api/codex");
+    expect(config.apis[1]!.base).toBe("https://auth.openai.com");
+  });
+
+  it("firewall injects Authorization and ChatGPT-Account-ID headers", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    expect(config.apis[0]!.auth.headers).toEqual({
+      Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+      "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
+    });
+  });
+
+  it("firewall denies auth.openai.com via defaultPolicies + permission rule", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    expect(config.defaultPolicies?.deny).toContain("denied");
+    expect(config.defaultPolicies?.unknownPolicy).toBe("deny");
+    expect(config.apis[1]!.permissions).toEqual([
+      { name: "denied", rules: ["ANY /*"] },
+    ]);
+  });
+
+  it("CHATGPT_ACCESS_TOKEN placeholder is an opaque marker (not a JWT)", () => {
+    // Codex doesn't read this env var in ChatGPT mode — it reads the real
+    // JWT from ~/.codex/auth.json (written by guest-agent #11877). The
+    // firewall only needs a stable, non-empty marker to match-and-substitute
+    // at egress. A JWT-shaped placeholder triggers Semgrep's
+    // detected-jwt-token rule even though the contents are obvious dummies.
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    const token = config.placeholders!.CHATGPT_ACCESS_TOKEN!;
+    expect(token.length).toBeGreaterThan(20);
+    // Not a 3-segment JWT — a single dotless string is fine.
+    expect(token.split(".")).toHaveLength(1);
+  });
+
+  it("CHATGPT_ACCOUNT_ID placeholder equals #11877's literal", () => {
+    // Cross-cut alignment with guest-agent (#11877): the account_id literal
+    // is the single string that crosses both surfaces (firewall placeholder
+    // map AND the auth.json the guest-agent fabricates). Keeping them in
+    // lockstep means future readers can grep one literal and find both.
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    expect(config.placeholders!.CHATGPT_ACCOUNT_ID).toBe(
+      "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+    );
+  });
+
+  it("modelProviderTypeSchema accepts chatgpt-oauth-token", () => {
+    expect(
+      modelProviderTypeSchema.safeParse("chatgpt-oauth-token").success,
+    ).toBe(true);
+  });
+});
+
+describe("getFirewallBaseUrl regression — existing providers unchanged", () => {
+  // Snapshot of every firewall-supported provider's base URL after the
+  // per-provider refactor in #11878. Catches accidental URL changes for
+  // existing providers when a new codex-framework provider is added.
+  it.each([
+    ["anthropic-api-key", "https://api.anthropic.com/v1/messages"],
+    ["claude-code-oauth-token", "https://api.anthropic.com/v1/messages"],
+    ["openrouter-api-key", "https://openrouter.ai/api/v1/messages"],
+    ["moonshot-api-key", "https://api.moonshot.ai/anthropic/v1/messages"],
+    ["minimax-api-key", "https://api.minimax.io/anthropic/v1/messages"],
+    ["deepseek-api-key", "https://api.deepseek.com/anthropic/v1/messages"],
+    ["zai-api-key", "https://api.z.ai/api/anthropic/v1/messages"],
+    ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
+    ["openai-api-key", "https://api.openai.com/v1/responses"],
+    ["chatgpt-oauth-token", "https://chatgpt.com/backend-api/codex"],
+  ] as const)("%s firewall base URL is %s", (type, expected) => {
+    expect(MODEL_PROVIDER_FIREWALL_CONFIGS[type]!.apis[0]!.base).toBe(expected);
+  });
 });

@@ -17,6 +17,12 @@ import {
   updateOrgStripeFields,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
+import {
+  TOKEN_CATEGORY_CACHE_CREATION,
+  TOKEN_CATEGORY_CACHE_READ,
+  TOKEN_CATEGORY_INPUT,
+  TOKEN_CATEGORY_OUTPUT,
+} from "../../../../../src/lib/zero/billing/model-usage-categories";
 
 vi.hoisted(() => {
   vi.stubEnv("CRON_SECRET", "test-cron-secret");
@@ -94,6 +100,79 @@ describe("GET /api/cron/process-usage-events", () => {
 
     const record = await findTestUsageEvent(eventId);
     expect(record!.creditsCharged).toBe(1);
+  });
+
+  it("charges model token categories with legacy per-token rounding", async () => {
+    const provider = "claude-sonnet-4-6";
+    const events = [
+      {
+        category: TOKEN_CATEGORY_INPUT,
+        quantity: 1_234_567,
+        unitPrice: 100,
+      },
+      {
+        category: TOKEN_CATEGORY_OUTPUT,
+        quantity: 765_432,
+        unitPrice: 200,
+      },
+      {
+        category: TOKEN_CATEGORY_CACHE_READ,
+        quantity: 10_001,
+        unitPrice: 30,
+      },
+      {
+        category: TOKEN_CATEGORY_CACHE_CREATION,
+        quantity: 2_000_001,
+        unitPrice: 125,
+      },
+    ];
+
+    const seededEvents: Array<{ id: string; expectedCredits: number }> = [];
+    for (const event of events) {
+      await insertTestUsagePricing({
+        kind: "model",
+        provider,
+        category: event.category,
+        unitPrice: event.unitPrice,
+        unitSize: 1_000_000,
+      });
+
+      const id = await insertTestUsageEvent(user.orgId, {
+        userId: user.userId,
+        kind: "model",
+        provider,
+        category: event.category,
+        quantity: event.quantity,
+      });
+      seededEvents.push({
+        id,
+        expectedCredits: Math.ceil(
+          (event.quantity * event.unitPrice) / 1_000_000,
+        ),
+      });
+    }
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const records = await Promise.all(
+      seededEvents.map(async (event) => {
+        return {
+          expectedCredits: event.expectedCredits,
+          record: await findTestUsageEvent(event.id),
+        };
+      }),
+    );
+    for (const { expectedCredits, record } of records) {
+      expect(record!.status).toBe("processed");
+      expect(record!.creditsCharged).toBe(expectedCredits);
+    }
+
+    const expectedTotal = seededEvents.reduce((sum, event) => {
+      return sum + event.expectedCredits;
+    }, 0);
+    const credits = await getOrgCredits(user.orgId);
+    expect(credits).toBe(100_000 - expectedTotal);
   });
 
   it("marks records with no matching pricing as processed with zero charge", async () => {

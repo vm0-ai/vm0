@@ -13,6 +13,7 @@ vi.mock("@axiomhq/js", () => {
 });
 vi.mock("@axiomhq/logging", () => {
   return {
+    EVENT: Symbol("EVENT"),
     Logger: vi.fn().mockImplementation(function () {
       return {
         debug: vi.fn(),

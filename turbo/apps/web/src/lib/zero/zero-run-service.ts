@@ -33,9 +33,10 @@ import {
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
-  checkOrgCreditsForRun,
   checkModelProviderConfigured,
+  resolveProviderTypeForAdmission,
 } from "./zero-run-policy";
+import { checkOrgCredits } from "./credit/check-org-credits";
 import {
   enqueueRun,
   drainOrgQueue,
@@ -96,6 +97,14 @@ export interface ZeroAgentForRun {
   customSkills: string[];
   modelProviderId: string | null;
   selectedModel: string | null;
+  /**
+   * Per-Epic #11868: when true, runs that resolve through this agent prefer
+   * the caller's personal-tier model providers before falling back to the
+   * org default (gated additionally by the `personalModelProvider` feature
+   * switch). Off by default; honored only when the schedule (if any) does
+   * not override it.
+   */
+  preferPersonalProvider: boolean;
 }
 
 /**
@@ -119,6 +128,7 @@ export async function fetchZeroAgentForRun(
       customSkills: zeroAgents.customSkills,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
+      preferPersonalProvider: zeroAgents.preferPersonalProvider,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, agentId))
@@ -150,6 +160,15 @@ export interface CreateZeroRunParams {
   modelProviderId?: string;
   /** Per-agent or per-schedule selected model override. */
   selectedModelOverride?: string;
+  /**
+   * Personal-tier preference (Epic #11868). When defined, overrides the
+   * agent's stored `preferPersonalProvider` — schedule-driven runs pass
+   * the schedule's flag here so schedule overrides agent (mirrors the
+   * existing modelProviderId/selectedModel override semantics). Honored
+   * only when the `personalModelProvider` feature switch is on for the
+   * caller; otherwise treated as false.
+   */
+  preferPersonalProvider?: boolean;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   scheduleId?: string;
   triggerAgentId?: string;
@@ -159,6 +178,8 @@ export interface CreateZeroRunParams {
   userInfoExtras?: UserInfoOptions;
   /** Force real Claude in mock environments (internal debugging / e2e only). */
   debugNoMockClaude?: boolean;
+  /** Force real Codex in mock environments (internal debugging / e2e only). */
+  debugNoMockCodex?: boolean;
   /**
    * Pre-fetched zero_agents row passed in by callers that have already read it
    * (e.g. the web chat route's 404 check). When present, Round 1 skips its own
@@ -260,15 +281,21 @@ function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
 function resolveEffectiveModel(
   params: Pick<
     CreateZeroRunParams,
-    "modelProviderId" | "selectedModelOverride"
+    "modelProviderId" | "selectedModelOverride" | "preferPersonalProvider"
   >,
   row?: ZeroAgentForRun | null,
-): { modelProviderId?: string; selectedModelOverride?: string } {
+): {
+  modelProviderId?: string;
+  selectedModelOverride?: string;
+  preferPersonalProvider: boolean;
+} {
   return {
     modelProviderId:
       params.modelProviderId ?? row?.modelProviderId ?? undefined,
     selectedModelOverride:
       params.selectedModelOverride ?? row?.selectedModel ?? undefined,
+    preferPersonalProvider:
+      params.preferPersonalProvider ?? row?.preferPersonalProvider ?? false,
   };
 }
 
@@ -635,6 +662,7 @@ async function createZeroRunRecord(
     orgTier,
     additionalVolumes: skillVolumes.length > 0 ? skillVolumes : undefined,
     debugNoMockClaude: params.debugNoMockClaude,
+    debugNoMockCodex: params.debugNoMockCodex,
     triggerSource: params.triggerSource,
   };
 
@@ -646,22 +674,38 @@ async function createZeroRunRecord(
   });
   const authorizeTime = Date.now();
 
+  const composeAgents = resolved.composeContent?.agents
+    ? Object.values(resolved.composeContent.agents)
+    : [];
+  const composeFramework = composeAgents[0]?.framework ?? "claude-code";
+  const admissionProviderType = await resolveProviderTypeForAdmission({
+    orgId: resolved.orgId,
+    userId: params.userId,
+    modelProvider: params.modelProvider,
+    modelProviderId: runParams.modelProviderId,
+    composeFramework,
+    preferPersonalProvider: runParams.preferPersonalProvider,
+  });
+
   if (!params.sessionId) {
-    await validateComposeRequirements(resolved.composeContent);
+    await validateComposeRequirements(
+      resolved.composeContent,
+      admissionProviderType,
+    );
   }
 
   const round3Credits = timed(async () => {
-    return checkOrgCreditsForRun(
-      resolved.orgId,
-      params.userId,
-      params.modelProvider,
-    );
+    if (admissionProviderType === "vm0") {
+      return checkOrgCredits(resolved.orgId, params.userId);
+    }
   });
   const round3ModelProvider = timed(async () => {
     return checkModelProviderConfigured(
       resolved.orgId,
+      params.userId,
       params.modelProvider,
       resolved.composeContent,
+      runParams.preferPersonalProvider,
     );
   });
   const round3Capture = timed(async () => {

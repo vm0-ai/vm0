@@ -1,3 +1,19 @@
+//! In-process job execution for the runner.
+//!
+//! `cmd/start/job_spawn.rs::spawn_job` calls this module after a provider claim and
+//! budget reservation. The executor owns the sandbox-side run flow, while the
+//! caller owns provider completion and the final sandbox lifecycle decision.
+//!
+//! There are two public entry points:
+//! - `execute_job` starts a fresh Firecracker VM.
+//! - `execute_job_reuse` runs in a kept-alive idle VM.
+//!
+//! Both entry points return `ExecuteOutcome` plus a pending `JobTelemetry`
+//! buffer. When `ExecuteOutcome::sandbox` is `Some`, the sandbox is still alive
+//! and the caller decides whether to park it for reuse or destroy it. The
+//! caller also flushes telemetry after firing `provider.complete`, so the
+//! user-visible completion signal is not blocked on best-effort uploads.
+
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 use std::time::{Duration, Instant};
@@ -21,13 +37,15 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::idle_pool::ReusableIdleSandbox;
-use crate::kmsg_log;
+use crate::network_log_drain::NetworkLogDrainCoordinator;
+use crate::network_log_manager::NetworkLogManager;
+use crate::network_log_manager::NetworkLogSession;
 use crate::paths::{HomePaths, LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
 use crate::types::{
-    ArtifactEntry, ExecutionContext, ResumeSession, SandboxReuseResult, StorageEntry,
-    StorageManifest,
+    ExecutionContext, GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+    ResumeSession, SandboxReuseResult,
 };
 
 /// Shared configuration for all executions (profile-independent).
@@ -36,7 +54,8 @@ pub struct ExecutorConfig {
     pub registry: ProxyRegistryHandle,
     pub http: HttpClient,
     pub log_paths: LogPaths,
-    pub ip_log_map: kmsg_log::IpLogMap,
+    pub network_log_manager: NetworkLogManager,
+    pub network_log_drain: NetworkLogDrainCoordinator,
     pub home: HomePaths,
 }
 
@@ -56,6 +75,7 @@ pub struct ExecuteOutcome {
     /// during create/start (sandbox was destroyed inline).
     pub sandbox: Option<Box<dyn Sandbox>>,
     pub source_ip: String,
+    pub network_log_session: Option<NetworkLogSession>,
     /// CLI-generated session ID read from the guest after execution.
     /// Used for first-run VM parking when `resume_session` is absent.
     pub guest_session_id: Option<String>,
@@ -65,7 +85,7 @@ pub struct ExecuteOutcome {
 ///
 /// Returns [`ExecuteOutcome`] with the sandbox still alive (not stopped/destroyed)
 /// plus the pending [`JobTelemetry`] buffer. The caller (`spawn_job` in
-/// `cmd/start.rs`) decides whether to park the sandbox or destroy it, and
+/// `cmd/start/job_spawn.rs`) decides whether to park the sandbox or destroy it, and
 /// **must** flush the telemetry **after** firing `provider.complete` so the
 /// user-visible run-complete signal isn't blocked on best-effort telemetry
 /// uploads (~383 ms saved per job).
@@ -101,6 +121,7 @@ pub async fn execute_job(
             error: Some(e.to_string()),
             sandbox: None,
             source_ip: String::new(),
+            network_log_session: None,
             guest_session_id: None,
         },
     };
@@ -112,8 +133,8 @@ pub async fn execute_job(
 ///
 /// Skips create + start. Re-registers proxy, fixes clock, then runs the agent.
 /// Returns [`ExecuteOutcome`] with the sandbox still alive plus the pending
-/// [`JobTelemetry`] buffer — the caller (`spawn_job` in `cmd/start.rs`) must
-/// flush telemetry after firing `provider.complete` (see [`execute_job`] for
+/// [`JobTelemetry`] buffer — the caller (`spawn_job` in `cmd/start/job_spawn.rs`)
+/// must flush telemetry after firing `provider.complete` (see [`execute_job`] for
 /// rationale).
 pub async fn execute_job_reuse(
     idle_sandbox: ReusableIdleSandbox,
@@ -128,9 +149,10 @@ pub async fn execute_job_reuse(
     record_reuse_result(&mut telemetry, SandboxReuseResult::Reused);
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
-    let source_ip = idle_sandbox.source_ip;
-    let prev_storage = idle_sandbox.storage_fingerprints;
-    let sandbox = idle_sandbox.sandbox;
+    let idle_parts = idle_sandbox.into_parts();
+    let source_ip = idle_parts.source_ip;
+    let prev_storage = idle_parts.storage_fingerprints;
+    let sandbox = idle_parts.sandbox;
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
@@ -180,11 +202,11 @@ fn record_api_latency(action_type: &str, context: &ExecutionContext, telemetry: 
     }
 }
 
-/// Dispatch inputs for the fresh-create path — the counterpart to
-/// [`IdleEntry`] on the reuse path. Holds the UUID for the new VM and the
-/// categorized reason no idle VM was reused. Both originate in
-/// `cmd/start.rs`; the id becomes the sandbox's identity, the reuse result
-/// is forwarded to the guest for /complete metadata.
+/// Dispatch inputs for the fresh-create path. Holds the UUID for the new VM
+/// and the categorized reason no idle VM was reused. The id is selected in job
+/// discovery after the reuse decision, then forwarded by `job_spawn`; it becomes
+/// the sandbox's identity, and the reuse result is forwarded to the guest for
+/// /complete metadata.
 #[derive(Clone, Copy)]
 pub struct NewSandboxDispatch {
     pub id: SandboxId,
@@ -229,11 +251,14 @@ async fn execute_new_sandbox(
     let source_ip = sandbox.source_ip().to_string();
 
     // Register VM in proxy registry BEFORE starting the sandbox.
-    register_proxy(config, context, &source_ip).await;
+    let network_log_session = register_proxy(config, context, &source_ip).await;
 
     if let Err(e) = sandbox.start().await {
         telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-        unregister_proxy(config, context, &source_ip).await;
+        unregister_proxy_registry(config, context, &source_ip).await;
+        network_log_session
+            .close_for_upload(context.run_id, &config.network_log_drain)
+            .await;
         destroy_sandbox_panic_safe(factory, sandbox).await;
         return Err(e.into());
     }
@@ -254,7 +279,7 @@ async fn execute_new_sandbox(
     )
     .await;
 
-    // Post-job: copy logs + unregister proxy (sandbox stays alive for possible reuse)
+    // Post-job: copy logs + unregister proxy registry (sandbox stays alive for possible reuse)
     post_job_cleanup(sandbox.as_ref(), config, context, &source_ip).await;
 
     let (exit_code, error) = match result {
@@ -279,6 +304,7 @@ async fn execute_new_sandbox(
         error,
         sandbox: Some(sandbox),
         source_ip,
+        network_log_session: Some(network_log_session),
         guest_session_id,
     })
 }
@@ -312,7 +338,7 @@ async fn execute_reused_sandbox(
     );
 
     // Re-register proxy with new run credentials
-    register_proxy(config, context, source_ip).await;
+    let network_log_session = register_proxy(config, context, source_ip).await;
 
     // Run job — clock/entropy fixed inside run_in_sandbox (always needed after idle).
     let result = run_in_sandbox(
@@ -329,7 +355,7 @@ async fn execute_reused_sandbox(
     )
     .await;
 
-    // Post-job cleanup (copy logs to host, unregister proxy, upload network logs)
+    // Post-job cleanup (copy logs to host, unregister proxy registry)
     post_job_cleanup(sandbox.as_ref(), config, context, source_ip).await;
 
     let (exit_code, error) = match result {
@@ -353,12 +379,17 @@ async fn execute_reused_sandbox(
         error,
         sandbox: Some(sandbox),
         source_ip: source_ip.to_string(),
+        network_log_session: Some(network_log_session),
         guest_session_id,
     }
 }
 
-/// Register a VM in the proxy registry and IP log map.
-async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
+/// Register a VM in the proxy registry and network log manager.
+async fn register_proxy(
+    config: &ExecutorConfig,
+    context: &ExecutionContext,
+    source_ip: &str,
+) -> NetworkLogSession {
     let network_log_path = config.log_paths.network_log(context.run_id);
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
@@ -374,32 +405,34 @@ async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, sou
         vars: context.vars.as_ref(),
         capture_network_bodies: context.capture_network_bodies.unwrap_or(false),
         billable_firewalls: &context.billable_firewalls,
+        model_usage_provider: context.model_usage_provider.as_deref(),
     };
     if let Err(e) = config.registry.register_vm(source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
     }
     config
-        .ip_log_map
-        .lock()
+        .network_log_manager
+        .register_source_ip(source_ip, network_log_path)
         .await
-        .insert(source_ip.to_string(), network_log_path);
 }
 
-/// Unregister a VM from the proxy registry and IP log map.
-async fn unregister_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
+/// Unregister a VM from the proxy registry.
+async fn unregister_proxy_registry(
+    config: &ExecutorConfig,
+    context: &ExecutionContext,
+    source_ip: &str,
+) {
     if let Err(e) = config.registry.unregister_vm(source_ip).await {
         warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
     }
-    config.ip_log_map.lock().await.remove(source_ip);
 }
 
-/// Post-job cleanup: copy logs, unregister proxy.
+/// Post-job cleanup: copy logs, unregister proxy registry.
 ///
 /// Called after `run_in_sandbox` completes, whether the sandbox will be
-/// parked (keep-alive) or destroyed. The mitmproxy network-log upload is
-/// deliberately **not** done here — `spawn_job` (in `cmd/start.rs`) runs
-/// it after `provider.complete` so the user-visible run-complete signal
-/// isn't blocked on the best-effort upload (~1.6 s saved per job).
+/// parked (keep-alive) or destroyed. Rust-side network-log attribution stays
+/// open until `sandbox_finalization` quiesces the sandbox and closes the returned
+/// `NetworkLogSession`; the HTTP upload remains deferred after `provider.complete`.
 async fn post_job_cleanup(
     sandbox: &dyn Sandbox,
     config: &ExecutorConfig,
@@ -407,7 +440,7 @@ async fn post_job_cleanup(
     source_ip: &str,
 ) {
     copy_guest_logs(sandbox, context, &config.log_paths).await;
-    unregister_proxy(config, context, source_ip).await;
+    unregister_proxy_registry(config, context, source_ip).await;
 }
 
 /// How this run is entering its sandbox. Each field feeds a distinct step:
@@ -440,9 +473,10 @@ async fn run_in_sandbox(
 
     // 3. Download storages (skipping entries unchanged since the previous turn)
     if let Some(manifest) = &context.storage_manifest {
-        let mut effective: StorageManifest = match start.prev_storage {
-            Some(prev) => filter_unchanged_storages(manifest, prev),
-            None => manifest.clone(),
+        let guest_manifest = GuestDownloadManifest::from(manifest);
+        let mut effective: GuestDownloadManifest = match start.prev_storage {
+            Some(prev) => filter_unchanged_storages(&guest_manifest, prev),
+            None => guest_manifest,
         };
         // Short-circuit: skip the vsock exec if every entry was filtered out
         // and there are no paths to clean up.
@@ -959,38 +993,33 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
 /// version matches the previous turn's fingerprints. `guest-download`
 /// skips entries without a valid URL, so unchanged storages stay on disk.
 fn filter_unchanged_storages(
-    manifest: &StorageManifest,
+    manifest: &GuestDownloadManifest,
     prev: &crate::idle_pool::StorageFingerprints,
-) -> StorageManifest {
+) -> GuestDownloadManifest {
     let mut skipped: usize = 0;
     let mut cleanup_paths: Vec<String> = Vec::new();
 
-    let storages: Vec<StorageEntry> = manifest
+    let storages: Vec<GuestDownloadStorageEntry> = manifest
         .storages
         .iter()
         .map(|s| {
-            let unchanged = match (&s.vas_storage_name, &s.vas_version_id) {
-                (Some(name), Some(ver)) => prev
-                    .storages
-                    .get(&s.mount_path)
-                    .is_some_and(|(pn, pv)| pn == name && pv == ver),
-                _ => false, // no version info → always download
-            };
+            let unchanged = prev
+                .storages
+                .get(&s.mount_path)
+                .is_some_and(|(pn, pv)| pn == &s.vas_storage_name && pv == &s.vas_version_id);
             if unchanged {
                 skipped += 1;
             } else {
                 cleanup_paths.push(s.mount_path.clone());
             }
-            StorageEntry {
-                mount_path: s.mount_path.clone(),
+            GuestDownloadStorageEntry {
                 archive_url: if unchanged {
                     None
                 } else {
                     s.archive_url.clone()
                 },
                 cached: unchanged,
-                vas_storage_name: s.vas_storage_name.clone(),
-                vas_version_id: s.vas_version_id.clone(),
+                ..s.clone()
             }
         })
         .collect();
@@ -1007,7 +1036,7 @@ fn filter_unchanged_storages(
         }
     }
 
-    let filter_artifact = |a: &ArtifactEntry,
+    let filter_artifact = |a: &GuestDownloadArtifactEntry,
                            prev_ver: &Option<(String, String)>,
                            skipped: &mut usize,
                            cleanup: &mut Vec<String>| {
@@ -1019,14 +1048,14 @@ fn filter_unchanged_storages(
         } else {
             cleanup.push(a.mount_path.clone());
         }
-        ArtifactEntry {
+        GuestDownloadArtifactEntry {
             archive_url: if same { None } else { a.archive_url.clone() },
             cached: same,
             ..a.clone()
         }
     };
 
-    let artifacts: Vec<ArtifactEntry> = manifest
+    let artifacts: Vec<GuestDownloadArtifactEntry> = manifest
         .artifacts
         .iter()
         .map(|a| {
@@ -1057,7 +1086,7 @@ fn filter_unchanged_storages(
         );
     }
 
-    StorageManifest {
+    GuestDownloadManifest {
         storages,
         artifacts,
         cleanup_paths,
@@ -1076,7 +1105,7 @@ fn guest_download_env(run_id: &str) -> [(&'static str, &str); 1] {
 async fn download_storages(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    manifest: &StorageManifest,
+    manifest: &GuestDownloadManifest,
 ) -> RunnerResult<()> {
     let manifest_json = serde_json::to_vec(manifest)
         .map_err(|e| RunnerError::Internal(format!("manifest json: {e}")))?;
@@ -1106,31 +1135,52 @@ async fn download_storages(
     Ok(())
 }
 
-/// Write Claude Code session history into the guest filesystem.
+/// Write CLI agent session history into the guest filesystem.
 ///
-/// Only Claude Code uses `.jsonl` session files; other agent types are skipped.
+/// Dispatches on `cli_agent_type`:
+/// - `claude-code` (or empty, the default) → plain `.jsonl` under `~/.claude/projects/-{project}/`.
+/// - `codex` → zstd-compressed `.jsonl.zst` under `~/.codex/sessions/YYYY/MM/DD/`.
+/// - anything else → skipped with a warning (forward-compatible with future agents).
 async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     session: &ResumeSession,
 ) -> RunnerResult<()> {
-    if !(context.cli_agent_type.is_empty() || context.cli_agent_type == "claude-code") {
-        return Ok(());
-    }
-
-    let project_name = context
-        .working_dir
-        .trim_start_matches('/')
-        .replace('/', "-");
-    let session_dir = format!("/home/user/.claude/projects/-{project_name}");
-
-    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore)
+    // Validate session_id to prevent path traversal (only allow alnum, dash, underscore).
+    // Applied up-front so unknown frameworks still reject malformed IDs in case the
+    // skip branch is ever upgraded to a write.
     if !is_valid_session_id(&session.session_id) {
         return Err(RunnerError::Internal(format!(
             "invalid session_id: {}",
             session.session_id
         )));
     }
+
+    match context.cli_agent_type.as_str() {
+        "" | "claude-code" => restore_claude_session(sandbox, context, session).await,
+        "codex" => restore_codex_session(sandbox, context, session).await,
+        other => {
+            warn!(
+                run_id = %context.run_id,
+                framework = %other,
+                "skipping session restore for unknown framework"
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Write a Claude Code session history file at `~/.claude/projects/-{project}/{id}.jsonl`.
+async fn restore_claude_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &ResumeSession,
+) -> RunnerResult<()> {
+    let project_name = context
+        .working_dir
+        .trim_start_matches('/')
+        .replace('/', "-");
+    let session_dir = format!("/home/user/.claude/projects/-{project_name}");
     let session_path = format!("{session_dir}/{}.jsonl", session.session_id);
 
     let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
@@ -1145,7 +1195,54 @@ async fn restore_session(
     sandbox
         .write_file(&session_path, session.session_history.as_bytes())
         .await?;
-    info!(run_id = %context.run_id, path = %session_path, "restored session history");
+    info!(run_id = %context.run_id, path = %session_path, "restored claude session history");
+    Ok(())
+}
+
+/// Write a Codex session history file as zstd-compressed JSONL at
+/// `~/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
+///
+/// The date partition uses today's UTC date — `codex exec resume` walks the
+/// `sessions/` tree and resolves files by thread_id, so the partition is a
+/// hint, not a lookup key. Compression level 3 matches `guest-mock-codex`
+/// fixtures so round-trips are byte-stable across host and guest.
+async fn restore_codex_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &ResumeSession,
+) -> RunnerResult<()> {
+    // Layout matches the real codex CLI (and `guest-mock-codex`):
+    // `/home/user/.codex/sessions/YYYY/MM/DD/{thread_id}.jsonl.zst`.
+    let today = chrono::Utc::now().date_naive();
+    let session_dir = format!(
+        "/home/user/.codex/sessions/{}/{}/{}",
+        today.format("%Y"),
+        today.format("%m"),
+        today.format("%d"),
+    );
+    let session_path = format!("{session_dir}/{}.jsonl.zst", session.session_id);
+
+    let mkdir_cmd = format!("mkdir -p '{}'", session_dir.replace('\'', "'\\''"));
+    sandbox
+        .exec(&ExecRequest {
+            cmd: &mkdir_cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: false,
+        })
+        .await?;
+
+    let compressed = zstd::encode_all(session.session_history.as_bytes(), 3)
+        .map_err(|e| RunnerError::Internal(format!("zstd encode failed: {e}")))?;
+    sandbox.write_file(&session_path, &compressed).await?;
+
+    info!(
+        run_id = %context.run_id,
+        path = %session_path,
+        bytes_in = session.session_history.len(),
+        bytes_out = compressed.len(),
+        "restored codex session history",
+    );
     Ok(())
 }
 
@@ -1235,6 +1332,15 @@ fn build_env_json(
         && !context.debug_no_mock_claude.unwrap_or(false)
     {
         env.insert("USE_MOCK_CLAUDE".into(), val);
+    }
+
+    // Pass USE_MOCK_CODEX from host environment for testing
+    // (skip if debugNoMockCodex is set in execution context).
+    // Mirrors the USE_MOCK_CLAUDE path above.
+    if let Ok(val) = std::env::var("USE_MOCK_CODEX")
+        && !context.debug_no_mock_codex.unwrap_or(false)
+    {
+        env.insert("USE_MOCK_CODEX".into(), val);
     }
 
     // Artifacts config (multi-mount).
@@ -1334,10 +1440,42 @@ fn build_env_json(
 mod tests {
     use super::*;
     use crate::ids::RunId;
-    use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
+    use crate::types::{
+        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry, ResumeSession,
+    };
+    use api_contracts::generated::types::runners::storage::{
+        ArtifactEntry, StorageEntry, StorageManifest,
+    };
     use async_trait::async_trait;
     use sandbox_mock::MockSandboxFactory;
     use std::sync::Arc;
+
+    fn api_storage(name: &str, mount_path: &str, version: &str, archive_url: &str) -> StorageEntry {
+        StorageEntry {
+            name: name.into(),
+            mount_path: mount_path.into(),
+            archive_url: archive_url.into(),
+            vas_storage_name: name.into(),
+            vas_version_id: version.into(),
+        }
+    }
+
+    fn api_artifact(
+        name: &str,
+        mount_path: &str,
+        storage_id: &str,
+        version: &str,
+        archive_url: &str,
+    ) -> ArtifactEntry {
+        ArtifactEntry {
+            mount_path: mount_path.into(),
+            archive_url: archive_url.into(),
+            vas_storage_name: name.into(),
+            vas_storage_id: storage_id.into(),
+            vas_version_id: version.into(),
+            manifest_url: None,
+        }
+    }
 
     struct DestroyPanicFactory {
         inner: MockSandboxFactory,
@@ -1394,6 +1532,7 @@ mod tests {
             secret_connector_map: None,
             cli_agent_type: String::new(),
             debug_no_mock_claude: None,
+            debug_no_mock_codex: None,
             api_start_time: None,
             user_timezone: None,
             capture_network_bodies: None,
@@ -1405,6 +1544,7 @@ mod tests {
             experimental_profile: None,
             feature_flags: None,
             billable_firewalls: vec![],
+            model_usage_provider: None,
         }
     }
 
@@ -1464,22 +1604,19 @@ mod tests {
     fn build_env_json_with_single_artifact() {
         let mut ctx = minimal_context();
         ctx.storage_manifest = Some(StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: None,
-                cached: false,
-                vas_storage_name: None,
-                vas_version_id: None,
-            }],
-            artifacts: vec![ArtifactEntry {
-                mount_path: "/artifacts".into(),
-                archive_url: None,
-                cached: false,
-                vas_storage_name: "my-vol".into(),
-                vas_storage_id: "sid-1".into(),
-                vas_version_id: "v1".into(),
-            }],
-            cleanup_paths: vec![],
+            storages: vec![api_storage(
+                "data",
+                "/data",
+                "v1",
+                "https://example.com/data.tar.gz",
+            )],
+            artifacts: vec![api_artifact(
+                "my-vol",
+                "/artifacts",
+                "sid-1",
+                "v1",
+                "https://example.com/artifacts.tar.gz",
+            )],
         });
 
         let env = build_env_for_test(&ctx, "http://localhost");
@@ -1503,24 +1640,21 @@ mod tests {
         ctx.storage_manifest = Some(StorageManifest {
             storages: vec![],
             artifacts: vec![
-                ArtifactEntry {
-                    mount_path: "/workspace".into(),
-                    archive_url: None,
-                    cached: false,
-                    vas_storage_name: "art-a".into(),
-                    vas_storage_id: "sid-a".into(),
-                    vas_version_id: "v1".into(),
-                },
-                ArtifactEntry {
-                    mount_path: "/data".into(),
-                    archive_url: None,
-                    cached: false,
-                    vas_storage_name: "art-b".into(),
-                    vas_storage_id: "sid-b".into(),
-                    vas_version_id: "v2".into(),
-                },
+                api_artifact(
+                    "art-a",
+                    "/workspace",
+                    "sid-a",
+                    "v1",
+                    "https://example.com/art-a.tar.gz",
+                ),
+                api_artifact(
+                    "art-b",
+                    "/data",
+                    "sid-b",
+                    "v2",
+                    "https://example.com/art-b.tar.gz",
+                ),
             ],
-            cleanup_paths: vec![],
         });
 
         let env = build_env_for_test(&ctx, "http://localhost");
@@ -1541,7 +1675,6 @@ mod tests {
         ctx.storage_manifest = Some(StorageManifest {
             storages: vec![],
             artifacts: vec![],
-            cleanup_paths: vec![],
         });
 
         let env = build_env_for_test(&ctx, "http://localhost");
@@ -1744,6 +1877,39 @@ mod tests {
         match saved {
             Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
             None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_with_mock_codex() {
+        let saved = std::env::var("USE_MOCK_CODEX").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CODEX.
+        unsafe { std::env::set_var("USE_MOCK_CODEX", "1") };
+
+        let ctx = minimal_context();
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert_eq!(env.get("USE_MOCK_CODEX").unwrap(), "1");
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CODEX", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CODEX") },
+        }
+    }
+
+    #[test]
+    fn build_env_json_mock_codex_suppressed_by_debug_flag() {
+        let saved = std::env::var("USE_MOCK_CODEX").ok();
+        // SAFETY: no concurrent tests read USE_MOCK_CODEX.
+        unsafe { std::env::set_var("USE_MOCK_CODEX", "1") };
+
+        let mut ctx = minimal_context();
+        ctx.debug_no_mock_codex = Some(true);
+        let env = build_env_for_test(&ctx, "http://localhost");
+        assert!(!env.contains_key("USE_MOCK_CODEX"));
+
+        match saved {
+            Some(v) => unsafe { std::env::set_var("USE_MOCK_CODEX", v) },
+            None => unsafe { std::env::remove_var("USE_MOCK_CODEX") },
         }
     }
 
@@ -2185,14 +2351,13 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         // write_file succeeds by default, exec returns exit 0 by default.
         let ctx = minimal_context();
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/archive.tar.gz".into()),
-                cached: false,
-                vas_storage_name: None,
-                vas_version_id: None,
-            }],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/data",
+                "data",
+                "v1",
+                Some("https://s3/archive.tar.gz"),
+            )],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
@@ -2232,7 +2397,7 @@ mod tests {
             stderr: b"download failed".to_vec(),
         }));
         let ctx = minimal_context();
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![],
             cleanup_paths: vec![],
@@ -2269,7 +2434,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_session_skips_non_claude_agent() {
+    async fn restore_session_skips_unknown_framework() {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "custom-agent".into();
@@ -2277,8 +2442,9 @@ mod tests {
             session_id: "sess-1".into(),
             session_history: "data".into(),
         };
-        // Should return Ok without calling exec or write_file.
-        // Push an error to detect unexpected calls.
+        // Unknown frameworks must no-op silently (warn-and-skip) so a typo in
+        // CLI_AGENT_TYPE does not block the run. Pushing an exec error detects
+        // any accidental fallthrough into either framework's restore path.
         sandbox.push_exec_result(Err(sandbox_exec_error("should not be called")));
         restore_session(&sandbox, &ctx, &session).await.unwrap();
     }
@@ -2297,20 +2463,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restore_session_writes_codex_session() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let session = ResumeSession {
+            session_id: "01jzm-thread-id".into(),
+            session_history: "{\"type\":\"thread.started\"}\n".into(),
+        };
+        // mkdir exec + write_file — both succeed by default. The codex branch
+        // performs an additional zstd::encode_all call before write_file; this
+        // test fails fast if that path errors out.
+        restore_session(&sandbox, &ctx, &session).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_session_rejects_invalid_codex_session_id() {
+        // Path-traversal validation runs before framework dispatch, so codex
+        // shares the same allow-list as claude-code.
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "codex".into();
+        let session = ResumeSession {
+            session_id: "../../etc/passwd".into(),
+            session_history: "{}".into(),
+        };
+        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+        assert!(err.to_string().contains("invalid session_id"));
+    }
+
+    #[test]
+    fn codex_session_zstd_round_trip_recovers_bytes() {
+        // The runner compresses session bytes before write; the guest decompresses
+        // on read. This guards against a level/header drift between the two ends.
+        let input = "{\"type\":\"thread.started\",\"thread_id\":\"x\"}\n";
+        let compressed = zstd::encode_all(input.as_bytes(), 3).unwrap();
+        let decoded = zstd::decode_all(compressed.as_slice()).unwrap();
+        assert_eq!(decoded, input.as_bytes());
+    }
+
+    #[tokio::test]
     async fn build_env_json_with_memory_as_artifact() {
         // Post-#10602: memory rides in VM0_ARTIFACTS, not VM0_MEMORY_*.
         let mut ctx = minimal_context();
         ctx.storage_manifest = Some(StorageManifest {
             storages: vec![],
-            artifacts: vec![ArtifactEntry {
-                mount_path: "/memory".into(),
-                archive_url: None,
-                cached: false,
-                vas_storage_name: "memory".into(),
-                vas_storage_id: String::new(),
-                vas_version_id: "v2".into(),
-            }],
-            cleanup_paths: vec![],
+            artifacts: vec![api_artifact(
+                "memory",
+                "/memory",
+                "",
+                "v2",
+                "https://example.com/memory.tar.gz",
+            )],
         });
         let env = build_env_for_test(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_MEMORY_DRIVER"));
@@ -2460,7 +2664,7 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
         let ctx = minimal_context();
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![],
             cleanup_paths: vec![],
@@ -2518,7 +2722,8 @@ mod tests {
             registry: proxy::ProxyRegistryHandle::new(registry_path, lock_path),
             http: crate::http::HttpClient::new("http://localhost:9999".into()).unwrap(),
             log_paths: LogPaths::new(log_dir),
-            ip_log_map: kmsg_log::new_ip_log_map(),
+            network_log_manager: NetworkLogManager::new(),
+            network_log_drain: NetworkLogDrainCoordinator::noop(),
             home: HomePaths::with_root(dir.to_path_buf()),
         }
     }
@@ -2534,6 +2739,45 @@ mod tests {
     fn test_budget_lease() -> crate::resource_budget::BudgetLease {
         let budget = Arc::new(crate::resource_budget::ResourceBudget::new(1, 1, 1.0, 0));
         crate::resource_budget::ResourceBudget::try_reserve_lease(&budget, 2, 2048).unwrap()
+    }
+
+    async fn make_reusable_idle_sandbox(
+        sandbox: Box<dyn Sandbox>,
+        source_ip: String,
+        session_id: &str,
+    ) -> (ReusableIdleSandbox, crate::resource_budget::BudgetLease) {
+        use crate::idle_pool::{
+            IdlePool, IdlePoolConfig, IdleUnparkResult, ParkCandidate, ParkCandidateParts,
+            ParkResult,
+        };
+
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            default_timeout: std::time::Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let candidate = ParkCandidate::from_parked_parts(ParkCandidateParts {
+            sandbox,
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: session_id.into(),
+            sandbox_id: SandboxId::new_v4(),
+            profile_name: "vm0/default".into(),
+            budget_lease: test_budget_lease(),
+            source_ip,
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        });
+        assert!(matches!(pool.park(candidate), ParkResult::Parked));
+        let entry = pool.take(session_id).expect("idle entry should exist");
+        match entry.try_unpark().await {
+            IdleUnparkResult::Reused {
+                sandbox,
+                budget_lease,
+            } => (sandbox, budget_lease),
+            IdleUnparkResult::Failed { error, .. } => {
+                panic!("test idle entry should unpark: {error}");
+            }
+        }
     }
 
     fn test_telemetry(config: &ExecutorConfig, ctx: &ExecutionContext) -> JobTelemetry {
@@ -2630,15 +2874,13 @@ mod tests {
 
         let mut ctx = minimal_context();
         ctx.storage_manifest = Some(StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://example.com/data.tar.gz".into()),
-                cached: false,
-                vas_storage_name: None,
-                vas_version_id: None,
-            }],
+            storages: vec![api_storage(
+                "data",
+                "/data",
+                "v1",
+                "https://example.com/data.tar.gz",
+            )],
             artifacts: vec![],
-            cleanup_paths: vec![],
         });
         let (exit_code, _) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -2815,24 +3057,9 @@ mod tests {
         assert_eq!(outcome.exit_code, 0);
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
-        // Build an idle entry from the outcome
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox,
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "test-session".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: outcome.source_ip,
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         // Reuse the sandbox for a second turn
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let cancel = tokio_util::sync::CancellationToken::new();
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
@@ -2872,22 +3099,6 @@ mod tests {
         assert_eq!(outcome.exit_code, 0);
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
-        // Build idle entry
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox,
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "test-session".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: outcome.source_ip,
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         // Second turn: reuse with new session history
         let mut ctx2 = minimal_context();
         ctx2.resume_session = Some(ResumeSession {
@@ -2899,7 +3110,8 @@ mod tests {
         });
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, ctx2, &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
@@ -2908,7 +3120,9 @@ mod tests {
 
     #[tokio::test]
     async fn idle_pool_park_and_reuse_cycle() {
-        use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult};
+        use crate::idle_pool::{
+            IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts, ParkResult,
+        };
 
         let dir = tempfile::tempdir().unwrap();
         let config = test_executor_config(dir.path()).await;
@@ -2938,7 +3152,7 @@ mod tests {
             max_idle: 0,
         });
 
-        let entry = crate::idle_pool::IdleEntry {
+        let entry = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox,
             factory: std::sync::Arc::new(
                 Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
@@ -2948,23 +3162,29 @@ mod tests {
             profile_name: "vm0/default".into(),
             budget_lease: test_budget_lease(),
             source_ip: outcome.source_ip,
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
+        });
 
-        let result = pool.park("session-1".into(), entry);
+        let result = pool.park(entry);
         assert!(matches!(result, ParkResult::Parked));
         assert_eq!(pool.len(), 1);
 
         // Take from pool for reuse
-        let reuse_entry = pool.take("session-1").expect("should find session");
+        let reuse_entry = pool.take("test-session").expect("should find session");
         assert_eq!(pool.len(), 0);
-        assert_eq!(reuse_entry.profile_name, "vm0/default");
+        assert_eq!(reuse_entry.profile_name(), "vm0/default");
 
         // Execute reuse
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = reuse_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) = match reuse_entry.try_unpark().await {
+            crate::idle_pool::IdleUnparkResult::Reused {
+                sandbox,
+                budget_lease,
+            } => (sandbox, budget_lease),
+            crate::idle_pool::IdleUnparkResult::Failed { error, .. } => {
+                panic!("test idle entry should unpark: {error}");
+            }
+        };
         let (reuse_outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
@@ -2973,7 +3193,7 @@ mod tests {
 
     #[tokio::test]
     async fn idle_pool_profile_mismatch_returns_none() {
-        use crate::idle_pool::{IdlePool, IdlePoolConfig};
+        use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkCandidate, ParkCandidateParts};
 
         let mut pool = IdlePool::new(IdlePoolConfig {
             default_timeout: std::time::Duration::from_secs(300),
@@ -2981,7 +3201,7 @@ mod tests {
         });
 
         // Park with profile "vm0/default"
-        let entry = crate::idle_pool::IdleEntry {
+        let entry = ParkCandidate::from_parked_parts(ParkCandidateParts {
             sandbox: Box::new(sandbox_mock::MockSandbox::new("test")),
             factory: std::sync::Arc::new(
                 Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>
@@ -2991,18 +3211,16 @@ mod tests {
             profile_name: "vm0/default".into(),
             budget_lease: test_budget_lease(),
             source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
             storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-        let _ = pool.park("session-1".into(), entry);
+        });
+        let _ = pool.park(entry);
 
         // Take and verify profile
-        let taken = pool.take("session-1").expect("should find");
-        assert_eq!(taken.profile_name, "vm0/default");
+        let taken = pool.take("test-session").expect("should find");
+        assert_eq!(taken.profile_name(), "vm0/default");
 
         // Simulate caller checking profile mismatch
-        let matches_browser = taken.profile_name == "vm0/browser";
+        let matches_browser = taken.profile_name() == "vm0/browser";
         assert!(!matches_browser, "should not match different profile");
     }
 
@@ -3015,23 +3233,9 @@ mod tests {
         let sandbox = MockSandbox::new("reuse-clock-fail");
         sandbox.push_exec_result(Err(sandbox_exec_error("vsock broken")));
 
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox: Box::new(sandbox),
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "sess-1".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
         let (outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
@@ -3058,23 +3262,9 @@ mod tests {
         }));
         sandbox.push_exec_result(Err(sandbox_exec_error("reseed timeout")));
 
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox: Box::new(sandbox),
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "sess-1".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-1").await;
         let (outcome, _telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 
@@ -3103,23 +3293,9 @@ mod tests {
             session_history: r#"{"type":"init"}"#.into(),
         });
 
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox: Box::new(sandbox),
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "sess-abc".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(Box::new(sandbox), "10.0.0.1".into(), "sess-abc").await;
         let (outcome, _telemetry) = execute_job_reuse(idle_sandbox, ctx, &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
@@ -3162,13 +3338,28 @@ mod tests {
     // filter_unchanged_storages tests
     // -----------------------------------------------------------------------
 
-    fn art(name: &str, ver: &str, url: &str) -> ArtifactEntry {
-        ArtifactEntry {
+    fn guest_art(name: &str, ver: &str, url: Option<&str>) -> GuestDownloadArtifactEntry {
+        GuestDownloadArtifactEntry {
             mount_path: "/workspace".into(),
-            archive_url: Some(url.into()),
+            archive_url: url.map(str::to_string),
             cached: false,
             vas_storage_name: name.into(),
             vas_storage_id: String::new(),
+            vas_version_id: ver.into(),
+        }
+    }
+
+    fn guest_storage(
+        mount_path: &str,
+        name: &str,
+        ver: &str,
+        url: Option<&str>,
+    ) -> GuestDownloadStorageEntry {
+        GuestDownloadStorageEntry {
+            mount_path: mount_path.into(),
+            archive_url: url.map(str::to_string),
+            cached: false,
+            vas_storage_name: name.into(),
             vas_version_id: ver.into(),
         }
     }
@@ -3181,9 +3372,9 @@ mod tests {
 
     #[test]
     fn filter_same_artifact_version_nulls_url() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("my-art", "v1", "https://s3/v1")],
+            artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3196,9 +3387,9 @@ mod tests {
 
     #[test]
     fn filter_different_artifact_version_keeps_url() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("my-art", "v2", "https://s3/v2")],
+            artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3214,9 +3405,9 @@ mod tests {
 
     #[test]
     fn filter_different_artifact_name_keeps_url() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("other-art", "v1", "https://s3/v1")],
+            artifacts: vec![guest_art("other-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3229,9 +3420,9 @@ mod tests {
 
     #[test]
     fn filter_new_artifact_not_in_prev_keeps_url() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("my-art", "v1", "https://s3/v1")],
+            artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
@@ -3241,15 +3432,14 @@ mod tests {
 
     #[test]
     fn filter_empty_prev_downloads_everything() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/data".into()),
-                cached: false,
-                vas_storage_name: Some("vol-1".into()),
-                vas_version_id: Some("v1".into()),
-            }],
-            artifacts: vec![art("my-art", "v1", "https://s3/v1")],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/data",
+                "vol-1",
+                "v1",
+                Some("https://s3/data"),
+            )],
+            artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
@@ -3260,15 +3450,14 @@ mod tests {
 
     #[test]
     fn filter_all_unchanged_nulls_all_urls() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/same-url".into()),
-                cached: false,
-                vas_storage_name: Some("vol-1".into()),
-                vas_version_id: Some("v1".into()),
-            }],
-            artifacts: vec![art("my-art", "v1", "https://s3/v1")],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/data",
+                "vol-1",
+                "v1",
+                Some("https://s3/same-url"),
+            )],
+            artifacts: vec![guest_art("my-art", "v1", Some("https://s3/v1"))],
             cleanup_paths: vec![],
         };
         let mut storages = HashMap::new();
@@ -3286,7 +3475,7 @@ mod tests {
 
     #[test]
     fn filter_two_artifacts_at_different_mount_paths() {
-        let art_a = ArtifactEntry {
+        let art_a = GuestDownloadArtifactEntry {
             mount_path: "/workspace".into(),
             archive_url: Some("https://s3/a-v2".into()),
             cached: false,
@@ -3294,7 +3483,7 @@ mod tests {
             vas_storage_id: String::new(),
             vas_version_id: "v2".into(),
         };
-        let art_b = ArtifactEntry {
+        let art_b = GuestDownloadArtifactEntry {
             mount_path: "/data".into(),
             archive_url: Some("https://s3/b-v1".into()),
             cached: false,
@@ -3302,7 +3491,7 @@ mod tests {
             vas_storage_id: String::new(),
             vas_version_id: "v1".into(),
         };
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
             artifacts: vec![art_a, art_b],
             cleanup_paths: vec![],
@@ -3329,9 +3518,9 @@ mod tests {
     #[test]
     fn filter_detects_removed_artifacts() {
         // Current manifest has only one artifact; previous had two.
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("kept", "v1", "https://s3/kept")],
+            artifacts: vec![guest_art("kept", "v1", Some("https://s3/kept"))],
             cleanup_paths: vec![],
         };
         let mut artifacts = HashMap::new();
@@ -3348,22 +3537,20 @@ mod tests {
 
     #[test]
     fn filter_computes_cleanup_for_changed_storages() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![
-                StorageEntry {
-                    mount_path: "/home/user/.claude".into(),
-                    archive_url: Some("https://s3/instructions".into()),
-                    cached: false,
-                    vas_storage_name: Some("instructions".into()),
-                    vas_version_id: Some("v2".into()),
-                },
-                StorageEntry {
-                    mount_path: "/home/user/.claude/skills/foo".into(),
-                    archive_url: Some("https://s3/foo".into()),
-                    cached: false,
-                    vas_storage_name: Some("skill-foo".into()),
-                    vas_version_id: Some("v1".into()),
-                },
+                guest_storage(
+                    "/home/user/.claude",
+                    "instructions",
+                    "v2",
+                    Some("https://s3/instructions"),
+                ),
+                guest_storage(
+                    "/home/user/.claude/skills/foo",
+                    "skill-foo",
+                    "v1",
+                    Some("https://s3/foo"),
+                ),
             ],
             artifacts: vec![],
             cleanup_paths: vec![],
@@ -3393,14 +3580,13 @@ mod tests {
 
     #[test]
     fn filter_detects_removed_storages() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/home/user/.claude".into(),
-                archive_url: Some("https://s3/instructions".into()),
-                cached: false,
-                vas_storage_name: Some("instructions".into()),
-                vas_version_id: Some("v1".into()),
-            }],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/home/user/.claude",
+                "instructions",
+                "v1",
+                Some("https://s3/instructions"),
+            )],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
@@ -3429,9 +3615,9 @@ mod tests {
 
     #[test]
     fn filter_changed_artifact_adds_cleanup_path() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![art("my-art", "v2", "https://s3/v2")],
+            artifacts: vec![guest_art("my-art", "v2", Some("https://s3/v2"))],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3449,16 +3635,9 @@ mod tests {
 
     #[test]
     fn filter_changed_artifact_with_null_url_adds_cleanup_path() {
-        let manifest = StorageManifest {
+        let manifest = GuestDownloadManifest {
             storages: vec![],
-            artifacts: vec![ArtifactEntry {
-                mount_path: "/workspace".into(),
-                archive_url: None, // API returned null
-                cached: false,
-                vas_storage_name: "my-art".into(),
-                vas_storage_id: String::new(),
-                vas_version_id: "v2".into(),
-            }],
+            artifacts: vec![guest_art("my-art", "v2", None)],
             cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
@@ -3466,21 +3645,15 @@ mod tests {
             artifacts: art_fp("/workspace", "my-art", "v1"),
         };
         let result = filter_unchanged_storages(&manifest, &prev);
-        // Version changed → must be in cleanup_paths even though URL is null.
+        // Version changed → must be in cleanup_paths even though URL is absent.
         assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
         assert!(!result.artifacts[0].cached);
     }
 
     #[test]
     fn filter_changed_storage_with_null_url_adds_cleanup_path() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: None, // API returned null
-                cached: false,
-                vas_storage_name: Some("vol-1".into()),
-                vas_version_id: Some("v2".into()),
-            }],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage("/data", "vol-1", "v2", None)],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
@@ -3491,21 +3664,20 @@ mod tests {
             artifacts: HashMap::new(),
         };
         let result = filter_unchanged_storages(&manifest, &prev);
-        // Version changed → must be in cleanup_paths even though URL is null.
+        // Version changed → must be in cleanup_paths even though URL is absent.
         assert!(result.cleanup_paths.contains(&"/data".to_string()));
         assert!(!result.storages[0].cached);
     }
 
     #[test]
     fn filter_unchanged_storage_sets_cached_true() {
-        let manifest = StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/data".into()),
-                cached: false,
-                vas_storage_name: Some("vol-1".into()),
-                vas_version_id: Some("v1".into()),
-            }],
+        let manifest = GuestDownloadManifest {
+            storages: vec![guest_storage(
+                "/data",
+                "vol-1",
+                "v1",
+                Some("https://s3/data"),
+            )],
             artifacts: vec![],
             cleanup_paths: vec![],
         };
@@ -3607,23 +3779,9 @@ mod tests {
         .await;
         let sandbox = outcome.sandbox.expect("sandbox should be alive");
 
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox,
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "test-session".into(),
-            sandbox_id: SandboxId::new_v4(),
-            profile_name: "vm0/default".into(),
-            budget_lease: test_budget_lease(),
-            source_ip: outcome.source_ip,
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
-        };
-
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (idle_sandbox, _lease) = idle_entry.into_reuse_parts();
+        let (idle_sandbox, _lease) =
+            make_reusable_idle_sandbox(sandbox, outcome.source_ip, "test-session").await;
         let (_outcome, telemetry) =
             execute_job_reuse(idle_sandbox, minimal_context(), &config, cancel).await;
 

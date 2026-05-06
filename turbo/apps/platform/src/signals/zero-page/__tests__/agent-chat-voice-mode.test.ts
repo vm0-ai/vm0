@@ -269,7 +269,7 @@ describe("agent-chat-voice-mode", () => {
         path: "/",
         withoutRender: true,
       });
-      await expect(context.store.get(trinityEnabled$)).resolves.toBeFalsy();
+      expect(context.store.get(trinityEnabled$)).toBeFalsy();
     });
 
     it("resolves to true when the user override is set", async () => {
@@ -279,7 +279,7 @@ describe("agent-chat-voice-mode", () => {
         withoutRender: true,
         featureSwitches: { trinity: true },
       });
-      await expect(context.store.get(trinityEnabled$)).resolves.toBeTruthy();
+      expect(context.store.get(trinityEnabled$)).toBeTruthy();
     });
   });
 
@@ -296,12 +296,12 @@ describe("agent-chat-voice-mode", () => {
       expect(context.store.get(agentChatVoiceMode$)).toBe("on");
     });
 
-    it("exit flips mode back to 'off' after enter", () => {
+    it("exit flips mode back to 'off' after enter", async () => {
       detach(
         context.store.set(enterAgentChatVoiceMode$, AGENT_ID, context.signal),
         Reason.DomCallback,
       );
-      context.store.set(exitAgentChatVoiceMode$);
+      await context.store.set(exitAgentChatVoiceMode$, context.signal);
       expect(context.store.get(agentChatVoiceMode$)).toBe("off");
     });
   });

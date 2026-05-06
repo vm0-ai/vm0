@@ -6,7 +6,7 @@ import {
   type LogsSearchResponse,
 } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
-import { ClaudeEventParser } from "../../../lib/events/claude-event-parser";
+import { parseEvent } from "../../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import { withErrorHandler } from "../../../lib/command";
 import { isUUID } from "../../run/shared";
@@ -25,7 +25,7 @@ export interface LogsSearchCliOptions {
 
 function renderEvent(event: RunEvent, renderer: EventRenderer): void {
   const eventData = event.eventData as Record<string, unknown>;
-  const parsed = ClaudeEventParser.parse(eventData);
+  const parsed = parseEvent(eventData);
   if (parsed) {
     parsed.timestamp = new Date(event.createdAt);
     renderer.render(parsed);

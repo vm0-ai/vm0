@@ -171,6 +171,60 @@ describe("zero logs view command", () => {
     expect(errorCalls).toContain("zero logs list");
   });
 
+  it("should render codex framework events", async () => {
+    server.use(
+      http.get(
+        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        () => {
+          return HttpResponse.json({
+            events: [
+              {
+                sequenceNumber: 1,
+                eventType: "thread.started",
+                createdAt: "2024-01-15T10:30:00Z",
+                eventData: {
+                  type: "thread.started",
+                  thread_id: "thread-zero-1",
+                },
+              },
+              {
+                sequenceNumber: 2,
+                eventType: "item.completed",
+                createdAt: "2024-01-15T10:30:01Z",
+                eventData: {
+                  type: "item.completed",
+                  item: {
+                    id: "msg_1",
+                    type: "agent_message",
+                    text: "Codex zero output",
+                  },
+                },
+              },
+              {
+                sequenceNumber: 3,
+                eventType: "turn.completed",
+                createdAt: "2024-01-15T10:30:02Z",
+                eventData: {
+                  type: "turn.completed",
+                  usage: { input_tokens: 100, output_tokens: 20 },
+                },
+              },
+            ],
+            framework: "codex",
+            hasMore: false,
+          });
+        },
+      ),
+    );
+
+    await zeroLogsCommand.parseAsync(["node", "cli", RUN_ID, "--head", "100"]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("Codex Started");
+    expect(logCalls).toContain("Codex zero output");
+    expect(logCalls).toContain("Codex Completed");
+  });
+
   it("should handle authentication error", async () => {
     server.use(
       http.get(

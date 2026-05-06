@@ -67,6 +67,7 @@ import { gitlabHandler } from "./providers/gitlab-handler";
 import { granolaHandler } from "./providers/granola-handler";
 import { greenhouseHandler } from "./providers/greenhouse-handler";
 import { groqHandler } from "./providers/groq-handler";
+import { gumroadHandler } from "./providers/gumroad-handler";
 import { githubHandler } from "./providers/github-handler";
 import { heygenHandler } from "./providers/heygen-handler";
 import { heliconeHandler } from "./providers/helicone-handler";
@@ -108,10 +109,12 @@ import { miroHandler } from "./providers/miro-handler";
 import { mixpanelHandler } from "./providers/mixpanel-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { msg9Handler } from "./providers/msg9-handler";
+import { nanoBananaHandler } from "./providers/nano-banana-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { onyxHandler } from "./providers/onyx-handler";
 import { openaiHandler } from "./providers/openai-handler";
+import { chatgptOauthHandler } from "./providers/chatgpt-oauth-handler";
 import { redditHandler } from "./providers/reddit-handler";
 import { reporteiHandler } from "./providers/reportei-handler";
 import { serpapiHandler } from "./providers/serpapi-handler";
@@ -248,6 +251,7 @@ export const PROVIDER_HANDLERS: Record<
   granola: granolaHandler,
   greenhouse: greenhouseHandler,
   groq: groqHandler,
+  gumroad: gumroadHandler,
   github: githubHandler,
   gmail: gmailHandler,
   heygen: heygenHandler,
@@ -284,10 +288,12 @@ export const PROVIDER_HANDLERS: Record<
   mixpanel: mixpanelHandler,
   monday: mondayHandler,
   msg9: msg9Handler,
+  "nano-banana": nanoBananaHandler,
   neon: neonHandler,
   notion: notionHandler,
   onyx: onyxHandler,
   openai: openaiHandler,
+  "chatgpt-oauth": chatgptOauthHandler,
   "outlook-calendar": outlookCalendarHandler,
   "outlook-mail": outlookMailHandler,
   reddit: redditHandler,
@@ -378,6 +384,8 @@ export function getConfiguredConnectorTypes(currentEnv: Env): ConnectorType[] {
     ) {
       configured.push(connectorType);
     } else if (getConnectorDefaultAuthMethod(connectorType) === "api-token") {
+      configured.push(connectorType);
+    } else if (getConnectorDefaultAuthMethod(connectorType) === "platform") {
       configured.push(connectorType);
     }
   }

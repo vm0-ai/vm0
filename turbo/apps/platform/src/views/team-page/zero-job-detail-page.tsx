@@ -47,33 +47,38 @@ import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
 import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
 import type { ScheduleEntry } from "../zero-page/zero-schedule-card.tsx";
 import {
-  zeroJobDetail$,
-  zeroJobInstructions$,
-  zeroJobScheduleEntries$,
-  saveZeroJobSchedule$,
-  deleteZeroJobSchedule$,
-  toggleZeroJobScheduleEnabled$,
-  zeroJobEditedContent$,
-  zeroJobInstructionsDirty$,
-  setZeroJobEditedContent$,
-  discardZeroJobEdit$,
-  buildZeroJobInstructions$,
-  zeroJobUpdateSettings$,
-  deleteZeroJobAgent$,
-  zeroJobAddedConnectors$,
-  addZeroJobConnector$,
-  removeZeroJobConnector$,
-  saveZeroJobConnectors$,
-  zeroJobActiveTab$,
-  setZeroJobActiveTab$,
-  zeroJobPermissionPolicies$,
-  reloadJobDetail$,
+  agentDetail$,
+  agentInstructions$,
+  agentScheduleEntries$,
+  saveAgentSchedule$,
+  deleteAgentSchedule$,
+  toggleAgentScheduleEnabled$,
+  agentEditedContent$,
+  agentInstructionsDirty$,
+  setAgentEditedContent$,
+  discardAgentEdit$,
+  buildAgentInstructions$,
+  updateAgentSettings$,
+  deleteAgent$,
+  agentAuthorizedConnectors$,
+  authorizeAgentConnector$,
+  deauthorizeAgentConnector$,
+  saveAgentConnectors$,
+  agentActiveTab$,
+  setAgentActiveTab$,
+  agentPermissionPolicies$,
+  reloadAgentDetail$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
 import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
 import { currentAgent$ } from "../../signals/agent.ts";
@@ -414,16 +419,15 @@ function JobPermissionsTab({
   // signal refetches after a toggle/save or a permission-policy reload. This
   // prevents the entire list from flickering to the skeleton on each change
   // (issue #9141).
-  const connectorsLoadable = useLastLoadable(zeroJobAddedConnectors$);
-  const addedConnectors =
+  const connectorsLoadable = useLastLoadable(agentAuthorizedConnectors$);
+  const authorizedConnectors =
     connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
-  const addConnector = useSet(addZeroJobConnector$);
-  const removeConnector = useSet(removeZeroJobConnector$);
-  const saveConnectors = useSet(saveZeroJobConnectors$);
+  const authorizeFn = useSet(authorizeAgentConnector$);
+  const deauthorizeFn = useSet(deauthorizeAgentConnector$);
+  const saveConnectors = useSet(saveAgentConnectors$);
   const pageSignal = useGet(pageSignal$);
-  const permissionPolicies =
-    useLastResolved(zeroJobPermissionPolicies$) ?? null;
-  const reloadDetail = useSet(reloadJobDetail$);
+  const permissionPolicies = useLastResolved(agentPermissionPolicies$) ?? null;
+  const reloadDetail = useSet(reloadAgentDetail$);
   const savePermPol = useSet(savePermissionPolicies$);
   const connectorType = useGet(permConnectorType$);
   const setConnectorType = useSet(setPermConnectorType$);
@@ -451,29 +455,24 @@ function JobPermissionsTab({
   const filteredConnectors = connectedConnectors.filter((c) => {
     return matchesConnectorSearch(search, c);
   });
-  const addedSet = new Set(addedConnectors);
+  const authorizedSet = new Set(authorizedConnectors);
 
-  const handleToggle = (type: string, checked: boolean) => {
+  const handleToggle = async (type: string, checked: boolean) => {
     if (savingType !== null) {
       return;
     }
     const modify = checked
-      ? addConnector(type, pageSignal)
-      : removeConnector(type, pageSignal);
+      ? authorizeFn(type, pageSignal)
+      : deauthorizeFn(type, pageSignal);
     setSavingType(type);
-    detach(
-      modify
-        .then(() => {
-          return saveConnectors(pageSignal);
-        })
-        .then(() => {
-          toast.success("Connectors saved");
-        })
-        .finally(() => {
-          setSavingType(null);
-        }),
-      Reason.DomCallback,
+    await bestEffort(
+      (async () => {
+        await modify;
+        await saveConnectors(pageSignal);
+        toast.success("Connectors saved");
+      })(),
     );
+    setSavingType(null);
   };
 
   if (allTypesLoadable.state !== "hasData" || connectorsLoading) {
@@ -597,10 +596,10 @@ function JobPermissionsTab({
                   <PermissionRow
                     key={c.type}
                     connector={c}
-                    enabled={addedSet.has(c.type)}
-                    onToggle={(checked) => {
-                      return handleToggle(c.type, checked);
-                    }}
+                    enabled={authorizedSet.has(c.type)}
+                    onToggle={onDomEventFn(async (checked) => {
+                      await handleToggle(c.type, checked);
+                    })}
                     loading={savingType === c.type}
                     showManage={hasConnectorPermissions(c.type)}
                     onManage={() => {
@@ -644,13 +643,13 @@ function JobPermissionsTab({
 }
 
 function JobScheduleTab({ displayName }: { displayName: string }) {
-  const scheduleLoadable = useLoadable(zeroJobScheduleEntries$);
-  const entries = useLastResolved(zeroJobScheduleEntries$) ?? [];
+  const scheduleLoadable = useLoadable(agentScheduleEntries$);
+  const entries = useLastResolved(agentScheduleEntries$) ?? [];
   const loading = scheduleLoadable.state === "loading";
   const scheduleError = loadableErrorMessage(scheduleLoadable);
-  const saveScheduleTracked = useSet(saveZeroJobSchedule$);
-  const deleteSchedule = useSet(deleteZeroJobSchedule$);
-  const toggleEnabled = useSet(toggleZeroJobScheduleEnabled$);
+  const saveScheduleTracked = useSet(saveAgentSchedule$);
+  const deleteSchedule = useSet(deleteAgentSchedule$);
+  const toggleEnabled = useSet(toggleAgentScheduleEnabled$);
   const runScheduleNow = useSet(runScheduleNow$);
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
@@ -686,10 +685,10 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
 
 function JobInstructionsTab() {
   const pageSignal = useGet(pageSignal$);
-  const instructionsLoadable = useLoadable(zeroJobInstructions$);
-  const editedLoadable = useLoadable(zeroJobEditedContent$);
-  const dirtyLoadable = useLoadable(zeroJobInstructionsDirty$);
-  const [buildLoadable, build] = useLoadableSet(buildZeroJobInstructions$);
+  const instructionsLoadable = useLoadable(agentInstructions$);
+  const editedLoadable = useLoadable(agentEditedContent$);
+  const dirtyLoadable = useLoadable(agentInstructionsDirty$);
+  const [buildLoadable, build] = useLoadableSet(buildAgentInstructions$);
 
   const instructions =
     instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
@@ -703,8 +702,8 @@ function JobInstructionsTab() {
   const buildError =
     buildLoadable.state === "hasError" ? String(buildLoadable.error) : null;
 
-  const setEdited = useSet(setZeroJobEditedContent$);
-  const discard = useSet(discardZeroJobEdit$);
+  const setEdited = useSet(setAgentEditedContent$);
+  const discard = useSet(discardAgentEdit$);
 
   return (
     <ZeroInstructionsTab
@@ -719,9 +718,10 @@ function JobInstructionsTab() {
       onDiscard={discard}
       onBuild={() => {
         detach(
-          build(pageSignal).then(() => {
-            return toast.success("Instructions saved");
-          }),
+          (async () => {
+            await build(pageSignal);
+            toast.success("Instructions saved");
+          })(),
           Reason.DomCallback,
         );
       }}
@@ -839,7 +839,7 @@ function AgentTabContent({
   modelProviderId: string | null;
   selectedModel: string | null;
 }) {
-  const deleteAgent = useSet(deleteZeroJobAgent$);
+  const deleteAgent = useSet(deleteAgent$);
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
@@ -871,7 +871,7 @@ function AgentTabContent({
           avatarUrl={avatarUrl}
           modelProviderId={modelProviderId}
           selectedModel={selectedModel}
-          updateSettings$={zeroJobUpdateSettings$}
+          updateSettings$={updateAgentSettings$}
           inputId="job-agent-name"
           isDefaultAgent={isDefaultAgent}
           onDelete={handleDelete}
@@ -889,7 +889,7 @@ function AgentTabContent({
 
 function useAgentFields() {
   const agent = useLastResolved(currentAgent$);
-  const detail = useLastResolved(zeroJobDetail$);
+  const detail = useLastResolved(agentDetail$);
   // Both signals fetch from zeroAgentsByIdContract; pick whichever resolved first
   const source = agent ?? detail;
   const agentId = source?.agentId ?? "";
@@ -920,8 +920,8 @@ function useTabVisibility(agentId: string, ownerId: string) {
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
   const isOwner = currentUserId === ownerId;
 
-  const rawTab = useGet(zeroJobActiveTab$);
-  const setActiveTab = useSet(setZeroJobActiveTab$);
+  const rawTab = useGet(agentActiveTab$);
+  const setActiveTab = useSet(setAgentActiveTab$);
   const hideProfileAndInstructions = !isAdmin && !isOwner;
   const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
@@ -934,7 +934,7 @@ function useTabVisibility(agentId: string, ownerId: string) {
 }
 
 export function ZeroJobDetailPage() {
-  const detailLoadable = useLoadable(zeroJobDetail$);
+  const detailLoadable = useLoadable(agentDetail$);
   const error = loadableErrorMessage(detailLoadable);
   const fields = useAgentFields();
   const {

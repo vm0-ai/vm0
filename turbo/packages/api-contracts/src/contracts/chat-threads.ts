@@ -28,8 +28,21 @@ const resolvedAttachFileSchema = attachFileSchema.extend({
   url: z.string(),
 });
 
+const chatThreadArtifactGoogleDriveSyncSchema = z.discriminatedUnion("status", [
+  z.object({
+    status: z.literal("synced"),
+    id: z.string(),
+    name: z.string(),
+    webViewLink: z.string().nullable(),
+  }),
+  z.object({ status: z.literal("not_synced") }),
+  z.object({ status: z.literal("disconnected") }),
+  z.object({ status: z.literal("unknown") }),
+]);
+
 const chatThreadArtifactFileSchema = resolvedAttachFileSchema.extend({
   createdAt: z.string(),
+  googleDriveSync: chatThreadArtifactGoogleDriveSyncSchema.optional(),
 });
 
 const chatThreadArtifactRunSchema = z.object({
@@ -74,10 +87,28 @@ const chatThreadListItemSchema = z.object({
   /**
    * True when the thread has at least one non-terminal run
    * (queued / pending / running). Drives the sidebar running indicator,
-   * which is mutually exclusive with the unread dot and shares the
-   * `ChatThreadReadIndicator` feature switch gate.
+   * which is mutually exclusive with the unread dot.
    */
   running: z.boolean(),
+  /**
+   * True when the thread has draft composer content the user hasn't sent yet
+   * (non-empty `draftContent` or one+ `draftAttachments`). Drives the sidebar
+   * draft indicator. Optional for back-compat with fixtures predating the field.
+   */
+  hasDraft: z.boolean().optional(),
+  /**
+   * ISO timestamp at which the user pinned this thread. Null/undefined means
+   * unpinned. Pinned threads sort above unpinned in the sidebar; both groups
+   * keep recency order. Optional for back-compat with fixtures that predate
+   * the field.
+   */
+  pinnedAt: z.string().nullable().optional(),
+  /**
+   * ISO timestamp at which the user manually renamed this thread. Null/undefined
+   * means never renamed. When set, automated title generation is suppressed.
+   * Optional for back-compat with fixtures that predate the field.
+   */
+  renamedAt: z.string().nullable().optional(),
 });
 
 const toolSummaryEntrySchema = z.object({
@@ -147,6 +178,12 @@ const chatThreadDetailSchema = z.object({
    */
   modelProviderId: z.string().nullable().optional(),
   selectedModel: z.string().nullable().optional(),
+  /**
+   * ISO timestamp at which the user manually renamed this thread. Null/undefined
+   * means never renamed. When set, automated title generation is suppressed.
+   * Optional for back-compat with fixtures that predate the field.
+   */
+  renamedAt: z.string().nullable().optional(),
 });
 
 /**
@@ -274,6 +311,72 @@ export const chatThreadMarkReadContract = c.router({
 });
 
 /**
+ * Pin / unpin a chat thread. Two separate POST endpoints (no body) instead
+ * of widening `chatThreadByIdContract.patch`, which is intentionally narrow
+ * (draft fields only). Mirrors the `mark-read` precedent.
+ *
+ * Split into two contracts because each lives in its own Next.js route
+ * folder; `tsr.router` requires every action in a contract to be handled
+ * by the same router file.
+ */
+export const chatThreadPinContract = c.router({
+  pin: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/pin",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: c.noBody(),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Pin a chat thread to the top of the sidebar",
+  },
+});
+
+export const chatThreadUnpinContract = c.router({
+  unpin: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/unpin",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: c.noBody(),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Remove the pin from a chat thread",
+  },
+});
+
+/**
+ * Rename a chat thread POST endpoint. Sets both the title and the
+ * `renamed_at` timestamp, which suppresses future automated title
+ * generation for this thread.
+ *
+ * Split into a dedicated contract/route so any POST body widening
+ * (e.g. future `{ icon, folder }` fields) stays invisible to the
+ * unrelated draft PATCH on chatThreadByIdContract.
+ */
+export const chatThreadRenameContract = c.router({
+  rename: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/rename",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: z.object({ title: z.string().min(1) }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Rename a chat thread (suppresses automated title generation)",
+  },
+});
+
+/**
  * Chat messages contract (/api/zero/chat/messages)
  * Unified endpoint: create thread (if needed) + run + association in one call.
  */
@@ -303,6 +406,13 @@ export const chatMessagesContract = c.router({
       // Lets the client render an optimistic row and reconcile with the
       // server row by id — no temp-id swap, no React remount.
       clientMessageId: z.string().uuid().optional(),
+      // Test-only escape hatch: when the host runner has USE_MOCK_CODEX
+      // set (CI default), allow the request to bypass the mock and execute
+      // the real codex CLI. Mirrors `debugNoMockClaude` / `debugNoMockCodex`
+      // on /api/zero/runs so e2e BYOK smoke tests can exercise the chat
+      // entry path end-to-end.
+      debugNoMockClaude: z.boolean().optional(),
+      debugNoMockCodex: z.boolean().optional(),
     }),
     responses: {
       201: z.object({
@@ -315,6 +425,7 @@ export const chatMessagesContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      422: apiErrorSchema,
     },
     summary: "Send a chat message (create thread + run + association)",
   },
@@ -447,11 +558,37 @@ export const chatThreadArtifactsContract = c.router({
     },
     summary: "List uploaded files associated with every run in a chat thread",
   },
+  syncGoogleDrive: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:threadId/artifacts",
+    headers: authHeadersSchema,
+    pathParams: z.object({ threadId: z.string() }),
+    body: z.object({
+      runId: z.string(),
+      fileId: z.string(),
+    }),
+    responses: {
+      200: z.object({
+        id: z.string(),
+        name: z.string(),
+        webViewLink: z.string().nullable(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Sync a chat artifact file to the user's connected Google Drive",
+  },
 });
 
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
+export type ChatThreadPinContract = typeof chatThreadPinContract;
+export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
+export type ChatThreadRenameContract = typeof chatThreadRenameContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
@@ -470,6 +607,7 @@ export {
   attachFileSchema,
   resolvedAttachFileSchema,
   chatThreadArtifactFileSchema,
+  chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
 };
 
@@ -484,5 +622,8 @@ export type AttachFile = z.infer<typeof attachFileSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
 export type ChatThreadArtifactFile = z.infer<
   typeof chatThreadArtifactFileSchema
+>;
+export type ChatThreadArtifactGoogleDriveSync = z.infer<
+  typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;

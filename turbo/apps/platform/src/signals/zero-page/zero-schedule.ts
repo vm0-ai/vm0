@@ -1,3 +1,7 @@
+/* eslint-disable no-restricted-syntax */
+// This file contains a large amount of TRACE_CACHE that needs to be cleaned up in subsequent modifications.
+// Additionally, other files must not reference this file to implement file-level no-restricted-syntax operations.
+
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { createElement } from "react";
@@ -20,6 +24,7 @@ import {
 } from "./cron.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
 import { throwIfAbort } from "../utils.ts";
+import { defaultAgentId$ } from "../agent.ts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -259,37 +264,18 @@ export interface ZeroScheduleSaveParams {
   selectedModel?: string | null;
 }
 
-// Non-API errors (e.g. validation from buildScheduleBody) would otherwise be
-// silently swallowed by detach(Reason.DomCallback). ApiError is skipped
-// because accept() already toasts it. AbortError is skipped because aborts
-// on DomCallback paths are intentionally silent (component unmount, navigation).
-function runWithErrorToast<T>(fn: () => Promise<T>): Promise<T> {
-  return fn().catch((error: unknown) => {
-    throwIfAbort(error);
-    if (!(error instanceof ApiError)) {
-      const message = error instanceof Error ? error.message : "Save failed";
-      toast.error(message);
-    }
-    throw error;
-  });
-}
-
 export const saveZeroSchedule$ = command(
   async ({ get, set }, params: ZeroScheduleSaveParams, signal: AbortSignal) => {
-    await runWithErrorToast(async () => {
-      const status = await get(zeroOnboardingStatus$);
-      signal.throwIfAborted();
-      const composeId = status.defaultAgentId;
-      if (!composeId) {
-        throw new Error("No default agent configured");
-      }
+    const defaultAgentId = await get(defaultAgentId$);
+    signal.throwIfAborted();
+    if (!defaultAgentId) {
+      throw new Error("No default agent configured");
+    }
 
-      const body = buildScheduleBody(composeId, params);
+    const body = buildScheduleBody(defaultAgentId, params);
 
-      const client = get(zeroClient$)(zeroSchedulesMainContract);
-      await accept(client.deploy({ body }), [200, 201]);
-      signal.throwIfAborted();
-    });
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -441,15 +427,22 @@ export const saveOrgSchedule$ = command(
     params: ZeroScheduleSaveParams & { agentId: string },
     signal: AbortSignal,
   ) => {
-    const scheduleId = await runWithErrorToast(async () => {
+    let scheduleId: string;
+    try {
       const body = buildScheduleBody(params.agentId, params);
 
       const client = get(zeroClient$)(zeroSchedulesMainContract);
       const result = await accept(client.deploy({ body }), [200, 201]);
       signal.throwIfAborted();
-
-      return result.body.schedule.id;
-    });
+      scheduleId = result.body.schedule.id;
+    } catch (error: unknown) {
+      throwIfAbort(error);
+      if (!(error instanceof ApiError)) {
+        const message = error instanceof Error ? error.message : "Save failed";
+        toast.error(message);
+      }
+      throw error;
+    }
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
@@ -512,16 +505,19 @@ export const runScheduleNow$ = command(
       return toast.dismiss(toastId);
     });
     const client = get(zeroClient$)(zeroScheduleRunContract);
-    const result = await accept(client.run({ body: { scheduleId } }), [201], {
-      toast: false,
-    }).catch((error: unknown) => {
+    let data: { runId: string };
+    try {
+      const result = await accept(client.run({ body: { scheduleId } }), [201], {
+        toast: false,
+      });
+      signal.throwIfAborted();
+      data = result.body;
+    } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Run failed";
       toast.error(message, { id: toastId });
       throw error;
-    });
+    }
     signal.throwIfAborted();
-
-    const data = result.body;
 
     toast.success(
       createElement(

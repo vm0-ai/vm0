@@ -5,13 +5,17 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { reloadChatThreads$ } from "../agent-chat.ts";
-import { reloadInsights$ } from "./network-insights-signals.ts";
+import {
+  reloadInsights$,
+  syncUsageRangeFromInsights$,
+} from "./network-insights-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupNetworkInsightsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(updatePage$, createElement(NetworkInsightsPage), "sidebar");
-    set(updateDocumentTitle$, "Insights");
+    set(updateDocumentTitle$, "Insights & Usage");
+    set(syncUsageRangeFromInsights$);
     await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {

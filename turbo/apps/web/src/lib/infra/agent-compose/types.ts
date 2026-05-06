@@ -2,6 +2,8 @@
  * Agent compose types matching agent.yaml format
  */
 
+import type { SupportedFramework } from "@vm0/core/frameworks";
+
 /**
  * Volume configuration for static dependencies
  * Each volume requires explicit name and version
@@ -35,12 +37,15 @@ export interface ArtifactConfig {
  */
 interface AgentDefinition {
   description?: string;
-  framework: string;
+  framework: SupportedFramework;
   volumes?: string[]; // Format: "volume-key:/mount/path"
   environment?: Record<string, string>; // Environment variables using ${{ vars.X }}, ${{ secrets.X }} syntax
   /**
-   * Path to instructions file (e.g., AGENTS.md).
-   * Auto-uploaded as volume and mounted at /home/user/.claude/CLAUDE.md
+   * Path to instructions file (e.g., AGENTS.md or CLAUDE.md).
+   * Auto-uploaded as a volume and mounted at the framework's instructions
+   * directory:
+   *   - claude-code: /home/user/.claude/CLAUDE.md
+   *   - codex: /home/user/.codex/AGENTS.md
    */
   instructions?: string;
   /**

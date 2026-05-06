@@ -112,8 +112,12 @@ async fn execute(
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
     // time the CLI spawns and makes its first HTTPS request.
+    let dns_target = match env::Framework::from_env() {
+        env::Framework::ClaudeCode => "api.anthropic.com:443",
+        env::Framework::Codex => "api.openai.com:443",
+    };
     tokio::spawn(async move {
-        let _ = tokio::net::lookup_host("api.anthropic.com:443").await;
+        let _ = tokio::net::lookup_host(dns_target).await;
     });
 
     // Working directory setup
@@ -127,6 +131,14 @@ async fn execute(
         return 1;
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
+
+    // Codex setup: best-effort `codex login`. Failure is non-fatal —
+    // `codex exec` reads `OPENAI_API_KEY` directly from the env.
+    if matches!(env::Framework::from_env(), env::Framework::Codex)
+        && let Err(e) = cli::setup_codex()
+    {
+        log_error!(LOG_TAG, "Codex setup failed (non-fatal, continuing): {e}");
+    }
 
     // Memory is now mounted directly at the Claude Code auto-memory path via
     // manifest.artifacts[] — no runtime symlink needed (see #10602).

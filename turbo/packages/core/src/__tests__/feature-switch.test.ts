@@ -8,7 +8,7 @@ import {
 
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.Dummy)).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -18,7 +18,7 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return false for disabled switch without context", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector)).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -47,7 +47,9 @@ describe("isFeatureEnabled", () => {
   });
 
   it("should return false when no orgId provided but switch has enabledOrgIdHashes", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.PlatformConnectors)).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.PlatformConnectors, {})).toBe(
+      false,
+    );
   });
 
   it("should return true when orgId matches even if userId does not", () => {
@@ -65,6 +67,7 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
+    expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -74,7 +77,6 @@ describe("getAllFeatureStates", () => {
     // PlatformConnectors has STAFF_ORG_ID_HASHES and should be true
     expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(true);
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(true);
-    expect(states[FeatureSwitchKey.TelegramIntegration]).toBe(true);
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Switches without org hashes should remain false
@@ -87,7 +89,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.PlatformConnectors]).toBe(false);
     expect(states[FeatureSwitchKey.ConnectorCategories]).toBe(false);
-    expect(states[FeatureSwitchKey.TelegramIntegration]).toBe(false);
+    expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {
@@ -161,8 +163,8 @@ describe("overrides", () => {
   });
 
   it("should behave identically when no overrides provided", () => {
-    expect(isFeatureEnabled(FeatureSwitchKey.Dummy)).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector)).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.Dummy, { userId: "any-user" }),
     ).toBe(true);

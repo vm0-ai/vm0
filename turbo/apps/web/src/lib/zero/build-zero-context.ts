@@ -50,6 +50,7 @@ import {
   verifyOrgAccessForResume,
   resolveComposeFromId,
   checkProviderCompatibility,
+  checkFrameworkCompatibility,
   applyResolutionDefaults,
 } from "./context/resolve-source";
 
@@ -70,6 +71,21 @@ const log = logger("zero:build-context");
  * memory-as-artifact) we log and skip rather than silently mount over a path
  * the user may have declared for a different purpose.
  */
+/**
+ * Merge multiple secretConnectorMap fragments. Used to combine the
+ * connector-typed map (post-filter) with the model-provider-derived map
+ * (which bypasses the filter — model-provider secrets ARE the source).
+ */
+function mergeSecretConnectorMaps(
+  ...maps: (Record<string, string> | undefined)[]
+): Record<string, string> | undefined {
+  const merged: Record<string, string> = {};
+  for (const m of maps) {
+    if (m) Object.assign(merged, m);
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function injectAutoMemoryArtifactIfNewRun(
   artifacts: ContextArtifact[],
   resolution: ConversationResolution | null,
@@ -128,6 +144,8 @@ interface BuildZeroContextParams {
   continuedFromSessionId?: string;
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
+  // Debug flag to force real Codex in mock environments (internal use only)
+  debugNoMockCodex?: boolean;
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies?: boolean;
   // Model provider for automatic secret injection
@@ -135,6 +153,13 @@ interface BuildZeroContextParams {
   // Per-agent or per-schedule model provider override (by provider ID + model)
   modelProviderId?: string;
   selectedModelOverride?: string;
+  /**
+   * Personal-tier preference (Epic #11868). Threaded into the resolver so
+   * runs that resolve through agents/schedules with the flag set consult
+   * user-tier providers before the org default. Honored only when the
+   * `personalModelProvider` feature switch is on for the caller.
+   */
+  preferPersonalProvider?: boolean;
   // API start time for E2E timing metrics
   apiStartTime: number;
   // Per-permission policies from zero agent configuration (includes unknownPolicy).
@@ -170,16 +195,19 @@ async function resolveSecretsAndEnvironment(
   allowedCustomConnectorIds?: string[],
   modelProviderId?: string,
   selectedModelOverride?: string,
+  preferPersonalProvider?: boolean,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
+  resolvedFramework: string;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
   selectedModel: string | undefined;
   connectorPermissionConfigs: ExpandedFirewallConfig[];
   mergedVars: Record<string, string> | undefined;
   billableFirewalls: string[];
+  modelUsageProvider: string | undefined;
 }> {
   // Model provider secret injection
   const hasExplicitModelProviderConfig = MODEL_PROVIDER_ENV_VARS.some((v) => {
@@ -201,11 +229,13 @@ async function resolveSecretsAndEnvironment(
     fetchReferencedSecrets(orgId, userId, firstAgent?.environment),
     resolveModelProviderSecrets(
       orgId,
+      userId,
       framework,
       hasExplicitModelProviderConfig,
       modelProvider,
       modelProviderId,
       selectedModelOverride,
+      preferPersonalProvider,
     ),
     resolveOauthConnectorSecrets(orgId, userId, allowedConnectorTypes),
     getApiTokenConnectorTypes(orgId, userId),
@@ -255,9 +285,17 @@ async function resolveSecretsAndEnvironment(
     : undefined;
 
   // Filter secretConnectorMap: remove keys overridden by higher-priority sources.
-  const secretConnectorMap = filterSecretConnectorMap(
+  // Then merge in model-provider-derived entries (CHATGPT_ACCESS_TOKEN → "chatgpt-oauth"
+  // for chatgpt-oauth-token providers). Model-provider entries are added AFTER the
+  // filter because they share names with `modelProviderResult.secrets` — those secrets
+  // ARE the source of the OAuth refresh, not an override target.
+  const filteredOauthMap = filterSecretConnectorMap(
     oauthResult.secretConnectorMap,
     [modelProviderResult.secrets, dbSecrets, cliSecrets],
+  );
+  const secretConnectorMap = mergeSecretConnectorMaps(
+    filteredOauthMap,
+    modelProviderResult.secretConnectorMap,
   );
 
   // Auto-generate config entry for model provider (if applicable).
@@ -306,12 +344,14 @@ async function resolveSecretsAndEnvironment(
   // - Connector firewalls listed in BILLABLE_CONNECTORS: per-call priced APIs
   //   where the platform covers the upstream cost and bills the user.
   const billableFirewalls: string[] = [];
-  if (
-    modelProviderResult.resolvedModelProvider === "vm0" &&
-    modelProviderConfig
-  ) {
-    billableFirewalls.push(modelProviderConfig.name);
+  const vm0ManagedModelProviderConfig =
+    modelProviderResult.resolvedModelProvider === "vm0" && modelProviderConfig;
+  if (vm0ManagedModelProviderConfig) {
+    billableFirewalls.push(vm0ManagedModelProviderConfig.name);
   }
+  const modelUsageProvider = vm0ManagedModelProviderConfig
+    ? modelProviderResult.selectedModel
+    : undefined;
   const billableConnectorSet = new Set<string>(BILLABLE_CONNECTORS);
   for (const fw of connectorPermissionConfigs) {
     if (billableConnectorSet.has(fw.name)) {
@@ -324,11 +364,15 @@ async function resolveSecretsAndEnvironment(
     environment,
     secretConnectorMap,
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
+    // Provider-derived framework when resolution ran; otherwise the compose
+    // framework. Source-of-truth for downstream framework-aware logic.
+    resolvedFramework: modelProviderResult.framework ?? framework,
     modelProviderConfig,
     selectedModel: modelProviderResult.selectedModel,
     connectorPermissionConfigs,
     mergedVars,
     billableFirewalls,
+    modelUsageProvider,
   };
 }
 
@@ -342,7 +386,9 @@ interface BuildZeroContextResult {
   timings: BuildZeroContextTimings;
   /** The resolved model provider type, if provider resolution ran during context build. */
   resolvedModelProvider: ModelProviderType | undefined;
-  /** The logical model name selected by the user, for credit usage billing. */
+  /** Provider-derived framework, source-of-truth for downstream. */
+  resolvedFramework: string;
+  /** The logical model name selected by the user, for model usage billing. */
   selectedModel: string | undefined;
 }
 
@@ -371,6 +417,11 @@ interface ResolveCliRunContextParams {
   // Model provider selection
   modelProviderId?: string;
   selectedModelOverride?: string;
+  /**
+   * Personal-tier preference (Epic #11868). Mirrors `BuildZeroContextParams`
+   * — see that interface for full semantics.
+   */
+  preferPersonalProvider?: boolean;
 }
 
 /**
@@ -400,6 +451,7 @@ interface ResolvedCliContext {
   selectedModel?: string;
 
   billableFirewalls: string[];
+  modelUsageProvider?: string;
 
   // Timings
   timings: {
@@ -520,6 +572,7 @@ export async function resolveCliRunContext(
       params.allowedCustomConnectorIds,
       params.modelProviderId,
       params.selectedModelOverride,
+      params.preferPersonalProvider,
     ),
     getUserPreferences(params.orgId, params.userId),
     // Fetch previous run's model provider for compatibility check
@@ -541,16 +594,19 @@ export async function resolveCliRunContext(
     environment,
     secretConnectorMap,
     resolvedModelProvider,
+    resolvedFramework,
     modelProviderConfig,
     selectedModel,
     connectorPermissionConfigs,
     mergedVars,
     billableFirewalls,
+    modelUsageProvider,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
 
-  // Step 5: Provider compatibility check for session continues.
+  // Step 5: Compatibility checks for session continues.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
+  checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
 
   // Build permission manifest
   const permissionResult = mergePermissions(
@@ -577,6 +633,7 @@ export async function resolveCliRunContext(
     resolvedModelProvider,
     selectedModel,
     billableFirewalls,
+    modelUsageProvider,
     timings: {
       resolveSource: resolveEnd - resolveStart,
       resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
@@ -684,6 +741,7 @@ export async function buildZeroExecutionContext(
       params.allowedCustomConnectorIds,
       params.modelProviderId,
       params.selectedModelOverride,
+      params.preferPersonalProvider,
     ),
     params.preloadedUserTimezone !== undefined
       ? Promise.resolve(null)
@@ -709,19 +767,25 @@ export async function buildZeroExecutionContext(
     environment,
     secretConnectorMap,
     resolvedModelProvider,
+    resolvedFramework,
     modelProviderConfig,
     selectedModel,
     connectorPermissionConfigs,
     mergedVars,
     billableFirewalls,
+    modelUsageProvider,
   } = secretsResult;
   const userTimezone =
     params.preloadedUserTimezone ?? userPrefs?.timezone ?? undefined;
 
-  // Step 5: Provider compatibility check for session continues.
-  // When resuming a session, verify the new provider is compatible with the
-  // original provider to avoid mid-conversation base URL mismatches.
+  // Step 5: Compatibility checks for session continues.
+  // - Provider: avoid mid-conversation base URL mismatches.
+  // - Framework: persisted cliAgentSessionHistory is in the previous
+  //   framework's format; switching binaries mid-thread can't replay it.
+  //   resolvedFramework is the source of truth (provider-derived since
+  //   #11649); the compose's `framework` field is no longer authoritative.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
+  checkFrameworkCompatibility(resolution?.sessionFramework, resolvedFramework);
 
   // Build permission manifest (base + auth entries for the runner).
   const permissionResult = mergePermissions(
@@ -762,16 +826,24 @@ export async function buildZeroExecutionContext(
       continuedFromSessionId: params.continuedFromSessionId,
       // Debug flag
       debugNoMockClaude: params.debugNoMockClaude,
+      debugNoMockCodex: params.debugNoMockCodex,
       captureNetworkBodies: params.captureNetworkBodies,
       billableFirewalls,
+      modelUsageProvider,
       // API start time for E2E timing metrics
       apiStartTime: params.apiStartTime,
+      // Provider-derived framework — source of truth for downstream
+      // dispatch (execution-preparer) and admission validation. Undefined
+      // on the CLI path (no provider context); dispatch falls back to
+      // compose framework via extractCliAgentType.
+      resolvedFramework,
     },
     timings: {
       resolveSourceAndOrg: resolveEnd - resolveStart,
       resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
     },
     resolvedModelProvider,
+    resolvedFramework,
     selectedModel,
   };
 }

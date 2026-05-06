@@ -13,7 +13,6 @@ import {
   dispatchQueuedZeroRun,
   drainOrgQueue,
 } from "../../../../../../src/lib/zero/zero-run-queue-service";
-import { processOrgCredits } from "../../../../../../src/lib/zero/credit/credit-service";
 import { processOrgUsageEvents } from "../../../../../../src/lib/zero/credit/usage-event-service";
 import {
   isNotFound,
@@ -46,7 +45,6 @@ const router = tsr.router(zeroRunsCancelContract, {
             },
           );
           if (shouldProcessCredits) {
-            await processOrgCredits(result.orgId);
             await processOrgUsageEvents(result.orgId);
           }
         });

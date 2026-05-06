@@ -102,7 +102,6 @@ export {
   webhookStoragesContract,
   webhookStoragesIncrementalContract,
   webhookTelemetryContract,
-  webhookUsageContract,
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
   webhookUsageEventContract,
@@ -184,6 +183,8 @@ export {
   chatThreadV1SendContract,
   chatThreadV1Schema,
   chatMessageV1Schema,
+  audioTranscriptionsV1Contract,
+  audioTranscriptionV1Schema,
   runnersPollContract,
   runnersJobClaimContract,
   runnersHeartbeatContract,
@@ -485,7 +486,6 @@ export {
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
-  type WebhookUsageContract,
   type WebhookUsageEventContract,
   type CliAuthDeviceContract,
   type CliAuthTokenContract,
@@ -540,6 +540,8 @@ export {
   type ChatThreadV1SendContract,
   type ChatThreadV1,
   type ChatMessageV1,
+  type AudioTranscriptionsV1Contract,
+  type AudioTranscriptionV1,
   type RunnersPollContract,
   type RunnersJobClaimContract,
   type RunnersHeartbeatContract,
@@ -871,3 +873,4 @@ export {
 } from "./firewalls";
 export { getGmtOffset } from "./timezone";
 export { getModelDisplayName } from "./model-display-name";
+export { formatMessage, serializeError, extractFields } from "./log-utils";

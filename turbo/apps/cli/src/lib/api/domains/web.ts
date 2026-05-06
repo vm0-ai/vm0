@@ -16,10 +16,21 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
+  ".avif": "image/avif",
   ".svg": "image/svg+xml",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mov": "video/quicktime",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac",
+  ".m4a": "audio/mp4",
+  ".mp3": "audio/mpeg",
+  ".mpga": "audio/mpga",
+  ".oga": "audio/ogg",
+  ".ogg": "audio/ogg",
+  ".opus": "audio/opus",
+  ".wav": "audio/wav",
+  ".wave": "audio/wave",
   ".pdf": "application/pdf",
   ".txt": "text/plain",
   ".csv": "text/csv",
@@ -27,6 +38,18 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".html": "text/html",
   ".htm": "text/html",
   ".json": "application/json",
+  ".doc": "application/msword",
+  ".docx":
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".odt": "application/vnd.oasis.opendocument.text",
+  ".rtf": "application/rtf",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".ods": "application/vnd.oasis.opendocument.spreadsheet",
+  ".ppt": "application/vnd.ms-powerpoint",
+  ".pptx":
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".odp": "application/vnd.oasis.opendocument.presentation",
 };
 
 function inferContentType(localPath: string): string {
@@ -115,6 +138,24 @@ interface UploadWebFileResult {
   contentType: string;
   size: number;
   url: string;
+}
+
+interface GenerateWebVoiceOptions {
+  text: string;
+  voice?: string;
+  instructions?: string;
+}
+
+interface GenerateWebVoiceResult {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+  durationSeconds: number;
+  creditsCharged: number;
+  model: string;
+  voice: string;
 }
 
 interface PrepareUploadResponse {
@@ -256,4 +297,48 @@ export async function uploadWebFile(
     size: completed.size,
     url: completed.url,
   };
+}
+
+/**
+ * Generate billed speech audio from text and receive the permanent /f URL.
+ * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Clerk session.
+ */
+export async function generateWebVoice(
+  options: GenerateWebVoiceOptions,
+): Promise<GenerateWebVoiceResult> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  const response = await fetch(new URL("/api/zero/voice-io/speech", baseUrl), {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      text: options.text,
+      ...(options.voice ? { voice: options.voice } : {}),
+      ...(options.instructions ? { instructions: options.instructions } : {}),
+    }),
+  });
+
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate voice",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+
+  return (await response.json()) as GenerateWebVoiceResult;
 }

@@ -4,6 +4,8 @@ use sandbox::SandboxId;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use api_contracts::generated::types::runners::storage::StorageManifest;
+
 use crate::ids::RunId;
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub debug_no_mock_claude: Option<bool>,
     #[serde(default)]
+    pub debug_no_mock_codex: Option<bool>,
+    #[serde(default)]
     pub api_start_time: Option<f64>,
     #[serde(default)]
     pub user_timezone: Option<String>,
@@ -91,6 +95,8 @@ pub struct ExecutionContext {
     pub feature_flags: Option<HashMap<String, bool>>,
     #[serde(default)]
     pub billable_firewalls: Vec<String>,
+    #[serde(default)]
+    pub model_usage_provider: Option<String>,
 }
 
 /// A single firewall config with its name and API entries.
@@ -155,12 +161,16 @@ pub struct NetworkPolicy {
     pub unknown_policy: String,
 }
 
+/// Runner-derived manifest written to `guest-download`.
+///
+/// This is intentionally separate from the API `StorageManifest`: `cached`,
+/// nullable `archive_url`, and `cleanup_paths` are computed by the runner.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StorageManifest {
-    pub storages: Vec<StorageEntry>,
+pub struct GuestDownloadManifest {
+    pub storages: Vec<GuestDownloadStorageEntry>,
     #[serde(default)]
-    pub artifacts: Vec<ArtifactEntry>,
+    pub artifacts: Vec<GuestDownloadArtifactEntry>,
     /// Paths to clean before downloading (computed from previous fingerprints).
     /// Used on VM reuse to remove stale files from changed/removed storages.
     #[serde(default)]
@@ -169,35 +179,58 @@ pub struct StorageManifest {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StorageEntry {
+pub struct GuestDownloadStorageEntry {
     pub mount_path: String,
-    #[serde(default)]
     pub archive_url: Option<String>,
     /// Whether this entry is cached from a previous turn (fingerprint matched).
     /// When true, `archive_url` is intentionally `None` — the guest should
     /// preserve existing files at this mount path during cleanup.
-    #[serde(default)]
     pub cached: bool,
-    #[serde(default)]
-    pub vas_storage_name: Option<String>,
-    #[serde(default)]
-    pub vas_version_id: Option<String>,
+    pub vas_storage_name: String,
+    pub vas_version_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ArtifactEntry {
+pub struct GuestDownloadArtifactEntry {
     pub mount_path: String,
-    #[serde(default)]
     pub archive_url: Option<String>,
     /// Whether this entry is cached from a previous turn (fingerprint matched).
-    #[serde(default)]
     pub cached: bool,
     pub vas_storage_name: String,
-    /// Storage UUID, used guest-side to locally recompute the content hash
-    /// and skip VAS calls when an artifact is unchanged since mount.
     pub vas_storage_id: String,
     pub vas_version_id: String,
+}
+
+impl From<&StorageManifest> for GuestDownloadManifest {
+    fn from(manifest: &StorageManifest) -> Self {
+        Self {
+            storages: manifest
+                .storages
+                .iter()
+                .map(|storage| GuestDownloadStorageEntry {
+                    mount_path: storage.mount_path.clone(),
+                    archive_url: Some(storage.archive_url.clone()),
+                    cached: false,
+                    vas_storage_name: storage.vas_storage_name.clone(),
+                    vas_version_id: storage.vas_version_id.clone(),
+                })
+                .collect(),
+            artifacts: manifest
+                .artifacts
+                .iter()
+                .map(|artifact| GuestDownloadArtifactEntry {
+                    mount_path: artifact.mount_path.clone(),
+                    archive_url: Some(artifact.archive_url.clone()),
+                    cached: false,
+                    vas_storage_name: artifact.vas_storage_name.clone(),
+                    vas_storage_id: artifact.vas_storage_id.clone(),
+                    vas_version_id: artifact.vas_version_id.clone(),
+                })
+                .collect(),
+            cleanup_paths: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -293,6 +326,7 @@ impl SandboxReuseResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use api_contracts::generated::types::runners::storage::{ArtifactEntry, StorageEntry};
     use serde_json::json;
 
     #[test]
@@ -350,6 +384,7 @@ mod tests {
         assert!(ctx.firewalls.is_none());
         assert!(ctx.secret_values.is_none());
         assert!(ctx.billable_firewalls.is_empty());
+        assert!(ctx.model_usage_provider.is_none());
     }
 
     #[test]
@@ -365,12 +400,20 @@ mod tests {
             "vars": {"API_KEY": "secret"},
             "checkpointId": "660e8400-e29b-41d4-a716-446655440000",
             "storageManifest": {
-                "storages": [{"mountPath": "/data", "archiveUrl": "https://s3/archive.tar.gz"}],
-                "artifact": {
+                "storages": [{
+                    "name": "data",
+                    "mountPath": "/data",
+                    "vasStorageName": "data",
+                    "vasVersionId": "v1",
+                    "archiveUrl": "https://s3/archive.tar.gz"
+                }],
+                "artifacts": [{
                     "mountPath": "/artifacts",
+                    "archiveUrl": "https://s3/artifact.tar.gz",
                     "vasStorageName": "art-1",
+                    "vasStorageId": "sid-1",
                     "vasVersionId": "v1"
-                }
+                }]
             },
             "environment": {"NODE_ENV": "production"},
             "resumeSession": {"sessionId": "sess-1", "sessionHistory": "/tmp/history"},
@@ -378,6 +421,7 @@ mod tests {
             "encryptedSecrets": "enc-blob",
             "secretConnectorMap": {"github": "oauth"},
             "debugNoMockClaude": true,
+            "debugNoMockCodex": true,
             "apiStartTime": 1700000000000.0,
             "userTimezone": "America/New_York",
             "firewalls": [{
@@ -389,7 +433,8 @@ mod tests {
             "settings": "{\"hooks\":{}}",
             "experimentalProfile": "browser",
             "featureFlags": {"computerUse": true, "voiceChat": false},
-            "billableFirewalls": ["model-provider:vm0"]
+            "billableFirewalls": ["model-provider:vm0"],
+            "modelUsageProvider": "claude-sonnet-4-6"
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.append_system_prompt.as_deref(), Some("be concise"));
@@ -399,6 +444,7 @@ mod tests {
         assert_eq!(ctx.secret_values.as_ref().unwrap().len(), 2);
         assert_eq!(ctx.encrypted_secrets.as_deref(), Some("enc-blob"));
         assert!(ctx.debug_no_mock_claude.unwrap());
+        assert!(ctx.debug_no_mock_codex.unwrap());
         assert_eq!(ctx.firewalls.as_ref().unwrap()[0].name, "github");
         assert_eq!(ctx.disallowed_tools.as_ref().unwrap(), &["CronCreate"]);
         assert_eq!(ctx.tools.as_ref().unwrap(), &["Bash", "Read"]);
@@ -410,6 +456,10 @@ mod tests {
         assert_eq!(
             ctx.billable_firewalls,
             vec!["model-provider:vm0".to_string()]
+        );
+        assert_eq!(
+            ctx.model_usage_provider.as_deref(),
+            Some("claude-sonnet-4-6")
         );
     }
 
@@ -581,18 +631,31 @@ mod tests {
     #[test]
     fn storage_manifest_camel_case() {
         let json = json!({
-            "storages": [{"mountPath": "/workspace"}],
+            "storages": [{
+                "name": "workspace",
+                "mountPath": "/workspace",
+                "archiveUrl": "https://example.com/workspace.tar.gz",
+                "vasStorageName": "workspace",
+                "vasVersionId": "v1"
+            }],
             "artifacts": [{
                 "mountPath": "/artifacts",
+                "archiveUrl": "https://example.com/artifacts.tar.gz",
                 "vasStorageName": "my-artifact",
                 "vasStorageId": "sid-1",
-                "vasVersionId": "v1"
+                "vasVersionId": "v1",
+                "manifestUrl": "https://example.com/manifest.json"
             }]
         });
         let manifest: StorageManifest = serde_json::from_value(json).unwrap();
         assert_eq!(manifest.storages[0].mount_path, "/workspace");
+        assert_eq!(manifest.storages[0].name, "workspace");
         assert_eq!(manifest.artifacts.len(), 1);
         assert_eq!(manifest.artifacts[0].vas_storage_name, "my-artifact");
+        assert_eq!(
+            manifest.artifacts[0].manifest_url.as_deref(),
+            Some("https://example.com/manifest.json")
+        );
     }
 
     #[test]
@@ -602,12 +665,14 @@ mod tests {
             "artifacts": [
                 {
                     "mountPath": "/workspace",
+                    "archiveUrl": "https://example.com/a.tar.gz",
                     "vasStorageName": "art-a",
                     "vasStorageId": "sid-a",
                     "vasVersionId": "v1"
                 },
                 {
                     "mountPath": "/data",
+                    "archiveUrl": "https://example.com/b.tar.gz",
                     "vasStorageName": "art-b",
                     "vasStorageId": "sid-b",
                     "vasVersionId": "v2"
@@ -621,12 +686,75 @@ mod tests {
     }
 
     #[test]
-    fn storage_manifest_empty_artifacts_defaults() {
+    fn storage_manifest_requires_artifacts_field() {
         let json = json!({
             "storages": []
         });
-        let manifest: StorageManifest = serde_json::from_value(json).unwrap();
-        assert!(manifest.artifacts.is_empty());
+        assert!(serde_json::from_value::<StorageManifest>(json).is_err());
+    }
+
+    #[test]
+    fn storage_manifest_conversion_initializes_guest_download_fields() {
+        let manifest = StorageManifest {
+            storages: vec![StorageEntry {
+                name: "workspace".into(),
+                mount_path: "/workspace".into(),
+                archive_url: "https://example.com/workspace.tar.gz".into(),
+                vas_storage_name: "workspace".into(),
+                vas_version_id: "v1".into(),
+            }],
+            artifacts: vec![ArtifactEntry {
+                mount_path: "/artifacts".into(),
+                archive_url: "https://example.com/artifact.tar.gz".into(),
+                vas_storage_name: "memory".into(),
+                vas_storage_id: "sid-1".into(),
+                vas_version_id: "v2".into(),
+                manifest_url: Some("https://example.com/manifest.json".into()),
+            }],
+        };
+
+        let guest_manifest = GuestDownloadManifest::from(&manifest);
+
+        assert!(guest_manifest.cleanup_paths.is_empty());
+        assert!(!guest_manifest.storages[0].cached);
+        assert_eq!(
+            guest_manifest.storages[0].archive_url.as_deref(),
+            Some("https://example.com/workspace.tar.gz")
+        );
+        assert!(!guest_manifest.artifacts[0].cached);
+        assert_eq!(
+            guest_manifest.artifacts[0].archive_url.as_deref(),
+            Some("https://example.com/artifact.tar.gz")
+        );
+    }
+
+    #[test]
+    fn guest_download_manifest_serialization_omits_api_only_fields() {
+        let manifest = StorageManifest {
+            storages: vec![StorageEntry {
+                name: "workspace".into(),
+                mount_path: "/workspace".into(),
+                archive_url: "https://example.com/workspace.tar.gz".into(),
+                vas_storage_name: "workspace".into(),
+                vas_version_id: "v1".into(),
+            }],
+            artifacts: vec![ArtifactEntry {
+                mount_path: "/artifacts".into(),
+                archive_url: "https://example.com/artifact.tar.gz".into(),
+                vas_storage_name: "memory".into(),
+                vas_storage_id: "sid-1".into(),
+                vas_version_id: "v2".into(),
+                manifest_url: Some("https://example.com/manifest.json".into()),
+            }],
+        };
+
+        let value = serde_json::to_value(GuestDownloadManifest::from(&manifest)).unwrap();
+
+        assert!(value["cleanupPaths"].is_array());
+        assert_eq!(value["storages"][0]["cached"], false);
+        assert!(value["storages"][0].get("name").is_none());
+        assert_eq!(value["artifacts"][0]["cached"], false);
+        assert!(value["artifacts"][0].get("manifestUrl").is_none());
     }
 
     #[test]

@@ -94,6 +94,7 @@ export async function seedTestSchedule(params: {
   userId: string;
   orgId: string;
   name?: string;
+  description?: string;
 }): Promise<string> {
   initServices();
   const [sched] = await globalThis.services.db
@@ -103,6 +104,7 @@ export async function seedTestSchedule(params: {
       userId: params.userId,
       orgId: params.orgId,
       name: params.name ?? uniqueId("sched"),
+      description: params.description,
       cronExpression: "0 0 * * *",
       prompt: "test",
     })

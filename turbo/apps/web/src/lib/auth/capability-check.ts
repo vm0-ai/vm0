@@ -12,6 +12,20 @@ export function isSandboxAuth(
   return authCtx.runId !== undefined;
 }
 
+export function hasRequiredCapability(
+  capabilities: readonly ZeroCapability[],
+  requiredCapability: ZeroCapability | undefined,
+): boolean {
+  if (!requiredCapability) return false;
+  return capabilities.some((capability) => {
+    return (
+      capability === requiredCapability ||
+      (requiredCapability === "telegram:read" &&
+        capability === "telegram:write")
+    );
+  });
+}
+
 /**
  * Build 403 response body for missing capability.
  * Response body tells which capability is missing (aids debugging).

@@ -6,6 +6,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { getTestAuthContext } from "../api-test-helpers/core";
 import { ensureOrgRow } from "../test-helpers";
@@ -198,6 +199,12 @@ export async function insertOrgMembersEntry(entry: {
  * Insert an org-level default model provider directly in the database.
  * Useful for testing credit check behavior with different provider types.
  *
+ * Mirrors production `setModelProviderDefault` semantics — clears any existing
+ * `isDefault=true` row for the same `(orgId, ORG_SENTINEL_USER_ID)` before
+ * inserting, so the partial unique index
+ * `idx_model_providers_one_default_per_user` is never violated when tests
+ * stack multiple defaults during setup.
+ *
  * @why-db-direct Inserts org-level provider bypassing API validation;
  * tests credit check with specific provider types
  */
@@ -207,6 +214,16 @@ export async function insertOrgDefaultModelProvider(
   selectedModel?: string,
 ): Promise<void> {
   initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    );
   await globalThis.services.db.insert(modelProviders).values({
     type,
     userId: ORG_SENTINEL_USER_ID,
@@ -214,6 +231,92 @@ export async function insertOrgDefaultModelProvider(
     isDefault: true,
     selectedModel: selectedModel ?? null,
   });
+}
+
+/**
+ * Insert an org-level multi-auth model provider (e.g., chatgpt-oauth-token,
+ * aws-bedrock) directly in the database with the given authMethod.
+ *
+ * Companion to `insertOrgDefaultModelProvider` for tests that need to
+ * exercise the multi-auth resolver path. Production multi-auth providers
+ * are created via `upsertMultiAuthModelProvider`, which requires a full
+ * web request flow; this helper bypasses that for unit-style tests of
+ * downstream resolution.
+ *
+ * @why-db-direct Multi-auth provider creation API requires a full web
+ * request; tests need a direct insert with a specific authMethod set.
+ */
+export async function insertOrgMultiAuthModelProvider(
+  orgId: string,
+  type: string,
+  authMethod: string,
+  selectedModel?: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
+        eq(modelProviders.isDefault, true),
+      ),
+    );
+  await globalThis.services.db.insert(modelProviders).values({
+    type,
+    userId: ORG_SENTINEL_USER_ID,
+    orgId,
+    isDefault: true,
+    authMethod,
+    selectedModel: selectedModel ?? null,
+  });
+}
+
+/**
+ * Insert an org-level non-default model provider directly in the database.
+ *
+ * Companion to `insertOrgDefaultModelProvider` for tests that need to seed
+ * a coexisting provider row that the workspace's single-default invariant
+ * (#11743) precludes from being marked default. Used by resolver tests that
+ * exercise the explicit-modelProvider override path: the request's
+ * `modelProvider` differs from the workspace default's type and the resolver
+ * must look up the explicit row by type to surface its `selectedModel` /
+ * `authMethod`.
+ *
+ * @why-db-direct Tests need a non-default org-level provider; the public
+ * `setup` API marks the inserted row as default when none exists.
+ */
+export async function insertOrgNonDefaultModelProvider(
+  orgId: string,
+  type: string,
+  selectedModel?: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(modelProviders).values({
+    type,
+    userId: ORG_SENTINEL_USER_ID,
+    orgId,
+    isDefault: false,
+    selectedModel: selectedModel ?? null,
+  });
+}
+
+/**
+ * Delete a model provider row by id. Used by tests that need to simulate
+ * a provider deletion after rows referencing it (e.g. chat threads with an
+ * eager-pinned modelProviderId) have already been created.
+ *
+ * @why-db-direct The provider deletion API is type-scoped; tests need an
+ * id-scoped deleter to set up orphan-pin scenarios deterministically.
+ */
+export async function deleteTestModelProvider(
+  providerId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .delete(modelProviders)
+    .where(eq(modelProviders.id, providerId));
 }
 
 /**
@@ -285,4 +388,110 @@ export async function lockOrgAndSetCredits(
   });
 
   return { release, ready, done };
+}
+
+// ============================================================================
+// User-Level (BYOK) Model Provider Seeders — Epic #11868
+// ============================================================================
+
+/**
+ * Insert a user-level (personal) default model provider directly in the
+ * database. Personal default is workspace-scoped per (orgId, userId), so it
+ * coexists with the org default — paired with the partial unique index
+ * `idx_model_providers_one_default_per_user`. Mirrors the org seeder's
+ * "clear existing default for the same scope first" semantics.
+ *
+ * @why-db-direct Inserts user-tier provider bypassing API validation;
+ * resolver tests need to seed personal-tier rows without secrets routing
+ * through the public upsert flow.
+ */
+export async function insertUserDefaultModelProvider(
+  orgId: string,
+  userId: string,
+  type: string,
+  selectedModel?: string,
+): Promise<string> {
+  initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ isDefault: false, updatedAt: new Date() })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.isDefault, true),
+      ),
+    );
+  const [row] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      type,
+      userId,
+      orgId,
+      isDefault: true,
+      selectedModel: selectedModel ?? null,
+    })
+    .returning({ id: modelProviders.id });
+  if (!row) throw new Error("insertUserDefaultModelProvider: insert failed");
+  return row.id;
+}
+
+/**
+ * Insert a user-level non-default model provider directly in the database.
+ * Companion to `insertUserDefaultModelProvider` for tests that need to seed
+ * a coexisting personal-tier row that the workspace's single-default
+ * invariant precludes from being marked default.
+ *
+ * @why-db-direct Tests need a non-default user-level provider; the public
+ * setUserModelProviderDefault API marks the inserted row as default.
+ */
+export async function insertUserNonDefaultModelProvider(
+  orgId: string,
+  userId: string,
+  type: string,
+  selectedModel?: string,
+): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(modelProviders)
+    .values({
+      type,
+      userId,
+      orgId,
+      isDefault: false,
+      selectedModel: selectedModel ?? null,
+    })
+    .returning({ id: modelProviders.id });
+  if (!row) throw new Error("insertUserNonDefaultModelProvider: insert failed");
+  return row.id;
+}
+
+/**
+ * Enable the `personalModelProvider` feature switch for a specific user via
+ * the per-user override store. The static registry entry has the switch off
+ * + staff-only (`STAFF_ORG_ID_HASHES`); test orgs do not match those
+ * hashes, so test seeding must use the override path.
+ *
+ * @why-db-direct Tests need to flip the switch deterministically without
+ * mutating the static registry or computing a real org-id hash.
+ */
+export async function enablePersonalModelProviderForUser(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { personalModelProvider: true },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: {
+        switches: { personalModelProvider: true },
+        updatedAt: new Date(),
+      },
+    });
 }

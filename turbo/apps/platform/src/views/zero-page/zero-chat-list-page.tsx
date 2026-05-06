@@ -25,6 +25,7 @@ import {
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
+  type OptimisticChatPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import {
@@ -65,7 +66,7 @@ export function ZeroChatListPage() {
   const navigateToChat = useSet(navigateToChat$);
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const creating = useGet(optimisticChatThread$) !== null;
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
 
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
@@ -77,9 +78,9 @@ export function ZeroChatListPage() {
       })
     : recentSessions;
 
-  const onNewChat = () => {
+  const onNewChat = (pane: OptimisticChatPane) => {
     detach(
-      createNewChat(currentChatAgentId ?? null, rootSignal),
+      createNewChat(currentChatAgentId ?? null, pane, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -129,7 +130,9 @@ export function ZeroChatListPage() {
       <div className="shrink-0 px-4 py-2">
         <button
           type="button"
-          onClick={onNewChat}
+          onClick={(event) => {
+            onNewChat(event.altKey ? "sidebar" : "main");
+          }}
           disabled={creating}
           className="flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
         >

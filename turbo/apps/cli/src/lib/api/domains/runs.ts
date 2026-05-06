@@ -42,6 +42,8 @@ export async function createRun(body: {
   }>;
   // Debug flag (internal use only)
   debugNoMockClaude?: boolean;
+  // Debug flag (internal use only)
+  debugNoMockCodex?: boolean;
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies?: boolean;
   // Append text to the agent's system prompt

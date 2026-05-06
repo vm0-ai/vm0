@@ -51,6 +51,98 @@ function Section({
   );
 }
 
+function ScreenshotCarousel({
+  screenshots,
+  alt,
+}: {
+  screenshots: string[];
+  alt: string;
+}) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const showControls = screenshots.length > 1;
+
+  return (
+    <div className="uc-carousel">
+      <div className="uc-screenshot-frame">
+        <Image
+          src={screenshots[activeIndex]!}
+          alt={`${alt} — screenshot ${activeIndex + 1}`}
+          width={800}
+          height={450}
+          className="uc-screenshot-img"
+          priority
+        />
+      </div>
+      {showControls && (
+        <>
+          <button
+            className="uc-carousel-btn uc-carousel-btn--left"
+            onClick={() => {
+              setActiveIndex(
+                (activeIndex - 1 + screenshots.length) % screenshots.length,
+              );
+            }}
+            aria-label="Previous screenshot"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M10 12L6 8L10 4"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            className="uc-carousel-btn uc-carousel-btn--right"
+            onClick={() => {
+              setActiveIndex((activeIndex + 1) % screenshots.length);
+            }}
+            aria-label="Next screenshot"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                d="M6 4L10 8L6 12"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+          <div className="uc-carousel-dots">
+            {screenshots.map((_, i) => {
+              return (
+                <button
+                  key={i}
+                  className={`uc-carousel-dot${i === activeIndex ? " uc-carousel-dot--active" : ""}`}
+                  onClick={() => {
+                    setActiveIndex(i);
+                  }}
+                  aria-label={`Go to screenshot ${i + 1}`}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function TryItLink({ href, label }: { href: string; label: string }) {
   return (
     <div className="mt-4 flex justify-start">
@@ -160,125 +252,131 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             </div>
           </header>
 
-          {/* Video preview */}
-          {useCase.videoId && (
-            <div className="uc-video-embed" style={{ marginBottom: 48 }}>
-              <iframe
-                src={`https://www.youtube.com/embed/${useCase.videoId}`}
-                title={title}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="aspect-video w-full rounded-[12px]"
-                style={{ border: "none" }}
+          {/* Section 1: What Zero delivers */}
+          {(useCase.screenshots?.length ?? 0) > 0 && (
+            <Section title={t("whatZeroDelivers")}>
+              <ScreenshotCarousel
+                screenshots={useCase.screenshots!}
+                alt={`${title} — sample output from Zero`}
               />
-            </div>
+            </Section>
           )}
 
-          {/* Scenario */}
-          <Section title={t(`content.${slug}.headings.scenario`)}>
+          {/* Section 2: What the problem is */}
+          <Section title={t("whatTheProblemIs")}>
             <p className="uc-section-body">{t(`content.${slug}.scenario`)}</p>
           </Section>
 
-          {/* Prompt */}
-          <Section title={t(`content.${slug}.headings.prompt`)}>
-            <PromptVariants
-              variants={promptVariants}
-              connectors={useCase.connectors}
-              platformUrl={platformUrl}
-              tryItLabel={t("tryIt")}
-            />
-          </Section>
-
-          {/* Steps */}
-          <Section title={t(`content.${slug}.headings.steps`)}>
-            <div className="uc-steps">
-              {steps.map((step, i) => {
-                return (
-                  <div key={i} className="uc-step">
-                    <div className="uc-step-title">{step.title}</div>
-                    <div className="uc-step-desc">{step.description}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </Section>
-
-          {/* Next actions */}
-          <Section title={t(`content.${slug}.headings.nextActions`)}>
-            <div className="uc-next-actions">
-              {nextActions.map((action, i) => {
-                return (
-                  <div key={i} className="uc-next-action">
-                    <div className="uc-next-action-title">{action.title}</div>
-                    <div className="uc-next-action-desc">
-                      {action.description}
-                    </div>
-                    <div className="uc-next-action-prompt group">
-                      {action.examplePrompt}
-                      <TryItLink
-                        href={buildPromptHref(
-                          action.examplePrompt,
-                          useCase.connectors,
-                          platformUrl,
+          {/* Section 3: How Zero fixes it */}
+          <Section title={t("howZeroFixesIt")}>
+            {/* Step 1: Connect your tools */}
+            <div className="uc-subsection">
+              <h3 className="uc-subsection-title">
+                {t("stepConnectYourTools")}
+              </h3>
+              <div className="uc-connect-grid">
+                {useCase.integrations.map((integration, i) => {
+                  return (
+                    <div key={i} className="uc-connect-card">
+                      <div className="uc-connect-card-header">
+                        {integration.connector.icon && (
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden">
+                            <Image
+                              src={integration.connector.icon}
+                              alt={integration.connector.label}
+                              width={32}
+                              height={32}
+                              className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}${integration.connector.looseViewBox ? " scale-[2.2]" : ""}`}
+                            />
+                          </div>
                         )}
-                        label={t("tryIt")}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Section>
-
-          {/* Integrations */}
-          <Section title={t(`content.${slug}.headings.integrations`)}>
-            <div className="uc-integrations">
-              {useCase.integrations.map((integration, i) => {
-                return (
-                  <div key={i} className="uc-integration">
-                    {integration.connector.icon ? (
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden">
-                        <Image
-                          src={integration.connector.icon}
-                          alt={integration.connector.label}
-                          width={32}
-                          height={32}
-                          className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}${integration.connector.looseViewBox ? " scale-[2.2]" : ""}`}
-                        />
+                        <div className="uc-connect-card-info">
+                          <div className="uc-connect-card-name">
+                            {integration.connector.label}
+                          </div>
+                          <span
+                            className={`uc-integration-required ${
+                              integration.required
+                                ? "uc-integration-required--yes"
+                                : "uc-integration-required--no"
+                            }`}
+                          >
+                            {integration.required
+                              ? t("required")
+                              : t("optional")}
+                          </span>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--gray-100))] text-sm font-medium text-[hsl(var(--muted-foreground))]">
-                        {integration.connector.label[0]}
-                      </div>
-                    )}
-                    <div className="uc-integration-info">
-                      <div className="uc-integration-name">
-                        {integration.connector.label}
-                      </div>
-                      <div className="uc-integration-desc">
+                      <div className="uc-connect-card-desc">
                         {t(`content.${slug}.integrations.${i}.description`)}
                       </div>
+                      <a
+                        href={`${platformUrl}/connectors/${integration.connector.id}/connect`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="uc-connect-btn"
+                      >
+                        {t("connectLabel")}
+                        <IconArrowUpRight size={14} />
+                      </a>
                     </div>
-                    <span
-                      className={`uc-integration-required ${
-                        integration.required
-                          ? "uc-integration-required--yes"
-                          : "uc-integration-required--no"
-                      }`}
-                    >
-                      {integration.required ? t("required") : t("optional")}
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Step 2: Ask Zero (prompts + what Zero does) */}
+            <div className="uc-subsection">
+              <h3 className="uc-subsection-title">{t("stepAskZero")}</h3>
+              <PromptVariants
+                variants={promptVariants}
+                connectors={useCase.connectors}
+                platformUrl={platformUrl}
+                tryItLabel={t("tryIt")}
+              />
+              <div className="uc-steps" style={{ marginTop: 24 }}>
+                {steps.map((step, i) => {
+                  return (
+                    <div key={i} className="uc-step">
+                      <div className="uc-step-title">{step.title}</div>
+                      <div className="uc-step-desc">{step.description}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Step 3: Take it further */}
+            <div className="uc-subsection">
+              <h3 className="uc-subsection-title">{t("stepTakeItFurther")}</h3>
+              <div className="uc-next-actions">
+                {nextActions.map((action, i) => {
+                  return (
+                    <div key={i} className="uc-next-action">
+                      <div className="uc-next-action-title">{action.title}</div>
+                      <div className="uc-next-action-desc">
+                        {action.description}
+                      </div>
+                      <div className="uc-next-action-prompt group">
+                        {action.examplePrompt}
+                        <TryItLink
+                          href={buildPromptHref(
+                            action.examplePrompt,
+                            useCase.connectors,
+                            platformUrl,
+                          )}
+                          label={t("tryIt")}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </Section>
 
-          {/* Tips */}
-          <div className="uc-section">
-            <h2 className="uc-section-title" style={{ marginBottom: 16 }}>
-              {t(`content.${slug}.headings.tips`)}
-            </h2>
+          {/* Tips for better results */}
+          <Section title={t("tipsForBetterResults")}>
             <div className="uc-tips">
               {tips.map((tip, i) => {
                 return (
@@ -289,7 +387,7 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                 );
               })}
             </div>
-          </div>
+          </Section>
         </article>
       </main>
 

@@ -24,7 +24,9 @@ export type ChatMessageAttachFiles = string[];
  * - Placeholder: inserted on send with `content` NULL and `sequence_number` NULL.
  *   Gives the UI something to render while the run is pending, and carries the
  *   error/terminal state for failed runs (set via the callback).
- * - Event-backed: one row per agent "assistant" event, keyed by
+ * - Event-backed: one row per assistant-visible agent output event. Normal
+ *   rows come from agent "assistant" events; result-only CLI output can be
+ *   projected from a terminal "result" event. Rows are keyed by
  *   `(run_id, sequence_number)` for idempotent, lock-free inserts from both
  *   the event consumer and the callback's final sweep.
  *

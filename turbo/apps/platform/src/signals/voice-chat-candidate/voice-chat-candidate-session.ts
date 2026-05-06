@@ -1,3 +1,7 @@
+/* eslint-disable no-restricted-syntax */
+// This file contains a large amount of TRACE_CACHE that needs to be cleaned up in subsequent modifications.
+// Additionally, other files must not reference this file to implement file-level no-restricted-syntax operations.
+
 import { command, computed, state } from "ccstate";
 import {
   zeroVoiceChatContract,
@@ -6,9 +10,9 @@ import {
 } from "@vm0/api-contracts/contracts/zero-voice-chat";
 import {
   jsonParseOr,
+  onDomEventFn,
   resetSignal,
   throwIfAbort,
-  onDomEventFn,
 } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -626,35 +630,32 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
     }
     pending = false;
     if (signal.aborted) {
-      lock.release().catch(() => {
-        return undefined;
-      });
+      await lock.release();
       return;
     }
     set(internalWakeLock$, lock);
-    lock.addEventListener("release", () => {
-      if (
-        !signal.aborted &&
-        reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
-      ) {
-        reacquireCount++;
-        requestAndTrack().catch(() => {
-          return undefined;
-        });
-      }
-    });
+    lock.addEventListener(
+      "release",
+      onDomEventFn(async () => {
+        if (
+          !signal.aborted &&
+          reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
+        ) {
+          reacquireCount++;
+          await requestAndTrack();
+        }
+      }),
+    );
   };
 
   signal.throwIfAborted();
 
-  const onVisibilityChange = (): void => {
+  const onVisibilityChange = onDomEventFn(async () => {
     if (document.visibilityState === "visible" && !signal.aborted) {
       reacquireCount = 0;
-      requestAndTrack().catch(() => {
-        return undefined;
-      });
+      await requestAndTrack();
     }
-  };
+  });
   document.addEventListener("visibilitychange", onVisibilityChange);
   signal.addEventListener("abort", () => {
     document.removeEventListener("visibilitychange", onVisibilityChange);
@@ -663,12 +664,11 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   await requestAndTrack();
 });
 
-const releaseWakeLock$ = command(({ get, set }) => {
+const releaseWakeLock$ = command(async ({ get, set }, signal: AbortSignal) => {
   const lock = get(internalWakeLock$);
   if (lock) {
-    lock.release().catch(() => {
-      return undefined;
-    });
+    await lock.release();
+    signal.throwIfAborted();
     set(internalWakeLock$, null);
   }
 });
@@ -925,45 +925,47 @@ export const startVoiceChatCandidate$ = command(
  * sessions are stateless, so next time startVoiceChatCandidate$ runs with
  * the same (user, agent) it will resume this one via get-or-create.
  */
-export const endVoiceChatCandidate$ = command(({ get, set }) => {
-  set(resetSessionSignal$);
-  set(releaseWakeLock$);
+export const endVoiceChatCandidate$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    set(resetSessionSignal$);
+    await set(releaseWakeLock$, signal);
 
-  const dc = get(internalDc$);
-  if (dc) {
-    dc.close();
-    set(internalDc$, null);
-  }
-
-  const pc = get(internalPc$);
-  if (pc) {
-    pc.close();
-    set(internalPc$, null);
-  }
-
-  const stream = get(internalStream$);
-  if (stream) {
-    for (const track of stream.getTracks()) {
-      track.stop();
+    const dc = get(internalDc$);
+    if (dc) {
+      dc.close();
+      set(internalDc$, null);
     }
-    set(internalStream$, null);
-  }
 
-  const audioEl = get(internalAudioEl$);
-  if (audioEl) {
-    audioEl.pause();
-    audioEl.srcObject = null;
-    set(internalAudioEl$, null);
-  }
+    const pc = get(internalPc$);
+    if (pc) {
+      pc.close();
+      set(internalPc$, null);
+    }
 
-  set(internalSessionId$, null);
-  set(internalLastUserMessage$, "");
-  set(internalLastAssistantMessage$, "");
-  set(internalBargeInMode$, "speech_started");
-  set(internalCurrentAssistantAudioItem$, null);
-  set(internalStatus$, "idle");
-  // Bump so vccTaskFeed$ re-resolves to [] after sessionId is cleared.
-  set(vccReload$, (n) => {
-    return n + 1;
-  });
-});
+    const stream = get(internalStream$);
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+      set(internalStream$, null);
+    }
+
+    const audioEl = get(internalAudioEl$);
+    if (audioEl) {
+      audioEl.pause();
+      audioEl.srcObject = null;
+      set(internalAudioEl$, null);
+    }
+
+    set(internalSessionId$, null);
+    set(internalLastUserMessage$, "");
+    set(internalLastAssistantMessage$, "");
+    set(internalBargeInMode$, "speech_started");
+    set(internalCurrentAssistantAudioItem$, null);
+    set(internalStatus$, "idle");
+    // Bump so vccTaskFeed$ re-resolves to [] after sessionId is cleared.
+    set(vccReload$, (n) => {
+      return n + 1;
+    });
+  },
+);

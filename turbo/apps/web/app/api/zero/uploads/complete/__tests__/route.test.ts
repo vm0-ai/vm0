@@ -5,6 +5,7 @@ import { POST } from "../route";
 import {
   createTestCompose,
   createTestRequest,
+  insertTestChatThread,
   insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -19,6 +20,7 @@ import {
   findTestRunUploadedFiles,
   findTestRunUploadedFilesByRun,
 } from "../../../../../../src/__tests__/db-test-assertions/run-uploaded-files";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 const URL = "http://localhost:3000/api/zero/uploads/complete";
 
@@ -29,15 +31,26 @@ describe("POST /api/zero/uploads/complete", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+    mockAblyPublish.mockClear();
     user = await context.setupUser();
   });
 
-  async function zeroTokenWithRun(): Promise<{
+  async function zeroTokenWithRun(options?: {
+    withChatThread?: boolean;
+  }): Promise<{
     token: string;
     runId: string;
+    threadId?: string;
   }> {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await seedTestRun(user.userId, composeId);
+    const threadId = options?.withChatThread
+      ? await insertTestChatThread(user.userId, composeId, "Artifacts")
+      : undefined;
+    const { runId } = await seedTestRun(
+      user.userId,
+      composeId,
+      threadId ? { chatThreadId: threadId } : undefined,
+    );
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,
       userId: user.userId,
@@ -45,7 +58,7 @@ describe("POST /api/zero/uploads/complete", () => {
     });
     mockClerk({ userId: null });
     const token = await generateZeroToken(user.userId, runId, user.orgId);
-    return { token, runId };
+    return threadId ? { token, runId, threadId } : { token, runId };
   }
 
   function completeRequest(body: unknown, token?: string): NextRequest {
@@ -94,6 +107,26 @@ describe("POST /api/zero/uploads/complete", () => {
       url: `http://localhost:3000/f/${encodeURIComponent(user.userId)}/${fileId}/report.pdf`,
       metadata: { s3Key },
     });
+  });
+
+  it("publishes the artifacts changed signal for a chat-thread run upload", async () => {
+    const { token, threadId } = await zeroTokenWithRun({
+      withChatThread: true,
+    });
+    const fileId = randomUUID();
+    const s3Key = `uploads/${user.userId}/${fileId}/artifact.zip`;
+    context.mocks.s3.listS3Objects.mockResolvedValueOnce([
+      { key: s3Key, size: 1234 },
+    ]);
+    mockAblyPublish.mockClear();
+
+    const response = await POST(completeRequest({ id: fileId }, token));
+
+    expect(response.status).toBe(200);
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `chatThreadArtifactsChanged:${threadId}`,
+      null,
+    );
   });
 
   it("does not record a run association for ordinary session auth", async () => {

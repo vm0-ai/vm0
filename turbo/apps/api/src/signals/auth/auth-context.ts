@@ -21,14 +21,18 @@ import { authorization$, cookie$ } from "../context/hono";
 export interface AuthOptions {
   readonly requiredCapability?: ZeroCapability;
   readonly acceptAnySandboxCapability?: boolean;
+  readonly requireOrganization?: boolean;
+  readonly missingOrganizationStatus?: 400 | 401;
 }
 
 export type AuthErrorResponse = {
-  readonly status: 401 | 403;
+  readonly status: 400 | 401 | 403;
   readonly body: {
     readonly error: { readonly message: string; readonly code: string };
   };
 };
+
+type OrganizationAuthContext = AuthContext & { readonly orgId: string };
 
 const innerAuthContext$ = state<AuthContext | null>(null);
 
@@ -39,6 +43,17 @@ export const authContext$: Computed<AuthContext> = computed((get) => {
   }
   return ctx;
 });
+
+export const organizationAuthContext$: Computed<OrganizationAuthContext> =
+  computed((get): OrganizationAuthContext => {
+    const ctx = get(authContext$);
+    if (!ctx.orgId) {
+      throw new Error(
+        "organizationAuthContext$ accessed without requireOrganization auth",
+      );
+    }
+    return { ...ctx, orgId: ctx.orgId };
+  });
 
 export const setAuthContext$ = command(({ set }, ctx: AuthContext): void => {
   set(innerAuthContext$, ctx);
@@ -114,6 +129,9 @@ const zeroAuth$ = command(
     }
 
     if (!options.acceptAnySandboxCapability) {
+      if (!options.requiredCapability) {
+        return null;
+      }
       const hasCapability = zeroAuth.capabilities.some((capability) => {
         return capability === options.requiredCapability;
       });
@@ -151,6 +169,11 @@ const sandboxTokenAuth$ = command(
     options: AuthOptions,
     signal: AbortSignal,
   ): Promise<AuthContext | null> => {
+    const zeroResult = await set(zeroAuth$, token, options, signal);
+    if (zeroResult) {
+      return zeroResult;
+    }
+
     if (!options.requiredCapability && !options.acceptAnySandboxCapability) {
       return null;
     }
@@ -160,7 +183,7 @@ const sandboxTokenAuth$ = command(
       return sandboxAuth;
     }
 
-    return await set(zeroAuth$, token, options, signal);
+    return null;
   },
 );
 
@@ -189,10 +212,6 @@ const resolvedAuthContext$ = command(
           return result;
         }
       }
-      // Recognized PAT prefix that failed verification or DB lookup must not
-      // fall through to Clerk session auth — match web's `requireApiKeyAuth`
-      // semantics so a bogus/expired PAT alongside a valid Clerk cookie is
-      // still rejected.
       return null;
     }
 
@@ -212,9 +231,6 @@ const resolvedAuthContext$ = command(
       return null;
     }
 
-    // Unrecognized Bearer shape (e.g. a Clerk session JWT forwarded by the
-    // platform api-client) — defer to Clerk session auth, which validates
-    // both the Authorization header and the cookie.
     return await get(clerkSessionAuth$);
   },
 );
@@ -226,6 +242,27 @@ function missingCapabilityError(capability: ZeroCapability): AuthErrorResponse {
       error: {
         message: `Missing required capability: ${capability}`,
         code: "FORBIDDEN",
+      },
+    },
+  };
+}
+
+function missingOrganizationError(status: 400 | 401): AuthErrorResponse {
+  if (status === 401) {
+    return {
+      status: 401,
+      body: {
+        error: { message: "Not authenticated", code: "UNAUTHORIZED" },
+      },
+    };
+  }
+
+  return {
+    status: 400,
+    body: {
+      error: {
+        message: "Explicit org context required — ensure active org in session",
+        code: "BAD_REQUEST",
       },
     },
   };
@@ -269,6 +306,11 @@ export const requiredAuthContext$ = command(
     const authHeader = get(authorization$);
     const authContext = await set(resolvedAuthContext$, options, signal);
     if (authContext) {
+      if (options.requireOrganization && !authContext.orgId) {
+        return missingOrganizationError(
+          options.missingOrganizationStatus ?? 400,
+        );
+      }
       return authContext;
     }
 

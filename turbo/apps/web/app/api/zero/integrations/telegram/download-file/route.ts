@@ -101,14 +101,14 @@ async function resolveTelegramFileMetadata(
  * GET /api/zero/integrations/telegram/download-file?file_id=<id>&bot_id=<id>
  *
  * Streams a Telegram file to the caller using the owning org's bot token.
- * Requires `file:read` capability.
+ * Requires `telegram:read` capability. `telegram:write` also satisfies this.
  */
 export async function GET(request: NextRequest): Promise<Response> {
   initServices();
 
   const authHeader = request.headers.get("authorization") ?? undefined;
   const authCtx = await requireAuth(authHeader, {
-    requiredCapability: "file:read",
+    requiredCapability: "telegram:read",
   });
   if (isAuthError(authCtx)) {
     return NextResponse.json(authCtx.body, { status: authCtx.status });

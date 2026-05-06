@@ -91,7 +91,7 @@ export async function deleteOrgData(orgId: string): Promise<void> {
     .delete(zeroAgentSchedules)
     .where(eq(zeroAgentSchedules.orgId, orgId));
   // Delete runs (references compose_versions with SET NULL)
-  // creditUsage.runId is SET NULL — billing records preserved permanently
+  // usageEvent.runId is SET NULL — billing records preserved permanently
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   // Then composes (cascades: compose_versions, sessions, email_thread_sessions)
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));

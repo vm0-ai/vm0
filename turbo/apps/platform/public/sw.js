@@ -1,19 +1,8 @@
-// Service worker for Web Push Notifications and offline caching.
-// Push handling based on https://github.com/pirminrehm/service-worker-web-push-example
-
-// Per-deployment cache names: each SW update creates new caches, and the
-// activate handler deletes old ones, preventing unbounded growth from
-// content-hashed assets piling up across deploys.
 const CACHE_VERSION = String(Date.now());
 const STATIC_CACHE = `static-${CACHE_VERSION}`;
-const PAGES_CACHE = `pages-${CACHE_VERSION}`;
 
 const STATIC_RE =
   /\.(?:js|css|png|svg|jpe?g|gif|ico|woff2?|ttf|eot|webp|avif|json|wasm|map)$/i;
-
-function isNavigation(r) {
-  return r.mode === "navigate";
-}
 
 function isStaticAsset(url) {
   return url.origin === self.location.origin && STATIC_RE.test(url.pathname);
@@ -25,15 +14,16 @@ function isApiRequest(url) {
   );
 }
 
-function timeout(ms) {
-  return new Promise((_resolve, reject) =>
-    self.setTimeout(() => reject(new Error("timeout")), ms),
+function isCacheableAssetResponse(response) {
+  const contentType = response.headers.get("content-type") ?? "";
+  return (
+    response.ok &&
+    !response.redirected &&
+    !contentType.toLowerCase().includes("text/html")
   );
 }
 
-// Install: precache offline page for navigation fallback
-self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(PAGES_CACHE).then((c) => c.add("/offline.html")));
+self.addEventListener("install", (_event) => {
   self.skipWaiting();
 });
 
@@ -44,16 +34,15 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys
-            .filter((k) => k !== STATIC_CACHE && k !== PAGES_CACHE)
-            .map((k) => caches.delete(k)),
+          keys.filter((k) => k !== STATIC_CACHE).map((k) => caches.delete(k)),
         ),
       )
       .then(() => self.clients.claim()),
   );
 });
 
-// Fetch: layered caching strategy
+// Fetch: static asset caching only — navigation requests are not intercepted
+// so the browser handles page loads natively without any offline fallback.
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
     return;
@@ -61,29 +50,24 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  if (isNavigation(event.request)) {
-    // Network-First with 5s timeout, fallback to offline page.
-    // URL bar keeps the original URL — a reload recovers to this location.
-    event.respondWith(
-      Promise.race([fetch(event.request), timeout(5000)]).catch(() =>
-        caches.match("/offline.html"),
-      ),
-    );
-    return;
-  }
-
   if (isStaticAsset(url)) {
     // Cache-First: Vite content-hashed filenames are immutable.
     event.respondWith(
       (async () => {
-        const cached = await caches.match(event.request);
-        if (cached) {
+        const cache = await caches.open(STATIC_CACHE);
+        const cached = await cache.match(event.request);
+        if (cached && isCacheableAssetResponse(cached)) {
           return cached;
         }
-        const r = await fetch(event.request);
-        const clone = r.clone();
-        const cache = await caches.open(STATIC_CACHE);
-        await cache.put(event.request, clone);
+
+        if (cached) {
+          await cache.delete(event.request);
+        }
+
+        const r = await fetch(event.request, { cache: "reload" });
+        if (isCacheableAssetResponse(r)) {
+          await cache.put(event.request, r.clone());
+        }
         return r;
       })(),
     );
@@ -96,14 +80,55 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Other requests (third-party, etc.): network only.
-  event.respondWith(fetch(event.request));
+  if (event.request.mode === "navigate") {
+    // Network-First: cache the app shell on each successful navigation so
+    // the PWA can cold-open offline. Vercel serves index.html with
+    // `cache-control: must-revalidate`, which prevents the browser's HTTP
+    // cache from being used without a server check. The SW Cache Storage
+    // is not bound by HTTP cache directives, so we cache explicitly here
+    // and serve from cache when the network is unreachable.
+    event.respondWith(
+      (async () => {
+        try {
+          const response = await fetch(event.request);
+          if (response.ok && !response.redirected) {
+            const cache = await caches.open(STATIC_CACHE);
+            await cache.put(event.request, response.clone());
+          }
+          return response;
+        } catch {
+          const cached = await caches.match(event.request);
+          if (cached) {
+            return cached;
+          }
+          return new Response(
+            "You are offline. Connect to the internet and try again.",
+            {
+              status: 503,
+              headers: { "Content-Type": "text/plain" },
+            },
+          );
+        }
+      })(),
+    );
+    return;
+  }
+
+  // All other requests (third-party, etc.): pass through to the browser's
+  // default handling without SW interception.
 });
 
-// --- Web Push Notifications (unchanged) ---
+// --- Web Push Notifications ---
 
 self.addEventListener("push", (event) => {
-  const data = event.data?.json() ?? {};
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch {
+      data = { body: event.data.text() };
+    }
+  }
 
   const options = {
     body: data.body ?? "",

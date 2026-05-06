@@ -14,7 +14,7 @@ export const setupRouter = (
   store: Store,
   render: (children: React.ReactNode) => void,
 ) => {
-  const { signal } = store.get(rootSignal$);
+  const signal = store.get(rootSignal$);
   detach(store.set(subscribeThreadListChanged$, signal), Reason.Daemon);
   render(
     <StrictMode>

@@ -3,6 +3,7 @@ import { env } from "../../../env";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { transitionRunStatus, dispatchTerminalSideEffects } from "./run-status";
+import { publishRunChangedSafely } from "./run-realtime";
 import {
   agentComposeVersions,
   agentComposes,
@@ -113,7 +114,9 @@ export interface CreateRunParams {
   modelProvider?: string;
   modelProviderId?: string;
   selectedModelOverride?: string;
+  preferPersonalProvider?: boolean;
   debugNoMockClaude?: boolean;
+  debugNoMockCodex?: boolean;
   captureNetworkBodies?: boolean;
   // Caller-resolved org context for variable/storage resolution.
   orgId: string;
@@ -281,6 +284,7 @@ export async function markRunFailed(
 
   // Dispatch callbacks (e.g., loop schedule advancement) if transition succeeded
   if (transitioned) {
+    await publishRunChangedSafely(runId, { status: "failed" });
     await dispatchTerminalSideEffects(runId, "failed", errorMessage);
   }
 

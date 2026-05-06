@@ -703,9 +703,10 @@ function ActivityDetailContent({
             showModelDetail={showModelDetail}
             onDownload={() => {
               detach(
-                fetchExtra(detail.id, pageSignal).then((extra) => {
+                (async () => {
+                  const extra = await fetchExtra(detail.id, pageSignal);
                   downloadJson(events, detail.id, detail, extra);
-                }),
+                })(),
                 Reason.DomCallback,
               );
             }}

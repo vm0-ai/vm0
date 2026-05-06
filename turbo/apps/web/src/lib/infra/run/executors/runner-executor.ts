@@ -158,11 +158,13 @@ function buildStoredContext(
     settings: context.settings ?? undefined,
     experimentalProfile: profile,
     debugNoMockClaude: context.debugNoMockClaude || undefined,
+    debugNoMockCodex: context.debugNoMockCodex || undefined,
     captureNetworkBodies: context.captureNetworkBodies || undefined,
     apiStartTime: context.apiStartTime,
     userTimezone: context.userTimezone ?? undefined,
     featureFlags: context.featureFlags ?? undefined,
     billableFirewalls: context.billableFirewalls,
+    modelUsageProvider: context.modelUsageProvider ?? undefined,
   };
 }
 

@@ -10,6 +10,7 @@ import {
   pathParams$,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
+import { onDomEventFn } from "./utils.ts";
 import "./pwa-install.ts";
 import { ROUTES, type RoutePath } from "./route-paths.ts";
 
@@ -26,6 +27,7 @@ import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts"
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupApiKeysPage$ } from "./api-keys-page/api-keys-page-setup.ts";
+import { setupBb0DevicePage$ } from "./device-bb0-page/device-bb0-page-setup.ts";
 import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
 import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-setup.ts";
 import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
@@ -51,8 +53,9 @@ import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page-setup.ts";
 import { setupRealtime$ } from "./realtime.ts";
-import { setupPwaEdgeSwipe$ } from "./zero-page/pwa-edge-swipe.ts";
+
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
+import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -189,6 +192,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupApiKeysPage$),
   },
   {
+    path: ROUTES.deviceBb0,
+    setup: setupAuthPageWrapper(setupBb0DevicePage$),
+  },
+  {
     path: ROUTES.scheduleDetail,
     setup: setupAuthPageWrapper(setupScheduleDetailPage$),
   },
@@ -301,20 +308,22 @@ const handleBillingRedirect$ = command(() => {
 });
 
 const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
-  const handler = (event: MessageEvent) => {
-    if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
-      const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
-      if (match) {
-        set(detachedNavigateTo$, "/chats/:threadId", {
-          pathParams: { threadId: match[1] },
-        });
+  navigator.serviceWorker?.addEventListener(
+    "message",
+    onDomEventFn((event: MessageEvent): void => {
+      if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
+        const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
+        if (match) {
+          set(detachedNavigateTo$, "/chats/:threadId", {
+            pathParams: { threadId: match[1] },
+          });
+        }
       }
-    }
-  };
-  navigator.serviceWorker?.addEventListener("message", handler);
-  signal.addEventListener("abort", () => {
-    navigator.serviceWorker?.removeEventListener("message", handler);
-  });
+    }),
+    {
+      signal,
+    },
+  );
 });
 
 export const bootstrap$ = command(
@@ -330,16 +339,17 @@ export const bootstrap$ = command(
     set(handleSlackRedirect$);
 
     await Promise.all([
+      set(setupRoutes$, signal),
       set(startSkeletonCycling$, signal),
       set(setupRealtime$, signal),
       set(setupGlobalMethod$, signal),
       set(registerServiceWorker$, signal),
       set(setupNotificationListener$, signal),
-      set(setupPwaEdgeSwipe$, signal),
+
       set(setupSidebarShortcut$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
-      set(setupRoutes$, signal),
+      set(reloadFeatureSwitch$, signal),
     ]);
 
     signal.throwIfAborted();

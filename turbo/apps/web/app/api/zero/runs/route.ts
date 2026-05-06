@@ -125,6 +125,7 @@ const router = tsr.router(zeroRunsMainContract, {
         sessionId: body.sessionId,
         modelProvider: body.modelProvider,
         debugNoMockClaude: body.debugNoMockClaude,
+        debugNoMockCodex: body.debugNoMockCodex,
         triggerSource: isAgentTriggered ? "agent" : "web",
         apiStartTime,
         triggerAgentId,

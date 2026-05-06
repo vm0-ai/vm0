@@ -37,11 +37,15 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  Reason,
+  onDomEventFn,
+} from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
-  toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
   runScheduleNow$,
   type OrgScheduleEntry,
@@ -54,7 +58,7 @@ import {
   closeCreateScheduleDialog$,
   creatingOrgSchedule$,
   pageTogglingIds$,
-  setPageTogglingIds$,
+  togglePageScheduleEnabled$,
   pageRunningIds$,
   setPageRunningIds$,
   pagePendingDelete$,
@@ -456,13 +460,12 @@ function DeleteScheduleDialogContainer() {
     if (entry?.name === undefined) {
       return;
     }
+    const name = entry.name;
     detach(
-      deleteSchedule(
-        { name: entry.name, agentId: entry.agentId },
-        pageSignal,
-      ).then(() => {
+      (async () => {
+        await deleteSchedule({ name, agentId: entry.agentId }, pageSignal);
         setPendingDelete(null);
-      }),
+      })(),
       Reason.DomCallback,
     );
   };
@@ -530,7 +533,6 @@ export function ZeroSchedulePage() {
   const loaded = useGet(allOrgSchedulesLoaded$);
   const isInitialLoading = !loaded;
 
-  const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
@@ -541,7 +543,7 @@ export function ZeroSchedulePage() {
   const openCreateDialog = useSet(openCreateScheduleDialog$);
   const closeCreateDialog = useSet(closeCreateScheduleDialog$);
   const togglingIds = useGet(pageTogglingIds$);
-  const setTogglingIds = useSet(setPageTogglingIds$);
+  const togglePageScheduleEnabled = useSet(togglePageScheduleEnabled$);
   const runningIds = useGet(pageRunningIds$);
   const setRunningIds = useSet(setPageRunningIds$);
   const setPendingDelete = useSet(setPagePendingDelete$);
@@ -572,42 +574,28 @@ export function ZeroSchedulePage() {
     if (entry.name === undefined) {
       return;
     }
-    const id = entry.id;
     const name = entry.name;
-    setTogglingIds((prev) => {
-      return new Set([...prev, id]);
-    });
     detach(
-      toggleEnabled(
-        { name, enabled, agentId: entry.agentId },
+      togglePageScheduleEnabled(
+        { id: entry.id, name, enabled, agentId: entry.agentId },
         pageSignal,
-      ).finally(() => {
-        setTogglingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }),
+      ),
       Reason.DomCallback,
     );
   };
 
-  const handleRunNow = (entry: CombinedEntry) => {
+  const handleRunNow = onDomEventFn(async (entry: CombinedEntry) => {
     const id = entry.id;
     setRunningIds((prev) => {
       return new Set([...prev, id]);
     });
-    detach(
-      runScheduleNow(entry.id, pageSignal).finally(() => {
-        setRunningIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }),
-      Reason.DomCallback,
-    );
-  };
+    await bestEffort(runScheduleNow(entry.id, pageSignal));
+    setRunningIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  });
 
   const handleDelete = (entry: CombinedEntry) => {
     setPendingDelete(entry);

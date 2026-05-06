@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { transitionRunStatus } from "../infra/run/run-status";
+import { publishRunChangedForUserSafely } from "../infra/run/run-realtime";
 import { notFound, runNotCancellable } from "@vm0/api-services/errors";
 import { publishOrgSignal } from "./realtime";
 
@@ -84,6 +85,9 @@ export async function cancelRun(
   if (cancelled) {
     // Notify all org members whose queue view should refresh.
     await publishOrgSignal(run.orgId, "queue:changed");
+    await publishRunChangedForUserSafely(run.userId, runId, {
+      status: "cancelled",
+    });
 
     return {
       runId,

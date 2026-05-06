@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { playTts$, stopTts$, ttsPlayingRunId$ } from "../voice-io-tts.ts";
+import { playTts$, stopTts$ } from "../voice-io-tts.ts";
 import { createDeferredPromise, resetSignal } from "../../utils.ts";
 
 function mockWebAudio() {
@@ -80,41 +80,30 @@ function mockTtsEndpoint() {
 describe("playTts$", () => {
   const context = testContext();
 
-  it("should not trigger a second fetch when called twice with the same runId", async () => {
+  it("should allow repeated playback commands", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     const { getFetchCount } = mockTtsEndpoint();
 
-    const p1 = context.store.set(
-      playTts$,
-      "msg-1",
-      "Hello world",
-      context.signal,
-    );
-    const p2 = context.store.set(
-      playTts$,
-      "msg-1",
-      "Hello world",
-      context.signal,
-    );
-    await Promise.all([p1, p2]);
+    await context.store.set(playTts$, "Hello world", context.signal);
+    await context.store.set(playTts$, "Hello world", context.signal);
 
-    expect(getFetchCount()).toBe(1);
-    expect(AudioContext).toHaveBeenCalledTimes(1);
+    expect(getFetchCount()).toBe(2);
+    expect(AudioContext).toHaveBeenCalledTimes(2);
   });
 
-  it("should allow playback for a different runId", async () => {
+  it("should allow playback for different text", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     const { getFetchCount } = mockTtsEndpoint();
 
-    await context.store.set(playTts$, "msg-1", "Hello", context.signal);
-    await context.store.set(playTts$, "msg-2", "World", context.signal);
+    await context.store.set(playTts$, "Hello", context.signal);
+    await context.store.set(playTts$, "World", context.signal);
 
     expect(getFetchCount()).toBe(2);
   });
 
-  it("should reset playingRunId on fetch failure", async () => {
+  it("should not create an AudioContext on fetch failure", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
 
@@ -129,25 +118,22 @@ describe("playTts$", () => {
       }),
     );
 
-    await context.store.set(playTts$, "msg-1", "Hello world", context.signal);
+    await context.store.set(playTts$, "Hello world", context.signal);
 
-    const playingId = context.store.get(ttsPlayingRunId$);
-    expect(playingId).toBeNull();
+    expect(AudioContext).not.toHaveBeenCalled();
   });
 
-  it("should reset playingRunId after pre-aborted signal", async () => {
+  it("should reject after pre-aborted signal", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
     mockTtsEndpoint();
 
     await expect(
-      context.store.set(playTts$, "msg-1", "Hello world", AbortSignal.abort()),
+      context.store.set(playTts$, "Hello world", AbortSignal.abort()),
     ).rejects.toThrow();
-
-    expect(context.store.get(ttsPlayingRunId$)).toBeNull();
   });
 
-  it("should reset playingRunId after signal abort during fetch", async () => {
+  it("should reject after signal abort during fetch", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     mockWebAudio();
 
@@ -163,17 +149,11 @@ describe("playTts$", () => {
 
     const pageReset$ = resetSignal();
     const pageSignal = context.store.set(pageReset$, context.signal);
-    const playPromise = context.store.set(
-      playTts$,
-      "msg-2",
-      "Hello world",
-      pageSignal,
-    );
+    const playPromise = context.store.set(playTts$, "Hello world", pageSignal);
     // Abort the signal by resetting — simulates page navigation
     context.store.set(pageReset$, context.signal);
 
     await expect(playPromise).rejects.toThrow();
-    expect(context.store.get(ttsPlayingRunId$)).toBeNull();
   });
 
   it("should allow replaying the same message after a previous abort", async () => {
@@ -193,7 +173,7 @@ describe("playTts$", () => {
     // First attempt — abort mid-flight
     const pageReset$ = resetSignal();
     const pageSignal = context.store.set(pageReset$, context.signal);
-    const p1 = context.store.set(playTts$, "msg-3", "Hello", pageSignal);
+    const p1 = context.store.set(playTts$, "Hello", pageSignal);
     // Abort the signal by resetting — simulates page navigation
     context.store.set(pageReset$, context.signal);
     try {
@@ -202,11 +182,9 @@ describe("playTts$", () => {
       // expected abort
     }
 
-    expect(context.store.get(ttsPlayingRunId$)).toBeNull();
-
     // Second attempt with fresh signal — must succeed
     const { getFetchCount } = mockTtsEndpoint();
-    await context.store.set(playTts$, "msg-3", "Hello", context.signal);
+    await context.store.set(playTts$, "Hello", context.signal);
     expect(getFetchCount()).toBe(1);
   });
 
@@ -215,26 +193,25 @@ describe("playTts$", () => {
     mockWebAudio();
     mockTtsEndpoint();
 
-    await context.store.set(playTts$, "msg-4", "Hello world", context.signal);
+    await context.store.set(playTts$, "Hello world", context.signal);
     context.store.set(stopTts$);
-    expect(context.store.get(ttsPlayingRunId$)).toBeNull();
 
     const { getFetchCount } = mockTtsEndpoint();
-    await context.store.set(playTts$, "msg-4", "Hello again", context.signal);
+    await context.store.set(playTts$, "Hello again", context.signal);
     expect(getFetchCount()).toBe(1);
   });
 
-  it("should invoke cleanup function (reader.cancel + audioCtx.close) when stopTts$ is called", async () => {
+  it("should close audio resources when stopTts$ is called", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
     const { mockAudioContext } = mockWebAudio();
     mockTtsEndpoint();
 
-    await context.store.set(playTts$, "msg-5", "Hello world", context.signal);
+    await context.store.set(playTts$, "Hello world", context.signal);
 
     // AudioContext.close should not have been called during normal playback
     expect(mockAudioContext.close).not.toHaveBeenCalled();
 
-    // stopTts$ triggers the stored cleanup function
+    // stopTts$ aborts the active playback signal.
     context.store.set(stopTts$);
 
     // The cleanup function should have called audioCtx.close()

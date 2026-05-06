@@ -6,6 +6,7 @@ import json
 import os
 import time
 import urllib.error
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -17,8 +18,10 @@ from mitmproxy.test import tutils
 import auth
 import body_utils
 import mitm_addon
+import registry as registry_cache
 import usage
 from usage import create_sse_usage_extractor
+from usage.namespaces import USAGE_EVENT_NAMESPACE_MODEL
 
 
 def _request_bodies_from_calls(call_args_list):
@@ -29,6 +32,13 @@ def _usage_event_events_from_calls(call_args_list):
     return [
         event for body in _request_bodies_from_calls(call_args_list) for event in body["events"]
     ]
+
+
+def _model_usage_idempotency_key(run_id: str, message_id: str, category: str) -> str:
+    encoded = "\0".join(
+        f"{len(part.encode('utf-8'))}:{part}" for part in (run_id, message_id, category)
+    )
+    return str(uuid.uuid5(USAGE_EVENT_NAMESPACE_MODEL, encoded))
 
 
 def _pending_state(path: Path) -> dict:
@@ -667,6 +677,79 @@ class TestRequestHandler:
         finally:
             usage.set_pending_path("")
 
+    async def test_billable_model_provider_records_model_usage_provider(
+        self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+    ):
+        """Registry modelUsageProvider is available to model usage reporting."""
+        pending_path = tmp_path / "usage-pending"
+        usage.counters._in_flight_flows = 0
+        usage.counters._pending_reports = 0
+        usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
+
+        firewall_name = "model-provider:anthropic-api-key"
+        registry = {
+            "vms": {
+                "10.200.0.5": {
+                    "runId": "run-model-1",
+                    "billableFirewalls": [firewall_name],
+                    "modelUsageProvider": "claude-opus-4-6",
+                    "sandboxToken": "tok-model",
+                    "networkLogPath": str(tmp_path / "net.jsonl"),
+                    "proxyLogPath": str(tmp_path / "proxy.jsonl"),
+                    "firewalls": [
+                        {
+                            "name": firewall_name,
+                            "apis": [
+                                {
+                                    "base": "https://api.anthropic.com",
+                                    "auth": {"headers": {"x-api-key": "test-key"}},
+                                    "permissions": [
+                                        {"name": "messages", "rules": ["POST /v1/messages"]}
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                    "networkPolicies": {
+                        firewall_name: {
+                            "allow": ["messages"],
+                            "deny": [],
+                            "ask": [],
+                            "unknownPolicy": "deny",
+                        },
+                    },
+                    "encryptedSecrets": "iv:tag:data",
+                }
+            }
+        }
+        reg_path = tmp_path / "registry.json"
+        reg_path.write_text(json.dumps(registry))
+
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
+
+        try:
+            with (
+                mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+                fake_firewall_headers(),
+            ):
+                await mitm_addon.request(flow)
+
+            assert flow.metadata["firewall_name"] == firewall_name
+            assert flow.metadata["firewall_billable"] is True
+            assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
+            assert flow.metadata["_usage_flow_tracked"] is True
+            _assert_pending(pending_path, flows=1, reports=0)
+        finally:
+            if usage.counters._in_flight_flows:
+                usage.decrement_flows()
+            usage.set_pending_path("")
+
     async def test_billable_auth_url_rewrite_flow_drains_after_response(
         self, tmp_path, real_flow, mitm_ctx
     ):
@@ -1096,8 +1179,8 @@ class TestResponseHeadersHandler:
         assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert flow.metadata["x_ndjson_state"]["data_count"] == 1
 
-    def test_x_non_stream_endpoint_keeps_unbounded_buffer(self, real_flow, headers):
-        """Non-stream X requests still need full body for json.loads."""
+    def test_x_non_stream_endpoint_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
+        """Non-stream X requests parse billing JSON without unbounded buffering."""
         flow = real_flow(with_response=False, host="api.x.com", path="/2/users/by")
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_billable"] = True
@@ -1109,10 +1192,17 @@ class TestResponseHeadersHandler:
         mitm_addon.responseheaders(flow)
 
         callback = flow.response.stream
+        callback(b'{"data":[{"id":"1","text":"')
         callback(b"x" * (200 * 1024))
-        assert len(flow.metadata["stream_buffer"]) == 200 * 1024
-        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+        callback(b'"}],"includes":{"users":[{"id":"u1"}]}}')
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
         assert "x_ndjson_state" not in flow.metadata
+        state, error = flow.metadata["x_json_response_finish"]()
+        assert error is None
+        assert state["body_parsed"] is True
+        assert state["response_data_count"] == 1
+        assert state["response_includes"] == {"users": 1}
 
     def test_x_stream_rules_is_not_registered_as_stream(self, real_flow, headers):
         """/2/tweets/search/stream/rules is rules mgmt, not a stream — no NDJSON parser."""
@@ -1127,15 +1217,15 @@ class TestResponseHeadersHandler:
 
         mitm_addon.responseheaders(flow)
 
-        # No NDJSON state registered; regular unbounded X buffer path
+        # No NDJSON state registered; this endpoint is ordinary JSON, not a stream.
         assert "x_ndjson_state" not in flow.metadata
 
-    def test_x_stream_error_response_keeps_unbounded_buffer(self, real_flow, headers):
-        """4xx/5xx on stream endpoints must preserve full error body (no NDJSON parser).
+    def test_x_stream_error_response_uses_bounded_forensic_buffer(self, real_flow, headers):
+        """4xx/5xx on stream endpoints does not register NDJSON or JSON billing parser.
 
         Error responses on stream endpoints return a single JSON error object,
-        not NDJSON.  The NDJSON parser gate on 2xx prevents the stream buffer
-        from being capped at 64 KB so forensic logging sees the full body.
+        not NDJSON.  They are not billable, so the response body is only kept
+        in the capped forensic buffer.
         """
         flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/search/stream")
         flow.metadata["firewall_name"] = "x"
@@ -1149,12 +1239,12 @@ class TestResponseHeadersHandler:
 
         # No NDJSON parser — error body would fail NDJSON parsing anyway.
         assert "x_ndjson_state" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
         callback = flow.response.stream
-        # Unbounded X buffer retains the full error body for forensic logging.
         error_body = b'{"title":"Unauthorized","detail":"' + b"x" * (200 * 1024) + b'"}'
         callback(error_body)
-        assert len(flow.metadata["stream_buffer"]) == len(error_body)
-        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
 
     def test_x_stream_gzip_compressed_body(self, real_flow, headers):
         """Gzip-encoded NDJSON stream: decompressor + parser wire up correctly."""
@@ -1188,6 +1278,63 @@ class TestResponseHeadersHandler:
         state = flow.metadata["x_ndjson_state"]
         assert state["data_count"] == 3
         assert state["includes"] == {"users": 3}
+
+    def test_model_provider_gzip_json_extractor(self, real_flow, headers):
+        """Gzip-encoded non-streaming model JSON feeds the selective extractor."""
+        body = json.dumps(
+            {
+                "id": "msg_1",
+                "model": "claude-sonnet-4-6",
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+            }
+        ).encode()
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(
+                **{"content-type": "application/json", "content-encoding": "gzip"}
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        flow.response.stream(gzip.compress(body))
+        usage_result, error = flow.metadata["model_json_usage_finish"]()
+        assert error is None
+        assert usage_result["message_id"] == "msg_1"
+        assert usage_result["tokens.input"] == 10
+        assert usage_result["tokens.output"] == 20
+
+    def test_x_non_stream_gzip_json_extractor(self, real_flow, headers):
+        """Gzip-encoded X JSON feeds the selective extractor."""
+        body = json.dumps(
+            {
+                "data": [{"id": "1"}, {"id": "2"}],
+                "includes": {"users": [{"id": "u1"}]},
+                "meta": {"result_count": 2},
+            }
+        ).encode()
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(
+                **{"content-type": "application/json", "content-encoding": "gzip"}
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+
+        flow.response.stream(gzip.compress(body))
+        json_state, error = flow.metadata["x_json_response_finish"]()
+        assert error is None
+        assert json_state["response_data_count"] == 2
+        assert json_state["response_includes"] == {"users": 1}
+        assert json_state["response_result_count"] == 2
 
 
 class TestResponseHandler:
@@ -1292,6 +1439,35 @@ class TestResponseHandler:
         lines = Path(log_path).read_text().splitlines()
         entry = json.loads(lines[0])
         assert entry["response_size"] == 50000  # from Content-Length header
+
+    def test_response_size_tracks_streamed_bytes_when_buffer_truncated_without_length(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """response_size should not become 0 for chunked large streamed responses."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+        body = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096)
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(body[:123])
+        flow.response.stream(body[123:])
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == len(body)
 
     def test_401_firewall_cache_invalidation(self, real_flow, mitm_ctx, headers):
         """401 response with firewall_base pops the cache entry and marks force-refresh (#9860)."""
@@ -1421,10 +1597,10 @@ class TestSseUsageExtractor:
         parse(chunk)
         assert usage["model"] == "claude-sonnet-4-6"
         assert usage["message_id"] == "msg_1"
-        assert usage["input_tokens"] == 100
-        assert usage["cache_read_input_tokens"] == 50
-        assert usage["cache_creation_input_tokens"] == 0
-        assert usage["output_tokens"] == 1
+        assert usage["tokens.input"] == 100
+        assert usage["tokens.cache_read"] == 50
+        assert usage["tokens.cache_creation"] == 0
+        assert usage["tokens.output"] == 1
 
     def test_extracts_output_tokens_from_message_delta(self):
         parse, usage = create_sse_usage_extractor()
@@ -1442,7 +1618,7 @@ class TestSseUsageExtractor:
             b'"delta":{"stop_reason":"end_turn"},'
             b'"usage":{"output_tokens":500}}\n\n'
         )
-        assert usage["output_tokens"] == 500  # updated from message_delta
+        assert usage["tokens.output"] == 500  # updated from message_delta
 
     def test_handles_chunked_lines(self):
         """SSE data split across multiple chunks mid-line should still parse."""
@@ -1452,7 +1628,7 @@ class TestSseUsageExtractor:
         parse(b'data: {"type":"message_start","message":{"model":"claude-opus-4-6"')
         parse(b',"usage":{"input_tokens":200}}}\n\n')
         assert usage["model"] == "claude-opus-4-6"
-        assert usage["input_tokens"] == 200
+        assert usage["tokens.input"] == 200
 
     def test_skips_content_events(self):
         parse, usage = create_sse_usage_extractor()
@@ -1486,7 +1662,7 @@ class TestSseUsageExtractor:
         )
         parse(chunk)
         assert usage["model"] == "claude-sonnet-4-6"
-        assert usage["input_tokens"] == 77
+        assert usage["tokens.input"] == 77
 
     def test_skips_content_block_data_without_buffering(self):
         """Large content_block_delta data should not accumulate in line_buf."""
@@ -1498,7 +1674,7 @@ class TestSseUsageExtractor:
             b'{"model":"claude-sonnet-4-6",'
             b'"usage":{"input_tokens":10}}}\n\n'
         )
-        assert usage["input_tokens"] == 10
+        assert usage["tokens.input"] == 10
         # Now send a large content_block_delta (should be skipped)
         parse(b"event: content_block_delta\n")
         # Large data line split across chunks — should not be buffered
@@ -1506,7 +1682,7 @@ class TestSseUsageExtractor:
         parse(b"y" * 100_000 + b"\n\n")
         # Parser should recover for the next event
         parse(b'event: message_delta\ndata: {"usage":{"output_tokens":999}}\n\n')
-        assert usage["output_tokens"] == 999
+        assert usage["tokens.output"] == 999
 
     def test_skip_recovery_same_chunk(self):
         """When skip mode finds boundary and next event in one chunk, both should parse."""
@@ -1519,7 +1695,7 @@ class TestSseUsageExtractor:
             b"event: message_delta\n"
             b'data: {"usage":{"output_tokens":42}}\n\n'
         )
-        assert usage["output_tokens"] == 42
+        assert usage["tokens.output"] == 42
 
     def test_skip_with_leftover_in_line_buf(self):
         """Entering skip mode leaves unprocessed line_buf data; next chunk should handle it."""
@@ -1535,7 +1711,7 @@ class TestSseUsageExtractor:
         )
         # content_block_start triggers skip, but \n\n boundary is in same chunk.
         # Skip mode should find it and then process message_delta.
-        assert usage["output_tokens"] == 77
+        assert usage["tokens.output"] == 77
 
     def test_consecutive_skip_events(self):
         """Multiple non-usage events in a row should all be skipped."""
@@ -1556,8 +1732,8 @@ class TestSseUsageExtractor:
             b"event: message_delta\n"
             b'data: {"usage":{"output_tokens":99}}\n\n'
         )
-        assert usage["input_tokens"] == 5
-        assert usage["output_tokens"] == 99
+        assert usage["tokens.input"] == 5
+        assert usage["tokens.output"] == 99
 
     def test_empty_usage_dict_not_reported(self):
         """Empty model_provider_usage (SSE ran but no usage found) should not trigger report."""
@@ -1576,18 +1752,32 @@ class TestSseUsageExtractor:
         assert usage == {}
         # Subsequent valid event should still work
         parse(b'event: message_delta\ndata: {"usage":{"output_tokens":10}}\n\n')
-        assert usage["output_tokens"] == 10
+        assert usage["tokens.output"] == 10
 
-    def test_non_numeric_usage_values_ignored(self):
-        """Non-numeric usage values (e.g. string) should be silently skipped."""
+    def test_non_integer_usage_values_ignored(self):
+        """Non-integer usage values should be silently skipped."""
         parse, usage = create_sse_usage_extractor()
         parse(
             b"event: message_start\n"
             b'data: {"type":"message_start","message":{"model":"m",'
-            b'"usage":{"input_tokens":"not_a_number","output_tokens":1}}}\n\n'
+            b'"usage":{"input_tokens":"not_a_number","output_tokens":1,'
+            b'"cache_read_input_tokens":1.5,"cache_creation_input_tokens":true}}}\n\n'
         )
-        assert "input_tokens" not in usage
-        assert usage["output_tokens"] == 1
+        assert "tokens.input" not in usage
+        assert "tokens.cache_read" not in usage
+        assert "tokens.cache_creation" not in usage
+        assert usage["tokens.output"] == 1
+
+    def test_negative_usage_values_ignored(self):
+        """Negative usage quantities should not be captured."""
+        parse, usage = create_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"m",'
+            b'"usage":{"input_tokens":-1,"output_tokens":1}}}\n\n'
+        )
+        assert "tokens.input" not in usage
+        assert usage["tokens.output"] == 1
 
     def test_unknown_usage_fields_excluded(self):
         """Only known billing fields should be extracted, not arbitrary numerics."""
@@ -1597,11 +1787,11 @@ class TestSseUsageExtractor:
             b'data: {"type":"message_start","message":{"model":"m",'
             b'"usage":{"input_tokens":10,"total_tokens":99}}}\n\n'
         )
-        assert usage["input_tokens"] == 10
+        assert usage["tokens.input"] == 10
         assert "total_tokens" not in usage
 
-    def test_extracts_web_search_requests(self):
-        """web_search_requests from server_tool_use should be extracted."""
+    def test_ignores_unmapped_web_search_requests(self):
+        """web_search_requests has no model usage_event category yet."""
         parse, usage = create_sse_usage_extractor()
         parse(
             b"event: message_delta\n"
@@ -1609,8 +1799,8 @@ class TestSseUsageExtractor:
             b'"usage":{"output_tokens":100,'
             b'"server_tool_use":{"web_search_requests":3}}}\n\n'
         )
-        assert usage["output_tokens"] == 100
-        assert usage["web_search_requests"] == 3
+        assert usage["tokens.output"] == 100
+        assert "web_search_requests" not in usage
 
     def test_message_delta_zero_does_not_overwrite_message_start(self):
         """message_delta sending 0 for cache fields must not overwrite message_start values.
@@ -1625,8 +1815,8 @@ class TestSseUsageExtractor:
             b'"usage":{"input_tokens":150,"cache_read_input_tokens":80000,'
             b'"cache_creation_input_tokens":5000,"output_tokens":0}}}\n\n'
         )
-        assert usage["cache_read_input_tokens"] == 80000
-        assert usage["cache_creation_input_tokens"] == 5000
+        assert usage["tokens.cache_read"] == 80000
+        assert usage["tokens.cache_creation"] == 5000
 
         # message_delta sends 0 for cache fields — must NOT overwrite
         parse(
@@ -1636,10 +1826,10 @@ class TestSseUsageExtractor:
             b'"input_tokens":0,"cache_read_input_tokens":0,'
             b'"cache_creation_input_tokens":0}}\n\n'
         )
-        assert usage["output_tokens"] == 500
-        assert usage["input_tokens"] == 150  # preserved from message_start
-        assert usage["cache_read_input_tokens"] == 80000  # preserved
-        assert usage["cache_creation_input_tokens"] == 5000  # preserved
+        assert usage["tokens.output"] == 500
+        assert usage["tokens.input"] == 150  # preserved from message_start
+        assert usage["tokens.cache_read"] == 80000  # preserved
+        assert usage["tokens.cache_creation"] == 5000  # preserved
 
     def test_message_delta_positive_values_do_overwrite(self):
         """message_delta with positive values should update the usage dict."""
@@ -1656,9 +1846,9 @@ class TestSseUsageExtractor:
             b'"usage":{"output_tokens":300,'
             b'"cache_read_input_tokens":6000}}\n\n'
         )
-        assert usage["output_tokens"] == 300
-        assert usage["cache_read_input_tokens"] == 6000  # updated
-        assert usage["input_tokens"] == 100  # unchanged (not in delta)
+        assert usage["tokens.output"] == 300
+        assert usage["tokens.cache_read"] == 6000  # updated
+        assert usage["tokens.input"] == 100  # unchanged (not in delta)
 
 
 class TestNdjsonExtractor:
@@ -1731,10 +1921,33 @@ class TestNdjsonExtractor:
         parse, state = usage.x.create_ndjson_extractor()
         big = b"x" * (usage.x.MAX_NDJSON_LINE_BYTES + 1024)
         parse(big)
-        # line_buf should have been reset
+        parse(b"\n")
         parse(b'{"data":{"id":"after"}}\n')
         assert state["data_count"] == 1
         assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 1
+
+    def test_oversized_line_discards_until_newline(self):
+        """A valid-looking tail of an overlong line must not be counted as its own row."""
+        parse, state = usage.x.create_ndjson_extractor()
+        big = b"x" * (usage.x.MAX_NDJSON_LINE_BYTES + 1024)
+        parse(big)
+        parse(b'{"data":{"id":"tail"}}\n')
+        parse(b'{"data":{"id":"next"}}\n')
+
+        assert state["data_count"] == 1
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 1
+
+    def test_oversized_line_with_newline_continues_in_same_chunk(self):
+        """Dropping an overlong row should not discard valid later rows in the same chunk."""
+        parse, state = usage.x.create_ndjson_extractor()
+        big = b"x" * (usage.x.MAX_NDJSON_LINE_BYTES + 1024)
+        parse(big + b'\n{"data":{"id":"after"}}\n')
+
+        assert state["data_count"] == 1
+        assert state["lines_parsed"] == 1
+        assert state["lines_failed"] == 1
 
     def test_includes_multiple_keys(self):
         parse, state = usage.x.create_ndjson_extractor()
@@ -1786,7 +1999,7 @@ class TestResponseHeadersSseParser:
             b'"usage":{"input_tokens":42}}}\n\n'
         )
         assert flow.metadata["model_provider_usage"]["model"] == "claude-sonnet-4-6"
-        assert flow.metadata["model_provider_usage"]["input_tokens"] == 42
+        assert flow.metadata["model_provider_usage"]["tokens.input"] == 42
 
     def test_decompresses_gzip_sse_before_parsing(self, real_flow, headers):
         """Compressed SSE streams must be decompressed before usage extraction."""
@@ -1819,7 +2032,7 @@ class TestResponseHeadersSseParser:
         assert result == compressed
         # But parser receives decompressed data
         assert flow.metadata["model_provider_usage"]["model"] == "claude-sonnet-4-6"
-        assert flow.metadata["model_provider_usage"]["input_tokens"] == 99
+        assert flow.metadata["model_provider_usage"]["tokens.input"] == 99
 
     def test_no_sse_parser_for_non_model_provider(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.github.com")
@@ -1916,11 +2129,274 @@ class TestResponseUsageReporting:
         # JSON fallback should populate model_provider_usage in metadata
         extracted = flow.metadata["model_provider_usage"]
         assert extracted["model"] == "claude-sonnet-4-6"
-        assert extracted["input_tokens"] == 50
-        assert extracted["output_tokens"] == 200
+        assert extracted["tokens.input"] == 50
+        assert extracted["tokens.output"] == 200
 
-    def test_model_provider_buffer_not_truncated(self, real_flow, headers):
-        """Billable model provider responses should buffer without truncation."""
+    def test_full_pipeline_large_model_json_uses_bounded_buffer(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
+        """responseheaders + response report model usage without full-body buffering."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        callback = flow.response.stream
+        callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
+        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096))
+        callback(b'"}],"usage":{"input_tokens":50,"output_tokens":200}}')
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {"tokens.input": 50, "tokens.output": 200}
+
+    def test_full_pipeline_incomplete_model_json_does_not_report_partial_usage(
+        self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
+    ):
+        """Fields seen before EOF are ignored unless the JSON document completes."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(
+            b'{"id":"msg_1","model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":50,"output_tokens":200}'
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        proxy_log = Path(flow.metadata["vm_proxy_log_path"])
+        assert "Model provider JSON usage extraction failed" in proxy_log.read_text()
+
+    def test_full_pipeline_corrupt_model_json_encoding_does_not_fallback_to_raw_buffer(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        """A bad Content-Encoding must not parse raw stream_buffer and bill usage."""
+        raw_json = json.dumps(
+            {
+                "id": "msg_1",
+                "model": "claude-sonnet-4-6",
+                "usage": {"input_tokens": 50, "output_tokens": 200},
+            }
+        ).encode()
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(
+                **{"content-type": "application/json", "content-encoding": "gzip"}
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(raw_json)
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+        assert "model_provider_usage" not in flow.metadata
+        assert "stream_buffer" not in flow.metadata
+
+    def test_full_pipeline_model_json_ignores_usage_array_shape(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        """usage fields inside array elements must not be treated as usage object fields."""
+        body = json.dumps(
+            {
+                "id": "msg_1",
+                "model": "claude-sonnet-4-6",
+                "usage": [{"input_tokens": 50, "output_tokens": 200}],
+            }
+        ).encode()
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(body)
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()
+
+    def test_response_releases_streaming_state(self, tmp_path, real_flow, mitm_ctx):
+        """The completed response hook must not retain parser/buffer closures."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(b'{"model":"claude-sonnet-4-6"}')
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
+
+    def test_response_without_run_id_releases_x_json_streaming_state(self, real_flow):
+        """Even early-returning flows should not retain response parser closures."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(b'{"data":[{"id":"1"}]}')
+        assert "x_json_response_finish" in flow.metadata
+
+        mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
+
+    def test_response_does_not_clear_external_stream_callback(self, tmp_path, real_flow, mitm_ctx):
+        """Cleanup should only reset the stream callback installed by this addon."""
+        flow = real_flow(with_response=False, host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        def external_stream(chunk):
+            return chunk
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.response = tutils.tresp(status_code=200)
+        flow.response.stream = external_stream
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is external_stream
+
+    def test_response_does_not_clear_replaced_stream_callback(self, tmp_path, real_flow, mitm_ctx):
+        """Cleanup should not clear a callback that replaced ours after responseheaders."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+
+        def external_stream(chunk):
+            return chunk
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        vm0_stream = flow.response.stream
+        vm0_stream(b'{"model":"claude-sonnet-4-6"}')
+        flow.response.stream = external_stream
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert flow.response.stream is external_stream
+        assert "stream_buffer" not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
+
+    def test_model_provider_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
+        """Billable model provider JSON should parse usage without unbounded buffering."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.response = tutils.tresp(
             status_code=200, headers=http.Headers(**{"content-type": "application/json"})
@@ -1931,14 +2407,20 @@ class TestResponseUsageReporting:
         mitm_addon.responseheaders(flow)
 
         callback = flow.response.stream
-        # Feed data exceeding STREAM_BUFFER_LIMIT (64KB)
-        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
-        callback(large_chunk)
+        callback(b'{"id":"msg_1","model":"claude-sonnet-4-6","content":[{"text":"')
+        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+        callback(b'"}],"usage":{"input_tokens":50,"output_tokens":100}}')
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == len(large_chunk)
-        assert not state["truncated"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+        usage_result, error = flow.metadata["model_json_usage_finish"]()
+        assert error is None
+        assert usage_result["model"] == "claude-sonnet-4-6"
+        assert usage_result["message_id"] == "msg_1"
+        assert usage_result["tokens.input"] == 50
+        assert usage_result["tokens.output"] == 100
 
     def test_non_billable_model_provider_buffer_truncated(self, real_flow, headers):
         """Non-billable model providers should use the normal bounded buffer."""
@@ -1979,33 +2461,34 @@ class TestResponseUsageReporting:
         assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
         assert state["truncated"]
 
-    def test_billable_connector_buffer_not_truncated(self, real_flow, headers):
-        """Billable connector responses should buffer the full body (no 64KB cap)."""
+    def test_billable_x_connector_uses_bounded_buffer_and_json_extractor(self, real_flow, headers):
+        """Billable X connector responses should not buffer the full body."""
         flow = real_flow(with_response=False, host="api.x.com")
         flow.response = tutils.tresp(
             status_code=200, headers=http.Headers(**{"content-type": "application/json"})
         )
         flow.metadata["firewall_name"] = "x"
         flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
 
         mitm_addon.responseheaders(flow)
 
         callback = flow.response.stream
-        large_chunk = b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000)
-        callback(large_chunk)
+        callback(b'{"data":[{"id":"1","text":"')
+        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 1000))
+        callback(b'"}],"meta":{"result_count":1}}')
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == len(large_chunk)
-        assert not state["truncated"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+        json_state, error = flow.metadata["x_json_response_finish"]()
+        assert error is None
+        assert json_state["response_data_count"] == 1
+        assert json_state["response_result_count"] == 1
 
-    def test_non_x_billable_connector_keeps_unbounded_buffer(self, real_flow, headers):
-        """Buffer policy gates on firewall_billable (not firewall_name == 'x').
-
-        When BILLABLE_CONNECTORS grows past ['x'], responseheaders must
-        keep the body unbounded for the new connector too — its future
-        log_*_connector_usage handler will need json.loads on the full body.
-        """
+    def test_non_x_billable_connector_uses_bounded_forensic_buffer(self, real_flow, headers):
+        """Future billable connectors must not get unbounded buffers by default."""
         flow = real_flow(with_response=False, host="api.gamma.example")
         flow.response = tutils.tresp(
             status_code=200, headers=http.Headers(**{"content-type": "application/json"})
@@ -2021,10 +2504,11 @@ class TestResponseUsageReporting:
 
         buf = flow.metadata["stream_buffer"]
         state = flow.metadata["stream_buffer_state"]
-        assert len(buf) == len(large_chunk)
-        assert not state["truncated"]
+        assert len(buf) == body_utils.STREAM_BUFFER_LIMIT
+        assert state["truncated"]
         # And no X-specific state gets attached to a non-x flow.
         assert "x_ndjson_state" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
 
     def test_no_usage_report_for_non_model_provider(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
@@ -2073,8 +2557,8 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
-            "input_tokens": 100,
-            "output_tokens": 500,
+            "tokens.input": 100,
+            "tokens.output": 500,
         }
         flow.response = tutils.tresp(
             status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
@@ -2093,11 +2577,13 @@ class TestResponseUsageReporting:
         # Verify the webhook POST reached _opener with correct payload
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
-        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
+        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage-event"
         body = json.loads(req.data)
         assert body["runId"] == "run-int-001"
-        assert body["usage"]["input_tokens"] == 100
-        assert body["usage"]["output_tokens"] == 500
+        by_category = {event["category"]: event for event in body["events"]}
+        assert by_category["tokens.input"]["quantity"] == 100
+        assert by_category["tokens.output"]["quantity"] == 500
+        assert by_category["tokens.input"]["provider"] == "claude-sonnet-4-6"
 
     def test_full_path_error_to_opener(self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor):
         """Integration: error() → _maybe_report → _enqueue → _retry → _opener.
@@ -2115,7 +2601,7 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
-            "input_tokens": 80,
+            "tokens.input": 80,
         }
         flow.error = Error("connection reset by peer")
         mitm_addon._request_start_times[flow.id] = time.time()
@@ -2132,7 +2618,17 @@ class TestResponseUsageReporting:
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
         assert body["runId"] == "run-int-002"
-        assert body["usage"]["input_tokens"] == 80
+        assert body["events"] == [
+            {
+                "idempotencyKey": _model_usage_idempotency_key(
+                    "run-int-002", flow.id, "tokens.input"
+                ),
+                "kind": "model",
+                "provider": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 80,
+            }
+        ]
 
     def test_uses_flow_id_when_message_id_missing(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
@@ -2155,7 +2651,7 @@ class TestResponseUsageReporting:
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
-            "input_tokens": 10,
+            "tokens.input": 10,
             # no message_id set
         }
         flow.response = tutils.tresp(
@@ -2174,7 +2670,9 @@ class TestResponseUsageReporting:
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
-        assert body["usage"]["message_id"] == "flow-uuid-xyz-123"
+        assert body["events"][0]["idempotencyKey"] == _model_usage_idempotency_key(
+            "run-fallback", "flow-uuid-xyz-123", "tokens.input"
+        )
 
     def test_preserves_message_id_from_response(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
@@ -2194,7 +2692,7 @@ class TestResponseUsageReporting:
         flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
             "message_id": "msg_real_anthropic_id",
-            "input_tokens": 10,
+            "tokens.input": 10,
         }
         flow.response = tutils.tresp(
             status_code=200, headers=http.Headers(**{"content-type": "text/event-stream"})
@@ -2212,7 +2710,9 @@ class TestResponseUsageReporting:
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
-        assert body["usage"]["message_id"] == "msg_real_anthropic_id"
+        assert body["events"][0]["idempotencyKey"] == _model_usage_idempotency_key(
+            "run-preserved", "msg_real_anthropic_id", "tokens.input"
+        )
 
 
 class TestErrorHandler:
@@ -2231,6 +2731,94 @@ class TestErrorHandler:
             mitm_addon.error(flow)
 
         assert "flow-err-1" not in mitm_addon._request_start_times
+
+    def test_error_releases_unfinished_json_streaming_state(self, tmp_path, real_flow, mitm_ctx):
+        """Connection errors should drop unfinished JSON parser closures."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(b'{"model":"claude-sonnet-4-6","usage":')
+        flow.error = Error("connection reset")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "model_json_usage_finish" not in flow.metadata
+        assert "model_provider_usage" not in flow.metadata
+
+    def test_error_without_run_id_releases_streaming_state(self, real_flow, mitm_ctx):
+        """Early-returning error flows should still drop response parser closures."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(b'{"data":[{"id":"1"}')
+        assert "x_json_response_finish" in flow.metadata
+        flow.error = Error("connection reset")
+
+        with mitm_ctx():
+            mitm_addon.error(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
+
+    def test_error_does_not_bill_partial_x_json_response(
+        self, tmp_path, real_flow, mitm_ctx, sync_usage_executor
+    ):
+        """Interrupted non-stream JSON must not be billed via request-hint fallback."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets?ids=1,2,3")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "net.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets?ids=1,2,3"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(b'{"data":[{"id":"1"}')
+        flow.error = Error("connection reset")
+
+        with (
+            mitm_ctx(api_url="https://app.test"),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.error(flow)
+
+        mock_opener.open.assert_not_called()
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "x_json_response_finish" not in flow.metadata
 
     def test_skips_log_when_no_metadata(self, real_flow, mitm_ctx):
         flow = real_flow(with_response=False)
@@ -2418,9 +3006,14 @@ class TestReportModelProviderUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_usage_provider"] = "claude-opus-4-6"
         flow.metadata["model_provider_usage"] = {
             "model": "claude-sonnet-4-6",
-            "input_tokens": 100,
+            "message_id": "msg-usage-1",
+            "tokens.input": 100,
+            "tokens.output": 50,
+            "tokens.cache_read": 25,
+            "tokens.cache_creation": 10,
         }
 
         with (
@@ -2435,10 +3028,110 @@ class TestReportModelProviderUsage:
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
-        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
+        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage-event"
         body = json.loads(req.data)
         assert body["runId"] == "run-abc-123"
-        assert body["usage"]["input_tokens"] == 100
+        assert set(body) == {"runId", "events"}
+        assert body["events"] == [
+            {
+                "idempotencyKey": _model_usage_idempotency_key(
+                    "run-abc-123", "msg-usage-1", "tokens.input"
+                ),
+                "kind": "model",
+                "provider": "claude-opus-4-6",
+                "category": "tokens.input",
+                "quantity": 100,
+            },
+            {
+                "idempotencyKey": _model_usage_idempotency_key(
+                    "run-abc-123", "msg-usage-1", "tokens.output"
+                ),
+                "kind": "model",
+                "provider": "claude-opus-4-6",
+                "category": "tokens.output",
+                "quantity": 50,
+            },
+            {
+                "idempotencyKey": _model_usage_idempotency_key(
+                    "run-abc-123", "msg-usage-1", "tokens.cache_read"
+                ),
+                "kind": "model",
+                "provider": "claude-opus-4-6",
+                "category": "tokens.cache_read",
+                "quantity": 25,
+            },
+            {
+                "idempotencyKey": _model_usage_idempotency_key(
+                    "run-abc-123", "msg-usage-1", "tokens.cache_creation"
+                ),
+                "kind": "model",
+                "provider": "claude-opus-4-6",
+                "category": "tokens.cache_creation",
+                "quantity": 10,
+            },
+        ]
+
+    def test_falls_back_to_response_model_then_unknown(self, real_flow, fresh_usage_executor):
+        """Provider falls back only when selected vm0 model metadata is absent."""
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage"] = {
+            "message_id": "msg-usage-1",
+            "tokens.input": 100,
+        }
+
+        with (
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        body = json.loads(mock_opener.open.call_args[0][0].data)
+        assert body["events"][0]["provider"] == "unknown"
+
+        flow.metadata["model_provider_usage"]["model"] = "claude-sonnet-4-6"
+        with (
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        body = json.loads(mock_opener.open.call_args[0][0].data)
+        assert body["events"][0]["provider"] == "claude-sonnet-4-6"
+
+    def test_skips_when_no_positive_token_quantities(self, real_flow, fresh_usage_executor):
+        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage"] = {
+            "message_id": "msg-usage-1",
+            "tokens.input": 0,
+            "tokens.output": -1,
+            "tokens.cache_read": "10",
+            "tokens.cache_creation": True,
+        }
+
+        with (
+            patch.object(
+                usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            usage.report_model_provider_usage(flow, "run-abc-123")
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        mock_opener.open.assert_not_called()  # urllib external boundary (#9991)
 
     def test_skips_when_firewall_not_billable(self, real_flow, fresh_usage_executor):
         """Should NOT report usage when firewall_billable is False.
@@ -2451,7 +3144,7 @@ class TestReportModelProviderUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = False
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {"input_tokens": 100}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 100}
 
         with (
             patch.object(
@@ -2468,7 +3161,7 @@ class TestReportModelProviderUsage:
         """Should NOT reach _opener for non-model-provider requests."""
         flow = real_flow(with_response=False, host="api.github.com")
         flow.metadata["firewall_name"] = "github"
-        flow.metadata["model_provider_usage"] = {"input_tokens": 50}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
 
         with patch.object(usage.webhook, "_opener") as mock_opener:
             usage.report_model_provider_usage(flow, "run-abc-123")
@@ -2498,7 +3191,7 @@ class TestReportModelProviderUsage:
         """Should NOT reach _opener when run_id is empty."""
         flow = real_flow(with_response=False, host="api.anthropic.com")
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
-        flow.metadata["model_provider_usage"] = {"input_tokens": 50}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
 
         with patch.object(usage.webhook, "_opener") as mock_opener:
             usage.report_model_provider_usage(flow, "")
@@ -2512,7 +3205,7 @@ class TestReportModelProviderUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = ""
-        flow.metadata["model_provider_usage"] = {"input_tokens": 50}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
@@ -2535,7 +3228,7 @@ class TestReportModelProviderUsage:
         flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
-        flow.metadata["model_provider_usage"] = {"input_tokens": 50}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 50}
         proxy_log = tmp_path / "proxy-run-abc-123.jsonl"
         flow.metadata["vm_proxy_log_path"] = str(proxy_log)
 
@@ -2943,6 +3636,178 @@ class TestReportConnectorUsage:
         assert p["category"] == "posts.read"
         assert p["quantity"] == 1
 
+    def test_full_response_pipeline_large_x_json_uses_bounded_buffer(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """responseheaders + response bill X JSON without full-body buffering."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets?expansions=author_id"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        callback = flow.response.stream
+        callback(b'{"data":[{"id":"1","text":"')
+        callback(b"x" * (body_utils.STREAM_BUFFER_LIMIT + 4096))
+        callback(b'"}],"includes":{"users":[{"id":"u1"}]},"meta":{"result_count":1}}')
+        assert len(flow.metadata["stream_buffer"]) == body_utils.STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {"posts.read": 1, "user.read": 1}
+
+    def test_full_response_pipeline_x_data_object_bills_single_resource(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Selective X JSON extraction must count a top-level data object as one resource."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets/1")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets/1"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets/{id}"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(b'{"data":{"id":"1","text":"hello"}}')
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        assert len(events) == 1
+        assert events[0]["category"] == "posts.read"
+        assert events[0]["quantity"] == 1
+
+    def test_full_response_pipeline_x_soft_error_ignores_request_hints(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Parsed X soft errors must not fall back to URL hints and bill missing resources."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets?ids=1,2,3"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(
+            json.dumps(
+                {
+                    "errors": [
+                        {
+                            "title": "Not Found Error",
+                            "detail": "Could not find tweets for ids: [1, 2, 3].",
+                        }
+                    ]
+                }
+            ).encode()
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+
+        mock_opener.open.assert_not_called()
+
+    def test_full_response_pipeline_x_root_array_uses_request_hints(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        """Non-object JSON roots stay unparsed so request-side hints still bill."""
+        flow = real_flow(with_response=False, host="api.x.com", path="/2/tweets?ids=1,2,3")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["vm_sandbox_token"] = "test-token"
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.x.com/2/tweets?ids=1,2,3"
+        flow.metadata["firewall_name"] = "x"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["firewall_permission"] = "tweet.read"
+        flow.metadata["firewall_rule_match"] = "GET /2/tweets"
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(b'[{"id":"1"}]')
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(
+                usage.providers.connectors.x, "get_api_url", return_value="https://app.test"
+            ),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        assert len(events) == 1
+        assert events[0]["category"] == "posts.read"
+        assert events[0]["quantity"] == 3
+
     def test_logs_write_operation_charges_one(self, tmp_path, real_flow):
         """POST /2/tweets (no request body parsed) -> stay on the expensive
         with_url bucket, quantity=1."""
@@ -3235,6 +4100,23 @@ class TestReportConnectorUsage:
         flow = self._make_x_flow(real_flow, tmp_path, body=b"not json")
         assert self._call_and_get_billing(flow) == []
 
+    def test_non_dict_json_with_no_hints_skips_billing(self, tmp_path, real_flow):
+        """A valid non-object JSON response preserves the old unparseable fallback."""
+        flow = self._make_x_flow(real_flow, tmp_path, body=b"[1,2,3]")
+        assert self._call_and_get_billing(flow) == []
+
+    def test_array_element_fields_do_not_drive_x_billing(self, tmp_path, real_flow):
+        """Fields under array elements must not masquerade as top-level X metadata."""
+        body = json.dumps(
+            {
+                "data": [],
+                "includes": [{"users": [{"id": "u1"}]}],
+                "meta": [{"result_count": 5}],
+            }
+        ).encode()
+        flow = self._make_x_flow(real_flow, tmp_path, body=body)
+        assert self._call_and_get_billing(flow) == []
+
     def test_unparseable_no_hints_writes_error_to_proxy_log(self, tmp_path, real_flow):
         """Operators must be able to audit the lost-visibility case —
         the proxy log receives a structured error entry."""
@@ -3445,12 +4327,12 @@ class TestUsageWebhookDelivery:
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"input_tokens": 100}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 100}
         return flow
 
     def test_succeeds_on_first_attempt(self, tmp_path, real_flow, fresh_usage_executor):
         flow = self._model_flow(real_flow, tmp_path)
-        flow.metadata["model_provider_usage"] = {"model": "claude-sonnet-4-6", "input_tokens": 100}
+        flow.metadata["model_provider_usage"] = {"model": "claude-sonnet-4-6", "tokens.input": 100}
         with (
             patch.object(
                 usage.providers.model_provider, "get_api_url", return_value="https://api.vm0.ai"
@@ -3463,14 +4345,22 @@ class TestUsageWebhookDelivery:
 
         mock_opener.open.assert_called_once()  # urllib external boundary (#9991)
         req = mock_opener.open.call_args[0][0]
-        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
+        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage-event"
         assert req.get_header("Content-type") == "application/json"
         assert req.get_header("Authorization") == "Bearer tok"
         assert req.get_header("User-agent") == "vm0-mitm-addon/1.0"
         body = json.loads(req.data)
         assert body["runId"] == "run-1"
-        assert body["usage"]["model"] == "claude-sonnet-4-6"
-        assert body["usage"]["input_tokens"] == 100
+        assert set(body) == {"runId", "events"}
+        assert body["events"] == [
+            {
+                "idempotencyKey": _model_usage_idempotency_key("run-1", flow.id, "tokens.input"),
+                "kind": "model",
+                "provider": "claude-sonnet-4-6",
+                "category": "tokens.input",
+                "quantity": 100,
+            }
+        ]
 
     def test_closes_http_error_response(self, tmp_path, real_flow, fresh_usage_executor):
         """HTTPError sockets must be closed to avoid leaking; retries still apply."""
@@ -3581,7 +4471,7 @@ class TestUsageWebhookDelivery:
     def test_falls_back_to_sync_after_shutdown(self, tmp_path, real_flow, fresh_usage_executor):
         """After executor shutdown, delivery happens synchronously before return."""
         flow = self._model_flow(real_flow, tmp_path)
-        flow.metadata["model_provider_usage"] = {"input_tokens": 42}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 42}
         usage.webhook.usage_executor.shutdown(wait=True)
 
         with (
@@ -3598,7 +4488,8 @@ class TestUsageWebhookDelivery:
         req = mock_opener.open.call_args[0][0]
         body = json.loads(req.data)
         assert body["runId"] == "run-1"
-        assert body["usage"]["input_tokens"] == 42
+        assert body["events"][0]["quantity"] == 42
+        assert body["events"][0]["category"] == "tokens.input"
 
 
 class TestDoneHook:
@@ -3880,8 +4771,8 @@ class TestFirewallHeaderCache:
         with (
             mitm_ctx(registry_path=str(reg_path)),
         ):
-            mitm_addon._registry_cache_key = (0, 0)
-            mitm_addon.load_registry()
+            registry_cache.reset_cache_for_tests()
+            registry_cache.load_registry(str(reg_path))
 
         assert ("run-old", "api-1") not in auth._firewall_header_cache
         assert ("run-old", "api-1") not in auth._cache_locks
@@ -3920,6 +4811,33 @@ class TestUsagePendingCounter:
 
         usage.counters._decrement_reports()
         _assert_pending(pending_path, flows=0, reports=0)
+
+    def test_enqueue_deep_copies_nested_payload(self):
+        payload = {
+            "runId": "run-1",
+            "events": [{"category": "tokens.input", "quantity": 1}],
+        }
+
+        try:
+            with patch.object(usage.webhook.usage_executor, "submit") as mock_submit:
+                usage.webhook._enqueue_webhook(
+                    "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                    "tok",
+                    payload,
+                    "",
+                    "usage_event",
+                )
+
+            copied_payload = mock_submit.call_args.args[3]
+            payload["events"][0]["quantity"] = 999
+            payload["events"].append({"category": "tokens.output", "quantity": 2})
+
+            assert copied_payload == {
+                "runId": "run-1",
+                "events": [{"category": "tokens.input", "quantity": 1}],
+            }
+        finally:
+            usage.counters._decrement_reports()
 
     def test_set_pending_path_accepts_explicit_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
@@ -3986,7 +4904,7 @@ class TestUsagePendingCounter:
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"input_tokens": 1}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
 
         with (
             patch.object(
@@ -4011,7 +4929,7 @@ class TestUsagePendingCounter:
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"input_tokens": 1}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
 
         with (
             patch.object(
@@ -4073,7 +4991,7 @@ class TestUsagePendingCounter:
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok"
         flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
-        flow.metadata["model_provider_usage"] = {"input_tokens": 1}
+        flow.metadata["model_provider_usage"] = {"tokens.input": 1}
 
         with (
             patch.object(

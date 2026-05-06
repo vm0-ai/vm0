@@ -1,5 +1,221 @@
 # Changelog
 
+## [0.99.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.12...runner-rs-v0.99.13) (2026-05-06)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** require snapshot publish marker ([#11867](https://github.com/vm0-ai/vm0/issues/11867)) ([023ae4d](https://github.com/vm0-ai/vm0/commit/023ae4d86570157504a176372727cab05f5b1483))
+
+
+### Documentation
+
+* **runner:** restore start loop comments ([#11896](https://github.com/vm0-ai/vm0/issues/11896)) ([ebb0521](https://github.com/vm0-ai/vm0/commit/ebb0521fd38c8ff09f8fee296cc5de0e458bc9eb))
+
+
+### Refactoring
+
+* **runner:** split start test harness ([#11870](https://github.com/vm0-ai/vm0/issues/11870)) ([085d91f](https://github.com/vm0-ai/vm0/commit/085d91fd68f2569aae8703dc8e781a65cce4cf32))
+
+## [0.99.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.11...runner-rs-v0.99.12) (2026-05-05)
+
+
+### Refactoring
+
+* **runner:** split ably control plane from discovery ([#11856](https://github.com/vm0-ai/vm0/issues/11856)) ([b1468f1](https://github.com/vm0-ai/vm0/commit/b1468f1ae6085e13ebb34e4a53bc33270471bb58))
+* **runner:** split start job discovery ([#11859](https://github.com/vm0-ai/vm0/issues/11859)) ([6139fc4](https://github.com/vm0-ai/vm0/commit/6139fc4e74e28ead4aac2784e582ca49290a8758))
+* **runner:** split start job spawn ([#11862](https://github.com/vm0-ai/vm0/issues/11862)) ([89e78e8](https://github.com/vm0-ai/vm0/commit/89e78e89f39949ab25cb5237431881439d0d0acc))
+* **runner:** split start sandbox finalization ([#11854](https://github.com/vm0-ai/vm0/issues/11854)) ([afd5117](https://github.com/vm0-ai/vm0/commit/afd51176d3d6d92cf0daa65999ad1140d88de9a4))
+* **sandbox-fc:** add snapshot cleanup Drop finalizer ([#11843](https://github.com/vm0-ai/vm0/issues/11843)) ([8c3bfdd](https://github.com/vm0-ai/vm0/commit/8c3bfdd257b592737d39eecf5c6eacb1ca2ee861))
+
+## [0.99.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.10...runner-rs-v0.99.11) (2026-05-05)
+
+
+### Bug Fixes
+
+* mark truncated decompressed network bodies ([#11793](https://github.com/vm0-ai/vm0/issues/11793)) ([bd2efd7](https://github.com/vm0-ai/vm0/commit/bd2efd759baf04a8bb789b224f8f9dca84864bc2))
+* **runner:** escalate prolonged ably disconnects ([#11839](https://github.com/vm0-ai/vm0/issues/11839)) ([40b7d97](https://github.com/vm0-ai/vm0/commit/40b7d979c02f820a85950f0cb449fddc47461af7))
+
+
+### Documentation
+
+* document runner exec entry points ([#11812](https://github.com/vm0-ai/vm0/issues/11812)) ([2f8d87f](https://github.com/vm0-ai/vm0/commit/2f8d87faf2c9019f1fd14c675288dda8f73d0393))
+* **runner:** document setup command ([#11810](https://github.com/vm0-ai/vm0/issues/11810)) ([35b5f2e](https://github.com/vm0-ai/vm0/commit/35b5f2ecf275b7a4a8feb32d634414ce32ad0f23))
+
+
+### Refactoring
+
+* **runner:** split start factory lifecycle ([#11828](https://github.com/vm0-ai/vm0/issues/11828)) ([e8e88c0](https://github.com/vm0-ai/vm0/commit/e8e88c0296b50f8ee4cc2d6c0b1b7144ebacb9de))
+* **runner:** split start heartbeat module ([#11801](https://github.com/vm0-ai/vm0/issues/11801)) ([19ad6d4](https://github.com/vm0-ai/vm0/commit/19ad6d4d7af13fe45f50fe568dac279ee210c8bb))
+* **runner:** split start idle lifecycle ([#11835](https://github.com/vm0-ai/vm0/issues/11835)) ([4e99ccb](https://github.com/vm0-ai/vm0/commit/4e99ccbec568b4b9186b32ab0c37bf9d1078d0e7))
+* **runner:** split start orphan reaper ([#11820](https://github.com/vm0-ai/vm0/issues/11820)) ([71a4bec](https://github.com/vm0-ai/vm0/commit/71a4bec7963be662c15a90868373808dd4951302))
+
+
+### Performance Improvements
+
+* bound brotli body capture decompression ([#11799](https://github.com/vm0-ai/vm0/issues/11799)) ([92af5b4](https://github.com/vm0-ai/vm0/commit/92af5b4d73095bef1b5b40c3af8b1e0ff8e49b1b))
+
+## [0.99.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.9...runner-rs-v0.99.10) (2026-05-03)
+
+
+### Bug Fixes
+
+* stabilize teardown timer tracing test ([#11767](https://github.com/vm0-ai/vm0/issues/11767)) ([ae279fc](https://github.com/vm0-ai/vm0/commit/ae279fc2786df436f6a41019610e162f6b6334d8))
+
+## [0.99.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.8...runner-rs-v0.99.9) (2026-05-03)
+
+
+### Bug Fixes
+
+* **nbd-cow:** lock NBD claims across runners ([#11732](https://github.com/vm0-ai/vm0/issues/11732)) ([16d716e](https://github.com/vm0-ai/vm0/commit/16d716e1f07a77c0d93649f52d077953dd62ff16))
+
+## [0.99.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.7...runner-rs-v0.99.8) (2026-05-03)
+
+
+### Bug Fixes
+
+* suppress runner debug logs ([#11727](https://github.com/vm0-ai/vm0/issues/11727)) ([2c47f5c](https://github.com/vm0-ai/vm0/commit/2c47f5cc1cd1b4906984adb3f0615f7edb622979))
+
+
+### Refactoring
+
+* dedupe guest download manifest conversion ([#11731](https://github.com/vm0-ai/vm0/issues/11731)) ([e1f5cb4](https://github.com/vm0-ai/vm0/commit/e1f5cb464bb4d9fdb6352ff9d3de20896536b471))
+* **runner:** share api client response handling ([#11725](https://github.com/vm0-ai/vm0/issues/11725)) ([006e356](https://github.com/vm0-ai/vm0/commit/006e356bdf484bb9321a47330abac7dd168943c2))
+
+## [0.99.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.6...runner-rs-v0.99.7) (2026-05-03)
+
+
+### Documentation
+
+* **runner:** document doctor entry points ([#11699](https://github.com/vm0-ai/vm0/issues/11699)) ([e431dc0](https://github.com/vm0-ai/vm0/commit/e431dc02d3d5f2b27ee3ad676f1d1d524f5c6b93))
+
+
+### Performance Improvements
+
+* **runner:** cache rootfs templates in r2 ([#11597](https://github.com/vm0-ai/vm0/issues/11597)) ([136382c](https://github.com/vm0-ai/vm0/commit/136382cbfa2fc1ed8230145edf13ec72f712e770))
+
+## [0.99.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.5...runner-rs-v0.99.6) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+## [0.99.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.4...runner-rs-v0.99.5) (2026-05-01)
+
+
+### Bug Fixes
+
+* harden ably disconnect handling ([#11656](https://github.com/vm0-ai/vm0/issues/11656)) ([c0c50d8](https://github.com/vm0-ai/vm0/commit/c0c50d88154f7ad74af791fc2df9e5a8db609418))
+
+## [0.99.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.3...runner-rs-v0.99.4) (2026-05-01)
+
+
+### Documentation
+
+* document runner executor module ([#11608](https://github.com/vm0-ai/vm0/issues/11608)) ([9838b83](https://github.com/vm0-ai/vm0/commit/9838b8395a9dddd523fb37e366210c64ee2b1cfe))
+
+## [0.99.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.2...runner-rs-v0.99.3) (2026-04-30)
+
+
+### Refactoring
+
+* **runner:** clarify build orchestration ([#11580](https://github.com/vm0-ai/vm0/issues/11580)) ([60926e3](https://github.com/vm0-ai/vm0/commit/60926e366abaf11c4430e08eac6903262038152c))
+
+## [0.99.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.1...runner-rs-v0.99.2) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** drain network logs before source release ([#11552](https://github.com/vm0-ai/vm0/issues/11552)) ([b297e3c](https://github.com/vm0-ai/vm0/commit/b297e3c20afb94c2796311111fd60ed732c9d1e9))
+
+## [0.99.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.0...runner-rs-v0.99.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* bound runner storage cache cardinality ([#11554](https://github.com/vm0-ai/vm0/issues/11554)) ([1950c8b](https://github.com/vm0-ai/vm0/commit/1950c8b97ae9deacd61a971af90b2c84ba16fd69))
+
+## [0.99.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.7...runner-rs-v0.99.0) (2026-04-29)
+
+
+### Features
+
+* **runner:** log teardown phase timings ([#11548](https://github.com/vm0-ai/vm0/issues/11548)) ([0cc9974](https://github.com/vm0-ai/vm0/commit/0cc9974742bf745c53476c662dc8f663943a4a6b))
+
+## [0.98.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.6...runner-rs-v0.98.7) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** compare axiom timeouts precisely ([#11536](https://github.com/vm0-ai/vm0/issues/11536)) ([6c751d4](https://github.com/vm0-ai/vm0/commit/6c751d47dc24fe7277beafbd475cb229001d74b9))
+
+## [0.98.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.5...runner-rs-v0.98.6) (2026-04-29)
+
+## [0.98.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.4...runner-rs-v0.98.5) (2026-04-29)
+
+
+### Documentation
+
+* **runner:** document resource budget accessors ([#11505](https://github.com/vm0-ai/vm0/issues/11505)) ([7d7ded9](https://github.com/vm0-ai/vm0/commit/7d7ded9f5b3268bc8d4a221381d58120ba890e7e))
+
+## [0.98.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.3...runner-rs-v0.98.4) (2026-04-29)
+
+
+### Refactoring
+
+* extract mitm registry cache ([#11492](https://github.com/vm0-ai/vm0/issues/11492)) ([a184fff](https://github.com/vm0-ai/vm0/commit/a184fff36e741d2c16cb7f28cc9ad13425da6a42))
+
+## [0.98.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.2...runner-rs-v0.98.3) (2026-04-29)
+
+
+### Refactoring
+
+* extract mitm response streaming state ([#11488](https://github.com/vm0-ai/vm0/issues/11488)) ([3e6a471](https://github.com/vm0-ai/vm0/commit/3e6a471ff4ce1c802b36e610e6e51a6a91ff8fe5))
+* split runner storage manifest boundaries ([#11487](https://github.com/vm0-ai/vm0/issues/11487)) ([7bfc3f8](https://github.com/vm0-ai/vm0/commit/7bfc3f86717495cf2ed8d72c796fb1e3b6a98f30))
+
+## [0.98.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.1...runner-rs-v0.98.2) (2026-04-29)
+
+## [0.98.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.98.0...runner-rs-v0.98.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* **runner:** clean up outer job panic bookkeeping ([#11393](https://github.com/vm0-ai/vm0/issues/11393)) ([4ecf0b6](https://github.com/vm0-ai/vm0/commit/4ecf0b65e25c66a86eec0151a29dd4f0fa0deeb0))
+
+## [0.98.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.3...runner-rs-v0.98.0) (2026-04-28)
+
+
+### Features
+
+* **rootfs:** install codex cli binary in sandbox image ([#11425](https://github.com/vm0-ai/vm0/issues/11425)) ([00914b9](https://github.com/vm0-ai/vm0/commit/00914b9c1d98027f8ca2901df58ce4e0653cfba6)), closes [#11416](https://github.com/vm0-ai/vm0/issues/11416)
+* **runner:** framework-aware restore_session for codex ([#11429](https://github.com/vm0-ai/vm0/issues/11429)) ([6e10fcd](https://github.com/vm0-ai/vm0/commit/6e10fcdee3ab50f02f3771cd32aacc7d59dd184b))
+
+## [0.97.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.2...runner-rs-v0.97.3) (2026-04-28)
+
+## [0.97.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.1...runner-rs-v0.97.2) (2026-04-28)
+
+## [0.97.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.97.0...runner-rs-v0.97.1) (2026-04-28)
+
+
+### Refactoring
+
+* **runner:** model spawn job lifecycle ownership ([#11354](https://github.com/vm0-ai/vm0/issues/11354)) ([3d6c156](https://github.com/vm0-ai/vm0/commit/3d6c156304b24e7967137e8411f38baaafa52ef7))
+
+## [0.97.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.6...runner-rs-v0.97.0) (2026-04-28)
+
+
+### Features
+
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
+## [0.96.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.5...runner-rs-v0.96.6) (2026-04-28)
+
+
+### Bug Fixes
+
+* align telegram typing and markdown responses ([#11312](https://github.com/vm0-ai/vm0/issues/11312)) ([eb4b88e](https://github.com/vm0-ai/vm0/commit/eb4b88eca4db66fedd20eead881a1691408688f4))
+
 ## [0.96.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.96.4...runner-rs-v0.96.5) (2026-04-28)
 
 

@@ -25,7 +25,12 @@ import {
   buildWebChatIncompleteContext,
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
-import { isApiError } from "@vm0/api-services/errors";
+import { isApiError, providerDeleted } from "@vm0/api-services/errors";
+import {
+  getModelProviderById,
+  getUserAnyDefaultModelProvider,
+} from "../../../../../src/lib/zero/model-provider/model-provider-service";
+import { isPersonalTierEligible } from "../../../../../src/lib/zero/personal-tier-gate";
 import {
   createChatThread,
   getChatThread,
@@ -93,8 +98,15 @@ interface ResolvedThread {
  * effective override to use for this run (precedence: per-run > thread > agent).
  * `undefined` for `modelSelection` means "leave thread row as-is" — older
  * clients that never saw the field still get the thread/agent fall-through.
+ *
+ * When the thread carries an eager-pinned provider but that provider has since
+ * been deleted, this throws `providerDeleted()` rather than silently falling
+ * back to the agent's current provider — the user must start a new thread to
+ * pick a different model.
  */
 async function resolveRunModelOverride(
+  orgId: string,
+  userId: string,
   threadId: string,
   agent: { modelProviderId: string | null; selectedModel: string | null },
   modelSelection:
@@ -125,6 +137,14 @@ async function resolveRunModelOverride(
       .where(eq(chatThreads.id, threadId))
       .limit(1);
     if (thread?.modelProviderId && thread.selectedModel) {
+      const provider = await getModelProviderById(
+        orgId,
+        userId,
+        thread.modelProviderId,
+      );
+      if (!provider) {
+        throw providerDeleted();
+      }
       return {
         providerId: thread.modelProviderId,
         selectedModel: thread.selectedModel,
@@ -171,6 +191,72 @@ async function rejectIfThreadModelLocked(
 }
 
 /**
+ * Compute the eager-pin written into `chat_threads.modelProviderId` /
+ * `selected_model` at NEW thread creation. Defaults to the agent's stored
+ * pin; promotes to the caller's personal-tier default when (Epic #11868):
+ *   1. the agent has `prefer_personal_provider=true`, AND
+ *   2. the `personalModelProvider` feature switch is on for the caller, AND
+ *   3. the user has a personal default provider in this workspace.
+ *
+ * `selectedModel` precedence: user's personal row > agent's > null —
+ * mirrors the resolver's runtime fallback chain.
+ *
+ * Why a single `getUserAnyDefaultModelProvider` is sufficient here (vs the
+ * resolver's two-step `getUserDefaultModelProvider(framework) ?? any-default`
+ * chain): #11752 introduced the workspace single-default invariant
+ * (`idx_model_providers_one_default_per_user`) — at most one
+ * `isDefault=true` row per `(orgId, userId)`. The framework-scoped variant
+ * therefore returns either that same row (when its framework matches) or
+ * null (cross-framework), and the any-default fallback returns the row
+ * unconditionally. The two-step chain is NOT redundant in the resolver
+ * because of the framework-propagation handshake (Epic #11520 — provider's
+ * framework wins, and the resolver returns `framework: getFrameworkForType(
+ * providerType)` derived from the row it picked). At pin time we don't
+ * propagate framework — we persist row id + model and let the resolver
+ * re-derive framework when the run dispatches via `getModelProviderById`.
+ * One read suffices; documenting the asymmetry so the optimization isn't
+ * mistakenly mirrored back into the resolver.
+ *
+ * Existing-thread sends bypass this helper — see Decision F2 in plan.md
+ * for the per-thread immutability rationale.
+ */
+async function computeEagerPin(
+  orgId: string,
+  userId: string,
+  agent: {
+    modelProviderId: string | null;
+    selectedModel: string | null;
+    preferPersonalProvider: boolean;
+  },
+): Promise<{
+  modelProviderId: string | null;
+  selectedModel: string | null;
+}> {
+  const personalEligible = await isPersonalTierEligible(
+    orgId,
+    userId,
+    agent.preferPersonalProvider,
+  );
+  if (!personalEligible) {
+    return {
+      modelProviderId: agent.modelProviderId,
+      selectedModel: agent.selectedModel,
+    };
+  }
+  const userRow = await getUserAnyDefaultModelProvider(orgId, userId);
+  if (!userRow) {
+    return {
+      modelProviderId: agent.modelProviderId,
+      selectedModel: agent.selectedModel,
+    };
+  }
+  return {
+    modelProviderId: userRow.id,
+    selectedModel: userRow.selectedModel ?? agent.selectedModel ?? null,
+  };
+}
+
+/**
  * Resolve an existing thread or create a new one.
  * Returns thread metadata needed for run creation and title generation.
  *
@@ -185,6 +271,7 @@ async function resolveThread(
   agentId: string,
   existingThreadId: string | undefined,
   clientThreadId: string | undefined,
+  agentPin: { modelProviderId: string | null; selectedModel: string | null },
   dims?: ChatSpanDimensions,
 ): Promise<ResolvedThread> {
   const emit = (op: string, ms: number): void => {
@@ -193,7 +280,7 @@ async function resolveThread(
 
   if (!existingThreadId) {
     const createT = await timed(async () => {
-      return createChatThread(userId, agentId, null, clientThreadId);
+      return createChatThread(userId, agentId, null, clientThreadId, agentPin);
     });
     emit(CHAT_REQUEST_OPS.resolve_thread_create_thread, createT.ms);
     const thread = createT.result;
@@ -326,23 +413,29 @@ const router = tsr.router(chatMessagesContract, {
       };
     }
 
+    // resolveOrg already fetches org_metadata — capture the tier here so the
+    // service's Round 2 can skip its duplicate getOrgMetadata call. Resolved
+    // up front (rather than only inside the modelSelection branch) so the
+    // orphan-pin detection in resolveRunModelOverride can scope its provider
+    // lookup to the caller's org.
+    const { org: callerOrg } = await resolveOrg(authCtx);
+    const preloadedOrgTier: { orgId: string; tier: string } = {
+      orgId: callerOrg.orgId,
+      tier: callerOrg.tier,
+    };
+
     // Validate per-run model selection belongs to the caller's org before
     // we trust it to write onto the thread or override the agent's default.
-    // resolveOrg already fetches org_metadata — capture the tier here so the
-    // service's Round 2 can skip its duplicate getOrgMetadata call.
-    let preloadedOrgTier: { orgId: string; tier: string } | undefined;
     if (body.modelSelection) {
       const modelSelection = body.modelSelection;
       const validateT = await timed(async () => {
-        const { org } = await resolveOrg(authCtx);
-        preloadedOrgTier = { orgId: org.orgId, tier: org.tier };
         return globalThis.services.db
           .select({ id: modelProviders.id })
           .from(modelProviders)
           .where(
             and(
               eq(modelProviders.id, modelSelection.modelProviderId),
-              eq(modelProviders.orgId, org.orgId),
+              eq(modelProviders.orgId, callerOrg.orgId),
             ),
           )
           .limit(1);
@@ -383,17 +476,37 @@ const router = tsr.router(chatMessagesContract, {
     }
 
     try {
+      // Existing-thread sends pass the agent's pin literally — `resolveThread`
+      // doesn't use it on that branch (it reads the persisted pin instead),
+      // so the personal-tier eligibility check is skipped. NEW threads
+      // compute the eager-pin via `computeEagerPin` so per-Epic #11868 the
+      // user's personal default lands in the persisted pin when the agent's
+      // `prefer_personal_provider` is on and the switch is enabled for
+      // the caller.
+      const eagerPin = body.threadId
+        ? {
+            modelProviderId: agent.modelProviderId,
+            selectedModel: agent.selectedModel,
+          }
+        : await computeEagerPin(callerOrg.orgId, authCtx.userId, {
+            modelProviderId: agent.modelProviderId,
+            selectedModel: agent.selectedModel,
+            preferPersonalProvider: agent.preferPersonalProvider,
+          });
       const { threadId, sessionId, incompleteContext, isNewThread } =
         await resolveThread(
           authCtx.userId,
           body.agentId,
           body.threadId,
           body.clientThreadId,
+          eagerPin,
           dims,
         );
 
       const overrideT = await timed(async () => {
         return resolveRunModelOverride(
+          callerOrg.orgId,
+          authCtx.userId,
           threadId,
           {
             modelProviderId: agent.modelProviderId,
@@ -480,6 +593,8 @@ const router = tsr.router(chatMessagesContract, {
         modelProvider,
         modelProviderId: override.providerId ?? undefined,
         selectedModelOverride: override.selectedModel ?? undefined,
+        debugNoMockClaude: body.debugNoMockClaude,
+        debugNoMockCodex: body.debugNoMockCodex,
         appendSystemPrompt: buildAppendSystemPrompt(incompleteContext),
         callbacks: [chatCallback],
         chatThreadId: threadId,
@@ -564,7 +679,7 @@ const router = tsr.router(chatMessagesContract, {
         const message =
           error.code === "UNAUTHORIZED" ? "Resource not found" : error.message;
         return {
-          status: status as 400 | 401 | 403 | 404,
+          status: status as 400 | 401 | 403 | 404 | 422,
           body: { error: { message, code } },
         };
       }

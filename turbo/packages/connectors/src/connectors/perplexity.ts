@@ -4,6 +4,7 @@ export const perplexity = {
   perplexity: {
     label: "Perplexity",
     category: "data-automation-infrastructure",
+    generation: ["text"],
     environmentMapping: {
       PERPLEXITY_TOKEN: "$secrets.PERPLEXITY_TOKEN",
     },

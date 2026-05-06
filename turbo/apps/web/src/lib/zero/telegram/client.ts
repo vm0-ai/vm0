@@ -1,5 +1,6 @@
 import { logger } from "../../shared/logger";
 import { env } from "../../../env";
+import { normalizeTelegramHtmlText } from "./format";
 
 const log = logger("telegram:client");
 
@@ -20,6 +21,9 @@ interface TelegramBotInfo {
   is_bot: boolean;
   first_name: string;
   username: string;
+  can_join_groups?: boolean;
+  can_read_all_group_messages?: boolean;
+  supports_inline_queries?: boolean;
 }
 
 interface TelegramApiError extends Error {
@@ -56,14 +60,42 @@ export function isTelegramApiError(error: unknown): error is TelegramApiError {
   );
 }
 
-export interface TelegramSentMessage {
+interface TelegramSentMessage {
   message_id: number;
   chat: { id: number };
   text?: string;
 }
 
+interface TelegramDocument {
+  file_id: string;
+  file_unique_id: string;
+  file_name?: string;
+  mime_type?: string;
+  file_size?: number;
+}
+
+interface TelegramSentDocumentMessage extends TelegramSentMessage {
+  document?: TelegramDocument;
+  caption?: string;
+}
+
 export interface TelegramClient {
   token: string;
+}
+
+export interface TelegramInlineKeyboardButton {
+  text: string;
+  url: string;
+}
+
+export interface TelegramInlineKeyboardMarkup {
+  inline_keyboard: TelegramInlineKeyboardButton[][];
+}
+
+export interface TelegramSendMessageOptions {
+  replyToMessageId?: number;
+  messageThreadId?: number;
+  replyMarkup?: TelegramInlineKeyboardMarkup;
 }
 
 function isE2eTelegramMockEnabled(): boolean {
@@ -159,16 +191,43 @@ export async function sendMessage(
   client: TelegramClient,
   chatId: string | number,
   text: string,
-  options?: { replyToMessageId?: number },
+  options?: TelegramSendMessageOptions,
 ): Promise<TelegramSentMessage> {
   return callTelegramApi<TelegramSentMessage>(client.token, "sendMessage", {
     chat_id: chatId,
-    text,
+    text: normalizeTelegramHtmlText(text),
     parse_mode: "HTML",
     ...(options?.replyToMessageId && {
       reply_parameters: { message_id: options.replyToMessageId },
     }),
+    ...(options?.messageThreadId && {
+      message_thread_id: options.messageThreadId,
+    }),
+    ...(options?.replyMarkup && { reply_markup: options.replyMarkup }),
   });
+}
+
+/**
+ * Send a general file by Telegram file id or HTTP URL.
+ */
+export async function sendDocument(
+  client: TelegramClient,
+  chatId: string | number,
+  document: string,
+  options?: { caption?: string; messageThreadId?: number },
+): Promise<TelegramSentDocumentMessage> {
+  return callTelegramApi<TelegramSentDocumentMessage>(
+    client.token,
+    "sendDocument",
+    {
+      chat_id: chatId,
+      document,
+      ...(options?.caption ? { caption: options.caption } : {}),
+      ...(options?.messageThreadId
+        ? { message_thread_id: options.messageThreadId }
+        : {}),
+    },
+  );
 }
 
 /**
@@ -226,7 +285,7 @@ export async function editMessageText(
   return callTelegramApi<TelegramSentMessage>(client.token, "editMessageText", {
     chat_id: chatId,
     message_id: messageId,
-    text,
+    text: normalizeTelegramHtmlText(text),
     parse_mode: "HTML",
   });
 }
@@ -252,6 +311,19 @@ interface TelegramFile {
   file_path?: string;
 }
 
+export interface TelegramUserProfilePhoto {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
+interface TelegramUserProfilePhotos {
+  total_count: number;
+  photos: TelegramUserProfilePhoto[][];
+}
+
 /**
  * Get file info and download path from Telegram.
  * The returned file_path can be used to download via:
@@ -264,6 +336,24 @@ export async function getFile(
   return callTelegramApi<TelegramFile>(client.token, "getFile", {
     file_id: fileId,
   });
+}
+
+/**
+ * Get profile photos for a Telegram user or bot.
+ */
+export async function getUserProfilePhotos(
+  client: TelegramClient,
+  userId: string | number,
+  limit = 1,
+): Promise<TelegramUserProfilePhotos> {
+  return callTelegramApi<TelegramUserProfilePhotos>(
+    client.token,
+    "getUserProfilePhotos",
+    {
+      user_id: userId,
+      limit,
+    },
+  );
 }
 
 /**

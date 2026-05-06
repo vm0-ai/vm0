@@ -24,18 +24,6 @@ import {
   dailyDurationKey,
 } from "../../../../../../src/lib/zero/voice-io/audio-input-policy";
 
-vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@vm0/core/feature-switch")>();
-  return {
-    ...actual,
-    isFeatureEnabled: vi.fn().mockReturnValue(true),
-  };
-});
-
-const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
-const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
-
 vi.hoisted(() => {
   vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
 });
@@ -105,7 +93,6 @@ function createSttRequest(file?: File): Request {
 describe("POST /api/zero/voice-io/stt", () => {
   beforeEach(() => {
     context.setupMocks();
-    mockIsFeatureEnabled.mockReturnValue(true);
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     reloadEnv();
   });
@@ -116,16 +103,6 @@ describe("POST /api/zero/voice-io/stt", () => {
     const body = await response.json();
     expect(response.status).toBe(401);
     expect(body.error.code).toBe("UNAUTHORIZED");
-  });
-
-  it("should return 403 when feature flag is disabled", async () => {
-    const userId = uniqueId("stt-ff");
-    await setupOrg(userId);
-    mockIsFeatureEnabled.mockReturnValue(false);
-    const response = await POST(createSttRequest(createAudioFile()));
-    const body = await response.json();
-    expect(response.status).toBe(403);
-    expect(body.error.code).toBe("FORBIDDEN");
   });
 
   it("should return 400 when no file is provided", async () => {

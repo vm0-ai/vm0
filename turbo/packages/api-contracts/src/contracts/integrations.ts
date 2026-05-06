@@ -59,6 +59,100 @@ export type IntegrationsSlackMessageContract =
   typeof integrationsSlackMessageContract;
 
 /**
+ * Integration Telegram message contract
+ * POST /api/zero/integrations/telegram/message
+ *
+ * Sends a Telegram message via an org-owned bot token.
+ * Requires `telegram:write` capability (via ZERO_TOKEN).
+ */
+const sendTelegramMessageBodySchema = z.object({
+  botId: z.string().min(1, "Bot ID is required"),
+  chatId: z.string().min(1, "Chat ID is required"),
+  text: z.string().min(1, "Message text is required"),
+  replyToMessageId: z.number().int().positive().optional(),
+  messageThreadId: z.number().int().positive().optional(),
+});
+
+export type SendTelegramMessageBody = z.infer<
+  typeof sendTelegramMessageBodySchema
+>;
+
+const sendTelegramMessageResponseSchema = z.object({
+  ok: z.literal(true),
+  messageId: z.number().int(),
+  chatId: z.string(),
+});
+
+export type SendTelegramMessageResponse = z.infer<
+  typeof sendTelegramMessageResponseSchema
+>;
+
+export const integrationsTelegramMessageContract = c.router({
+  sendMessage: {
+    method: "POST",
+    path: "/api/zero/integrations/telegram/message",
+    headers: authHeadersSchema,
+    body: sendTelegramMessageBodySchema,
+    responses: {
+      200: sendTelegramMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Send a Telegram message via org bot token",
+  },
+});
+
+export type IntegrationsTelegramMessageContract =
+  typeof integrationsTelegramMessageContract;
+
+/**
+ * Integration Telegram bot list contract
+ * GET /api/zero/integrations/telegram/bots
+ *
+ * Lists Telegram bots available in the authenticated user's org.
+ * Requires `telegram:read` capability (via ZERO_TOKEN).
+ */
+const telegramBotTokenStatusSchema = z.enum(["valid", "invalid", "unknown"]);
+
+const telegramBotListItemSchema = z.object({
+  id: z.string(),
+  username: z.string().nullable(),
+  agent: z.object({ id: z.string(), name: z.string() }).nullable(),
+  isOwner: z.boolean(),
+  isConnected: z.boolean(),
+  tokenStatus: telegramBotTokenStatusSchema,
+});
+
+const listTelegramBotsResponseSchema = z.object({
+  bots: z.array(telegramBotListItemSchema),
+});
+
+export type TelegramBotListItem = z.infer<typeof telegramBotListItemSchema>;
+export type ListTelegramBotsResponse = z.infer<
+  typeof listTelegramBotsResponseSchema
+>;
+
+export const integrationsTelegramBotListContract = c.router({
+  listBots: {
+    method: "GET",
+    path: "/api/zero/integrations/telegram/bots",
+    headers: authHeadersSchema,
+    responses: {
+      200: listTelegramBotsResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List Telegram bots available in the authenticated user's org",
+  },
+});
+
+export type IntegrationsTelegramBotListContract =
+  typeof integrationsTelegramBotListContract;
+
+/**
  * Integration Slack file upload — init contract
  * POST /api/zero/integrations/slack/upload-file/init
  *
@@ -96,6 +190,107 @@ export const integrationsSlackUploadInitContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get a pre-signed Slack upload URL via org bot token",
+  },
+});
+
+/**
+ * Integration Telegram file upload — init contract
+ * POST /api/zero/integrations/telegram/upload-file/init
+ *
+ * Requests a pre-signed upload URL for a temporary VM0-hosted file. The CLI
+ * uploads the file body directly to R2, then the complete route asks Telegram
+ * to fetch that file URL with the org-owned bot token.
+ * Requires `telegram:write` capability (via ZERO_TOKEN).
+ */
+const telegramUploadInitBodySchema = z.object({
+  filename: z.string().min(1, "Filename is required").max(255),
+  contentType: z.string().min(1, "Content type is required").max(200),
+  length: z.number().int().positive("File length must be a positive integer"),
+});
+
+export type TelegramUploadInitBody = z.infer<
+  typeof telegramUploadInitBodySchema
+>;
+
+const telegramUploadInitResponseSchema = z.object({
+  uploadId: z.string().uuid(),
+  uploadUrl: z.string(),
+  fileUrl: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number().int().nonnegative(),
+});
+
+export type TelegramUploadInitResponse = z.infer<
+  typeof telegramUploadInitResponseSchema
+>;
+
+export const integrationsTelegramUploadInitContract = c.router({
+  init: {
+    method: "POST",
+    path: "/api/zero/integrations/telegram/upload-file/init",
+    headers: authHeadersSchema,
+    body: telegramUploadInitBodySchema,
+    responses: {
+      200: telegramUploadInitResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Get a pre-signed upload URL for Telegram file delivery",
+  },
+});
+
+/**
+ * Integration Telegram file upload — complete contract
+ * POST /api/zero/integrations/telegram/upload-file/complete
+ *
+ * Sends an uploaded file URL to a Telegram chat via sendDocument using the
+ * requested org-owned bot token.
+ * Requires `telegram:write` capability (via ZERO_TOKEN).
+ */
+const telegramUploadCompleteBodySchema = z.object({
+  uploadId: z.string().uuid("Upload ID must be a UUID"),
+  botId: z.string().min(1, "Bot ID is required"),
+  chatId: z.string().min(1, "Chat ID is required"),
+  contentType: z.string().min(1).max(200).optional(),
+  caption: z.string().max(1024).optional(),
+  messageThreadId: z.number().int().positive().optional(),
+});
+
+export type TelegramUploadCompleteBody = z.infer<
+  typeof telegramUploadCompleteBodySchema
+>;
+
+const telegramUploadCompleteResponseSchema = z.object({
+  messageId: z.number().int(),
+  chatId: z.string(),
+  fileId: z.string().optional(),
+  filename: z.string(),
+  mimetype: z.string(),
+  size: z.number().int().nonnegative(),
+  url: z.string(),
+});
+
+export type TelegramUploadCompleteResponse = z.infer<
+  typeof telegramUploadCompleteResponseSchema
+>;
+
+export const integrationsTelegramUploadCompleteContract = c.router({
+  complete: {
+    method: "POST",
+    path: "/api/zero/integrations/telegram/upload-file/complete",
+    headers: authHeadersSchema,
+    body: telegramUploadCompleteBodySchema,
+    responses: {
+      200: telegramUploadCompleteResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      502: apiErrorSchema,
+    },
+    summary: "Finalize Telegram file upload and send it to a chat",
   },
 });
 

@@ -4,11 +4,11 @@
  * Covers: UsageInsightBarChart, UsageInsightChatsTable,
  * UsageInsightSchedulesTable, UsageInsightSelectors, UsageInsightView
  *
- * Entry point: detachedSetupPage({ context, path: "/_/usage" })
+ * Entry point: detachedSetupPage({ context, path: "/usage" })
  * Mock (external): HTTP via MSW zeroUsageInsightContract
  * Real (internal): All signals, components, rendering
  */
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -48,7 +48,7 @@ describe("usage insight view - loading, error, and data states", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -70,7 +70,7 @@ describe("usage insight view - loading, error, and data states", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -110,12 +110,14 @@ describe("usage insight view - loading, error, and data states", () => {
               {
                 scheduleId: "s1",
                 scheduleName: "Morning Digest",
+                scheduleDescription: null,
                 credits: 150,
                 tokens: 300,
               },
               {
                 scheduleId: "s2",
                 scheduleName: "Evening Report",
+                scheduleDescription: null,
                 credits: 80,
                 tokens: 160,
               },
@@ -141,7 +143,7 @@ describe("usage insight view - loading, error, and data states", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -199,7 +201,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // Wait for the credits label to appear
     await waitFor(() => {
@@ -230,7 +232,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // The breakdown list renders when stackOrder.length > 1 && total > 0.
     // With 3 categories (chat, slack, others), the breakdown list should appear.
@@ -240,6 +242,45 @@ describe("usage insight bar chart - chart rendering", () => {
     });
     // The breakdown list has progress bars - verify SVG is rendered
     expect(document.querySelector("svg")).toBeInTheDocument();
+  });
+
+  it("renders breakdown list when a single category is present", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(
+      new Date("2026-04-28T12:00:00.000Z").getTime(),
+    );
+
+    server.use(
+      mockApi(zeroUsageInsightContract.get, ({ respond }) => {
+        return respond(
+          200,
+          makeFixture({
+            buckets: [
+              {
+                ts: "2026-04-28T11:00:00.000Z",
+                series: { webhook: 420 },
+                tokens: { webhook: 840 },
+              },
+            ],
+            schedules: [],
+            scheduleOtherCount: 0,
+            scheduleOtherCredits: 0,
+            chats: [],
+            chatOtherCount: 0,
+            chatOtherCredits: 0,
+            grandTotalCredits: 420,
+            grandTotalTokens: 840,
+          }),
+        );
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/usage" });
+
+    await waitFor(() => {
+      expect(
+        within(getTotalsRegion()).getByText("Webhook"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("hides chart body when total is zero", async () => {
@@ -258,7 +299,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -291,7 +332,7 @@ describe("usage insight bar chart - chart rendering", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -329,7 +370,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -373,7 +414,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // Wait for the chat titles to appear
     await waitFor(() => {
@@ -419,7 +460,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("Design Review")).toBeInTheDocument();
@@ -454,7 +495,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("2")).toBeInTheDocument();
@@ -462,7 +503,7 @@ describe("usage insight chats table - rendering and interactions", () => {
     expect(screen.getByText("(untitled)")).toBeInTheDocument();
   });
 
-  it("shows '+N more chats' row when chatOtherCount > 0", async () => {
+  it("includes '+N more chats' overflow row when chatOtherCount > 0", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
         return respond(
@@ -487,13 +528,14 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("Visible Chat")).toBeInTheDocument();
     });
 
     expect(screen.getByText("+7 more chats")).toBeInTheDocument();
+    expect(screen.getByText(/chats used 400 credits/)).toBeInTheDocument();
   });
 
   it("formats large credit values with K suffix", async () => {
@@ -521,7 +563,7 @@ describe("usage insight chats table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // The breakdown list shows "5.0K" for the Big Chat row (5000 >= 1000)
     await waitFor(() => {
@@ -555,7 +597,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -581,18 +623,21 @@ describe("usage insight schedules table - rendering and interactions", () => {
               {
                 scheduleId: "s1",
                 scheduleName: "Daily Sync",
+                scheduleDescription: null,
                 credits: 100,
                 tokens: 200,
               },
               {
                 scheduleId: "s2",
                 scheduleName: "Weekly Review",
+                scheduleDescription: null,
                 credits: 200,
                 tokens: 400,
               },
               {
                 scheduleId: "s3",
                 scheduleName: "Monthly Report",
+                scheduleDescription: null,
                 credits: 150,
                 tokens: 300,
               },
@@ -609,7 +654,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     // Wait for schedule content to appear, then verify count "3" is visible
     await waitFor(() => {
@@ -629,12 +674,14 @@ describe("usage insight schedules table - rendering and interactions", () => {
               {
                 scheduleId: "s1",
                 scheduleName: "Daily Standup",
+                scheduleDescription: null,
                 credits: 50,
                 tokens: 100,
               },
               {
                 scheduleId: "s2",
                 scheduleName: "Weekly Planning",
+                scheduleDescription: null,
                 credits: 200,
                 tokens: 400,
               },
@@ -651,7 +698,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("Daily Standup")).toBeInTheDocument();
@@ -661,7 +708,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
     expect(screen.getByText("200")).toBeInTheDocument();
   });
 
-  it("shows '+N more schedules' row when scheduleOtherCount > 0", async () => {
+  it("includes '+N more schedules' overflow row when scheduleOtherCount > 0", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
         return respond(
@@ -672,6 +719,7 @@ describe("usage insight schedules table - rendering and interactions", () => {
               {
                 scheduleId: "s1",
                 scheduleName: "Visible Schedule",
+                scheduleDescription: null,
                 credits: 30,
                 tokens: 60,
               },
@@ -688,41 +736,59 @@ describe("usage insight schedules table - rendering and interactions", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(screen.getByText("Visible Schedule")).toBeInTheDocument();
     });
 
     expect(screen.getByText("+4 more schedules")).toBeInTheDocument();
+    expect(screen.getByText(/schedules used 200 credits/)).toBeInTheDocument();
   });
 
-  it("uses singular form for scheduleOtherCount of 1", async () => {
+  it("prefers scheduleDescription over scheduleName when both are present", async () => {
     server.use(
       mockApi(zeroUsageInsightContract.get, ({ respond }) => {
         return respond(
           200,
           makeFixture({
             buckets: [],
-            schedules: [],
-            scheduleOtherCount: 1,
-            scheduleOtherCredits: 50,
+            schedules: [
+              {
+                scheduleId: "s1",
+                scheduleName: "default",
+                scheduleDescription: "Daily morning brief",
+                credits: 100,
+                tokens: 200,
+              },
+              {
+                scheduleId: "s2",
+                scheduleName: "default",
+                scheduleDescription: null,
+                credits: 80,
+                tokens: 160,
+              },
+            ],
+            scheduleOtherCount: 0,
+            scheduleOtherCredits: 0,
             chats: [],
             chatOtherCount: 0,
             chatOtherCredits: 0,
-            grandTotalCredits: 50,
-            grandTotalTokens: 100,
+            grandTotalCredits: 180,
+            grandTotalTokens: 360,
           }),
         );
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
-    // When scheduleOtherCount is 1, the "+1 more schedule" row appears (singular)
+    // s1: description present → render description
     await waitFor(() => {
-      expect(screen.getByText("+1 more schedule")).toBeInTheDocument();
+      expect(screen.getByText("Daily morning brief")).toBeInTheDocument();
     });
+    // s2: no description → fall back to name
+    expect(screen.getByText("default")).toBeInTheDocument();
   });
 });
 
@@ -747,7 +813,7 @@ describe("usage insight selectors - date range dropdown", () => {
       }),
     );
 
-    detachedSetupPage({ context, path: "/_/usage" });
+    detachedSetupPage({ context, path: "/usage" });
 
     await waitFor(() => {
       expect(
@@ -773,6 +839,9 @@ describe("usage insight selectors - date range dropdown", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: "Last 28 days" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Last 30 days" }),
     ).toBeInTheDocument();
   });
 });

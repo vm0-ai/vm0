@@ -73,6 +73,10 @@ export {
   SheetTitle,
   SheetDescription,
 } from "./components/ui/sheet";
+export {
+  RunningIndicator,
+  type RunningIndicatorProps,
+} from "./components/ui/running-indicator";
 export { Skeleton } from "./components/ui/skeleton";
 export { Switch } from "./components/ui/switch";
 export {

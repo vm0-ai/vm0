@@ -1,6 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { resetSignal, createDeferredPromise } from "../utils.ts";
+import { resetSignal } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -16,6 +15,60 @@ interface FileInfo {
   url: string;
 }
 
+function uploadContentTypeByExtension(ext: string): string | undefined {
+  const contentTypeByExtension: Record<string, string | undefined> = {
+    aac: "audio/aac",
+    avif: "image/avif",
+    csv: "text/csv",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    flac: "audio/flac",
+    gif: "image/gif",
+    htm: "text/html",
+    html: "text/html",
+    jpeg: "image/jpeg",
+    jpg: "image/jpeg",
+    json: "application/json",
+    m4a: "audio/mp4",
+    md: "text/markdown",
+    mov: "video/quicktime",
+    mp3: "audio/mpeg",
+    mp4: "video/mp4",
+    mpga: "audio/mpga",
+    odp: "application/vnd.oasis.opendocument.presentation",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    odt: "application/vnd.oasis.opendocument.text",
+    oga: "audio/ogg",
+    ogg: "audio/ogg",
+    opus: "audio/opus",
+    pdf: "application/pdf",
+    png: "image/png",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    rtf: "application/rtf",
+    svg: "image/svg+xml",
+    txt: "text/plain",
+    wav: "audio/wav",
+    wave: "audio/wave",
+    webm: "video/webm",
+    webp: "image/webp",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+  return contentTypeByExtension[ext];
+}
+
+function inferUploadContentType(file: File): string {
+  const explicitType = file.type.split(";")[0]?.trim().toLowerCase();
+  if (explicitType && explicitType !== "application/octet-stream") {
+    return explicitType;
+  }
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  return ext
+    ? (uploadContentTypeByExtension(ext) ?? "application/octet-stream")
+    : "application/octet-stream";
+}
+
 export interface ZeroChatAttachment {
   filename: string;
   contentType: string;
@@ -24,11 +77,12 @@ export interface ZeroChatAttachment {
   fileInfo$: Computed<Promise<FileInfo | null>>;
   /** Cancel the in-flight upload. Always safe to call (no-op if already completed). */
   cancel$: Command<void, []>;
-  /** Start the upload. Accepts an external signal for cascade abort (e.g. page navigation). */
+  /** Start the upload and publish its fileInfo$ promise for later send-time resolution. */
   upload$: Command<Promise<void>, [AbortSignal]>;
 }
 
 function createChatAttachment(file: File): ZeroChatAttachment {
+  const contentType = inferUploadContentType(file);
   const resetSignal$ = resetSignal();
   const internalPromise$ = state<Promise<FileInfo> | null>(null);
 
@@ -47,52 +101,50 @@ function createChatAttachment(file: File): ZeroChatAttachment {
   const upload$ = command(async ({ get, set }, parentSignal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUploadsContract);
-
     const signal = set(resetSignal$, parentSignal);
-    const deferred = createDeferredPromise<FileInfo>(signal);
-    set(internalPromise$, deferred.promise);
 
-    // Step 1: ask the server to sign a PUT URL for R2. The file body never
-    // travels through the Next.js runtime, which lets us exceed Vercel's
-    // serverless body cap and next dev's multipart parser limits.
-    //
-    // Toast is disabled here so upload errors are surfaced through a single
-    // path in `uploadAttachment$`, which also removes the failed chip.
-    const prepared = await accept(
-      client.prepare({
-        body: {
-          filename: file.name,
-          contentType: file.type,
-          size: file.size,
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-      { toast: false },
-    );
-    parentSignal.throwIfAborted();
+    const promise = (async () => {
+      // Step 1: ask the server to sign a PUT URL for R2. The file body never
+      // travels through the Next.js runtime, which lets us exceed Vercel's
+      // serverless body cap and next dev's multipart parser limits.
+      const prepared = await accept(
+        client.prepare({
+          body: {
+            filename: file.name,
+            contentType,
+            size: file.size,
+          },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
 
-    // Step 2: PUT the file bytes straight to R2 using the presigned URL.
-    // Do NOT forward auth headers or cookies — the URL's signature is the
-    // only credential R2 accepts, and adding others trips CORS.
-    const putRes = await fetch(prepared.body.uploadUrl, {
-      method: "PUT",
-      body: file,
-      headers: { "content-type": file.type },
-      signal,
-    });
-    parentSignal.throwIfAborted();
+      const putRes = await fetch(prepared.body.uploadUrl, {
+        method: "PUT",
+        body: file,
+        headers: { "content-type": contentType },
+        signal,
+      });
+      parentSignal.throwIfAborted();
 
-    if (!putRes.ok) {
-      throw new Error(`storage returned ${putRes.status} ${putRes.statusText}`);
-    }
+      if (!putRes.ok) {
+        throw new Error(
+          `storage returned ${putRes.status} ${putRes.statusText}`,
+        );
+      }
 
-    deferred.resolve({ id: prepared.body.id, url: prepared.body.url });
+      return { id: prepared.body.id, url: prepared.body.url };
+    })();
+
+    set(internalPromise$, promise);
+
+    await promise;
   });
 
   return {
     filename: file.name,
-    contentType: file.type,
+    contentType,
     size: file.size,
     fileInfo$,
     cancel$,
@@ -175,27 +227,7 @@ export function createDraftSignals(): DraftSignals {
         return [...prev, attachment];
       });
 
-      await set(attachment.upload$, signal).catch((error: unknown) => {
-        // Drop the failed chip so the composer doesn't show an orphan.
-        // `removeAttachment$` may have already removed it on user cancel;
-        // filter is a no-op in that case.
-        set(internalAttachments$, (prev) => {
-          return prev.filter((a) => {
-            return a !== attachment;
-          });
-        });
-
-        // Aborts come from user cancel (X on chip) or external signal
-        // (page navigation) — neither is an error condition.
-        const isAbort = error instanceof Error && error.name === "AbortError";
-        if (isAbort) {
-          return;
-        }
-
-        const message =
-          error instanceof Error ? error.message : "Unknown error";
-        toast.error(`Failed to upload ${file.name}: ${message}`);
-      });
+      await set(attachment.upload$, signal);
     },
   );
 

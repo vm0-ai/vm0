@@ -471,44 +471,6 @@ export const webhookStoragesCommitContract = c.router({
   },
 });
 
-/**
- * Webhook usage contract for /api/webhooks/agent/usage
- *
- * Receives proxy-extracted LLM API usage data from the mitmproxy addon
- * for billing verification against client-reported usage.
- */
-export const webhookUsageContract = c.router({
-  send: {
-    method: "POST",
-    path: "/api/webhooks/agent/usage",
-    headers: authHeadersSchema,
-    body: z.object({
-      runId: z.string().min(1, "runId is required"),
-      usage: z
-        .object({
-          model: z.string().optional(),
-          message_id: z.string().optional(),
-          input_tokens: z.number().optional(),
-          output_tokens: z.number().optional(),
-          cache_read_input_tokens: z.number().optional(),
-          cache_creation_input_tokens: z.number().optional(),
-          web_search_requests: z.number().optional(),
-        })
-        .strict(),
-    }),
-    responses: {
-      200: z.object({
-        success: z.boolean(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Receive proxy-extracted usage data from sandbox",
-  },
-});
-
 export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
@@ -523,7 +485,6 @@ export type WebhookStoragesPrepareContract =
   typeof webhookStoragesPrepareContract;
 export type WebhookStoragesCommitContract =
   typeof webhookStoragesCommitContract;
-export type WebhookUsageContract = typeof webhookUsageContract;
 
 /**
  * Webhook usage event contract for /api/webhooks/agent/usage-event

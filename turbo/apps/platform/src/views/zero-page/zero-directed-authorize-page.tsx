@@ -110,7 +110,7 @@ function DirectedAuthorizeCard() {
     } else {
       detach(
         (async () => {
-          await connect(connectorType, signal);
+          await connect(connectorType, {}, signal);
           await authorize(connectorType, agentId, signal);
         })(),
         Reason.DomCallback,

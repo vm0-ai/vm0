@@ -1,7 +1,7 @@
 //! Telemetry uploader — single-writer ownership of position files.
 //!
 //! All reads of the log files and writes to the `*_pos.txt` files happen
-//! on one tokio task ([`run`]). The periodic tick and any caller-driven
+//! on one tokio task (`run`). The periodic tick and any caller-driven
 //! flushes both flow through the same `tokio::select!`, so uploads are
 //! serialized — eliminating the tick-vs-final race that used to regress
 //! the position file (#11008).
@@ -219,7 +219,7 @@ impl Telemetry {
     ///
     /// Spawn **at most one instance per process.** The pos files
     /// (`paths::telemetry_*_pos_file`) are process-global; two uploader
-    /// tasks would each call [`upload_telemetry`] on the same files,
+    /// tasks would each call `upload_telemetry` on the same files,
     /// reintroducing the multi-writer race that the channel was built
     /// to eliminate (#11008). The type system can't enforce this — the
     /// constraint is the shared pos paths, not the channel.

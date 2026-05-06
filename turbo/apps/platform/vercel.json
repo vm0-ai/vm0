@@ -49,7 +49,7 @@
       "destination": "https://us.posthog.com/$1"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!assets/|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]

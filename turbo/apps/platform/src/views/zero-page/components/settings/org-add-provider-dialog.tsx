@@ -11,10 +11,12 @@ import {
   getSelectableProviderTypes,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   orgConfiguredProviders$,
   orgOpenAddDialog$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
 import { ProviderIcon } from "./provider-icons.tsx";
 
@@ -70,6 +72,10 @@ export function OrgAddProviderDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
+  const features = useLastResolved(featureSwitch$);
+  const codexBetaEnabled = features?.[FeatureSwitchKey.CodexBeta] ?? false;
+  const chatgptOauthEnabled =
+    features?.[FeatureSwitchKey.ChatgptOauthProvider] ?? false;
   const openAdd = useSet(orgOpenAddDialog$);
   const configuredSet = new Set(
     configuredProviders?.map((p) => {
@@ -78,11 +84,27 @@ export function OrgAddProviderDialog({
   );
 
   const handleAdd = (type: ModelProviderType) => {
+    if (type === "chatgpt-oauth-token") {
+      // Server-side eligibility re-check happens in /api/zero/chatgpt/oauth/connect
+      // (delivered in #11909). The client gate above is a UX optimization to keep
+      // the card out of view; the route returns 404 when ineligible.
+      window.location.assign("/api/zero/chatgpt/oauth/connect");
+      return;
+    }
     openAdd(type);
   };
 
   const availableTypes = getProviderTypes().filter((type) => {
-    return !configuredSet.has(type);
+    if (configuredSet.has(type)) {
+      return false;
+    }
+    if (type === "openai-api-key" && !codexBetaEnabled) {
+      return false;
+    }
+    if (type === "chatgpt-oauth-token" && !chatgptOauthEnabled) {
+      return false;
+    }
+    return true;
   });
 
   return (

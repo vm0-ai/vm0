@@ -49,7 +49,7 @@ function queueResponse(overrides?: {
 function openDrawer() {
   mockHomeAPIs();
   detachedSetupPage({ context, path: "/" });
-  context.store.set(openQueueDrawer$);
+  context.store.set(openQueueDrawer$, context.signal);
 }
 
 describe("queue drawer", () => {
@@ -59,7 +59,7 @@ describe("queue drawer", () => {
         return respond(200, queueResponse());
       }),
     );
-    await openDrawer();
+    openDrawer();
 
     await waitFor(() => {
       expect(
@@ -79,7 +79,7 @@ describe("queue drawer", () => {
         );
       }),
     );
-    await openDrawer();
+    openDrawer();
 
     await waitFor(() => {
       expect(screen.getByText("Free")).toBeInTheDocument();
@@ -98,7 +98,7 @@ describe("queue drawer", () => {
         );
       }),
     );
-    await openDrawer();
+    openDrawer();
 
     await waitFor(() => {
       expect(screen.getByText("Pro")).toBeInTheDocument();
@@ -121,7 +121,7 @@ describe("queue drawer", () => {
         );
       }),
     );
-    await openDrawer();
+    openDrawer();
 
     await waitFor(() => {
       expect(screen.getByText("Pro")).toBeInTheDocument();
@@ -145,7 +145,7 @@ describe("queue drawer", () => {
         );
       }),
     );
-    await openDrawer();
+    openDrawer();
 
     await waitFor(() => {
       expect(screen.getByText("Team")).toBeInTheDocument();

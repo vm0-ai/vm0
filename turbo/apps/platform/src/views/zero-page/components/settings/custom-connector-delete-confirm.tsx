@@ -29,9 +29,10 @@ export function CustomConnectorDeleteConfirm({
 
   const onConfirm = () => {
     detach(
-      submit(id, signal).then(() => {
+      (async () => {
+        await submit(id, signal);
         closeDialog();
-      }),
+      })(),
       Reason.DomCallback,
     );
   };

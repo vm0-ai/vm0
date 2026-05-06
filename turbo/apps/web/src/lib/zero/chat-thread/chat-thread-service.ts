@@ -25,12 +25,20 @@ import { buildFileUrl } from "../uploads/file-url";
 
 /**
  * Create a new chat thread.
+ *
+ * `pin`: when provided, eager-pins the thread to a specific model provider /
+ * selected-model combination at insert time so subsequent runs are immune to
+ * later agent-level provider changes. Callers that own the agent record
+ * should pass the agent's current `modelProviderId` and `selectedModel` here.
+ * Omitting `pin` (or passing both fields as null) leaves the row unpinned —
+ * the run resolver will fall back to the agent's then-current provider.
  */
 export async function createChatThread(
   userId: string,
   agentComposeId: string,
   title?: string | null,
   id?: string,
+  pin?: { modelProviderId: string | null; selectedModel: string | null },
 ): Promise<{ id: string; createdAt: Date }> {
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
@@ -39,6 +47,8 @@ export async function createChatThread(
       userId,
       agentComposeId,
       title: title ?? null,
+      modelProviderId: pin?.modelProviderId ?? null,
+      selectedModel: pin?.selectedModel ?? null,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
 
@@ -80,9 +90,12 @@ export async function listChatThreads(
     agentAvatarUrl: string | null;
     createdAt: Date;
     updatedAt: Date;
+    pinnedAt: Date | null;
+    renamedAt: Date | null;
     isRead: boolean;
     lastMessageArchivedAt: Date | null;
     running: boolean;
+    hasDraft: boolean;
   }>
 > {
   const lastMessage = globalThis.services.db
@@ -115,6 +128,8 @@ export async function listChatThreads(
       agentAvatarUrl: zeroAgents.avatarUrl,
       createdAt: chatThreads.createdAt,
       updatedAt: chatThreads.updatedAt,
+      pinnedAt: chatThreads.pinnedAt,
+      renamedAt: chatThreads.renamedAt,
       isRead: sql<boolean>`CASE
         WHEN ${lastMessage.id} IS NULL THEN true
         ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
@@ -127,6 +142,13 @@ export async function listChatThreads(
         WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
           AND ${agentRuns.status} IN ('queued', 'pending', 'running')
       )`,
+      hasDraft: sql<boolean>`(
+        COALESCE(${chatThreads.draftContent}, '') <> ''
+        OR (
+          ${chatThreads.draftAttachments} IS NOT NULL
+          AND jsonb_array_length(${chatThreads.draftAttachments}) > 0
+        )
+      )`,
     })
     .from(chatThreads)
     .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
@@ -136,6 +158,7 @@ export async function listChatThreads(
     )
     .where(and(...filters))
     .orderBy(
+      sql`(${chatThreads.pinnedAt} IS NULL)`,
       desc(sql`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`),
     );
 
@@ -197,6 +220,7 @@ export async function getChatThread(
   modelProviderId: string | null;
   selectedModel: string | null;
   lastReadMessageId: string | null;
+  renamedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }> {
@@ -222,14 +246,33 @@ export async function getChatThread(
     modelProviderId: thread.modelProviderId ?? null,
     selectedModel: thread.selectedModel ?? null,
     lastReadMessageId: thread.lastReadMessageId ?? null,
+    renamedAt: thread.renamedAt ?? null,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };
 }
 
 /**
+ * Mirrors the SQL `hasDraft` projection in `listChatThreads`: a thread "has a
+ * draft" when its draft text is non-empty OR it has at least one attachment.
+ */
+function hasDraftValue(
+  draftContent: string | null,
+  draftAttachments: PersistedAttachment[] | null,
+): boolean {
+  return (
+    (draftContent !== null && draftContent !== "") ||
+    (draftAttachments !== null && draftAttachments.length > 0)
+  );
+}
+
+/**
  * Update a chat thread's draft content and attachments.
  * Ownership check in WHERE clause ensures users can only update their own threads.
+ *
+ * Publishes `threadListChanged` only when the boolean `hasDraft` flag flips,
+ * so that continued typing inside an already-drafting thread does not spam
+ * sidebar reloads.
  */
 export async function updateChatThreadDraft(
   threadId: string,
@@ -237,14 +280,27 @@ export async function updateChatThreadDraft(
   draftContent: string | null,
   draftAttachments: PersistedAttachment[] | null,
 ): Promise<void> {
-  const updated = await globalThis.services.db
+  const [before] = await globalThis.services.db
+    .select({
+      draftContent: chatThreads.draftContent,
+      draftAttachments: chatThreads.draftAttachments,
+    })
+    .from(chatThreads)
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
+
+  if (!before) {
+    throw notFound("Chat thread not found");
+  }
+
+  await globalThis.services.db
     .update(chatThreads)
     .set({ draftContent, draftAttachments })
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
-    .returning({ id: chatThreads.id });
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
 
-  if (updated.length === 0) {
-    throw notFound("Chat thread not found");
+  const hadDraft = hasDraftValue(before.draftContent, before.draftAttachments);
+  const hasDraft = hasDraftValue(draftContent, draftAttachments);
+  if (hadDraft !== hasDraft) {
+    await publishThreadListChanged(userId);
   }
 }
 
@@ -267,6 +323,44 @@ export async function deleteChatThread(
 }
 
 /**
+ * Pin a chat thread to the top of the sidebar list. Idempotent: re-pinning
+ * an already-pinned thread refreshes `pinned_at` to the current time.
+ */
+export async function pinChatThread(
+  threadId: string,
+  userId: string,
+): Promise<void> {
+  const updated = await globalThis.services.db
+    .update(chatThreads)
+    .set({ pinnedAt: new Date() })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .returning({ id: chatThreads.id });
+
+  if (updated.length === 0) {
+    throw notFound("Chat thread not found");
+  }
+}
+
+/**
+ * Clear the pin from a chat thread. Idempotent: unpinning an already-unpinned
+ * thread is a no-op write but still succeeds.
+ */
+export async function unpinChatThread(
+  threadId: string,
+  userId: string,
+): Promise<void> {
+  const updated = await globalThis.services.db
+    .update(chatThreads)
+    .set({ pinnedAt: null })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .returning({ id: chatThreads.id });
+
+  if (updated.length === 0) {
+    throw notFound("Chat thread not found");
+  }
+}
+
+/**
  * Update a chat thread's title.
  */
 export async function updateChatThreadTitle(
@@ -274,10 +368,43 @@ export async function updateChatThreadTitle(
   userId: string,
   title: string,
 ): Promise<void> {
+  const [thread] = await globalThis.services.db
+    .select({ renamedAt: chatThreads.renamedAt })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+
+  if (thread?.renamedAt) {
+    return;
+  }
+
   await globalThis.services.db
     .update(chatThreads)
     .set({ title })
     .where(eq(chatThreads.id, threadId));
+  await publishThreadListChanged(userId);
+}
+
+/**
+ * Rename a chat thread from the UI. Sets both the title and `renamed_at`,
+ * which signals that this thread has been manually renamed and future
+ * automated title generation should be suppressed.
+ */
+export async function renameChatThread(
+  threadId: string,
+  userId: string,
+  title: string,
+): Promise<void> {
+  const updated = await globalThis.services.db
+    .update(chatThreads)
+    .set({ title, renamedAt: new Date() })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .returning({ id: chatThreads.id });
+
+  if (updated.length === 0) {
+    throw notFound("Chat thread not found");
+  }
+
   await publishThreadListChanged(userId);
 }
 

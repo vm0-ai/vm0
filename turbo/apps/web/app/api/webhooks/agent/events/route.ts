@@ -10,6 +10,7 @@ import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { dispatchToEventConsumers } from "../../../../../src/lib/infra/event-consumer";
+import { publishRunChangedForUserSafely } from "../../../../../src/lib/infra/run/run-realtime";
 
 const log = logger("webhook:events");
 
@@ -75,6 +76,10 @@ const router = tsr.router(webhookEventsContract, {
     await dispatchToEventConsumers(body.runId, body.events, {
       userId,
       orgId: run.orgId,
+    });
+    await publishRunChangedForUserSafely(userId, body.runId, {
+      firstSequence,
+      lastSequence,
     });
     log.debug(
       `Events ${firstSequence}-${lastSequence} dispatched for run ${body.runId} (${Date.now() - dispatchStart}ms)`,

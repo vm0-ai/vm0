@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { chatMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -203,6 +204,85 @@ describe("chat-i-059: image preview button opens lightbox", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+  });
+
+  it("shows loading state and supports zoom controls in the image lightbox", async () => {
+    const user = userEvent.setup();
+    const imageUrl = "https://example.com/photo.png";
+
+    server.use(
+      ...mockUploadSuccess({
+        id: "upload-1",
+        filename: "photo.png",
+        contentType: "image/png",
+        size: 2048,
+        url: imageUrl,
+      }),
+    );
+    mockChatAPI();
+
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(
+      fileInput!,
+      new File(["img"], "photo.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector(`img[src="${imageUrl}"]`),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Open image preview for photo.png"));
+
+    const image = await screen.findByTestId("attachment-lightbox-image");
+    expect(
+      screen.getByTestId("attachment-lightbox-image-loading"),
+    ).toBeInTheDocument();
+
+    fireEvent.load(image);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox-image-loading"),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("125%")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Zoom out"));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Zoom in"));
+    await waitFor(() => {
+      expect(screen.getByText("125%")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Reset zoom"));
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: "=", metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByText("125%")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(document, { key: "-", metaKey: true });
+    await waitFor(() => {
+      expect(screen.getByText("100%")).toBeInTheDocument();
     });
   });
 });
@@ -674,6 +754,92 @@ describe("chat-i-065: new-thread send includes structured attachFiles", () => {
           filename: "notes.pdf",
           contentType: "application/pdf",
           size: 3,
+        },
+      ]);
+    });
+  });
+
+  it("posts only fulfilled uploaded attachments when another upload fails", async () => {
+    const user = userEvent.setup();
+    const okUploadUrl = "https://mock-upload.example.com/ok.txt";
+    const failedUploadUrl = "https://mock-upload.example.com/failed.txt";
+    let capturedAttachFiles: unknown = "not-called";
+
+    server.use(
+      mockApi(zeroUploadsContract.prepare, ({ body, respond }) => {
+        if (body.filename === "ok.txt") {
+          return respond(200, {
+            id: "upload-ok",
+            filename: body.filename,
+            contentType: body.contentType,
+            size: body.size,
+            uploadUrl: okUploadUrl,
+            url: "https://example.com/ok.txt",
+          });
+        }
+
+        return respond(200, {
+          id: "upload-failed",
+          filename: body.filename,
+          contentType: body.contentType,
+          size: body.size,
+          uploadUrl: failedUploadUrl,
+          url: "https://example.com/failed.txt",
+        });
+      }),
+      http.put(okUploadUrl, () => {
+        return new HttpResponse(null, { status: 200 });
+      }),
+      http.put(failedUploadUrl, () => {
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+    mockChatLifecycle();
+    server.use(
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        capturedAttachFiles = body.attachFiles;
+        return respond(201, {
+          runId: "run-new-2",
+          threadId: "thread-test-2",
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    await user.upload(fileInput!, [
+      new File(["ok"], "ok.txt", { type: "text/plain" }),
+      new File(["failed"], "failed.txt", { type: "text/plain" }),
+    ]);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove ok.txt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove failed.txt")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(
+      PLACEHOLDER,
+    ) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Please review");
+
+    await waitFor(() => {
+      expect(capturedAttachFiles).toStrictEqual([
+        {
+          id: "upload-ok",
+          filename: "ok.txt",
+          contentType: "text/plain",
+          size: 2,
         },
       ]);
     });

@@ -8,7 +8,7 @@ import { env } from "../../env";
  * the provided route handler. Mirrors how Vercel invokes cron routes.
  *
  * @example
- *   import { GET } from "../../../../app/api/cron/process-credits/route";
+ *   import { GET } from "../../../../app/api/cron/process-usage-events/route";
  *   const response = await invokeCron(GET);
  */
 export async function invokeCron(

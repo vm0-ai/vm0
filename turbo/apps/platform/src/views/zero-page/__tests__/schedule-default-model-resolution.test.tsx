@@ -42,10 +42,7 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
-import {
-  setMockFeatureSwitches,
-  resetMockFeatureSwitches,
-} from "../../../mocks/handlers/api-feature-switches.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import {
   setMockOnboardingStatus,
   resetMockOnboardingStatus,
@@ -204,7 +201,6 @@ async function expectDialogPickerShowsModel(
 describe("schedule composer — default model resolution", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
-    resetMockFeatureSwitches();
     resetMockOnboardingStatus();
     setMockFeatureSwitches({});
     // Align onboarding default with the test agent so the create dialog

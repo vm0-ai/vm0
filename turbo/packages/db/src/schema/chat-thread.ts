@@ -7,9 +7,9 @@ import {
   jsonb,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "./agent-compose";
-import { modelProviders } from "./model-provider";
 
 /**
  * Chat Threads table
@@ -63,18 +63,31 @@ export const chatThreads = pgTable(
      */
     lastReadMessageId: uuid("last_read_message_id"),
     /**
-     * Per-thread model override. When both fields are non-null the send route
-     * uses this combination for the next run; otherwise it falls back to the
-     * agent's override and then the org default. Set/cleared on every message
-     * send from the composer's model picker.
+     * Per-thread model pin. Written at thread creation from the agent's
+     * configured provider/model so subsequent runs are immune to later
+     * agent-level provider changes. NULL only for legacy / default-claude-code
+     * agents that have no provider configured at create time.
+     *
+     * Intentionally **not** a foreign key: when the referenced provider is
+     * deleted, the column must retain the now-stale UUID so the run resolver
+     * can detect the orphan-pinned state and surface a clear `PROVIDER_DELETED`
+     * error rather than silently falling back to the agent's current provider.
      */
-    modelProviderId: uuid("model_provider_id").references(
-      () => {
-        return modelProviders.id;
-      },
-      { onDelete: "set null" },
-    ),
+    modelProviderId: uuid("model_provider_id"),
     selectedModel: varchar("selected_model", { length: 255 }),
+    /**
+     * Timestamp at which the user pinned this thread to the top of the sidebar.
+     * NULL means unpinned. Pinned threads sort above unpinned, both groups
+     * keep recency ordering. Per `(user, agent)` because `chat_threads` rows
+     * already carry `user_id` + `agent_compose_id`.
+     */
+    pinnedAt: timestamp("pinned_at"),
+    /**
+     * Timestamp at which the user manually renamed this thread.
+     * NULL means the thread has never been renamed.
+     * When set, automated title generation is suppressed.
+     */
+    renamedAt: timestamp("renamed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -93,6 +106,9 @@ export const chatThreads = pgTable(
         table.userId,
         table.lastReadMessageId,
       ),
+      index("idx_chat_threads_user_compose_pinned")
+        .on(table.userId, table.agentComposeId)
+        .where(sql`${table.pinnedAt} IS NOT NULL`),
     ];
   },
 );

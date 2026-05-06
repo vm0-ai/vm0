@@ -4,6 +4,7 @@ export const v0 = {
   v0: {
     label: "v0",
     category: "ai-agent-apps",
+    generation: ["code", "website"],
     environmentMapping: {
       V0_TOKEN: "$secrets.V0_TOKEN",
     },

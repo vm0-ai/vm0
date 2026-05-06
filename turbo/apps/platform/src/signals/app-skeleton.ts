@@ -1,9 +1,7 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
-import { currentChatAgent$ } from "./agent-chat.ts";
-import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
-import { resetSignal, bestEffort, setLoop } from "./utils.ts";
-import { agents$ } from "./agent.ts";
+import { command, computed, state } from "ccstate";
+import { resetSignal, setLoop } from "./utils.ts";
 import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
+import { captureFirstSkeletonHide$ } from "../lib/posthog.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -100,39 +98,9 @@ export const showAppSkeleton$ = command(({ set }) => {
   set(skeletonFirstCycle$, true);
 });
 
-const prefetch$ = command(
-  async (
-    { get, set },
-    fn$: Command<Promise<unknown>, [AbortSignal]> | Computed<Promise<unknown>>,
-    signal: AbortSignal,
-  ) => {
-    await bestEffort("read" in fn$ ? get(fn$) : set(fn$, signal));
-  },
-);
+export const hideAppSkeleton$ = command(({ set }, _signal: AbortSignal) => {
+  set(resetSkeletonCycling$);
 
-const prefetchAvatar$ = command(async ({ get }, signal: AbortSignal) => {
-  const currentChatAgent = await get(currentChatAgent$);
-  signal.throwIfAborted();
-  if (!currentChatAgent) {
-    return;
-  }
-  const src = resolveAvatarUrl(currentChatAgent.avatarUrl);
-  if (!src) {
-    return;
-  }
-  await fetch(src, { signal });
+  set(internalVisible$, false);
+  set(captureFirstSkeletonHide$);
 });
-
-export const hideAppSkeleton$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    set(resetSkeletonCycling$);
-
-    await Promise.all([
-      set(prefetch$, prefetchAvatar$, signal),
-      set(prefetch$, agents$, signal),
-    ]);
-    signal.throwIfAborted();
-
-    set(internalVisible$, false);
-  },
-);

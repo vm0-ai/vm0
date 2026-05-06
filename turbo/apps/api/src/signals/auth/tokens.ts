@@ -6,8 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/composes";
 import { z } from "zod";
 
-import { env } from "../external/env";
-import { lazySingleton } from "../external/lazy-singleton";
+import { env } from "../../lib/env";
 import { now } from "../external/time";
 import { safeJsonParse } from "../utils";
 import {
@@ -16,6 +15,7 @@ import {
   SandboxAuth,
   ZeroAuth,
 } from "../../types/auth";
+import { singleton } from "../../lib/singleton";
 
 const SANDBOX_TOKEN_PREFIX = "vm0_sandbox_";
 const PAT_TOKEN_PREFIX = "vm0_pat_";
@@ -82,7 +82,7 @@ function deriveJwtKey(): Buffer {
   );
 }
 
-const getJwtKey = lazySingleton((): Buffer => {
+const getJwtKey = singleton((): Buffer => {
   return deriveJwtKey();
 });
 
@@ -212,6 +212,24 @@ export function verifyCliToken(token: string): CliAuth | null {
     orgId: parsed.data.orgId,
     tokenId: parsed.data.tokenId,
   };
+}
+
+export function generateCliToken(
+  userId: string,
+  orgId: string,
+  tokenId: string,
+): string {
+  const nowSeconds = Math.floor(now() / 1000);
+  const payload: z.infer<typeof cliTokenPayloadSchema> = {
+    scope: "cli",
+    userId,
+    orgId,
+    tokenId,
+    iat: nowSeconds,
+    exp: nowSeconds + 90 * 24 * 60 * 60,
+  };
+
+  return PAT_TOKEN_PREFIX + signJwt(payload);
 }
 
 export function signSandboxJwtForTests(payload: JwtPayload): string {

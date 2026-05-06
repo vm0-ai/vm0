@@ -11,6 +11,13 @@ export interface SecretFieldConfig {
   required: boolean;
   placeholder?: string;
   helpText?: string;
+  /**
+   * When true, this secret is persisted server-side and MUST NOT flow to the
+   * runner/sandbox. Used for OAuth refresh tokens and ID tokens that the
+   * server holds for refresh + plan-type validation but the sandbox must
+   * never see (per #7365). Honored by `resolveMultiAuthProviderSecrets`.
+   */
+  serverOnly?: boolean;
 }
 
 /**
@@ -91,6 +98,26 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "deepseek",
   },
 };
+
+export const VM0_MODEL_ALIAS_TO_MODEL = {
+  "anthropic/claude-opus-4.7": "claude-opus-4-7",
+  "anthropic/claude-opus-4.6": "claude-opus-4-6",
+  "anthropic/claude-sonnet-4.6": "claude-sonnet-4-6",
+  "anthropic/claude-haiku-4.5": "claude-haiku-4-5",
+  "z-ai/glm-5.1": "glm-5.1",
+  "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
+  "deepseek/deepseek-v4-flash": "deepseek-v4-flash",
+  "moonshotai/kimi-k2.6": "kimi-k2.6",
+  "moonshotai/kimi-k2.5": "kimi-k2.5",
+  "minimax/minimax-m2.7": "MiniMax-M2.7",
+} as const satisfies Record<string, keyof typeof VM0_MODEL_TO_PROVIDER>;
+
+const VM0_MODEL_ALIAS_LOOKUP: Readonly<Record<string, string>> =
+  VM0_MODEL_ALIAS_TO_MODEL;
+
+export function normalizeVm0ModelId(model: string): string {
+  return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
+}
 
 /**
  * Return the VM0 managed models visible to the caller, filtered by feature
@@ -306,6 +333,71 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "anthropic/claude-sonnet-4.6",
   },
+  "openai-api-key": {
+    framework: "codex" as const,
+    secretName: "OPENAI_API_KEY",
+    label: "OpenAI",
+    secretLabel: "API key",
+    helpText: "Get your API key at: https://platform.openai.com/api-keys",
+    environmentMapping: {
+      OPENAI_API_KEY: "$secret",
+      OPENAI_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.3-codex",
+      "gpt-5.2",
+    ] as string[],
+    defaultModel: "gpt-5.5",
+  },
+  "chatgpt-oauth-token": {
+    framework: "codex" as const,
+    label: "ChatGPT (Sign in)",
+    helpText:
+      "Sign in with ChatGPT (Plus / Pro / Business / Edu / Enterprise). " +
+      "Workspace selection happens on auth.openai.com.",
+    authMethods: {
+      oauth: {
+        label: "Sign in with ChatGPT",
+        secrets: {
+          CHATGPT_ACCESS_TOKEN: {
+            label: "CHATGPT_ACCESS_TOKEN",
+            required: true,
+          },
+          CHATGPT_REFRESH_TOKEN: {
+            label: "CHATGPT_REFRESH_TOKEN",
+            required: true,
+            serverOnly: true,
+          },
+          CHATGPT_ACCOUNT_ID: {
+            label: "CHATGPT_ACCOUNT_ID",
+            required: true,
+          },
+          CHATGPT_ID_TOKEN: {
+            label: "CHATGPT_ID_TOKEN",
+            required: true,
+            serverOnly: true,
+          },
+        },
+      },
+    } as Record<string, AuthMethodConfig>,
+    defaultAuthMethod: "oauth",
+    environmentMapping: {
+      CHATGPT_ACCESS_TOKEN: "$secrets.CHATGPT_ACCESS_TOKEN",
+      CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
+      OPENAI_MODEL: "$model",
+    } as Record<string, string>,
+    models: [
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
+      "gpt-5.3-codex",
+      "gpt-5.2",
+    ] as string[],
+    defaultModel: "gpt-5.5",
+  },
   "azure-foundry": {
     framework: "claude-code" as const,
     label: "Azure Foundry",
@@ -417,7 +509,7 @@ export const MODEL_PROVIDER_TYPES = {
 } as const;
 
 export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
-export type ModelProviderFramework = "claude-code";
+export type ModelProviderFramework = "claude-code" | "codex";
 
 /**
  * Provider types hidden from user-facing selection UI.
@@ -468,6 +560,16 @@ export function getSelectableProviderTypes(): ModelProviderType[] {
 const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 
 function getFirewallBaseUrl(type: ModelProviderType): string {
+  // chatgpt-oauth-token targets ChatGPT's backend, not the public OpenAI API.
+  if (type === "chatgpt-oauth-token") {
+    return "https://chatgpt.com/backend-api/codex";
+  }
+  // Other codex providers use OpenAI's Responses API — the only inference
+  // endpoint codex hits today. Scoping to /v1/responses keeps token
+  // replacement narrow (admin endpoints like /v1/files don't see the swap).
+  if (getFrameworkForType(type) === "codex") {
+    return "https://api.openai.com/v1/responses";
+  }
   const base = (
     getEnvironmentMapping(type)?.ANTHROPIC_BASE_URL ?? ANTHROPIC_API_BASE
   ).replace(/\/+$/, "");
@@ -481,8 +583,19 @@ function getFirewallBaseUrl(type: ModelProviderType): string {
  * (single source of truth), so callers never specify it — eliminating
  * any possibility of mismatch between auth header templates and placeholders.
  */
+// Helper accepts only single-secret providers — multi-auth firewall configs
+// (e.g., chatgpt-oauth-token) declare their entries inline because they need
+// multiple headers and/or multiple API entries.
+type LegacySingleSecretProvider = {
+  [K in FirewallSupportedProvider]: (typeof MODEL_PROVIDER_TYPES)[K] extends {
+    secretName: string;
+  }
+    ? K
+    : never;
+}[FirewallSupportedProvider];
+
 function mpFirewall(
-  type: FirewallSupportedProvider,
+  type: LegacySingleSecretProvider,
   authHeader: { name: string; valuePrefix?: string },
   placeholderValue: string,
 ): ExpandedFirewallConfig {
@@ -575,6 +688,55 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     { name: "Authorization", valuePrefix: "Bearer" },
     "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
   ),
+  // Placeholder: sk-proj-{156 chars}T3BlbkFJ{156 chars} (typical project key shape)
+  // Source: matches turbo/packages/connectors/src/firewalls/openai.generated.ts
+  "openai-api-key": mpFirewall(
+    "openai-api-key",
+    { name: "Authorization", valuePrefix: "Bearer" },
+    "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
+  ),
+  // ChatGPT OAuth provider — multi-header injection + auth.openai.com deny.
+  // Sandbox holds placeholder strings; firewall replaces them with real
+  // tokens at egress. The auth.openai.com entry is defense-in-depth: codex's
+  // CODEX_REFRESH_TOKEN_URL_OVERRIDE already prevents in-sandbox refreshes,
+  // but if codex ever ignores it, this firewall denies the egress at the
+  // proxy layer.
+  //
+  // Placeholder values are opaque markers, NOT JWTs — codex doesn't read
+  // CHATGPT_ACCESS_TOKEN from env in ChatGPT mode; it reads the real JWT
+  // from ~/.codex/auth.json built by guest-agent (#11877). The placeholder
+  // here only needs to be a stable, non-empty string the firewall can match
+  // and substitute. Account-id placeholder still equals #11877's literal
+  // since the architectural relationship across the two surfaces matters.
+  "chatgpt-oauth-token": {
+    name: "model-provider:chatgpt-oauth-token",
+    apis: [
+      {
+        base: "https://chatgpt.com/backend-api/codex",
+        auth: {
+          headers: {
+            Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+            "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
+          },
+        },
+        permissions: [],
+      },
+      {
+        base: "https://auth.openai.com",
+        auth: { headers: {} },
+        permissions: [{ name: "denied", rules: ["ANY /*"] }],
+      },
+    ],
+    defaultPolicies: {
+      deny: ["denied"],
+      unknownPolicy: "deny",
+    },
+    placeholders: {
+      CHATGPT_ACCESS_TOKEN:
+        "chatgpt-token-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
+      CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+    },
+  },
 };
 
 /**
@@ -604,12 +766,14 @@ export const modelProviderTypeSchema = z.enum([
   "deepseek-api-key",
   "zai-api-key",
   "vercel-ai-gateway",
+  "openai-api-key",
+  "chatgpt-oauth-token",
   "azure-foundry",
   "aws-bedrock",
   "vm0",
 ]);
 
-export const modelProviderFrameworkSchema = z.enum(["claude-code"]);
+export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
 /**
  * Get the concrete provider type for a VM0 managed model.
@@ -834,6 +998,13 @@ export const modelProviderResponseSchema = z.object({
   selectedModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  // ChatGPT-only metadata populated by the chatgpt-oauth-token callback.
+  // Other provider types omit these. Mirrors the server-side connector
+  // shape in apps/web/src/lib/zero/connector/providers/chatgpt-oauth.ts.
+  // The corresponding server route lands in #11909; declared here so the
+  // platform UI does not have to bypass schema validation to read them.
+  workspaceName: z.string().nullable().optional(),
+  planType: z.string().nullable().optional(),
 });
 
 export type ModelProviderResponse = z.infer<typeof modelProviderResponseSchema>;

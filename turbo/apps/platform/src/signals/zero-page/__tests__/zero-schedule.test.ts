@@ -386,11 +386,7 @@ describe("zero-schedule signals", () => {
       expect(captured.body?.description).toBe("Custom description here");
     });
 
-    it("should toast on pre-API validation error (past atTime)", async () => {
-      const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
-        return "" as unknown as ReturnType<typeof toast.error>;
-      });
-
+    it("should reject on pre-API validation error (past atTime)", async () => {
       await setup();
       await expect(
         context.store.set(
@@ -407,10 +403,6 @@ describe("zero-schedule signals", () => {
           context.signal,
         ),
       ).rejects.toThrow("Scheduled time must be in the future");
-
-      expect(errorSpy).toHaveBeenCalledWith(
-        "Scheduled time must be in the future",
-      );
     });
 
     it("should not toast when save is aborted mid-flight", async () => {

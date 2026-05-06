@@ -169,7 +169,6 @@ export {
   webhookStoragesContract,
   webhookStoragesIncrementalContract,
   webhookTelemetryContract,
-  webhookUsageContract,
   // Direct upload contracts (Webhook endpoints for sandbox)
   webhookStoragesPrepareContract,
   webhookStoragesCommitContract,
@@ -184,7 +183,6 @@ export {
   type WebhookTelemetryContract,
   type WebhookStoragesPrepareContract,
   type WebhookStoragesCommitContract,
-  type WebhookUsageContract,
   webhookUsageEventContract,
   type WebhookUsageEventContract,
 } from "./webhooks";
@@ -278,10 +276,12 @@ export {
   // VM0 managed provider
   VM0_ORG_SLUG,
   VM0_MODEL_TO_PROVIDER,
+  VM0_MODEL_ALIAS_TO_MODEL,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
   getVm0VisibleModels,
+  normalizeVm0ModelId,
 } from "./model-providers";
 export {
   sessionsByIdContract,
@@ -349,6 +349,39 @@ export {
   type ChatThreadV1,
   type ChatMessageV1,
 } from "./chat-threads-v1";
+export {
+  deviceTokenContract,
+  bb0DeviceConfirmContract,
+  bb0DeviceCodeSchema,
+  bleSessionNonceSchema,
+  pollTokenSchema,
+  createDeviceTokenRequestSchema,
+  createDeviceTokenResponseSchema,
+  pollDeviceTokenRequestSchema,
+  pollDeviceTokenPendingResponseSchema,
+  pollDeviceTokenApprovedResponseSchema,
+  pollDeviceTokenExpiredResponseSchema,
+  pollDeviceTokenInvalidResponseSchema,
+  confirmBb0DeviceRequestSchema,
+  confirmBb0DeviceResponseSchema,
+  type DeviceTokenContract,
+  type Bb0DeviceConfirmContract,
+  type CreateDeviceTokenRequest,
+  type CreateDeviceTokenResponse,
+  type PollDeviceTokenRequest,
+  type PollDeviceTokenPendingResponse,
+  type PollDeviceTokenApprovedResponse,
+  type PollDeviceTokenExpiredResponse,
+  type PollDeviceTokenInvalidResponse,
+  type ConfirmBb0DeviceRequest,
+  type ConfirmBb0DeviceResponse,
+} from "./device-token";
+export {
+  audioTranscriptionsV1Contract,
+  audioTranscriptionV1Schema,
+  type AudioTranscriptionsV1Contract,
+  type AudioTranscriptionV1,
+} from "./audio-transcriptions-v1";
 export {
   runnersPollContract,
   runnersJobClaimContract,
@@ -721,6 +754,16 @@ export {
   type ZeroModelProvidersUpdateModelContract,
 } from "./zero-model-providers";
 export {
+  zeroPersonalModelProvidersMainContract,
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersDefaultContract,
+  zeroPersonalModelProvidersUpdateModelContract,
+  type ZeroPersonalModelProvidersMainContract,
+  type ZeroPersonalModelProvidersByTypeContract,
+  type ZeroPersonalModelProvidersDefaultContract,
+  type ZeroPersonalModelProvidersUpdateModelContract,
+} from "./zero-personal-model-providers";
+export {
   zeroUserPreferencesContract,
   type ZeroUserPreferencesContract,
 } from "./zero-user-preferences";
@@ -779,12 +822,26 @@ export {
   type IntegrationsSlackMessageContract,
   type SendSlackMessageBody,
   type SendSlackMessageResponse,
+  integrationsTelegramMessageContract,
+  type IntegrationsTelegramMessageContract,
+  type SendTelegramMessageBody,
+  type SendTelegramMessageResponse,
+  integrationsTelegramBotListContract,
+  type IntegrationsTelegramBotListContract,
+  type TelegramBotListItem,
+  type ListTelegramBotsResponse,
   integrationsSlackUploadInitContract,
   type SlackUploadInitBody,
   type SlackUploadInitResponse,
   integrationsSlackUploadCompleteContract,
   type SlackUploadCompleteBody,
   type SlackUploadCompleteResponse,
+  integrationsTelegramUploadInitContract,
+  type TelegramUploadInitBody,
+  type TelegramUploadInitResponse,
+  integrationsTelegramUploadCompleteContract,
+  type TelegramUploadCompleteBody,
+  type TelegramUploadCompleteResponse,
   integrationsChatMessageContract,
   type IntegrationsChatMessageContract,
   type SendChatMessageBody,
@@ -942,4 +999,5 @@ export {
   type TelegramBotStatus,
   type TelegramListResponse,
   type TelegramLinkStatusResponse,
+  type TelegramSetupStatus,
 } from "./zero-integrations-telegram";

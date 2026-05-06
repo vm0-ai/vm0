@@ -33,10 +33,12 @@ export const enterAgentChatVoiceMode$ = command(
  * Flip voice mode off and tear down the WebRTC / mic / Ably loop. The server
  * session row is left alone — next entry resumes via get-or-create.
  */
-export const exitAgentChatVoiceMode$ = command(({ set }) => {
-  set(internalVoiceMode$, "off");
-  set(endVoiceChat$);
-});
+export const exitAgentChatVoiceMode$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(internalVoiceMode$, "off");
+    await set(endVoiceChat$, signal);
+  },
+);
 
 // Subtitle computeds mirror the per-role local state maintained by the
 // voice-chat signal module. Those states are set directly in

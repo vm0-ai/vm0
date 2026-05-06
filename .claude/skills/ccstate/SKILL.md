@@ -224,7 +224,6 @@ export const agents$ = computed(async (get) => {
   const result = await accept(
     get(zeroClient$)(contract).list(),
     [200],
-    { toast: false }, // background fetch — no toast, let useLoadable show error state
   );
   return result.body;
 });
@@ -243,11 +242,9 @@ export const reloadAgents$ = command(({ set }) => {
 **Consumer patterns in views:**
 
 ```typescript
-// Loading/error from loadable state
+// Loading from loadable state
 const agentsLoadable = useLoadable(agents$);
 const loading = agentsLoadable.state === "loading";
-const error =
-  agentsLoadable.state === "hasError" ? agentsLoadable.error.message : null;
 
 // Last resolved value (keeps showing old data while reloading)
 const agents = useLastResolved(agents$) ?? [];
@@ -259,7 +256,7 @@ All HTTP calls via `zeroClient$` must use the `accept` utility function. This is
 
 ### Core Pattern
 
-`accept` takes a ts-rest call promise, a **required non-empty** array of accepted status codes, and an optional options object. It returns a type-narrowed result containing only the accepted status codes. Any response **not** in the accept list is automatically:
+`accept` takes a ts-rest call promise and a **required non-empty** array of accepted status codes. It returns a type-narrowed result containing only the accepted status codes. Any response **not** in the accept list is automatically:
 
 1. Shown as a `toast.error` (with the server's error message)
 2. Thrown as an `ApiError` (so the calling code stops executing)
@@ -312,29 +309,27 @@ When a specific error code has business meaning, include it in the accept list:
 ```typescript
 export const getAgent$ = computed(async (get) => {
   const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(client.get({ params: { id } }), [200, 404], {
-    toast: false,
-  });
+  const result = await accept(client.get({ params: { id } }), [200, 404]);
   if (result.status === 404) return null;
   return result.body;
 });
 ```
 
-### Suppress toast for background fetches
+### Fail fast for background fetches
 
-For `computed` (background data fetching), pass `{ toast: false }` so errors are silent — the view layer uses `useLoadable` to render the error state instead:
+For `computed` (background data fetching), call `accept` directly and let errors propagate. `accept` already handles API errors by showing the server message and throwing an `ApiError`; application code should not catch or replace that error handling.
 
 ```typescript
 export const billingStatus$ = computed(async (get) => {
   const client = get(zeroClient$)(zeroBillingStatusContract);
-  const result = await accept(client.get(), [200], { toast: false });
+  const result = await accept(client.get(), [200]);
   return result.body;
 });
 ```
 
-### View layer: use `useLoadableSet` for error display
+### View layer: use loadables for state
 
-When `accept` throws, `useLoadableSet` transitions to `{ state: 'hasError', error: ApiError }`. Views should use this state for inline error rendering — **never catch errors in the view layer for toast purposes** (accept already toasted).
+When `accept` throws, `useLoadable` / `useLoadableSet` transitions to `{ state: 'hasError', error: ApiError }`. Views should use loadable state for loading, disabled, and success UI. Do not catch errors in the view layer, do not show replacement toasts, and do not add application-level error handling around API failures; `accept` already handled the error and the flow should fail fast.
 
 ```typescript
 function ScheduleForm() {
@@ -348,29 +343,9 @@ function ScheduleForm() {
       >
         Save
       </Button>
-      {loadable.state === "hasError" && (
-        <ErrorMessage>{loadable.error.message}</ErrorMessage>
-      )}
     </>
   );
 }
-```
-
-For cases that need inline error display **without** toast, the signal uses `{ toast: false }` in `accept`, and the view reads `hasError`:
-
-```typescript
-// signal
-export const saveSchedule$ = command(async ({ get, set }, params, signal) => {
-  const client = get(zeroClient$)(contract);
-  const result = await accept(
-    client.deploy({ body: params }),
-    [200, 201],
-    { toast: false }, // suppress toast — view will show inline error
-  );
-  toast.success("Schedule saved");
-});
-
-// view: hasError shows inline error, no toast duplication
 ```
 
 ### Summary of rules
@@ -378,8 +353,8 @@ export const saveSchedule$ = command(async ({ get, set }, params, signal) => {
 1. **All `zeroClient$` calls must use `accept`** — no exceptions
 2. **`accept` list is required and non-empty** — you must declare at least one status code
 3. **No manual `throw` / `try-catch` for HTTP errors in signals** — `accept` handles it
-4. **Toast is on by default** — pass `{ toast: false }` to suppress (background fetches, inline error display)
-5. **View layer uses `useLoadableSet` hasError** for inline error rendering — never `.catch()` for toast
+4. **No application-level API error handling** — do not catch or replace `accept` errors
+5. **View layer uses loadable state for lifecycle UI** — never `.catch()` for toast or inline error handling
 
 ## AbortSignal Lifecycle and Ownership
 

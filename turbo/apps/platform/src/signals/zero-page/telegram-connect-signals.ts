@@ -3,44 +3,20 @@ import {
   zeroIntegrationsTelegramContract,
   type TelegramLinkStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { accept, ApiError } from "../../lib/accept.ts";
+import { accept } from "../../lib/accept.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { apiBaseForNavigation$ } from "../fetch.ts";
 import { searchParams$ } from "../route.ts";
+import { createDeferredPromise } from "../utils.ts";
 import {
   parseTelegramPostMessage,
   type TelegramAuthResult,
 } from "./telegram-auth-parser.ts";
-import {
-  parseTelegramConnectParams,
-  type TelegramConnectParams,
-} from "./telegram-connect-params.ts";
+import { parseTelegramConnectParams } from "./telegram-connect-params.ts";
+import { openTelegramLoginPopup } from "./telegram-login-popup.ts";
 
-type TelegramConnectStatus = "idle" | "connecting" | "success" | "error";
-
-interface TelegramConnectSuccess {
-  botUsername: string;
-  telegramUserId: string;
-}
-
-const internalTelegramConnectStatus$ = state<TelegramConnectStatus>("idle");
-const internalTelegramConnectError$ = state<string | null>(null);
-const internalTelegramConnectSuccess$ = state<TelegramConnectSuccess | null>(
-  null,
-);
 const internalTelegramConnectLinkStatusReload$ = state(0);
-
-export const telegramConnectStatus$ = computed((get) => {
-  return get(internalTelegramConnectStatus$);
-});
-
-export const telegramConnectError$ = computed((get) => {
-  return get(internalTelegramConnectError$);
-});
-
-export const telegramConnectSuccess$ = computed((get) => {
-  return get(internalTelegramConnectSuccess$);
-});
 
 export const telegramConnectLinkStatus$ = computed(
   async (get): Promise<TelegramLinkStatusResponse | null> => {
@@ -67,12 +43,9 @@ export const telegramConnectLinkStatus$ = computed(
         },
       }),
       [200],
-      { toast: false },
-    ).catch(() => {
-      return null;
-    });
+    );
 
-    return result?.body ?? null;
+    return result.body;
   },
 );
 
@@ -82,102 +55,64 @@ export const reloadTelegramConnectLinkStatus$ = command(({ set }) => {
   });
 });
 
-export const resetTelegramConnectState$ = command(({ set }) => {
-  set(internalTelegramConnectStatus$, "idle");
-  set(internalTelegramConnectError$, null);
-  set(internalTelegramConnectSuccess$, null);
-});
+function requestTelegramAuth(
+  telegramBotId: string,
+  apiBase: string,
+  signal: AbortSignal,
+): Promise<TelegramAuthResult> {
+  signal.throwIfAborted();
+  openTelegramLoginPopup(telegramBotId, apiBase);
 
-type TelegramConnectInput =
-  | TelegramConnectParams
-  | {
-      telegramBotId: string;
-      telegramAuth: TelegramAuthResult;
-    };
+  const deferred = createDeferredPromise<TelegramAuthResult>(signal);
+  const cleanup = () => {
+    window.removeEventListener("message", handleMessage);
+    signal.removeEventListener("abort", cleanup);
+  };
+  const handleMessage = (event: MessageEvent) => {
+    const auth = parseTelegramPostMessage(event.data);
+    if (!auth || deferred.settled()) {
+      return;
+    }
+    cleanup();
+    deferred.resolve(auth);
+  };
+
+  window.addEventListener("message", handleMessage, { signal });
+  signal.addEventListener("abort", cleanup, { once: true });
+  return deferred.promise;
+}
 
 export const connectTelegramAccount$ = command(
-  async ({ get, set }, params: TelegramConnectInput, signal: AbortSignal) => {
-    set(internalTelegramConnectStatus$, "connecting");
-    set(internalTelegramConnectError$, null);
-    set(internalTelegramConnectSuccess$, null);
-
+  async ({ get }, signal: AbortSignal) => {
+    const parsed = parseTelegramConnectParams(get(searchParams$));
+    if (!parsed.ok) {
+      return null;
+    }
+    const { params } = parsed;
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
-    const linked = await accept(
+    const linkCredential = params.connectSignature
+      ? { connectSignature: params.connectSignature }
+      : {
+          telegramAuth: await requestTelegramAuth(
+            params.telegramBotId,
+            await get(apiBaseForNavigation$),
+            signal,
+          ),
+        };
+
+    const result = await accept(
       client.link({
         headers: {},
         fetchOptions: { signal },
         body: {
           telegramBotId: params.telegramBotId,
-          ...("telegramAuth" in params
-            ? { telegramAuth: params.telegramAuth }
-            : params.connectSignature
-              ? { connectSignature: params.connectSignature }
-              : {}),
+          ...linkCredential,
         },
       }),
       [200],
-      { toast: false },
-    )
-      .then((result) => {
-        return result.body;
-      })
-      .catch((error: unknown) => {
-        if (signal.aborted) {
-          throw error;
-        }
-        set(
-          internalTelegramConnectError$,
-          error instanceof ApiError
-            ? error.message
-            : "We couldn't connect Telegram. Try again from Telegram.",
-        );
-        set(internalTelegramConnectStatus$, "error");
-        return null;
-      });
-
+    );
     signal.throwIfAborted();
-    if (!linked) {
-      return;
-    }
-    set(internalTelegramConnectSuccess$, linked);
-    set(internalTelegramConnectStatus$, "success");
-  },
-);
 
-export const startTelegramConnectLoginListener$ = command(
-  ({ get, set }, signal: AbortSignal) => {
-    function handleMessage(event: MessageEvent) {
-      const auth = parseTelegramPostMessage(event.data);
-      if (!auth) {
-        return;
-      }
-
-      const parsed = parseTelegramConnectParams(get(searchParams$));
-      if (!parsed.ok) {
-        return;
-      }
-
-      set(
-        connectTelegramAccount$,
-        { telegramBotId: parsed.params.telegramBotId, telegramAuth: auth },
-        signal,
-      ).catch((error: unknown) => {
-        if (error instanceof Error && error.name === "AbortError") {
-          return;
-        }
-        set(
-          internalTelegramConnectError$,
-          error instanceof Error
-            ? error.message
-            : "We couldn't connect Telegram. Try again from Telegram.",
-        );
-        set(internalTelegramConnectStatus$, "error");
-      });
-    }
-
-    window.addEventListener("message", handleMessage);
-    signal.addEventListener("abort", () => {
-      window.removeEventListener("message", handleMessage);
-    });
+    return result.body;
   },
 );

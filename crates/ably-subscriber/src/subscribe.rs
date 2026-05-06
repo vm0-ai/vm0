@@ -3,8 +3,8 @@
 use tokio::sync::{mpsc, oneshot};
 
 use crate::connection::{
-    DEFAULT_REALTIME_HOST, EventLoopState, connect_and_attach, exchange_token, rest_host,
-    run_event_loop,
+    DEFAULT_REALTIME_HOST, EventLoopState, WsTransport, connect_and_attach, exchange_token,
+    rest_host, run_event_loop,
 };
 use crate::protocol::error_code;
 use crate::types::{Error, Event, SubscribeConfig};
@@ -26,7 +26,7 @@ impl Subscription {
         self.rx.recv().await
     }
 
-    /// Gracefully close the connection.
+    /// Request a graceful close of the background WebSocket connection.
     pub fn close(mut self) {
         if let Some(tx) = self.close_tx.take() {
             let _ = tx.send(());
@@ -51,7 +51,8 @@ impl Drop for Subscription {
 /// heartbeat timeout detection.
 pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     let timing = config.timing.unwrap_or_default();
-    let (event_tx, event_rx) = mpsc::channel::<Event>(timing.event_channel_capacity);
+    let event_channel_capacity = timing.event_channel_capacity.max(1);
+    let (event_tx, event_rx) = mpsc::channel::<Event>(event_channel_capacity);
     let (close_tx, close_rx) = oneshot::channel::<()>();
 
     let realtime_host = config
@@ -98,10 +99,10 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
     // Spawn background event loop
     tokio::spawn(run_event_loop(
         EventLoopState {
-            ws_read,
-            ws_write,
+            transport: Some(WsTransport::new(ws_read, ws_write)),
             event_tx,
             conn_state,
+            lifecycle: crate::connection::RealtimeStateMachine::connected(),
             channel: config.channel,
             channel_params: config.channel_params,
             realtime_host,
@@ -111,6 +112,10 @@ pub async fn subscribe(config: SubscribeConfig) -> Result<Subscription, Error> {
             timing,
             token_renewal_failures: 0,
             dropped_messages: 0,
+            channel_retry_at: None,
+            channel_retry_count: 0,
+            channel_operation_deadline: None,
+            connected_event_pending: false,
         },
         close_rx,
     ));

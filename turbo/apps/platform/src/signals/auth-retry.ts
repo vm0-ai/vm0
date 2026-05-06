@@ -8,11 +8,9 @@
  * expired between fetch and server-side validation (see issue #8883).
  */
 import type { Clerk } from "@clerk/clerk-js";
-import { logger } from "./log.ts";
+import { detach, Reason } from "./utils";
 
-const L = logger("AuthRetry");
-
-type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
+export type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
 
 /**
  * Force-refresh the Clerk session token. Returns the new token only if it
@@ -37,19 +35,8 @@ export async function fetchFreshToken(
   return freshToken;
 }
 
-/**
- * Fire-and-forget redirect to Clerk's hosted sign-in. The redirect navigates
- * the page away so the returned promise may never settle — callers must not
- * await it, and the final 401 response still needs to be returned to them.
- */
-export function handleUnauthorizedRedirect(clerk: ClerkLike): void {
-  const redirectResult = clerk.redirectToSignIn();
-  if (redirectResult instanceof Promise) {
-    redirectResult.catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      L.error("Sign-in redirect failed", error);
-    });
-  }
+export function handleUnauthorizedRedirect(clerk: ClerkLike) {
+  // confirmed by ethan@vm0.ai
+  // eslint-disable-next-line ccstate/no-detach-in-signals
+  detach(clerk.redirectToSignIn(), Reason.Entrance);
 }

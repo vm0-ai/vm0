@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { RawPermissionPolicies } from "@vm0/connectors/firewall-types";
 import { initServices } from "../../lib/init-services";
 import {
@@ -159,6 +159,7 @@ export async function createTestZeroAgent(
     permissionPolicies?: RawPermissionPolicies;
     modelProviderId?: string | null;
     selectedModel?: string | null;
+    preferPersonalProvider?: boolean;
   },
 ): Promise<void> {
   initServices();
@@ -187,6 +188,7 @@ export async function createTestZeroAgent(
       permissionPolicies: metadata.permissionPolicies ?? null,
       modelProviderId: metadata.modelProviderId ?? null,
       selectedModel: metadata.selectedModel ?? null,
+      preferPersonalProvider: metadata.preferPersonalProvider ?? false,
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
@@ -197,6 +199,7 @@ export async function createTestZeroAgent(
         permissionPolicies: metadata.permissionPolicies ?? null,
         modelProviderId: metadata.modelProviderId ?? null,
         selectedModel: metadata.selectedModel ?? null,
+        preferPersonalProvider: metadata.preferPersonalProvider ?? false,
       },
     });
 }
@@ -239,6 +242,45 @@ export async function deleteTestCompose(composeId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 // Session / conversation seeders (migrated from api-test-helpers/agents.ts)
 // ---------------------------------------------------------------------------
+
+/**
+ * Pin a zero_agents row to a specific model provider + selected-model pair.
+ * Used by tests that need an agent whose default provider is explicitly set,
+ * so chat-thread eager-pin paths can be exercised.
+ *
+ * @why-db-direct The agent provider pin is normally set by compose creation /
+ * agent edit API routes; tests need a direct setter for isolated setup.
+ */
+export async function setTestZeroAgentModelProvider(
+  agentId: string,
+  modelProviderId: string | null,
+  selectedModel: string | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroAgents)
+    .set({ modelProviderId, selectedModel })
+    .where(eq(zeroAgents.id, agentId));
+}
+
+/**
+ * Flip the `prefer_personal_provider` flag on a zero_agents row directly.
+ * Used by tests that need to exercise the personal-tier resolver branch
+ * (#11899) without going through the agent edit API.
+ *
+ * @why-db-direct The agent UI for this flag isn't implemented yet (Wave 3
+ * of Epic #11868); tests need a direct setter to verify runtime plumbing.
+ */
+export async function setTestZeroAgentPreferPersonalProvider(
+  agentId: string,
+  preferPersonalProvider: boolean,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroAgents)
+    .set({ preferPersonalProvider })
+    .where(eq(zeroAgents.id, agentId));
+}
 
 /**
  * Ensure a matching zero_agents row exists for a compose.
@@ -389,6 +431,41 @@ export async function setTestChatThreadLastReadAt(
 }
 
 /**
+ * Set pinned_at on a chat thread directly in the database.
+ *
+ * @why-db-direct The pin/unpin route is exercised in its own route test;
+ * list-route ordering tests need to seed an arbitrary pinned state to
+ * assert the new ORDER BY without round-tripping the auth/clerk-mocked POST.
+ */
+export async function setTestChatThreadPinnedAt(
+  threadId: string,
+  pinnedAt: Date | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ pinnedAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
+ * Set renamed_at on a chat thread directly in the database.
+ *
+ * @why-db-direct Tests that need to seed a user-renamed state to assert
+ * the automated-title-generation suppression logic require direct access.
+ */
+export async function setTestChatThreadRenamedAt(
+  threadId: string,
+  renamedAt: Date | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ renamedAt })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
  * Set last_read_message_id on a chat thread directly in the database.
  *
  * @why-db-direct Tests need to seed exact read state without invoking the
@@ -406,6 +483,31 @@ export async function setTestChatThreadLastReadMessageId(
 }
 
 /**
+ * Set draft_content / draft_attachments on a chat thread directly.
+ *
+ * @why-db-direct The draft PATCH route is exercised in its own route test;
+ * list-route tests need to seed an arbitrary draft state to verify the
+ * `hasDraft` projection without round-tripping the auth/clerk-mocked PATCH.
+ */
+export async function setTestChatThreadDraft(
+  threadId: string,
+  draftContent: string | null,
+  draftAttachments: Array<{
+    id: string;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }> | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(chatThreads)
+    .set({ draftContent, draftAttachments })
+    .where(eq(chatThreads.id, threadId));
+}
+
+/**
  * Insert a chat thread directly in the database.
  * Returns the thread ID.
  *
@@ -418,11 +520,16 @@ export async function insertTestChatThread(
   title: string,
 ): Promise<string> {
   initServices();
-  const [thread] = await globalThis.services.db
-    .insert(chatThreads)
-    .values({ userId, agentComposeId, title })
-    .returning({ id: chatThreads.id });
-  return thread!.id;
+  const result = await globalThis.services.db.execute<{ id: string }>(sql`
+    INSERT INTO ${chatThreads} (user_id, agent_compose_id, title)
+    VALUES (${userId}, ${agentComposeId}::uuid, ${title})
+    RETURNING id
+  `);
+  const threadId = result.rows[0]?.id;
+  if (!threadId) {
+    throw new Error("Failed to seed chat thread");
+  }
+  return threadId;
 }
 
 // ---------------------------------------------------------------------------
@@ -546,11 +653,11 @@ export async function setTestSessionArtifacts(
 /**
  * Update the cliAgentType on the conversation linked to a session.
  *
- * @why-db-direct Test checkpoint helpers seed conversations with
- * cliAgentType "test-agent" while composes default to framework
- * "claude-code". Resolver compatibility checks compare these, so
- * resolveSession tests need to align the conversation framework before
- * invoking the resolver.
+ * @why-db-direct The framework-mismatch tests need to set a non-default
+ * cliAgentType on the seeded conversation to surface the
+ * build-zero-context compatibility check; doing it via webhook would
+ * require either a second checkpoint write or exposing internals on the
+ * webhook. A targeted UPDATE is the smallest seam.
  */
 export async function setTestSessionFramework(
   sessionId: string,

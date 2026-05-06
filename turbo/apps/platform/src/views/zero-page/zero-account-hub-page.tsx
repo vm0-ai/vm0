@@ -120,7 +120,7 @@ export function ZeroAccountHubPage() {
     navigate("/settings");
   };
   const goUsage = () => {
-    navigate("/_/usage");
+    navigate("/usage");
   };
   const goApiKeys = () => {
     navigate("/settings/api-keys");

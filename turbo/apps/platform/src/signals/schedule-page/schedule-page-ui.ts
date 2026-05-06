@@ -5,6 +5,8 @@ import { agents$, agentById } from "../agent.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { orgModelProviders$ } from "../external/org-model-providers.ts";
 import { createDefaultFormData, initDialogForm$ } from "./schedule-form.ts";
+import { toggleOrgScheduleEnabled$ } from "../zero-page/zero-schedule.ts";
+import { withCleanup } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Helper: creates a private state atom with exported computed (read) and
@@ -104,9 +106,48 @@ export const closeCreateScheduleDialog$ = command(({ set }) => {
 export const { get$: creatingOrgSchedule$, set$: setCreatingOrgSchedule$ } =
   cell(false);
 
-export const { get$: pageTogglingIds$, set$: setPageTogglingIds$ } = cell<
-  Set<string>
->(new Set());
+const internalPageTogglingIds$ = state<Set<string>>(new Set());
+export const pageTogglingIds$ = computed((get) => {
+  return get(internalPageTogglingIds$);
+});
+
+function addPendingId(id: string) {
+  return (prev: Set<string>) => {
+    return new Set([...prev, id]);
+  };
+}
+
+function removePendingId(id: string) {
+  return (prev: Set<string>) => {
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  };
+}
+
+export const togglePageScheduleEnabled$ = command(
+  async (
+    { set },
+    params: { id: string; name: string; enabled: boolean; agentId: string },
+    signal: AbortSignal,
+  ) => {
+    set(internalPageTogglingIds$, addPendingId(params.id));
+    await withCleanup(
+      set(
+        toggleOrgScheduleEnabled$,
+        {
+          name: params.name,
+          enabled: params.enabled,
+          agentId: params.agentId,
+        },
+        signal,
+      ),
+      () => {
+        set(internalPageTogglingIds$, removePendingId(params.id));
+      },
+    );
+  },
+);
 
 export const { get$: pageRunningIds$, set$: setPageRunningIds$ } = cell<
   Set<string>

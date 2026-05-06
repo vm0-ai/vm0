@@ -171,6 +171,39 @@ describe("POST /api/zero/uploads/prepare", () => {
       });
     });
 
+    it("accepts common office document uploads", async () => {
+      const cases = [
+        {
+          filename: "brief.docx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+        {
+          filename: "budget.xlsx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+        {
+          filename: "deck.pptx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        },
+      ] as const;
+
+      for (const { filename, contentType } of cases) {
+        const response = await POST(
+          createPrepareRequest({
+            filename,
+            contentType,
+            size: 4096,
+          }),
+        );
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body).toMatchObject({ filename, contentType });
+      }
+    });
+
     it("sanitizes filenames when building the S3 key", async () => {
       const response = await POST(
         createPrepareRequest({

@@ -2,7 +2,6 @@ import { and, eq } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { creditUsage } from "@vm0/db/schema/credit-usage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usageDaily } from "@vm0/db/schema/usage-daily";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -112,78 +111,6 @@ export async function findOrgPromoRedemption(params: {
 // ---------------------------------------------------------------------------
 // Usage / insights assertion helpers.
 // ---------------------------------------------------------------------------
-
-/**
- * Read a credit_usage record by ID.
- */
-export async function findTestCreditUsage(id: string): Promise<
-  | {
-      id: string;
-      status: string;
-      creditsCharged: number | null;
-      processedAt: Date | null;
-    }
-  | undefined
-> {
-  initServices();
-  const [record] = await globalThis.services.db
-    .select({
-      id: creditUsage.id,
-      status: creditUsage.status,
-      creditsCharged: creditUsage.creditsCharged,
-      processedAt: creditUsage.processedAt,
-    })
-    .from(creditUsage)
-    .where(eq(creditUsage.id, id))
-    .limit(1);
-  return record;
-}
-
-/**
- * Find credit_usage records by runId.
- * Returns all records for the run (one per result event).
- */
-export async function findTestCreditUsagesByRunId(runId: string): Promise<
-  Array<{
-    id: string;
-    runId: string | null;
-    resultUuid: string | null;
-    orgId: string;
-    userId: string;
-    model: string;
-    modelProvider: string;
-    inputTokens: number;
-    outputTokens: number;
-    cacheReadInputTokens: number;
-    cacheCreationInputTokens: number;
-    webSearchRequests: number;
-    costUsd: string | null;
-    status: string;
-    creditsCharged: number | null;
-  }>
-> {
-  initServices();
-  return globalThis.services.db
-    .select({
-      id: creditUsage.id,
-      runId: creditUsage.runId,
-      resultUuid: creditUsage.resultUuid,
-      orgId: creditUsage.orgId,
-      userId: creditUsage.userId,
-      model: creditUsage.model,
-      modelProvider: creditUsage.modelProvider,
-      inputTokens: creditUsage.inputTokens,
-      outputTokens: creditUsage.outputTokens,
-      cacheReadInputTokens: creditUsage.cacheReadInputTokens,
-      cacheCreationInputTokens: creditUsage.cacheCreationInputTokens,
-      webSearchRequests: creditUsage.webSearchRequests,
-      costUsd: creditUsage.costUsd,
-      status: creditUsage.status,
-      creditsCharged: creditUsage.creditsCharged,
-    })
-    .from(creditUsage)
-    .where(eq(creditUsage.runId, runId));
-}
 
 /**
  * Look up a usage_daily record for verification in tests.

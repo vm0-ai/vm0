@@ -12,6 +12,7 @@ import {
 } from "./sandbox-token";
 import { getMemberRole } from "./org-membership-cache";
 import { logger } from "../shared/logger";
+import { hasRequiredCapability } from "./capability-check";
 
 const log = logger("auth:user");
 
@@ -223,10 +224,9 @@ function resolveZeroAuth(
     };
   }
 
-  const hasCap = zeroAuth.capabilities.some((cap) => {
-    return cap === options.requiredCapability;
-  });
-  if (!hasCap) {
+  if (
+    !hasRequiredCapability(zeroAuth.capabilities, options.requiredCapability)
+  ) {
     log.debug(
       `Zero token missing required capability: ${options.requiredCapability}`,
     );

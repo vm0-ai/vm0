@@ -7,7 +7,6 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
-import { maybePageSignal$ } from "../page-signal.ts";
 
 /**
  * Reload trigger for connector signals.
@@ -20,13 +19,10 @@ const internalReloadConnectors$ = state(0);
  */
 export const connectors$ = computed(async (get) => {
   get(internalReloadConnectors$);
-  const signal = get(maybePageSignal$);
+
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorsMainContract);
-  const result = await accept(
-    client.list({ fetchOptions: signal ? { signal } : undefined }),
-    [200],
-  );
+  const result = await accept(client.list(), [200]);
   return result.body as ConnectorListResponse;
 });
 

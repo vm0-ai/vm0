@@ -4,6 +4,7 @@ export const together = {
   together: {
     label: "Together AI",
     category: "ai-general-models",
+    generation: ["image", "text"],
     environmentMapping: {
       TOGETHER_TOKEN: "$secrets.TOGETHER_TOKEN",
     },

@@ -30,6 +30,7 @@ describe("deleteConnector$ + justConnectedTypes$", () => {
       submitApiToken$,
       "ahrefs",
       { AHREFS_API_KEY: "test" },
+      {},
       context.signal,
     );
 

@@ -9,21 +9,38 @@ function fileFromBytes(bytes: Uint8Array, mimeType: string): File {
  * Build a minimal valid WebM file with a given Duration (seconds) in Info.
  * Constructs a correct EBML structure that the parser can traverse.
  */
-function buildWebmFile(durationSeconds: number): File {
+function buildWebmFile(
+  durationSeconds: number,
+  opts: { floatSize?: 4 | 8 } = {},
+): File {
   // Helper: encode an EBML element [vint-ID, vint-size, data]
   function elem(id: number[], data: number[]): number[] {
     const size = encodeVint(data.length);
     return [...id, ...size, ...data];
   }
 
-  // Duration as float64 (nanoseconds)
-  const durationNanos = durationSeconds * 1_000_000_000;
-  const durBuf = new ArrayBuffer(8);
-  new DataView(durBuf).setFloat64(0, durationNanos, false);
+  // Per WebM spec, Duration is stored in TimecodeScale units (default 1 ms),
+  // not nanoseconds. Spec also allows the float to be 4 or 8 bytes — Chrome's
+  // MediaRecorder writes the 4-byte form.
+  const floatSize = opts.floatSize ?? 8;
+  const durationInMs = durationSeconds * 1_000;
+  const durBuf = new ArrayBuffer(floatSize);
+  if (floatSize === 8) {
+    new DataView(durBuf).setFloat64(0, durationInMs, false);
+  } else {
+    new DataView(durBuf).setFloat32(0, durationInMs, false);
+  }
   const durData = [...new Uint8Array(durBuf)];
 
   const durationEl = elem([0x44, 0x89], durData); // Duration
-  const infoEl = elem([0x15, 0x49, 0xa9, 0x66], durationEl); // Info
+  // Append a MuxingApp element after Duration so a buggy parser that
+  // overruns the declared Duration size would mis-read into MuxingApp bytes
+  // (this mirrors Chrome's actual layout).
+  const muxingAppEl = elem([0x4d, 0x80], [0x77, 0x65, 0x62]); // "web"
+  const infoEl = elem(
+    [0x15, 0x49, 0xa9, 0x66],
+    [...durationEl, ...muxingAppEl],
+  ); // Info
   const segmentContent = infoEl;
 
   // Segment size: unknown (all-1s vint) for simplicity
@@ -121,6 +138,15 @@ describe("getAudioDuration", () => {
       const file = buildWebmFile(0);
       const duration = await getAudioDuration(file);
       expect(duration).toBe(0);
+    });
+
+    it("handles 4-byte Float32 Duration (Chrome MediaRecorder shape)", async () => {
+      // Chrome writes Duration as a 4-byte float; the previous parser hard-read
+      // 8 bytes (Duration data + MuxingApp header) and produced ~1e21 seconds,
+      // which tripped the AUDIO_DURATION_TOO_LONG guard for every Chrome user.
+      const file = buildWebmFile(9, { floatSize: 4 });
+      const duration = await getAudioDuration(file);
+      expect(duration).toBe(9);
     });
 
     it("returns null for truncated WebM (no Segment)", async () => {

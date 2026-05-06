@@ -12,6 +12,7 @@ export const usageInsightFixture: Readonly<UsageInsightResponse> = {
     {
       scheduleId: "s1",
       scheduleName: "My Schedule",
+      scheduleDescription: null,
       credits: 300,
       tokens: 600,
     },

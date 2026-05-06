@@ -7,7 +7,7 @@
 /**
  * Supported framework identifiers
  */
-export const SUPPORTED_FRAMEWORKS = ["claude-code"] as const;
+export const SUPPORTED_FRAMEWORKS = ["claude-code", "codex"] as const;
 
 export type SupportedFramework = (typeof SUPPORTED_FRAMEWORKS)[number];
 
@@ -65,6 +65,7 @@ export function getValidatedFramework(
  */
 const FRAMEWORK_DISPLAY_NAMES: Record<SupportedFramework, string> = {
   "claude-code": "Claude Code",
+  codex: "Codex",
 };
 
 /**
@@ -84,6 +85,7 @@ export function getFrameworkDisplayName(framework: string): string {
  */
 const FRAMEWORK_INSTRUCTIONS_FILENAMES: Record<SupportedFramework, string> = {
   "claude-code": "CLAUDE.md",
+  codex: "AGENTS.md",
 };
 
 /**
@@ -91,6 +93,7 @@ const FRAMEWORK_INSTRUCTIONS_FILENAMES: Record<SupportedFramework, string> = {
  *
  * Each framework expects instructions at a specific filename:
  * - claude-code: CLAUDE.md (read from ~/.claude/)
+ * - codex: AGENTS.md (read from ~/.codex/)
  *
  * Used by CLI (upload) and web API (read) to ensure a symmetric contract.
  *

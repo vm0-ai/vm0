@@ -10,10 +10,14 @@ import {
 } from "../agent-chat.ts";
 import {
   chatThreadByIdContract,
+  chatThreadPinContract,
+  chatThreadUnpinContract,
+  chatThreadRenameContract,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 
 export { chatThreads$, reloadChatThreads$ } from "../agent-chat.ts";
 
@@ -34,11 +38,15 @@ export {
 
 export type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
+export interface EnrichedChatMessage extends PagedChatMessage {
+  blocks: BodyRenderBlock[];
+}
+
 /** A group of consecutive messages with the same role. */
 export interface GroupedChatMessageGroup {
   beginMessageId: string;
   role: "user" | "assistant";
-  messages: PagedChatMessage[];
+  messages: EnrichedChatMessage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -51,7 +59,10 @@ export const deleteChatThread$ = command(
     signal.throwIfAborted();
 
     const client = get(zeroClient$)(chatThreadByIdContract);
-    await accept(client.delete({ params: { id: threadId } }), [204]);
+    await accept(
+      client.delete({ params: { id: threadId }, fetchOptions: { signal } }),
+      [204],
+    );
     signal.throwIfAborted();
 
     toast.success("Chat deleted");
@@ -71,6 +82,58 @@ export const deleteChatThread$ = command(
       }
     }
 
+    set(reloadChatThreads$);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Pin / unpin thread
+// ---------------------------------------------------------------------------
+
+export const pinChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(chatThreadPinContract);
+    await accept(
+      client.pin({ params: { id: threadId }, fetchOptions: { signal } }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(reloadChatThreads$);
+  },
+);
+
+export const unpinChatThread$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(chatThreadUnpinContract);
+    await accept(
+      client.unpin({ params: { id: threadId }, fetchOptions: { signal } }),
+      [204],
+    );
+    signal.throwIfAborted();
+    set(reloadChatThreads$);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Rename thread
+// ---------------------------------------------------------------------------
+
+export const renameChatThread$ = command(
+  async (
+    { get, set },
+    { threadId, title }: { threadId: string; title: string },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatThreadRenameContract);
+    await accept(
+      client.rename({
+        params: { id: threadId },
+        body: { title },
+        fetchOptions: { signal },
+      }),
+      [204],
+    );
+    signal.throwIfAborted();
     set(reloadChatThreads$);
   },
 );

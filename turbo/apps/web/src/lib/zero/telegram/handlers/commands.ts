@@ -7,12 +7,16 @@ import { createTelegramClient, sendMessage } from "../client";
 import {
   resolveUserLink,
   buildConnectUrl,
+  buildTelegramConnectReplyMarkup,
+  buildTelegramPrivateConnectReplyMarkup,
   formatTelegramAlreadyConnectedMessage,
   formatTelegramCommandError,
   formatTelegramCommandSuccess,
   formatTelegramConnectPrompt,
   formatTelegramHelpMessage,
   formatTelegramPrivateConnectPrompt,
+  formatTelegramUserDisplayName,
+  getWorkspaceAgentDisplayLabel,
 } from "./shared";
 import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
@@ -49,8 +53,14 @@ export async function handleConnectCommand(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+    telegramDisplayName,
+  );
 
   const replyOptions =
     message.chat.type !== "private"
@@ -58,11 +68,17 @@ export async function handleConnectCommand(
       : undefined;
 
   if (userLink) {
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
     await sendMessage(
       client,
       chatId,
       formatTelegramCommandSuccess(
-        formatTelegramAlreadyConnectedMessage(installation.botUsername),
+        formatTelegramAlreadyConnectedMessage(
+          installation.botUsername,
+          agentName,
+        ),
       ),
       replyOptions,
     );
@@ -72,11 +88,19 @@ export async function handleConnectCommand(
   // In group chats, don't expose the connect URL publicly to prevent
   // other users from hijacking the link. Direct users to DM instead.
   if (message.chat.type !== "private") {
+    const agentName = await getWorkspaceAgentDisplayLabel(
+      installation.defaultComposeId,
+    );
     await sendMessage(
       client,
       chatId,
-      formatTelegramPrivateConnectPrompt(installation.botUsername),
-      replyOptions,
+      formatTelegramPrivateConnectPrompt(installation.botUsername, agentName),
+      {
+        ...replyOptions,
+        replyMarkup: buildTelegramPrivateConnectReplyMarkup(
+          installation.botUsername,
+        ),
+      },
     );
     return;
   }
@@ -85,8 +109,15 @@ export async function handleConnectCommand(
     installation.telegramBotId,
     fromUserId,
     botToken,
+    message.from?.username ?? null,
+    telegramDisplayName,
   );
-  await sendMessage(client, chatId, formatTelegramConnectPrompt(connectUrl));
+  const agentName = await getWorkspaceAgentDisplayLabel(
+    installation.defaultComposeId,
+  );
+  await sendMessage(client, chatId, formatTelegramConnectPrompt(agentName), {
+    replyMarkup: buildTelegramConnectReplyMarkup(connectUrl),
+  });
 }
 
 /**
@@ -118,8 +149,14 @@ export async function handleDisconnectCommand(
     SECRETS_ENCRYPTION_KEY,
   );
   const client = createTelegramClient(botToken);
+  const telegramDisplayName = formatTelegramUserDisplayName(message.from);
 
-  const userLink = await resolveUserLink(installationId, fromUserId);
+  const userLink = await resolveUserLink(
+    installationId,
+    fromUserId,
+    message.from?.username ?? null,
+    telegramDisplayName,
+  );
 
   const replyOptions =
     message.chat.type !== "private"
@@ -136,6 +173,10 @@ export async function handleDisconnectCommand(
     return;
   }
 
+  const agentName = await getWorkspaceAgentDisplayLabel(
+    installation.defaultComposeId,
+  );
+
   // Delete user link
   await globalThis.services.db
     .delete(telegramUserLinks)
@@ -145,7 +186,7 @@ export async function handleDisconnectCommand(
     client,
     chatId,
     formatTelegramCommandSuccess(
-      "You have been disconnected and your agent access has been revoked.",
+      `You have been disconnected and your access to ${agentName} has been revoked.`,
     ),
     replyOptions,
   );
@@ -190,11 +231,14 @@ export async function handleHelpCommand(
     message.chat.type !== "private"
       ? { replyToMessageId: message.message_id }
       : undefined;
+  const agentName = await getWorkspaceAgentDisplayLabel(
+    installation.defaultComposeId,
+  );
 
   await sendMessage(
     client,
     chatId,
-    formatTelegramHelpMessage(installation.botUsername),
+    formatTelegramHelpMessage(installation.botUsername, agentName),
     replyOptions,
   );
 }

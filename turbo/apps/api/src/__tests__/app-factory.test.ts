@@ -1,14 +1,84 @@
 import { initContract } from "@ts-rest/core";
 import { computed } from "ccstate";
 import { HTTPException } from "hono/http-exception";
-import { http, HttpResponse } from "msw";
 import { z } from "zod";
-
+import { vi } from "vitest";
 import { createApp } from "../app-factory";
 import { mockEnv } from "../lib/env";
-import { server } from "../mocks/server";
 import { ROUTES } from "../signals/route";
+import { useUndiciMock } from "./setup";
 import { accept, setupApp, testContext } from "./test-helpers";
+
+// eslint-disable-next-line api/no-test-vi-mocks
+const { mockFlushLogs } = vi.hoisted(() => {
+  return {
+    // eslint-disable-next-line api/no-test-vi-mocks
+    mockFlushLogs: vi.fn(),
+  };
+});
+
+mockFlushLogs.mockResolvedValue(undefined);
+
+// eslint-disable-next-line api/no-test-vi-mocks
+vi.mock("../lib/log", async () => {
+  const actual =
+    await vi.importActual<typeof import("../lib/log")>("../lib/log");
+  return { ...actual, flushLogs: mockFlushLogs };
+});
+
+function headerValue(headers: unknown, name: string): string | undefined {
+  if (!headers) {
+    return undefined;
+  }
+  const lower = name.toLowerCase();
+  if (typeof (headers as { get?: unknown }).get === "function") {
+    const result = (headers as { get(n: string): string | null }).get(name);
+    return result ?? undefined;
+  }
+  for (const [key, value] of Object.entries(
+    headers as Record<string, string>,
+  )) {
+    if (key.toLowerCase() === lower) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+async function readBodyAsString(body: unknown): Promise<string> {
+  if (typeof body === "string") {
+    return body;
+  }
+  if (body instanceof Buffer) {
+    return body.toString("utf8");
+  }
+  if (body instanceof Uint8Array) {
+    return Buffer.from(body).toString("utf8");
+  }
+  if (body === null) {
+    return "";
+  }
+  if (
+    typeof (body as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+  ) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body as AsyncIterable<
+      Buffer | Uint8Array | string
+    >) {
+      if (typeof chunk === "string") {
+        chunks.push(Buffer.from(chunk));
+      } else if (Buffer.isBuffer(chunk)) {
+        chunks.push(chunk);
+      } else {
+        chunks.push(Buffer.from(chunk));
+      }
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  }
+  throw new Error(
+    `Unexpected mock body type: ${(body as object).constructor.name}`,
+  );
+}
 
 const c = initContract();
 
@@ -120,13 +190,22 @@ describe("createApp", () => {
   describe("legacy fallthrough proxy", () => {
     it("proxies unmatched paths to VM0_WEB_URL when configured", async () => {
       mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
-      let observedRequest: Request | undefined;
-      server.use(
-        http.get("https://www.vm0.ai/api/agent/runs", ({ request }) => {
-          observedRequest = request;
-          return HttpResponse.json({ runs: [] });
-        }),
-      );
+      let observedPath: string | undefined;
+      let observedAuthorization: string | undefined;
+      useUndiciMock()
+        .get("https://www.vm0.ai")
+        .intercept({ path: "/api/agent/runs?limit=5", method: "GET" })
+        .reply((opts) => {
+          observedPath = opts.path;
+          observedAuthorization = headerValue(opts.headers, "authorization");
+          return {
+            statusCode: 200,
+            data: JSON.stringify({ runs: [] }),
+            responseOptions: {
+              headers: { "content-type": "application/json" },
+            },
+          };
+        });
 
       const app = createApp({ signal: context.signal });
       const response = await app.request("/api/agent/runs?limit=5", {
@@ -136,26 +215,20 @@ describe("createApp", () => {
 
       expect(response.status).toBe(200);
       await expect(response.json()).resolves.toStrictEqual({ runs: [] });
-      expect(observedRequest?.url).toBe(
-        "https://www.vm0.ai/api/agent/runs?limit=5",
-      );
-      expect(observedRequest?.headers.get("authorization")).toBe(
-        "Bearer legacy",
-      );
+      expect(observedPath).toBe("/api/agent/runs?limit=5");
+      expect(observedAuthorization).toBe("Bearer legacy");
     });
 
     it("forwards POST bodies to the upstream", async () => {
       mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
-      let observedBody: string | undefined;
-      server.use(
-        http.post(
-          "https://www.vm0.ai/api/v1/chat-threads/messages",
-          async ({ request }) => {
-            observedBody = await request.text();
-            return new HttpResponse(null, { status: 202 });
-          },
-        ),
-      );
+      let observedBody: Promise<string> | undefined;
+      useUndiciMock()
+        .get("https://www.vm0.ai")
+        .intercept({ path: "/api/v1/chat-threads/messages", method: "POST" })
+        .reply((opts) => {
+          observedBody = readBodyAsString(opts.body);
+          return { statusCode: 202, data: "" };
+        });
 
       const app = createApp({ signal: context.signal });
       const response = await app.request("/api/v1/chat-threads/messages", {
@@ -165,16 +238,119 @@ describe("createApp", () => {
       });
 
       expect(response.status).toBe(202);
-      expect(observedBody).toBe('{"hello":"world"}');
+      await expect(observedBody).resolves.toBe('{"hello":"world"}');
     });
 
-    it("returns 404 when VM0_WEB_URL is not configured", async () => {
-      // No msw handler registered — if the proxy tried to fetch, msw would
-      // throw on the unhandled request. The 404 path must short-circuit.
-      const app = createApp({ signal: context.signal });
-      const response = await app.request("/api/agent/runs", { method: "GET" });
+    it("proxies realtime token requests without stale forwarded host metadata", async () => {
+      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+      const captured: {
+        paths: string[];
+        authorization: string[];
+        origins: string[];
+        bodies: Promise<string>[];
+        forwarded: (string | undefined)[];
+        forwardedHost: (string | undefined)[];
+        forwardedPort: (string | undefined)[];
+        forwardedProto: (string | undefined)[];
+      } = {
+        paths: [],
+        authorization: [],
+        origins: [],
+        bodies: [],
+        forwarded: [],
+        forwardedHost: [],
+        forwardedPort: [],
+        forwardedProto: [],
+      };
+      useUndiciMock()
+        .get("https://www.vm0.ai")
+        .intercept({ path: "/api/zero/realtime/token", method: "POST" })
+        .reply((opts) => {
+          captured.paths.push(opts.path);
+          captured.authorization.push(
+            headerValue(opts.headers, "authorization") ?? "",
+          );
+          captured.origins.push(headerValue(opts.headers, "origin") ?? "");
+          captured.bodies.push(readBodyAsString(opts.body));
+          captured.forwarded.push(headerValue(opts.headers, "forwarded"));
+          captured.forwardedHost.push(
+            headerValue(opts.headers, "x-forwarded-host"),
+          );
+          captured.forwardedPort.push(
+            headerValue(opts.headers, "x-forwarded-port"),
+          );
+          captured.forwardedProto.push(
+            headerValue(opts.headers, "x-forwarded-proto"),
+          );
+          return {
+            statusCode: 200,
+            data: JSON.stringify({ token: "proxied" }),
+            responseOptions: {
+              headers: { "content-type": "application/json" },
+            },
+          };
+        });
 
-      expect(response.status).toBe(404);
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/zero/realtime/token", {
+        method: "POST",
+        headers: {
+          authorization: "Bearer clerk-session",
+          "content-type": "application/json",
+          forwarded: "host=api.vm0.ai;proto=https",
+          origin: "https://app.vm0.ai",
+          "x-forwarded-host": "api.vm0.ai",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+        },
+        body: "{}",
+      });
+
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toStrictEqual({
+        token: "proxied",
+      });
+      expect(captured.paths).toStrictEqual(["/api/zero/realtime/token"]);
+      expect(captured.authorization).toStrictEqual(["Bearer clerk-session"]);
+      expect(captured.origins).toStrictEqual(["https://app.vm0.ai"]);
+      await expect(Promise.all(captured.bodies)).resolves.toStrictEqual(["{}"]);
+      expect(captured.forwarded).toStrictEqual([undefined]);
+      expect(captured.forwardedHost).toStrictEqual([undefined]);
+      expect(captured.forwardedPort).toStrictEqual([undefined]);
+      expect(captured.forwardedProto).toStrictEqual([undefined]);
+    });
+
+    it("preserves multiple set-cookie response headers", async () => {
+      mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+      useUndiciMock()
+        .get("https://www.vm0.ai")
+        .intercept({
+          path: "/api/connectors/github/authorize",
+          method: "GET",
+        })
+        .reply(302, "", {
+          headers: {
+            location: "https://github.com/login/oauth/authorize",
+            "set-cookie": [
+              "oauth_state=abc; Path=/; HttpOnly",
+              "oauth_pkce=def; Path=/; HttpOnly",
+            ],
+          },
+        });
+
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/connectors/github/authorize", {
+        method: "GET",
+      });
+
+      expect(response.status).toBe(302);
+      expect(response.headers.get("location")).toBe(
+        "https://github.com/login/oauth/authorize",
+      );
+      expect(response.headers.getSetCookie()).toStrictEqual([
+        "oauth_state=abc; Path=/; HttpOnly",
+        "oauth_pkce=def; Path=/; HttpOnly",
+      ]);
     });
 
     it("does not proxy when a registered route matches", async () => {
@@ -183,6 +359,112 @@ describe("createApp", () => {
       const response = await app.request("/health", { method: "GET" });
 
       expect(response.status).toBe(200);
+    });
+
+    it.each([204, 205, 304])(
+      "forwards null-body status %s without constructing a Response with a stream",
+      async (statusCode) => {
+        mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+        useUndiciMock()
+          .get("https://www.vm0.ai")
+          .intercept({
+            path: "/api/zero/chat-threads/abc",
+            method: "PATCH",
+          })
+          .reply(statusCode, "");
+
+        const app = createApp({ signal: context.signal });
+        const response = await app.request("/api/zero/chat-threads/abc", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: '{"draftContent":"hello"}',
+        });
+
+        expect(response.status).toBe(statusCode);
+        await expect(response.text()).resolves.toBe("");
+      },
+    );
+  });
+
+  describe("cors", () => {
+    it("echoes allowed cross-origin on registered route responses", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://app.vm0.ai" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://app.vm0.ai",
+      );
+      expect(response.headers.get("access-control-allow-credentials")).toBe(
+        "true",
+      );
+    });
+
+    it("answers preflight without invoking the route handler", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/api/zero/org", {
+        method: "OPTIONS",
+        headers: {
+          origin: "https://app.vm0.ai",
+          "access-control-request-method": "GET",
+          "access-control-request-headers": "authorization",
+        },
+      });
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://app.vm0.ai",
+      );
+      expect(response.headers.get("access-control-allow-methods")).toContain(
+        "GET",
+      );
+    });
+
+    it("rejects disallowed origins by omitting the allow-origin header", async () => {
+      mockEnv("ENV", "production");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://evil.example.com" },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
+    it("allows *.vm7.ai over http only in development", async () => {
+      mockEnv("ENV", "development");
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { origin: "https://app.vm7.ai:8443" },
+      });
+
+      expect(response.headers.get("access-control-allow-origin")).toBe(
+        "https://app.vm7.ai:8443",
+      );
+    });
+  });
+
+  describe("flush middleware", () => {
+    it("calls flushLogs after a successful response", async () => {
+      const app = createApp({ signal: context.signal });
+      const response = await app.request("/health", { method: "GET" });
+
+      expect(response.status).toBe(200);
+      // flushLogs is called via waitUntil after the response, so we need to
+      // wait a tick for the async work to be scheduled.
+      await vi.waitFor(
+        () => {
+          expect(mockFlushLogs).toHaveBeenCalledWith();
+        },
+        { timeout: 5000 },
+      );
     });
   });
 });

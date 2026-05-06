@@ -1085,13 +1085,12 @@ function ScheduleActionsContainer({
     if (entry.name === undefined) {
       return;
     }
+    const name = entry.name;
     detach(
-      deleteSchedule(
-        { name: entry.name, agentId: entry.agentId },
-        pageSignal,
-      ).then(() => {
+      (async () => {
+        await deleteSchedule({ name, agentId: entry.agentId }, pageSignal);
         navigate("/schedules");
-      }),
+      })(),
       Reason.DomCallback,
     );
   };

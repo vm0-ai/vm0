@@ -19,11 +19,11 @@ import {
  * many `usage_event.quantity` items make up one unit.  Each row picks the
  * natural granularity for its category:
  *
- *   kind       provider  category       unit_price  unit_size  meaning
- *   ---------  --------  -------------  ----------  ---------  -------------------------------
- *   connector  x         tweet.read     100         1000       $0.0001/read
- *   model      anthropic tokens.input   3000        1000000    $3 / 1M input tokens
- *   image      gemini    output_tokens  100         1          $0.10 per image
+ *   kind       provider                  category       unit_price  unit_size  meaning
+ *   ---------  ------------------------  -------------  ----------  ---------  -------------------------------
+ *   connector  x                         tweet.read     100         1000       $0.0001/read
+ *   model      claude-sonnet-4-6         tokens.input   3000        1000000    $3 / 1M input tokens
+ *   image      gemini-2.5-flash-image    output_image   39          1          $0.0387 per image
  */
 export const usagePricing = pgTable(
   "usage_pricing",

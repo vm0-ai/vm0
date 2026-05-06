@@ -22,6 +22,11 @@ export function updateChatRun(threadId: string): void {
   triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
 }
 
+/** Simulate the uploaded artifacts list changing for a thread. */
+export function updateChatArtifacts(threadId: string): void {
+  triggerAblyEvent(`chatThreadArtifactsChanged:${threadId}`);
+}
+
 /** Simulate the user-level signal that anything in the thread list changed. */
 export function threadListChanged(): void {
   triggerAblyEvent("threadListChanged");

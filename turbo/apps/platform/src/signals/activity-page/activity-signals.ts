@@ -7,13 +7,13 @@ import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
-import { setLoop } from "../utils.ts";
 import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
 import {
   autoScrollActivityDetail$,
   scrollToBottomActivityDetail$,
 } from "./activity-detail-scroll.ts";
+import { setAblyLoop$ } from "../realtime.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -258,15 +258,25 @@ export const setupActivityLogLoop$ = command(
     // would be a no-op.
     await delay(0, { signal });
     set(scrollToBottomActivityDetail$);
-    await setLoop(
-      (sig) => {
-        const finished = set(run.checkFinished$, sig);
-        set(autoScrollActivityDetail$);
-        return finished;
-      },
-      3000,
-      signal,
-    );
+
+    const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
+      const finished = await set(run.checkFinished$, sig);
+      sig.throwIfAborted();
+      set(autoScrollActivityDetail$);
+      return finished;
+    });
+
+    const finished = await set(onRunChanged$, signal);
+    signal.throwIfAborted();
+    if (finished) {
+      return;
+    }
+
+    await Promise.all([
+      set(setAblyLoop$, `run:changed:${runId}`, onRunChanged$, signal),
+      set(setAblyLoop$, "queue:changed", onRunChanged$, signal),
+    ]);
+    signal.throwIfAborted();
   },
 );
 

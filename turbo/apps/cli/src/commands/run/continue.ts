@@ -13,6 +13,16 @@ import {
 } from "./shared";
 import { withErrorHandler } from "../../lib/command";
 
+/**
+ * Pick the first truthy value, falling back to `undefined`. Used to merge
+ * commander.js subcommand options with parent options when a flag can land
+ * on either depending on argv ordering. Extracted to keep the action
+ * handler's cyclomatic complexity below the lint threshold.
+ */
+function pickOpt<T>(a: T | undefined, b: T | undefined): T | undefined {
+  return a || b || undefined;
+}
+
 export const continueCommand = new Command()
   .name("continue")
   .description(
@@ -70,6 +80,7 @@ export const continueCommand = new Command()
   )
   .option("--verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
+  .addOption(new Option("--debug-no-mock-codex").hideHelp())
   .action(
     withErrorHandler(
       async (
@@ -91,6 +102,7 @@ export const continueCommand = new Command()
           permissionPolicies?: string;
           verbose?: boolean;
           debugNoMockClaude?: boolean;
+          debugNoMockCodex?: boolean;
         },
         command: { optsWithGlobals: () => Record<string, unknown> },
       ) => {
@@ -113,6 +125,7 @@ export const continueCommand = new Command()
           permissionPolicies?: string;
           verbose?: boolean;
           debugNoMockClaude?: boolean;
+          debugNoMockCodex?: boolean;
         };
 
         // Merge vars and secrets from command options
@@ -163,8 +176,14 @@ export const continueCommand = new Command()
           permissionPolicies: parsePermissionPolicies(
             options.permissionPolicies || allOpts.permissionPolicies,
           ),
-          debugNoMockClaude:
-            options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,
+          debugNoMockClaude: pickOpt(
+            options.debugNoMockClaude,
+            allOpts.debugNoMockClaude,
+          ),
+          debugNoMockCodex: pickOpt(
+            options.debugNoMockCodex,
+            allOpts.debugNoMockCodex,
+          ),
         });
 
         // 4. Check for immediate failure (e.g., missing secrets)

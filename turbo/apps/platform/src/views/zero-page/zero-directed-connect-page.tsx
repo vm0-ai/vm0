@@ -25,7 +25,12 @@ import {
   tokenFormValuesFor$,
   setTokenFormSubmitting$,
 } from "../../signals/zero-page/settings/connectors.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../signals/utils.ts";
 import {
   directedConnectType$,
   directedConnectAgentId$,
@@ -41,15 +46,18 @@ import { Vm0LogoLink, GoogleOAuthNotice } from "./zero-directed-shared.tsx";
 function runDirectedConnect(params: {
   authMethods: string[];
   connectorType: ConnectorType;
-  agentId: string | null;
   signal: AbortSignal;
-  connect: (type: ConnectorType, signal: AbortSignal) => Promise<unknown>;
-  enable: (type: ConnectorType, signal: AbortSignal) => Promise<unknown>;
-  authorize: (
+  connect: (
     type: ConnectorType,
-    agentId: string,
+    options: { readonly showPermissionDialog?: boolean },
+    signal: AbortSignal,
+  ) => Promise<boolean>;
+  enable: (
+    type: ConnectorType,
+    options: { readonly showPermissionDialog?: boolean },
     signal: AbortSignal,
   ) => Promise<unknown>;
+  onConnected: () => Promise<void>;
   openTokenDialog: () => void;
 }): void {
   const hasOAuth = params.authMethods.includes("oauth");
@@ -74,17 +82,18 @@ function runDirectedConnect(params: {
   }
   detach(
     (async () => {
+      let connected = true;
       if (hasOAuth) {
-        await params.connect(params.connectorType, params.signal);
-      } else {
-        await params.enable(params.connectorType, params.signal);
-      }
-      if (params.agentId) {
-        await params.authorize(
+        connected = await params.connect(
           params.connectorType,
-          params.agentId,
+          {},
           params.signal,
         );
+      } else {
+        await params.enable(params.connectorType, {}, params.signal);
+      }
+      if (connected) {
+        await params.onConnected();
       }
     })(),
     Reason.DomCallback,
@@ -134,23 +143,20 @@ function ApiTokenForm({
     return !cfg.required || secretValues[name];
   });
 
-  const handleSubmit = () => {
+  const handleSubmit = onDomEventFn(async () => {
     if (!allFilled || submitting) {
       return;
     }
     setSubmitting(type);
-    detach(
+    await bestEffort(
       (async () => {
-        await submit(type, secretValues, pageSignal);
-        setSubmitting(null);
+        await submit(type, secretValues, {}, pageSignal);
         clearForm(type);
         onSuccess();
-      })().catch(() => {
-        setSubmitting(null);
-      }),
-      Reason.DomCallback,
+      })(),
     );
-  };
+    setSubmitting(null);
+  });
 
   return (
     <div className="flex w-full flex-col gap-3 text-left">
@@ -300,16 +306,21 @@ function DirectedConnectCard() {
   const isConnected =
     justConnected.has(connectorType) || (item?.connected ?? false);
 
+  const runPostConnectActions = async () => {
+    if (agentId) {
+      await authorize(connectorType, agentId, signal);
+    }
+  };
+
   const handleConnect = () => {
     runDirectedConnect({
       authMethods:
         item?.availableAuthMethods ?? Object.keys(config.authMethods),
       connectorType,
-      agentId,
       signal,
       connect,
       enable,
-      authorize,
+      onConnected: runPostConnectActions,
       openTokenDialog: () => {
         return setTokenDialogOpen(true);
       },
@@ -366,10 +377,7 @@ function DirectedConnectCard() {
         onConnected={
           agentId
             ? () => {
-                detach(
-                  authorize(connectorType, agentId, signal),
-                  Reason.DomCallback,
-                );
+                detach(runPostConnectActions(), Reason.DomCallback);
               }
             : undefined
         }

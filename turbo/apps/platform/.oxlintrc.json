@@ -56,6 +56,12 @@
       }
     },
     {
+      "files": ["public/**/*.*"],
+      "rules": {
+        "prefer-await-to-then": "allow"
+      }
+    },
+    {
       "files": ["**/__tests__/**/*.{ts,tsx}", "src/test/mocks/**/*.{ts,tsx}"],
       "plugins": ["jest", "vitest"],
       "rules": {
@@ -315,6 +321,7 @@
     "prefer-regexp-test": "deny",
     "prefer-array-some": "deny",
     "prefer-blob-reading-methods": "deny",
+    "prefer-await-to-then": "deny",
     "prefer-catch": "deny",
     "prefer-dom-node-dataset": "deny",
     "prefer-dom-node-remove": "deny",

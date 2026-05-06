@@ -3,6 +3,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 import { notFound } from "@vm0/api-services/errors";
+import { extractFrameworkFromCompose } from "../framework/framework-config";
 
 interface AxiomAgentEvent {
   _time: string;
@@ -65,10 +66,12 @@ export async function getRunAgentEvents(
     throw notFound("Agent run not found");
   }
 
-  const composeContent = runWithCompose.composeContent as {
-    agent?: { framework?: string };
-  } | null;
-  const framework = composeContent?.agent?.framework ?? "claude-code";
+  const framework =
+    extractFrameworkFromCompose(
+      runWithCompose.composeContent as Parameters<
+        typeof extractFrameworkFromCompose
+      >[0],
+    ) ?? "claude-code";
 
   const { since, limit, order } = query;
 

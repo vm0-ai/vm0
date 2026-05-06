@@ -4,6 +4,7 @@ export const deepseek = {
   deepseek: {
     label: "DeepSeek",
     category: "ai-general-models",
+    generation: ["code", "text"],
     environmentMapping: {
       DEEPSEEK_TOKEN: "$secrets.DEEPSEEK_TOKEN",
     },

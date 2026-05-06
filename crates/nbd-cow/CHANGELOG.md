@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.4.14](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.13...nbd-cow-v0.4.14) (2026-05-06)
+
+
+### Refactoring
+
+* **nbd-cow:** dedupe success replies ([#11902](https://github.com/vm0-ai/vm0/issues/11902)) ([9f31d0d](https://github.com/vm0-ai/vm0/commit/9f31d0dcb2f83b4b5bfd794d7541a3d07187f56f))
+
+## [0.4.13](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.12...nbd-cow-v0.4.13) (2026-05-05)
+
+
+### Documentation
+
+* **nbd-cow:** clarify device lease authority ([#11864](https://github.com/vm0-ai/vm0/issues/11864)) ([56c40a8](https://github.com/vm0-ai/vm0/commit/56c40a85cbfeb026b485426f464dbdeecc9a44ff))
+
+## [0.4.12](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.11...nbd-cow-v0.4.12) (2026-05-03)
+
+
+### Bug Fixes
+
+* **nbd-cow:** lock NBD claims across runners ([#11732](https://github.com/vm0-ai/vm0/issues/11732)) ([16d716e](https://github.com/vm0-ai/vm0/commit/16d716e1f07a77c0d93649f52d077953dd62ff16))
+
+## [0.4.11](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.10...nbd-cow-v0.4.11) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+## [0.4.10](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.9...nbd-cow-v0.4.10) (2026-04-29)
+
+
+### Refactoring
+
+* **nbd-cow:** tie device pool leases to COW lifecycle ([#11480](https://github.com/vm0-ai/vm0/issues/11480)) ([b99a732](https://github.com/vm0-ai/vm0/commit/b99a732e7732af47b5837dc3937eeb3acdf71b2e))
+
 ## [0.4.9](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.8...nbd-cow-v0.4.9) (2026-04-27)
 
 

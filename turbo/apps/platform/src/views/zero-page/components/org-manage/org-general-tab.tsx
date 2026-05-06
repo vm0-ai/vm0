@@ -25,7 +25,12 @@ import { org$, isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
 import { clerk$, resolveWebOrigin } from "../../../../signals/auth.ts";
 import { zeroClient$ } from "../../../../signals/api-client.ts";
 import { fetch$ } from "../../../../signals/fetch.ts";
-import { detach, Reason } from "../../../../signals/utils.ts";
+import {
+  bestEffort,
+  detach,
+  onDomEventFn,
+  Reason,
+} from "../../../../signals/utils.ts";
 import {
   profileName$,
   setProfileName$,
@@ -170,7 +175,7 @@ function ProfileSection({
     setSaveError(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!hasChanges || saving) {
       return;
     }
@@ -215,12 +220,8 @@ function ProfileSection({
       await clerk?.organization?.reload();
       toast.success("Workspace updated");
     };
-    detach(
-      doSave().finally(() => {
-        setSaving(false);
-      }),
-      Reason.DomCallback,
-    );
+    await bestEffort(doSave());
+    setSaving(false);
   };
 
   const handleLogoLoad = () => {
@@ -229,15 +230,13 @@ function ProfileSection({
     }
     setLogoLoaded(true);
     detach(
-      fetchFn("/api/zero/org/logo")
-        .then((r) => {
-          return r.json();
-        })
-        .then((data: { logoUrl: string | null }) => {
-          if (data.logoUrl) {
-            setLogoUrl(data.logoUrl);
-          }
-        }),
+      (async () => {
+        const response = await fetchFn("/api/zero/org/logo");
+        const data = (await response.json()) as { logoUrl: string | null };
+        if (data.logoUrl) {
+          setLogoUrl(data.logoUrl);
+        }
+      })(),
       Reason.DomCallback,
     );
   };
@@ -364,9 +363,7 @@ function ProfileSection({
             <Button
               size="sm"
               className="rounded-lg"
-              onClick={() => {
-                return detach(handleSave(), Reason.DomCallback);
-              }}
+              onClick={onDomEventFn(handleSave)}
               disabled={saving}
             >
               {saving ? "Saving..." : "Save changes"}
@@ -412,67 +409,56 @@ function DangerZoneSection({
   const deleteConfirm = useGet(deleteConfirm$);
   const setDeleteConfirm = useSet(setDeleteConfirm$);
 
-  const handleLeave = () => {
+  const handleLeave = async () => {
     if (leaving) {
       return;
     }
     setLeaving(true);
     const client = createClient(zeroOrgLeaveContract);
-    detach(
-      client
-        .leave({ body: {} })
-        .then(async (result) => {
-          if (result.status === 200) {
-            // Clear the active organization before navigating so the session
-            // JWT no longer references an org the user is no longer a member
-            // of; otherwise Clerk may revoke the session and log the user out.
-            await clerk?.setActive({ organization: null });
-            toast.success("You have left the workspace");
-            window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
-          } else {
-            toast.error(
-              extractErrorMessage(result, `Failed to leave (${result.status})`),
-            );
-          }
-        })
-        .finally(() => {
-          setLeaving(false);
-        }),
-      Reason.DomCallback,
+    await bestEffort(
+      (async () => {
+        const result = await client.leave({ body: {} });
+        if (result.status === 200) {
+          // Clear the active organization before navigating so the session
+          // JWT no longer references an org the user is no longer a member
+          // of; otherwise Clerk may revoke the session and log the user out.
+          await clerk?.setActive({ organization: null });
+          toast.success("You have left the workspace");
+          window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
+        } else {
+          toast.error(
+            extractErrorMessage(result, `Failed to leave (${result.status})`),
+          );
+        }
+      })(),
     );
+    setLeaving(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (deleting || deleteConfirm !== org.slug) {
       return;
     }
     setDeleting(true);
     const client = createClient(zeroOrgDeleteContract);
-    detach(
-      client
-        .delete({ body: { slug: org.slug } })
-        .then(async (result) => {
-          if (result.status === 200) {
-            // Clear the active organization before navigating so the session
-            // JWT no longer references the deleted org; otherwise Clerk may
-            // revoke the session and log the user out.
-            await clerk?.setActive({ organization: null });
-            toast.success("Workspace deleted");
-            window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
-          } else {
-            toast.error(
-              extractErrorMessage(
-                result,
-                `Failed to delete (${result.status})`,
-              ),
-            );
-          }
-        })
-        .finally(() => {
-          setDeleting(false);
-        }),
-      Reason.DomCallback,
+    await bestEffort(
+      (async () => {
+        const result = await client.delete({ body: { slug: org.slug } });
+        if (result.status === 200) {
+          // Clear the active organization before navigating so the session
+          // JWT no longer references the deleted org; otherwise Clerk may
+          // revoke the session and log the user out.
+          await clerk?.setActive({ organization: null });
+          toast.success("Workspace deleted");
+          window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
+        } else {
+          toast.error(
+            extractErrorMessage(result, `Failed to delete (${result.status})`),
+          );
+        }
+      })(),
     );
+    setDeleting(false);
   };
 
   return (
@@ -521,9 +507,7 @@ function DangerZoneSection({
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => {
-                        return detach(handleLeave(), Reason.DomCallback);
-                      }}
+                      onClick={onDomEventFn(handleLeave)}
                       disabled={leaving}
                     >
                       {leaving ? "Leaving..." : "Leave"}
@@ -586,9 +570,7 @@ function DangerZoneSection({
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => {
-                        return detach(handleDelete(), Reason.DomCallback);
-                      }}
+                      onClick={onDomEventFn(handleDelete)}
                       disabled={deleting || deleteConfirm !== org.slug}
                     >
                       {deleting ? "Deleting..." : "Delete workspace"}

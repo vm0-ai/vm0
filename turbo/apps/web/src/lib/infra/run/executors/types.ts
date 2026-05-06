@@ -65,6 +65,9 @@ export interface PreparedContext {
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: boolean;
 
+  // Debug flag to force real Codex in mock environments (internal use only)
+  debugNoMockCodex: boolean;
+
   // Capture HTTP request headers, request bodies, and response bodies in network logs
   captureNetworkBodies: boolean;
 
@@ -79,6 +82,8 @@ export interface PreparedContext {
   featureFlags: Record<string, boolean> | null;
 
   billableFirewalls: string[];
+
+  modelUsageProvider: string | null;
 
   // True when the run was dispatched from the org queue. Used to split
   // api_to_executor latency in Axiom between queue-dispatch and direct-dispatch.

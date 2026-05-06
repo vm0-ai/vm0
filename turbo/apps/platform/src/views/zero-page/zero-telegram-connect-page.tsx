@@ -1,5 +1,6 @@
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
-import { Component } from "react";
+import { useLoadableSet } from "ccstate-react/experimental";
+import type { JSX, ReactNode } from "react";
 import {
   IconAlertCircle,
   IconArrowLeft,
@@ -8,22 +9,20 @@ import {
 } from "@tabler/icons-react";
 import { Button, CopyButton } from "@vm0/ui";
 import { clerk$, resolveWebOrigin } from "../../signals/auth.ts";
-import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
   connectTelegramAccount$,
-  reloadTelegramConnectLinkStatus$,
-  telegramConnectError$,
   telegramConnectLinkStatus$,
-  telegramConnectStatus$,
-  telegramConnectSuccess$,
 } from "../../signals/zero-page/telegram-connect-signals.ts";
+import {
+  telegramAutoOpenRef$,
+  telegramDomainStatusPollerRef$,
+} from "../../signals/view-component-state.ts";
 import {
   parseTelegramConnectParams,
   type TelegramConnectParams,
 } from "../../signals/zero-page/telegram-connect-params.ts";
-import { openTelegramLoginPopup } from "../../signals/zero-page/telegram-login-popup.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
@@ -46,7 +45,7 @@ function BackLink() {
   );
 }
 
-function PageShell({ children }: { children: React.ReactNode }) {
+function PageShell({ children }: { children: ReactNode }) {
   return (
     <div className="zero-app flex h-dvh w-full bg-background zero-workspace-bg">
       <div className="flex flex-1 items-center justify-center p-4">
@@ -88,7 +87,7 @@ function TelegramMark({
   );
 }
 
-function CenterText({ title, body }: { title: string; body: React.ReactNode }) {
+function CenterText({ title, body }: { title: string; body: ReactNode }) {
   return (
     <div className="text-center space-y-1.5">
       <h2 className="text-base font-semibold text-foreground">{title}</h2>
@@ -107,20 +106,17 @@ function InvalidState({ title, message }: { title: string; message: string }) {
   );
 }
 
-class TelegramAutoOpen extends Component<{ href: string }> {
-  override componentDidMount() {
-    window.location.assign(this.props.href);
-  }
+function TelegramAutoOpen({ href }: { href: string }) {
+  const telegramAutoOpenRef = useSet(telegramAutoOpenRef$);
 
-  override componentDidUpdate(prevProps: { href: string }) {
-    if (prevProps.href !== this.props.href) {
-      window.location.assign(this.props.href);
-    }
-  }
-
-  override render() {
-    return null;
-  }
+  return (
+    <span
+      key={href}
+      ref={telegramAutoOpenRef}
+      data-telegram-href={href}
+      hidden
+    />
+  );
 }
 
 function SuccessState({ botUsername }: { botUsername: string }) {
@@ -216,33 +212,18 @@ function getTelegramLoginDomain(): string {
   return location.hostname;
 }
 
-class TelegramDomainStatusPoller extends Component<{ onPoll: () => void }> {
-  private intervalId: number | null = null;
-
-  override componentDidMount() {
-    this.intervalId = window.setInterval(() => {
-      this.props.onPoll();
-    }, 3000);
-  }
-
-  override componentWillUnmount() {
-    if (this.intervalId === null) {
-      return;
-    }
-    window.clearInterval(this.intervalId);
-  }
-
-  override render() {
-    return null;
-  }
+function getTelegramConnectErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "We couldn't connect Telegram. Try again from Telegram.";
 }
 
 function DomainStatusPolling() {
-  const reloadLinkStatus = useSet(reloadTelegramConnectLinkStatus$);
+  const domainStatusPollerRef = useSet(telegramDomainStatusPollerRef$);
 
   return (
     <>
-      <TelegramDomainStatusPoller onPoll={reloadLinkStatus} />
+      <span ref={domainStatusPollerRef} hidden />
       <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
         <IconLoader2 size={13} className="animate-spin" />
         Checking domain status...
@@ -325,27 +306,17 @@ function DomainSetupState({
 
 function ConnectActions({
   parsed,
-  apiBase,
   connecting,
-  onConnectSigned,
+  onConnect,
 }: {
   parsed: TelegramConnectParams;
-  apiBase: string;
   connecting: boolean;
-  onConnectSigned: () => void;
+  onConnect: () => void;
 }) {
-  const openLogin = () => {
-    openTelegramLoginPopup(parsed.telegramBotId, apiBase);
-  };
-
   if (parsed.connectSignature) {
     return (
       <div className="flex w-full flex-col gap-3">
-        <Button
-          className="w-full"
-          disabled={connecting}
-          onClick={onConnectSigned}
-        >
+        <Button className="w-full" disabled={connecting} onClick={onConnect}>
           {connecting ? (
             <IconLoader2 size={16} className="animate-spin" />
           ) : null}
@@ -356,25 +327,29 @@ function ConnectActions({
   }
 
   return (
-    <Button className="w-full" disabled={connecting} onClick={openLogin}>
+    <Button className="w-full" disabled={connecting} onClick={onConnect}>
       {connecting ? <IconLoader2 size={16} className="animate-spin" /> : null}
       {connecting ? "Connecting..." : "Continue with Telegram"}
     </Button>
   );
 }
 
-export function ZeroTelegramConnectPage(): React.JSX.Element {
+export function ZeroTelegramConnectPage(): JSX.Element {
   const params = useGet(searchParams$);
-  const apiBase = useGet(apiBaseForNavigation$);
   const parsed = parseTelegramConnectParams(params);
   const clerkLoadable = useLoadable(clerk$);
   const linkStatusLoadable = useLastLoadable(telegramConnectLinkStatus$);
-  const status = useGet(telegramConnectStatus$);
-  const error = useGet(telegramConnectError$);
-  const success = useGet(telegramConnectSuccess$);
-  const connectTelegram = useSet(connectTelegramAccount$);
+  const [connectLoadable, connectTelegram] = useLoadableSet(
+    connectTelegramAccount$,
+  );
   const pageSignal = useGet(pageSignal$);
-  const connecting = status === "connecting";
+  const connecting = connectLoadable.state === "loading";
+  const success =
+    connectLoadable.state === "hasData" ? connectLoadable.data : null;
+  const error =
+    connectLoadable.state === "hasError"
+      ? getTelegramConnectErrorMessage(connectLoadable.error)
+      : null;
 
   if (!parsed.ok) {
     return (
@@ -469,13 +444,9 @@ export function ZeroTelegramConnectPage(): React.JSX.Element {
       <div className="flex w-full flex-col gap-4">
         <ConnectActions
           parsed={parsed.params}
-          apiBase={apiBase}
           connecting={connecting}
-          onConnectSigned={() => {
-            detach(
-              connectTelegram(parsed.params, pageSignal),
-              Reason.DomCallback,
-            );
+          onConnect={() => {
+            detach(connectTelegram(pageSignal), Reason.DomCallback);
           }}
         />
         <div className="flex justify-center">

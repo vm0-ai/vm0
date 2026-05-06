@@ -113,7 +113,7 @@ async function resumeExisting(
 ): Promise<RedemptionOutcome> {
   const db = globalThis.services.db;
 
-  // Credits already landed? Source of truth is the credit ledger, not the
+  // Credits already landed? Source of truth is the credit grant ledger, not the
   // Stripe session — the webhook may have already processed.
   const [granted] = await db
     .select({ id: creditExpiresRecord.id })

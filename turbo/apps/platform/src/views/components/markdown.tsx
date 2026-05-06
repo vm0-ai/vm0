@@ -1,9 +1,15 @@
 import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
-import { useGet } from "ccstate-react";
+import { IconLoader2, IconPhoto } from "@tabler/icons-react";
+import { useGet, useSet } from "ccstate-react";
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 import { theme$ } from "../../signals/theme.ts";
+import {
+  imageLoadStatusByKey$,
+  imageLoadStatusRef$,
+  setImageLoadStatus$,
+} from "../../signals/view-component-state.ts";
 
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
@@ -216,15 +222,47 @@ function MediaImage({
   alt: string;
   onImageClick?: (url: string) => void;
 }) {
+  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const imageLoadKey = `markdown:${src}`;
+  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
+  const showPlaceholder = imageStatus !== "loaded";
+
   return (
     <button
       type="button"
       onClick={() => {
         onImageClick?.(src);
       }}
-      className="block max-w-full my-1 rounded-lg overflow-hidden cursor-zoom-in border border-foreground/10"
+      className="relative block max-w-full my-1 overflow-hidden rounded-lg border border-foreground/10 cursor-zoom-in"
     >
-      <img src={src} alt={alt} className="max-h-32 max-w-full object-contain" />
+      {showPlaceholder && (
+        <span className="flex h-32 w-48 max-w-full items-center justify-center bg-muted/70 text-muted-foreground">
+          {imageStatus === "loading" ? (
+            <IconLoader2 size={18} stroke={1.8} className="animate-spin" />
+          ) : (
+            <IconPhoto size={18} stroke={1.5} />
+          )}
+        </span>
+      )}
+      <img
+        key={imageLoadKey}
+        ref={imageLoadStatusRef}
+        src={src}
+        alt={alt}
+        data-image-load-key={imageLoadKey}
+        loading="lazy"
+        onLoad={() => {
+          setImageLoadStatus(imageLoadKey, "loaded");
+        }}
+        onError={() => {
+          setImageLoadStatus(imageLoadKey, "error");
+        }}
+        className={`max-h-32 max-w-full object-contain ${
+          showPlaceholder ? "absolute inset-0 opacity-0" : ""
+        }`}
+      />
     </button>
   );
 }

@@ -16,8 +16,8 @@ import {
   createTestVolume,
   findTestStorageByName,
   findTestRunRecord,
-  findTestCreditUsage,
-  insertTestCreditUsageForRun,
+  findTestUsageEvent,
+  insertTestModelUsageEventForRun,
   insertTestSandboxTelemetry,
   findTestSandboxTelemetry,
   createTestSchedule,
@@ -259,6 +259,56 @@ describe("Zero Agents API", () => {
 
       const response = await postAgent({}, "no-token");
       expect(response.status).toBe(401);
+    });
+
+    it("should return 409 when org has reached the agent limit", async () => {
+      // Create 7 agents (the maximum)
+      for (let i = 0; i < 7; i++) {
+        const response = await postAgent(
+          { displayName: `Agent ${i + 1}` },
+          testCliToken,
+        );
+        expect(response.status).toBe(201);
+      }
+
+      // 8th agent should be rejected
+      const response = await postAgent(
+        { displayName: "Over Limit" },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(409);
+      const data = await response.json();
+      expect(data.error.code).toBe("CONFLICT");
+      expect(data.error.message).toContain("maximum number of agents");
+    });
+
+    it("should allow creation after deleting an agent below the limit", async () => {
+      // Create 7 agents
+      const agents = [];
+      for (let i = 0; i < 7; i++) {
+        const response = await postAgent(
+          { displayName: `Agent ${i + 1}` },
+          testCliToken,
+        );
+        expect(response.status).toBe(201);
+        agents.push(await response.json());
+      }
+
+      // 8th should be rejected
+      const blocked = await postAgent({ displayName: "Blocked" }, testCliToken);
+      expect(blocked.status).toBe(409);
+
+      // Delete one agent
+      const deleteRes = await deleteAgent(agents[0].agentId, testCliToken);
+      expect(deleteRes.status).toBe(204);
+
+      // Now creation should succeed
+      const response = await postAgent(
+        { displayName: "After Delete" },
+        testCliToken,
+      );
+      expect(response.status).toBe(201);
     });
   });
 
@@ -1053,14 +1103,14 @@ describe("Zero Agents API", () => {
       expect(data.error.code).toBe("CONFLICT");
     });
 
-    it("should delete runs and preserve credit_usage on agent deletion", async () => {
+    it("should delete runs and preserve usage_event on agent deletion", async () => {
       const created = await (await postAgent({}, testCliToken)).json();
 
       const { runId } = await seedTestRun(user.userId, created.agentId, {
         status: "completed",
       });
 
-      const { id: creditId } = await insertTestCreditUsageForRun({
+      const { id: usageEventId } = await insertTestModelUsageEventForRun({
         runId,
         orgId: user.orgId,
         userId: user.userId,
@@ -1074,10 +1124,10 @@ describe("Zero Agents API", () => {
       const run = await findTestRunRecord(runId);
       expect(run).toBeUndefined();
 
-      const credit = await findTestCreditUsage(creditId);
-      expect(credit).toBeDefined();
-      expect(credit!.creditsCharged).toBe(100);
-      expect(credit!.status).toBe("processed");
+      const usage = await findTestUsageEvent(usageEventId);
+      expect(usage).toBeDefined();
+      expect(usage!.creditsCharged).toBe(100);
+      expect(usage!.status).toBe("processed");
     });
 
     it("should cascade-delete run data when agent is deleted", async () => {
@@ -1678,6 +1728,53 @@ describe("Zero Agents API", () => {
       const data = await response.json();
       expect(data.modelProviderId).toBeNull();
       expect(data.selectedModel).toBeNull();
+    });
+  });
+
+  describe("preferPersonalProvider", () => {
+    it("should default to false when omitted on POST", async () => {
+      const response = await postAgent(
+        { displayName: "default-prefer" },
+        testCliToken,
+      );
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.preferPersonalProvider).toBe(false);
+    });
+
+    it("should round-trip true and false on PUT", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      let response = await putAgent(
+        created.agentId,
+        { preferPersonalProvider: true },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).preferPersonalProvider).toBe(true);
+
+      response = await putAgent(
+        created.agentId,
+        { preferPersonalProvider: false },
+        testCliToken,
+      );
+      expect(response.status).toBe(200);
+      expect((await response.json()).preferPersonalProvider).toBe(false);
+    });
+
+    it("should round-trip via PATCH updateMetadata and persist on GET", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const patchResponse = await patchAgent(
+        created.agentId,
+        { preferPersonalProvider: true },
+        testCliToken,
+      );
+      expect(patchResponse.status).toBe(200);
+      expect((await patchResponse.json()).preferPersonalProvider).toBe(true);
+
+      const got = await (await getAgent(created.agentId, testCliToken)).json();
+      expect(got.preferPersonalProvider).toBe(true);
     });
   });
 

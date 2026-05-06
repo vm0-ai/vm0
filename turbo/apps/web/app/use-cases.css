@@ -323,6 +323,108 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Screenshot preview (hero output proof)
+   --------------------------------------------------------------------------- */
+
+.uc-screenshot-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.uc-screenshot-label {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ed4e01;
+}
+
+.uc-screenshot-frame {
+  border-radius: 12px;
+  border: 0.7px solid hsl(var(--gray-200));
+  overflow: hidden;
+  background: hsl(var(--gray-50));
+}
+
+.uc-screenshot-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ---------------------------------------------------------------------------
+   Screenshot carousel
+   --------------------------------------------------------------------------- */
+
+.uc-carousel {
+  position: relative;
+}
+
+.uc-carousel-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.5;
+  transition:
+    opacity 0.2s,
+    background 0.2s;
+  z-index: 2;
+}
+
+.uc-carousel-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.uc-carousel-btn--left {
+  left: 12px;
+}
+
+.uc-carousel-btn--right {
+  right: 12px;
+}
+
+.uc-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.uc-carousel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: hsl(var(--gray-300));
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.uc-carousel-dot:hover {
+  background: hsl(var(--gray-500));
+}
+
+.uc-carousel-dot--active,
+.uc-carousel-dot--active:hover {
+  background: #ed4e01;
+}
+
+/* ---------------------------------------------------------------------------
    Detail sections
    --------------------------------------------------------------------------- */
 
@@ -342,6 +444,22 @@
   font-weight: 300;
   line-height: 1.7;
   color: hsl(var(--muted-foreground));
+}
+
+.uc-subsection {
+  margin-top: 32px;
+}
+
+.uc-subsection:first-child {
+  margin-top: 0;
+}
+
+.uc-subsection-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  letter-spacing: -0.2px;
+  margin-bottom: 12px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -555,6 +673,78 @@
   font-size: 10px;
   line-height: 1.6;
   margin-top: 6px;
+}
+
+/* ---------------------------------------------------------------------------
+   Connect your tools (connector setup cards)
+   --------------------------------------------------------------------------- */
+
+.uc-connect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.uc-connect-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 12px;
+  border: 0.7px solid hsl(var(--gray-200));
+  background: hsl(var(--gray-0));
+  transition: border-color 0.2s;
+}
+
+.uc-connect-card:hover {
+  border-color: hsl(var(--gray-300));
+}
+
+.uc-connect-card-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.uc-connect-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.uc-connect-card-name {
+  font-size: 15px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.uc-connect-card-desc {
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  flex: 1;
+}
+
+.uc-connect-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 0.7px solid hsl(var(--gray-200));
+  background: hsl(var(--gray-0));
+  color: hsl(var(--foreground));
+  text-decoration: none;
+  transition: all 0.2s;
+}
+
+.uc-connect-btn:hover {
+  border-color: #ed4e01;
+  color: #ed4e01;
 }
 
 /* ---------------------------------------------------------------------------

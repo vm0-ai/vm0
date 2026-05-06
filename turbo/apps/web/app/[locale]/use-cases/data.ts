@@ -47,6 +47,7 @@ export interface UseCase {
   capability: Capability;
   model: string;
   videoId?: string;
+  screenshots?: string[];
   connectors: ConnectorRef[];
   integrations: IntegrationData[];
   relatedSlugs: string[];
@@ -179,23 +180,23 @@ const INSTANTLY: ConnectorRef = {
   icon: "/assets/connectors/instantly.svg",
 };
 
-const FIGMA: ConnectorRef = {
-  id: "figma",
-  label: "Figma",
-  icon: "/assets/connectors/figma.svg",
+const HEYGEN: ConnectorRef = {
+  id: "heygen",
+  label: "HeyGen",
+  icon: "/assets/connectors/heygen.svg",
+};
+
+const ELEVENLABS: ConnectorRef = {
+  id: "elevenlabs",
+  label: "ElevenLabs",
+  icon: "/assets/connectors/elevenlabs.svg",
   dark: true,
 };
 
-const AHREFS: ConnectorRef = {
-  id: "ahrefs",
-  label: "Ahrefs",
-  icon: "/assets/connectors/ahref.svg",
-};
-
-const FAL_AI: ConnectorRef = {
-  id: "fal",
-  label: "Fal.ai",
-  icon: "/assets/connectors/fal.svg",
+const GAMMA: ConnectorRef = {
+  id: "gamma",
+  label: "Gamma",
+  icon: "/assets/connectors/gamma.svg",
 };
 
 // ---------------------------------------------------------------------------
@@ -206,6 +207,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "auto-merge-releases",
     color: "#4fa68b",
+    screenshots: ["/assets/use-cases/auto-merge-releases.png"],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -236,76 +238,10 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "sentry-triage",
-    color: "#d4a96a",
-    videoId: "iTYhvVp5z5k",
-    avatar: {
-      rotation: 1,
-      skin: 1,
-      hairStyle: 3,
-      hairColor: 2,
-      expression: 3,
-      intensity: "d",
-    },
-    roles: ["engineering"],
-    capability: "multi-tool",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, SENTRY, AXIOM, GITHUB],
-    integrations: [
-      { connector: SENTRY, required: true },
-      { connector: GITHUB, required: false },
-    ],
-    relatedSlugs: [
-      "file-bugs-from-slack",
-      "kol-cold-outreach",
-      "standup-summary",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "standup-summary",
-    color: "#c89090",
-    videoId: "0D7ScfH4fwk",
-    avatar: {
-      rotation: 2,
-      skin: 3,
-      hairStyle: 5,
-      hairColor: 4,
-      expression: 1,
-      intensity: "m",
-    },
-    roles: ["everyone"],
-    capability: "multi-tool",
-    model: "GPT-4o",
-    connectors: [GOOGLE_CALENDAR, GMAIL, LINEAR, NOTION],
-    integrations: [
-      { connector: GOOGLE_CALENDAR, required: true },
-      { connector: GMAIL, required: true },
-      { connector: LINEAR, required: true },
-    ],
-    relatedSlugs: [
-      "sentry-triage",
-      "kol-cold-outreach",
-      "file-bugs-from-slack",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "kol-cold-outreach",
     color: "#c4a08a",
     videoId: "aignt_fZSVo",
+    screenshots: ["/assets/use-cases/kol-cold-outreach.png"],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -323,7 +259,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GMAIL, required: true },
       { connector: NOTION, required: false },
     ],
-    relatedSlugs: ["file-bugs-from-slack", "slack-triage", "standup-summary"],
+    relatedSlugs: ["file-bugs-from-slack", "slack-triage", "morning-brief"],
     stepCount: 3,
     nextActionCount: 2,
     integrationCount: 3,
@@ -336,6 +272,7 @@ export const USE_CASES: UseCase[] = [
     slug: "file-bugs-from-slack",
     color: "#c08050",
     videoId: "E08Bc02tDIM",
+    screenshots: ["/assets/use-cases/file-bugs-from-slack.png"],
     avatar: {
       rotation: 4,
       skin: 4,
@@ -352,7 +289,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GITHUB, required: true },
       { connector: SLACK, required: true },
     ],
-    relatedSlugs: ["sentry-triage", "standup-summary", "kol-cold-outreach"],
+    relatedSlugs: ["error-triage-daily", "morning-brief", "kol-cold-outreach"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
@@ -365,6 +302,7 @@ export const USE_CASES: UseCase[] = [
     slug: "slack-triage",
     color: "#7c9885",
     videoId: "XcqnMX1U0xY",
+    screenshots: ["/assets/use-cases/slack-triage.png"],
     avatar: {
       rotation: 3,
       skin: 2,
@@ -382,7 +320,11 @@ export const USE_CASES: UseCase[] = [
       { connector: LINEAR, required: false },
       { connector: GOOGLE_CALENDAR, required: false },
     ],
-    relatedSlugs: ["standup-summary", "file-bugs-from-slack", "sentry-triage"],
+    relatedSlugs: [
+      "morning-brief",
+      "file-bugs-from-slack",
+      "error-triage-daily",
+    ],
     stepCount: 3,
     nextActionCount: 2,
     integrationCount: 3,
@@ -395,6 +337,7 @@ export const USE_CASES: UseCase[] = [
     slug: "employee-onboarding",
     color: "#6b8cae",
     videoId: "2YA7Iff4XHs",
+    screenshots: ["/assets/use-cases/employee-onboarding.png"],
     avatar: {
       rotation: 5,
       skin: 5,
@@ -413,7 +356,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GOOGLE_CALENDAR, required: true },
       { connector: GMAIL, required: false },
     ],
-    relatedSlugs: ["slack-triage", "standup-summary", "file-bugs-from-slack"],
+    relatedSlugs: ["slack-triage", "morning-brief", "file-bugs-from-slack"],
     stepCount: 3,
     nextActionCount: 2,
     integrationCount: 4,
@@ -425,6 +368,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "build-with-v0",
     color: "#7c8cbe",
+    screenshots: ["/assets/use-cases/build-with-v0.png"],
     avatar: {
       rotation: 3,
       skin: 1,
@@ -443,7 +387,7 @@ export const USE_CASES: UseCase[] = [
     ],
     relatedSlugs: [
       "file-bugs-from-slack",
-      "standup-summary",
+      "morning-brief",
       "employee-onboarding",
     ],
     stepCount: 3,
@@ -457,6 +401,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "document-decisions",
     color: "#8a7cbe",
+    screenshots: [
+      "/assets/use-cases/document-decisions.png",
+      "/assets/use-cases/document-decisions-2.png",
+    ],
     avatar: {
       rotation: 2,
       skin: 3,
@@ -473,7 +421,7 @@ export const USE_CASES: UseCase[] = [
       { connector: SLACK, required: true },
       { connector: NOTION, required: true },
     ],
-    relatedSlugs: ["standup-summary", "employee-onboarding", "slack-triage"],
+    relatedSlugs: ["morning-brief", "employee-onboarding", "slack-triage"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
@@ -485,6 +433,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "product-health-briefing",
     color: "#6b9e8c",
+    screenshots: ["/assets/use-cases/product-health-briefing.png"],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -503,7 +452,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GITHUB, required: true },
       { connector: GOOGLE_CALENDAR, required: false },
     ],
-    relatedSlugs: ["standup-summary", "sentry-triage", "document-decisions"],
+    relatedSlugs: ["morning-brief", "error-triage-daily", "document-decisions"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 4,
@@ -515,6 +464,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "tech-debt-scan",
     color: "#7c9ebe",
+    screenshots: ["/assets/use-cases/tech-debt-scan.png"],
     avatar: {
       rotation: 4,
       skin: 2,
@@ -528,7 +478,7 @@ export const USE_CASES: UseCase[] = [
     model: "Claude 4 Sonnet",
     connectors: [GITHUB],
     integrations: [{ connector: GITHUB, required: true }],
-    relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "pr-review"],
+    relatedSlugs: ["error-triage-daily", "file-bugs-from-slack", "pr-review"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 1,
@@ -538,8 +488,12 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "competitor-audit",
+    slug: "competitor-intelligence",
     color: "#be7c9a",
+    screenshots: [
+      "/assets/use-cases/competitor-audit.png",
+      "/assets/use-cases/competitor-pricing-monitor.png",
+    ],
     avatar: {
       rotation: 3,
       skin: 5,
@@ -573,6 +527,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "daily-engineering-brief",
     color: "#7c9ebe",
+    screenshots: ["/assets/use-cases/daily-engineering-brief.png"],
     avatar: {
       rotation: 2,
       skin: 4,
@@ -594,7 +549,7 @@ export const USE_CASES: UseCase[] = [
     ],
     relatedSlugs: [
       "product-health-briefing",
-      "sentry-triage",
+      "auto-test-coverage",
       "error-triage-daily",
     ],
     stepCount: 4,
@@ -606,40 +561,12 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "competitor-pricing-monitor",
-    color: "#7cbeab",
-    avatar: {
-      rotation: 5,
-      skin: 2,
-      hairStyle: 4,
-      hairColor: 1,
-      expression: 4,
-      intensity: "d",
-    },
-    roles: ["marketing", "product"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [NOTION, SLACK],
-    integrations: [
-      { connector: NOTION, required: true },
-      { connector: SLACK, required: false },
-    ],
-    relatedSlugs: [
-      "competitor-audit",
-      "kol-cold-outreach",
-      "product-health-briefing",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "customer-360",
     color: "#9e8abe",
+    screenshots: [
+      "/assets/use-cases/customer-360.png",
+      "/assets/use-cases/customer-360-2.png",
+    ],
     avatar: {
       rotation: 1,
       skin: 5,
@@ -659,11 +586,7 @@ export const USE_CASES: UseCase[] = [
       { connector: LINEAR, required: false },
       { connector: GITHUB, required: false },
     ],
-    relatedSlugs: [
-      "standup-summary",
-      "kol-cold-outreach",
-      "document-decisions",
-    ],
+    relatedSlugs: ["morning-brief", "kol-cold-outreach", "document-decisions"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 5,
@@ -675,6 +598,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "trending-topic-radar",
     color: "#be9a5c",
+    screenshots: ["/assets/use-cases/trending-topic-radar.png"],
     avatar: {
       rotation: 5,
       skin: 3,
@@ -693,9 +617,9 @@ export const USE_CASES: UseCase[] = [
       { connector: NOTION, required: false },
     ],
     relatedSlugs: [
-      "competitor-audit",
+      "competitor-intelligence",
       "document-decisions",
-      "content-performance-report",
+      "marketing-performance-report",
     ],
     stepCount: 3,
     nextActionCount: 3,
@@ -706,42 +630,9 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "content-performance-report",
-    color: "#7cbe9e",
-    avatar: {
-      rotation: 2,
-      skin: 4,
-      hairStyle: 4,
-      hairColor: 2,
-      expression: 3,
-      intensity: "m",
-    },
-    roles: ["marketing"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [X_TWITTER, SLACK, NOTION, PLAUSIBLE],
-    integrations: [
-      { connector: X_TWITTER, required: true },
-      { connector: SLACK, required: true },
-      { connector: NOTION, required: true },
-      { connector: PLAUSIBLE, required: false },
-    ],
-    relatedSlugs: [
-      "competitor-audit",
-      "trending-topic-radar",
-      "kol-cold-outreach",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 4,
-    tipCount: 3,
-    promptVariantCount: 4,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "error-triage-daily",
     color: "#9abe7c",
+    screenshots: ["/assets/use-cases/error-triage-daily.png"],
     avatar: {
       rotation: 2,
       skin: 1,
@@ -760,7 +651,7 @@ export const USE_CASES: UseCase[] = [
       { connector: AXIOM, required: false },
     ],
     relatedSlugs: [
-      "sentry-triage",
+      "daily-engineering-brief",
       "tech-debt-scan",
       "product-health-briefing",
     ],
@@ -775,6 +666,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "marketing-emails",
     color: "#d68c7c",
+    screenshots: ["/assets/use-cases/marketing-emails.png"],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -795,7 +687,7 @@ export const USE_CASES: UseCase[] = [
     ],
     relatedSlugs: [
       "kol-cold-outreach",
-      "standup-summary",
+      "morning-brief",
       "product-health-briefing",
     ],
     stepCount: 3,
@@ -809,6 +701,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "multilingual-cms-publishing",
     color: "#8E75FF",
+    screenshots: [
+      "/assets/use-cases/multilingual-cms-publishing-2.png",
+      "/assets/use-cases/multilingual-cms-publishing.png",
+    ],
     avatar: {
       rotation: 2,
       skin: 2,
@@ -828,36 +724,8 @@ export const USE_CASES: UseCase[] = [
     relatedSlugs: [
       "kol-cold-outreach",
       "document-decisions",
-      "competitor-audit",
+      "competitor-intelligence",
     ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "kb-ingest",
-    color: "#a07abe",
-    avatar: {
-      rotation: 2,
-      skin: 3,
-      hairStyle: 1,
-      hairColor: 4,
-      expression: 3,
-      intensity: "m",
-    },
-    roles: ["support"],
-    capability: "instant",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, GITHUB],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: GITHUB, required: false },
-    ],
-    relatedSlugs: ["document-decisions", "competitor-audit", "standup-summary"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
@@ -869,6 +737,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "pr-review",
     color: "#5a8a7a",
+    screenshots: [
+      "/assets/use-cases/pr-review.png",
+      "/assets/use-cases/pr-review-2.png",
+    ],
     avatar: {
       rotation: 4,
       skin: 1,
@@ -885,7 +757,11 @@ export const USE_CASES: UseCase[] = [
       { connector: GITHUB, required: true },
       { connector: SLACK, required: false },
     ],
-    relatedSlugs: ["file-bugs-from-slack", "tech-debt-scan", "sentry-triage"],
+    relatedSlugs: [
+      "file-bugs-from-slack",
+      "tech-debt-scan",
+      "error-triage-daily",
+    ],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
@@ -897,6 +773,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "api-performance",
     color: "#c07890",
+    screenshots: [
+      "/assets/use-cases/api-performance.png",
+      "/assets/use-cases/api-performance-2.png",
+    ],
     avatar: {
       rotation: 1,
       skin: 4,
@@ -914,7 +794,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GITHUB, required: false },
     ],
     relatedSlugs: [
-      "sentry-triage",
+      "tech-debt-scan",
       "error-triage-daily",
       "product-health-briefing",
     ],
@@ -927,8 +807,12 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "marketing-analytics",
+    slug: "marketing-performance-report",
     color: "#7cbe9a",
+    screenshots: [
+      "/assets/use-cases/marketing-analytics.png",
+      "/assets/use-cases/content-performance-report.png",
+    ],
     avatar: {
       rotation: 3,
       skin: 2,
@@ -938,29 +822,35 @@ export const USE_CASES: UseCase[] = [
       intensity: "m",
     },
     roles: ["marketing"],
-    capability: "instant",
+    capability: "scheduled",
     model: "Claude 4 Sonnet",
-    connectors: [SLACK, PLAUSIBLE, NOTION],
+    connectors: [X_TWITTER, SLACK, NOTION, PLAUSIBLE],
     integrations: [
+      { connector: X_TWITTER, required: true },
       { connector: PLAUSIBLE, required: true },
+      { connector: SLACK, required: true },
       { connector: NOTION, required: false },
     ],
     relatedSlugs: [
-      "competitor-audit",
-      "content-performance-report",
-      "product-health-briefing",
+      "competitor-intelligence",
+      "trending-topic-radar",
+      "kol-cold-outreach",
     ],
     stepCount: 3,
     nextActionCount: 3,
-    integrationCount: 2,
+    integrationCount: 4,
     tipCount: 3,
-    promptVariantCount: 3,
+    promptVariantCount: 4,
     slackPreviewCount: 2,
   },
 
   {
     slug: "production-db-query",
     color: "#be8a5a",
+    screenshots: [
+      "/assets/use-cases/production-db-query.png",
+      "/assets/use-cases/production-db-query-2.png",
+    ],
     avatar: {
       rotation: 5,
       skin: 5,
@@ -977,7 +867,7 @@ export const USE_CASES: UseCase[] = [
       { connector: VM0, required: true },
       { connector: SLACK, required: false },
     ],
-    relatedSlugs: ["sentry-triage", "api-performance", "error-triage-daily"],
+    relatedSlugs: ["tech-debt-scan", "api-performance", "error-triage-daily"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
@@ -989,6 +879,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "security-compliance",
     color: "#be7c5a",
+    screenshots: [
+      "/assets/use-cases/security-compliance.png",
+      "/assets/use-cases/security-compliance-2.png",
+    ],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -1021,6 +915,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "daily-email-triage",
     color: "#be8a5c",
+    screenshots: ["/assets/use-cases/daily-email-triage.png"],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -1037,7 +932,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GMAIL, required: true },
       { connector: SLACK, required: true },
     ],
-    relatedSlugs: ["slack-triage", "standup-summary", "document-decisions"],
+    relatedSlugs: ["slack-triage", "morning-brief", "document-decisions"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 2,
@@ -1049,6 +944,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "auto-test-coverage",
     color: "#5abe7c",
+    screenshots: ["/assets/use-cases/auto-test-coverage.png"],
     avatar: {
       rotation: 3,
       skin: 1,
@@ -1078,6 +974,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "daily-user-analysis",
     color: "#5a8abe",
+    screenshots: [
+      "/assets/use-cases/daily-user-analysis.png",
+      "/assets/use-cases/daily-user-analysis-2.png",
+    ],
     avatar: {
       rotation: 5,
       skin: 4,
@@ -1097,39 +997,7 @@ export const USE_CASES: UseCase[] = [
     relatedSlugs: [
       "product-health-briefing",
       "production-db-query",
-      "marketing-analytics",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "evening-brief",
-    color: "#9a7c5a",
-    avatar: {
-      rotation: 2,
-      skin: 3,
-      hairStyle: 1,
-      hairColor: 5,
-      expression: 3,
-      intensity: "m",
-    },
-    roles: ["everyone"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, GITHUB],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: GITHUB, required: true },
-    ],
-    relatedSlugs: [
-      "standup-summary",
-      "product-health-briefing",
-      "daily-engineering-brief",
+      "marketing-performance-report",
     ],
     stepCount: 3,
     nextActionCount: 3,
@@ -1142,6 +1010,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cost-optimizer",
     color: "#8a5abe",
+    screenshots: ["/assets/use-cases/cost-optimizer.png"],
     avatar: {
       rotation: 4,
       skin: 5,
@@ -1150,7 +1019,7 @@ export const USE_CASES: UseCase[] = [
       expression: 5,
       intensity: "h",
     },
-    roles: ["engineering"],
+    roles: ["engineering", "product"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, VM0],
@@ -1172,8 +1041,12 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "merge-queue-monitor",
+    slug: "release-pipeline-monitor",
     color: "#5a9abe",
+    screenshots: [
+      "/assets/use-cases/merge-queue-monitor.png",
+      "/assets/use-cases/release-readiness-check.png",
+    ],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -1202,6 +1075,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "investor-board-updates",
     color: "#3e7abe",
+    screenshots: ["/assets/use-cases/investor-board-updates.png"],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1210,7 +1084,7 @@ export const USE_CASES: UseCase[] = [
       expression: 4,
       intensity: "d",
     },
-    roles: ["product"],
+    roles: ["product", "everyone"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
     connectors: [LINEAR, GITHUB, PLAUSIBLE, GMAIL, NOTION],
@@ -1223,7 +1097,7 @@ export const USE_CASES: UseCase[] = [
     ],
     relatedSlugs: [
       "product-health-briefing",
-      "marketing-analytics",
+      "marketing-performance-report",
       "customer-360",
     ],
     stepCount: 3,
@@ -1237,6 +1111,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "lead-followups",
     color: "#be5a4f",
+    screenshots: ["/assets/use-cases/lead-followups.png"],
     avatar: {
       rotation: 1,
       skin: 3,
@@ -1265,6 +1140,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "release-notes-generator",
     color: "#5abe8e",
+    screenshots: ["/assets/use-cases/release-notes-generator.png"],
     avatar: {
       rotation: 4,
       skin: 2,
@@ -1283,8 +1159,8 @@ export const USE_CASES: UseCase[] = [
     ],
     relatedSlugs: [
       "auto-merge-releases",
-      "release-readiness-check",
-      "standup-summary",
+      "release-pipeline-monitor",
+      "morning-brief",
     ],
     stepCount: 3,
     nextActionCount: 3,
@@ -1297,6 +1173,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "meeting-action-items",
     color: "#be9a3a",
+    screenshots: ["/assets/use-cases/meeting-action-items.png"],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -1314,7 +1191,7 @@ export const USE_CASES: UseCase[] = [
       { connector: SLACK, required: true },
       { connector: NOTION, required: true },
     ],
-    relatedSlugs: ["standup-summary", "document-decisions", "morning-brief"],
+    relatedSlugs: ["daily-email-triage", "document-decisions", "morning-brief"],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,
@@ -1326,6 +1203,11 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "promo-video-from-recordings",
     color: "#c86478",
+    screenshots: [
+      "/assets/use-cases/promo-video-from-recordings.png",
+      "/assets/use-cases/promo-video-from-recordings-2.png",
+      "/assets/use-cases/promo-video-from-recordings-3.png",
+    ],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1337,20 +1219,22 @@ export const USE_CASES: UseCase[] = [
     roles: ["marketing"],
     capability: "multi-tool",
     model: "Claude 4 Sonnet",
-    connectors: [SLACK, GOOGLE_DRIVE, NOTION],
+    connectors: [SLACK, GOOGLE_DRIVE, ELEVENLABS, HEYGEN, NOTION],
     integrations: [
       { connector: SLACK, required: true },
       { connector: GOOGLE_DRIVE, required: true },
+      { connector: ELEVENLABS, required: true },
+      { connector: HEYGEN, required: true },
       { connector: NOTION, required: false },
     ],
     relatedSlugs: [
-      "marketing-content-automation",
-      "competitor-audit",
+      "brief-to-draft-content",
+      "competitor-intelligence",
       "multilingual-cms-publishing",
     ],
     stepCount: 3,
     nextActionCount: 3,
-    integrationCount: 3,
+    integrationCount: 5,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
@@ -1359,6 +1243,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cross-tool-context",
     color: "#7abebe",
+    screenshots: ["/assets/use-cases/cross-tool-context.png"],
     avatar: {
       rotation: 2,
       skin: 5,
@@ -1378,7 +1263,7 @@ export const USE_CASES: UseCase[] = [
       { connector: GITHUB, required: false },
     ],
     relatedSlugs: [
-      "standup-summary",
+      "morning-brief",
       "document-decisions",
       "product-health-briefing",
     ],
@@ -1393,6 +1278,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "voice-driven-agent",
     color: "#6b7fbf",
+    screenshots: ["/assets/use-cases/voice-driven-agent.png"],
     avatar: {
       rotation: 1,
       skin: 2,
@@ -1401,7 +1287,7 @@ export const USE_CASES: UseCase[] = [
       expression: 5,
       intensity: "m",
     },
-    roles: ["engineering"],
+    roles: ["engineering", "everyone"],
     capability: "instant",
     model: "Claude 4 Sonnet",
     connectors: [SLACK, ANTHROPIC_MANAGED_AGENTS, GITHUB],
@@ -1426,6 +1312,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "developer-support-triage",
     color: "#8abe9a",
+    screenshots: ["/assets/use-cases/developer-support-triage.png"],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1455,6 +1342,10 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "morning-brief",
     color: "#d4a06b",
+    screenshots: [
+      "/assets/use-cases/morning-brief.png",
+      "/assets/use-cases/morning-brief-2.png",
+    ],
     avatar: {
       rotation: 5,
       skin: 1,
@@ -1466,22 +1357,23 @@ export const USE_CASES: UseCase[] = [
     roles: ["everyone"],
     capability: "scheduled",
     model: "Claude 4 Sonnet",
-    connectors: [GOOGLE_CALENDAR, LINEAR, SLACK, X_TWITTER, GITHUB],
+    connectors: [GOOGLE_CALENDAR, LINEAR, SLACK, X_TWITTER, GITHUB, GAMMA],
     integrations: [
       { connector: GOOGLE_CALENDAR, required: true },
       { connector: LINEAR, required: true },
       { connector: SLACK, required: true },
       { connector: X_TWITTER, required: false },
       { connector: GITHUB, required: false },
+      { connector: GAMMA, required: false },
     ],
     relatedSlugs: [
-      "standup-summary",
-      "evening-brief",
+      "daily-email-triage",
       "daily-engineering-brief",
+      "cross-tool-context",
     ],
     stepCount: 3,
     nextActionCount: 3,
-    integrationCount: 5,
+    integrationCount: 6,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,
@@ -1490,6 +1382,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "gmail-poll-dm",
     color: "#b88cbe",
+    screenshots: ["/assets/use-cases/gmail-poll-dm.png"],
     avatar: {
       rotation: 2,
       skin: 5,
@@ -1516,36 +1409,9 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
-    slug: "release-readiness-check",
-    color: "#6bbe9a",
-    avatar: {
-      rotation: 3,
-      skin: 4,
-      hairStyle: 3,
-      hairColor: 4,
-      expression: 4,
-      intensity: "d",
-    },
-    roles: ["engineering"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [GITHUB, SLACK],
-    integrations: [
-      { connector: GITHUB, required: true },
-      { connector: SLACK, required: true },
-    ],
-    relatedSlugs: ["auto-merge-releases", "merge-queue-monitor", "pr-review"],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 2,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
     slug: "docs-auto-update",
     color: "#c28a9e",
+    screenshots: ["/assets/use-cases/docs-auto-update.png"],
     avatar: {
       rotation: 5,
       skin: 2,
@@ -1563,7 +1429,11 @@ export const USE_CASES: UseCase[] = [
       { connector: GITHUB, required: true },
       { connector: NOTION, required: false },
     ],
-    relatedSlugs: ["kb-ingest", "customer-360", "document-decisions"],
+    relatedSlugs: [
+      "customer-360",
+      "document-decisions",
+      "developer-support-triage",
+    ],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,
@@ -1575,6 +1445,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "control-verification",
     color: "#5a7cbe",
+    screenshots: ["/assets/use-cases/control-verification.png"],
     avatar: {
       rotation: 1,
       skin: 5,
@@ -1608,6 +1479,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "brief-to-draft-content",
     color: "#8ebe5a",
+    screenshots: ["/assets/use-cases/brief-to-draft-content.png"],
     avatar: {
       rotation: 4,
       skin: 3,
@@ -1627,140 +1499,8 @@ export const USE_CASES: UseCase[] = [
     ],
     relatedSlugs: [
       "multilingual-cms-publishing",
-      "content-experiment-engine",
+      "marketing-performance-report",
       "marketing-emails",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "cover-art-generation",
-    color: "#be7c3a",
-    avatar: {
-      rotation: 3,
-      skin: 5,
-      hairStyle: 3,
-      hairColor: 4,
-      expression: 5,
-      intensity: "h",
-    },
-    roles: ["marketing"],
-    capability: "instant",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, FIGMA, NOTION],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: FIGMA, required: false },
-      { connector: NOTION, required: false },
-    ],
-    relatedSlugs: [
-      "brief-to-draft-content",
-      "content-experiment-engine",
-      "multilingual-cms-publishing",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "content-experiment-engine",
-    color: "#5abeab",
-    avatar: {
-      rotation: 1,
-      skin: 4,
-      hairStyle: 1,
-      hairColor: 5,
-      expression: 2,
-      intensity: "m",
-    },
-    roles: ["marketing"],
-    capability: "scheduled",
-    model: "Claude 4 Sonnet",
-    connectors: [X_TWITTER, NOTION, SLACK],
-    integrations: [
-      { connector: X_TWITTER, required: true },
-      { connector: NOTION, required: true },
-      { connector: SLACK, required: true },
-    ],
-    relatedSlugs: [
-      "content-performance-report",
-      "competitor-audit",
-      "trending-topic-radar",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "agent-video-production",
-    color: "#ab5abe",
-    avatar: {
-      rotation: 5,
-      skin: 2,
-      hairStyle: 4,
-      hairColor: 1,
-      expression: 4,
-      intensity: "h",
-    },
-    roles: ["marketing"],
-    capability: "multi-tool",
-    model: "Claude 4 Sonnet",
-    connectors: [SLACK, ANTHROPIC_MANAGED_AGENTS, NOTION],
-    integrations: [
-      { connector: SLACK, required: true },
-      { connector: ANTHROPIC_MANAGED_AGENTS, required: true },
-      { connector: NOTION, required: false },
-    ],
-    relatedSlugs: [
-      "brief-to-draft-content",
-      "cover-art-generation",
-      "content-experiment-engine",
-    ],
-    stepCount: 3,
-    nextActionCount: 3,
-    integrationCount: 3,
-    tipCount: 3,
-    promptVariantCount: 3,
-    slackPreviewCount: 2,
-  },
-
-  {
-    slug: "seo-blog-writing",
-    color: "#c47a9e",
-    avatar: {
-      rotation: 3,
-      skin: 4,
-      hairStyle: 1,
-      hairColor: 3,
-      expression: 3,
-      intensity: "m",
-    },
-    roles: ["marketing"],
-    capability: "multi-tool",
-    model: "Claude 4 Sonnet",
-    connectors: [AHREFS, STRAPI, FAL_AI],
-    integrations: [
-      { connector: AHREFS, required: true },
-      { connector: STRAPI, required: true },
-      { connector: FAL_AI, required: false },
-    ],
-    relatedSlugs: [
-      "multilingual-cms-publishing",
-      "content-performance-report",
-      "content-experiment-engine",
     ],
     stepCount: 3,
     nextActionCount: 3,
@@ -1773,6 +1513,7 @@ export const USE_CASES: UseCase[] = [
   {
     slug: "cold-outreach-pipeline",
     color: "#d07a5c",
+    screenshots: ["/assets/use-cases/cold-outreach-pipeline.png"],
     avatar: {
       rotation: 3,
       skin: 4,
@@ -1790,10 +1531,145 @@ export const USE_CASES: UseCase[] = [
       { connector: INSTANTLY, required: true },
       { connector: SLACK, required: false },
     ],
-    relatedSlugs: ["kol-cold-outreach", "competitor-audit", "marketing-emails"],
+    relatedSlugs: [
+      "kol-cold-outreach",
+      "competitor-intelligence",
+      "marketing-emails",
+    ],
     stepCount: 3,
     nextActionCount: 3,
     integrationCount: 3,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "podcast-deep-research",
+    color: "#5b6eab",
+    screenshots: ["/assets/use-cases/podcast-deep-research.png"],
+    avatar: {
+      rotation: 0,
+      skin: 5,
+      hairStyle: 3,
+      hairColor: 4,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["marketing", "product"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, V0],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: V0, required: true },
+    ],
+    relatedSlugs: [
+      "competitor-intelligence",
+      "trending-topic-radar",
+      "marketing-performance-report",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "summarize-shared-articles",
+    color: "#5c9eb8",
+    screenshots: ["/assets/use-cases/summarize-shared-articles.png"],
+    avatar: {
+      rotation: 2,
+      skin: 3,
+      hairStyle: 4,
+      hairColor: 2,
+      expression: 3,
+      intensity: "m",
+    },
+    roles: ["everyone"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, NOTION],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: NOTION, required: false },
+    ],
+    relatedSlugs: [
+      "document-decisions",
+      "slack-triage",
+      "competitor-intelligence",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "automate-blog-production",
+    color: "#d4915e",
+    avatar: {
+      rotation: 2,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 2,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["marketing"],
+    capability: "multi-tool",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, STRAPI],
+    integrations: [
+      { connector: SLACK, required: true },
+      { connector: STRAPI, required: true },
+    ],
+    relatedSlugs: [
+      "brief-to-draft-content",
+      "multilingual-cms-publishing",
+      "marketing-performance-report",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
+    tipCount: 3,
+    promptVariantCount: 3,
+    slackPreviewCount: 2,
+  },
+
+  {
+    slug: "publish-use-case-pages",
+    color: "#b06e4a",
+    screenshots: ["/assets/use-cases/publish-use-case-pages.png"],
+    avatar: {
+      rotation: 4,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 4,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["marketing"],
+    capability: "instant",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, GITHUB],
+    integrations: [
+      { connector: GITHUB, required: true },
+      { connector: SLACK, required: true },
+    ],
+    relatedSlugs: [
+      "multilingual-cms-publishing",
+      "brief-to-draft-content",
+      "docs-auto-update",
+    ],
+    stepCount: 3,
+    nextActionCount: 3,
+    integrationCount: 2,
     tipCount: 3,
     promptVariantCount: 3,
     slackPreviewCount: 2,

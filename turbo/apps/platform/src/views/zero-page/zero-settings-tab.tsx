@@ -145,20 +145,21 @@ export function ZeroSettingsTab({
 
   const handleSaveSettings = () => {
     detach(
-      triggerUpdateSettings(
-        {
-          displayName: agentName,
-          description: desc,
-          sound: tone,
-          avatarUrl,
-          modelProviderId: modelSelection?.modelProviderId ?? null,
-          selectedModel: modelSelection?.selectedModel ?? null,
-        },
-        pageSignal,
-      ).then(() => {
+      (async () => {
+        await triggerUpdateSettings(
+          {
+            displayName: agentName,
+            description: desc,
+            sound: tone,
+            avatarUrl,
+            modelProviderId: modelSelection?.modelProviderId ?? null,
+            selectedModel: modelSelection?.selectedModel ?? null,
+          },
+          pageSignal,
+        );
         markSaved();
         toast.success("Profile saved");
-      }),
+      })(),
       Reason.DomCallback,
     );
   };

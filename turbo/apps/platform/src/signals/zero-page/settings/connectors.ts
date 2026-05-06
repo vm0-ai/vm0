@@ -29,8 +29,7 @@ import {
 } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { delay } from "signal-timers";
-import { jsonParseOr, raceUnderSignal } from "../../utils.ts";
+import { jsonParseOr } from "../../utils.ts";
 import { setAblyLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
@@ -38,6 +37,10 @@ import { resetPermissionDialog$ } from "./permission-dialog.ts";
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
   localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
+
+type PostConnectOptions = {
+  readonly showPermissionDialog?: boolean;
+};
 
 // ---------------------------------------------------------------------------
 // Derived state
@@ -291,7 +294,12 @@ export const setTokenFormSubmitting$ = command(
 // ---------------------------------------------------------------------------
 
 export const enablePlatformConnector$ = command(
-  async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
+  async (
+    { get, set },
+    type: ConnectorType,
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroPlatformConnectorContract);
     await accept(
@@ -313,7 +321,9 @@ export const enablePlatformConnector$ = command(
     toast.success(`${CONNECTOR_TYPES[type].label} enabled`, {
       id: `connector-connected-${type}`,
     });
-    set(internalPermissionDialogType$, type);
+    if (options.showPermissionDialog) {
+      set(internalPermissionDialogType$, type);
+    }
   },
 );
 
@@ -326,6 +336,7 @@ export const submitApiToken$ = command(
     { get, set },
     type: ConnectorType,
     inputSecrets: Record<string, string>,
+    options: PostConnectOptions,
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
@@ -368,7 +379,9 @@ export const submitApiToken$ = command(
     toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`, {
       id: `connector-connected-${type}`,
     });
-    set(internalPermissionDialogType$, type);
+    if (options.showPermissionDialog) {
+      set(internalPermissionDialogType$, type);
+    }
   },
 );
 
@@ -405,6 +418,7 @@ export const justConnectedTypes$ = computed((get) => {
 export const disconnectConnector$ = command(
   async ({ set }, type: ConnectorType, signal: AbortSignal): Promise<void> => {
     await set(deleteConnector$, type, signal);
+    signal.throwIfAborted();
     set(internalJustConnectedTypes$, (prev) => {
       if (!prev.has(type)) {
         return prev;
@@ -412,6 +426,9 @@ export const disconnectConnector$ = command(
       const next = new Set(prev);
       next.delete(type);
       return next;
+    });
+    toast.success(`${CONNECTOR_TYPES[type].label} disconnected`, {
+      id: `connector-disconnected-${type}`,
     });
   },
 );
@@ -448,32 +465,19 @@ export function isStandaloneMode(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
-/**
- * Resolve when `authWindow` is observed closed. In standalone mode
- * `authWindow` is null (iOS Safari opens an external browser, no handle)
- * — this promise then never resolves and is only unblocked via signal abort
- * (which rejects the `delay` call).
- */
-const POPUP_WATCHDOG_INTERVAL_MS = 500;
-async function watchPopupClosed(
-  authWindow: Window | null,
-  signal: AbortSignal,
-): Promise<void> {
-  for (;;) {
-    await delay(POPUP_WATCHDOG_INTERVAL_MS, { signal });
-    if (authWindow?.closed) {
-      return;
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Connect command
 // ---------------------------------------------------------------------------
 
 export const connectConnector$ = command(
-  async ({ get, set }, type: ConnectorType, signal: AbortSignal) => {
-    const baseUrl = get(apiBaseForNavigation$);
+  async (
+    { get, set },
+    type: ConnectorType,
+    options: PostConnectOptions,
+    signal: AbortSignal,
+  ) => {
+    const baseUrl = await get(apiBaseForNavigation$);
+    signal.throwIfAborted();
 
     set(internalPollingType$, type);
 
@@ -492,12 +496,8 @@ export const connectConnector$ = command(
       throw new Error("Failed to open authorization window");
     }
 
-    // Wait for either the OAuth flow to complete (Ably publishes
-    // `connector:changed` from the callback) or the popup to close. Cross-
-    // origin popups (platform on app.*, callback on www.*) have no
-    // reliable close event, so we also watch `authWindow.closed` as a
-    // fallback for user abandonment.
-    //
+    // Wait for the OAuth flow to complete. The callback publishes
+    // `connector:changed`, and the subscription rechecks the server state.
     // Snapshot taken on the first body invocation: `null` marks "no
     // connector yet" and an `updatedAt` value marks "reconnect scenario —
     // wait for it to change". The snapshot must happen *inside* the loop
@@ -542,17 +542,7 @@ export const connectConnector$ = command(
     await set(onConnectorChanged$, signal);
     signal.throwIfAborted();
 
-    await raceUnderSignal(signal, (childSignal) => {
-      return [
-        set(
-          setAblyLoop$,
-          "connector:changed",
-          onConnectorChanged$,
-          childSignal,
-        ),
-        watchPopupClosed(authWindow, childSignal),
-      ];
-    });
+    await set(setAblyLoop$, "connector:changed", onConnectorChanged$, signal);
     signal.throwIfAborted();
 
     // Refresh the connectors$ cache so UI picks up the latest state.
@@ -575,10 +565,13 @@ export const connectConnector$ = command(
     const hidden = new Set(get(hiddenConnectorTypes$));
     hidden.delete(type);
     set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-    // Close connect modal on OAuth success and show permission dialog
+    // Close connect modal on OAuth success. Only connectors-page flows should
+    // show the post-connect permission dialog.
     if (isConnected) {
       set(internalSelectedConnectorType$, null);
-      set(internalPermissionDialogType$, type);
+      if (options.showPermissionDialog) {
+        set(internalPermissionDialogType$, type);
+      }
     }
     return isConnected;
   },
@@ -593,9 +586,10 @@ export const connectAndSettle$ = command(
     { set },
     type: ConnectorType,
     onSuccess: () => void | Promise<void>,
+    options: PostConnectOptions,
     signal: AbortSignal,
   ): Promise<void> => {
-    const connected = await set(connectConnector$, type, signal);
+    const connected = await set(connectConnector$, type, options, signal);
     if (connected) {
       await onSuccess();
     }

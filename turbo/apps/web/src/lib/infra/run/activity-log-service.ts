@@ -108,6 +108,8 @@ function buildMeta(run: RunMeta, agent: AgentMeta): Record<string, unknown> {
 
 function mapNetworkLogs(logs: AxiomNetworkEvent[]): Record<string, unknown>[] {
   return logs.map((e) => {
+    // [NETWORK_LOG_FIELDS] — mirror NetworkLogEntry for activity downloads,
+    // excluding Axiom-only runId/userId and converting _time to timestamp.
     return {
       timestamp: e._time,
       type: e.type,
@@ -120,7 +122,32 @@ function mapNetworkLogs(logs: AxiomNetworkEvent[]): Record<string, unknown>[] {
       latency_ms: e.latency_ms,
       request_size: e.request_size,
       response_size: e.response_size,
+      dns_event: e.dns_event,
+      dns_query_type: e.dns_query_type,
+      dns_result: e.dns_result,
+      dns_serial: e.dns_serial,
+      firewall_base: e.firewall_base,
+      firewall_name: e.firewall_name,
+      firewall_permission: e.firewall_permission,
+      firewall_rule_match: e.firewall_rule_match,
+      firewall_params: e.firewall_params,
+      firewall_billable: e.firewall_billable,
+      firewall_error: e.firewall_error,
+      auth_resolved_secrets: e.auth_resolved_secrets,
+      auth_refreshed_connectors: e.auth_refreshed_connectors,
+      auth_refreshed_secrets: e.auth_refreshed_secrets,
+      auth_cache_hit: e.auth_cache_hit,
+      auth_url_rewrite: e.auth_url_rewrite,
       error: e.error,
+      // Capture-only fields (opt-in via captureNetworkBodies)
+      request_headers: e.request_headers,
+      request_body: e.request_body,
+      request_body_encoding: e.request_body_encoding,
+      request_body_truncated: e.request_body_truncated,
+      response_headers: e.response_headers,
+      response_body: e.response_body,
+      response_body_encoding: e.response_body_encoding,
+      response_body_truncated: e.response_body_truncated,
     };
   });
 }

@@ -23,6 +23,7 @@ interface State {
 
 const L = logger("React");
 
+// eslint-disable-next-line ccstate/no-react-class-component -- TODO(#11402): refactor existing class component.
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,

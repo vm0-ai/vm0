@@ -4,6 +4,7 @@ export const pdf4me = {
   pdf4me: {
     label: "PDF4me",
     category: "data-automation-infrastructure",
+    generation: ["document"],
     environmentMapping: {
       PDF4ME_TOKEN: "$secrets.PDF4ME_TOKEN",
     },

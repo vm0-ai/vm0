@@ -83,3 +83,7 @@ export const setChatPageModelSelection$ = command(
     set(internalChatPageUserOverride$, { kind: "set", value });
   },
 );
+
+export const resetChatPageModelSelection$ = command(({ set }) => {
+  set(internalChatPageUserOverride$, { kind: "unset" });
+});

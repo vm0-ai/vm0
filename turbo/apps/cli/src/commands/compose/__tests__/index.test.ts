@@ -691,7 +691,7 @@ describe("compose command", () => {
   });
 
   describe("framework validation", () => {
-    it("should pass unsupported framework to server (server-side validation)", async () => {
+    it("should reject unsupported framework client-side", async () => {
       await fs.writeFile(
         path.join(tempDir, "vm0.yaml"),
         `version: "1.0"
@@ -701,33 +701,15 @@ agents:
     framework: unsupported-framework`,
       );
 
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "NOT_FOUND" } },
-            { status: 404 },
-          );
-        }),
-        http.post("http://localhost:3000/api/agent/composes", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message:
-                  'Unsupported framework: "unsupported-framework". Supported frameworks: claude-code',
-                code: "BAD_REQUEST",
-              },
-            },
-            { status: 400 },
-          );
-        }),
-      );
-
       await expect(async () => {
         await composeCommand.parseAsync(["node", "cli", "vm0.yaml"]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Unsupported framework"),
+        expect.stringContaining("agent.framework"),
+      );
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid option"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

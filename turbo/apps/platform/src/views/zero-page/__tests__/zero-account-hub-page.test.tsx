@@ -51,8 +51,8 @@ describe("account hub - Preferences row navigates to /settings (ACCOUNT-HUB-002)
   });
 });
 
-describe("account hub - Usage row navigates to /_/usage (ACCOUNT-HUB-003)", () => {
-  it("routes to /_/usage when Usage is tapped", async () => {
+describe("account hub - Usage row navigates to /usage (ACCOUNT-HUB-003)", () => {
+  it("routes to /usage when Usage is tapped", async () => {
     setupAccountHub();
 
     const usage = await waitFor(() => {
@@ -61,7 +61,7 @@ describe("account hub - Usage row navigates to /_/usage (ACCOUNT-HUB-003)", () =
     click(usage);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/_/usage");
+      expect(pathname()).toBe("/usage");
     });
   });
 });

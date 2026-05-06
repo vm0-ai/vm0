@@ -32,6 +32,9 @@ export function detach<T>(
   let silencePromise: Promise<void> | undefined;
 
   if (isPromise) {
+    // This instance is necessary because detach itself is a controlled way to generate a floating promise.
+    // confirmed by ethan@vm0.ai
+    // oxlint-disable-next-line promise/prefer-await-to-then
     silencePromise = Promise.resolve(promise).then(
       () => {},
       (error: unknown) => {
@@ -141,6 +144,11 @@ export function throwIfAbort(e: unknown) {
  * Re-throws abort errors; swallows parse errors and returns `fallback`.
  */
 export function jsonParseOr<T>(value: string, fallback: T): T {
+  // We must use this approach to silence the exception here. This is because
+  // the function itself is designed to help the caller avoid having to handle
+  // the try-catch block manually.
+  // confirmed by ethan@vm0.ai
+  // eslint-disable-next-line no-restricted-syntax
   try {
     return JSON.parse(value) as T;
   } catch (error) {
@@ -154,11 +162,33 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
  * Use for prefetch or fire-and-forget operations where failure is acceptable.
  */
 export async function bestEffort(p: Promise<unknown>): Promise<void> {
+  // confirmed by ethan@vm0.ai
+  // eslint-disable-next-line no-restricted-syntax
   try {
     await p;
   } catch (error) {
     throwIfAbort(error);
   }
+}
+
+export async function withCleanup<T>(
+  promise: Promise<T>,
+  cleanup: () => void,
+): Promise<T> {
+  // Centralizes command cleanup that must preserve the original promise result.
+  // eslint-disable-next-line no-restricted-syntax -- helper preserves rejection while guaranteeing cleanup
+  try {
+    return await promise;
+  } finally {
+    cleanup();
+  }
+}
+
+export function toVoid<T>(p: Promise<T>): Promise<void> {
+  // This helper intentionally discards fulfillment values while preserving rejection semantics.
+  // confirmed by ethan@vm0.ai
+  // oxlint-disable-next-line promise/prefer-await-to-then
+  return p.then(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -188,6 +218,9 @@ export async function setLoop(
       );
     }
 
+    // use try-catch here to implement an automatic retry.
+    // confirmed by ethan@vm0.ai
+    // eslint-disable-next-line no-restricted-syntax
     try {
       const done = await loopBody(signal);
       if (done) {
@@ -216,36 +249,6 @@ export async function setLoop(
         ? delay(0, { signal: AbortSignal.any([]) })
         : delay(backoff, { signal }));
     }
-  }
-}
-
-/**
- * Run `tasks` in parallel against a child signal and return the first one
- * that settles. When that happens, the child signal aborts so the losers
- * clean up promptly; their rejections are swallowed. If the outer signal
- * aborts first, all tasks reject with AbortError.
- */
-export async function raceUnderSignal<T>(
-  signal: AbortSignal,
-  tasks: (childSignal: AbortSignal) => readonly Promise<T>[],
-): Promise<T> {
-  const controller = new AbortController();
-  const onOuterAbort = () => {
-    controller.abort(signal.reason);
-  };
-  if (signal.aborted) {
-    onOuterAbort();
-  } else {
-    signal.addEventListener("abort", onOuterAbort, { once: true });
-  }
-  const promises = tasks(controller.signal);
-  try {
-    return await Promise.race(promises);
-  } finally {
-    signal.removeEventListener("abort", onOuterAbort);
-    controller.abort();
-    // Swallow the losers' AbortError rejections from the cancellation.
-    await Promise.allSettled(promises);
   }
 }
 

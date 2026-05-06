@@ -1,5 +1,7 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { clerk$ } from "../auth.ts";
+import { writeThreadAgentId$ } from "../external/idb-thread-agent-store.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
@@ -14,24 +16,53 @@ import {
   currentChatThreadId$,
   reloadChatThreads$,
 } from "../agent-chat.ts";
-import { detachedNavigateTo$ } from "../route.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
+import { loadRightThread$ } from "./chat-thread-panes.ts";
 import { talkDraft$ } from "../zero-page/chat-draft.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
-import {
-  createChatThreadSignals,
-  ensureDraft$,
-  type LocalChatThreadSnapshot,
-} from "./create-chat-thread.ts";
+import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
+import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
+import { createPendingChatThread } from "./pending-chat-thread.ts";
 import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
+import {
+  allPendingChatThreads$,
+  clearMatchingOptimisticChatThread$,
+  optimisticChatThread$,
+  optimisticChatThreadByPane$,
+  registerOptimisticChatThread$,
+  type OptimisticChatPane,
+  type PendingChatThread,
+} from "./optimistic-chat-thread-state.ts";
+import { toVoid } from "../utils.ts";
 
-interface PendingChatThread {
-  threadId: string;
-  agentId: string;
-  createdAt: string;
-  running: boolean;
-  pendingThread: ReturnType<typeof createChatThreadSignals>;
-  settleResult: Promise<void>;
-}
+export type { OptimisticChatPane };
+export { optimisticChatThread$ };
+
+const SIDEBAR_PARAM = "sidebar";
+
+/**
+ * Persist the (threadId, agentId) pairing into the IDB cache the moment the
+ * client mints a new threadId. Lets `agentId$` resolve from cache on the
+ * very first render of the new thread page, before chat-threads/:id returns.
+ */
+const writeThreadAgentToCache$ = command(
+  async (
+    { get },
+    threadId: string,
+    agentId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    signal.throwIfAborted();
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    const userId = clerk.user?.id;
+    const orgId = clerk.organization?.id;
+    if (!userId || !orgId) {
+      return;
+    }
+    await writeThreadAgentId$(userId, orgId, threadId, agentId, signal);
+  },
+);
 
 interface SendNewThreadMessageRequest {
   agentId: string;
@@ -48,17 +79,48 @@ interface SendNewThreadMessagePending extends PendingChatThread {
   sendResult: Promise<SendNewThreadMessageResult>;
 }
 
-const internalOptimisticChatThread$ = state<PendingChatThread | null>(null);
-
-export const optimisticChatThread$ = computed((get) => {
-  return get(internalOptimisticChatThread$);
-});
-
-export const clearMatchingOptimisticChatThread$ = command(
-  ({ set }, pending: PendingChatThread) => {
-    set(internalOptimisticChatThread$, (current) => {
-      return current === pending ? null : current;
+const routeMainOptimisticChatThread$ = command(
+  ({ get, set }, pending: PendingChatThread) => {
+    const next = new URLSearchParams(get(searchParams$));
+    if (next.get(SIDEBAR_PARAM) === pending.threadId) {
+      next.delete(SIDEBAR_PARAM);
+    }
+    set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: pending.threadId },
+      searchParams: next,
     });
+  },
+);
+
+const routeSidebarOptimisticChatThread$ = command(
+  async (
+    { get, set },
+    pending: PendingChatThread,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (!get(currentChatThreadId$)) {
+      return;
+    }
+    await set(loadRightThread$, pending.threadId, signal);
+  },
+);
+
+const showExistingOptimisticChatThread$ = command(
+  async (
+    { get, set },
+    pending: PendingChatThread,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (pending.pane === "main") {
+      if (get(currentChatThreadId$) !== pending.threadId) {
+        set(routeMainOptimisticChatThread$, pending);
+      }
+      return;
+    }
+
+    if (get(searchParams$).get(SIDEBAR_PARAM) !== pending.threadId) {
+      await set(routeSidebarOptimisticChatThread$, pending, signal);
+    }
   },
 );
 
@@ -69,11 +131,13 @@ const routeOptimisticChatThread$ = command(
     signal.addEventListener("abort", () => {
       set(clearMatchingOptimisticChatThread$, pending);
     });
-    set(internalOptimisticChatThread$, pending);
+    set(registerOptimisticChatThread$, pending);
 
-    set(detachedNavigateTo$, "/chats/:threadId", {
-      pathParams: { threadId: pending.threadId },
-    });
+    if (pending.pane === "main") {
+      set(routeMainOptimisticChatThread$, pending);
+    } else {
+      await set(routeSidebarOptimisticChatThread$, pending, signal);
+    }
 
     await pending.settleResult.catch((error: unknown) => {
       set(clearMatchingOptimisticChatThread$, pending);
@@ -81,7 +145,10 @@ const routeOptimisticChatThread$ = command(
     });
     signal.throwIfAborted();
 
-    if (get(currentChatThreadId$) !== pending.threadId) {
+    if (
+      pending.pane === "sidebar" ||
+      get(currentChatThreadId$) !== pending.threadId
+    ) {
       set(clearMatchingOptimisticChatThread$, pending);
     }
   },
@@ -93,9 +160,9 @@ async function createChatThread(
   signal: AbortSignal,
   title: string | undefined,
   clientThreadId: string,
-): Promise<{ id: string; title: string | null }> {
+): Promise<void> {
   const client = createClient(chatThreadsContract);
-  const result = await accept(
+  await accept(
     client.create({
       body: {
         agentId,
@@ -106,13 +173,13 @@ async function createChatThread(
     }),
     [201],
   );
-  return { id: result.body.id, title: result.body.title };
 }
 
 const createNewChatThread$ = command(
   async (
     { get, set },
     agentComposeId: string | null,
+    pane: OptimisticChatPane,
     signal: AbortSignal,
   ): Promise<PendingChatThread | null> => {
     const resolvedComposeId =
@@ -125,36 +192,23 @@ const createNewChatThread$ = command(
     }
 
     const threadId = crypto.randomUUID();
+    await set(writeThreadAgentToCache$, threadId, resolvedComposeId, signal);
     const createdAt = new Date().toISOString();
-    const cancelRequested$ = state(false);
-    const localSnapshot: LocalChatThreadSnapshot = {
-      threadData: {
-        id: threadId,
-        title: null,
-        agentId: resolvedComposeId,
-        latestSessionId: null,
-        lastReadMessageId: null,
-        latestSessionProviderType: null,
-        activeRunIds: [],
-        activeRuns: [],
-        isLegacySession: false,
-        draftContent: null,
-        draftAttachments: null,
-        modelProviderId: null,
-        selectedModel: null,
-      },
+    const dataSource = createLocalChatThreadDataSource({
+      threadData: createPendingChatThread(threadId, resolvedComposeId),
       messages: [],
-      cancelRequested$,
-    };
-    const { draft: threadDraft } = set(ensureDraft$, threadId);
-    const localThread = createChatThreadSignals(threadId, threadDraft, {
-      localSnapshot,
     });
+    const { draft: threadDraft } = set(ensureDraft$, threadId);
+    const localThread = createChatThreadSignals(
+      threadId,
+      threadDraft,
+      dataSource,
+    );
     set(localThread.hideSkeleton$);
 
     const createClient = get(zeroClient$);
-    const settleResult = (async () => {
-      const thread = await createChatThread(
+    const settleResult = (async (): Promise<void> => {
+      await createChatThread(
         createClient,
         resolvedComposeId,
         signal,
@@ -162,16 +216,10 @@ const createNewChatThread$ = command(
         threadId,
       );
       signal.throwIfAborted();
-
-      if (thread.id !== threadId) {
-        set(detachedNavigateTo$, "/chats/:threadId", {
-          pathParams: { threadId: thread.id },
-          replace: true,
-        });
-      }
     })();
 
     return {
+      pane,
       threadId,
       agentId: resolvedComposeId,
       createdAt,
@@ -183,18 +231,26 @@ const createNewChatThread$ = command(
 );
 
 export const createNewChatThreadOptimistically$ = command(
-  async ({ get, set }, agentComposeId: string | null, signal: AbortSignal) => {
-    const optimisticThread = get(optimisticChatThread$);
+  async (
+    { get, set },
+    agentComposeId: string | null,
+    pane: OptimisticChatPane,
+    signal: AbortSignal,
+  ) => {
+    const targetPane =
+      pane === "sidebar" && get(currentChatThreadId$) ? "sidebar" : "main";
+    const optimisticThread = get(optimisticChatThreadByPane$)(targetPane);
     if (optimisticThread) {
-      if (get(currentChatThreadId$) !== optimisticThread.threadId) {
-        set(detachedNavigateTo$, "/chats/:threadId", {
-          pathParams: { threadId: optimisticThread.threadId },
-        });
-      }
+      await set(showExistingOptimisticChatThread$, optimisticThread, signal);
       return;
     }
 
-    const result = await set(createNewChatThread$, agentComposeId, signal);
+    const result = await set(
+      createNewChatThread$,
+      agentComposeId,
+      targetPane,
+      signal,
+    );
     if (!result) {
       return;
     }
@@ -203,39 +259,75 @@ export const createNewChatThreadOptimistically$ = command(
   },
 );
 
-export const pendingOptimisticChatThreads$ = computed(
+/**
+ * Unified sidebar list: persisted threads merged with the optimistic-only
+ * pending threads for the current agent, deduped by id, sorted (pinned first
+ * then most-recent activity desc).
+ *
+ * Returning a single signal — instead of letting the sidebar read persisted
+ * and optimistic separately — guarantees that the optimistic→persisted
+ * handoff happens in one ccstate compute. That removes the React render
+ * window where two `useLastResolved` subscribers update one after the other
+ * and briefly emit two `<ChatThreadItem>` siblings sharing the same `key`.
+ *
+ * Sort key:
+ * - When the persisted version exists, dedupe drops the optimistic entry and
+ *   the server's `updatedAt` decides position.
+ * - While only the optimistic exists, its browser-side `createdAt` (captured
+ *   when `createNewChatThread$` minted the threadId) participates in the
+ *   same sort, so a freshly-created thread lands at the top of the unpinned
+ *   section without being pinned to a fixed slot.
+ */
+export const sidebarChatThreads$ = computed(
   async (get): Promise<ChatThreadListItem[]> => {
-    const optimisticThread = get(optimisticChatThread$);
-    if (!optimisticThread) {
-      return [];
+    const persisted = await get(chatThreads$);
+    const pending = get(allPendingChatThreads$);
+    if (pending.length === 0) {
+      return persisted;
     }
 
     const currentAgentId = await get(currentChatAgentId$);
-    if (!currentAgentId || optimisticThread.agentId !== currentAgentId) {
-      return [];
+    if (!currentAgentId) {
+      return persisted;
     }
 
-    const persistedThreads = await get(chatThreads$);
-    if (
-      persistedThreads.some((thread) => {
-        return thread.id === optimisticThread.threadId;
+    const persistedIds = new Set(
+      persisted.map((thread) => {
+        return thread.id;
+      }),
+    );
+    const optimisticItems: ChatThreadListItem[] = pending
+      .filter((thread) => {
+        return (
+          thread.agentId === currentAgentId &&
+          !persistedIds.has(thread.threadId)
+        );
       })
-    ) {
-      return [];
+      .map((thread) => {
+        return {
+          id: thread.threadId,
+          title: null,
+          agent: { id: thread.agentId, avatarUrl: null },
+          createdAt: thread.createdAt,
+          updatedAt: thread.createdAt,
+          isRead: true,
+          isArchived: false,
+          running: thread.running,
+        };
+      });
+
+    if (optimisticItems.length === 0) {
+      return persisted;
     }
 
-    return [
-      {
-        id: optimisticThread.threadId,
-        title: null,
-        agent: { id: optimisticThread.agentId, avatarUrl: null },
-        createdAt: optimisticThread.createdAt,
-        updatedAt: optimisticThread.createdAt,
-        isRead: true,
-        isArchived: false,
-        running: optimisticThread.running,
-      },
-    ];
+    return [...persisted, ...optimisticItems].sort((a, b) => {
+      const aPinned = a.pinnedAt ? 0 : 1;
+      const bPinned = b.pinnedAt ? 0 : 1;
+      if (aPinned !== bPinned) {
+        return aPinned - bPinned;
+      }
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
   },
 );
 
@@ -258,25 +350,15 @@ const sendNewThreadMessage$ = command(
     }
 
     const threadId = crypto.randomUUID();
+    await set(writeThreadAgentToCache$, threadId, agentId, signal);
     const clientMessageId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
-    const cancelRequested$ = state(false);
-    const localSnapshot: LocalChatThreadSnapshot = {
-      threadData: {
-        id: threadId,
-        title: null,
+    const dataSource = createLocalChatThreadDataSource({
+      threadData: createPendingChatThread(
+        threadId,
         agentId,
-        latestSessionId: null,
-        lastReadMessageId: null,
-        latestSessionProviderType: null,
-        activeRunIds: [`pending-${threadId}`],
-        activeRuns: [{ id: `pending-${threadId}`, status: "pending" }],
-        isLegacySession: false,
-        draftContent: null,
-        draftAttachments: null,
-        modelProviderId: null,
-        selectedModel: null,
-      },
+        `pending-${threadId}`,
+      ),
       messages: [
         {
           id: clientMessageId,
@@ -286,12 +368,13 @@ const sendNewThreadMessage$ = command(
           createdAt,
         },
       ],
-      cancelRequested$,
-    };
-    const { draft: threadDraft } = set(ensureDraft$, threadId);
-    const localThread = createChatThreadSignals(threadId, threadDraft, {
-      localSnapshot,
     });
+    const { draft: threadDraft } = set(ensureDraft$, threadId);
+    const localThread = createChatThreadSignals(
+      threadId,
+      threadDraft,
+      dataSource,
+    );
     set(localThread.hideSkeleton$);
     set(draft.clear$);
 
@@ -319,13 +402,14 @@ const sendNewThreadMessage$ = command(
     })();
 
     return {
+      pane: "main",
       threadId,
       agentId,
       createdAt,
       running: true,
       pendingThread: localThread,
       sendResult,
-      settleResult: sendResult.then(() => {}),
+      settleResult: toVoid(sendResult),
     };
   },
 );

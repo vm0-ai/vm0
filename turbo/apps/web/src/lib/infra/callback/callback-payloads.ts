@@ -15,7 +15,8 @@ export interface TelegramCallbackPayload {
   agentId: string;
   existingSessionId: string | null;
   isDM: boolean;
-  thinkingMessageId: string | null;
+  /** @deprecated Legacy placeholder cleanup only. New Telegram runs use typing. */
+  thinkingMessageId?: string | null;
 }
 
 export interface SlackOrgCallbackPayload {

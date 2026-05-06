@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent, {
+  PointerEventsCheckLevel,
+} from "@testing-library/user-event";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -110,6 +113,116 @@ describe("org usage tab - credit balance display", () => {
     await waitFor(() => {
       const info = screen.getByTestId("credit-balance-info");
       expect(info).toHaveTextContent("15,000");
+    });
+  });
+
+  it("should show credit addition records with expiry on hover", async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 35_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      creditBreakdown: [
+        { category: "plan", label: "Pro plan", credits: 15_000, tier: "pro" },
+        { category: "payAsYouGo", label: "Pay as you go", credits: 20_000 },
+      ],
+      creditGrants: [
+        {
+          id: "grant-pro",
+          source: "subscription_renewal",
+          label: "Pro plan",
+          amount: 20_000,
+          remaining: 15_000,
+          createdAt: "2026-03-20T00:00:00.000Z",
+          expiresAt: "2026-04-20T00:00:00.000Z",
+        },
+        {
+          id: "grant-payg",
+          source: "auto_recharge",
+          label: "Pay as you go",
+          amount: 20_000,
+          remaining: 20_000,
+          createdAt: "2026-03-25T00:00:00.000Z",
+          expiresAt: "2999-12-31T00:00:00.000Z",
+        },
+      ],
+    });
+
+    setupMockAPIs([]);
+
+    await openUsageTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Credit additions")).toBeInTheDocument();
+      expect(screen.getByTestId("credit-grants-section")).not.toHaveAttribute(
+        "open",
+      );
+    });
+
+    await user.click(screen.getByTestId("credit-grants-toggle"));
+    expect(screen.getByTestId("credit-grants-section")).toHaveAttribute("open");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("credit-grant-grant-pro")).toHaveTextContent(
+        "Pro plan",
+      );
+      expect(screen.getByTestId("credit-grant-grant-pro")).toHaveTextContent(
+        "15,000 left",
+      );
+    });
+
+    await user.hover(screen.getByTestId("credit-grant-grant-pro"));
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Expires Apr 20, 2026").length,
+      ).toBeGreaterThan(0);
+    });
+
+    await user.click(screen.getByTestId("credit-grants-toggle"));
+    expect(screen.getByTestId("credit-grants-section")).not.toHaveAttribute(
+      "open",
+    );
+  });
+
+  it("should show non-expiring credit additions on hover", async () => {
+    const user = userEvent.setup({
+      pointerEventsCheck: PointerEventsCheckLevel.Never,
+    });
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      creditBreakdown: [
+        { category: "payAsYouGo", label: "Pay as you go", credits: 20_000 },
+      ],
+      creditGrants: [
+        {
+          id: "grant-payg",
+          source: "auto_recharge",
+          label: "Pay as you go",
+          amount: 20_000,
+          remaining: 20_000,
+          createdAt: "2026-03-25T00:00:00.000Z",
+          expiresAt: "2999-12-31T00:00:00.000Z",
+        },
+      ],
+    });
+
+    setupMockAPIs([]);
+
+    await openUsageTab();
+
+    await user.click(screen.getByTestId("credit-grants-toggle"));
+    expect(screen.getByTestId("credit-grant-grant-payg")).toHaveTextContent(
+      "Added Mar 25, 2026",
+    );
+    await user.hover(screen.getByTestId("credit-grant-grant-payg"));
+    await waitFor(() => {
+      expect(screen.getAllByText("Never expires").length).toBeGreaterThan(0);
     });
   });
 });

@@ -22,12 +22,19 @@ type TestAxiomNetworkEvent = Pick<
   | "_time"
   | "runId"
   | "userId"
+  | "type"
+  | "host"
+  | "port"
   | "method"
   | "url"
   | "status"
   | "latency_ms"
   | "request_size"
   | "response_size"
+  | "dns_event"
+  | "dns_query_type"
+  | "dns_result"
+  | "dns_serial"
 >;
 
 function createAxiomNetworkEvent(
@@ -186,6 +193,59 @@ describe("GET /api/agent/runs/:id/telemetry/network", () => {
       expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledWith(
         expect.stringContaining(`where runId == "${testRunId}"`),
       );
+    });
+
+    it("should return DNS result fields from Axiom", async () => {
+      context.mocks.axiom.queryAxiom.mockResolvedValue([
+        {
+          _time: "2024-01-01T00:00:00Z",
+          runId: testRunId,
+          userId: user.userId,
+          type: "dns",
+          host: "api.github.com",
+          port: 53,
+          dns_event: "query",
+          dns_query_type: "A",
+          dns_serial: "42",
+        },
+        {
+          _time: "2024-01-01T00:00:00.001Z",
+          runId: testRunId,
+          userId: user.userId,
+          type: "dns",
+          host: "api.github.com",
+          port: 53,
+          dns_event: "reply",
+          dns_result: "140.82.121.4",
+          dns_serial: "42",
+        },
+      ] satisfies TestAxiomNetworkEvent[]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/telemetry/network`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.networkLogs).toHaveLength(2);
+      expect(data.networkLogs[0]).toMatchObject({
+        type: "dns",
+        host: "api.github.com",
+        port: 53,
+        dns_event: "query",
+        dns_query_type: "A",
+        dns_serial: "42",
+      });
+      expect(data.networkLogs[1]).toMatchObject({
+        type: "dns",
+        host: "api.github.com",
+        port: 53,
+        dns_event: "reply",
+        dns_result: "140.82.121.4",
+        dns_serial: "42",
+      });
     });
   });
 

@@ -7,6 +7,7 @@ delivery if the executor has been shut down (drain/shutdown race) so
 reports are not silently lost.
 """
 
+import copy
 import json
 import time
 import urllib.error
@@ -136,7 +137,7 @@ def _enqueue_webhook(
     If the executor has already been shut down (drain/shutdown race),
     falls back to synchronous delivery so the report is not silently lost.
     """
-    copied = dict(payload)
+    copied = copy.deepcopy(payload)
     log_proxy_entry(
         proxy_log_path,
         "info",

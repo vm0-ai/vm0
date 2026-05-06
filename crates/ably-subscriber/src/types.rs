@@ -8,6 +8,25 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite;
 
+pub(crate) fn redact_access_token(input: &str) -> String {
+    const PARAM: &str = "access_token=";
+
+    let mut output = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find(PARAM) {
+        output.push_str(&rest[..start + PARAM.len()]);
+        output.push_str("<redacted>");
+
+        rest = &rest[start + PARAM.len()..];
+        let end = rest
+            .find(['&', ' ', '"', '\'', ')', ']', '}'])
+            .unwrap_or(rest.len());
+        rest = &rest[end..];
+    }
+    output.push_str(rest);
+    output
+}
+
 /// A future that returns a `Result<TokenRequest>`.
 pub type TokenFuture = Pin<Box<dyn Future<Output = Result<TokenRequest, BoxError>> + Send>>;
 
@@ -77,15 +96,16 @@ pub enum Event {
 }
 
 /// Timing parameters that control reconnection, heartbeat, token renewal, and
-/// backpressure behavior. All fields use the same defaults as the hardcoded
-/// constants they replace, so `TimingConfig::default()` preserves existing
-/// production behavior.
+/// backpressure behavior. Defaults are production-oriented; values that replace
+/// previous hardcoded constants keep their prior values.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct TimingConfig {
     // -- Connection ----------------------------------------------------------
     /// Timeout for WebSocket connect, HTTP requests, and token operations.
     pub connect_timeout: Duration,
+    /// Timeout for best-effort protocol/WebSocket close during shutdown.
+    pub close_timeout: Duration,
     /// Timeout wrapping each individual reconnect attempt.
     pub reconnect_timeout: Duration,
     /// Default `max_idle_interval` when the server doesn't specify one.
@@ -98,16 +118,49 @@ pub struct TimingConfig {
     pub heartbeat_margin: Duration,
 
     // -- Reconnection retry --------------------------------------------------
-    /// Base interval for the first retry attempt.
+    /// Retry timeout while in the Ably `disconnected` state.
+    ///
+    /// Matches ably-js `disconnectedRetryTimeout`.
+    pub disconnected_retry_timeout: Duration,
+    /// Retry timeout while in the Ably `suspended` state.
+    ///
+    /// Matches ably-js `suspendedRetryTimeout`.
+    pub suspended_retry_timeout: Duration,
+    /// Retry timeout while a channel is `suspended` after an attach failure.
+    ///
+    /// Matches ably-js `channelRetryTimeout`.
+    pub channel_retry_timeout: Duration,
+    /// Timeout for an in-flight realtime channel ATTACH operation.
+    /// Initial subscribe connect+attach is bounded by
+    /// [`connect_timeout`](Self::connect_timeout); this timeout applies after
+    /// the subscription is established.
+    ///
+    /// Matches ably-js `realtimeRequestTimeout`.
+    pub realtime_request_timeout: Duration,
+    /// Legacy base interval for the first retry attempt.
+    ///
+    /// Kept for API compatibility; the Ably-aligned state machine uses
+    /// [`disconnected_retry_timeout`](Self::disconnected_retry_timeout) and
+    /// [`suspended_retry_timeout`](Self::suspended_retry_timeout).
     pub initial_retry_interval: Duration,
-    /// Cap on exponential backoff between retries.
+    /// Legacy cap on exponential backoff between retries.
+    ///
+    /// Kept for API compatibility.
     pub max_retry_interval: Duration,
-    /// Maximum number of consecutive reconnection attempts before giving up.
+    /// Minimum spacing between reconnect attempts after transport-level
+    /// disconnects. This mirrors ably-js' guard against tight reconnect loops
+    /// when a server or proxy repeatedly closes otherwise healthy sockets.
+    pub min_reconnect_interval: Duration,
+    /// Legacy maximum number of consecutive reconnection attempts before giving up.
+    ///
+    /// Kept for API compatibility. Ably-js retries disconnected/suspended
+    /// connections indefinitely, so this field is not used by the current state
+    /// machine.
     pub max_retry_attempts: u32,
 
     // -- Channel re-attach ---------------------------------------------------
-    /// If a channel is DETACHED again within this window after a re-attach,
-    /// a full reconnect is triggered instead.
+    /// Legacy re-attach window used by the previous reconnect-on-repeat-detach
+    /// behavior. Kept for API compatibility.
     pub reattach_window: Duration,
 
     // -- Token renewal -------------------------------------------------------
@@ -119,7 +172,8 @@ pub struct TimingConfig {
     pub max_token_renewal_failures: u32,
 
     // -- Backpressure --------------------------------------------------------
-    /// Bounded capacity of the internal event channel (mpsc).
+    /// Bounded capacity of the internal event channel (mpsc). Values below 1
+    /// are treated as 1 because Tokio channels do not support zero capacity.
     pub event_channel_capacity: usize,
 }
 
@@ -128,14 +182,20 @@ impl Default for TimingConfig {
         Self {
             // Connection
             connect_timeout: Duration::from_secs(30),
+            close_timeout: Duration::from_secs(5),
             reconnect_timeout: Duration::from_secs(60),
             default_max_idle_interval: Duration::from_secs(15),
             default_connection_state_ttl: Duration::from_secs(120),
             // Heartbeat
             heartbeat_margin: Duration::from_secs(10),
             // Reconnection retry
+            disconnected_retry_timeout: Duration::from_secs(15),
+            suspended_retry_timeout: Duration::from_secs(30),
+            channel_retry_timeout: Duration::from_secs(15),
+            realtime_request_timeout: Duration::from_secs(10),
             initial_retry_interval: Duration::from_secs(1),
             max_retry_interval: Duration::from_secs(15),
+            min_reconnect_interval: Duration::from_secs(1),
             max_retry_attempts: 40,
             // Channel re-attach
             reattach_window: Duration::from_secs(15),
@@ -188,9 +248,9 @@ impl SubscribeConfig {
 }
 
 /// Errors returned by this crate.
-#[derive(Debug, thiserror::Error)]
+#[derive(thiserror::Error)]
 pub enum Error {
-    #[error("WebSocket error: {0}")]
+    #[error("WebSocket error: {}", redact_access_token(&.0.to_string()))]
     WebSocket(Box<tungstenite::Error>),
 
     #[error("Token exchange HTTP error: {0}")]
@@ -199,14 +259,22 @@ pub enum Error {
     #[error("MessagePack encode error: {0}")]
     MsgpackEncode(#[from] rmp_serde::encode::Error),
 
-    #[error("Ably protocol error: code={code}, {message}")]
+    #[error("Ably protocol error: code={code}, {}", redact_access_token(message))]
     Protocol { code: i32, message: String },
 
-    #[error("Token fetch failed: {0}")]
+    #[error("Token fetch failed: {}", redact_access_token(&.0.to_string()))]
     TokenFetch(BoxError),
 
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
+}
+
+impl std::fmt::Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Error")
+            .field(&redact_access_token(&self.to_string()))
+            .finish()
+    }
 }
 
 impl From<tungstenite::Error> for Error {
@@ -253,5 +321,107 @@ mod tests {
         assert_eq!(td.token, "xVLyHw.some-token-string");
         assert_eq!(td.expires, 1700003600000);
         assert_eq!(td.issued, 1700000000000);
+    }
+
+    #[test]
+    fn timing_config_close_timeout_is_shorter_than_connect_timeout() {
+        let timing = TimingConfig::default();
+
+        assert_eq!(timing.close_timeout, Duration::from_secs(5));
+        assert!(
+            timing.close_timeout < timing.connect_timeout,
+            "best-effort close should not wait as long as connect"
+        );
+    }
+
+    #[test]
+    fn websocket_error_display_redacts_access_token_query_param() {
+        let err = Error::from(tungstenite::Error::Url(
+            tungstenite::error::UrlError::UnableToConnect(
+                "wss://realtime.ably.io/?access_token=secret-token&format=msgpack \
+                 retry_url=wss://realtime.ably.io/?format=msgpack&access_token=second-secret"
+                    .to_string(),
+            ),
+        ));
+
+        let message = err.to_string();
+        assert_eq!(
+            message,
+            "WebSocket error: URL error: Unable to connect to \
+             wss://realtime.ably.io/?access_token=<redacted>&format=msgpack \
+             retry_url=wss://realtime.ably.io/?format=msgpack&access_token=<redacted>"
+        );
+        assert!(!message.contains("secret-token"));
+        assert!(!message.contains("second-secret"));
+
+        let debug_message = format!("{err:?}");
+        assert!(debug_message.contains("access_token=<redacted>"));
+        assert!(!debug_message.contains("secret-token"));
+        assert!(!debug_message.contains("second-secret"));
+    }
+
+    #[test]
+    fn protocol_error_display_redacts_access_token_query_param() {
+        let err = Error::Protocol {
+            code: 80003,
+            message: "failed wss://realtime.ably.io/?access_token=secret-token&format=msgpack"
+                .to_string(),
+        };
+
+        let message = err.to_string();
+        assert_eq!(
+            message,
+            "Ably protocol error: code=80003, failed \
+             wss://realtime.ably.io/?access_token=<redacted>&format=msgpack"
+        );
+        assert!(!message.contains("secret-token"));
+    }
+
+    #[test]
+    fn token_fetch_error_display_redacts_access_token_query_param() {
+        let err = Error::TokenFetch(Box::new(std::io::Error::other(
+            "failed wss://realtime.ably.io/?access_token=secret-token&format=msgpack",
+        )));
+
+        let message = err.to_string();
+        assert_eq!(
+            message,
+            "Token fetch failed: failed \
+             wss://realtime.ably.io/?access_token=<redacted>&format=msgpack"
+        );
+        assert!(!message.contains("secret-token"));
+    }
+
+    #[test]
+    fn access_token_redaction_handles_common_message_delimiters() {
+        let message = concat!(
+            "url=\"wss://example/?access_token=quoted-secret\" ",
+            "url='wss://example/?access_token=single-quoted' ",
+            "url=(wss://example/?access_token=paren-secret) ",
+            "url=[wss://example/?access_token=bracket-secret] ",
+            "json={\"url\":\"wss://example/?access_token=json-secret\"}",
+        );
+
+        let redacted = redact_access_token(message);
+
+        assert_eq!(
+            redacted,
+            concat!(
+                "url=\"wss://example/?access_token=<redacted>\" ",
+                "url='wss://example/?access_token=<redacted>' ",
+                "url=(wss://example/?access_token=<redacted>) ",
+                "url=[wss://example/?access_token=<redacted>] ",
+                "json={\"url\":\"wss://example/?access_token=<redacted>\"}",
+            )
+        );
+        for secret in [
+            "quoted-secret",
+            "single-quoted",
+            "paren-secret",
+            "bracket-secret",
+            "json-secret",
+        ] {
+            assert!(!redacted.contains(secret));
+        }
     }
 }

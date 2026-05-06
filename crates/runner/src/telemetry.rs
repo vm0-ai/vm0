@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::routes;
 use chrono::Utc;
 use serde::Serialize;
 use tracing::warn;
@@ -143,11 +144,7 @@ async fn send_telemetry(
     };
 
     let req = http
-        .request(
-            reqwest::Method::POST,
-            "/api/webhooks/agent/telemetry",
-            sandbox_token,
-        )
+        .request_route(routes::webhooks::agent::telemetry::SEND, sandbox_token)
         .timeout(TELEMETRY_TIMEOUT)
         .json(&payload);
 

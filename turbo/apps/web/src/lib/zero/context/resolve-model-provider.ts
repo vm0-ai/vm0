@@ -5,22 +5,30 @@ import {
   getDefaultModel,
   hasAuthMethods,
   getSecretNamesForAuthMethod,
+  getSecretsForAuthMethod,
   MODEL_PROVIDER_TYPES,
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
   type ModelProviderType,
-  type ModelProviderFramework,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { badRequest, noModelProvider } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import {
   getOrgDefaultModelProvider,
-  getModelProviderByIdForOrg,
+  getOrgAnyDefaultModelProvider,
+  getModelProviderById,
+  getOrgModelProviderByType,
+  getUserDefaultModelProvider,
+  getUserAnyDefaultModelProvider,
+  getUserModelProviderByType,
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
+import { PROVIDER_HANDLERS } from "../connector/provider-registry";
+import { isPersonalTierEligible } from "../personal-tier-gate";
 
 const log = logger("zero:build-context");
 
@@ -56,7 +64,6 @@ export const MODEL_PROVIDER_ENV_VARS = [
  * Single DB query: caller passes the already-fetched defaultProvider.
  */
 function resolveProviderType(
-  framework: string,
   defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>,
   explicitModelProvider?: string,
 ): ModelProviderType {
@@ -73,14 +80,6 @@ function resolveProviderType(
     providerType = defaultProvider.type;
   } else {
     throw noModelProvider();
-  }
-
-  const providerFramework = getFrameworkForType(providerType);
-  if (providerFramework !== framework) {
-    throw badRequest(
-      `Model provider "${providerType}" is not compatible with framework "${framework}". ` +
-        `This provider is for "${providerFramework}" agents.`,
-    );
   }
 
   return providerType;
@@ -153,14 +152,63 @@ interface ModelProviderSecretResult {
    *  servicePlaceholders logic; literals (base URLs, model names) are plain strings. */
   injectedEnvironment: Record<string, string> | undefined;
   /** The resolved model provider type (e.g. "anthropic", "vercel-ai-gateway").
-   *  Undefined when provider resolution was skipped (explicit env vars or non-claude-code). */
+   *  Undefined when provider resolution was skipped (explicit env vars). */
   resolvedModelProvider: ModelProviderType | undefined;
+  /** Canonical framework for this resolution. When a provider was resolved this
+   *  is the provider's framework (source-of-truth for downstream); otherwise
+   *  the input `framework` is echoed back. */
+  framework: string;
   /** For meta-providers like "vm0", the concrete provider type resolved at build time.
    *  Used for firewall lookup instead of the meta-provider type. */
   concreteProviderType?: ModelProviderType;
   /** The logical model name selected by the user (e.g. "claude-sonnet-4-6").
-   *  Used for credit usage billing. */
+   *  Used for model usage billing. */
   selectedModel?: string;
+  /** Maps secret/env-var names → connector handler key for refresh-capable
+   *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "chatgpt-oauth").
+   *  Merged into the wire `secretConnectorMap` AFTER `filterSecretConnectorMap`
+   *  runs — the filter would otherwise drop these because they also appear in
+   *  `secrets`, but model-provider entries ARE the source, not an override target. */
+  secretConnectorMap?: Record<string, string>;
+}
+
+/**
+ * Build the secretConnectorMap entries for a model-provider type whose
+ * tokens are OAuth-refreshable (e.g. chatgpt-oauth-token).
+ *
+ * Returns undefined when the provider has no bridged handler or its handler
+ * lacks `refreshToken` — for non-OAuth providers the firewall has nothing
+ * to refresh and should not see the secret in the map.
+ *
+ * The returned map is merged INTO the wire `secretConnectorMap` after
+ * `filterSecretConnectorMap` runs; see `build-zero-context.ts`.
+ */
+function buildModelProviderSecretConnectorMap(
+  providerType: ModelProviderType,
+): Record<string, string> | undefined {
+  const handlerKey = MODEL_PROVIDER_HANDLER_KEY[providerType];
+  if (!handlerKey) return undefined;
+
+  const handler =
+    PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+  if (!handler?.refreshToken) return undefined;
+
+  const accessSecretName = handler.getSecretName();
+  const result: Record<string, string> = { [accessSecretName]: handlerKey };
+
+  // Mirror the connector-side aliasing logic: any environmentMapping entry
+  // that references the access-token secret should also appear in the map
+  // so the firewall can refresh tokens regardless of which name a template
+  // references.
+  const envMapping = getEnvironmentMapping(providerType);
+  if (envMapping) {
+    for (const [envVar, valueRef] of Object.entries(envMapping)) {
+      if (valueRef === `$secrets.${accessSecretName}`) {
+        result[envVar] = handlerKey;
+      }
+    }
+  }
+  return result;
 }
 
 /**
@@ -196,6 +244,7 @@ async function resolveVm0Provider(
     secrets,
     injectedEnvironment,
     resolvedModelProvider: "vm0",
+    framework: getFrameworkForType("vm0"),
     concreteProviderType: concreteType,
     selectedModel,
   };
@@ -247,11 +296,23 @@ async function resolveMultiAuthProviderSecrets(
     return undefined;
   }
 
+  // Filter out serverOnly secrets (e.g., OAuth refresh tokens, ID tokens)
+  // before forwarding to the runner — these stay server-side per #7365.
+  // The full secrets map is still consumed by the OAuth/persistence path
+  // (write side); only this build-context (read side) drops them.
+  const secretConfigs = getSecretsForAuthMethod(providerType, authMethod);
+  const forwardableSecrets: Record<string, string> = {};
+  for (const [name, value] of Object.entries(secretsMap)) {
+    if (!secretConfigs?.[name]?.serverOnly) {
+      forwardableSecrets[name] = value;
+    }
+  }
+
   const injectedEnvironment = resolveEnvironmentMapping(
     providerType,
     undefined,
     selectedModel,
-    new Set(secretNames),
+    new Set(Object.keys(forwardableSecrets)),
   );
 
   log.debug(
@@ -259,11 +320,84 @@ async function resolveMultiAuthProviderSecrets(
   );
 
   return {
-    secrets: secretsMap,
+    secrets: forwardableSecrets,
     injectedEnvironment,
     resolvedModelProvider: providerType,
+    framework: getFrameworkForType(providerType),
     selectedModel,
+    secretConnectorMap: buildModelProviderSecretConnectorMap(providerType),
   };
+}
+
+/**
+ * Resolve the row used as the resolution anchor: explicit ID pin → personal
+ * tier (when eligible) → org chain. Returns null only when neither tier has
+ * a default; the caller then funnels into the explicit-type-override path
+ * or `noModelProvider()`.
+ */
+async function resolveDefaultProviderRow(params: {
+  orgId: string;
+  userId: string;
+  framework: string;
+  modelProviderId: string | undefined;
+  personalEligible: boolean;
+}): Promise<Awaited<ReturnType<typeof getOrgDefaultModelProvider>>> {
+  const { orgId, userId, framework, modelProviderId, personalEligible } =
+    params;
+  if (modelProviderId) {
+    return getModelProviderById(orgId, userId, modelProviderId);
+  }
+  if (personalEligible) {
+    const userRow =
+      (await getUserDefaultModelProvider(orgId, userId, framework)) ??
+      (await getUserAnyDefaultModelProvider(orgId, userId));
+    if (userRow) return userRow;
+  }
+  return (
+    (await getOrgDefaultModelProvider(orgId, framework)) ??
+    (await getOrgAnyDefaultModelProvider(orgId))
+  );
+}
+
+/**
+ * Resolve the row whose `selectedModel` / `authMethod` should drive secret
+ * resolution for `providerType`. When `defaultProvider` already matches the
+ * type, reuse it. Otherwise — only on the explicit type-override path
+ * (where `explicitModelProvider` was set and no `modelProviderId` pin) —
+ * look up by type, consulting personal tier first when eligible. Returns
+ * null when no row exists; callers then fall back to `getDefaultModel`.
+ */
+async function resolveMatchingProviderForType(params: {
+  orgId: string;
+  userId: string;
+  providerType: ModelProviderType;
+  defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
+  explicitModelProvider: string | undefined;
+  modelProviderId: string | undefined;
+  personalEligible: boolean;
+}): Promise<Awaited<ReturnType<typeof getOrgDefaultModelProvider>>> {
+  const {
+    orgId,
+    userId,
+    providerType,
+    defaultProvider,
+    explicitModelProvider,
+    modelProviderId,
+    personalEligible,
+  } = params;
+  if (defaultProvider && defaultProvider.type === providerType) {
+    return defaultProvider;
+  }
+  if (!explicitModelProvider || modelProviderId) return null;
+  if (personalEligible) {
+    const userRow = await getUserModelProviderByType(
+      orgId,
+      userId,
+      providerType,
+    );
+    if (userRow) return userRow;
+  }
+  return getOrgModelProviderByType(orgId, providerType);
 }
 
 /**
@@ -274,47 +408,100 @@ async function resolveMultiAuthProviderSecrets(
  *
  * @param modelProviderId - Optional specific provider ID to use instead of org default
  * @param selectedModelOverride - Optional model override (takes precedence over provider's selectedModel)
+ * @param preferPersonalProvider - When true AND `personalModelProvider` switch
+ *   is on for the caller, the resolver consults the user's personal-tier
+ *   providers before the org default. Off-by-default; matches today's
+ *   behavior when omitted/false. Sourced from `zero_agents.preferPersonalProvider`
+ *   (or schedule's column when running a schedule).
  */
 export async function resolveModelProviderSecrets(
   orgId: string,
+  userId: string,
   framework: string,
   hasExplicitModelProviderConfig: boolean,
   explicitModelProvider?: string,
   modelProviderId?: string,
   selectedModelOverride?: string,
+  preferPersonalProvider?: boolean,
 ): Promise<ModelProviderSecretResult> {
   const secrets: Record<string, string> | undefined = undefined;
 
-  // Skip if explicit model provider config exists or framework doesn't use model providers
-  if (hasExplicitModelProviderConfig || framework !== "claude-code") {
+  // Skip if compose already declares the framework's auth env var directly.
+  // Framework-agnostic: codex with explicit OPENAI_API_KEY short-circuits here
+  // just like claude-code with explicit ANTHROPIC_API_KEY.
+  if (hasExplicitModelProviderConfig) {
     return {
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: undefined,
+      framework,
     };
   }
 
-  // Resolve provider: specific ID override → org default
-  let defaultProvider: Awaited<ReturnType<typeof getOrgDefaultModelProvider>>;
-  if (modelProviderId) {
-    defaultProvider = await getModelProviderByIdForOrg(orgId, modelProviderId);
-  } else {
-    defaultProvider = await getOrgDefaultModelProvider(
-      orgId,
-      framework as ModelProviderFramework,
-    );
-  }
-
-  const secretUserId = ORG_SENTINEL_USER_ID;
+  // Resolve provider: specific ID override → personal-tier branch (gated) →
+  // framework-scoped org default → cross-framework fallback. The personal
+  // branch is consulted first only when (Epic #11868):
+  //   1. caller opted in via agent/schedule `prefer_personal_provider` AND
+  //   2. the `personalModelProvider` feature switch is on for the caller.
+  // The cross-framework fallback (org chain, identical user chain) mirrors
+  // admission (zero-run-policy.ts) and implements Epic #11520's "provider's
+  // framework wins" rule at the dispatch boundary: an org with only a codex
+  // provider still resolves secrets for a claude-code compose; the
+  // provider's framework propagates downstream via `resolvedFramework`.
+  const personalEligible = await isPersonalTierEligible(
+    orgId,
+    userId,
+    preferPersonalProvider,
+  );
+  const defaultProvider = await resolveDefaultProviderRow({
+    orgId,
+    userId,
+    framework,
+    modelProviderId,
+    personalEligible,
+  });
 
   const providerType = resolveProviderType(
-    framework,
     defaultProvider,
     explicitModelProvider,
   );
+  // Only borrow `selectedModel` / `authMethod` from a provider row that
+  // actually matches the resolved `providerType`. When an explicit
+  // `modelProvider` request differs from the workspace default's type (e.g.
+  // workspace default is `claude-code-oauth-token` with selectedModel
+  // `claude-sonnet-4-5`, request asks for `openai-api-key`), passing the
+  // foreign selectedModel through would inject `OPENAI_MODEL=claude-sonnet-4-5`
+  // and the codex CLI would refuse to run.
+  //
+  // When defaultProvider is for the wrong type AND we have an explicit type
+  // override (no modelProviderId pin), look up the explicit provider's row
+  // by type so vm0/multi-auth flows still see their stored selectedModel/
+  // authMethod. The user-tier lookup is consulted first when
+  // `personalEligible` so a user with a personal `openai-api-key` row gets
+  // their own secret + selectedModel even when their default is org-tier
+  // (Epic #11868). Falls back to undefined when no row exists, in which case
+  // `resolveEnvironmentMapping` uses `getDefaultModel(providerType)`.
+  const matchingProvider = await resolveMatchingProviderForType({
+    orgId,
+    userId,
+    providerType,
+    defaultProvider,
+    explicitModelProvider,
+    modelProviderId,
+    personalEligible,
+  });
+  // Derive `secretUserId` from the row whose secret we're about to fetch
+  // (`matchingProvider`), not blindly from `defaultProvider`. They diverge
+  // in the explicit-type-override path: an explicit `openai-api-key`
+  // request can land on the org's `openai-api-key` even when the user has
+  // a personal default of a different type. The secret lives under the
+  // matching row's owner — using `defaultProvider.userId` would miss the
+  // org's OPENAI_API_KEY in that case (Epic #11868 — replaces the prior
+  // hardcoded sentinel).
+  const secretUserId = matchingProvider?.userId ?? ORG_SENTINEL_USER_ID;
   // selectedModelOverride (from agent/schedule config) takes precedence over provider's stored model
   const selectedModel =
-    selectedModelOverride ?? defaultProvider?.selectedModel ?? undefined;
+    selectedModelOverride ?? matchingProvider?.selectedModel ?? undefined;
 
   // Handle VM0 managed provider (meta-provider resolution)
   if (providerType === "vm0") {
@@ -324,13 +511,15 @@ export async function resolveModelProviderSecrets(
     return resolveVm0Provider(selectedModel);
   }
 
+  const resolvedFramework = getFrameworkForType(providerType);
+
   // Handle multi-auth providers (like aws-bedrock)
   if (hasAuthMethods(providerType)) {
     const resolved = await resolveMultiAuthProviderSecrets(
       orgId,
       secretUserId,
       providerType,
-      defaultProvider?.authMethod,
+      matchingProvider?.authMethod,
       selectedModel,
     );
     return (
@@ -338,6 +527,7 @@ export async function resolveModelProviderSecrets(
         secrets,
         injectedEnvironment: undefined,
         resolvedModelProvider: providerType,
+        framework: resolvedFramework,
         selectedModel,
       }
     );
@@ -350,6 +540,7 @@ export async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: providerType,
+      framework: resolvedFramework,
       selectedModel,
     };
   }
@@ -366,6 +557,7 @@ export async function resolveModelProviderSecrets(
       secrets,
       injectedEnvironment: undefined,
       resolvedModelProvider: providerType,
+      framework: resolvedFramework,
       selectedModel,
     };
   }
@@ -385,6 +577,7 @@ export async function resolveModelProviderSecrets(
     secrets: { [secretName]: secretValue },
     injectedEnvironment,
     resolvedModelProvider: providerType,
+    framework: resolvedFramework,
     selectedModel,
   };
 }

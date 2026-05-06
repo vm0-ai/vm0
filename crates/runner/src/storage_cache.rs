@@ -39,7 +39,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, short_digest, touch_mtime};
 use crate::telemetry::JobTelemetry;
-use crate::types::StorageManifest;
+use crate::types::GuestDownloadManifest;
 
 /// Archive sizes strictly larger than this are passthrough.
 const CACHE_MAX_SIZE: u64 = 8 * 1024 * 1024;
@@ -112,11 +112,11 @@ enum DownloadBody {
 /// pushed into the guest over vsock.
 ///
 /// Invariant: only touches entries where `cached == false`, `archive_url.is_some()`,
-/// and both `vas_storage_name` and `vas_version_id` are set. Entries that
+/// and both `vas_storage_name` and `vas_version_id` are non-empty. Entries that
 /// `filter_unchanged_storages` marked as reuse-in-place (`archive_url = None`)
 /// are left untouched.
 pub async fn populate_cache(
-    manifest: &mut StorageManifest,
+    manifest: &mut GuestDownloadManifest,
     sandbox: &dyn Sandbox,
     home: &HomePaths,
     telemetry: &mut JobTelemetry,
@@ -159,7 +159,7 @@ pub async fn populate_cache(
     Ok(())
 }
 
-fn collect_targets(manifest: &StorageManifest) -> Vec<CacheTarget> {
+fn collect_targets(manifest: &GuestDownloadManifest) -> Vec<CacheTarget> {
     let mut out = Vec::new();
     for (i, s) in manifest.storages.iter().enumerate() {
         if s.cached {
@@ -168,12 +168,8 @@ fn collect_targets(manifest: &StorageManifest) -> Vec<CacheTarget> {
         let Some(url) = s.archive_url.as_deref() else {
             continue;
         };
-        let Some(name) = s.vas_storage_name.as_deref() else {
-            continue;
-        };
-        let Some(version) = s.vas_version_id.as_deref() else {
-            continue;
-        };
+        let name = s.vas_storage_name.as_str();
+        let version = s.vas_version_id.as_str();
         // Empty components would hash to the same fixed digest as every
         // other empty component, collapsing distinct manifest entries into
         // a shared cache slot. Treat them like missing keys: passthrough.
@@ -520,25 +516,45 @@ async fn write_to_cache(cache_dir: &Path, bytes: &[u8]) -> RunnerResult<()> {
         .map_err(|e| RunnerError::Internal(format!("create staging {}: {e}", staging.display())))?;
 
     let archive_staging = staging.join("archive.tar.gz");
-    fs::write(&archive_staging, bytes)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write {}: {e}", archive_staging.display())))?;
+    if let Err(e) = fs::write(&archive_staging, bytes).await {
+        let _ = fs::remove_dir_all(&staging).await;
+        return Err(RunnerError::Internal(format!(
+            "write {}: {e}",
+            archive_staging.display()
+        )));
+    }
 
     // fsync the archive so a crash between rename and next sync cannot
     // leave a zero-byte or torn file visible at the final path.
-    let f = fs::File::open(&archive_staging).await.map_err(|e| {
-        RunnerError::Internal(format!("open for fsync {}: {e}", archive_staging.display()))
-    })?;
-    f.sync_all()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("fsync {}: {e}", archive_staging.display())))?;
+    let f = match fs::File::open(&archive_staging).await {
+        Ok(f) => f,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&staging).await;
+            return Err(RunnerError::Internal(format!(
+                "open for fsync {}: {e}",
+                archive_staging.display()
+            )));
+        }
+    };
+    if let Err(e) = f.sync_all().await {
+        drop(f);
+        let _ = fs::remove_dir_all(&staging).await;
+        return Err(RunnerError::Internal(format!(
+            "fsync {}: {e}",
+            archive_staging.display()
+        )));
+    }
     drop(f);
 
     // Ensure the `<name>/` parent exists so the rename below has a target.
-    if let Some(parent) = cache_dir.parent() {
-        fs::create_dir_all(parent).await.map_err(|e| {
-            RunnerError::Internal(format!("create cache parent {}: {e}", parent.display()))
-        })?;
+    if let Some(parent) = cache_dir.parent()
+        && let Err(e) = fs::create_dir_all(parent).await
+    {
+        let _ = fs::remove_dir_all(&staging).await;
+        return Err(RunnerError::Internal(format!(
+            "create cache parent {}: {e}",
+            parent.display()
+        )));
     }
 
     if let Err(e) = fs::rename(&staging, cache_dir).await {
@@ -586,7 +602,7 @@ fn staging_dir(final_dir: &Path) -> PathBuf {
 }
 
 fn apply_outcome(
-    manifest: &mut StorageManifest,
+    manifest: &mut GuestDownloadManifest,
     target: &CacheTarget,
     outcome: &TargetOutcome,
     telemetry: &mut JobTelemetry,
@@ -627,7 +643,7 @@ fn apply_outcome(
 /// any future parallel mutation at this pipeline stage. A mismatch is not
 /// a hard error (the caller made the right conservative choice) but is
 /// logged so a regression that breaks the invariant is visible.
-fn rewrite_url(manifest: &mut StorageManifest, target: &CacheTarget) {
+fn rewrite_url(manifest: &mut GuestDownloadManifest, target: &CacheTarget) {
     let new_url = format!(
         "file://{}",
         guest_archive_path(&target.name, &target.version)
@@ -636,8 +652,8 @@ fn rewrite_url(manifest: &mut StorageManifest, target: &CacheTarget) {
     match target.kind {
         TargetKind::Storage => {
             if let Some(entry) = manifest.storages.get_mut(target.index)
-                && entry.vas_storage_name.as_deref() == Some(target.name.as_str())
-                && entry.vas_version_id.as_deref() == Some(target.version.as_str())
+                && entry.vas_storage_name == target.name
+                && entry.vas_version_id == target.version
             {
                 entry.archive_url = Some(new_url);
                 applied = true;
@@ -676,7 +692,9 @@ mod tests {
 
     use crate::http::HttpClient;
     use crate::ids::RunId;
-    use crate::types::{ArtifactEntry, StorageEntry};
+    use crate::types::{
+        GuestDownloadArtifactEntry, GuestDownloadManifest, GuestDownloadStorageEntry,
+    };
 
     fn new_telemetry() -> JobTelemetry {
         let http = HttpClient::new("http://localhost:0".to_string()).unwrap();
@@ -687,14 +705,14 @@ mod tests {
         HomePaths::with_root(temp.path().to_path_buf())
     }
 
-    fn manifest_single_storage(url: String, name: &str, version: &str) -> StorageManifest {
-        StorageManifest {
-            storages: vec![StorageEntry {
+    fn manifest_single_storage(url: String, name: &str, version: &str) -> GuestDownloadManifest {
+        GuestDownloadManifest {
+            storages: vec![GuestDownloadStorageEntry {
                 mount_path: format!("/mnt/{name}"),
                 archive_url: Some(url),
                 cached: false,
-                vas_storage_name: Some(name.to_string()),
-                vas_version_id: Some(version.to_string()),
+                vas_storage_name: name.to_string(),
+                vas_version_id: version.to_string(),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -940,13 +958,13 @@ mod tests {
         let mut telemetry = new_telemetry();
 
         // Entry the filter has already marked reuse-in-place: archive_url = None, cached = true.
-        let mut manifest = StorageManifest {
-            storages: vec![StorageEntry {
+        let mut manifest = GuestDownloadManifest {
+            storages: vec![GuestDownloadStorageEntry {
                 mount_path: "/mnt/foo".into(),
                 archive_url: None,
                 cached: true,
-                vas_storage_name: Some("foo".into()),
-                vas_version_id: Some("v1".into()),
+                vas_storage_name: "foo".into(),
+                vas_version_id: "v1".into(),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -970,14 +988,14 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         let mut telemetry = new_telemetry();
 
-        // Entry without vas_storage_name / vas_version_id — pre-epic schema.
-        let mut manifest = StorageManifest {
-            storages: vec![StorageEntry {
+        // Entry without usable vas_storage_name / vas_version_id passes through.
+        let mut manifest = GuestDownloadManifest {
+            storages: vec![GuestDownloadStorageEntry {
                 mount_path: "/mnt/legacy".into(),
                 archive_url: Some("https://r2.example.com/legacy.tar.gz".into()),
                 cached: false,
-                vas_storage_name: None,
-                vas_version_id: None,
+                vas_storage_name: String::new(),
+                vas_version_id: String::new(),
             }],
             artifacts: Vec::new(),
             cleanup_paths: Vec::new(),
@@ -1108,9 +1126,9 @@ mod tests {
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
 
-        let mut manifest = StorageManifest {
+        let mut manifest = GuestDownloadManifest {
             storages: Vec::new(),
-            artifacts: vec![ArtifactEntry {
+            artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/artifact".into(),
                 archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                 cached: false,
@@ -1266,6 +1284,28 @@ mod tests {
         assert_eq!(s.parent(), d.parent());
     }
 
+    #[tokio::test]
+    async fn write_to_cache_rename_error_cleans_staging() {
+        let temp = tempfile::tempdir().unwrap();
+        let cache_dir = temp.path().join("storages").join("name").join("version");
+        let parent = cache_dir.parent().unwrap();
+        fs::create_dir_all(parent).await.unwrap();
+        fs::write(&cache_dir, b"not-a-cache-dir").await.unwrap();
+
+        let staging = staging_dir(&cache_dir);
+
+        let err = write_to_cache(&cache_dir, b"archive bytes")
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("rename"), "got: {err}");
+        assert!(
+            !staging.exists(),
+            "failed cache write must not leave staging dir"
+        );
+        assert_eq!(fs::read(&cache_dir).await.unwrap(), b"not-a-cache-dir");
+    }
+
     #[test]
     fn limited_body_allows_exact_limit() {
         let mut bytes = Vec::new();
@@ -1387,21 +1427,21 @@ mod tests {
             std::fs::write(cache_dir.join("archive.tar.gz"), tarball_bytes()).unwrap();
         }
 
-        let mut manifest = StorageManifest {
+        let mut manifest = GuestDownloadManifest {
             storages: vec![
-                StorageEntry {
+                GuestDownloadStorageEntry {
                     mount_path: format!("/mnt/{name_a}"),
                     archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                     cached: false,
-                    vas_storage_name: Some(name_a.to_string()),
-                    vas_version_id: Some(version.to_string()),
+                    vas_storage_name: name_a.to_string(),
+                    vas_version_id: version.to_string(),
                 },
-                StorageEntry {
+                GuestDownloadStorageEntry {
                     mount_path: format!("/mnt/{name_b}"),
                     archive_url: Some("https://r2.example.com/ignored.tar.gz".into()),
                     cached: false,
-                    vas_storage_name: Some(name_b.to_string()),
-                    vas_version_id: Some(version.to_string()),
+                    vas_storage_name: name_b.to_string(),
+                    vas_version_id: version.to_string(),
                 },
             ],
             artifacts: Vec::new(),
@@ -1441,9 +1481,9 @@ mod tests {
         let mut telemetry = new_telemetry();
 
         let original = "https://r2.example.com/nameless.tar.gz".to_string();
-        let mut manifest = StorageManifest {
+        let mut manifest = GuestDownloadManifest {
             storages: Vec::new(),
-            artifacts: vec![ArtifactEntry {
+            artifacts: vec![GuestDownloadArtifactEntry {
                 mount_path: "/mnt/nameless".into(),
                 archive_url: Some(original.clone()),
                 cached: false,

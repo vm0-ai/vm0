@@ -16,6 +16,23 @@ CRATES_DIR="$PROJECT_ROOT/crates"
 
 log() { echo "[runner] $1" >&2; }
 
+shell_env_assignments() {
+  local output=""
+  local name
+  local value
+
+  while (($#)); do
+    name="$1"
+    value="${2-}"
+    shift 2
+
+    value=${value//\'/\'\\\'\'}
+    output+="$name='$value' "
+  done
+
+  printf "%s" "${output% }"
+}
+
 # --- Load config ---
 ENV_FILE="$SCRIPT_DIR/.env.local"
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -59,7 +76,7 @@ cmd_deploy() {
   log "Building guest binaries..."
   cd "$CRATES_DIR"
   cargo build --release --target "$TARGET" \
-    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
+    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
 
   # Build runner
   log "Building runner with embedded guests..."
@@ -67,6 +84,7 @@ cmd_deploy() {
   GUEST_DOWNLOAD_PATH="target/$TARGET/release/guest-download" \
   GUEST_INIT_PATH="target/$TARGET/release/guest-init" \
   GUEST_MOCK_CLAUDE_PATH="target/$TARGET/release/guest-mock-claude" \
+  GUEST_MOCK_CODEX_PATH="target/$TARGET/release/guest-mock-codex" \
   GUEST_RESEED_PATH="target/$TARGET/release/guest-reseed" \
   cargo build --release --target "$TARGET" -p runner
 
@@ -87,10 +105,19 @@ cmd_deploy() {
   log "Running setup..."
   ssh_cmd "$RUNNER_BIN setup"
 
-  # Clean up old local images (keep 3 most recent deploys). Dev runner builds
-  # guest binaries locally, so its rootfs hash does not reliably match CI's
-  # x64-built artifacts; keep R2 disabled here to avoid misleading cache misses.
-  ssh_cmd "sudo $REMOTE_BIN_DIR/runner gc --keep-latest 3"
+  # R2 creds passed as sudo args so they survive sudo's env scrub. Empty
+  # values are treated as "unset" by r2_cache.rs, matching
+  # ansible/playbooks/build-runner.yml's R2 env block. Applied to both
+  # `gc` (sweeps shared R2 objects older than 7d) and `build` (pulls
+  # cached rootfs instead of rebuilding ~3-5min locally).
+  R2_ENV="$(shell_env_assignments \
+    R2_ACCOUNT_ID "${R2_ACCOUNT_ID:-}" \
+    R2_ACCESS_KEY_ID "${R2_ACCESS_KEY_ID:-}" \
+    R2_SECRET_ACCESS_KEY "${R2_SECRET_ACCESS_KEY:-}" \
+    R2_USER_STORAGES_BUCKET_NAME "${R2_USER_STORAGES_BUCKET_NAME:-}")"
+
+  # Clean up old images (keep 3 most recent deploys)
+  ssh_cmd "sudo $R2_ENV $REMOTE_BIN_DIR/runner gc --keep-latest 3"
 
   # Build unified image (rootfs + snapshot)
   PROFILES=("vm0/default")
@@ -99,7 +126,7 @@ cmd_deploy() {
   for PROFILE in "${PROFILES[@]}"; do
     log "Building $PROFILE..."
     BUILD_LOG=$(mktemp)
-    ssh_cmd "sudo $REMOTE_BIN_DIR/runner build --profile $PROFILE" | tee "$BUILD_LOG"
+    ssh_cmd "sudo $R2_ENV $REMOTE_BIN_DIR/runner build --profile $PROFILE" | tee "$BUILD_LOG"
     ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
     SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
     rm -f "$BUILD_LOG"

@@ -20,6 +20,7 @@ import type {
   RunResult,
   RunState,
 } from "../../../../../../src/lib/infra/run/types";
+import { extractFrameworkFromCompose } from "../../../../../../src/lib/infra/framework/framework-config";
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
 
 const router = tsr.router(runEventsContract, {
@@ -75,11 +76,17 @@ const router = tsr.router(runEventsContract, {
       };
     }
 
-    // Extract framework from compose content
-    const composeContent = runWithCompose.composeContent as {
-      agent?: { framework?: string };
-    } | null;
-    const framework = composeContent?.agent?.framework ?? "claude-code";
+    // Extract framework from compose content. Stored composes nest agents
+    // under `agents.<name>.framework`; `extractFrameworkFromCompose` handles
+    // both that shape and the legacy `agent.framework` form. Falls back to
+    // claude-code so old rows that pre-date the framework field continue to
+    // route through the Claude parser.
+    const framework =
+      extractFrameworkFromCompose(
+        runWithCompose.composeContent as Parameters<
+          typeof extractFrameworkFromCompose
+        >[0],
+      ) ?? "claude-code";
 
     // Build APL query for Axiom
     const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);

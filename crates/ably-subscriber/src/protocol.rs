@@ -153,14 +153,13 @@ fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
             .map_or(serde_json::Value::Null, serde_json::Value::Number),
         rmpv::Value::F64(f) => serde_json::Number::from_f64(f)
             .map_or(serde_json::Value::Null, serde_json::Value::Number),
-        rmpv::Value::String(s) => {
-            if s.is_str() {
-                serde_json::Value::String(s.into_str().unwrap_or_default().to_string())
-            } else {
+        rmpv::Value::String(s) => match s.into_str() {
+            Some(s) => serde_json::Value::String(s),
+            None => {
                 tracing::warn!("msgpack string contains invalid UTF-8, substituting empty string");
                 serde_json::Value::String(String::new())
             }
-        }
+        },
         rmpv::Value::Binary(bytes) => {
             let encoded = base64::engine::general_purpose::STANDARD.encode(&bytes);
             serde_json::Value::String(encoded)
@@ -173,14 +172,13 @@ fn rmpv_to_json(value: rmpv::Value) -> serde_json::Value {
                 .into_iter()
                 .map(|(k, v)| {
                     let key = match k {
-                        rmpv::Value::String(s) => {
-                            if s.is_str() {
-                                s.into_str().unwrap_or_default().to_string()
-                            } else {
+                        rmpv::Value::String(s) => match s.into_str() {
+                            Some(s) => s,
+                            None => {
                                 tracing::warn!("msgpack map key contains invalid UTF-8, substituting empty string");
                                 String::new()
                             }
-                        }
+                        },
                         other => format!("{other}"),
                     };
                     (key, rmpv_to_json(v))
@@ -403,6 +401,27 @@ mod tests {
                 .map(String::as_str),
             Some("2m")
         );
+    }
+
+    #[test]
+    fn rmpv_to_json_replaces_invalid_utf8_string_with_empty_string() {
+        let mut cursor = std::io::Cursor::new([0xa1, 0xff]);
+        let value = rmpv::decode::read_value(&mut cursor).unwrap();
+
+        assert_eq!(
+            rmpv_to_json(value),
+            serde_json::Value::String(String::new())
+        );
+    }
+
+    #[test]
+    fn rmpv_to_json_replaces_invalid_utf8_map_key_with_empty_string() {
+        let mut cursor = std::io::Cursor::new([0x81, 0xa1, 0xff, 0x01]);
+        let value = rmpv::decode::read_value(&mut cursor).unwrap();
+
+        let mut expected = serde_json::Map::new();
+        expected.insert(String::new(), serde_json::Value::Number(1.into()));
+        assert_eq!(rmpv_to_json(value), serde_json::Value::Object(expected));
     }
 
     #[test]

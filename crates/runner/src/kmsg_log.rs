@@ -3,31 +3,24 @@
 //!
 //! The iptables rule added by `sandbox-fc` logs non-TCP packets with prefix
 //! `VM0:<peer_ip>:`. This module tails `dmesg -w`, parses those entries,
-//! looks up the network log path via an in-memory IP map, and appends a
-//! JSON line matching the format used by the mitmproxy addon.
+//! and submits JSON rows through `NetworkLogManager` for per-run attribution
+//! and flushable file writes.
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use tokio::io::AsyncBufReadExt;
-use tokio::sync::Mutex;
+use tokio::io::{AsyncBufRead, AsyncBufReadExt};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
+
+use crate::network_log_drain::{
+    NetworkLogDrainProducer, NetworkLogDrainRequest, ReadyLine, poll_next_line_ready,
+};
+use crate::network_log_manager::NetworkLogManager;
 
 /// Prefix used in iptables `--log-prefix` to identify our log lines.
 const LOG_PREFIX: &str = "VM0:";
-
-/// Shared map from source IP → network log path, updated by executor on
-/// register/unregister.
-pub type IpLogMap = Arc<Mutex<HashMap<String, PathBuf>>>;
-
-/// Create a new empty IP-to-log-path map.
-pub fn new_ip_log_map() -> IpLogMap {
-    Arc::new(Mutex::new(HashMap::new()))
-}
 
 /// Handle to the background kmsg monitor. Call [`KmsgHandle::stop`] during
 /// shutdown to cancel the async task and kill the `dmesg -w` child process.
@@ -35,6 +28,7 @@ pub struct KmsgHandle {
     cancel: CancellationToken,
     task: tokio::task::JoinHandle<()>,
     child: Option<tokio::process::Child>,
+    drain: NetworkLogDrainProducer,
 }
 
 impl KmsgHandle {
@@ -54,11 +48,29 @@ impl KmsgHandle {
     pub fn noop() -> Self {
         let cancel = CancellationToken::new();
         let token = cancel.clone();
+        let (drain, mut drain_rx) = NetworkLogDrainProducer::channel("kmsg");
         Self {
             cancel,
-            task: tokio::spawn(async move { token.cancelled().await }),
+            task: tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = token.cancelled() => break,
+                        request = drain_rx.recv() => {
+                            let Some(request) = request else {
+                                break;
+                            };
+                            request.ack();
+                        }
+                    }
+                }
+            }),
             child: None,
+            drain,
         }
+    }
+
+    pub fn drain_producer(&self) -> NetworkLogDrainProducer {
+        self.drain.clone()
     }
 }
 
@@ -80,7 +92,7 @@ impl Drop for KmsgHandle {
 /// Spawn a background async task that tails `dmesg -w` and writes
 /// network log entries. Returns a handle; call [`KmsgHandle::stop`] during
 /// shutdown so the tokio runtime can exit cleanly.
-pub fn spawn(ip_log_map: IpLogMap) -> std::io::Result<KmsgHandle> {
+pub fn spawn(network_log_manager: NetworkLogManager) -> std::io::Result<KmsgHandle> {
     let mut child = tokio::process::Command::new("dmesg")
         .args(["-w"])
         .stdout(Stdio::piped())
@@ -94,6 +106,7 @@ pub fn spawn(ip_log_map: IpLogMap) -> std::io::Result<KmsgHandle> {
 
     let cancel = CancellationToken::new();
     let token = cancel.clone();
+    let (drain, drain_rx) = NetworkLogDrainProducer::channel("kmsg");
 
     // Log stderr in a background task so dmesg errors are visible.
     // Shares the cancel token so the task exits promptly on shutdown.
@@ -119,26 +132,55 @@ pub fn spawn(ip_log_map: IpLogMap) -> std::io::Result<KmsgHandle> {
     }
 
     let task = tokio::spawn(async move {
-        run_loop(&ip_log_map, token, stdout).await;
+        run_loop(network_log_manager, token, stdout, drain_rx).await;
     });
     Ok(KmsgHandle {
         cancel,
         task,
         child: Some(child),
+        drain,
     })
 }
 
 /// Read kernel log lines from `dmesg -w` stdout, parse iptables LOG
 /// entries, and write matching entries to per-run network JSONL files.
 async fn run_loop(
-    ip_log_map: &IpLogMap,
+    network_log_manager: NetworkLogManager,
     cancel: CancellationToken,
     stdout: tokio::process::ChildStdout,
+    drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
 ) {
-    let mut lines = tokio::io::BufReader::new(stdout).lines();
+    run_reader(
+        network_log_manager,
+        cancel,
+        tokio::io::BufReader::new(stdout),
+        drain_rx,
+    )
+    .await;
+}
+
+async fn run_reader<R>(
+    network_log_manager: NetworkLogManager,
+    cancel: CancellationToken,
+    reader: R,
+    mut drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
+) where
+    R: AsyncBufRead + Unpin,
+{
+    let mut lines = reader.lines();
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
+            request = drain_rx.recv() => {
+                let Some(request) = request else {
+                    break;
+                };
+                let stop = drain_ready_lines(&mut lines, &network_log_manager).await;
+                request.ack();
+                if stop {
+                    break;
+                }
+            }
             result = lines.next_line() => {
                 let line = match result {
                     Ok(Some(l)) => l,
@@ -150,23 +192,39 @@ async fn run_loop(
                     continue;
                 }
 
-                if let Some(entry) = parse_log_message(&line) {
-                    let log_path = {
-                        let map = ip_log_map.lock().await;
-                        map.get(&entry.source_ip).cloned()
-                    };
-                    if let Some(path) = log_path {
-                        // Move the blocking file I/O off the tokio worker thread.
-                        // Capture the timestamp *before* the spawn so it reflects
-                        // observation time, not write time (which may lag under load).
-                        let timestamp = Utc::now();
-                        tokio::task::spawn_blocking(move || {
-                            write_jsonl(&path, &entry, timestamp);
-                        });
-                    }
-                }
+                handle_kmsg_line(&network_log_manager, &line).await;
             }
         }
+    }
+}
+
+async fn drain_ready_lines<R>(
+    lines: &mut tokio::io::Lines<R>,
+    network_log_manager: &NetworkLogManager,
+) -> bool
+where
+    R: AsyncBufRead + Unpin,
+{
+    loop {
+        match poll_next_line_ready(lines) {
+            Ok(ReadyLine::Line(line)) => handle_kmsg_line(network_log_manager, &line).await,
+            Ok(ReadyLine::Pending) => return false,
+            Ok(ReadyLine::Eof) | Err(_) => return true,
+        }
+    }
+}
+
+async fn handle_kmsg_line(network_log_manager: &NetworkLogManager, line: &str) {
+    // Fast check before acquiring lock.
+    if !line.contains(LOG_PREFIX) {
+        return;
+    }
+
+    if let Some(entry) = parse_log_message(line) {
+        // Capture the timestamp before handing the row to the manager so
+        // it reflects observation time, not delayed write time.
+        let timestamp = Utc::now();
+        append_log_entry(network_log_manager, &entry, timestamp).await;
     }
 }
 
@@ -232,42 +290,33 @@ fn extract_field<'a>(line: &'a str, key: &str) -> Option<&'a str> {
         .find_map(|tok| tok.strip_prefix(key))
 }
 
-/// Append a JSON line to the network log file.
-///
-/// `timestamp` is captured by the caller (on the tokio worker) so the recorded
-/// time reflects when the packet was observed, not when this function — which
-/// runs on a tokio blocking thread — finally executes.
-fn write_jsonl(path: &Path, entry: &LogEntry, timestamp: DateTime<Utc>) {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+async fn append_log_entry(
+    network_log_manager: &NetworkLogManager,
+    entry: &LogEntry,
+    timestamp: DateTime<Utc>,
+) -> bool {
+    network_log_manager
+        .append_for_ip(&entry.source_ip, network_log_row(entry, timestamp))
+        .await
+}
 
-    // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
-    let json = serde_json::json!({
+fn network_log_row(entry: &LogEntry, timestamp: DateTime<Utc>) -> serde_json::Value {
+    // [NETWORK_LOG_FIELDS] — shared schema consumed by api-contracts.
+    serde_json::json!({
         "timestamp": timestamp.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "type": entry.protocol,
         "host": entry.dst_ip,
         "port": entry.dst_port,
         "request_size": entry.packet_size,
-    });
-
-    let mut line = serde_json::to_string(&json).unwrap_or_default();
-    line.push('\n');
-
-    let result = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .mode(0o644)
-        .open(path)
-        .and_then(|mut f| f.write_all(line.as_bytes()));
-
-    if let Err(e) = result {
-        debug!(path = %path.display(), error = %e, "failed to write non-TCP network log");
-    }
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ids::RunId;
+    use crate::network_log_drain::NetworkLogDrainContext;
+    use tokio::io::AsyncWriteExt;
 
     #[test]
     fn parse_udp_log_message() {
@@ -368,13 +417,9 @@ mod tests {
     }
 
     #[test]
-    fn write_jsonl_serializes_provided_timestamp() {
-        // Locks the contract that `write_jsonl` must use the `timestamp`
-        // parameter rather than calling `Utc::now()` internally — the whole
-        // point of the parameter is to record observation time, not the
-        // delayed write time after spawn_blocking.
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("test.jsonl");
+    fn network_log_row_serializes_provided_timestamp() {
+        // Locks the contract that row construction must use the provided
+        // timestamp rather than calling `Utc::now()` internally.
         let entry = LogEntry {
             source_ip: "10.200.0.2".to_string(),
             dst_ip: "8.8.8.8".to_string(),
@@ -385,16 +430,16 @@ mod tests {
         let ts = DateTime::parse_from_rfc3339("2024-01-15T10:30:45.123Z")
             .unwrap()
             .with_timezone(&Utc);
-        write_jsonl(&path, &entry, ts);
-        let content = std::fs::read_to_string(&path).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        let parsed = network_log_row(&entry, ts);
         assert_eq!(parsed["timestamp"], "2024-01-15T10:30:45.123Z");
     }
 
-    #[test]
-    fn write_jsonl_creates_file() {
+    #[tokio::test]
+    async fn append_log_entry_registered_source_writes_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.jsonl");
+        let manager = NetworkLogManager::new();
+        let _session = manager.register_source_ip("10.200.0.2", path.clone()).await;
         let entry = LogEntry {
             source_ip: "10.200.0.2".to_string(),
             dst_ip: "8.8.8.8".to_string(),
@@ -402,7 +447,8 @@ mod tests {
             protocol: "udp".to_string(),
             packet_size: 64,
         };
-        write_jsonl(&path, &entry, Utc::now());
+        assert!(append_log_entry(&manager, &entry, Utc::now()).await);
+        manager.flush_path(&path).await;
         let content = std::fs::read_to_string(&path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
         assert_eq!(parsed["host"], "8.8.8.8");
@@ -414,9 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn write_jsonl_icmp_entry() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("icmp.jsonl");
+    fn network_log_row_icmp_entry() {
         let entry = LogEntry {
             source_ip: "10.200.0.2".to_string(),
             dst_ip: "1.1.1.1".to_string(),
@@ -424,38 +468,123 @@ mod tests {
             protocol: "icmp".to_string(),
             packet_size: 84,
         };
-        write_jsonl(&path, &entry, Utc::now());
-        let content = std::fs::read_to_string(&path).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        let parsed = network_log_row(&entry, Utc::now());
         assert_eq!(parsed["type"], "icmp");
         assert_eq!(parsed["port"], 0);
         assert_eq!(parsed["request_size"], 84);
     }
 
-    #[test]
-    fn write_jsonl_appends_multiple_entries() {
+    #[tokio::test]
+    async fn append_log_entry_appends_multiple_entries() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("multi.jsonl");
+        let manager = NetworkLogManager::new();
+        let _session = manager.register_source_ip("10.0.0.1", path.clone()).await;
         for dst in ["8.8.8.8", "1.1.1.1", "9.9.9.9"] {
-            write_jsonl(
-                &path,
+            assert!(
+                append_log_entry(
+                    &manager,
+                    &LogEntry {
+                        source_ip: "10.0.0.1".to_string(),
+                        dst_ip: dst.to_string(),
+                        dst_port: 53,
+                        protocol: "udp".to_string(),
+                        packet_size: 64,
+                    },
+                    Utc::now(),
+                )
+                .await
+            );
+        }
+        manager.flush_path(&path).await;
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 3);
+        let hosts: std::collections::HashSet<String> = lines
+            .iter()
+            .map(|line| {
+                let parsed: serde_json::Value = serde_json::from_str(line).unwrap();
+                parsed["host"].as_str().unwrap().to_string()
+            })
+            .collect();
+        assert_eq!(
+            hosts,
+            ["8.8.8.8", "1.1.1.1", "9.9.9.9"]
+                .into_iter()
+                .map(str::to_string)
+                .collect()
+        );
+    }
+
+    #[tokio::test]
+    async fn append_log_entry_without_mapping_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ignored.jsonl");
+        let manager = NetworkLogManager::new();
+
+        assert!(
+            !append_log_entry(
+                &manager,
                 &LogEntry {
                     source_ip: "10.0.0.1".to_string(),
-                    dst_ip: dst.to_string(),
+                    dst_ip: "8.8.8.8".to_string(),
                     dst_port: 53,
                     protocol: "udp".to_string(),
                     packet_size: 64,
                 },
                 Utc::now(),
-            );
-        }
+            )
+            .await
+        );
+        manager.flush_path(&path).await;
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn drain_barrier_processes_queued_kmsg_line_before_ack() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("kmsg.jsonl");
+        let manager = NetworkLogManager::new();
+        let _session = manager.register_source_ip("10.0.0.1", path.clone()).await;
+        let cancel = CancellationToken::new();
+        let (producer, drain_rx) = NetworkLogDrainProducer::channel("kmsg-test");
+        let (mut writer, reader) = tokio::io::duplex(1024);
+        let task = tokio::spawn(run_reader(
+            manager.clone(),
+            cancel.clone(),
+            tokio::io::BufReader::new(reader),
+            drain_rx,
+        ));
+
+        writer
+            .write_all(
+                b"[12345.678901] VM0:10.0.0.1:IN=vm0-ve OUT=ens5 SRC=10.0.0.1 DST=8.8.8.8 LEN=64 PROTO=UDP SPT=45678 DPT=53\n",
+            )
+            .await
+            .unwrap();
+
+        producer
+            .drain(
+                NetworkLogDrainContext {
+                    run_id: RunId::nil(),
+                    source_ip: "10.0.0.1",
+                    path: &path,
+                    generation: 1,
+                },
+                std::time::Duration::from_secs(1),
+            )
+            .await;
+        manager.flush_path(&path).await;
+
         let content = std::fs::read_to_string(&path).unwrap();
-        let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 3);
-        for (i, dst) in ["8.8.8.8", "1.1.1.1", "9.9.9.9"].iter().enumerate() {
-            let parsed: serde_json::Value = serde_json::from_str(lines[i]).unwrap();
-            assert_eq!(parsed["host"], *dst);
-        }
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(parsed["type"], "udp");
+        assert_eq!(parsed["host"], "8.8.8.8");
+        assert_eq!(parsed["port"], 53);
+
+        cancel.cancel();
+        drop(writer);
+        task.await.unwrap();
     }
 
     #[test]

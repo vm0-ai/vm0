@@ -93,6 +93,11 @@ describe("/api/integrations/telegram", () => {
           expect.objectContaining({
             id: firstBotId,
             username: `bot_${firstBotId}`,
+            avatarUrl: expect.stringContaining(
+              `http://localhost:3000/api/integrations/telegram/${encodeURIComponent(
+                firstBotId,
+              )}/avatar?exp=`,
+            ),
             isOwner: true,
             isConnected: true,
             agent: expect.objectContaining({ id: expect.any(String) }),
@@ -100,6 +105,11 @@ describe("/api/integrations/telegram", () => {
           expect.objectContaining({
             id: secondBotId,
             username: `bot_${secondBotId}`,
+            avatarUrl: expect.stringContaining(
+              `http://localhost:3000/api/integrations/telegram/${encodeURIComponent(
+                secondBotId,
+              )}/avatar?exp=`,
+            ),
             isOwner: false,
             isConnected: false,
             agent: expect.objectContaining({ id: expect.any(String) }),

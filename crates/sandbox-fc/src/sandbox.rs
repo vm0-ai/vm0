@@ -14,18 +14,19 @@ use sandbox::{
 };
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{mpsc, watch};
+use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
 use vsock_host::VsockHost;
 
 use crate::api::ApiError;
-use nbd_cow::NbdCowDevice;
+use nbd_cow::PooledNbdCowDevice;
 
 use crate::api::ApiClient;
 use crate::balloon;
 use crate::config::FirecrackerConfig;
 use crate::control;
 use crate::factory::InvariantConfig;
-use crate::network::PooledNetns;
+use crate::network::{NetnsInfo, NetnsLease};
 use crate::paths::{SandboxPaths, SockPaths};
 use crate::process::{kill_process_group, kill_process_group_by_pid};
 
@@ -264,10 +265,10 @@ pub struct FirecrackerSandbox {
     pub(crate) sandbox_paths: SandboxPaths,
     /// Runtime socket paths (api.sock, vsock).
     pub(crate) sock_paths: SockPaths,
-    /// Pooled network namespace (returned to pool on destroy).
-    pub(crate) network: PooledNetns,
+    /// Pooled network namespace metadata plus cleanup ownership.
+    pub(crate) network: SandboxNetwork,
     /// NBD COW device (torn down on destroy).
-    pub(crate) cow_device: NbdCowDevice,
+    pub(crate) cow_device: Option<PooledNbdCowDevice>,
     process_monitor: Option<ProcessMonitorHandle>,
     /// Process-group leader PID for the spawned Firecracker wrapper.
     /// Captured at spawn time for cleanup and best-effort host-side OOM
@@ -289,12 +290,13 @@ pub struct FirecrackerSandbox {
     /// mutex immediately, allowing concurrent vsock operations.
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     /// Control socket server for `runner exec`.
-    control_server: Option<tokio::task::JoinHandle<()>>,
+    control_server: Option<control::ControlServerHandle>,
     /// Balloon memory reclaim controller.
     balloon_controller: Option<tokio::task::JoinHandle<()>>,
     /// Sender for leaked resource cleanup. When Drop fires without prior
     /// `factory.destroy()`, pool resources are sent here for async cleanup.
-    leak_tx: Option<tokio::sync::mpsc::Sender<crate::factory::LeakedResources>>,
+    leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
+    delete_workspace_on_leak_cleanup: bool,
     /// Set to `true` by `factory.destroy()` to suppress Drop-based leak recovery.
     pub(crate) destroyed: bool,
     /// Tracks whether the sandbox is currently in the idle/parked state.
@@ -306,15 +308,49 @@ pub struct FirecrackerSandbox {
     is_parked: bool,
 }
 
+pub(crate) struct SandboxNetwork {
+    info: NetnsInfo,
+    lease: Option<NetnsLease>,
+}
+
+impl SandboxNetwork {
+    fn from_lease(lease: NetnsLease) -> Self {
+        Self {
+            info: lease.info().clone(),
+            lease: Some(lease),
+        }
+    }
+
+    fn name(&self) -> &str {
+        self.info.name()
+    }
+
+    fn peer_ip(&self) -> &str {
+        self.info.peer_ip()
+    }
+
+    pub(crate) fn lease_mut(&mut self) -> &mut Option<NetnsLease> {
+        &mut self.lease
+    }
+
+    pub(crate) fn take_lease(&mut self) -> Option<NetnsLease> {
+        self.lease.take()
+    }
+
+    pub(crate) fn has_lease(&self) -> bool {
+        self.lease.is_some()
+    }
+}
+
 impl FirecrackerSandbox {
     pub(crate) fn new(
         config: SandboxConfig,
         factory_config: FirecrackerConfig,
         sandbox_paths: SandboxPaths,
         sock_paths: SockPaths,
-        network: PooledNetns,
-        cow_device: NbdCowDevice,
-        leak_tx: Option<tokio::sync::mpsc::Sender<crate::factory::LeakedResources>>,
+        network: NetnsLease,
+        cow_device: PooledNbdCowDevice,
+        leak_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::factory::LeakedResources>>,
     ) -> Self {
         let id = config.id.to_string();
         Self {
@@ -323,8 +359,8 @@ impl FirecrackerSandbox {
             id,
             sandbox_paths,
             sock_paths,
-            network,
-            cow_device,
+            network: SandboxNetwork::from_lease(network),
+            cow_device: Some(cow_device),
             process_monitor: None,
             process_group_pid: None,
             state: Arc::new(AtomicU8::new(SandboxState::Created as u8)),
@@ -334,9 +370,20 @@ impl FirecrackerSandbox {
             control_server: None,
             balloon_controller: None,
             leak_tx,
+            delete_workspace_on_leak_cleanup: true,
             destroyed: false,
             is_parked: false,
         }
+    }
+
+    pub(crate) fn cow_device(&self) -> sandbox::Result<&PooledNbdCowDevice> {
+        self.cow_device.as_ref().ok_or_else(|| SandboxError::Start {
+            message: "COW device missing before sandbox start".into(),
+        })
+    }
+
+    pub(crate) fn preserve_workspace_on_leak_cleanup(&mut self) {
+        self.delete_workspace_on_leak_cleanup = false;
     }
 
     fn current_state(&self) -> SandboxState {
@@ -427,13 +474,13 @@ impl FirecrackerSandbox {
     }
 
     /// Build the Firecracker JSON configuration for fresh boot.
-    fn build_config(&self) -> serde_json::Value {
+    fn build_config(&self) -> sandbox::Result<serde_json::Value> {
         let inv = InvariantConfig::new();
         let kernel_path = self.factory_config.kernel_path.display().to_string();
-        let cow_device_path = self.cow_device.device_path().display().to_string();
+        let cow_device_path = self.cow_device()?.device_path().display().to_string();
         let vsock_path = self.sock_paths.vsock().display().to_string();
 
-        serde_json::json!({
+        Ok(serde_json::json!({
             "boot-source": {
                 "kernel_image_path": kernel_path,
                 "boot_args": inv.boot_args,
@@ -466,12 +513,12 @@ impl FirecrackerSandbox {
                 "deflate_on_oom": inv.balloon.deflate_on_oom,
                 "stats_polling_interval_s": inv.balloon.stats_polling_interval_s,
             },
-        })
+        }))
     }
 
     /// Start using a fresh boot with `--config-file --api-sock`.
-    async fn start_fresh(&mut self) -> sandbox::Result<()> {
-        let config = self.build_config();
+    async fn start_fresh(&mut self, runtime_cancel: CancellationToken) -> sandbox::Result<()> {
+        let config = self.build_config()?;
         let config_json =
             serde_json::to_string_pretty(&config).map_err(|e| SandboxError::Start {
                 message: format!("serialize config: {e}"),
@@ -487,7 +534,7 @@ impl FirecrackerSandbox {
 
         let child = tokio::process::Command::new("ip")
             .args(["netns", "exec"])
-            .arg(&self.network.name)
+            .arg(self.network.name())
             .arg(&self.factory_config.binary_path)
             .args(["--config-file"])
             .arg(self.sandbox_paths.config())
@@ -512,6 +559,7 @@ impl FirecrackerSandbox {
             Arc::clone(&self.state_publish_lock),
             self.state_tx.clone(),
             Arc::clone(&self.guest),
+            runtime_cancel,
         ));
 
         // Wait for API socket readiness so the balloon controller can connect.
@@ -542,7 +590,10 @@ impl FirecrackerSandbox {
     }
 
     /// Start from a snapshot using `--api-sock` and bind mounts.
-    async fn start_from_snapshot(&mut self) -> sandbox::Result<()> {
+    async fn start_from_snapshot(
+        &mut self,
+        runtime_cancel: CancellationToken,
+    ) -> sandbox::Result<()> {
         let snapshot =
             self.factory_config
                 .snapshot
@@ -570,13 +621,13 @@ impl FirecrackerSandbox {
                 message: format!("sock dir missing before spawn: {}", sock_dir.display()),
             });
         }
-        let cow_device_path = self.cow_device.device_path();
+        let cow_device_path = self.cow_device()?.device_path();
         info!(
             id = %self.id,
             api_sock = %api_sock.display(),
             sock_dir = %sock_dir.display(),
             cow_device = %cow_device_path.display(),
-            netns = %self.network.name,
+            netns = %self.network.name(),
             binary = %self.factory_config.binary_path.display(),
             "spawning firecracker (snapshot restore)"
         );
@@ -603,7 +654,7 @@ impl FirecrackerSandbox {
             .arg(&snapshot.vsock_bind_dir) // $2
             .arg(cow_device_path) // $3
             .arg(&snapshot.drive_bind_path) // $4
-            .arg(&self.network.name) // $5
+            .arg(self.network.name()) // $5
             .arg(&self.factory_config.binary_path) // $6
             .arg(&api_sock) // $7
             .current_dir(self.sandbox_paths.workspace())
@@ -625,6 +676,7 @@ impl FirecrackerSandbox {
             Arc::clone(&self.state_publish_lock),
             self.state_tx.clone(),
             Arc::clone(&self.guest),
+            runtime_cancel,
         ));
 
         // Wait for Firecracker API to be ready, but bail early if the
@@ -674,9 +726,9 @@ impl FirecrackerSandbox {
         }
     }
 
-    fn abort_runtime_tasks(&mut self) {
-        if let Some(h) = self.control_server.take() {
-            h.abort();
+    async fn shutdown_runtime_tasks(&mut self) {
+        if let Some(mut h) = self.control_server.take() {
+            h.shutdown().await;
         }
         if let Some(h) = self.balloon_controller.take() {
             h.abort();
@@ -691,7 +743,7 @@ async fn abort_and_join<T>(task: tokio::task::JoinHandle<T>) {
 
 impl Drop for FirecrackerSandbox {
     fn drop(&mut self) {
-        if let Some(h) = self.control_server.take() {
+        if let Some(mut h) = self.control_server.take() {
             h.abort();
         }
         if let Some(h) = self.balloon_controller.take() {
@@ -709,23 +761,23 @@ impl Drop for FirecrackerSandbox {
 
         // If factory.destroy() was not called, send pool resources to the
         // async cleanup channel so they can be released without blocking.
-        // NbdCowDevice::Drop handles the kernel-level NBD disconnect; this
-        // covers the pool index, network namespace, and directories.
+        // The owned pooled COW device carries the pool lease; copied device
+        // indices are diagnostics only and are not release authority.
         if !self.destroyed
             && let Some(tx) = self.leak_tx.take()
         {
             let resources = crate::factory::LeakedResources {
                 sandbox_id: self.id.clone(),
-                device_index: Some(self.cow_device.device_index()),
-                cow_device: None,
-                network: Some(self.network.clone()),
+                cow_device: self.cow_device.take(),
+                network: self.network.take_lease(),
                 sock_dir: self.sock_paths.dir().to_owned(),
                 workspace: self.sandbox_paths.workspace().to_owned(),
+                delete_workspace: self.delete_workspace_on_leak_cleanup,
             };
-            if tx.try_send(resources).is_err() {
+            if tx.send(resources).is_err() {
                 tracing::warn!(
                     id = %self.id,
-                    "leak cleanup channel full or closed — resources will require runner gc"
+                    "leak cleanup channel closed — resources will require runner gc"
                 );
             }
         }
@@ -807,6 +859,7 @@ fn monitor_process(
     state_publish_lock: Arc<Mutex<()>>,
     state_tx: watch::Sender<SandboxState>,
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    runtime_cancel: CancellationToken,
 ) -> ProcessMonitorHandle {
     let process_group_pid = child.id();
 
@@ -849,6 +902,7 @@ fn monitor_process(
             Ok(status) => trace!(id = %id, %status, "process monitor observed exit"),
             Err(error) => warn!(id = %id, %error, "process monitor failed to wait for child"),
         }
+        runtime_cancel.cancel();
 
         let prev = {
             let _guard = state_publish_guard(&state_publish_lock);
@@ -904,7 +958,7 @@ impl Sandbox for FirecrackerSandbox {
     }
 
     fn source_ip(&self) -> &str {
-        &self.network.peer_ip
+        self.network.peer_ip()
     }
 
     fn process_pid(&self) -> Option<u32> {
@@ -922,6 +976,8 @@ impl Sandbox for FirecrackerSandbox {
             });
         }
 
+        let runtime_cancel = CancellationToken::new();
+
         // Start the vsock listener BEFORE launching Firecracker.
         // The UDS must be bound before the guest tries to connect.
         let vsock_path = self.sock_paths.vsock().display().to_string();
@@ -930,9 +986,9 @@ impl Sandbox for FirecrackerSandbox {
         });
 
         let start_result = if self.factory_config.snapshot.is_some() {
-            self.start_from_snapshot().await
+            self.start_from_snapshot(runtime_cancel.clone()).await
         } else {
-            self.start_fresh().await
+            self.start_fresh(runtime_cancel.clone()).await
         };
 
         if let Err(e) = start_result {
@@ -971,11 +1027,28 @@ impl Sandbox for FirecrackerSandbox {
 
         *self.guest.lock().await = Some(Arc::new(vsock_guest));
 
+        let control_sock_path = self.sock_paths.control_sock();
+        let control_server =
+            match control::bind_server(control_sock_path.clone(), Arc::clone(&self.guest)) {
+                Ok(server) => server,
+                Err(e) => {
+                    self.guest.lock().await.take();
+                    self.kill_process().await;
+                    return Err(SandboxError::Start {
+                        message: format!(
+                            "control socket bind {}: {e}",
+                            control_sock_path.display()
+                        ),
+                    });
+                }
+            };
+
         // Use CAS to avoid overwriting Stopped if the process crashed between
         // spawn and vsock connect (the process monitor may have already
         // recorded process exit).
         if !self.transition(SandboxState::Created, SandboxState::Running) {
             self.guest.lock().await.take();
+            control_server.close();
             self.kill_process().await;
             return Err(SandboxError::Start {
                 message: "process exited during startup".into(),
@@ -983,10 +1056,7 @@ impl Sandbox for FirecrackerSandbox {
         }
 
         // Start control socket server for `runner exec`.
-        self.control_server = Some(control::spawn_server(
-            self.sock_paths.control_sock(),
-            Arc::clone(&self.guest),
-        ));
+        self.control_server = Some(control_server.spawn(runtime_cancel));
 
         // Spawn balloon controller to reclaim unused guest memory.
         self.balloon_controller = Some(balloon::spawn(
@@ -1002,19 +1072,19 @@ impl Sandbox for FirecrackerSandbox {
     async fn stop(&mut self) -> sandbox::Result<()> {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
-                self.abort_runtime_tasks();
+                self.shutdown_runtime_tasks().await;
                 self.guest.lock().await.take();
                 self.kill_process().await;
             }
             return Ok(());
         }
 
-        self.abort_runtime_tasks();
-        // abort() without await: unlike `park_inner` (which awaits to become
-        // the sole writer to /balloon), stop() is about to kill the FC
-        // process entirely, so any in-flight controller PATCHes against the
-        // dying API socket are harmless — the subsequent kill_process call
-        // tears down FC regardless of balloon state.
+        self.shutdown_runtime_tasks().await;
+        // The control server is awaited so its socket path becomes
+        // undiscoverable before teardown continues. The balloon controller is
+        // only aborted: stop() is about to kill the FC process entirely, so
+        // any in-flight controller PATCH against the dying API socket is
+        // harmless.
 
         // Skip vsock graceful shutdown for parked sandboxes — vCPUs are
         // paused and cannot process the message. No in-flight user work
@@ -1042,14 +1112,13 @@ impl Sandbox for FirecrackerSandbox {
     async fn kill(&mut self) -> sandbox::Result<()> {
         if !self.transition(SandboxState::Running, SandboxState::Stopping) {
             if self.current_state() == SandboxState::Crashed {
-                self.abort_runtime_tasks();
+                self.shutdown_runtime_tasks().await;
                 self.guest.lock().await.take();
                 self.kill_process().await;
             }
             return Ok(());
         }
-        self.abort_runtime_tasks();
-        // abort() without await — same rationale as `stop()`.
+        self.shutdown_runtime_tasks().await;
         self.guest.lock().await.take();
         self.kill_process().await;
         self.publish_state(SandboxState::Stopped);
@@ -1524,6 +1593,16 @@ mod tests {
         .unwrap();
     }
 
+    async fn wait_for_path_removed(path: &Path) {
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while path.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
     #[test]
     fn process_state_publish_updates_atomic_and_watch_together() {
         let state = AtomicU8::new(SandboxState::Created as u8);
@@ -1645,6 +1724,7 @@ mod tests {
         let state_publish_lock = Arc::new(Mutex::new(()));
         let (state_tx, state_rx) = watch::channel(SandboxState::Running);
         let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let runtime_cancel = CancellationToken::new();
         let mut child = monitored_cat_process();
         let stdin = child.stdin.take();
 
@@ -1655,10 +1735,14 @@ mod tests {
             Arc::clone(&state_publish_lock),
             state_tx,
             guest,
+            runtime_cancel.clone(),
         );
 
         drop(stdin);
 
+        tokio::time::timeout(Duration::from_secs(1), runtime_cancel.cancelled())
+            .await
+            .unwrap();
         tokio::time::timeout(Duration::from_secs(1), wait_for_backend_crash(state_rx))
             .await
             .unwrap();
@@ -1668,6 +1752,38 @@ mod tests {
         );
 
         handle.wait().await;
+    }
+
+    #[tokio::test]
+    async fn process_monitor_cancels_control_server_after_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("control.sock");
+        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let runtime_cancel = CancellationToken::new();
+        let mut control = crate::control::bind_server(sock_path.clone(), Arc::clone(&guest))
+            .unwrap()
+            .spawn(runtime_cancel.clone());
+        let mut child = monitored_cat_process();
+        let stdin = child.stdin.take();
+
+        let handle = monitor_process(
+            "test-sandbox",
+            child,
+            Arc::clone(&state),
+            Arc::clone(&state_publish_lock),
+            state_tx,
+            guest,
+            runtime_cancel,
+        );
+
+        drop(stdin);
+        wait_for_path_removed(&sock_path).await;
+
+        handle.wait().await;
+        control.shutdown().await;
     }
 
     /// The lifecycle stream stores the latest state, so late subscribers still
@@ -1688,6 +1804,7 @@ mod tests {
             Arc::clone(&state_publish_lock),
             state_tx.clone(),
             guest,
+            CancellationToken::new(),
         );
 
         drop(stdin);
@@ -1722,6 +1839,7 @@ mod tests {
             Arc::clone(&state_publish_lock),
             state_tx.clone(),
             guest,
+            CancellationToken::new(),
         );
 
         drop(stdin);
@@ -1753,6 +1871,7 @@ mod tests {
             Arc::clone(&state_publish_lock),
             state_tx.clone(),
             guest,
+            CancellationToken::new(),
         );
 
         drop(stdin);
@@ -1796,6 +1915,7 @@ mod tests {
             Arc::clone(&state_publish_lock),
             state_tx.clone(),
             guest,
+            CancellationToken::new(),
         );
 
         tokio::time::sleep(Duration::from_millis(100)).await;
@@ -1841,6 +1961,7 @@ mod tests {
             Arc::clone(&state_publish_lock),
             state_tx,
             guest,
+            CancellationToken::new(),
         );
 
         handle.wait().await;

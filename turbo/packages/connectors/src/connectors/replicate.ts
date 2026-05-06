@@ -4,6 +4,7 @@ export const replicate = {
   replicate: {
     label: "Replicate",
     category: "ai-image-video",
+    generation: ["image", "text"],
     environmentMapping: {
       REPLICATE_TOKEN: "$secrets.REPLICATE_TOKEN",
     },

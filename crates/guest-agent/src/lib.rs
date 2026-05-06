@@ -3,6 +3,7 @@
 mod artifact;
 pub mod checkpoint;
 pub mod cli;
+mod codex_auth;
 pub mod complete;
 mod constants;
 mod content_hash;
@@ -14,6 +15,7 @@ pub mod http;
 pub mod masker;
 pub mod metrics;
 pub mod paths;
+pub mod session_history;
 pub mod telemetry;
 pub mod timing;
 mod urls;

@@ -18,12 +18,9 @@ import {
   reloadAgentById$,
   rememberLastUsedAgentId$,
 } from "../agent.ts";
-import { zeroJobUpdateSettings$ } from "../zero-page/job-detail/settings.ts";
-import { deleteZeroJobAgent$ } from "../zero-page/job-detail/delete.ts";
-import {
-  setActiveAgent$,
-  zeroJobDetail$,
-} from "../zero-page/zero-job-detail.ts";
+import { updateAgentSettings$ } from "../zero-page/job-detail/settings.ts";
+import { deleteAgent$ } from "../zero-page/job-detail/delete.ts";
+import { setActiveAgent$, agentDetail$ } from "../zero-page/zero-job-detail.ts";
 import { completeOnboarding$ } from "../zero-page/zero-onboarding-actions.ts";
 
 const context = testContext();
@@ -152,7 +149,7 @@ describe("leadAgentAvatarUrl$", () => {
 });
 
 describe("agent mutations trigger reloadAgentById$", () => {
-  it("zeroJobUpdateSettings$ invalidates agentById so a later read refetches", async () => {
+  it("updateAgentSettings$ invalidates agentById so a later read refetches", async () => {
     const state = { current: { displayName: "Old" } as AgentOverrides };
     const counter = serveAgent(state);
     server.use(
@@ -163,7 +160,7 @@ describe("agent mutations trigger reloadAgentById$", () => {
 
     detachedSetupPage({ context, path: "/", withoutRender: true });
     context.store.set(setActiveAgent$, AGENT_ID);
-    await context.store.get(zeroJobDetail$);
+    await context.store.get(agentDetail$);
 
     // Prime the agentById cache before the mutation so we can observe the
     // invalidation (rather than a first-read miss).
@@ -173,7 +170,7 @@ describe("agent mutations trigger reloadAgentById$", () => {
 
     state.current = { displayName: "Updated" };
     await context.store.set(
-      zeroJobUpdateSettings$,
+      updateAgentSettings$,
       { displayName: "Updated" },
       context.signal,
     );
@@ -183,7 +180,7 @@ describe("agent mutations trigger reloadAgentById$", () => {
     expect(counter.getCalls).toBeGreaterThan(callsBeforeMutation);
   });
 
-  it("deleteZeroJobAgent$ invalidates agentById so a later read refetches", async () => {
+  it("deleteAgent$ invalidates agentById so a later read refetches", async () => {
     const state = { current: { displayName: "Doomed" } as AgentOverrides };
     const counter = serveAgent(state);
     server.use(
@@ -194,13 +191,13 @@ describe("agent mutations trigger reloadAgentById$", () => {
 
     detachedSetupPage({ context, path: "/", withoutRender: true });
     context.store.set(setActiveAgent$, AGENT_ID);
-    await context.store.get(zeroJobDetail$);
+    await context.store.get(agentDetail$);
 
     const before = await context.store.get(agentById(AGENT_ID));
     expect(before.displayName).toBe("Doomed");
     const callsBeforeMutation = counter.getCalls;
 
-    await context.store.set(deleteZeroJobAgent$, context.signal);
+    await context.store.set(deleteAgent$, context.signal);
 
     await context.store.get(agentById(AGENT_ID));
     // The only guarantee we need from the fix: reloadAgentById$ was bumped so

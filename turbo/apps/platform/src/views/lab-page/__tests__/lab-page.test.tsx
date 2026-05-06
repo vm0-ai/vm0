@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
@@ -29,13 +29,13 @@ describe("lab page", () => {
 
   it("should show feature switches sorted alphabetically", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.UsageAnalytics]: true,
+      [FeatureSwitchKey.Dummy]: true,
     });
 
     detachedSetupPage({ context, path: "/_/lab" });
 
     await waitFor(() => {
-      return screen.getAllByText(/^(?:usageAnalytics|voiceChat)$/i);
+      return screen.getAllByText(/^(?:dummy|voiceChat)$/i);
     });
 
     // Should contain switch elements for feature switches
@@ -50,7 +50,7 @@ describe("lab page", () => {
     detachedSetupPage({ context, path: "/_/lab" });
 
     await waitFor(() => {
-      return screen.getByText("usageAnalytics");
+      return screen.getByText("dummy");
     });
 
     const switchElements = screen.getAllByRole("switch");

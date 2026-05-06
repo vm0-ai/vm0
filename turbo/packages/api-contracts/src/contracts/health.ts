@@ -24,9 +24,15 @@ export const healthAuthContract = c.router({
     method: "GET",
     path: "/health/auth",
     headers: authHeadersSchema,
+    query: z.object({
+      requiredCapability: z.string().optional(),
+      acceptAnySandboxCapability: z.string().optional(),
+      accept: z.string().optional(),
+    }),
     responses: {
       200: healthResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "Check authenticated API health",
   },
@@ -43,5 +49,9 @@ export type HealthAuthRouteResponse =
   | HealthRouteResponse
   | {
       readonly status: 401;
+      readonly body: ApiErrorResponse;
+    }
+  | {
+      readonly status: 403;
       readonly body: ApiErrorResponse;
     };

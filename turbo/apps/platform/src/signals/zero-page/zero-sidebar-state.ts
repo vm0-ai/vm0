@@ -72,6 +72,27 @@ export const setPendingDeleteThreadId$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Rename dialog state (RecentChatList)
+// ---------------------------------------------------------------------------
+const internalRenameDialogThreadId$ = state<string | null>(null);
+export const renameDialogThreadId$ = computed((get) => {
+  return get(internalRenameDialogThreadId$);
+});
+export const setRenameDialogThreadId$ = command(
+  ({ set }, id: string | null) => {
+    set(internalRenameDialogThreadId$, id);
+  },
+);
+
+const internalRenameDialogInput$ = state("");
+export const renameDialogInput$ = computed((get) => {
+  return get(internalRenameDialogInput$);
+});
+export const setRenameDialogInput$ = command(({ set }, input: string) => {
+  set(internalRenameDialogInput$, input);
+});
+
+// ---------------------------------------------------------------------------
 // Session list collapse state (RecentChatSection) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {

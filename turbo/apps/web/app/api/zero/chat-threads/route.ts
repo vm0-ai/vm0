@@ -127,6 +127,9 @@ const router = tsr.router(chatThreadsContract, {
             isRead: t.isRead,
             isArchived: t.lastMessageArchivedAt !== null,
             running: t.running,
+            hasDraft: t.hasDraft,
+            pinnedAt: t.pinnedAt ? t.pinnedAt.toISOString() : null,
+            renamedAt: t.renamedAt ? t.renamedAt.toISOString() : null,
           };
         }),
       },

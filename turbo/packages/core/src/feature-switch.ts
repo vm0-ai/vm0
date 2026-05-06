@@ -160,12 +160,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show the data export option in account menu",
     enabled: false,
   },
-  [FeatureSwitchKey.UsageAnalytics]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show admin-only daily credits chart and per-run records on Usage page",
-    enabled: false,
-  },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -186,12 +180,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description: "Show audit log links in integration replies",
     enabled: false,
-  },
-  [FeatureSwitchKey.AudioInput]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Enable voice input (microphone + STT) in chat — gates the mic button and the /api/zero/voice-io/stt route",
-    enabled: true,
   },
   [FeatureSwitchKey.AudioOutput]: {
     maintainer: "lancy@vm0.ai",
@@ -216,29 +204,28 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatArtifactsDrawer]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show an artifacts button in the chat header that opens a drawer listing uploaded files grouped by run",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatThreadReadIndicator]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the unread watermark dot and bold title for chat threads with unread messages in the sidebar",
-    enabled: false,
-  },
   [FeatureSwitchKey.ChatManualHistory]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Enable manual chat history loading from a Load history button at the top of a thread. When off, chat stays in the latest-50/no-history mode.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ChatMessageStartButton]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ChatThreadPin]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace the sidebar's per-thread trash button with a kebab/pin menu that exposes Pin/Unpin and Delete. Pinned threads sort to the top of the agent's chat list. Mobile shows the menu trigger always; desktop shows it on hover.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.ChatThreadRename]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Adds a Rename chat item to the sidebar thread kebab menu. When the user renames a thread, automated title generation is suppressed for that thread.",
     enabled: false,
   },
   [FeatureSwitchKey.FreshdeskConnector]: {
@@ -264,6 +251,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Gate the custom /settings/api-keys UI for issuing personal access tokens used by the /api/v1 public surface. When disabled, the settings page redirects to / and the sidebar menu item is hidden. The backend /api/v1 verification does NOT consult this flag — previously issued PATs continue to work.",
     enabled: false,
   },
+  [FeatureSwitchKey.ApiBackend]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Route platform API traffic to the api backend host instead of the www backend host. Unported endpoints continue through the api backend's web fallback proxy.",
+    enabled: false,
+  },
   [FeatureSwitchKey.ConnectorCategories]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -279,13 +272,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "POST /api/zero/platform-connectors/:type). When off, only api-token " +
       "and OAuth methods surface in connectors list/search, and the enable " +
       "endpoint 404s. Staff-only during rollout.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.TelegramIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Show the Telegram integration settings UI. The backend Telegram routes do not consult this frontend rollout flag.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -306,6 +292,38 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the mobile-native redesign — bottom tab bar, chats-as-home, and follow-up surface restructuring. Gates all mobile redesign work so PRs can land independently and the cumulative effect can be previewed by toggling this switch on.",
     enabled: false,
+  },
+  [FeatureSwitchKey.CodexBeta]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Gate the codex framework via BYOK OpenAI provider in zero web. " +
+      "When off, the openai-api-key tile is hidden in the add-provider " +
+      "dialog and POST /api/zero/model-providers with type=openai-api-key " +
+      "returns 404. Staff-only during rollout; per-user toggle via Lab.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatgptOauthProvider]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Gate the ChatGPT-OAuth model provider in zero web (Epic #11872). " +
+      "When off, the 'Connect ChatGPT' tile is hidden in the add-provider " +
+      "dialog, server routes that initiate the OAuth dance return 404, and " +
+      "stale-provider UX is bypassed. Staff-only during rollout; per-user " +
+      "toggle via Lab.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PersonalModelProvider]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable per-user (BYOK) model providers in addition to org-level. " +
+      "When off: Personal tab in Preferences is hidden; personal-tier API " +
+      "endpoints return 404; the prefer_personal_provider checkbox on " +
+      "agents/schedules is hidden; the resolver ignores the flag (treats " +
+      "as false). Staff-only during rollout; per-user toggle via Lab.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 
@@ -391,12 +409,18 @@ export function getFeatureSwitchDescriptions(): Record<
 
 /**
  * Check if a feature is enabled for the given context.
+ *
+ * `ctx` is required so callers must pass identity (userId/orgId/email) or an
+ * explicit `{}`. A switch gated by `enabledUserHashes` / `enabledOrgIdHashes`
+ * silently returns `false` when ctx omits identity, which has caused bugs.
+ * Client-side callers should usually read the platform `featureSwitch$` signal
+ * instead — it also merges DB overrides on top of identity context.
  */
 export function isFeatureEnabled(
   key: FeatureSwitchKey,
-  ctx?: FeatureSwitchContext,
+  ctx: FeatureSwitchContext,
 ): boolean {
-  const override = ctx?.overrides?.[key];
+  const override = ctx.overrides?.[key];
   if (override !== undefined) {
     return override;
   }
@@ -405,17 +429,17 @@ export function isFeatureEnabled(
   if (featureSwitch.enabled) {
     return true;
   }
-  if (ctx?.userId && featureSwitch.enabledUserHashes?.length) {
+  if (ctx.userId && featureSwitch.enabledUserHashes?.length) {
     if (featureSwitch.enabledUserHashes.includes(fnv1a(ctx.userId)))
       return true;
   }
-  if (ctx?.email && featureSwitch.enabledEmailHashes?.length) {
+  if (ctx.email && featureSwitch.enabledEmailHashes?.length) {
     if (
       featureSwitch.enabledEmailHashes.includes(fnv1a(ctx.email.toLowerCase()))
     )
       return true;
   }
-  if (ctx?.orgId && featureSwitch.enabledOrgIdHashes?.length) {
+  if (ctx.orgId && featureSwitch.enabledOrgIdHashes?.length) {
     if (featureSwitch.enabledOrgIdHashes.includes(fnv1a(ctx.orgId)))
       return true;
   }

@@ -1,5 +1,244 @@
 # Changelog
 
+## [9.141.0](https://github.com/vm0-ai/vm0/compare/cli-v9.140.9...cli-v9.141.0) (2026-05-06)
+
+
+### Features
+
+* support office file uploads ([#11911](https://github.com/vm0-ai/vm0/issues/11911)) ([1e331b4](https://github.com/vm0-ai/vm0/commit/1e331b4cd92d7342ef768aed53fda03f3780123d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.257.0
+
+## [9.140.9](https://github.com/vm0-ai/vm0/compare/cli-v9.140.8...cli-v9.140.9) (2026-05-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.256.0
+
+## [9.140.8](https://github.com/vm0-ai/vm0/compare/cli-v9.140.7...cli-v9.140.8) (2026-05-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.255.0
+
+## [9.140.7](https://github.com/vm0-ai/vm0/compare/cli-v9.140.6...cli-v9.140.7) (2026-05-03)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.254.0
+
+## [9.140.6](https://github.com/vm0-ai/vm0/compare/cli-v9.140.5...cli-v9.140.6) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.253.0
+
+## [9.140.5](https://github.com/vm0-ai/vm0/compare/cli-v9.140.4...cli-v9.140.5) (2026-05-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.252.0
+
+## [9.140.4](https://github.com/vm0-ai/vm0/compare/cli-v9.140.3...cli-v9.140.4) (2026-05-01)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.251.0
+
+## [9.140.3](https://github.com/vm0-ai/vm0/compare/cli-v9.140.2...cli-v9.140.3) (2026-04-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.250.0
+
+## [9.140.2](https://github.com/vm0-ai/vm0/compare/cli-v9.140.1...cli-v9.140.2) (2026-04-30)
+
+
+### Refactoring
+
+* **api:** tighten env schema and clean up dead code ([#11621](https://github.com/vm0-ai/vm0/issues/11621)) ([849fe02](https://github.com/vm0-ai/vm0/commit/849fe027474e831d4721c3f3758142f4677a60da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.249.0
+
+## [9.140.1](https://github.com/vm0-ai/vm0/compare/cli-v9.140.0...cli-v9.140.1) (2026-04-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.248.1
+
+## [9.140.0](https://github.com/vm0-ai/vm0/compare/cli-v9.139.3...cli-v9.140.0) (2026-04-30)
+
+
+### Features
+
+* add generation connector doctor ([#11594](https://github.com/vm0-ai/vm0/issues/11594)) ([cdf0174](https://github.com/vm0-ai/vm0/commit/cdf0174912a26c92c770a6a7a78c0a7056933b95))
+
+## [9.139.3](https://github.com/vm0-ai/vm0/compare/cli-v9.139.2...cli-v9.139.3) (2026-04-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.248.0
+
+## [9.139.2](https://github.com/vm0-ai/vm0/compare/cli-v9.139.1...cli-v9.139.2) (2026-04-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.247.0
+
+## [9.139.1](https://github.com/vm0-ai/vm0/compare/cli-v9.139.0...cli-v9.139.1) (2026-04-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.246.0
+
+## [9.139.0](https://github.com/vm0-ai/vm0/compare/cli-v9.138.2...cli-v9.139.0) (2026-04-29)
+
+
+### Features
+
+* add web voice cli ([#11465](https://github.com/vm0-ai/vm0/issues/11465)) ([bcd8ff8](https://github.com/vm0-ai/vm0/commit/bcd8ff820e5621facaccc1b823ace3a582cb034b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.245.0
+
+## [9.138.2](https://github.com/vm0-ai/vm0/compare/cli-v9.138.1...cli-v9.138.2) (2026-04-29)
+
+
+### Bug Fixes
+
+* **cli:** align zero web upload file types ([#11456](https://github.com/vm0-ai/vm0/issues/11456)) ([d9c1049](https://github.com/vm0-ai/vm0/commit/d9c10497e76535ceb8340bc8a6a15811c542c4de))
+
+## [9.138.1](https://github.com/vm0-ai/vm0/compare/cli-v9.138.0...cli-v9.138.1) (2026-04-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.244.0
+
+## [9.138.0](https://github.com/vm0-ai/vm0/compare/cli-v9.137.3...cli-v9.138.0) (2026-04-28)
+
+
+### Features
+
+* **cli:** codex JSONL event parser + factory dispatch ([#11432](https://github.com/vm0-ai/vm0/issues/11432)) ([035808d](https://github.com/vm0-ai/vm0/commit/035808d9afa72888ff1c2662c847dad794544fca))
+* **core:** register codex framework + tighten compose schema enum ([#11424](https://github.com/vm0-ai/vm0/issues/11424)) ([6e54c7f](https://github.com/vm0-ai/vm0/commit/6e54c7ff9e1f10ff26fb702d265a4dac735e0580))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.243.0
+
+## [9.137.3](https://github.com/vm0-ai/vm0/compare/cli-v9.137.2...cli-v9.137.3) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.242.1
+
+## [9.137.2](https://github.com/vm0-ai/vm0/compare/cli-v9.137.1...cli-v9.137.2) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.242.0
+
+## [9.137.1](https://github.com/vm0-ai/vm0/compare/cli-v9.137.0...cli-v9.137.1) (2026-04-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.241.0
+
+## [9.137.0](https://github.com/vm0-ai/vm0/compare/cli-v9.136.0...cli-v9.137.0) (2026-04-28)
+
+
+### Features
+
+* add telegram message send ([#11359](https://github.com/vm0-ai/vm0/issues/11359)) ([6d397e6](https://github.com/vm0-ai/vm0/commit/6d397e6b555e447c376f1f3c71963d079ea7357f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.240.0
+
+## [9.136.0](https://github.com/vm0-ai/vm0/compare/cli-v9.135.0...cli-v9.136.0) (2026-04-28)
+
+
+### Features
+
+* **runner:** record dns query results in network logs ([#11351](https://github.com/vm0-ai/vm0/issues/11351)) ([96755e6](https://github.com/vm0-ai/vm0/commit/96755e69c58de5e0ca2b13a6be3693b6276cee7a))
+
+## [9.135.0](https://github.com/vm0-ai/vm0/compare/cli-v9.134.1...cli-v9.135.0) (2026-04-28)
+
+
+### Features
+
+* add telegram file upload command ([#11298](https://github.com/vm0-ai/vm0/issues/11298)) ([2a6ff07](https://github.com/vm0-ai/vm0/commit/2a6ff077f99ec0890bb0214594d4c942ebe8f9ab))
+
 ## [9.134.1](https://github.com/vm0-ai/vm0/compare/cli-v9.134.0...cli-v9.134.1) (2026-04-28)
 
 

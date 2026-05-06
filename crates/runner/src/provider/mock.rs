@@ -1,11 +1,11 @@
 //! Channel-driven mock [`JobProvider`] for integration testing.
 //!
-//! Reproduces the key concurrency properties of [`ApiProvider`]:
+//! Reproduces the key main-loop stress cases that previously came from
+//! [`ApiProvider`]:
 //!
-//! - `discover()` holds a `tokio::sync::Mutex` for its entire duration
-//!   (same as ApiProvider's discovery Mutex).
-//! - `shutdown()` acquires the same Mutex (same as ApiProvider).
-//! - `discover()` has an optional pre-channel delay simulating ApiProvider's
+//! - `discover()` can hold a resource for its entire duration and `shutdown()`
+//!   can wait on that resource, preserving the shutdown regression shape.
+//! - `discover()` has an optional pre-channel delay simulating the API provider's
 //!   poll timer that restarts from scratch when the future is cancelled.
 //!
 //! This lets integration tests catch:
@@ -39,14 +39,15 @@ pub struct Completion {
 
 /// Channel-driven mock provider.
 ///
-/// `discover()` holds `discovery` Mutex for its entire duration, mirroring
-/// `ApiProvider`. `shutdown()` acquires the same Mutex, so omitting the
+/// `discover()` holds `discovery` Mutex for its entire duration. `shutdown()`
+/// acquires the same Mutex, so omitting the
 /// `drop(discover_fut)` before `shutdown()` causes a real deadlock.
 pub struct MockJobProvider {
     /// Held by `discover()` for its entire lifetime and acquired by
-    /// `shutdown()`. Reproduces the ApiProvider discovery Mutex semantics.
+    /// `shutdown()`. Reproduces the historical API-provider shutdown deadlock
+    /// shape used by main-loop regression tests.
     discovery: Mutex<mpsc::UnboundedReceiver<(RunId, String)>>,
-    /// Optional delay before checking the channel, simulating ApiProvider's
+    /// Optional delay before checking the channel, simulating the API provider's
     /// internal poll timer. If the future is cancelled and recreated (not
     /// pinned), this delay restarts from scratch — jobs pushed during the
     /// delay won't be discovered until it completes.
@@ -100,7 +101,7 @@ impl MockJobProvider {
     /// Create a mock provider with an explicit poll delay.
     ///
     /// When set, `discover()` sleeps for this duration before checking the
-    /// channel. This simulates ApiProvider's HTTP poll timer — if the main
+    /// channel. This simulates the API provider's HTTP poll timer — if the main
     /// loop cancels and recreates `discover()` (e.g. not pinned), the sleep
     /// restarts from scratch and jobs are never discovered.
     pub fn with_poll_delay(
@@ -217,8 +218,8 @@ impl MockProviderHandle {
 impl JobProvider for MockJobProvider {
     /// Block until a job is pushed or the token is cancelled.
     ///
-    /// Holds `self.discovery` Mutex for the entire call — same as
-    /// `ApiProvider::discover()`. This is critical for regression tests:
+    /// Holds `self.discovery` Mutex for the entire call. This keeps the
+    /// historical API-provider deadlock shape available for regression tests:
     ///
     /// - If `poll_delay` is set, the delay must complete before checking
     ///   the channel. Without pinning (#8783), heartbeat ticks cancel and
@@ -280,7 +281,7 @@ impl JobProvider for MockJobProvider {
         self.heartbeat_notify.notify_waiters();
     }
 
-    /// Acquire the discovery Mutex — same as `ApiProvider::shutdown()`.
+    /// Acquire the discovery Mutex to preserve the shutdown deadlock regression shape.
     ///
     /// If `discover()` is still alive and holding the Mutex, this deadlocks.
     /// The main loop must `drop(discover_fut)` before calling this.

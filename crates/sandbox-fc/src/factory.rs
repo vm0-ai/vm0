@@ -8,10 +8,12 @@ use sandbox::{
 use sha2::{Digest, Sha256};
 use tracing::{info, warn};
 
-use nbd_cow::NbdCowDevice;
+use nbd_cow::{DestroyRetryPolicy, PooledNbdCowDevice};
 
 use crate::config::FirecrackerConfig;
-use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, PooledNetns, generate_boot_args};
+use crate::network::{
+    GUEST_NETWORK, NetnsLease, NetnsPoolConfig, NetnsPoolHandle, generate_boot_args,
+};
 use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
 use crate::prerequisites;
 use crate::sandbox::FirecrackerSandbox;
@@ -24,17 +26,14 @@ pub(crate) const DESTROY_RETRIES: u32 = 5;
 /// Delay between COW device destroy retries.
 pub(crate) const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// Channel capacity for leaked sandbox resource cleanup.
-/// 32 is generous — the channel only receives messages on exceptional paths
-/// such as executor panics or cancelled create transactions.
-const LEAK_CHANNEL_CAPACITY: usize = 32;
-
 /// Maximum time to wait for leaked-resource cleanup during normal shutdown.
 ///
 /// Shutdown is the graceful path, so already-queued leak reports should drain
 /// before the pool Arcs are unwrapped. If cleanup gets stuck, fall back to
-/// aborting and let the next `runner gc` clean leftovers.
-const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+/// aborting and let the next `runner gc` clean leftovers. This must exceed the
+/// COW destroy retry budget because leaked sandbox cleanup now owns the pooled
+/// COW device and may need a full finalizer pass before releasing netns/dirs.
+const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Resources that require async cleanup when a sandbox is dropped without
 /// going through `factory.destroy()` or when create is dropped mid-allocation.
@@ -43,37 +42,33 @@ const LEAK_CLEANUP_SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::
 /// drains them asynchronously.
 pub(crate) struct LeakedResources {
     pub(crate) sandbox_id: String,
-    pub(crate) device_index: Option<u32>,
-    pub(crate) cow_device: Option<NbdCowDevice>,
-    pub(crate) network: Option<PooledNetns>,
+    pub(crate) cow_device: Option<PooledNbdCowDevice>,
+    pub(crate) network: Option<NetnsLease>,
     pub(crate) sock_dir: PathBuf,
     pub(crate) workspace: PathBuf,
+    pub(crate) delete_workspace: bool,
 }
 
 /// Owns the leaked-resource cleanup channel and its background drain task.
 ///
 /// Normal factory shutdown signals the drain task to close the receiver, drain
-/// already-queued resources, and finish. `Drop` cannot await, so it aborts as a
-/// best-effort fallback.
+/// already-queued resources, and finish. `Drop` cannot await, so it only
+/// detaches the task; live sandbox sender clones can still report leaked
+/// resources before the channel naturally closes.
 struct LeakCleaner {
-    tx: Option<tokio::sync::mpsc::Sender<LeakedResources>>,
+    tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
     shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
     handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl LeakCleaner {
-    fn spawn(
-        device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
-        netns_pool: std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
-    ) -> Self {
-        let (tx, rx) = tokio::sync::mpsc::channel(LEAK_CHANNEL_CAPACITY);
+    fn spawn(netns_pool: NetnsPoolHandle) -> Self {
+        // Drop cannot await, and losing a leak report can strand host resources.
+        // Keep this unbounded: reports only come from exceptional cleanup paths,
+        // with runner GC as the final backstop if the cleaner stalls.
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-        let handle = tokio::spawn(drain_leaked_resources(
-            rx,
-            shutdown_rx,
-            device_pool,
-            netns_pool,
-        ));
+        let handle = tokio::spawn(drain_leaked_resources(rx, shutdown_rx, netns_pool));
         Self {
             tx: Some(tx),
             shutdown_tx: Some(shutdown_tx),
@@ -81,7 +76,7 @@ impl LeakCleaner {
         }
     }
 
-    fn sender(&self) -> Option<tokio::sync::mpsc::Sender<LeakedResources>> {
+    fn sender(&self) -> Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>> {
         self.tx.clone()
     }
 
@@ -115,6 +110,7 @@ impl LeakCleaner {
         }
     }
 
+    #[cfg(test)]
     fn abort(&mut self) {
         // Drop handles first, then abort immediately as a synchronous Drop backstop.
         self.tx.take();
@@ -123,41 +119,46 @@ impl LeakCleaner {
             handle.abort();
         }
     }
+
+    fn detach_for_drop(&mut self) {
+        self.tx.take();
+        self.shutdown_tx.take();
+        // Dropping JoinHandle detaches the task. If the runtime is still alive,
+        // the drain loop can finish queued cleanup and accept leak reports from
+        // live sandbox sender clones without blocking this synchronous Drop path.
+        self.handle.take();
+    }
 }
 
 impl Drop for LeakCleaner {
     fn drop(&mut self) {
-        self.abort();
+        self.detach_for_drop();
     }
 }
 
 #[async_trait]
 trait CreateRollbackCleanup {
-    async fn destroy_cow_device(&self, cow_device: NbdCowDevice) -> bool;
-    async fn release_network(&self, network: PooledNetns);
+    async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> bool;
+    async fn release_network(&self, network: &mut Option<NetnsLease>);
     async fn remove_dir(&self, kind: &'static str, path: PathBuf);
     fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot);
 }
 
 struct FactoryCreateRollbackCleanup {
     id: String,
-    device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
-    netns_pool: std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
+    netns_pool: NetnsPoolHandle,
 }
 
 #[async_trait]
 impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
-    async fn destroy_cow_device(&self, mut cow_device: NbdCowDevice) -> bool {
-        let device_index = cow_device.device_index();
-        let cow_destroyed = destroy_cow_device_with_retries(&self.id, &mut cow_device).await;
-        self.device_pool.lock().await.release(device_index);
-        cow_destroyed
+    async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> bool {
+        destroy_cow_device_with_retries(&self.id, cow_device).await
     }
 
-    async fn release_network(&self, network: PooledNetns) {
-        let mut netns_pool = self.netns_pool.lock().await;
-        if let Err(e) = netns_pool.release(network).await {
-            warn!(id = %self.id, error = %e, "failed to release netns during rollback");
+    async fn release_network(&self, network: &mut Option<NetnsLease>) {
+        let outcome = self.netns_pool.release(network).await;
+        if let Some(message) = outcome.invalid_message() {
+            warn!(id = %self.id, error = %message, "failed to release netns during rollback");
         }
     }
 
@@ -185,15 +186,15 @@ impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
 struct SandboxCreateResources {
     sandbox_paths: SandboxPaths,
     sock_paths: SockPaths,
-    network: PooledNetns,
-    cow_device: NbdCowDevice,
+    network: NetnsLease,
+    cow_device: PooledNbdCowDevice,
 }
 
 #[cfg(test)]
 struct SandboxCreateResourcesWithoutCow {
     sandbox_paths: SandboxPaths,
     sock_paths: SockPaths,
-    network: PooledNetns,
+    network: NetnsLease,
 }
 
 struct SandboxCreateTransaction {
@@ -201,9 +202,10 @@ struct SandboxCreateTransaction {
     slot: Option<crate::cow_pool::PrewarmedSlot>,
     workspace: Option<PathBuf>,
     sock_dir: Option<PathBuf>,
-    network: Option<PooledNetns>,
-    cow_device: Option<NbdCowDevice>,
-    leak_tx: Option<tokio::sync::mpsc::Sender<LeakedResources>>,
+    network: Option<NetnsLease>,
+    cow_device: Option<PooledNbdCowDevice>,
+    leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
+    delete_workspace_on_leak_cleanup: bool,
 }
 
 impl SandboxCreateTransaction {
@@ -214,7 +216,7 @@ impl SandboxCreateTransaction {
 
     fn new_with_leak_tx(
         id: String,
-        leak_tx: Option<tokio::sync::mpsc::Sender<LeakedResources>>,
+        leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
     ) -> Self {
         Self {
             id,
@@ -224,6 +226,7 @@ impl SandboxCreateTransaction {
             network: None,
             cow_device: None,
             leak_tx,
+            delete_workspace_on_leak_cleanup: true,
         }
     }
 
@@ -247,11 +250,11 @@ impl SandboxCreateTransaction {
         self.sock_dir = Some(sock_dir);
     }
 
-    fn track_network(&mut self, network: PooledNetns) {
+    fn track_network(&mut self, network: NetnsLease) {
         self.network = Some(network);
     }
 
-    fn track_cow_device(&mut self, cow_device: NbdCowDevice) {
+    fn track_cow_device(&mut self, cow_device: PooledNbdCowDevice) {
         self.cow_device = Some(cow_device);
     }
 
@@ -312,7 +315,7 @@ impl SandboxCreateTransaction {
 
     fn take_base_resources_after_validation(
         &mut self,
-    ) -> sandbox::Result<(PathBuf, PathBuf, PooledNetns)> {
+    ) -> sandbox::Result<(PathBuf, PathBuf, NetnsLease)> {
         let workspace = self.workspace.take().ok_or_else(|| {
             create_transaction_invalid_state("missing workspace after validation")
         })?;
@@ -336,8 +339,19 @@ impl SandboxCreateTransaction {
         } else {
             false
         };
+        if keep_workspace {
+            self.delete_workspace_on_leak_cleanup = false;
+        }
         if let Some(network) = self.network.take() {
-            cleanup.release_network(network).await;
+            self.network = Some(network);
+            cleanup.release_network(&mut self.network).await;
+        }
+        if self.network.is_some() {
+            warn!(
+                id = %self.id,
+                "keeping create rollback directories so Drop can hand unreleased netns to leak cleaner"
+            );
+            return;
         }
         if let Some(sock_dir) = self.sock_dir.take() {
             cleanup.remove_dir("sock", sock_dir).await;
@@ -366,7 +380,7 @@ impl SandboxCreateTransaction {
             || self.cow_device.is_some()
     }
 
-    fn try_send_async_leaked_resources(&mut self) -> bool {
+    fn send_async_leaked_resources(&mut self) -> bool {
         if self.network.is_none() && self.cow_device.is_none() {
             return false;
         }
@@ -384,17 +398,16 @@ impl SandboxCreateTransaction {
 
         let leaked = LeakedResources {
             sandbox_id: self.id.clone(),
-            device_index: None,
             cow_device: self.cow_device.take(),
             network: self.network.take(),
             sock_dir,
             workspace,
+            delete_workspace: self.delete_workspace_on_leak_cleanup,
         };
 
-        match leak_tx.try_send(leaked) {
+        match leak_tx.send(leaked) {
             Ok(()) => true,
-            Err(tokio::sync::mpsc::error::TrySendError::Full(mut leaked))
-            | Err(tokio::sync::mpsc::error::TrySendError::Closed(mut leaked)) => {
+            Err(tokio::sync::mpsc::error::SendError(mut leaked)) => {
                 self.cow_device = leaked.cow_device.take();
                 self.network = leaked.network.take();
                 self.sock_dir = Some(leaked.sock_dir);
@@ -424,14 +437,22 @@ impl Drop for SandboxCreateTransaction {
         if let Some(slot) = self.slot.take() {
             crate::cow_pool::destroy_slot(slot);
         }
-        if self.try_send_async_leaked_resources() {
+        if self.send_async_leaked_resources() {
             return;
         }
         if let Some(sock_dir) = self.sock_dir.take() {
             let _ = std::fs::remove_dir_all(sock_dir);
         }
         if let Some(workspace) = self.workspace.take() {
-            let _ = std::fs::remove_dir_all(workspace);
+            if self.delete_workspace_on_leak_cleanup {
+                let _ = std::fs::remove_dir_all(workspace);
+            } else {
+                warn!(
+                    id = %self.id,
+                    path = %workspace.display(),
+                    "preserving workspace after failed COW cleanup"
+                );
+            }
         }
         if self.cow_device.is_some() {
             warn!(
@@ -474,60 +495,62 @@ where
     }
 }
 
-async fn destroy_cow_device_with_retries(id: &str, cow_device: &mut NbdCowDevice) -> bool {
-    for attempt in 0..DESTROY_RETRIES {
-        match cow_device.destroy().await {
-            Ok(()) => return true,
-            Err(e) => {
-                if attempt + 1 < DESTROY_RETRIES {
-                    tokio::time::sleep(DESTROY_RETRY_DELAY).await;
-                } else {
-                    // Last resort: abandon the device. It persists in
-                    // the kernel until `runner gc` cleans it up.
-                    warn!(id = %id, error = %e, "destroy failed after retries — abandoning");
-                    cow_device.abandon();
-                }
-            }
+fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
+    DestroyRetryPolicy {
+        attempts: DESTROY_RETRIES,
+        delay: DESTROY_RETRY_DELAY,
+    }
+}
+
+async fn destroy_cow_device_with_retries(id: &str, cow_device: PooledNbdCowDevice) -> bool {
+    match cow_device
+        .destroy_with_retries(cow_destroy_retry_policy())
+        .await
+    {
+        Ok(()) => true,
+        Err(e) => {
+            warn!(id = %id, error = %e, "destroy failed after retries — abandoned device");
+            false
         }
     }
-    false
 }
 
 /// Background task that receives leaked sandbox resources from `Drop`
 /// impls and releases them asynchronously (pool indices, namespaces, dirs).
 async fn drain_leaked_resources(
-    rx: tokio::sync::mpsc::Receiver<LeakedResources>,
+    rx: tokio::sync::mpsc::UnboundedReceiver<LeakedResources>,
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
-    device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
-    netns_pool: std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
+    netns_pool: NetnsPoolHandle,
 ) {
     drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
-        let device_pool = std::sync::Arc::clone(&device_pool);
-        let netns_pool = std::sync::Arc::clone(&netns_pool);
+        let netns_pool = netns_pool.clone();
         async move {
-            cleanup_leaked_resource(leaked, &device_pool, &netns_pool).await;
+            cleanup_leaked_resource(leaked, &netns_pool).await;
         }
     })
     .await;
 }
 
 async fn drain_leaked_resources_with_cleanup<C, Fut>(
-    mut rx: tokio::sync::mpsc::Receiver<LeakedResources>,
-    mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<LeakedResources>,
+    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
     mut cleanup: C,
 ) where
     C: FnMut(LeakedResources) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
+    let mut shutdown_rx = Some(shutdown_rx);
     loop {
         tokio::select! {
             biased;
-            _ = &mut shutdown_rx => {
-                rx.close();
-                while let Some(leaked) = rx.recv().await {
-                    cleanup(leaked).await;
+            shutdown = wait_for_leak_cleaner_shutdown(&mut shutdown_rx) => {
+                if shutdown {
+                    rx.close();
+                    while let Some(leaked) = rx.recv().await {
+                        cleanup(leaked).await;
+                    }
+                    break;
                 }
-                break;
             }
             maybe_leaked = rx.recv() => {
                 let Some(leaked) = maybe_leaked else {
@@ -539,38 +562,49 @@ async fn drain_leaked_resources_with_cleanup<C, Fut>(
     }
 }
 
-async fn cleanup_leaked_resource(
-    leaked: LeakedResources,
-    device_pool: &tokio::sync::Mutex<nbd_cow::pool::DevicePool>,
-    netns_pool: &tokio::sync::Mutex<NetnsPool>,
-) {
+async fn wait_for_leak_cleaner_shutdown(
+    shutdown_rx: &mut Option<tokio::sync::oneshot::Receiver<()>>,
+) -> bool {
+    let Some(rx) = shutdown_rx.as_mut() else {
+        return std::future::pending::<bool>().await;
+    };
+
+    match rx.await {
+        Ok(()) => true,
+        Err(_) => {
+            *shutdown_rx = None;
+            false
+        }
+    }
+}
+
+async fn cleanup_leaked_resource(leaked: LeakedResources, netns_pool: &NetnsPoolHandle) {
     warn!(
         id = %leaked.sandbox_id,
-        device_index = ?leaked.device_index,
         has_cow_device = leaked.cow_device.is_some(),
         has_network = leaked.network.is_some(),
         "cleaning up leaked sandbox resources"
     );
 
     let mut cow_destroyed = true;
-    if let Some(mut cow_device) = leaked.cow_device {
-        let device_index = cow_device.device_index();
-        cow_destroyed = destroy_cow_device_with_retries(&leaked.sandbox_id, &mut cow_device).await;
-        device_pool.lock().await.release(device_index);
-    } else if let Some(device_index) = leaked.device_index {
-        device_pool.lock().await.release(device_index);
+    if let Some(cow_device) = leaked.cow_device {
+        cow_destroyed = destroy_cow_device_with_retries(&leaked.sandbox_id, cow_device).await;
     }
 
     if let Some(network) = leaked.network {
-        let mut pool = netns_pool.lock().await;
-        if let Err(e) = pool.release(network).await {
-            warn!(id = %leaked.sandbox_id, error = %e, "failed to release leaked netns");
+        let mut network = Some(network);
+        let outcome = netns_pool.release(&mut network).await;
+        if let Some(message) = outcome.invalid_message() {
+            warn!(id = %leaked.sandbox_id, error = %message, "failed to release leaked netns");
         }
     }
     if let Err(e) = tokio::fs::remove_dir_all(&leaked.sock_dir).await {
         warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked sock dir");
     }
-    if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&leaked.workspace).await {
+    if cow_destroyed
+        && leaked.delete_workspace
+        && let Err(e) = tokio::fs::remove_dir_all(&leaked.workspace).await
+    {
         warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked workspace");
     }
     info!(id = %leaked.sandbox_id, "leaked sandbox resources cleaned up");
@@ -592,8 +626,15 @@ async fn cleanup_leaked_resource(
 ///   "Invalid API key" but still loads the complete module graph. The claude
 ///   binary is a Bun-compiled executable (not Node.js), so
 ///   `NODE_COMPILE_CACHE` has no effect.
+/// - `codex --help`: codex ships as a Node.js CLI (npm `@openai/codex`); the
+///   `--help` path exits cleanly without credentials yet `require`s the full
+///   module graph and triggers V8 JIT compilation, so the resolved-and-parsed
+///   bytecode is captured in the snapshot. Each warmup is wrapped in its own
+///   `(... || true)` sub-shell so a failure on one framework does not block
+///   the other from warming.
 pub const PREWARM_SCRIPT: &str = "\
-    (claude --print --verbose --output-format stream-json hi 2>/dev/null || true)";
+    (claude --print --verbose --output-format stream-json hi 2>/dev/null || true); \
+    (codex --help >/dev/null 2>&1 || true)";
 
 /// Balloon device configuration (invariant across all sandboxes).
 #[derive(serde::Serialize)]
@@ -656,7 +697,7 @@ impl InvariantConfig {
 /// SHA-256 fingerprint of all sandbox-fc internal configuration that affects
 /// snapshot output.
 ///
-/// Derived from [`InvariantConfig`] serialization — adding a field to that
+/// Derived from `InvariantConfig` serialization — adding a field to that
 /// struct automatically changes this hash.
 ///
 /// This is the backing implementation for [`SandboxFactory::config_hash`].
@@ -675,9 +716,10 @@ pub struct FirecrackerFactory {
     config: FirecrackerConfig,
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
-    netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
+    netns_pool: Option<NetnsPoolHandle>,
+    owns_netns_pool: bool,
     /// Shared NBD device pool for pre-validated device indices.
-    device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
+    device_pool: nbd_cow::pool::DevicePoolHandle,
     /// Base image path and size (bytes), populated during startup.
     base_image_path: Option<std::path::PathBuf>,
     base_image_size: u64,
@@ -696,8 +738,8 @@ impl FirecrackerFactory {
     /// creating a new one in `startup()` (used for multi-profile runners).
     pub async fn new(
         config: FirecrackerConfig,
-        netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
-        device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
+        netns_pool: Option<NetnsPoolHandle>,
+        device_pool: nbd_cow::pool::DevicePoolHandle,
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
         let mode = match config.snapshot.as_ref() {
@@ -718,12 +760,14 @@ impl FirecrackerFactory {
 
         let factory_paths = FactoryPaths::new(config.base_dir.clone());
         let runtime_paths = RuntimePaths::new();
+        let owns_netns_pool = netns_pool.is_none();
 
         Ok(Self {
             config,
             factory_paths,
             runtime_paths,
             netns_pool,
+            owns_netns_pool,
             device_pool,
             base_image_path: None,
             base_image_size: 0,
@@ -741,7 +785,7 @@ impl FirecrackerFactory {
     /// # Panics
     /// Panics if called before `startup()` — this is a programming error.
     #[allow(clippy::expect_used)]
-    fn netns_pool(&self) -> &std::sync::Arc<tokio::sync::Mutex<NetnsPool>> {
+    fn netns_pool(&self) -> &NetnsPoolHandle {
         self.netns_pool.as_ref().expect("factory not started")
     }
 
@@ -774,23 +818,24 @@ impl SandboxFactory for FirecrackerFactory {
 
         // Create netns pool only if not provided externally (shared pool case).
         if self.netns_pool.is_none() {
+            self.owns_netns_pool = true;
             let t = std::time::Instant::now();
             let netns_config = NetnsPoolConfig {
                 proxy_port: self.config.proxy_port,
                 dns_port: self.config.dns_port,
             }
             .into_checked()?;
-            let netns_pool = NetnsPool::create_checked(netns_config).await.map_err(|e| {
-                SandboxError::Initialization {
+            let netns_pool = NetnsPoolHandle::create_checked(netns_config)
+                .await
+                .map_err(|e| SandboxError::Initialization {
                     phase: SandboxInitializationPhase::Factory,
                     message: format!("netns pool: {e}"),
-                }
-            })?;
+                })?;
             info!(
                 elapsed_ms = t.elapsed().as_millis() as u64,
                 "netns pool created"
             );
-            self.netns_pool = Some(std::sync::Arc::new(tokio::sync::Mutex::new(netns_pool)));
+            self.netns_pool = Some(netns_pool);
         }
 
         // Determine base image size from file metadata.
@@ -824,10 +869,7 @@ impl SandboxFactory for FirecrackerFactory {
 
         // Spawn background task to clean up resources leaked by sandbox Drop
         // impls that fire without going through factory.destroy().
-        self.leak_cleaner = Some(LeakCleaner::spawn(
-            std::sync::Arc::clone(&self.device_pool),
-            self.netns_pool().clone(),
-        ));
+        self.leak_cleaner = Some(LeakCleaner::spawn(self.netns_pool().clone()));
 
         self.started = true;
 
@@ -853,98 +895,91 @@ impl SandboxFactory for FirecrackerFactory {
         let id = config.id.to_string();
         let rollback_cleanup = FactoryCreateRollbackCleanup {
             id: id.clone(),
-            device_pool: std::sync::Arc::clone(&self.device_pool),
-            netns_pool: std::sync::Arc::clone(self.netns_pool()),
+            netns_pool: self.netns_pool().clone(),
         };
         let mut tx = SandboxCreateTransaction::new_with_leak_tx(
             id.clone(),
             self.leak_cleaner.as_ref().and_then(LeakCleaner::sender),
         );
 
-        let create_result: sandbox::Result<SandboxCreateResources> = async {
-            // Acquire a pre-warmed COW slot from the pool.
-            // The slot provides: workspace dir (already created) and cow file.
-            let slot = self.cow_pool().lock().await.acquire().await.map_err(|e| {
-                SandboxError::Initialization {
-                    phase: SandboxInitializationPhase::SandboxAllocation,
-                    message: format!("acquire COW slot: {e}"),
-                }
-            })?;
-            tx.track_slot(slot);
-
-            // The slot workspace is {workspaces_dir}/{slot_uuid}/.
-            // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
-            let target_workspace = self.factory_paths.workspace(&id);
-            if target_workspace.exists()
-                && let Err(e) = tokio::fs::remove_dir_all(&target_workspace).await
-            {
-                warn!(id = %id, error = %e, "failed to clean stale workspace dir");
-            }
-            let slot_workspace = tx.slot_workspace()?;
-            if let Err(e) = tokio::fs::rename(&slot_workspace, &target_workspace).await {
-                return Err(SandboxError::Initialization {
-                    phase: SandboxInitializationPhase::SandboxAllocation,
-                    message: format!("rename workspace: {e}"),
-                });
-            }
-            tx.slot_renamed_to(target_workspace.clone());
-
-            // Recompute cow_file path after rename (the slot path no longer exists).
-            let cow_file = target_workspace.join("cow.img");
-
-            // Clean stale sock dir and create vsock directory.
-            let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
-            if sock_paths.dir().exists()
-                && let Err(e) = tokio::fs::remove_dir_all(sock_paths.dir()).await
-            {
-                warn!(id = %id, error = %e, "failed to clean stale sock dir");
-            }
-            tx.track_sock_dir(sock_paths.dir().to_owned());
-            if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
-                return Err(SandboxError::Initialization {
-                    phase: SandboxInitializationPhase::SandboxAllocation,
-                    message: format!("mkdir vsock dir: {e}"),
-                });
-            }
-
-            // Acquire a network namespace from the pool.
-            let network = self
-                .netns_pool()
-                .lock()
-                .await
-                .acquire()
-                .await
-                .map_err(|e| SandboxError::Initialization {
-                    phase: SandboxInitializationPhase::SandboxAllocation,
-                    message: format!("acquire netns: {e}"),
+        let create_result: sandbox::Result<SandboxCreateResources> =
+            async {
+                // Acquire a pre-warmed COW slot from the pool.
+                // The slot provides: workspace dir (already created) and cow file.
+                let slot = self.cow_pool().lock().await.acquire().await.map_err(|e| {
+                    SandboxError::Initialization {
+                        phase: SandboxInitializationPhase::SandboxAllocation,
+                        message: format!("acquire COW slot: {e}"),
+                    }
                 })?;
-            tx.track_network(network);
+                tx.track_slot(slot);
 
-            // Create NBD COW device (~15ms via netlink, no subprocess).
-            let base_image =
-                self.base_image_path
-                    .as_ref()
-                    .ok_or_else(|| SandboxError::InvalidState {
-                        context: SandboxInvalidStateContext::Factory,
-                        state: "started without base image".into(),
-                        message: "factory base image path missing".into(),
+                // The slot workspace is {workspaces_dir}/{slot_uuid}/.
+                // Rename to {workspaces_dir}/{sandbox_id}/ for doctor correlation.
+                let target_workspace = self.factory_paths.workspace(&id);
+                if target_workspace.exists()
+                    && let Err(e) = tokio::fs::remove_dir_all(&target_workspace).await
+                {
+                    warn!(id = %id, error = %e, "failed to clean stale workspace dir");
+                }
+                let slot_workspace = tx.slot_workspace()?;
+                if let Err(e) = tokio::fs::rename(&slot_workspace, &target_workspace).await {
+                    return Err(SandboxError::Initialization {
+                        phase: SandboxInitializationPhase::SandboxAllocation,
+                        message: format!("rename workspace: {e}"),
+                    });
+                }
+                tx.slot_renamed_to(target_workspace.clone());
+
+                // Recompute cow_file path after rename (the slot path no longer exists).
+                let cow_file = target_workspace.join("cow.img");
+
+                // Clean stale sock dir and create vsock directory.
+                let sock_paths = SockPaths::new(self.runtime_paths.sock_dir(&id));
+                if sock_paths.dir().exists()
+                    && let Err(e) = tokio::fs::remove_dir_all(sock_paths.dir()).await
+                {
+                    warn!(id = %id, error = %e, "failed to clean stale sock dir");
+                }
+                tx.track_sock_dir(sock_paths.dir().to_owned());
+                if let Err(e) = tokio::fs::create_dir_all(sock_paths.vsock_dir()).await {
+                    return Err(SandboxError::Initialization {
+                        phase: SandboxInitializationPhase::SandboxAllocation,
+                        message: format!("mkdir vsock dir: {e}"),
+                    });
+                }
+
+                // Acquire a network namespace from the pool.
+                let network = self.netns_pool().acquire().await.map_err(|e| {
+                    SandboxError::Initialization {
+                        phase: SandboxInitializationPhase::SandboxAllocation,
+                        message: format!("acquire netns: {e}"),
+                    }
+                })?;
+                tx.track_network(network);
+
+                // Create NBD COW device (~15ms via netlink, no subprocess).
+                let base_image =
+                    self.base_image_path
+                        .as_ref()
+                        .ok_or_else(|| SandboxError::InvalidState {
+                            context: SandboxInvalidStateContext::Factory,
+                            state: "started without base image".into(),
+                            message: "factory base image path missing".into(),
+                        })?;
+                let cow_device = self
+                    .device_pool
+                    .create_cow_device(base_image, &cow_file, self.base_image_size)
+                    .await
+                    .map_err(|e| SandboxError::Initialization {
+                        phase: SandboxInitializationPhase::SandboxAllocation,
+                        message: format!("create NBD COW device: {e}"),
                     })?;
-            let cow_device = NbdCowDevice::create(
-                base_image,
-                &cow_file,
-                self.base_image_size,
-                &self.device_pool,
-            )
-            .await
-            .map_err(|e| SandboxError::Initialization {
-                phase: SandboxInitializationPhase::SandboxAllocation,
-                message: format!("create NBD COW device: {e}"),
-            })?;
-            tx.track_cow_device(cow_device);
+                tx.track_cow_device(cow_device);
 
-            tx.commit()
-        }
-        .await;
+                tx.commit()
+            }
+            .await;
 
         let resources = match create_result {
             Ok(resources) => resources,
@@ -976,67 +1011,25 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn destroy(&self, sandbox: Box<dyn Sandbox>) {
-        let mut sandbox = match (sandbox as Box<dyn std::any::Any>).downcast::<FirecrackerSandbox>()
-        {
+        let sandbox = match (sandbox as Box<dyn std::any::Any>).downcast::<FirecrackerSandbox>() {
             Ok(s) => *s,
             Err(_) => {
                 warn!("destroy called with non-firecracker sandbox, ignoring");
                 return;
             }
         };
+        let netns_pool = self.netns_pool().clone();
 
-        // Ensure the sandbox is killed before releasing pool resources.
-        // After kill(), `sandbox.process` is `None`, so the Drop impl's
-        // killpg becomes a no-op when `sandbox` is dropped below.
-        let _ = sandbox.kill().await;
-
-        // Clone lightweight handles before dropping sandbox — Drop requires
-        // all fields intact, so we cannot move them out.
-        let sandbox_id = sandbox.id.clone();
-        let network = sandbox.network.clone();
-        let sock_dir = sandbox.sock_paths.dir().to_owned();
-        let workspace = sandbox.sandbox_paths.workspace().to_owned();
-
-        // Log NBD COW stats before teardown for performance debugging.
-        sandbox.cow_device.log_status().await;
-
-        // Destroy the NBD COW device (flushes data, disconnects, removes COW file).
-        //
-        // After kill_process_group + child.wait(), the kernel may still be
-        // releasing file descriptors (particularly the NBD device fd).
-        // Retry a few times to let it finish.
-        let device_index = sandbox.cow_device.device_index();
-        let cow_destroyed =
-            destroy_cow_device_with_retries(&sandbox_id, &mut sandbox.cow_device).await;
-        // Release device index back to pool with cooldown.
-        self.device_pool.lock().await.release(device_index);
-
-        // Return the network namespace to the pool.
-        let mut netns_pool = self.netns_pool().lock().await;
-        if let Err(e) = netns_pool.release(network).await {
-            warn!(id = %sandbox_id, error = %e, "failed to release netns");
+        // Move all cleanup-owned resources into a task before the first await.
+        // If the caller drops this destroy future mid-cleanup, the task keeps
+        // running instead of letting FirecrackerSandbox::Drop race the COW
+        // finalizer and directory cleanup.
+        let handle = tokio::spawn(destroy_firecracker_sandbox(sandbox, netns_pool));
+        match handle.await {
+            Ok(()) => {}
+            Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+            Err(e) => warn!(error = %e, "sandbox destroy task was cancelled"),
         }
-        drop(netns_pool);
-
-        // Delete the socket directory.
-        if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
-            warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
-        }
-
-        // Delete the workspace directory only if the COW device was fully torn
-        // down.  When destroy() failed, the NBD device may still reference
-        // the COW file — keep the workspace intact for debugging.
-        if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
-            warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
-        }
-
-        // Mark as destroyed only after all explicit cleanup steps complete.
-        // Until this point, `FirecrackerSandbox::Drop` remains armed as a
-        // panic fallback and sends pool resources to the leak-cleanup task.
-        sandbox.destroyed = true;
-        drop(sandbox);
-
-        info!(id = %sandbox_id, "sandbox destroyed");
     }
 
     async fn shutdown(&mut self) {
@@ -1054,18 +1047,77 @@ impl SandboxFactory for FirecrackerFactory {
 
         self.base_image_path = None;
 
-        // Clean up netns pool only if we hold the last reference.
-        // When shared across multiple factories, the caller manages cleanup.
-        if let Some(Ok(mutex)) = self.netns_pool.take().map(std::sync::Arc::try_unwrap) {
-            let mut pool = mutex.into_inner();
-            if let Err(e) = pool.cleanup().await {
-                warn!(error = %e, "failed to cleanup netns pool");
-            }
+        // Direct factories own their netns pool and must clean it up even when
+        // detached destroy tasks still hold Arc clones. Shared runtime pools are
+        // cleaned up by FirecrackerRuntime::shutdown().
+        if self.owns_netns_pool
+            && let Some(netns_pool) = self.netns_pool.take()
+            && let Err(e) = netns_pool.cleanup().await
+        {
+            warn!(error = %e, "failed to cleanup owned netns pool");
         }
 
         self.started = false;
         info!("factory shutdown complete");
     }
+}
+
+async fn destroy_firecracker_sandbox(mut sandbox: FirecrackerSandbox, netns_pool: NetnsPoolHandle) {
+    // Ensure the sandbox is killed before releasing pool resources.
+    // After kill(), `sandbox.process` is `None`, so the Drop impl's
+    // killpg becomes a no-op when `sandbox` is dropped below.
+    let _ = sandbox.kill().await;
+
+    // Clone lightweight handles before dropping sandbox.
+    let sandbox_id = sandbox.id.clone();
+    let sock_dir = sandbox.sock_paths.dir().to_owned();
+    let workspace = sandbox.sandbox_paths.workspace().to_owned();
+
+    // Log NBD COW stats before teardown for performance debugging.
+    if let Some(cow_device) = sandbox.cow_device.as_ref() {
+        cow_device.log_status().await;
+    }
+
+    // Destroy the NBD COW device (flushes data, disconnects, removes COW file).
+    //
+    // After kill_process_group + child.wait(), the kernel may still be
+    // releasing file descriptors (particularly the NBD device fd).
+    // Retry a few times to let it finish.
+    let cow_destroyed = match sandbox.cow_device.take() {
+        Some(cow_device) => destroy_cow_device_with_retries(&sandbox_id, cow_device).await,
+        None => true,
+    };
+    if !cow_destroyed {
+        sandbox.preserve_workspace_on_leak_cleanup();
+    }
+
+    // Return the network namespace to the pool.
+    let outcome = netns_pool.release(sandbox.network.lease_mut()).await;
+    if let Some(message) = outcome.invalid_message() {
+        warn!(id = %sandbox_id, error = %message, "failed to release netns");
+    }
+
+    // Delete the socket directory.
+    if let Err(e) = tokio::fs::remove_dir_all(&sock_dir).await {
+        warn!(id = %sandbox_id, error = %e, "failed to delete sock dir");
+    }
+
+    // Delete the workspace directory only if the COW device was fully torn
+    // down.  When destroy() failed, the NBD device may still reference
+    // the COW file — keep the workspace intact for debugging.
+    if cow_destroyed && let Err(e) = tokio::fs::remove_dir_all(&workspace).await {
+        warn!(id = %sandbox_id, error = %e, "failed to delete workspace");
+    }
+
+    // Mark as destroyed only after all explicit cleanup steps complete.
+    // Until this point, `FirecrackerSandbox::Drop` remains armed as a
+    // panic fallback and sends pool resources to the leak-cleanup task.
+    if !sandbox.network.has_lease() {
+        sandbox.destroyed = true;
+    }
+    drop(sandbox);
+
+    info!(id = %sandbox_id, "sandbox destroyed");
 }
 
 impl Drop for FirecrackerFactory {
@@ -1078,6 +1130,7 @@ impl Drop for FirecrackerFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::NetnsPool;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -1089,6 +1142,50 @@ mod tests {
         let h2 = config_hash();
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64); // SHA-256 hex
+    }
+
+    #[tokio::test]
+    async fn shutdown_cleans_owned_netns_pool_with_extra_arc_refs() {
+        let pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+        let _destroy_task_clone = pool.clone();
+        let mut factory = test_factory(true);
+        factory.netns_pool = Some(pool);
+        factory.owns_netns_pool = true;
+
+        factory.shutdown().await;
+
+        assert!(factory.netns_pool.is_none());
+    }
+
+    #[tokio::test]
+    async fn shutdown_keeps_shared_netns_pool_for_runtime_shutdown() {
+        let pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+        let mut factory = test_factory(true);
+        factory.netns_pool = Some(pool.clone());
+        factory.owns_netns_pool = false;
+
+        factory.shutdown().await;
+
+        assert!(factory.netns_pool.is_some());
+        assert_eq!(
+            factory.netns_pool.as_ref().unwrap().strong_count_for_test(),
+            2
+        );
+    }
+
+    /// Both supported framework CLIs must be warmed during snapshot creation.
+    /// Dropping either one would silently regress cold-start latency for that
+    /// framework's agents — see #11416 / epic #11386.
+    #[test]
+    fn prewarm_script_warms_both_frameworks() {
+        assert!(
+            PREWARM_SCRIPT.contains("claude"),
+            "PREWARM_SCRIPT must warm the claude CLI"
+        );
+        assert!(
+            PREWARM_SCRIPT.contains("codex"),
+            "PREWARM_SCRIPT must warm the codex CLI"
+        );
     }
 
     #[test]
@@ -1128,12 +1225,8 @@ mod tests {
         assert_eq!(trait_hash, direct_hash);
     }
 
-    fn test_network() -> PooledNetns {
-        PooledNetns {
-            name: "test-ns".into(),
-            host_device: "test-ve".into(),
-            peer_ip: "10.200.0.2".into(),
-        }
+    fn test_network() -> NetnsLease {
+        NetnsLease::new_for_test("test-ns")
     }
 
     #[derive(Default)]
@@ -1142,6 +1235,21 @@ mod tests {
     }
 
     impl RecordingCreateRollbackCleanup {
+        fn events(&self) -> Vec<String> {
+            self.events.lock().unwrap().clone()
+        }
+
+        fn record(&self, event: String) {
+            self.events.lock().unwrap().push(event);
+        }
+    }
+
+    #[derive(Default)]
+    struct FailingNetworkReleaseCleanup {
+        events: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl FailingNetworkReleaseCleanup {
         fn events(&self) -> Vec<String> {
             self.events.lock().unwrap().clone()
         }
@@ -1209,12 +1317,14 @@ mod tests {
 
     #[async_trait]
     impl CreateRollbackCleanup for BlockingRemoveDirCleanup {
-        async fn destroy_cow_device(&self, _cow_device: NbdCowDevice) -> bool {
+        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> bool {
             panic!("test cleanup should not receive a real COW device");
         }
 
-        async fn release_network(&self, network: PooledNetns) {
-            self.record(format!("release_network:{}", network.name));
+        async fn release_network(&self, network: &mut Option<NetnsLease>) {
+            let network = network.take().expect("test network lease");
+            self.record(format!("release_network:{}", network.name()));
+            let _ = network.into_info_for_test();
         }
 
         async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
@@ -1240,13 +1350,42 @@ mod tests {
     }
 
     #[async_trait]
-    impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
-        async fn destroy_cow_device(&self, _cow_device: NbdCowDevice) -> bool {
+    impl CreateRollbackCleanup for FailingNetworkReleaseCleanup {
+        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> bool {
             panic!("test cleanup should not receive a real COW device");
         }
 
-        async fn release_network(&self, network: PooledNetns) {
-            self.record(format!("release_network:{}", network.name));
+        async fn release_network(&self, network: &mut Option<NetnsLease>) {
+            self.record(format!(
+                "release_network:{}",
+                network.as_ref().expect("test network lease").name()
+            ));
+        }
+
+        async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("<unknown>");
+            self.record(format!("remove_dir:{kind}:{name}"));
+        }
+
+        fn destroy_slot(&self, slot: crate::cow_pool::PrewarmedSlot) {
+            self.record(format!("destroy_slot:{}", slot.id));
+            crate::cow_pool::destroy_slot(slot);
+        }
+    }
+
+    #[async_trait]
+    impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
+        async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> bool {
+            panic!("test cleanup should not receive a real COW device");
+        }
+
+        async fn release_network(&self, network: &mut Option<NetnsLease>) {
+            let network = network.take().expect("test network lease");
+            self.record(format!("release_network:{}", network.name()));
+            let _ = network.into_info_for_test();
         }
 
         async fn remove_dir(&self, kind: &'static str, path: PathBuf) {
@@ -1271,14 +1410,14 @@ mod tests {
         }
     }
 
-    fn test_leaked_resource(sandbox_id: &str, device_index: u32) -> LeakedResources {
+    fn test_leaked_resource(sandbox_id: &str) -> LeakedResources {
         LeakedResources {
             sandbox_id: sandbox_id.into(),
-            device_index: Some(device_index),
             cow_device: None,
-            network: Some(test_network()),
+            network: None,
             sock_dir: PathBuf::from("/nonexistent"),
             workspace: PathBuf::from("/nonexistent"),
+            delete_workspace: true,
         }
     }
 
@@ -1301,9 +1440,10 @@ mod tests {
             factory_paths: FactoryPaths::new(PathBuf::from("/tmp/factory-test")),
             runtime_paths: RuntimePaths::new(),
             netns_pool: None,
-            device_pool: std::sync::Arc::new(tokio::sync::Mutex::new(
-                nbd_cow::pool::DevicePool::new(nbd_cow::pool::DevicePoolConfig::default()),
-            )),
+            owns_netns_pool: true,
+            device_pool: nbd_cow::pool::DevicePoolHandle::new(
+                nbd_cow::pool::DevicePoolConfig::default(),
+            ),
             base_image_path: None,
             base_image_size: 0,
             cow_pool: None,
@@ -1461,6 +1601,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_transaction_rollback_keeps_dirs_when_network_release_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.track_network(test_network());
+        let cleanup = FailingNetworkReleaseCleanup::default();
+
+        tx.rollback(&cleanup).await;
+
+        assert!(workspace.exists());
+        assert!(sock_dir.exists());
+        assert_eq!(cleanup.events(), vec!["release_network:test-ns"]);
+
+        drop(tx);
+        let mut leaked = leak_rx.recv().await.unwrap();
+        let network = leaked.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
+        assert_eq!(leaked.sock_dir, sock_dir);
+        assert_eq!(leaked.workspace, workspace);
+    }
+
+    #[tokio::test]
     async fn create_transaction_commit_disarms_rollback() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
@@ -1478,7 +1648,9 @@ mod tests {
 
         assert_eq!(resources.sandbox_paths.workspace(), workspace.as_path());
         assert_eq!(resources.sock_paths.dir(), sock_dir.as_path());
-        assert_eq!(resources.network.name, "test-ns");
+        let network = resources.network;
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
         assert!(workspace.exists());
         assert!(sock_dir.exists());
     }
@@ -1525,13 +1697,18 @@ mod tests {
         let sock_dir = tmp.path().join("sock");
         tokio::fs::create_dir_all(&workspace).await.unwrap();
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
-        let (leak_tx, leak_rx) = tokio::sync::mpsc::channel(1);
+        let (leak_tx, leak_rx) = tokio::sync::mpsc::unbounded_channel();
         drop(leak_rx);
 
         let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
         tx.slot_renamed_to(workspace.clone());
         tx.track_sock_dir(sock_dir.clone());
         tx.track_network(test_network());
+
+        assert!(!tx.send_async_leaked_resources());
+        let network = tx.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
 
         drop(tx);
 
@@ -1540,14 +1717,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn create_transaction_drop_with_full_leak_channel_falls_back_to_sync_dirs() {
+    async fn create_transaction_drop_sync_fallback_respects_workspace_preservation() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path().join("workspace");
         let sock_dir = tmp.path().join("sock");
         tokio::fs::create_dir_all(&workspace).await.unwrap();
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
-        let (leak_tx, mut leak_rx) = tokio::sync::mpsc::channel(1);
-        leak_tx.try_send(test_leaked_resource("queued", 7)).unwrap();
+
+        let mut tx = SandboxCreateTransaction::new("sandbox".into());
+        tx.slot_renamed_to(workspace.clone());
+        tx.track_sock_dir(sock_dir.clone());
+        tx.delete_workspace_on_leak_cleanup = false;
+
+        drop(tx);
+
+        assert!(workspace.exists());
+        assert!(!sock_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn create_transaction_drop_does_not_drop_queued_leak_cleanup_work() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let sock_dir = tmp.path().join("sock");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+        let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
+        leak_tx.send(test_leaked_resource("queued")).unwrap();
 
         let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
         tx.slot_renamed_to(workspace.clone());
@@ -1556,10 +1752,16 @@ mod tests {
 
         drop(tx);
 
-        assert_eq!(leak_rx.try_recv().unwrap().sandbox_id, "queued");
-        assert!(leak_rx.try_recv().is_err());
-        assert!(!workspace.exists());
-        assert!(!sock_dir.exists());
+        let queued = leak_rx.recv().await.unwrap();
+        assert_eq!(queued.sandbox_id, "queued");
+        assert!(queued.network.is_none());
+        let mut leaked = leak_rx.recv().await.unwrap();
+        assert_eq!(leaked.sandbox_id, "sandbox");
+        let network = leaked.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
+        assert_eq!(leaked.sock_dir, sock_dir);
+        assert_eq!(leaked.workspace, workspace);
     }
 
     #[tokio::test]
@@ -1569,7 +1771,7 @@ mod tests {
         let sock_dir = tmp.path().join("sock");
         tokio::fs::create_dir_all(&workspace).await.unwrap();
         tokio::fs::create_dir_all(&sock_dir).await.unwrap();
-        let (leak_tx, mut leak_rx) = tokio::sync::mpsc::channel(1);
+        let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
         tx.slot_renamed_to(workspace.clone());
@@ -1578,11 +1780,12 @@ mod tests {
 
         drop(tx);
 
-        let leaked = leak_rx.recv().await.unwrap();
+        let mut leaked = leak_rx.recv().await.unwrap();
         assert_eq!(leaked.sandbox_id, "sandbox");
-        assert_eq!(leaked.device_index, None);
         assert!(leaked.cow_device.is_none());
-        assert_eq!(leaked.network.unwrap().name, "test-ns");
+        let network = leaked.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
         assert_eq!(leaked.sock_dir, sock_dir);
         assert_eq!(leaked.workspace, workspace);
     }
@@ -1623,62 +1826,97 @@ mod tests {
 
     #[tokio::test]
     async fn leaked_resources_channel_receives_on_send() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
         tx.send(LeakedResources {
             sandbox_id: "test-sandbox".into(),
-            device_index: Some(42),
             cow_device: None,
             network: Some(test_network()),
             sock_dir: PathBuf::from("/tmp/nonexistent-sock"),
             workspace: PathBuf::from("/tmp/nonexistent-ws"),
+            delete_workspace: true,
         })
-        .await
         .unwrap();
 
-        let leaked = rx.recv().await.unwrap();
+        let mut leaked = rx.recv().await.unwrap();
         assert_eq!(leaked.sandbox_id, "test-sandbox");
-        assert_eq!(leaked.device_index, Some(42));
+        assert!(leaked.cow_device.is_none());
+        let network = leaked.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
     }
 
     #[test]
-    fn leaked_resources_try_send_does_not_panic_on_closed_channel() {
-        let (tx, rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
+    fn leaked_resources_send_does_not_panic_on_closed_channel() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         drop(rx);
 
         let resources = LeakedResources {
             sandbox_id: "test".into(),
-            device_index: Some(0),
             cow_device: None,
             network: Some(test_network()),
             sock_dir: PathBuf::from("/nonexistent"),
             workspace: PathBuf::from("/nonexistent"),
+            delete_workspace: true,
         };
 
-        // Should not panic — just returns Err.
-        assert!(tx.try_send(resources).is_err());
+        // Should not panic — just returns Err with the original payload.
+        let mut resources = tx.send(resources).unwrap_err().0;
+        let network = resources.network.take().unwrap();
+        assert_eq!(network.name(), "test-ns");
+        let _ = network.into_info_for_test();
+    }
+
+    #[tokio::test]
+    async fn cleanup_leaked_resource_respects_workspace_preservation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let sock_dir = tmp.path().join("sock");
+        let workspace = tmp.path().join("workspace");
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        let netns_pool = NetnsPoolHandle::new_for_test(NetnsPool::inactive_for_test());
+
+        cleanup_leaked_resource(
+            LeakedResources {
+                sandbox_id: "sandbox".into(),
+                cow_device: None,
+                network: None,
+                sock_dir: sock_dir.clone(),
+                workspace: workspace.clone(),
+                delete_workspace: false,
+            },
+            &netns_pool,
+        )
+        .await;
+
+        assert!(!sock_dir.exists());
+        assert!(workspace.exists());
     }
 
     #[test]
-    fn leaked_resources_try_send_does_not_panic_on_full_channel() {
-        let (tx, _rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
+    fn leaked_resources_unbounded_send_accepts_burst() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
 
-        // Fill the channel.
-        tx.try_send(test_leaked_resource("first", 0)).unwrap();
+        for index in 0..64 {
+            tx.send(test_leaked_resource(&format!("leaked-{index}")))
+                .unwrap();
+        }
 
-        // Second send should fail gracefully.
-        let result = tx.try_send(test_leaked_resource("second", 1));
-        assert!(result.is_err());
+        for index in 0..64 {
+            assert_eq!(rx.try_recv().unwrap().sandbox_id, format!("leaked-{index}"));
+        }
     }
 
     #[tokio::test]
     async fn drain_leaked_resources_shutdown_closes_receiver_and_drains_buffer() {
-        let (tx, rx) = tokio::sync::mpsc::channel::<LeakedResources>(4);
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let live_sender_clone = tx.clone();
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
-        tx.send(test_leaked_resource("first", 0)).await.unwrap();
-        tx.send(test_leaked_resource("second", 1)).await.unwrap();
+        for index in 0..64 {
+            tx.send(test_leaked_resource(&format!("leaked-{index}")))
+                .unwrap();
+        }
 
         let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
         let cleaned_clone = Arc::clone(&cleaned);
@@ -1699,23 +1937,21 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(
-            *cleaned.lock().await,
-            vec!["first".to_string(), "second".to_string()]
-        );
+        let expected: Vec<String> = (0..64).map(|index| format!("leaked-{index}")).collect();
+        assert_eq!(*cleaned.lock().await, expected);
         assert!(matches!(
-            live_sender_clone.try_send(test_leaked_resource("late", 2)),
-            Err(tokio::sync::mpsc::error::TrySendError::Closed(_))
+            live_sender_clone.send(test_leaked_resource("late")),
+            Err(tokio::sync::mpsc::error::SendError(_))
         ));
     }
 
     #[tokio::test]
     async fn drain_leaked_resources_exits_after_sender_close() {
-        let (tx, rx) = tokio::sync::mpsc::channel::<LeakedResources>(4);
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
 
-        tx.send(test_leaked_resource("first", 0)).await.unwrap();
-        tx.send(test_leaked_resource("second", 1)).await.unwrap();
+        tx.send(test_leaked_resource("first")).unwrap();
+        tx.send(test_leaked_resource("second")).unwrap();
         drop(tx);
 
         let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
@@ -1736,7 +1972,7 @@ mod tests {
 
     #[tokio::test]
     async fn leak_cleaner_shutdown_signals_drain_with_live_sender_clone() {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let _live_sender_clone = tx.clone();
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
         let drained = Arc::new(AtomicBool::new(false));
@@ -1774,7 +2010,7 @@ mod tests {
             }
         }
 
-        let (tx, _rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
         let aborted = Arc::new(AtomicBool::new(false));
         let aborted_clone = Arc::clone(&aborted);
@@ -1801,6 +2037,93 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn leak_cleaner_drop_detaches_drain_and_keeps_live_senders_usable() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
+        let live_sender_clone = tx.clone();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let cleaned_clone = Arc::clone(&cleaned);
+        let handle = tokio::spawn(async move {
+            drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
+                let cleaned = Arc::clone(&cleaned_clone);
+                async move {
+                    cleaned.lock().await.push(leaked.sandbox_id);
+                }
+            })
+            .await;
+            done_tx.send(()).unwrap();
+        });
+        let cleaner = LeakCleaner {
+            tx: Some(tx),
+            shutdown_tx: Some(shutdown_tx),
+            handle: Some(handle),
+        };
+
+        live_sender_clone
+            .send(test_leaked_resource("queued"))
+            .unwrap();
+        drop(cleaner);
+        live_sender_clone
+            .send(test_leaked_resource("late"))
+            .unwrap();
+        drop(live_sender_clone);
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), done_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            *cleaned.lock().await,
+            vec!["queued".to_string(), "late".to_string()]
+        );
+    }
+
+    #[tokio::test]
+    async fn leak_cleaner_drop_without_sender_clones_lets_drain_exit() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let cleaned = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let cleaned_clone = Arc::clone(&cleaned);
+        let handle = tokio::spawn(async move {
+            drain_leaked_resources_with_cleanup(rx, shutdown_rx, move |leaked| {
+                let cleaned = Arc::clone(&cleaned_clone);
+                async move {
+                    cleaned.lock().await.push(leaked.sandbox_id);
+                }
+            })
+            .await;
+            done_tx.send(()).unwrap();
+        });
+        let cleaner = LeakCleaner {
+            tx: Some(tx),
+            shutdown_tx: Some(shutdown_tx),
+            handle: Some(handle),
+        };
+
+        drop(cleaner);
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), done_rx)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(cleaned.lock().await.is_empty());
+    }
+
+    #[test]
+    fn leak_cleaner_shutdown_timeout_covers_cow_destroy_retry_budget() {
+        let retry_budget = DESTROY_RETRY_DELAY
+            .checked_mul(DESTROY_RETRIES)
+            .expect("destroy retry budget should fit in Duration");
+
+        assert!(
+            LEAK_CLEANUP_SHUTDOWN_TIMEOUT > retry_budget,
+            "leak cleaner shutdown timeout must allow queued COW finalizers to finish"
+        );
+    }
+
+    #[tokio::test]
     async fn leak_cleaner_abort_closes_sender_and_aborts_task() {
         struct AbortFlag(Arc<AtomicBool>);
 
@@ -1810,7 +2133,7 @@ mod tests {
             }
         }
 
-        let (tx, _rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<LeakedResources>();
         let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
         let aborted = Arc::new(AtomicBool::new(false));
         let aborted_clone = Arc::clone(&aborted);

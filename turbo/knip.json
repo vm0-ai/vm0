@@ -124,6 +124,7 @@
     "apps/platform/src/test/mocks/clerk-react.ts",
     "apps/platform/src/test/mocks/clerk-react-experimental.ts",
     "apps/platform/src/mocks/ably.ts",
+    "apps/platform/src/mocks/idb.ts",
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/web/src/lib/auth/sandbox-token.ts",
     "apps/web/src/lib/infra/storage/volume-upload.ts",

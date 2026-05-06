@@ -79,6 +79,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -146,6 +147,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -168,42 +170,10 @@ describe("connectConnector$", () => {
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(3);
     expect(context.store.get(pollingConnectorType$)).toBeNull();
-    expect(context.store.get(permissionDialogType$)).toBe("github");
+    expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
-  it("exits when popup is closed even if connector not found", async () => {
-    detachedSetupPage({ context, path: "/", withoutRender: true });
-
-    const mockWindow = { closed: false, close: vi.fn() };
-    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
-
-    server.use(
-      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
-        return respond(200, makeEmptyConnectorResponse());
-      }),
-    );
-
-    const connectPromise = context.store.set(
-      connectConnector$,
-      "github",
-      context.signal,
-    );
-
-    await vi.waitFor(() => {
-      expect(hasSubscription("connector:changed")).toBeTruthy();
-    });
-
-    // User closes the OAuth popup; watchPopupClosed detects it on its
-    // next tick and wins the race against the Ably subscription.
-    mockWindow.closed = true;
-
-    const result = await connectPromise;
-
-    expect(result).toBeFalsy();
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
-  });
-
-  it("sets permissionDialogType$ after connector appears", async () => {
+  it("sets permissionDialogType$ after connector appears when requested", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
@@ -218,6 +188,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      { showPermissionDialog: true },
       context.signal,
     );
 
@@ -231,35 +202,6 @@ describe("connectConnector$", () => {
     await connectPromise;
 
     expect(context.store.get(permissionDialogType$)).toBe("github");
-  });
-
-  it("does not set permissionDialogType$ when popup closed without connecting", async () => {
-    detachedSetupPage({ context, path: "/", withoutRender: true });
-
-    const mockWindow = { closed: false, close: vi.fn() };
-    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
-
-    server.use(
-      mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
-        return respond(200, makeEmptyConnectorResponse());
-      }),
-    );
-
-    const connectPromise = context.store.set(
-      connectConnector$,
-      "github",
-      context.signal,
-    );
-
-    await vi.waitFor(() => {
-      expect(hasSubscription("connector:changed")).toBeTruthy();
-    });
-
-    mockWindow.closed = true;
-
-    await connectPromise;
-
-    expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
   it("completes oauth flow in standalone mode without popup dimensions", async () => {
@@ -277,6 +219,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -289,7 +232,7 @@ describe("connectConnector$", () => {
 
     expect(result).toBeTruthy();
     expect(context.store.get(pollingConnectorType$)).toBeNull();
-    expect(context.store.get(permissionDialogType$)).toBe("github");
+    expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
   it("handles multiple fetch cycles in standalone mode", async () => {
@@ -312,6 +255,7 @@ describe("connectConnector$", () => {
     const connectPromise = context.store.set(
       connectConnector$,
       "github",
+      {},
       context.signal,
     );
 
@@ -331,7 +275,7 @@ describe("connectConnector$", () => {
     expect(result).toBeTruthy();
     expect(pollCount).toBeGreaterThanOrEqual(3);
     expect(context.store.get(pollingConnectorType$)).toBeNull();
-    expect(context.store.get(permissionDialogType$)).toBe("github");
+    expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 });
 
@@ -343,6 +287,7 @@ describe("submitApiToken$", () => {
       submitApiToken$,
       "github",
       { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_test123" },
+      { showPermissionDialog: true },
       context.signal,
     );
 

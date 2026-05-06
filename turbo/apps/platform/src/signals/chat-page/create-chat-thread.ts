@@ -7,33 +7,25 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
-import {
-  createDeferredPromise,
-  onRef,
-  resetSignal,
-  setLoop,
-} from "../utils.ts";
+import { onRef, resetSignal, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
 import {
   createDraftSignals,
   type DraftSignals,
-  type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
-import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
+import {
+  collectSuccessfulAttachmentInfos,
+  prepareUserMessageFromDraft$,
+} from "./resolve-draft-attachments.ts";
 import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
   chatMessagesContract,
   chatThreadArtifactsContract,
-  chatThreadByIdContract,
-  chatThreadMarkReadContract,
-  chatThreadMessagesContract,
   type ChatThreadArtifactRun,
   type ModelSelectionRequest,
-  type PersistedAttachment,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -44,8 +36,22 @@ import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
 } from "../zero-page/clipboard.ts";
-import type { GroupedChatMessageGroup } from "./chat-message.ts";
+import type {
+  EnrichedChatMessage,
+  GroupedChatMessageGroup,
+} from "./chat-message.ts";
 import { logger } from "../log.ts";
+import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
+import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
+import {
+  enrichBlocksWithTextPreviews,
+  parseBodyRenderBlocks,
+} from "./parse-body-blocks.ts";
+import { clerk$ } from "../auth.ts";
+import {
+  readThreadAgentId$,
+  writeThreadAgentId$,
+} from "../external/idb-thread-agent-store.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -135,6 +141,7 @@ function formatDonePhrase(lastMsg: PagedChatMessage | undefined): string {
 // ---------------------------------------------------------------------------
 
 export interface ChatThreadSignals {
+  threadId: string;
   // ── Data signals ──────────────────────────────────────────────────────────
   threadData$: Computed<Promise<ChatThread | null>>;
   // ── Composer model override ──────────────────────────────────────────────
@@ -152,10 +159,11 @@ export interface ChatThreadSignals {
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
   // ── Initial-load skeleton ────────────────────────────────────────────────
-  // True until the page setup has fetched messages and scrolled into place.
-  // Keeps the list mounted (visibility:hidden) while the skeleton covers the
-  // viewport, so the first paint the user sees is already at the bottom.
+  // Starts hidden — `setupChatThreadInitScroll$` flips it on only when the
+  // IDB cache misses, so cache hits skip the skeleton entirely. Flipped off
+  // once messages resolve and the viewport is scrolled into place.
   skeletonVisible$: Computed<boolean>;
+  showSkeleton$: Command<void, []>;
   hideSkeleton$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
@@ -190,7 +198,8 @@ export interface ChatThreadSignals {
   allFinished$: Computed<Promise<boolean>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   loadHistory$: Command<Promise<void>, [AbortSignal]>;
-  loadPagedMessages$: Command<Promise<void>, [AbortSignal]>;
+  subscribeChatThread$: Command<Promise<void>, [AbortSignal]>;
+  insertOptimisticMessage$: Command<void, [PagedChatMessage]>;
   // ── Thinking indicator ───────────────────────────────────────────────────
   blockColors$: Computed<[string, string, string]>;
   rotatingPhrase$: Computed<string>;
@@ -200,73 +209,26 @@ export interface ChatThreadSignals {
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;
   artifactsDrawerOpen$: Computed<boolean>;
   setArtifactsDrawerOpen$: Command<void, [boolean]>;
+  setArtifactsRealtimeRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   artifactPreviewKey$: Computed<string | null>;
   setArtifactPreviewKey$: Command<void, [string | null]>;
-}
-
-export interface LocalChatThreadSnapshot {
-  threadData: ChatThread;
-  messages: PagedChatMessage[];
-  cancelRequested$: State<boolean>;
-}
-
-interface ChatThreadSignalOptions {
-  localSnapshot?: LocalChatThreadSnapshot;
 }
 
 // ---------------------------------------------------------------------------
 // Sub-factory: thread data fetching
 // ---------------------------------------------------------------------------
 
-// This per-thread `threadData$` is scoped to a single signal factory so it can
-// be reloaded independently via `reloadThread$`. Keep the accept list aligned
-// so missing-thread redirects and title merging both treat 404s the same way.
-function createThreadData(
-  threadId: string,
-  options: ChatThreadSignalOptions = {},
-) {
-  const internalReload$ = state(0);
-
-  const threadData$ = computed(async (get): Promise<ChatThread | null> => {
-    get(internalReload$);
-    if (options.localSnapshot) {
-      return options.localSnapshot.threadData;
-    }
-
-    const threadClient = get(zeroClient$)(chatThreadByIdContract);
-    const threadResult = await accept(
-      threadClient.get({ params: { id: threadId } }),
-      [200, 404],
-      { toast: false },
-    );
-    if (threadResult.status === 404) {
-      return null;
-    }
-    const body = threadResult.body;
-    return {
-      id: threadId,
-      title: body.title ?? null,
-      agentId: body.agentId,
-      latestSessionId: body.latestSessionId ?? null,
-      lastReadMessageId: body.lastReadMessageId ?? null,
-      latestSessionProviderType: body.latestSessionProviderType ?? null,
-      activeRunIds: body.activeRunIds,
-      activeRuns: body.activeRuns ?? [],
-      isLegacySession: false,
-      draftContent: body.draftContent ?? null,
-      draftAttachments: body.draftAttachments ?? null,
-      modelProviderId: body.modelProviderId ?? null,
-      selectedModel: body.selectedModel ?? null,
-    };
-  });
-
-  const reloadThread$ = command(({ set }) => {
-    set(internalReload$, (v) => {
-      return v + 1;
-    });
-  });
-
-  return { threadData$, reloadThread$ };
+// The data source owns both `getThread$` (the resolved thread) and
+// `reloadThread$` (the invalidation lever). Local mode never reloads;
+// remote mode bumps an internal counter on its `getThread$` computed.
+function createThreadData(dataSource: ChatThreadDataSource) {
+  return {
+    threadData$: dataSource.getThread$,
+    reloadThread$: dataSource.reloadThread$,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -360,11 +322,31 @@ function createComposerFileInput() {
 // ---------------------------------------------------------------------------
 
 function createAgentInfoSignals(
+  threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
 ) {
+  // agentId$ is read by avatar / pinned / model-default UI on first paint.
+  // Resolving it via threadData$ blocks the avatar render on the
+  // chat-threads/:id round-trip, even though the agentId rarely changes
+  // for a given thread. Consult the IDB cache first; on miss, fall back
+  // to threadData$ and backfill so the next visit hits the cache.
   const agentId$ = computed(async (get): Promise<string | null> => {
+    const clerk = await get(clerk$);
+    const userId = clerk?.user?.id ?? null;
+    const orgId = clerk?.organization?.id ?? null;
+
+    if (userId !== null && orgId !== null) {
+      const cached = await readThreadAgentId$(userId, orgId, threadId);
+      if (cached) {
+        return cached;
+      }
+    }
     const thread = await get(threadData$);
-    return thread?.agentId ?? null;
+    const agentId = thread?.agentId ?? null;
+    if (agentId && userId !== null && orgId !== null) {
+      await writeThreadAgentId$(userId, orgId, threadId, agentId);
+    }
+    return agentId;
   });
 
   const agentDisplayName$ = computed(async (get): Promise<string | null> => {
@@ -492,30 +474,11 @@ export const setDraftSyncDebounceMs$ = command(({ set }, ms: number) => {
 function createDraftSync(
   threadId: string,
   draft: DraftSignals,
-  options: ChatThreadSignalOptions = {},
+  dataSource: ChatThreadDataSource,
 ) {
   // A reset signal is used to abort any in-flight debounced sync when a new
   // change comes in or when the draft is cleared on send.
   const draftSyncReset$ = resetSignal();
-
-  const syncWithContent$ = command(
-    async (
-      { get },
-      content: string | null,
-      attachments: PersistedAttachment[] | null,
-      signal: AbortSignal,
-    ) => {
-      const client = get(zeroClient$)(chatThreadByIdContract);
-      await accept(
-        client.patch({
-          params: { id: threadId },
-          body: { draftContent: content, draftAttachments: attachments },
-          fetchOptions: { signal },
-        }),
-        [204],
-      );
-    },
-  );
 
   const debouncedSyncDraft$ = command(
     async ({ get, set }, signal: AbortSignal) => {
@@ -526,49 +489,38 @@ function createDraftSync(
       const content = input.trim() || null;
       const attachments = get(draft.attachments$);
 
-      const infos = await Promise.all(
+      const infos = await Promise.allSettled(
         attachments.map((a) => {
           return get(a.fileInfo$);
         }),
       );
       signal.throwIfAborted();
-      const persisted = attachments
-        .map((a, i) => {
-          return { a, info: infos[i] };
-        })
-        .filter(
-          (
-            r,
-          ): r is {
-            a: ZeroChatAttachment;
-            info: { id: string; url: string };
-          } => {
-            return r.info !== null;
-          },
-        )
-        .map((r) => {
-          return {
-            id: r.info.id,
-            url: r.info.url,
-            filename: r.a.filename,
-            contentType: r.a.contentType,
-            size: r.a.size,
-          };
-        });
+      const persisted = collectSuccessfulAttachmentInfos(
+        attachments,
+        infos,
+      ).map((r) => {
+        return {
+          id: r.info.id,
+          url: r.info.url,
+          filename: r.attachment.filename,
+          contentType: r.attachment.contentType,
+          size: r.attachment.size,
+        };
+      });
 
       await set(
-        syncWithContent$,
-        content,
-        persisted.length > 0 ? persisted : null,
+        dataSource.patchDraft$,
+        {
+          threadId,
+          content,
+          attachments: persisted.length > 0 ? persisted : null,
+        },
         signal,
       );
     },
   );
 
   const scheduleDraftSync$ = command(async ({ set }, signal: AbortSignal) => {
-    if (options.localSnapshot) {
-      return;
-    }
     const debouncedSignal = set(draftSyncReset$, signal);
     await set(debouncedSyncDraft$, debouncedSignal);
   });
@@ -578,11 +530,12 @@ function createDraftSync(
   });
 
   const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
-    if (options.localSnapshot) {
-      return;
-    }
     set(draftSyncReset$);
-    await set(syncWithContent$, null, null, signal);
+    await set(
+      dataSource.patchDraft$,
+      { threadId, content: null, attachments: null },
+      signal,
+    );
   });
 
   return { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ };
@@ -602,7 +555,7 @@ function createDraftSync(
  */
 function mergeIntoGroups(
   groups: GroupedChatMessageGroup[],
-  messages: PagedChatMessage[],
+  messages: EnrichedChatMessage[],
 ): GroupedChatMessageGroup[] {
   const result = groups.map((g) => {
     return { ...g, messages: [...g.messages] };
@@ -667,64 +620,37 @@ function createAppendDelta(deltaMessages$: DeltaMessages$) {
   });
 }
 
-function createInitialPage$(
-  threadId: string,
-  threadData$: Computed<Promise<ChatThread | null>>,
-  options: ChatThreadSignalOptions = {},
-) {
-  return computed(
-    async (
-      get,
-    ): Promise<{
-      messages: PagedChatMessage[];
-      hasHistoryBefore: boolean;
-    }> => {
-      const thread = await get(threadData$);
-      if (!thread) {
-        return { messages: [], hasHistoryBefore: false };
-      }
-      if (options.localSnapshot) {
-        return {
-          messages: options.localSnapshot.messages,
-          hasHistoryBefore: false,
-        };
-      }
-      const client = get(zeroClient$)(chatThreadMessagesContract);
-      const result = await accept(
-        client.list({ params: { threadId }, query: { limit: 50 } }),
-        [200],
-      );
-      const hasHistoryBefore = result.body.hasHistoryBefore ?? false;
-      L.debug("initialPage$", {
-        threadId,
-        count: result.body.messages.length,
-        hasHistoryBefore,
-      });
-      return {
-        messages: result.body.messages,
-        hasHistoryBefore,
-      };
-    },
-  );
+function createInitialPage(dataSource: ChatThreadDataSource) {
+  return dataSource.initialPage$;
 }
 
 function createPagedMessages(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
-  options: ChatThreadSignalOptions = {},
+  dataSource: ChatThreadDataSource,
 ) {
   const loadedHistoryHasMore$ = state<boolean | null>(null);
   const historyMessages$ = state<PagedChatMessage[]>([]);
-  const initialPage$ = createInitialPage$(threadId, threadData$, options);
+  const initialPage$ = createInitialPage(dataSource);
 
   const deltaMessages$ = state<PagedChatMessage[]>([]);
   const appendDeltaMessages$ = createAppendDelta(deltaMessages$);
 
-  const allMessages$ = computed(async (get): Promise<PagedChatMessage[]> => {
+  // Tracks the last known server-validated message ID so optimistic
+  // (client-generated) IDs never leak into sinceId calls.
+  // Lazy-init from initialPage$ on first fetchNextPage$ call, then
+  // advanced after each successful fetch to the last returned message.
+  const nextCursorId$ = state<string | undefined>(undefined);
+
+  const allMessages$ = computed(async (get): Promise<EnrichedChatMessage[]> => {
     const initial = await get(initialPage$);
     const history = get(historyMessages$);
     const deltas = get(deltaMessages$);
-    return [...history, ...initial.messages, ...deltas];
+    const raw = [...history, ...initial.messages, ...deltas];
+    return raw.map((msg) => {
+      const { blocks } = parseBodyRenderBlocks(msg.content ?? "");
+      return { ...msg, blocks: enrichBlocksWithTextPreviews(blocks) };
+    });
   });
 
   const groupedChatMessages$ = computed(
@@ -757,43 +683,37 @@ function createPagedMessages(
   });
 
   const fetchNextPage$ = command(async ({ get, set }, signal: AbortSignal) => {
-    const thread = await get(threadData$);
+    let sinceId = get(nextCursorId$);
+    if (!sinceId) {
+      const initial = await get(initialPage$);
+      signal.throwIfAborted();
+      sinceId = initial.messages[initial.messages.length - 1]?.id;
+      if (sinceId) {
+        set(nextCursorId$, sinceId);
+      }
+    }
     signal.throwIfAborted();
-    if (!thread) {
+    if (!sinceId) {
       return true;
     }
-    if (options.localSnapshot) {
-      return true;
+    // Drain all pending pages so a single trigger fully catches the client
+    // up.  Without this loop, one Ably event or visibilitychange fetches at
+    // most 50 messages then stops; a burst larger than one page leaves the
+    // client permanently behind if the thread goes quiet afterward.
+    const MAX_PAGES = 10;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const result: { messages: PagedChatMessage[]; reachedEnd: boolean } =
+        await set(dataSource.listMessagesAfter$, { threadId, sinceId }, signal);
+      signal.throwIfAborted();
+      if (result.messages.length > 0) {
+        set(appendDeltaMessages$, result.messages);
+        sinceId = result.messages[result.messages.length - 1].id;
+        set(nextCursorId$, sinceId);
+      }
+      if (result.reachedEnd) {
+        return true;
+      }
     }
-
-    const sinceId = await get(latestChatMessageId$);
-    signal.throwIfAborted();
-    const client = get(zeroClient$)(chatThreadMessagesContract);
-    const result = await accept(
-      client.list({
-        params: { threadId },
-        query: { sinceId, limit: 50 },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    L.debug("fetchNextPage$", {
-      threadId,
-      sinceId,
-      count: result.body.messages.length,
-      runStatuses: result.body.messages
-        .filter((m) => {
-          return m.runId;
-        })
-        .map((m) => {
-          return { id: m.id, runId: m.runId, status: m.status };
-        }),
-    });
-    if (result.body.messages.length === 0) {
-      return true;
-    }
-    set(appendDeltaMessages$, result.body.messages);
     return false;
   });
 
@@ -807,7 +727,7 @@ function createPagedMessages(
     earliestChatMessageId$,
     historyMessages$,
     loadedHistoryHasMore$,
-    options,
+    dataSource,
   });
 
   return {
@@ -827,23 +747,19 @@ function createLoadHistoryCommand({
   earliestChatMessageId$,
   historyMessages$,
   loadedHistoryHasMore$,
-  options = {},
+  dataSource,
 }: {
   threadId: string;
   threadData$: Computed<Promise<ChatThread | null>>;
   earliestChatMessageId$: Computed<Promise<string | undefined>>;
   historyMessages$: State<PagedChatMessage[]>;
   loadedHistoryHasMore$: State<boolean | null>;
-  options?: ChatThreadSignalOptions;
+  dataSource: ChatThreadDataSource;
 }): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
     const thread = await get(threadData$);
     signal.throwIfAborted();
     if (!thread) {
-      set(loadedHistoryHasMore$, false);
-      return;
-    }
-    if (options.localSnapshot) {
       set(loadedHistoryHasMore$, false);
       return;
     }
@@ -855,24 +771,20 @@ function createLoadHistoryCommand({
       return;
     }
 
-    const client = get(zeroClient$)(chatThreadMessagesContract);
-    const result = await accept(
-      client.list({
-        params: { threadId },
-        query: { beforeId, limit: 50 },
-        fetchOptions: { signal },
-      }),
-      [200],
+    const result = await set(
+      dataSource.listMessagesBefore$,
+      { threadId, beforeId },
+      signal,
     );
     signal.throwIfAborted();
 
     set(historyMessages$, (prev) => {
-      if (result.body.messages.length === 0) {
+      if (result.messages.length === 0) {
         return prev;
       }
-      return [...result.body.messages, ...prev];
+      return [...result.messages, ...prev];
     });
-    set(loadedHistoryHasMore$, result.body.hasHistoryBefore ?? false);
+    set(loadedHistoryHasMore$, result.hasMore);
   });
 }
 
@@ -904,6 +816,23 @@ function createArtifacts(
     set(internalDrawerOpen$, open);
   });
 
+  const reloadArtifactsFromRealtime$ = command(({ set }) => {
+    set(internalArtifactsReload$, (version) => {
+      return version + 1;
+    });
+    return false;
+  });
+  const setArtifactsRealtimeRef$ = onRef(
+    command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
+      await set(
+        setAblyLoop$,
+        `chatThreadArtifactsChanged:${threadId}`,
+        reloadArtifactsFromRealtime$,
+        signal,
+      );
+    }),
+  );
+
   const internalPreviewKey$ = state<string | null>(null);
   const artifactPreviewKey$ = computed((get) => {
     return get(internalPreviewKey$);
@@ -916,6 +845,7 @@ function createArtifacts(
     artifacts$,
     artifactsDrawerOpen$,
     setArtifactsDrawerOpen$,
+    setArtifactsRealtimeRef$,
     artifactPreviewKey$,
     setArtifactPreviewKey$,
   };
@@ -943,14 +873,17 @@ export const ensureDraft$ = command(
 );
 
 function createSkeletonSignals() {
-  const internalSkeletonVisible$ = state(true);
+  const internalSkeletonVisible$ = state(false);
   const skeletonVisible$ = computed((get) => {
     return get(internalSkeletonVisible$);
+  });
+  const showSkeleton$ = command(({ set }) => {
+    set(internalSkeletonVisible$, true);
   });
   const hideSkeleton$ = command(({ set }) => {
     set(internalSkeletonVisible$, false);
   });
-  return { skeletonVisible$, hideSkeleton$ };
+  return { skeletonVisible$, showSkeleton$, hideSkeleton$ };
 }
 
 function createInputRef() {
@@ -969,6 +902,25 @@ function createInputRef() {
   return { setInputRef$, focusInput$ };
 }
 
+function createLatestRunStatus(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  return computed(async (get): Promise<string | null> => {
+    const thread = await get(threadData$);
+    return thread?.activeRuns[0]?.status ?? null;
+  });
+}
+
+function createLoadHistoryWithPrependScroll(
+  recordScrollHeightForPrepend$: Command<void, []>,
+  loadPagedHistory$: Command<Promise<void>, [AbortSignal]>,
+) {
+  return command(async ({ set }, signal: AbortSignal): Promise<void> => {
+    set(recordScrollHeightForPrepend$);
+    await set(loadPagedHistory$, signal);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Factory: createRunTracking
 // ---------------------------------------------------------------------------
@@ -980,7 +932,7 @@ interface RunTrackingDeps {
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
-  options: ChatThreadSignalOptions;
+  dataSource: ChatThreadDataSource;
 }
 
 interface MarkThreadReadDeps {
@@ -988,6 +940,7 @@ interface MarkThreadReadDeps {
   threadData$: Computed<Promise<ChatThread | null>>;
   latestChatMessageId$: Computed<Promise<string | undefined>>;
   locallyMarkedReadMessageId$: State<string | undefined>;
+  dataSource: ChatThreadDataSource;
 }
 
 function createMarkThreadReadIfNeeded({
@@ -995,6 +948,7 @@ function createMarkThreadReadIfNeeded({
   threadData$,
   latestChatMessageId$,
   locallyMarkedReadMessageId$,
+  dataSource,
 }: MarkThreadReadDeps) {
   return command(async ({ get, set }, sig: AbortSignal) => {
     const latestMessageId = await get(latestChatMessageId$);
@@ -1011,19 +965,15 @@ function createMarkThreadReadIfNeeded({
       return;
     }
 
-    const client = get(zeroClient$)(chatThreadMarkReadContract);
-    const result = await accept(
-      client.markRead({
-        params: { id: threadId },
-        fetchOptions: { signal: sig },
-      }),
-      [200],
+    const newLastReadId = await set(
+      dataSource.markRead$,
+      { threadId, latestMessageId },
+      sig,
     );
     sig.throwIfAborted();
-    set(
-      locallyMarkedReadMessageId$,
-      result.body.lastReadMessageId ?? latestMessageId,
-    );
+    if (newLastReadId !== null) {
+      set(locallyMarkedReadMessageId$, newLastReadId);
+    }
     // Server broadcasts `threadListChanged` via Ably on mark-read; the
     // sidebar reloads from that channel. Bumping reloadChatThreads$ here too
     // forces a redundant refetch that blocks subsequent keyboard navigation.
@@ -1037,17 +987,11 @@ function createRunTracking({
   latestChatMessageId$,
   fetchNextPage$,
   autoScroll$,
-  options,
+  dataSource,
 }: RunTrackingDeps) {
   const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
 
   const allFinished$ = computed(async (get) => {
-    const cancelRequested = options.localSnapshot
-      ? get(options.localSnapshot.cancelRequested$)
-      : false;
-    if (cancelRequested) {
-      return true;
-    }
     const thread = await get(threadData$);
     if (!thread) {
       return false;
@@ -1060,116 +1004,60 @@ function createRunTracking({
     threadData$,
     latestChatMessageId$,
     locallyMarkedReadMessageId$,
+    dataSource,
   });
 
-  const loadPagedMessages$ = command(
-    async ({ get, set }, signal: AbortSignal) => {
-      const thread = await get(threadData$);
-      signal.throwIfAborted();
-      if (!thread) {
-        throw new Error("invalid thread");
-      }
+  const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
+    L.debug("subscribeChatThread$ start", { threadId });
 
-      L.debug("loadPagedMessages$ start", {
-        threadId,
-        activeRunIds: thread.activeRunIds,
-      });
-      if (options.localSnapshot) {
-        return;
-      }
+    // Catch up any messages that arrived since the initial page was loaded.
+    // On IDB cache hit this fetches messages that arrived after the cache
+    // was written; on cache miss fetchNextPage$ hits reachedEnd (no-op).
+    await set(fetchNextPage$, signal);
 
-      // Mark thread as read on open (focus-gated)
-      if (document.visibilityState !== "visible") {
-        const visibleDeferred = createDeferredPromise<void>(signal);
-        const handler = () => {
-          if (document.visibilityState === "visible") {
-            visibleDeferred.resolve();
-          }
-        };
-        document.addEventListener("visibilitychange", handler, {
-          signal,
-        });
-        await visibleDeferred.promise;
-        signal.throwIfAborted();
-      }
-      await set(markThreadReadIfNeeded$, signal);
+    const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+      await set(fetchNextPage$, sig);
+      await set(markThreadReadIfNeeded$, sig);
+      animationFrame(
+        () => {
+          set(autoScroll$);
+        },
+        { signal },
+      );
+      return false;
+    });
 
-      const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
-        await set(fetchNextPage$, sig);
-        // Advance read marker when a new message arrives while focused.
-        if (document.visibilityState === "visible") {
-          await set(markThreadReadIfNeeded$, sig);
-        }
-        animationFrame(
-          () => {
-            set(autoScroll$);
-          },
-          { signal },
-        );
-        return false;
-      });
+    const onRunChanged$ = command(({ set }) => {
+      set(reloadThread$);
+      return false;
+    });
 
-      const onRunChanged$ = command(({ set }) => {
-        set(reloadThread$);
-        return false;
-      });
-
-      // `chatThreadReadCursorUpdated:<id>` used to bump `patchThreadRead$`
-      // here; dropped because `threadListChanged` already fans out to the
-      // sidebar, and the extra reload blocks keyboard navigation.
-
-      await Promise.all([
-        set(
-          setAblyLoop$,
-          `chatThreadMessageCreated:${threadId}`,
-          onMessageCreated$,
-          signal,
-        ),
-        set(
-          setAblyLoop$,
-          `chatThreadRunCreated:${thread.id}`,
-          onRunChanged$,
-          signal,
-        ),
-        set(
-          setAblyLoop$,
-          `chatThreadRunUpdated:${thread.id}`,
-          onRunChanged$,
-          signal,
-        ),
-      ]);
-
-      signal.throwIfAborted();
-    },
-  );
+    await Promise.all([
+      set(markThreadReadIfNeeded$, signal),
+      set(
+        dataSource.subscribeRealtime$,
+        { threadId, handlers: { onMessageCreated$, onRunChanged$ } },
+        signal,
+      ),
+    ]);
+    signal.throwIfAborted();
+  });
 
   const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
-    if (options.localSnapshot) {
-      set(options.localSnapshot.cancelRequested$, true);
-      return;
-    }
     const thread = await get(threadData$);
     signal.throwIfAborted();
     if (!thread) {
       return;
     }
-    const client = get(zeroClient$)(zeroRunsCancelContract);
-    const before = thread.activeRunIds;
-    L.debug("cancelRun$ start", { threadId, pendingRunIds: before });
-
-    await Promise.all(
-      before.map(async (runId) => {
-        await accept(
-          client.cancel({ params: { id: runId }, fetchOptions: { signal } }),
-          [200],
-        );
-        L.debug("cancelRun$ server accepted cancel", { threadId, runId });
-      }),
+    await set(
+      dataSource.cancelRuns$,
+      { threadId, activeRunIds: thread.activeRunIds },
+      signal,
     );
     signal.throwIfAborted();
   });
 
-  return { allFinished$, loadPagedMessages$, cancelRun$ };
+  return { allFinished$, subscribeChatThread$, cancelRun$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -1345,9 +1233,9 @@ function createPhraseLoop(
 export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
-  options: ChatThreadSignalOptions = {},
+  dataSource: ChatThreadDataSource = createRemoteChatThreadDataSource(threadId),
 ): ChatThreadSignals {
-  const { threadData$, reloadThread$ } = createThreadData(threadId, options);
+  const { threadData$, reloadThread$ } = createThreadData(dataSource);
   const { modelSelection$, setModelSelection$ } =
     createModelSelection(threadData$);
   const {
@@ -1357,11 +1245,12 @@ export function createChatThreadSignals(
     scrollToTop$,
     recordScrollHeightForPrepend$,
   } = createScrollSignals(threadId);
-  const { skeletonVisible$, hideSkeleton$ } = createSkeletonSignals();
+  const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
+    createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentModelDefault$, agentPinned$ } =
-    createAgentInfoSignals(threadData$);
+    createAgentInfoSignals(threadId, threadData$);
   const {
     timelineExpandedIds$,
     toggleTimelineExpanded$,
@@ -1376,27 +1265,23 @@ export function createChatThreadSignals(
     fetchNextPage$,
     loadHistory$: loadPagedHistory$,
     insertOptimisticMessage$,
-  } = createPagedMessages(threadId, threadData$, options);
+  } = createPagedMessages(threadId, threadData$, dataSource);
 
-  // Anchor the scroll viewport to current content before the prepend so the
-  // ResizeObserver compensation keeps the user reading the same spot.
-  const loadHistory$: Command<Promise<void>, [AbortSignal]> = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(recordScrollHeightForPrepend$);
-      await set(loadPagedHistory$, signal);
-    },
+  const loadHistory$ = createLoadHistoryWithPrependScroll(
+    recordScrollHeightForPrepend$,
+    loadPagedHistory$,
   );
 
   const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
-    createDraftSync(threadId, draft, options);
-  const { allFinished$, loadPagedMessages$, cancelRun$ } = createRunTracking({
+    createDraftSync(threadId, draft, dataSource);
+  const { allFinished$, subscribeChatThread$, cancelRun$ } = createRunTracking({
     threadId,
     reloadThread$,
     threadData$,
     latestChatMessageId$,
     fetchNextPage$,
     autoScroll$,
-    options,
+    dataSource,
   });
 
   const { sendMessage$ } = createSendMessage({
@@ -1416,20 +1301,15 @@ export function createChatThreadSignals(
     artifacts$,
     artifactsDrawerOpen$,
     setArtifactsDrawerOpen$,
+    setArtifactsRealtimeRef$,
     artifactPreviewKey$,
     setArtifactPreviewKey$,
   } = createArtifacts(threadId, groupedChatMessages$);
 
-  // Status of the currently-active run, sourced from threadData$.activeRuns.
-  // `chatThreadRunUpdated` Ably events trigger reloadThread$, so this signal
-  // flips from "queued" → "running" as soon as the run is dispatched. Null
-  // once the run enters a terminal state and drops out of activeRuns.
-  const latestRunStatus$ = computed(async (get): Promise<string | null> => {
-    const thread = await get(threadData$);
-    return thread?.activeRuns[0]?.status ?? null;
-  });
+  const latestRunStatus$ = createLatestRunStatus(threadData$);
 
   return {
+    threadId,
     threadData$,
     modelSelection$,
     setModelSelection$,
@@ -1440,6 +1320,7 @@ export function createChatThreadSignals(
     scrollToBottom$,
     scrollToTop$,
     skeletonVisible$,
+    showSkeleton$,
     hideSkeleton$,
     draft,
     composerFileInput$,
@@ -1463,7 +1344,8 @@ export function createChatThreadSignals(
     allFinished$,
     fetchNextPage$,
     loadHistory$,
-    loadPagedMessages$,
+    subscribeChatThread$,
+    insertOptimisticMessage$,
     blockColors$,
     rotatingPhrase$,
     donePhrase$,
@@ -1471,6 +1353,7 @@ export function createChatThreadSignals(
     artifacts$,
     artifactsDrawerOpen$,
     setArtifactsDrawerOpen$,
+    setArtifactsRealtimeRef$,
     artifactPreviewKey$,
     setArtifactPreviewKey$,
   };

@@ -13,6 +13,7 @@ const usageInsightBucketSchema = z.object({
 const usageInsightScheduleRowSchema = z.object({
   scheduleId: z.string(),
   scheduleName: z.string(),
+  scheduleDescription: z.string().nullable(),
   credits: z.number(),
   tokens: z.number(),
 });
@@ -46,7 +47,8 @@ export const zeroUsageInsightContract = c.router({
     path: "/api/zero/usage/insight",
     headers: authHeadersSchema,
     query: z.object({
-      range: z.enum(["today", "yesterday", "7d", "28d"]),
+      range: z.enum(["today", "yesterday", "day", "7d", "28d", "30d"]),
+      date: z.string().optional(),
       groupBy: z.enum(["source", "agent"]),
       tz: z.string(),
     }),

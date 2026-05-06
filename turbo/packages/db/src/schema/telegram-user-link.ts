@@ -19,6 +19,8 @@ export const telegramUserLinks = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     telegramUserId: varchar("telegram_user_id", { length: 255 }).notNull(),
+    telegramUsername: varchar("telegram_username", { length: 255 }),
+    telegramDisplayName: varchar("telegram_display_name", { length: 255 }),
     installationId: varchar("installation_id", { length: 255 })
       .notNull()
       .references(

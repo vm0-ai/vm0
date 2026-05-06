@@ -100,16 +100,17 @@ Extracts to mount paths
 The orchestration layer coordinates job execution between web API and runners.
 
 **Job Notification**:
-- **Push**: Ably realtime notifications for instant job pickup (~100-200ms)
-- **Fallback**: Polling every 30s catches missed notifications
+- **Wakeup**: Ably realtime notifications wake runners for instant HTTP polling (~100-200ms)
+- **Fallback**: HTTP polling every 30s catches missed notifications
 
 **Runner Behavior**:
 1. Subscribe to Ably channel `runner-group:{org}/{name}`
-2. Receive job notification: `{ runId }`
-3. Claim job atomically via `/api/runners/jobs/{id}/claim` (sets `claimed_at`)
-4. Execute in Firecracker VM
-5. Report completion via webhook
-6. Job deleted from queue
+2. Receive job notification and wake HTTP poll
+3. Select the next job via `/api/runners/poll`
+4. Claim job atomically via `/api/runners/jobs/{id}/claim` (sets `claimed_at`)
+5. Execute in Firecracker VM
+6. Report completion via webhook
+7. Job deleted from queue
 
 #### Runner Groups
 
@@ -164,9 +165,10 @@ sandbox:
 
 **Shared Read-Only Base**:
 - ext4 rootfs (~500MB-1GB)
-- Content-addressed: `/var/lib/vm0-runner/rootfs/{hash}/rootfs.ext4`
+- Content-addressed: `/var/lib/vm0-runner/images/{rootfs_hash}/rootfs.ext4`
 - Shared across all VMs via nbd-cow
-- Built via debootstrap + chroot in `build-rootfs.sh`
+- Built via debootstrap + chroot in `build-template.sh`, then customized with
+  guest binaries and host-specific settings in `customize-rootfs.sh`
 
 **Per-VM Copy-on-Write (nbd-cow)**:
 - Userspace NBD-based COW backed by sparse file
@@ -196,7 +198,7 @@ sandbox:
 
 #### Execution Flow
 
-1. Runner receives job via Ably push (or 30s polling fallback)
+1. Runner selects job via HTTP poll, woken by Ably notification or 30s polling fallback
 2. Creates Firecracker VM (3-5s boot)
 3. Vsock connection to guest agent
 4. Upload scripts, configure DNS, install proxy CA

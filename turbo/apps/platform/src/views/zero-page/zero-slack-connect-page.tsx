@@ -1,4 +1,5 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconBrandSlack,
@@ -12,11 +13,13 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { searchParams$ } from "../../signals/route.ts";
 import {
-  slackConnectStatus$,
-  effectiveStatus$,
   effectiveError$,
+  slackConnectStatus$,
+  type SlackConnectStatus,
   connectSlackAccount$,
 } from "../../signals/zero-page/slack-connect-signals.ts";
+
+type PageStatus = SlackConnectStatus | "checking" | "error";
 
 function BackLink() {
   return (
@@ -30,69 +33,44 @@ function BackLink() {
   );
 }
 
-/**
- * Slack Connect page — handles connect confirmation, success, and error states.
- *
- * URL params:
- * - w, u: workspace and slack user IDs (for manual connect flow from Slack)
- * - status=connected: post-install or post-connect success
- * - workspace: workspace name (for display after connect)
- * - error: error message to display
- */
 export function ZeroSlackConnectPage() {
-  const params = useGet(searchParams$);
-  const workspaceId = params.get("w");
-  const slackUserId = params.get("u");
-  const workspaceName = params.get("workspace");
-
-  const status = useGet(slackConnectStatus$);
-  const eStatus = useGet(effectiveStatus$);
-  const eError = useGet(effectiveError$);
-
-  const connect = useSet(connectSlackAccount$);
-  const pageSignal = useGet(pageSignal$);
-  const handleConnect = () => {
-    detach(connect(pageSignal), Reason.DomCallback);
-  };
-
   return (
     <div className="zero-app flex h-dvh w-full bg-background zero-workspace-bg">
       <div className="flex flex-1 items-center justify-center p-4">
         <div className="zero-card w-full max-w-sm p-5 sm:p-8 flex flex-col items-center gap-6">
-          <PageContent
-            effectiveStatus={eStatus}
-            effectiveError={eError}
-            workspaceName={workspaceName}
-            workspaceId={workspaceId}
-            slackUserId={slackUserId}
-            connectStatus={status}
-            onConnect={handleConnect}
-          />
+          <PageContent />
         </div>
       </div>
     </div>
   );
 }
 
-function PageContent({
-  effectiveStatus,
-  effectiveError,
-  workspaceName,
-  workspaceId,
-  slackUserId,
-  connectStatus,
-  onConnect,
-}: {
-  effectiveStatus: string;
-  effectiveError: string;
-  workspaceName: string | null;
-  workspaceId: string | null;
-  slackUserId: string | null;
-  connectStatus: string;
-  onConnect: () => void;
-}) {
+function PageContent() {
+  const params = useGet(searchParams$);
+  const workspaceId = params.get("w");
+  const slackUserId = params.get("u");
+  const workspaceName = params.get("workspace");
+
+  const effectiveError = useGet(effectiveError$);
+  const statusLoadable = useLoadable(slackConnectStatus$);
+  const status: PageStatus =
+    effectiveError !== ""
+      ? "error"
+      : statusLoadable.state === "loading"
+        ? "checking"
+        : statusLoadable.state === "hasData"
+          ? statusLoadable.data
+          : "idle";
+
+  const [connectLoadable, connect] = useLoadableSet(connectSlackAccount$);
+  const connectLoading = connectLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+  const handleConnect = () => {
+    detach(connect(pageSignal), Reason.DomCallback);
+  };
+
   // Error state
-  if (effectiveStatus === "error") {
+  if (status === "error") {
     return (
       <>
         <IconAlertCircle size={40} className="text-destructive" />
@@ -110,7 +88,7 @@ function PageContent({
   }
 
   // Success state
-  if (effectiveStatus === "success") {
+  if (status === "success") {
     return (
       <>
         <IconCircleCheck size={40} className="text-emerald-500" />
@@ -144,7 +122,7 @@ function PageContent({
   }
 
   // Loading — checking login / connection status
-  if (effectiveStatus === "checking") {
+  if (status === "checking") {
     return (
       <>
         <IconLoader2 size={40} className="text-muted-foreground animate-spin" />
@@ -177,13 +155,13 @@ function PageContent({
         <Button
           className="w-full"
           size="default"
-          onClick={onConnect}
-          disabled={connectStatus === "connecting"}
+          onClick={handleConnect}
+          disabled={connectLoading}
         >
-          {connectStatus === "connecting" ? (
+          {connectLoading ? (
             <IconLoader2 size={16} className="animate-spin mr-2" />
           ) : null}
-          {connectStatus === "connecting" ? "Connecting..." : "Connect"}
+          {connectLoading ? "Connecting..." : "Connect"}
         </Button>
         <BackLink />
       </>

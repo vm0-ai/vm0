@@ -190,8 +190,9 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
 });
 
 describe("zero chat thread page - document preview opens global lightbox", () => {
-  it("clicking html preview opens the shared attachment lightbox", async () => {
-    const htmlUrl = "https://example.com/report.html";
+  it("clicking html platform file url preview opens the shared attachment lightbox", async () => {
+    const htmlUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/report.html";
     server.use(
       http.get(htmlUrl, () => {
         return HttpResponse.html("<html><body>report preview</body></html>");

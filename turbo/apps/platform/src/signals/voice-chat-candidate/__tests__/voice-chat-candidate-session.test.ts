@@ -950,7 +950,7 @@ describe("voice-chat-candidate session", () => {
       await setup();
       await startSuccessfully();
 
-      context.store.set(endVoiceChatCandidate$);
+      await context.store.set(endVoiceChatCandidate$, context.signal);
 
       await vi.waitFor(() => {
         expect(context.store.get(vccStatus$)).toBe("idle");

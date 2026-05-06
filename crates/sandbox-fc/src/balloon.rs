@@ -189,6 +189,30 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::UnixListener;
 
+    const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(1);
+
+    async fn await_task_exit(handle: tokio::task::JoinHandle<()>, context: &str) {
+        let result = tokio::time::timeout(LIFECYCLE_TIMEOUT, handle)
+            .await
+            .unwrap_or_else(|_| panic!("{context} did not exit within {LIFECYCLE_TIMEOUT:?}"));
+        result.unwrap_or_else(|e| panic!("{context} task failed: {e}"));
+    }
+
+    async fn await_wait_for_crash_or_stop(
+        mut state_rx: watch::Receiver<SandboxState>,
+        context: &str,
+    ) {
+        tokio::time::timeout(LIFECYCLE_TIMEOUT, wait_for_crash_or_stop(&mut state_rx))
+            .await
+            .unwrap_or_else(|_| panic!("{context} did not exit within {LIFECYCLE_TIMEOUT:?}"));
+    }
+
+    fn missing_api_sock_path() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
+        let sock_path = dir.path().join("missing-api.sock");
+        (dir, sock_path)
+    }
+
     /// Helper: spawn a mock server that handles one GET (stats) and optionally one PATCH.
     /// Returns the PATCH request body if one was received.
     async fn run_tick_with_mock(stats_json: &str, max_inflate: u32) -> Option<String> {
@@ -247,6 +271,92 @@ mod tests {
         tick(&client, max_inflate, tick_count).await;
 
         server.await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn wait_for_crash_or_stop_returns_on_stopped() {
+        let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+        state_tx.send(SandboxState::Stopped).unwrap();
+
+        await_wait_for_crash_or_stop(state_rx, "stopped waiter").await;
+    }
+
+    #[tokio::test]
+    async fn wait_for_crash_or_stop_returns_on_crashed() {
+        let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+        state_tx.send(SandboxState::Crashed).unwrap();
+
+        await_wait_for_crash_or_stop(state_rx, "crashed waiter").await;
+    }
+
+    #[tokio::test]
+    async fn wait_for_crash_or_stop_returns_when_sender_dropped() {
+        let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+        drop(state_tx);
+
+        await_wait_for_crash_or_stop(state_rx, "closed-channel waiter").await;
+    }
+
+    #[tokio::test]
+    async fn wait_for_crash_or_stop_ignores_intermediate_states() {
+        let (state_tx, mut state_rx) = watch::channel(SandboxState::Created);
+        let handle = tokio::spawn(async move {
+            wait_for_crash_or_stop(&mut state_rx).await;
+        });
+
+        tokio::task::yield_now().await;
+        assert!(
+            !handle.is_finished(),
+            "Created should not stop the balloon controller"
+        );
+
+        state_tx.send(SandboxState::Running).unwrap();
+        tokio::task::yield_now().await;
+        assert!(
+            !handle.is_finished(),
+            "Running should not stop the balloon controller"
+        );
+
+        state_tx.send(SandboxState::Stopping).unwrap();
+        tokio::task::yield_now().await;
+        assert!(
+            !handle.is_finished(),
+            "Stopping should not stop the balloon controller"
+        );
+
+        state_tx.send(SandboxState::Stopped).unwrap();
+        await_task_exit(handle, "intermediate-state waiter").await;
+    }
+
+    #[tokio::test]
+    async fn spawn_exits_immediately_when_memory_at_or_below_min_guest() {
+        for memory_mb in [MIN_GUEST_MIB, MIN_GUEST_MIB - 1] {
+            let (_dir, sock_path) = missing_api_sock_path();
+            let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
+            let context = format!("small-memory balloon controller ({memory_mb} MiB)");
+
+            await_task_exit(spawn(sock_path, memory_mb, state_rx), &context).await;
+        }
+    }
+
+    async fn assert_spawn_exits_on_state(state: SandboxState) {
+        let (_dir, sock_path) = missing_api_sock_path();
+        let (state_tx, state_rx) = watch::channel(SandboxState::Running);
+        let handle = spawn(sock_path, MIN_GUEST_MIB + 1, state_rx);
+
+        state_tx.send(state).unwrap();
+        let context = format!("balloon controller after {state:?}");
+        await_task_exit(handle, &context).await;
+    }
+
+    #[tokio::test]
+    async fn spawn_exits_when_state_stopped() {
+        assert_spawn_exits_on_state(SandboxState::Stopped).await;
+    }
+
+    #[tokio::test]
+    async fn spawn_exits_when_state_crashed() {
+        assert_spawn_exits_on_state(SandboxState::Crashed).await;
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-//! CLI command building and execution for Claude Code.
+//! CLI command building and execution for Claude Code / Codex.
 
 use crate::constants;
 use crate::env;
@@ -7,6 +7,7 @@ use crate::events;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
+use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use std::collections::HashMap;
 use std::process::Stdio;
@@ -16,13 +17,14 @@ use tokio::io::AsyncWriteExt;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// State machine driving the post-`type=result` reap of the CLI process
-/// group. A single pinned deadline is resettable across phases; the enum
-/// value tells the lone select! branch what to do when the deadline fires.
+/// State machine driving forced CLI process-group termination. A single
+/// pinned deadline is resettable across phases; the enum value tells the
+/// lone select! branch what to do when the deadline fires.
 ///
 /// | From             | Trigger        | To              | Action          |
 /// |------------------|----------------|-----------------|-----------------|
-/// | `Idle`           | `type=result`  | `SigtermPending`| arm sigterm grace |
+/// | `Idle`           | `type=result`  | `SigtermPending`| arm delayed sigterm grace |
+/// | `Idle`           | forced kill    | `SigkillPending`| SIGTERM pgid, arm sigkill grace |
 /// | `SigtermPending` | deadline fires | `SigkillPending`| SIGTERM pgid, arm sigkill grace |
 /// | `SigkillPending` | deadline fires | `Done`          | SIGKILL pgid    |
 /// | _any pending_    | `child.wait()` | `Done`          | (no signal)     |
@@ -30,18 +32,40 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// `Done` is sticky: a late second `type=result` on the same run cannot
 /// re-arm the deadline, and any in-flight signalling is one-shot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReapState {
+enum TerminationState {
     Idle,
-    SigtermPending,
-    SigkillPending,
+    SigtermPending { reason: TerminationReason },
+    SigkillPending { reason: TerminationReason },
     Done,
 }
 
-impl ReapState {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminationReason {
+    PostResult,
+    StuckTool,
+    HeartbeatError,
+    HeartbeatPanic,
+}
+
+impl TerminationReason {
+    fn label(self) -> &'static str {
+        match self {
+            TerminationReason::PostResult => "post-result reap",
+            TerminationReason::StuckTool => "stuck-tool watchdog",
+            TerminationReason::HeartbeatError => "heartbeat error",
+            TerminationReason::HeartbeatPanic => "heartbeat panic",
+        }
+    }
+}
+
+impl TerminationState {
     /// True while waiting for an armed SIGTERM or SIGKILL deadline to fire;
     /// used as the select! branch's eligibility guard.
     fn is_pending(self) -> bool {
-        matches!(self, ReapState::SigtermPending | ReapState::SigkillPending)
+        matches!(
+            self,
+            TerminationState::SigtermPending { .. } | TerminationState::SigkillPending { .. }
+        )
     }
 
     /// Whether to arm the reap deadline on an incoming `type=result`
@@ -49,14 +73,17 @@ impl ReapState {
     /// fire — later events (or a result that races a CLI exit) must
     /// not re-arm. Single source of truth consumed by both the
     /// production guard in `execute_cli` and the FSM unit tests.
-    fn should_arm(self, cli_exited: bool) -> bool {
-        matches!(self, ReapState::Idle) && !cli_exited
+    fn should_arm_post_result(self, cli_exited: bool) -> bool {
+        matches!(self, TerminationState::Idle) && !cli_exited
     }
 }
 
-/// Build the CLI command + args.
+/// Build the CLI command + args based on `CLI_AGENT_TYPE`.
 pub fn build_cli_command() -> Result<Vec<String>, AgentError> {
-    Ok(build_claude_command(env::use_mock_claude()))
+    match env::Framework::from_env() {
+        env::Framework::ClaudeCode => Ok(build_claude_command(env::use_mock_claude())),
+        env::Framework::Codex => Ok(build_codex_command(env::use_mock_codex())),
+    }
 }
 
 /// Build the argument list from explicit parameters (testable).
@@ -145,6 +172,147 @@ fn build_claude_command(use_mock: bool) -> Vec<String> {
     cmd
 }
 
+/// Build the codex argument list (testable).
+///
+/// Resume is a positional sub-subcommand (`codex exec resume <id> <prompt>`),
+/// not a `--resume <id>` flag. No `--` separator before the prompt: codex
+/// has no variadic flags here, so `--` would propagate as a literal arg.
+fn build_codex_args(working_dir: &str, model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
+    let mut args = vec![
+        "exec".to_string(),
+        "--json".to_string(),
+        "--sandbox".to_string(),
+        "danger-full-access".to_string(),
+        "--skip-git-repo-check".to_string(),
+        "-C".to_string(),
+        working_dir.to_string(),
+    ];
+
+    if !model.is_empty() {
+        args.push("-m".to_string());
+        args.push(model.to_string());
+    }
+
+    if !resume_id.is_empty() {
+        log_info!(LOG_TAG, "Resuming codex session: {resume_id}");
+        args.push("resume".to_string());
+        args.push(resume_id.to_string());
+        args.push(prompt.to_string());
+    } else {
+        log_info!(LOG_TAG, "Starting new codex session");
+        args.push(prompt.to_string());
+    }
+
+    args
+}
+
+fn build_codex_command(use_mock: bool) -> Vec<String> {
+    let bin = if use_mock {
+        log_info!(LOG_TAG, "Using mock-codex for testing");
+        env::mock_codex_path()
+    } else {
+        "codex".to_string()
+    };
+
+    let mut cmd = vec![bin];
+    cmd.extend(build_codex_args(
+        env::working_dir(),
+        env::openai_model(),
+        env::resume_session_id(),
+        env::prompt(),
+    ));
+    cmd
+}
+
+/// Set up codex auth on the guest before invoking `codex exec`.
+///
+/// Two mutually-exclusive paths:
+///
+/// - **ChatGPT-OAuth mode** (`CHATGPT_ACCOUNT_ID` set): write a fabricated
+///   `~/.codex/auth.json` containing placeholder JWTs that put codex into
+///   `Chatgpt` mode without ever holding real OAuth credentials inside
+///   the sandbox. The firewall replaces placeholder bytes on egress. See
+///   the `codex_auth` module + issue #11877.
+///
+/// - **API-key mode** (default): pipe `OPENAI_API_KEY` into
+///   `codex login --with-api-key` to write `~/.codex/auth.json`. If
+///   `OPENAI_API_KEY` is empty, log and return Ok — `codex exec` reads
+///   the env directly so the env path covers authn even when the login
+///   subcommand isn't available.
+///
+/// Both paths are best-effort — failure logs but does not abort init.
+pub fn setup_codex() -> Result<(), AgentError> {
+    use std::io::Write as _;
+
+    if env::is_chatgpt_oauth_mode() {
+        return setup_codex_chatgpt();
+    }
+
+    let codex_home = format!("{}/.codex", env::home_dir());
+    std::fs::create_dir_all(&codex_home)?;
+    log_info!(LOG_TAG, "Codex home directory: {codex_home}");
+
+    let api_key = env::openai_api_key();
+    if api_key.is_empty() {
+        log_info!(LOG_TAG, "OPENAI_API_KEY not set, skipping codex login");
+        return Ok(());
+    }
+
+    let login_start = Instant::now();
+    let result = std::process::Command::new("codex")
+        .args(["login", "--with-api-key"])
+        .env("CODEX_HOME", &codex_home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(api_key.as_bytes());
+            }
+            child.wait_with_output()
+        });
+    let success = matches!(&result, Ok(o) if o.status.success());
+    if success {
+        log_info!(LOG_TAG, "Codex authenticated with API key");
+    } else {
+        match &result {
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                log_warn!(LOG_TAG, "codex login failed (non-fatal): {stderr}");
+            }
+            Err(e) => {
+                log_warn!(LOG_TAG, "codex login spawn failed (non-fatal): {e}");
+            }
+        }
+    }
+    record_sandbox_op("codex_login", login_start.elapsed(), success, None);
+    Ok(())
+}
+
+/// Wrapper that calls `codex_auth::setup_codex_chatgpt_inner` with values
+/// read from env + the real clock, and records a telemetry op so failures
+/// surface in dashboards.
+fn setup_codex_chatgpt() -> Result<(), AgentError> {
+    let setup_start = Instant::now();
+    let home = std::path::PathBuf::from(env::home_dir());
+    let result = crate::codex_auth::setup_codex_chatgpt_inner(&home, chrono::Utc::now());
+
+    let success = result.is_ok();
+    let err_msg = result.as_ref().err().map(|e| e.to_string());
+    record_sandbox_op(
+        "codex_chatgpt_setup",
+        setup_start.elapsed(),
+        success,
+        err_msg.as_deref(),
+    );
+
+    if success {
+        log_info!(LOG_TAG, "Codex ChatGPT-OAuth auth.json written");
+    }
+    result
+}
+
 struct PreparedEvent {
     sequence: u32,
     payload: serde_json::Value,
@@ -207,17 +375,29 @@ pub async fn execute_cli(
         .stderr(Stdio::piped())
         .process_group(0);
 
-    // Suppress Claude CLI features that are unnecessary or harmful in a
-    // sandbox: startup network calls (statsig, Datadog, Segment, GCS
-    // update check, GitHub) add ~2s latency, telemetry has no receiver,
-    // and the CLI version is baked into the rootfs image.
-    cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
-    cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
-    cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
-    cmd.env("DISABLE_AUTOUPDATER", "1");
-    cmd.env("DISABLE_ERROR_REPORTING", "1");
-    cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
-    cmd.env("DISABLE_TELEMETRY", "1");
+    match env::Framework::from_env() {
+        env::Framework::ClaudeCode => {
+            // Suppress Claude CLI features that are unnecessary or harmful in a
+            // sandbox: startup network calls (statsig, Datadog, Segment, GCS
+            // update check, GitHub) add ~2s latency, background tasks can keep
+            // a one-shot run alive after its final result, telemetry has no
+            // receiver, and the CLI version is baked into the rootfs image.
+            cmd.env("CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", "1");
+            cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+            cmd.env("CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY", "1");
+            cmd.env("CLAUDE_CODE_DISABLE_TERMINAL_TITLE", "1");
+            cmd.env("DISABLE_AUTOUPDATER", "1");
+            cmd.env("DISABLE_ERROR_REPORTING", "1");
+            cmd.env("DISABLE_INSTALLATION_CHECKS", "1");
+            cmd.env("DISABLE_TELEMETRY", "1");
+        }
+        env::Framework::Codex => {
+            // `codex login` and `codex exec` both honor CODEX_HOME; pin
+            // it to $HOME/.codex so the login state from setup_codex
+            // is visible to exec.
+            cmd.env("CODEX_HOME", format!("{}/.codex", env::home_dir()));
+        }
+    }
 
     let mut child = cmd.spawn()?;
 
@@ -252,6 +432,7 @@ pub async fn execute_cli(
     // See: https://github.com/vm0-ai/vm0/issues/3645
     let mut reader = tokio::io::BufReader::new(stdout).lines();
     let mut seq = 0u32;
+    let mut stdout_eof = false;
 
     // Capture the process group ID before wait() reaps the child, since
     // child.id() returns None after the process has been reaped.
@@ -265,17 +446,18 @@ pub async fn execute_cli(
     let drain_deadline = tokio::time::sleep(Duration::MAX);
     tokio::pin!(drain_deadline);
 
-    // Post-result reap: in --print mode the CLI prints its final `result`
-    // event and then waits for its own backgrounded Bash tasks to drain.
-    // A runaway task (e.g. an xargs-per-file pipeline that can't short-
-    // circuit) can hold the CLI — and therefore the whole sandbox —
-    // alive for tens of minutes. On `type=result` we step through
-    // SigtermPending → SigkillPending → Done, each step resetting this
-    // shared deadline with the next phase's grace window.
+    // Forced termination: some conditions require reaping the CLI process
+    // group before returning. In --print mode, post-result reap arms a
+    // delayed SIGTERM after `type=result`; fatal watchdog/heartbeat paths
+    // send SIGTERM immediately. Both paths share the same SIGKILL escalation
+    // deadline so no forced termination can fall through to an unbounded
+    // child.wait().
     // See: https://github.com/vm0-ai/vm0/issues/10879
-    let reap_deadline = tokio::time::sleep(Duration::MAX);
-    tokio::pin!(reap_deadline);
-    let mut reap_state = ReapState::Idle;
+    // See: https://github.com/vm0-ai/vm0/issues/11667
+    let termination_deadline = tokio::time::sleep(Duration::MAX);
+    tokio::pin!(termination_deadline);
+    let mut termination_state = TerminationState::Idle;
+    let mut termination_error: Option<AgentError> = None;
 
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
@@ -312,9 +494,10 @@ pub async fn execute_cli(
         acked_prefix.last_contiguous()
     });
 
+    let mut heartbeat_done = false;
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
-            line_result = reader.next_line() => {
+            line_result = reader.next_line(), if !stdout_eof => {
                 match line_result {
                     Ok(Some(line)) => {
                         // Write to log
@@ -337,11 +520,13 @@ pub async fn execute_cli(
                                 {
                                     println!("{result}");
                                 }
-                                // Arm the post-result reap deadline once
-                                // per run — see `ReapState::should_arm`.
-                                if reap_state.should_arm(cli_status.is_some()) {
-                                    reap_state = ReapState::SigtermPending;
-                                    reap_deadline.as_mut().reset(
+                                // Arm the post-result reap deadline once per
+                                // run — see `TerminationState::should_arm_post_result`.
+                                if termination_state.should_arm_post_result(cli_status.is_some()) {
+                                    termination_state = TerminationState::SigtermPending {
+                                        reason: TerminationReason::PostResult,
+                                    };
+                                    termination_deadline.as_mut().reset(
                                         tokio::time::Instant::now()
                                             + Duration::from_secs(
                                                 env::post_result_sigterm_grace_secs(),
@@ -375,7 +560,12 @@ pub async fn execute_cli(
                             seq += 1;
                         }
                     }
-                    Ok(None) => break Ok(()), // EOF — pipe closed normally
+                    Ok(None) => {
+                        stdout_eof = true;
+                        if cli_status.is_some() {
+                            break Ok(());
+                        }
+                    }
                     Err(e) => break Err(AgentError::Io(e)),
                 }
             }
@@ -385,9 +575,12 @@ pub async fn execute_cli(
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
                         // CLI exited on its own (possibly in response to our
-                        // SIGTERM). Park the reap FSM so it can't re-arm on
-                        // any late `type=result` event.
-                        reap_state = ReapState::Done;
+                        // SIGTERM). Park the termination FSM so it can't
+                        // re-arm on any late `type=result` event.
+                        termination_state = TerminationState::Done;
+                        if stdout_eof {
+                            break Ok(());
+                        }
                         drain_deadline.as_mut().reset(
                             tokio::time::Instant::now()
                                 + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
@@ -396,53 +589,62 @@ pub async fn execute_cli(
                     Err(e) => break Err(AgentError::Io(e)),
                 }
             }
-            () = &mut reap_deadline, if reap_state.is_pending() && cli_status.is_none() => {
+            () = &mut termination_deadline, if termination_state.is_pending() && cli_status.is_none() => {
                 // `libc::kill` return value is intentionally discarded in
                 // both arms: ESRCH (child reaped since the is_pending()
                 // / is_none() check) is racy-but-harmless, and every
                 // other error would be unrecoverable from userspace.
                 // The sigkill_grace deadline is the escalation path if
                 // the signal fails to take effect in time.
-                match reap_state {
-                    ReapState::SigtermPending => {
+                match termination_state {
+                    TerminationState::SigtermPending { reason } => {
                         let grace = env::post_result_sigterm_grace_secs();
                         if let Some(pid) = pgid {
-                            log_warn!(
-                                LOG_TAG,
-                                "CLI still running {grace}s after type=result, SIGTERM pgid={pid} (likely a leaked backgrounded Bash task)"
-                            );
+                            if reason == TerminationReason::PostResult {
+                                log_warn!(
+                                    LOG_TAG,
+                                    "CLI still running {grace}s after type=result, SIGTERM pgid={pid} (likely a leaked backgrounded Bash task)"
+                                );
+                            } else {
+                                log_warn!(
+                                    LOG_TAG,
+                                    "CLI still running after {} sigterm grace {grace}s, SIGTERM pgid={pid}",
+                                    reason.label()
+                                );
+                            }
                             unsafe { libc::kill(-pid, libc::SIGTERM); }
                         }
-                        reap_state = ReapState::SigkillPending;
-                        reap_deadline.as_mut().reset(
+                        termination_state = TerminationState::SigkillPending { reason };
+                        termination_deadline.as_mut().reset(
                             tokio::time::Instant::now()
                                 + Duration::from_secs(env::post_result_sigkill_grace_secs()),
                         );
                     }
-                    ReapState::SigkillPending => {
+                    TerminationState::SigkillPending { reason } => {
                         let grace = env::post_result_sigkill_grace_secs();
                         if let Some(pid) = pgid {
                             log_warn!(
                                 LOG_TAG,
-                                "CLI did not exit after SIGTERM+{grace}s, SIGKILL pgid={pid}"
+                                "CLI did not exit after {} SIGTERM+{grace}s, SIGKILL pgid={pid}",
+                                reason.label()
                             );
                             unsafe { libc::kill(-pid, libc::SIGKILL); }
                         }
-                        reap_state = ReapState::Done;
+                        termination_state = TerminationState::Done;
                     }
                     // Unreachable by the is_pending() guard. Log in
                     // every build so any future FSM regression surfaces
                     // in production runner logs; debug_assert adds a
                     // fail-fast panic under cfg(debug_assertions) so
                     // CI / dev tests abort on the same condition.
-                    ReapState::Idle | ReapState::Done => {
+                    TerminationState::Idle | TerminationState::Done => {
                         log_warn!(
                             LOG_TAG,
-                            "reap_deadline fired in non-pending state {reap_state:?}"
+                            "termination_deadline fired in non-pending state {termination_state:?}"
                         );
                         debug_assert!(
                             false,
-                            "reap_deadline fired in non-pending state {reap_state:?}"
+                            "termination_deadline fired in non-pending state {termination_state:?}"
                         );
                     }
                 }
@@ -466,38 +668,87 @@ pub async fn execute_cli(
                     })
                     .min_by_key(|(_, started)| *started)
                     .map(|(name, started)| (name.clone(), started.elapsed().as_secs()));
-                if let Some((name, elapsed)) = stuck {
+                if let Some((name, elapsed)) = stuck
+                    && termination_error.is_none()
+                {
+                    let timeout_error = AgentError::Execution(format!(
+                        "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
+                    ));
                     log_warn!(
                         LOG_TAG,
-                        "Tool timeout: {name} stuck for {elapsed}s, killing process"
+                        "Tool timeout: {name} stuck for {elapsed}s, SIGTERM pgid={}",
+                        pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
                     );
                     if let Some(pid) = pgid {
                         unsafe { libc::kill(-pid, libc::SIGTERM); }
                     }
-                    break Err(AgentError::Execution(format!(
-                        "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
-                    )));
+                    termination_error = Some(timeout_error);
+                    termination_state = TerminationState::SigkillPending {
+                        reason: TerminationReason::StuckTool,
+                    };
+                    termination_deadline.as_mut().reset(
+                        tokio::time::Instant::now()
+                            + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                    );
                 }
             }
-            hb_result = &mut heartbeat_handle => {
+            hb_result = &mut heartbeat_handle, if !heartbeat_done => {
+                heartbeat_done = true;
                 match hb_result {
                     Ok(Err(e)) => {
                         // Heartbeat failed — kill process group
-                        if let Some(pid) = pgid {
-                            unsafe { libc::kill(-pid, libc::SIGTERM); }
+                        if termination_error.is_none() {
+                            log_warn!(
+                                LOG_TAG,
+                                "Heartbeat failed, SIGTERM pgid={}",
+                                pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                            );
+                            if let Some(pid) = pgid {
+                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            }
+                            termination_error = Some(e);
+                            termination_state = TerminationState::SigkillPending {
+                                reason: TerminationReason::HeartbeatError,
+                            };
+                            termination_deadline.as_mut().reset(
+                                tokio::time::Instant::now()
+                                    + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                            );
                         }
-                        break Err(e);
                     }
                     Ok(Ok(())) => {
                         // Heartbeat shutdown (should not happen before CLI exits)
                         break Ok(());
                     }
                     Err(e) => {
-                        break Err(AgentError::Execution(format!("heartbeat task panicked: {e}")));
+                        let error = AgentError::Execution(format!("heartbeat task panicked: {e}"));
+                        if termination_error.is_none() {
+                            log_warn!(
+                                LOG_TAG,
+                                "Heartbeat task panicked, SIGTERM pgid={}",
+                                pgid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
+                            );
+                            if let Some(pid) = pgid {
+                                unsafe { libc::kill(-pid, libc::SIGTERM); }
+                            }
+                            termination_error = Some(error);
+                            termination_state = TerminationState::SigkillPending {
+                                reason: TerminationReason::HeartbeatPanic,
+                            };
+                            termination_deadline.as_mut().reset(
+                                tokio::time::Instant::now()
+                                    + Duration::from_secs(env::post_result_sigkill_grace_secs()),
+                            );
+                        }
                     }
                 }
             }
         }
+    };
+
+    let event_result = match termination_error {
+        Some(err) => Err(err),
+        None => event_result,
     };
 
     // Close the channel so the background sender can finish.
@@ -672,6 +923,98 @@ mod tests {
         assert_eq!(cmd[0], env::DEFAULT_MOCK_CLAUDE_PATH);
     }
 
+    // -----------------------------------------------------------------
+    // build_codex_args / build_codex_command
+    // -----------------------------------------------------------------
+
+    fn build_codex_args_for_test(
+        working_dir: &str,
+        model: &str,
+        resume_id: &str,
+        prompt: &str,
+    ) -> Vec<String> {
+        disable_system_log();
+        build_codex_args(working_dir, model, resume_id, prompt)
+    }
+
+    fn build_codex_command_for_test(use_mock: bool) -> Vec<String> {
+        disable_system_log();
+        build_codex_command(use_mock)
+    }
+
+    #[test]
+    fn build_codex_args_basic_shape() {
+        let args = build_codex_args_for_test("/workspace", "", "", "hello");
+        assert_eq!(args[0], "exec");
+        assert_eq!(args[1], "--json");
+        let s_idx = args.iter().position(|a| a == "--sandbox").unwrap();
+        assert_eq!(args[s_idx + 1], "danger-full-access");
+        assert!(args.contains(&"--skip-git-repo-check".to_string()));
+        let c_idx = args.iter().position(|a| a == "-C").unwrap();
+        assert_eq!(args[c_idx + 1], "/workspace");
+        assert_eq!(args.last().unwrap(), "hello");
+    }
+
+    #[test]
+    fn build_codex_args_omits_model_when_empty() {
+        let args = build_codex_args_for_test("/wd", "", "", "p");
+        assert!(!args.contains(&"-m".to_string()));
+    }
+
+    #[test]
+    fn build_codex_args_with_model() {
+        let args = build_codex_args_for_test("/wd", "gpt-5", "", "p");
+        let m_idx = args.iter().position(|a| a == "-m").unwrap();
+        assert_eq!(args[m_idx + 1], "gpt-5");
+    }
+
+    #[test]
+    fn build_codex_args_resume_uses_positional_subcommand() {
+        let args = build_codex_args_for_test("/wd", "", "thread-abc", "follow up");
+        let r_idx = args.iter().position(|a| a == "resume").unwrap();
+        assert_eq!(args[r_idx + 1], "thread-abc");
+        assert_eq!(args[r_idx + 2], "follow up");
+        // resume is a positional sub-subcommand, NOT a --resume flag
+        assert!(!args.contains(&"--resume".to_string()));
+    }
+
+    #[test]
+    fn build_codex_args_resume_layout_is_resume_id_prompt() {
+        let args = build_codex_args_for_test("/wd", "", "id1", "p1");
+        let r_idx = args.iter().position(|a| a == "resume").unwrap();
+        assert_eq!(args.len(), r_idx + 3);
+        assert_eq!(args[r_idx + 1], "id1");
+        assert_eq!(args[r_idx + 2], "p1");
+    }
+
+    #[test]
+    fn build_codex_args_no_double_dash_separator() {
+        // Codex has no variadic flags here; a bare `--` separator would
+        // propagate as a literal arg to the codex CLI.
+        let args = build_codex_args_for_test("/wd", "gpt-5", "id", "hello");
+        assert!(!args.contains(&"--".to_string()));
+    }
+
+    #[test]
+    fn build_codex_args_prompt_last_in_no_resume_path() {
+        let args = build_codex_args_for_test("/wd", "gpt-5", "", "the prompt");
+        assert_eq!(args.last().unwrap(), "the prompt");
+    }
+
+    #[test]
+    fn build_codex_command_uses_codex_binary() {
+        let cmd = build_codex_command_for_test(false);
+        assert_eq!(cmd[0], "codex");
+    }
+
+    #[test]
+    fn build_codex_command_uses_mock_binary() {
+        // Mirrors `build_claude_command_uses_mock_binary`: assert against
+        // the default const so regressions in the install path surface.
+        let cmd = build_codex_command_for_test(true);
+        assert_eq!(cmd[0], env::DEFAULT_MOCK_CODEX_PATH);
+    }
+
     #[test]
     fn build_claude_args_with_disallowed_tools() {
         let args =
@@ -834,15 +1177,25 @@ mod tests {
     }
 
     // -----------------------------------------------------------------
-    // ReapState FSM
+    // TerminationState FSM
     // -----------------------------------------------------------------
 
     #[test]
-    fn reap_state_is_pending_only_between_arming_and_done() {
-        assert!(!ReapState::Idle.is_pending());
-        assert!(ReapState::SigtermPending.is_pending());
-        assert!(ReapState::SigkillPending.is_pending());
-        assert!(!ReapState::Done.is_pending());
+    fn termination_state_is_pending_only_between_arming_and_done() {
+        assert!(!TerminationState::Idle.is_pending());
+        assert!(
+            TerminationState::SigtermPending {
+                reason: TerminationReason::PostResult,
+            }
+            .is_pending()
+        );
+        assert!(
+            TerminationState::SigkillPending {
+                reason: TerminationReason::StuckTool,
+            }
+            .is_pending()
+        );
+        assert!(!TerminationState::Done.is_pending());
     }
 
     /// The arming guard must fire exactly once per run, on the first
@@ -850,21 +1203,32 @@ mod tests {
     /// later state — or a CLI that already exited — must be ignored
     /// (Done is sticky; SigtermPending/SigkillPending already armed).
     ///
-    /// Calls `ReapState::should_arm` directly so the test shares a
-    /// single source of truth with the production `select!` branch.
+    /// Calls `TerminationState::should_arm_post_result` directly so
+    /// the test shares a single source of truth with the production
+    /// `select!` branch.
     #[test]
-    fn reap_state_should_arm_matches_invariant() {
+    fn termination_state_should_arm_post_result_matches_invariant() {
         // Fire only from Idle with CLI still alive.
-        assert!(ReapState::Idle.should_arm(false));
+        assert!(TerminationState::Idle.should_arm_post_result(false));
 
         // CLI already exited → no arm, even from Idle.
-        assert!(!ReapState::Idle.should_arm(true));
+        assert!(!TerminationState::Idle.should_arm_post_result(true));
 
         // Already armed → no re-arm.
-        assert!(!ReapState::SigtermPending.should_arm(false));
-        assert!(!ReapState::SigkillPending.should_arm(false));
+        assert!(
+            !TerminationState::SigtermPending {
+                reason: TerminationReason::PostResult,
+            }
+            .should_arm_post_result(false)
+        );
+        assert!(
+            !TerminationState::SigkillPending {
+                reason: TerminationReason::HeartbeatError,
+            }
+            .should_arm_post_result(false)
+        );
 
         // Done is sticky.
-        assert!(!ReapState::Done.should_arm(false));
+        assert!(!TerminationState::Done.should_arm_post_result(false));
     }
 }

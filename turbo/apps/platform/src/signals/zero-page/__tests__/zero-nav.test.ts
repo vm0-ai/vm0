@@ -169,7 +169,7 @@ describe("zero-nav", () => {
       const pushStateMock = await setupNav();
 
       context.store.set(setZeroShowAboutPage$, true);
-      context.store.set(handleZeroNavSelect$, "schedules");
+      context.store.set(handleZeroNavSelect$, "schedules", context.signal);
 
       expect(pushStateMock).toHaveBeenCalledWith({}, "", "/schedules");
       expect(context.store.get(activeRoute$)).toBe("schedules");
@@ -230,7 +230,7 @@ describe("zero-nav", () => {
         initRoutes$,
         [
           { path: "/", setup: noop$ },
-          { path: "/_/usage", setup: noop$ },
+          { path: "/usage", setup: noop$ },
           { path: "{/*path}", setup: noop$ },
         ],
         context.signal,

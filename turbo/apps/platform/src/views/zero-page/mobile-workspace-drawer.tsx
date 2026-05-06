@@ -18,7 +18,7 @@ import {
   IconMail,
 } from "@tabler/icons-react";
 import { clerk$, currentOrgInfo$, user$ } from "../../signals/auth.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, withCleanup } from "../../signals/utils.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   mobileWorkspaceDrawerOpen$,
@@ -192,14 +192,15 @@ function InvitationRow({
   const handleAccept = () => {
     setAcceptingId(invitation.id);
     detach(
-      invitation
-        .accept()
-        .then(() => {
+      withCleanup(
+        (async () => {
+          await invitation.accept();
           refreshInvitations();
-        })
-        .finally(() => {
+        })(),
+        () => {
           setAcceptingId(null);
-        }),
+        },
+      ),
       Reason.DomCallback,
     );
   };
@@ -258,15 +259,16 @@ function CreateWorkspaceButton({ onClose }: { onClose: () => void }) {
     setCreating(true);
     const slug = `workspace-${crypto.randomUUID().slice(0, 8)}`;
     detach(
-      clerk
-        .createOrganization({ name: slug, slug })
-        .then((org) => {
+      withCleanup(
+        (async () => {
+          const org = await clerk.createOrganization({ name: slug, slug });
           onClose();
-          return clerk.setActive({ organization: org.id });
-        })
-        .finally(() => {
+          await clerk.setActive({ organization: org.id });
+        })(),
+        () => {
           setCreating(false);
-        }),
+        },
+      ),
       Reason.DomCallback,
     );
   };

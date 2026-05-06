@@ -1,6 +1,7 @@
 "use client";
 
 import { IconArrowRight } from "@tabler/icons-react";
+import { useTranslations } from "next-intl";
 import { Link } from "../../../../navigation";
 import { Footer } from "../../../components/Footer";
 import { Particles } from "../../../components/Particles";
@@ -110,24 +111,11 @@ function inlineCode(text: string): React.ReactNode {
   });
 }
 
-function multiplierPositioning(name: string, m: number): string {
-  if (m === 1) {
-    return `${name} sits at the ×1 baseline that every other Built-in model is priced against, so it's the unit you compare costs in when picking between models on VM0.`;
-  }
-  if (m > 1) {
-    return `${name} bills at ×${m}, which means a step here costs ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). It's a premium tier on VM0, so the cost-effective pattern is to default to a cheaper model and route only the steps that genuinely need the extra reasoning depth to ${name}.`;
-  }
-  if (m <= 0.05) {
-    return `${name} bills at ×${m}, which means a step here costs only ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). That puts it at the cheapest tier of the Built-in catalogue and makes it the obvious choice when unit cost dominates the decision and the workload is largely single-shot.`;
-  }
-  return `${name} bills at ×${m}, which means a step here costs only ${m}× the credits of an equivalent step on Sonnet 4.6 (the ×1 baseline). That puts it well below the credit baseline and makes it the natural pick for high-volume background work where cost-per-step matters more than peak reasoning quality.`;
-}
-
-function tierExplanation(name: string, tier: ModelEntry["vm0Tier"]): string {
-  if (tier === "core") {
-    return `VM0 positions ${name} as a core agent model, recommended alongside Claude Opus 4.7, Claude Opus 4.6, and Claude Sonnet 4.6 for the steps that drive the actual outcome of an agent run. These are the models we'd pick for the orchestrator role, for code-touching agents, and for any step where a wrong answer is expensive.`;
-  }
-  return `VM0 positions ${name} as a cost-saving option rather than a core agent model. Use it to optimise unit cost on non-core work, such as bulk classification, pre-filters, latency-critical short replies, or pinned legacy agents, while keeping Claude Opus 4.7, Claude Opus 4.6, or Claude Sonnet 4.6 on the steps that decide the run.`;
+function getMultiplierKey(m: number): string {
+  if (m === 1) return "multiplierPositioningBaseline";
+  if (m > 1) return "multiplierPositioningPremium";
+  if (m <= 0.05) return "multiplierPositioningCheapest";
+  return "multiplierPositioningBelowBaseline";
 }
 
 interface Props {
@@ -136,12 +124,18 @@ interface Props {
 }
 
 export function ModelDetailClient({ model, related }: Props) {
+  const t = useTranslations("models");
   const platformUrl = getAppUrl();
+  const c = (key: string) => {
+    return `content.${model.slug}.${key}`;
+  };
+  const rc = (slug: string, key: string) => {
+    return `content.${slug}.${key}`;
+  };
 
   const heroMeta = [
     formatContextWindow(model.contextWindowK),
     model.modalities.join(" / "),
-    model.chinaAccessible ? "China-accessible" : "Global",
     model.promptCaching ? "Prompt cache" : null,
   ].filter(Boolean);
 
@@ -155,7 +149,7 @@ export function ModelDetailClient({ model, related }: Props) {
           style={{ maxWidth: MAX_WIDTH, padding: `0 ${PAGE_PADDING}px` }}
         >
           <Link href="/models" className="uc-detail-back">
-            &larr; All models
+            &larr; {t("backToAllModels")}
           </Link>
 
           {/* Hero */}
@@ -171,10 +165,10 @@ export function ModelDetailClient({ model, related }: Props) {
               />
             )}
             <h1 className="text-[32px] font-semibold leading-[1.15] tracking-tight sm:text-[40px]">
-              {model.pageTitle}
+              {t(c("pageTitle"))}
             </h1>
             <p className="mt-5 text-[17px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-              {model.tagline}
+              {t(c("tagline"))}
             </p>
 
             <p className="mt-6 text-[14px] text-[hsl(var(--muted-foreground))]">
@@ -188,7 +182,7 @@ export function ModelDetailClient({ model, related }: Props) {
                 rel="noopener noreferrer"
                 className="btn-get-access group"
               >
-                <span>Use {model.name} on VM0</span>
+                <span>{t("useModelButton", { name: model.name })}</span>
                 <IconArrowRight
                   size={16}
                   className="transition-transform group-hover:translate-x-0.5"
@@ -200,26 +194,28 @@ export function ModelDetailClient({ model, related }: Props) {
           {/* TL;DR */}
           <Card className="mb-12">
             <div className="flex flex-col gap-4">
-              {model.summary.split("\n\n").map((para, i) => {
-                return (
-                  <p
-                    key={i}
-                    className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]"
-                  >
-                    {inlineCode(para)}
-                  </p>
-                );
-              })}
+              {t(c("summary"))
+                .split("\n\n")
+                .map((para, i) => {
+                  return (
+                    <p
+                      key={i}
+                      className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]"
+                    >
+                      {inlineCode(para)}
+                    </p>
+                  );
+                })}
             </div>
           </Card>
 
           {/* Overview */}
-          <Section title={`What is ${model.name}?`}>
+          <Section title={t("whatIsHeading", { name: model.name })}>
             <p className="mb-6 text-[14px] text-[hsl(var(--muted-foreground))]">
-              Released {model.releaseDate} · {model.familyPosition}
+              {t(c("releaseDate"))} · {t(c("familyPosition"))}
             </p>
             <div className="flex flex-col gap-4">
-              {model.background.map((para, i) => {
+              {(t.raw(c("background")) as string[]).map((para, i) => {
                 return (
                   <p
                     key={i}
@@ -233,42 +229,56 @@ export function ModelDetailClient({ model, related }: Props) {
           </Section>
 
           {/* What's notable */}
-          {model.architecture && (
+          {t(c("architecture")) && (
             <Section
-              title={`What's notable about ${model.name}`}
-              subtitle="Headline architecture and capability features."
+              title={t("whatsNotableHeading", { name: model.name })}
+              subtitle={t("whatsNotableSubtitle")}
             >
               <p className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                {inlineCode(model.architecture)}
+                {inlineCode(t(c("architecture")))}
               </p>
             </Section>
           )}
 
           {/* Specs */}
-          <Section title="Specs at a glance">
+          <Section title={t("specsHeading")}>
             <Card>
-              {model.specs.map((row, i) => {
-                return (
-                  <DataRow
-                    key={row.label}
-                    label={row.label}
-                    value={row.value}
-                    last={i === model.specs.length - 1}
-                  />
-                );
-              })}
+              {(t.raw(c("specs")) as { label: string; value: string }[]).map(
+                (row, i, arr) => {
+                  return (
+                    <DataRow
+                      key={row.label}
+                      label={row.label}
+                      value={row.value}
+                      last={i === arr.length - 1}
+                    />
+                  );
+                },
+              )}
             </Card>
           </Section>
 
           {/* Benchmarks */}
-          {model.benchmarks.length > 0 && (
+          {(
+            t.raw(c("benchmarks")) as {
+              name: string;
+              score: string;
+              note?: string;
+            }[]
+          ).length > 0 && (
             <Section
-              title={`${model.name} benchmarks`}
-              subtitle={model.benchmarksNote}
+              title={t("benchmarksHeading", { name: model.name })}
+              subtitle={t(c("benchmarksNote"))}
             >
               <Card>
-                {model.benchmarks.map((b, i) => {
-                  const last = i === model.benchmarks.length - 1;
+                {(
+                  t.raw(c("benchmarks")) as {
+                    name: string;
+                    score: string;
+                    note?: string;
+                  }[]
+                ).map((b, i, arr) => {
+                  const last = i === arr.length - 1;
                   return (
                     <div
                       key={b.name}
@@ -296,27 +306,27 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* Pricing */}
           <Section
-            title={`${model.name} pricing`}
-            subtitle="Provider list price, per 1M tokens."
+            title={t("pricingHeading", { name: model.name })}
+            subtitle={t("pricingSubtitle")}
           >
             <Card>
               <DataRow
-                label="Input"
+                label={t("labelInput")}
                 value={formatUsd(model.pricing.inputUsd)}
               />
               <DataRow
-                label="Output"
+                label={t("labelOutput")}
                 value={formatUsd(model.pricing.outputUsd)}
               />
               <DataRow
-                label="Cache read"
+                label={t("labelCacheRead")}
                 value={formatUsd(model.pricing.cacheReadUsd)}
               />
               <DataRow
-                label="Cache write"
+                label={t("labelCacheWrite")}
                 value={
                   model.pricing.cacheWriteUsd === null
-                    ? "Not billed"
+                    ? t("labelNotBilled")
                     : formatUsd(model.pricing.cacheWriteUsd)
                 }
                 last
@@ -326,11 +336,13 @@ export function ModelDetailClient({ model, related }: Props) {
 
           {/* Performance */}
           <Section
-            title={`How ${model.name} behaves in practice`}
-            subtitle="Observed behaviour from production agent runs."
+            title={t("performanceHeading", { name: model.name })}
+            subtitle={t("performanceSubtitle")}
           >
             <div className="grid gap-4 sm:grid-cols-2">
-              {model.performance.map((note) => {
+              {(
+                t.raw(c("performance")) as { title: string; body: string }[]
+              ).map((note) => {
                 return (
                   <Card key={note.title} className="!p-6">
                     <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
@@ -346,9 +358,11 @@ export function ModelDetailClient({ model, related }: Props) {
           </Section>
 
           {/* Best agent tasks */}
-          <Section title={`Best agent tasks for ${model.name}`}>
+          <Section title={t("bestForHeading", { name: model.name })}>
             <div className="flex flex-col gap-4">
-              {model.bestForExamples.map((ex) => {
+              {(
+                t.raw(c("bestForExamples")) as { title: string; body: string }[]
+              ).map((ex) => {
                 return (
                   <Card key={ex.title} className="!p-6">
                     <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
@@ -364,50 +378,59 @@ export function ModelDetailClient({ model, related }: Props) {
           </Section>
 
           {/* Skip when */}
-          {model.avoidFor && (
-            <Section title={`When to skip ${model.name}`}>
+          {t(c("avoidFor")) && (
+            <Section title={t("skipWhenHeading", { name: model.name })}>
               <p className="text-[16px] leading-relaxed text-[hsl(var(--muted-foreground))]">
-                {inlineCode(model.avoidFor)}
+                {inlineCode(t(c("avoidFor")))}
               </p>
             </Section>
           )}
 
           {/* Comparisons */}
-          {model.comparisons.length > 0 && (
-            <Section title={`${model.name} vs other models`}>
+          {model.comparisonSlugs.length > 0 && (
+            <Section title={t("comparisonsHeading", { name: model.name })}>
               <div className="flex flex-col gap-4">
-                {model.comparisons.map((cmp) => {
-                  return (
-                    <Card key={cmp.vs} className="!p-6">
-                      <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                        {model.name} vs {cmp.vs}
-                      </h3>
-                      <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                        {inlineCode(cmp.body)}
-                      </p>
-                    </Card>
-                  );
-                })}
+                {(() => {
+                  const cmps = t.raw(c("comparisons")) as {
+                    vs: string;
+                    body: string;
+                  }[];
+                  return cmps.map((cmp) => {
+                    return (
+                      <Card key={cmp.vs} className="!p-6">
+                        <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
+                          {t("comparisonTitleTemplate", {
+                            model: model.name,
+                            other: cmp.vs,
+                          })}
+                        </h3>
+                        <p className="mt-2 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
+                          {inlineCode(cmp.body)}
+                        </p>
+                      </Card>
+                    );
+                  });
+                })()}
               </div>
             </Section>
           )}
 
           {/* Verdict */}
-          {model.verdict && (
-            <Section title={`Bottom line: should you use ${model.name}?`}>
+          {t(c("verdict")) && (
+            <Section title={t("verdictHeading", { name: model.name })}>
               <div className="rounded-2xl border-l-[3px] border-[#ed4e01] bg-white p-6 sm:p-8">
                 <p className="text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {inlineCode(model.verdict)}
+                  {inlineCode(t(c("verdict")))}
                 </p>
               </div>
             </Section>
           )}
 
           {/* FAQ */}
-          {model.faqs.length > 0 && (
-            <Section title="Frequently asked questions">
+          {(t.raw(c("faqs")) as { q: string; a: string }[]).length > 0 && (
+            <Section title={t("faqHeading")}>
               <div className="flex flex-col gap-7">
-                {model.faqs.map((faq) => {
+                {(t.raw(c("faqs")) as { q: string; a: string }[]).map((faq) => {
                   return (
                     <div key={faq.q}>
                       <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
@@ -424,81 +447,93 @@ export function ModelDetailClient({ model, related }: Props) {
           )}
 
           {/* Alternatives */}
-          {model.alternatives.length > 0 && (
-            <Section title="Alternatives">
+          {model.alternativeSlugs.length > 0 && (
+            <Section title={t("alternativesHeading")}>
               <div className="grid gap-3 sm:grid-cols-2">
-                {model.alternatives.map((alt) => {
-                  return (
-                    <Link
-                      key={alt.slug}
-                      href={`/models/${alt.slug}`}
-                      className="block rounded-2xl bg-white p-5 transition-all hover:-translate-y-0.5"
-                    >
-                      <div className="text-[15px] font-medium text-[hsl(var(--foreground))]">
-                        {altName(alt.slug)}
-                      </div>
-                      <div className="mt-1 text-[14px] font-light text-[hsl(var(--muted-foreground))]">
-                        {alt.reason}
-                      </div>
-                    </Link>
-                  );
-                })}
+                {(() => {
+                  const alts = t.raw(c("alternatives")) as {
+                    slug: string;
+                    reason: string;
+                  }[];
+                  return alts.map((alt) => {
+                    return (
+                      <Link
+                        key={alt.slug}
+                        href={`/models/${alt.slug}`}
+                        className="block rounded-2xl bg-white p-5 transition-all hover:-translate-y-0.5"
+                      >
+                        <div className="text-[15px] font-medium text-[hsl(var(--foreground))]">
+                          {altName(alt.slug)}
+                        </div>
+                        <div className="mt-1 text-[14px] font-light text-[hsl(var(--muted-foreground))]">
+                          {alt.reason}
+                        </div>
+                      </Link>
+                    );
+                  });
+                })()}
               </div>
             </Section>
           )}
 
-          {/* Using on VM0 — final dedicated section */}
-          <Section title={`Using ${model.name} on VM0`}>
+          {/* Using on VM0 */}
+          <Section title={t("usingOnVm0Heading", { name: model.name })}>
             <div className="flex flex-col gap-5">
               <div>
                 <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  Two ways to access {model.name} on VM0
+                  {t("twoWaysToAccessHeading", { name: model.name })}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  VM0 supports {model.name} as a Built-in model billed in VM0
-                  credits, and through bring-your-own with a {model.byoKeyLabel}
-                  . The Built-in path uses VM0 Managed routing and the credit
-                  multiplier explained below; the bring-your-own path bills you
-                  directly with the upstream vendor and skips the VM0 credit
-                  conversion entirely.
+                  {t("twoWaysToAccessBody", {
+                    name: model.name,
+                    byoKey: model.byoKeyLabel,
+                  })}
                 </p>
               </div>
 
               <div>
                 <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  VM0&rsquo;s recommendation
+                  {t("vm0RecommendationHeading")}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {tierExplanation(model.name, model.vm0Tier)}
+                  {t(
+                    model.vm0Tier === "core"
+                      ? "tierExplanationCore"
+                      : "tierExplanationCostSaving",
+                    { name: model.name },
+                  )}
                 </p>
               </div>
 
               <div>
                 <h3 className="text-[18px] font-medium text-[hsl(var(--foreground))]">
-                  Credits and the ×{model.multiplier} multiplier
+                  {t("creditsMultiplierHeading", {
+                    multiplier: model.multiplier,
+                  })}
                 </h3>
                 <p className="mt-2 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  Every Built-in model on VM0 is priced as a multiple of Claude
-                  Sonnet 4.6, which sits at the ×1 credit baseline. {model.name}{" "}
-                  bills at ×{model.multiplier} credits. The multiplier is what
-                  shows up on your VM0 invoice; the vendor list price in the
-                  pricing table above is what the upstream provider charges
-                  before VM0 converts it into credits.
+                  {t("creditsMultiplierBodyP1", {
+                    name: model.name,
+                    multiplier: model.multiplier,
+                  })}
                 </p>
                 <p className="mt-3 text-[16px] leading-relaxed text-[hsl(var(--foreground))]">
-                  {multiplierPositioning(model.name, model.multiplier)}
+                  {t(getMultiplierKey(model.multiplier), {
+                    name: model.name,
+                    multiplier: model.multiplier,
+                  })}
                 </p>
               </div>
 
               <p className="text-[14px] text-[hsl(var(--muted-foreground))]">
-                Available on VM0 since {model.releasedToVm0}.
+                {t("availableSince", { date: model.releasedToVm0 })}
               </p>
             </div>
           </Section>
 
           {/* Related */}
           <div className="uc-related">
-            <h2 className="uc-related-title">More models on VM0</h2>
+            <h2 className="uc-related-title">{t("moreModelsHeading")}</h2>
             <div className="uc-related-grid">
               {related.map((m) => {
                 return (
@@ -507,8 +542,12 @@ export function ModelDetailClient({ model, related }: Props) {
                     href={`/models/${m.slug}`}
                     className="uc-related-card"
                   >
-                    <div className="uc-related-card-title">{m.name}</div>
-                    <div className="uc-related-card-desc">{m.cardIntro}</div>
+                    <div className="uc-related-card-title">
+                      {t(rc(m.slug, "name"))}
+                    </div>
+                    <div className="uc-related-card-desc">
+                      {t(rc(m.slug, "cardIntro"))}
+                    </div>
                   </Link>
                 );
               })}

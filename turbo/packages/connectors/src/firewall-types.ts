@@ -491,4 +491,17 @@ export interface ExpandedFirewallConfig {
   description?: string;
   apis: FirewallApi[];
   placeholders?: Record<string, string>;
+  /**
+   * Optional per-firewall default permission overrides for auto-generated
+   * model-provider firewalls (which otherwise default to fully permissive).
+   * Permission names listed in `deny`/`ask` are routed accordingly; all
+   * others remain allowed. `unknownPolicy` controls handling of base-URL
+   * matches that don't match any permission rule. Ignored on the connector
+   * firewall path (which uses stored per-user policies instead).
+   */
+  defaultPolicies?: {
+    deny?: string[];
+    ask?: string[];
+    unknownPolicy?: FirewallPolicyValue;
+  };
 }

@@ -25,6 +25,7 @@ import {
 import {
   createNewChatThreadOptimistically$,
   optimisticChatThread$,
+  type OptimisticChatPane,
 } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
@@ -135,7 +136,7 @@ function NewOrUnreadChatButtonLeaf() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const navigateToChatFn = useSet(navigateToChat$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
   const creating = useGet(optimisticChatThread$) !== null;
   const unreadThread = useLastResolved(earliestUnreadEndedThread$);
 
@@ -157,9 +158,9 @@ function NewOrUnreadChatButtonLeaf() {
     );
   }
 
-  const handleNewChat = () => {
+  const handleNewChat = (pane: OptimisticChatPane) => {
     detach(
-      createNewChat(currentChatAgentId ?? null, rootSignal),
+      createNewChat(currentChatAgentId ?? null, pane, rootSignal),
       Reason.DomCallback,
     );
   };
@@ -167,7 +168,9 @@ function NewOrUnreadChatButtonLeaf() {
   return (
     <button
       type="button"
-      onClick={handleNewChat}
+      onClick={(event) => {
+        handleNewChat(event.altKey ? "sidebar" : "main");
+      }}
       disabled={creating}
       className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0 disabled:opacity-50"
     >
@@ -319,7 +322,10 @@ function MobileTopBar() {
     mobileNativeOn && !showBreadcrumb ? mobileTopBarTitle(activeId) : undefined;
 
   return (
-    <div className="md:hidden shrink-0 relative flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
+    <div
+      className="md:hidden shrink-0 relative flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       <MobileTopBarLeftSlot
         activeId={activeId}
         mobileNativeOn={mobileNativeOn}

@@ -63,12 +63,15 @@ jobs:
       any-changed: ${{ steps.detect.outputs.any-changed }}
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       mitm-addon-turbo-changed: ${{ steps.detect.outputs.mitm-addon-turbo-changed }}
+      api-contracts-rust-bindings-changed: ${{ steps.detect.outputs.api-contracts-rust-bindings-changed }}
       ably-subscriber-changed: ${{ steps.detect.outputs.ably-subscriber-changed }}
+      api-contracts-changed: ${{ steps.detect.outputs.api-contracts-changed }}
       runner-changed: ${{ steps.detect.outputs.runner-changed }}
       guest-init-changed: ${{ steps.detect.outputs.guest-init-changed }}
       guest-download-changed: ${{ steps.detect.outputs.guest-download-changed }}
       guest-agent-changed: ${{ steps.detect.outputs.guest-agent-changed }}
       guest-mock-claude-changed: ${{ steps.detect.outputs.guest-mock-claude-changed }}
+      guest-mock-codex-changed: ${{ steps.detect.outputs.guest-mock-codex-changed }}
       guest-reseed-changed: ${{ steps.detect.outputs.guest-reseed-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       metal-host: ${{ steps.host.outputs.host }}
@@ -110,11 +113,13 @@ jobs:
             fi
           }
           check_crate ably-subscriber
+          check_crate api-contracts
           check_crate runner
           check_crate guest-init
           check_crate guest-download
           check_crate guest-agent
           check_crate guest-mock-claude
+          check_crate guest-mock-codex
           check_crate guest-reseed
           check_crate nbd-cow
 
@@ -123,6 +128,17 @@ jobs:
             echo "any-changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "any-changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # The api-contracts Rust bindings are generated from selected
+          # TypeScript contract files, but the checked artifact lives under
+          # crates/api-contracts. Keep this output separate from any-changed so
+          # a TS-only contract edit runs the drift check without forcing every
+          # Rust crate job to run.
+          if git diff --name-only "$BASE_REF" HEAD | grep -qE "^crates/api-contracts/|^turbo/packages/api-contracts/(package\.json|tsconfig\.json|src/contracts/|src/rust-bindings/)|^turbo/pnpm-lock\.yaml$"; then
+            echo "api-contracts-rust-bindings-changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api-contracts-rust-bindings-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           # mitm-addon tests include cross-language consistency checks that
@@ -220,6 +236,11 @@ jobs:
           cd crates
           cargo clippy --all-targets --all-features
 
+      - name: Build documentation
+        run: |
+          cd crates
+          cargo doc --workspace --all-features --no-deps
+
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
@@ -246,6 +267,23 @@ jobs:
           cd crates
           cargo run -p ably-subscriber --example smoke_test
 
+  api-contracts-rust-bindings:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260419
+    needs: [detect]
+    if: |
+      needs.detect.outputs.ci-changed == 'true' ||
+      needs.detect.outputs.api-contracts-rust-bindings-changed == 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/toolchain-init
+      - name: Check API Contracts Rust Bindings
+        working-directory: turbo
+        run: |
+          pnpm -F @vm0/api-contracts generate:rust
+          git diff --exit-code -- ../crates/api-contracts/src/generated
+
   mitm-addon-test:
     runs-on: ubuntu-latest
     needs: [detect]
@@ -257,7 +295,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       # Needed for the classifier↔firewall consistency check in
       # tests/test_x_billing.py: the check reads
@@ -270,7 +308,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: 'pnpm'
+          cache: "pnpm"
           cache-dependency-path: turbo/pnpm-lock.yaml
       - name: Install turbo deps (triggers firewalls-generator postinstall)
         run: cd turbo && pnpm install --frozen-lockfile
@@ -355,6 +393,7 @@ jobs:
         needs.detect.outputs.guest-download-changed == 'true' ||
         needs.detect.outputs.guest-agent-changed == 'true' ||
         needs.detect.outputs.guest-mock-claude-changed == 'true' ||
+        needs.detect.outputs.guest-mock-codex-changed == 'true' ||
         needs.detect.outputs.guest-reseed-changed == 'true'
       )
     timeout-minutes: 20
@@ -375,13 +414,14 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match release-please.yml so rootfs_hash is
-      # identical across pipelines and R2 cache hits on deploy. See #9192.
+      # custom RUSTFLAGS) must match release-please.yml so guest binary bytes
+      # and rootfs_hash are identical across pipelines. The shared R2
+      # template cache intentionally ignores guest binaries. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
           cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
@@ -390,6 +430,7 @@ jobs:
           GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
           GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
+          GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
@@ -463,7 +504,7 @@ jobs:
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
 
-          # Run build (rootfs via Docker + snapshot via Firecracker).
+          # Run build (template + rootfs customization + snapshot).
           # R2_* env vars are inlined after `sudo` so they reach the runner
           # process — sudo's default `env_reset` would otherwise strip them.
           # Use tee to stream output in real-time while capturing for hash extraction
@@ -476,8 +517,8 @@ jobs:
             R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
             R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
             ${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
-          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
-          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
+          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG_DEFAULT" | tail -n1 | cut -d= -f2 || true)
+          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG_DEFAULT" | tail -n1 | cut -d= -f2 || true)
           rm -f "$BUILD_LOG_DEFAULT"
 
           if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
@@ -606,7 +647,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -726,7 +767,7 @@ jobs:
           echo "PASS: runtime availability"
 
           # Test 6: verify /etc/environment is loaded for both user and root
-          # [sync:etc-environment] Keep in sync with: crates/runner/scripts/build-rootfs.sh
+          # [sync:etc-environment] Keep in sync with: crates/runner/scripts/customize-rootfs.sh
           echo "--- Test: environment variables ---"
           EXPECTED_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
           declare -A EXPECTED_ENV=(
@@ -869,7 +910,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Submit a long-running job in background
           echo "--- Submitting long-running job ---"
@@ -985,7 +1026,7 @@ jobs:
           # Start transient runner service.
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Submit a long-running job in background so we can drain mid-flight.
           # Duration must exceed the drain+verify+resume+verify window below
@@ -1183,7 +1224,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Submit a long-running job in background (keeps sandbox alive during tests)
           echo "--- Submitting long-running job ---"
@@ -1437,7 +1478,7 @@ jobs:
           # 1. Install runner A
           echo "--- Installing runner A ---"
           sudo "$BIN_DIR/runner" service install --name "$SVC_A" \
-            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR_A/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # 2. Submit job 1 (background, long-running) → only A running
           echo "--- Submit job 1 (only A, long-running) ---"
@@ -1447,7 +1488,7 @@ jobs:
           # 3. Install runner B while job 1 still in-flight on A
           echo "--- Installing runner B ---"
           sudo "$BIN_DIR/runner" service install --name "$SVC_B" \
-            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR_B/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # 4. Submit job 2 (background, long-running) → A and B compete
           echo "--- Submit job 2 (A and B compete, long-running) ---"
@@ -1547,7 +1588,7 @@ jobs:
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
-            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true --env USE_MOCK_CODEX=true
 
           # Turn 1: submit job with session ID and sandboxReuse flag — creates a marker file in guest
           echo "--- Turn 1: create marker file ---"

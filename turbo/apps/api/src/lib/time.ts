@@ -1,4 +1,4 @@
-import { testOverride } from "./lazy-singleton";
+import { testOverride } from "./singleton";
 
 const {
   get: getMockedNow,

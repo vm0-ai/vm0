@@ -39,9 +39,13 @@ interface MergedPermissions {
 /**
  * Merge model provider and connector permissions into a single manifest.
  * Returns full (unfiltered) firewalls + per-ref networkPolicies.
+ *
+ * `modelProviderFirewall` accepts the in-memory `ExpandedFirewallConfig`
+ * shape so optional fields like `defaultPolicies` flow through to the
+ * network policy builder.
  */
 export function mergePermissions(
-  modelProviderFirewall: Firewalls[number] | null | undefined,
+  modelProviderFirewall: ExpandedFirewallConfig | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
   permissionPolicies?: FirewallPolicies,
   vars?: Record<string, string>,
@@ -49,14 +53,23 @@ export function mergePermissions(
   const { firewalls: connectorResults, networkPolicies } =
     applyConnectorPolicies(connectorFirewalls, permissionPolicies);
 
-  // Model provider firewalls — always fully permissive, grant all permissions
+  // Model provider firewalls default to fully permissive, but a config can
+  // opt in to selective deny/ask via `defaultPolicies` — used by providers
+  // that need to whitelist their inference endpoint while denying ancillary
+  // hosts (e.g., chatgpt-oauth-token denies auth.openai.com from sandbox).
   const autoConfigs = modelProviderFirewall ? [modelProviderFirewall] : [];
   if (modelProviderFirewall) {
+    const all = collectPermissionNames(modelProviderFirewall.apis);
+    const dp = modelProviderFirewall.defaultPolicies;
+    const denySet = new Set(dp?.deny ?? []);
+    const askSet = new Set(dp?.ask ?? []);
     networkPolicies[modelProviderFirewall.name] = {
-      allow: collectPermissionNames(modelProviderFirewall.apis),
-      deny: [],
-      ask: [],
-      unknownPolicy: "allow",
+      allow: all.filter((n) => {
+        return !denySet.has(n) && !askSet.has(n);
+      }),
+      deny: [...denySet],
+      ask: [...askSet],
+      unknownPolicy: dp?.unknownPolicy ?? "allow",
     };
   }
 

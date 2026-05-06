@@ -29,6 +29,13 @@ const router = tsr.router(zeroBillingStatusContract, {
           nextExpiryDate:
             status.creditExpiry.nextExpiryDate?.toISOString() ?? null,
         },
+        creditGrants: status.creditGrants.map((record) => {
+          return {
+            ...record,
+            createdAt: record.createdAt.toISOString(),
+            expiresAt: record.expiresAt.toISOString(),
+          };
+        }),
       },
     };
   },

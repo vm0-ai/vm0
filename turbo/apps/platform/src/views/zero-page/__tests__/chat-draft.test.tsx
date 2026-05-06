@@ -66,7 +66,7 @@ describe("chat draft persistence across thread navigation", () => {
     expect(getTextarea().value).toBe("draft for thread 1");
 
     // Navigate to thread-2
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-2" },
     });
 
@@ -79,7 +79,7 @@ describe("chat draft persistence across thread navigation", () => {
     await fill(getTextarea(), "draft for thread 2");
 
     // Navigate back to thread-1 — draft restored from per-thread cache
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-1" },
     });
 
@@ -88,7 +88,7 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Navigate back to thread-2 — draft restored
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-2" },
     });
 
@@ -107,7 +107,7 @@ describe("chat draft persistence across thread navigation", () => {
 
     await fill(getTextarea(), "only for thread-a");
 
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-b" },
     });
 
@@ -187,7 +187,7 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Navigate to thread-2 while upload is in-flight
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-2" },
     });
 
@@ -201,7 +201,7 @@ describe("chat draft persistence across thread navigation", () => {
 
     // Navigate back to thread-1 — draft restored from per-thread cache,
     // upload should now be complete
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-1" },
     });
 
@@ -210,7 +210,7 @@ describe("chat draft persistence across thread navigation", () => {
     });
   });
 
-  it("should toast and drop the chip when prepare returns an error", async () => {
+  it("should toast and keep the chip when prepare returns an error", async () => {
     const user = userEvent.setup();
     mockThreads();
     server.use(
@@ -247,10 +247,69 @@ describe("chat draft persistence across thread navigation", () => {
         expect.stringContaining("File too large"),
       );
     });
-    expect(screen.queryByLabelText(/huge\.png/)).toBeNull();
+    expect(screen.getByLabelText("Remove huge.png")).toBeInTheDocument();
   });
 
-  it("should toast and drop the chip when the R2 put fails", async () => {
+  it("should infer office content type when the browser file type is empty", async () => {
+    const user = userEvent.setup();
+    mockThreads();
+    const expectedContentType =
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    let prepareBody: { filename: string; contentType: string } | null = null;
+    let putContentType: string | null = null;
+
+    server.use(
+      mockHttp.post("*/api/zero/uploads/prepare", async ({ request }) => {
+        const body = (await request.json()) as {
+          filename: string;
+          contentType: string;
+          size: number;
+        };
+        prepareBody = {
+          filename: body.filename,
+          contentType: body.contentType,
+        };
+        return HttpResponse.json({
+          id: "upload-xlsx",
+          filename: body.filename,
+          contentType: body.contentType,
+          size: body.size,
+          uploadUrl: "https://mock-upload.example.com/budget.xlsx",
+          url: "https://example.com/budget.xlsx",
+        });
+      }),
+      mockHttp.put(
+        "https://mock-upload.example.com/budget.xlsx",
+        ({ request }) => {
+          putContentType = request.headers.get("content-type");
+          return new HttpResponse(null, { status: 200 });
+        },
+      ),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-office-1" });
+
+    await waitFor(() => {
+      expect(getTextarea()).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["sheet"], "budget.xlsx");
+    await user.upload(fileInput, file);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove budget.xlsx")).toBeInTheDocument();
+    });
+    expect(prepareBody).toStrictEqual({
+      filename: "budget.xlsx",
+      contentType: expectedContentType,
+    });
+    expect(putContentType).toBe(expectedContentType);
+  });
+
+  it("should keep the chip when the R2 put fails", async () => {
     const user = userEvent.setup();
     mockThreads();
     server.use(
@@ -284,10 +343,8 @@ describe("chat draft persistence across thread navigation", () => {
     await user.upload(fileInput, file);
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith(
-        expect.stringContaining("storage returned 500"),
-      );
+      expect(screen.getByLabelText("Remove fail.png")).toBeInTheDocument();
     });
-    expect(screen.queryByLabelText(/fail\.png/)).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
   });
 });

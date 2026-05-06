@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { getZeroRunAgentEvents, type RunEvent } from "../../../lib/api";
 import { parseTime } from "../../../lib/utils/time-parser";
-import { ClaudeEventParser } from "../../../lib/events/claude-event-parser";
+import { parseEvent } from "../../../lib/events/event-parser-factory";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import { paginate } from "../../../lib/utils/paginate";
 import { withErrorHandler } from "../../../lib/command";
@@ -12,9 +12,13 @@ import { searchCommand } from "./search";
 
 const PAGE_LIMIT = 100;
 
-function renderAgentEvent(event: RunEvent, renderer: EventRenderer): void {
+function renderAgentEvent(
+  event: RunEvent,
+  renderer: EventRenderer,
+  framework: string,
+): void {
   const eventData = event.eventData as Record<string, unknown>;
-  const parsed = ClaudeEventParser.parse(eventData);
+  const parsed = parseEvent(eventData, framework);
   if (parsed) {
     parsed.timestamp = new Date(event.createdAt);
     renderer.render(parsed);
@@ -93,9 +97,10 @@ async function showAgentEvents(
     showTimestamp: true,
     verbose: true,
   });
+  const framework = firstResponse.framework;
 
   for (const event of events) {
-    renderAgentEvent(event, renderer);
+    renderAgentEvent(event, renderer, framework);
   }
 }
 

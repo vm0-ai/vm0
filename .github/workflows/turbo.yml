@@ -1331,6 +1331,7 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
+          USE_MOCK_CODEX: "true"
           SLACK_SIGNING_SECRET: ${{ secrets.SLACK_SIGNING_SECRET }}
           E2E_SERIAL_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+serial@vm0-e2e.ai
           # Slack tests override BATS_TEST_TIMEOUT to 90s at file scope,
@@ -1413,13 +1414,14 @@ jobs:
           save-if: false
 
       # IMPORTANT: these compile settings (--release, default linker, no
-      # custom RUSTFLAGS) must match release-please.yml so rootfs_hash is
-      # identical across pipelines and R2 cache hits on deploy. See #9192.
+      # custom RUSTFLAGS) must match release-please.yml so guest binary bytes
+      # and rootfs_hash are identical across pipelines. The shared R2
+      # template cache intentionally ignores guest binaries. See #9192.
       - name: Cross-compile guest binaries for ARM64
         run: |
           cd crates
           cargo build --release --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-mock-codex -p guest-reseed
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
@@ -1428,6 +1430,7 @@ jobs:
           GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/release/guest-download" \
           GUEST_INIT_PATH="target/$TARGET_TRIPLE/release/guest-init" \
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/release/guest-mock-claude" \
+          GUEST_MOCK_CODEX_PATH="target/$TARGET_TRIPLE/release/guest-mock-codex" \
           GUEST_RESEED_PATH="target/$TARGET_TRIPLE/release/guest-reseed" \
           cargo build --profile ci --target "$TARGET_TRIPLE" -p runner
 
@@ -1528,47 +1531,86 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_USER_STORAGES_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
         run: |
+          set -euo pipefail
+
           TARGET_DIR="crates/target/${TARGET_TRIPLE}/ci"
 
-          deploy_to_host() {
+          prepare_host() {
             local HOST=$1
             local HOST_INDEX=$2
             local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
             local REMOTE="${METAL_USER}@${HOST}"
-            echo "=== Deploying to ${HOST} (runner: ${RUNNER_NAME}) ==="
+            echo "=== Preparing ${HOST} (runner: ${RUNNER_NAME}) ==="
 
             # Clean previous run artifacts and upload runner (guests are embedded)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} ${RUNNER_DIR} && sudo mkdir -p ${BIN_DIR}"
+            if ! ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} ${RUNNER_DIR} && sudo mkdir -p ${BIN_DIR}"; then
+              return 1
+            fi
             # shellcheck disable=SC2029
-            < "${TARGET_DIR}/runner" ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner"
+            if ! ssh "$REMOTE" "sudo install -m 755 /dev/stdin ${BIN_DIR}/runner" < "${TARGET_DIR}/runner"; then
+              return 1
+            fi
 
             # Clean up old rootfs/snapshots, keep the 6 most recent (3 deploys × 2 profiles).
             # R2_* env vars are inlined so `runner gc` can also sweep stale R2 image
             # objects — without them, R2-side cleanup is silently skipped.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo \
+            if ! ssh "$REMOTE" "sudo \
               R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
               R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
               R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
               R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-              ${BIN_DIR}/runner gc --keep-latest 6"
+              ${BIN_DIR}/runner gc --keep-latest 6"; then
+              return 1
+            fi
 
             # Run setup (downloads firecracker/kernel/mitmdump, cached + idempotent)
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
+            if ! ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"; then
+              return 1
+            fi
+            echo "=== Done preparing ${HOST} ==="
+          }
+
+          warm_rootfs_cache() {
+            local HOST=$1
+            local REMOTE="${METAL_USER}@${HOST}"
+            echo "=== Warming shared template cache on ${HOST} ==="
+
+            # Warm exactly once before the per-host snapshot build fan-out. This
+            # prevents every metal host from racing into the slow local rootfs
+            # template build path when a PR introduces a new template_hash.
+            # shellcheck disable=SC2029
+            if ! ssh "$REMOTE" "sudo \
+              R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
+              R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
+              R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
+              R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
+              ${BIN_DIR}/runner build --profile vm0/default --warm-rootfs-cache"; then
+              return 1
+            fi
+            echo "=== Done warming shared template cache on ${HOST} ==="
+          }
+
+          build_snapshot_on_host() {
+            local HOST=$1
+            local REMOTE="${METAL_USER}@${HOST}"
+            echo "=== Building rootfs/snapshot on ${HOST} ==="
 
             # Run build to create rootfs + snapshot (outputs hashes to stdout).
             # R2_* env vars are inlined after `sudo` so they reach the runner
             # process — sudo's default `env_reset` would otherwise strip them.
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo \
+            if ! ssh "$REMOTE" "sudo \
               R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
               R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
               R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
               R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
-              ${BIN_DIR}/runner build --profile vm0/default"
-            echo "=== Done deploying to ${HOST} ==="
+              ${BIN_DIR}/runner build --profile vm0/default"; then
+              return 1
+            fi
+            echo "=== Done building rootfs/snapshot on ${HOST} ==="
           }
 
           LOG_DIR=$(mktemp -d)
@@ -1577,7 +1619,7 @@ jobs:
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
-            deploy_to_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.log" 2>&1 &
+            prepare_host "$HOST" "$HOST_INDEX" > "${LOG_DIR}/${HOST}.prepare.log" 2>&1 &
             PIDS+=($!)
             HOSTS+=("$HOST")
           done
@@ -1586,23 +1628,52 @@ jobs:
           for i in "${!PIDS[@]}"; do
             if ! wait "${PIDS[$i]}"; then
               FAILED=1
-              echo "::error::Deployment failed on ${HOSTS[$i]}"
+              echo "::error::Runner preparation failed on ${HOSTS[$i]}"
             fi
-            echo "=== ${HOSTS[$i]} ==="
-            cat "${LOG_DIR}/${HOSTS[$i]}.log"
+            echo "=== ${HOSTS[$i]} prepare ==="
+            cat "${LOG_DIR}/${HOSTS[$i]}.prepare.log"
           done
           if [ "$FAILED" -ne 0 ]; then
             rm -rf "$LOG_DIR"
             exit 1
           fi
 
-          # Extract per-host build hashes — rootfs hash is shared (R2 cached),
-          # snapshot hash may differ across hosts.
+          WARM_HOST="${HOSTS[0]}"
+          WARM_LOG="${LOG_DIR}/warm-rootfs-cache.log"
+          if ! warm_rootfs_cache "$WARM_HOST" 2>&1 | tee "$WARM_LOG"; then
+            echo "::error::Shared template cache warm failed on ${WARM_HOST}"
+            rm -rf "$LOG_DIR"
+            exit 1
+          fi
+
+          PIDS=()
+          for HOST in "${HOSTS[@]}"; do
+            build_snapshot_on_host "$HOST" > "${LOG_DIR}/${HOST}.build.log" 2>&1 &
+            PIDS+=($!)
+          done
+
+          FAILED=0
+          for i in "${!PIDS[@]}"; do
+            if ! wait "${PIDS[$i]}"; then
+              FAILED=1
+              echo "::error::Runner image build failed on ${HOSTS[$i]}"
+            fi
+            echo "=== ${HOSTS[$i]} build ==="
+            cat "${LOG_DIR}/${HOSTS[$i]}.build.log"
+          done
+          if [ "$FAILED" -ne 0 ]; then
+            rm -rf "$LOG_DIR"
+            exit 1
+          fi
+
+          # Extract per-host build hashes. The shared R2 cache is keyed by
+          # template_hash; rootfs and snapshot hashes may differ across
+          # hosts because they include host-local customization.
           ROOTFS_MAP=$(jq -n '{}')
           SNAPSHOT_MAP=$(jq -n '{}')
           for HOST in "${HOSTS[@]}"; do
-            ROOTFS_HASH=$(grep '^rootfs_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
-            SNAPSHOT_HASH=$(grep '^snapshot_hash=' "${LOG_DIR}/${HOST}.log" | cut -d= -f2)
+            ROOTFS_HASH=$(grep '^rootfs_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2 || true)
+            SNAPSHOT_HASH=$(grep '^snapshot_hash=' "${LOG_DIR}/${HOST}.build.log" | tail -n1 | cut -d= -f2 || true)
             if [ -z "$ROOTFS_HASH" ] || [ -z "$SNAPSHOT_HASH" ]; then
               echo "::error::Failed to extract rootfs/snapshot hash from ${HOST} log"
               rm -rf "$LOG_DIR"
@@ -1708,7 +1779,8 @@ jobs:
               --name ${RUNNER_NAME} \
               --config ${RUNNER_DIR}/runner.yaml \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
-              --env USE_MOCK_CLAUDE=true"
+              --env USE_MOCK_CLAUDE=true \
+              --env USE_MOCK_CODEX=true"
 
             # Health check — wait for runner startup, then verify
             sleep 5
@@ -1908,7 +1980,9 @@ jobs:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           USE_MOCK_CLAUDE: "true"
+          USE_MOCK_CODEX: "true"
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           CI_GITHUB_TOKEN: ${{ github.token }}
           E2E_RUNNER_EMAIL: ${{ needs.prepare.outputs.job-ref }}+clerk_test+runner@vm0-e2e.ai

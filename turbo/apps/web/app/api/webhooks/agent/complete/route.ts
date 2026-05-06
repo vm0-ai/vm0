@@ -21,9 +21,9 @@ import {
   drainOrgQueue,
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
-import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
 import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
 import { waitForAgentEventPrefixVisible } from "../../../../../src/lib/infra/run/agent-event-visibility";
+import { publishRunChangedForUserSafely } from "../../../../../src/lib/infra/run/run-realtime";
 import { after } from "next/server";
 import { env } from "../../../../../src/env";
 
@@ -42,7 +42,6 @@ function scheduleTerminalSideEffects(
     await dispatchTerminalSideEffects(runId, status, errorMsg, () => {
       return drainOrgQueue(orgId, dispatchQueuedZeroRun);
     });
-    await processOrgCredits(orgId);
     await processOrgUsageEvents(orgId);
   });
 }
@@ -160,6 +159,9 @@ const router = tsr.router(webhookCompleteContract, {
         // Dispatch callbacks so the user gets notified about the failure
         // (previously this path returned without dispatching)
         if (transitioned) {
+          await publishRunChangedForUserSafely(run.userId, body.runId, {
+            status: "failed",
+          });
           scheduleTerminalSideEffects(
             body.runId,
             "failed",
@@ -232,6 +234,9 @@ const router = tsr.router(webhookCompleteContract, {
         };
       }
 
+      await publishRunChangedForUserSafely(run.userId, body.runId, {
+        status: "completed",
+      });
       finalStatus = "completed";
       log.debug(`Run ${body.runId} completed successfully`);
     } else {
@@ -264,6 +269,9 @@ const router = tsr.router(webhookCompleteContract, {
         };
       }
 
+      await publishRunChangedForUserSafely(run.userId, body.runId, {
+        status: "failed",
+      });
       finalStatus = "failed";
       log.warn(`Run ${body.runId} failed: ${errorMessage}`);
     }

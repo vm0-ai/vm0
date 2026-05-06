@@ -46,6 +46,37 @@ function buildToolUseEvent(sequenceNumber: number): Record<string, unknown> {
   };
 }
 
+function buildCodexAgentMessageEvent(
+  sequenceNumber: number,
+  text: string,
+): Record<string, unknown> {
+  return {
+    type: "item.completed",
+    sequenceNumber,
+    item: {
+      id: `item_${sequenceNumber}`,
+      type: "agent_message",
+      text,
+    },
+  };
+}
+
+function buildCodexCommandExecutionEvent(
+  sequenceNumber: number,
+): Record<string, unknown> {
+  return {
+    type: "item.completed",
+    sequenceNumber,
+    item: {
+      id: `cmd_${sequenceNumber}`,
+      type: "command_execution",
+      command: "ls",
+      exit_code: 0,
+      output: "README.md",
+    },
+  };
+}
+
 const context = testContext();
 
 describe("POST /api/internal/event-consumers/chat-assistant", () => {
@@ -142,5 +173,54 @@ describe("POST /api/internal/event-consumers/chat-assistant", () => {
       `chatThreadMessageCreated:${threadId}`,
       null,
     );
+  });
+
+  it("should persist codex agent_message text from item.completed events", async () => {
+    const { runId } = await seedTestRun(user.userId, agentComposeId);
+    const threadId = await insertTestChatThread(
+      user.userId,
+      agentComposeId,
+      "test thread",
+    );
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    const request = createEventConsumerRequest({
+      runId,
+      events: [buildCodexAgentMessageEvent(1, "Codex says hi")],
+      context: { userId: user.userId, orgId: user.orgId },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.processed).toBe(1);
+
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${threadId}`,
+      null,
+    );
+  });
+
+  it("should ignore non-agent_message codex item.completed events", async () => {
+    const { runId } = await seedTestRun(user.userId, agentComposeId);
+    const threadId = await insertTestChatThread(
+      user.userId,
+      agentComposeId,
+      "test thread",
+    );
+    await addTestRunToThread(threadId, runId, user.userId);
+
+    const request = createEventConsumerRequest({
+      runId,
+      events: [buildCodexCommandExecutionEvent(1)],
+      context: { userId: user.userId, orgId: user.orgId },
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.processed).toBe(0);
+
+    expect(mockAblyPublish).not.toHaveBeenCalled();
   });
 });

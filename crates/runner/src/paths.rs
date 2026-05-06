@@ -160,6 +160,14 @@ impl HomePaths {
         self.locks_dir().join(format!("image-{hash}.lock"))
     }
 
+    pub fn template_lock(&self, hash: &str) -> PathBuf {
+        self.locks_dir().join(format!("template-{hash}.lock"))
+    }
+
+    pub fn ca_lock(&self) -> PathBuf {
+        self.locks_dir().join("ca.lock")
+    }
+
     pub fn snapshot_lock(&self, hash: &str) -> PathBuf {
         self.locks_dir().join(format!("snapshot-{hash}.lock"))
     }
@@ -228,9 +236,9 @@ impl RootfsPaths {
 
     /// Pre-commit staging path for the rootfs image.
     ///
-    /// Any post-download processing (R2 path: CA injection) runs against
-    /// this path. Only after every post-processing step succeeds does
-    /// `build.rs` atomically rename `rootfs.ext4.staging → rootfs.ext4` —
+    /// Rootfs customization runs against this path. Only after every
+    /// post-processing step succeeds does
+    /// the build command atomically rename `rootfs.ext4.staging → rootfs.ext4` —
     /// so `rootfs()` exists on disk if and only if the full assembly
     /// pipeline completed. A leftover `rootfs.ext4.staging` is always
     /// a crash residue from a previous build and is safe to delete once
@@ -260,7 +268,7 @@ impl RootfsPaths {
 
 /// Paths for a snapshot build output, nested under a [`RootfsPaths`].
 ///
-/// Layout: `<images_dir>/<rootfs_hash>/snapshots/<snapshot_hash>/{snapshot.bin,memory.bin,cow.img}`
+/// Layout: `<images_dir>/<rootfs_hash>/snapshots/<snapshot_hash>/{snapshot.bin,memory.bin,cow.img,cow.img.bitmap,.snapshot-complete}`
 ///
 /// Constructed via [`RootfsPaths::snapshot`].
 pub struct SnapshotPaths {
@@ -284,9 +292,23 @@ impl SnapshotPaths {
         self.dir.join("cow.img")
     }
 
+    pub fn cow_bitmap(&self) -> PathBuf {
+        self.dir.join("cow.img.bitmap")
+    }
+
+    pub fn complete_marker(&self) -> PathBuf {
+        self.dir.join(".snapshot-complete")
+    }
+
     /// All files that must exist for the snapshot to be considered complete.
-    pub fn expected_files(&self) -> [PathBuf; 3] {
-        [self.snapshot_bin(), self.memory_bin(), self.cow_img()]
+    pub fn expected_files(&self) -> [PathBuf; 5] {
+        [
+            self.snapshot_bin(),
+            self.memory_bin(),
+            self.cow_img(),
+            self.cow_bitmap(),
+            self.complete_marker(),
+        ]
     }
 }
 
@@ -379,6 +401,11 @@ mod tests {
         let rootfs_lock = home.rootfs_lock("abc123");
         assert!(rootfs_lock.starts_with("/test/locks/"));
         assert!(rootfs_lock.to_string_lossy().contains("image-abc123"));
+        let template_lock = home.template_lock("def456");
+        assert!(template_lock.starts_with("/test/locks/"));
+        assert!(template_lock.to_string_lossy().contains("template-def456"));
+        let ca_lock = home.ca_lock();
+        assert_eq!(ca_lock, PathBuf::from("/test/locks/ca.lock"));
     }
 
     #[test]
@@ -446,7 +473,15 @@ mod tests {
             sp.cow_img(),
             PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img")
         );
-        assert_eq!(sp.expected_files().len(), 3);
+        assert_eq!(
+            sp.cow_bitmap(),
+            PathBuf::from("/test/images/aaa/snapshots/bbb/cow.img.bitmap")
+        );
+        assert_eq!(
+            sp.complete_marker(),
+            PathBuf::from("/test/images/aaa/snapshots/bbb/.snapshot-complete")
+        );
+        assert_eq!(sp.expected_files().len(), 5);
     }
 
     #[test]

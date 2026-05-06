@@ -32,6 +32,7 @@ type AgentUpdateBody = {
   customSkills?: string[];
   modelProviderId?: string | null;
   selectedModel?: string | null;
+  preferPersonalProvider?: boolean;
 };
 
 function buildAgentUpsertConflictSet(body: AgentUpdateBody, now: Date) {
@@ -48,6 +49,9 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, now: Date) {
     ...(body.selectedModel !== undefined && {
       selectedModel: body.selectedModel,
     }),
+    ...(body.preferPersonalProvider !== undefined && {
+      preferPersonalProvider: body.preferPersonalProvider,
+    }),
   };
 }
 
@@ -55,20 +59,36 @@ function agentResponseBody(
   agent: typeof zeroAgents.$inferSelect | undefined,
   fallback: { id: string; ownerId: string },
 ) {
+  if (!agent) {
+    return {
+      agentId: fallback.id,
+      ownerId: fallback.ownerId,
+      description: null,
+      displayName: null,
+      sound: null,
+      avatarUrl: null,
+      permissionPolicies: toFirewallPolicies(undefined, undefined),
+      customSkills: [],
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+    };
+  }
   return {
     agentId: fallback.id,
-    ownerId: agent?.owner ?? fallback.ownerId,
-    description: agent?.description ?? null,
-    displayName: agent?.displayName ?? null,
-    sound: agent?.sound ?? null,
-    avatarUrl: agent?.avatarUrl ?? null,
+    ownerId: agent.owner,
+    description: agent.description,
+    displayName: agent.displayName,
+    sound: agent.sound,
+    avatarUrl: agent.avatarUrl,
     permissionPolicies: toFirewallPolicies(
-      agent?.permissionPolicies,
-      agent?.unknownPermissionPolicies,
+      agent.permissionPolicies,
+      agent.unknownPermissionPolicies,
     ),
-    customSkills: agent?.customSkills ?? [],
-    modelProviderId: agent?.modelProviderId ?? null,
-    selectedModel: agent?.selectedModel ?? null,
+    customSkills: agent.customSkills,
+    modelProviderId: agent.modelProviderId,
+    selectedModel: agent.selectedModel,
+    preferPersonalProvider: agent.preferPersonalProvider,
   };
 }
 
@@ -234,6 +254,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         customSkills,
         modelProviderId: body.modelProviderId ?? null,
         selectedModel: body.selectedModel ?? null,
+        preferPersonalProvider: body.preferPersonalProvider ?? false,
       })
       .onConflictDoUpdate({
         target: [zeroAgents.orgId, zeroAgents.name],
@@ -331,6 +352,9 @@ const router = tsr.router(zeroAgentsByIdContract, {
         }),
         ...(body.selectedModel !== undefined && {
           selectedModel: body.selectedModel,
+        }),
+        ...(body.preferPersonalProvider !== undefined && {
+          preferPersonalProvider: body.preferPersonalProvider,
         }),
       })
       .where(eq(zeroAgents.id, params.id));

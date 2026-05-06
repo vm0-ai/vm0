@@ -5,7 +5,7 @@ import {
 } from "../../../../../src/lib/ts-rest-handler";
 import { cliAuthTokenContract } from "@vm0/api-contracts/contracts/cli-auth";
 import crypto from "crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { cliTokens } from "@vm0/db/schema/cli-tokens";
@@ -20,7 +20,9 @@ const router = tsr.router(cliAuthTokenContract, {
     const [session] = await globalThis.services.db
       .select()
       .from(deviceCodes)
-      .where(eq(deviceCodes.code, deviceCode))
+      .where(
+        and(eq(deviceCodes.code, deviceCode), eq(deviceCodes.purpose, "cli")),
+      )
       .limit(1);
 
     if (!session) {

@@ -105,7 +105,7 @@ describe("zero chat thread page - scroll container is cleared on unmount", () =>
     // Navigate away from the thread page — the ZeroChatThreadPageInner
     // component unmounts, React fires the ref cleanup, onRef's AbortController
     // aborts, and the abort listener sets internalScrollContainer$ to null.
-    context.store.set(detachedNavigateTo$, "/activities");
+    await context.store.set(detachedNavigateTo$, "/activities");
 
     await waitFor(() => {
       expect(document.querySelector("[data-scroll-container]")).toBeNull();
@@ -184,7 +184,7 @@ describe("zero chat thread page - scroll fires for each new thread", () => {
 
     // Navigate to thread B — a new ChatThreadSignals is created for the new
     // thread, which re-registers the scroll container via setScrollContainer$.
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-scroll-nav-b" },
     });
 
@@ -386,7 +386,7 @@ describe("zero chat thread page - messages remain visible during re-fetch", () =
 
     // Navigate to thread B — groupedChatMessages$ for the new thread instance
     // starts in a loading state (the deferred fetch above is still pending).
-    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+    await context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-ll-b" },
     });
 

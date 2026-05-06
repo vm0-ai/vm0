@@ -1,5 +1,70 @@
 # Changelog
 
+## [0.27.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.5...guest-agent-v0.27.0) (2026-05-06)
+
+
+### Features
+
+* **guest-agent:** bootstrap codex chatgpt-oauth mode via fabricated auth.json ([#11881](https://github.com/vm0-ai/vm0/issues/11881)) ([d7f8127](https://github.com/vm0-ai/vm0/commit/d7f81275af55020f7de7d54a432e2d80b6a62902))
+
+## [0.26.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.4...guest-agent-v0.26.5) (2026-05-05)
+
+## [0.26.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.3...guest-agent-v0.26.4) (2026-05-03)
+
+
+### Documentation
+
+* document guest agent error variants ([#11735](https://github.com/vm0-ai/vm0/issues/11735)) ([5582bd2](https://github.com/vm0-ai/vm0/commit/5582bd29e15032f24f1f755a407c7824a276356d))
+
+## [0.26.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.2...guest-agent-v0.26.3) (2026-05-03)
+
+
+### Bug Fixes
+
+* **guest-agent:** escalate forced CLI termination ([#11698](https://github.com/vm0-ai/vm0/issues/11698)) ([ad07a39](https://github.com/vm0-ai/vm0/commit/ad07a39afca3122eb73bd9092a48cbdd07d33766))
+
+
+### Documentation
+
+* **guest-agent:** document artifact env fields ([#11700](https://github.com/vm0-ai/vm0/issues/11700)) ([4fa1127](https://github.com/vm0-ai/vm0/commit/4fa1127ab2e5c189609a05e49abfd9130c6b2df8))
+* **guest-agent:** document env accessors ([#11713](https://github.com/vm0-ai/vm0/issues/11713)) ([cd72661](https://github.com/vm0-ai/vm0/commit/cd726614df33729c72f601e73357ee31b3fa948e))
+
+## [0.26.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.1...guest-agent-v0.26.2) (2026-05-01)
+
+
+### Refactoring
+
+* remove redundant createRuntimeRef ([#11668](https://github.com/vm0-ai/vm0/issues/11668)) ([f70aca2](https://github.com/vm0-ai/vm0/commit/f70aca26197cc09b2083496dfdad75287d448635))
+
+## [0.26.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.0...guest-agent-v0.26.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* **guest-agent:** disable claude background tasks ([#11533](https://github.com/vm0-ai/vm0/issues/11533)) ([1d85fa1](https://github.com/vm0-ai/vm0/commit/1d85fa121e26773eb1cf44b8d3f57cbf7e62c687))
+
+## [0.26.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.25.0...guest-agent-v0.26.0) (2026-04-29)
+
+
+### Features
+
+* **api-contracts:** add rust dto generation for storage webhooks ([#11450](https://github.com/vm0-ai/vm0/issues/11450)) ([5e42002](https://github.com/vm0-ai/vm0/commit/5e42002fa5ed4aede5e0e4399913d8e0c6f51f8d))
+
+## [0.25.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.8...guest-agent-v0.25.0) (2026-04-28)
+
+
+### Features
+
+* **guest-agent:** codex command path + framework dispatch ([#11423](https://github.com/vm0-ai/vm0/issues/11423)) ([520e73c](https://github.com/vm0-ai/vm0/commit/520e73c1e0a1d15cddd096bd3f0f7c0746605e05))
+* **guest-agent:** codex session resume + checkpoint scan ([#11430](https://github.com/vm0-ai/vm0/issues/11430)) ([fd267b5](https://github.com/vm0-ai/vm0/commit/fd267b568eb9ae86b9f55d8357e486ed67285486))
+
+## [0.24.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.7...guest-agent-v0.24.8) (2026-04-28)
+
+
+### Refactoring
+
+* deduplicate guest-agent http retries ([#11368](https://github.com/vm0-ai/vm0/issues/11368)) ([8c230e1](https://github.com/vm0-ai/vm0/commit/8c230e15592fd65892932a8b1bbffcc67562dfa1))
+
 ## [0.24.7](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.24.6...guest-agent-v0.24.7) (2026-04-27)
 
 

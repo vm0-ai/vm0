@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 export default function BlogError({
   error,
   reset,
@@ -7,6 +9,7 @@ export default function BlogError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("blog");
   console.error("[blog] Error boundary caught:", error);
 
   return (
@@ -28,7 +31,7 @@ export default function BlogError({
             marginBottom: "16px",
           }}
         >
-          Blog temporarily unavailable
+          {t("errorTitle")}
         </h2>
         <p
           style={{
@@ -37,8 +40,7 @@ export default function BlogError({
             lineHeight: 1.6,
           }}
         >
-          We&apos;re having trouble loading blog content. Please try again in a
-          moment.
+          {t("errorBody")}
         </p>
         <button
           onClick={reset}
@@ -53,7 +55,7 @@ export default function BlogError({
             cursor: "pointer",
           }}
         >
-          Try again
+          {t("errorRetry")}
         </button>
       </div>
     </div>

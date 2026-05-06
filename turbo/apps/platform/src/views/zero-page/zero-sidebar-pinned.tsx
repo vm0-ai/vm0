@@ -102,9 +102,9 @@ function AgentListDialogContainer() {
   const subagents = useLastResolved(subagents$) ?? [];
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const { signal: rootSignal } = useGet(rootSignal$);
+  const rootSignal = useGet(rootSignal$);
   const onNewChat = (agentId: string | null) => {
-    detach(createNewChat(agentId, rootSignal), Reason.DomCallback);
+    detach(createNewChat(agentId, "main", rootSignal), Reason.DomCallback);
     setExpanded(false);
   };
   return (

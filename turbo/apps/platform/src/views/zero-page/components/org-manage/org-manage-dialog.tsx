@@ -69,7 +69,7 @@ const TAB_META = {
     description: "Manage your plan and payment method.",
   },
   usage: {
-    title: "Usage",
+    title: "Credit balance",
     description:
       "Credit balance and per-member credit consumption this billing period.",
   },
@@ -88,7 +88,7 @@ const BILLING_GROUP = {
   label: "Billing & pricing",
   items: [
     { id: "billing", label: "Billing", icon: IconCreditCard as NavIcon },
-    { id: "usage", label: "Usage", icon: IconCoins as NavIcon },
+    { id: "usage", label: "Credit balance", icon: IconCoins as NavIcon },
     { id: "invoices", label: "Invoices", icon: IconFileInvoice as NavIcon },
   ],
 } as const satisfies SidebarGroup;
@@ -152,7 +152,6 @@ function TabContent({ tab }: { tab: OrgManageTab }) {
 export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const activeTab = useGet(orgManageTab$);
   const setActiveTab = useSet(setActiveOrgManageTab$);
-
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
@@ -167,6 +166,10 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
   const meta = TAB_META[activeTab];
   const isBillingSubPage = useGet(billingSubPage$);
   const hideHeader = activeTab === "billing" && isBillingSubPage;
+
+  const handleTabChange = (tab: OrgManageTab) => {
+    return setActiveTab(tab);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -187,7 +190,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
             <Select
               value={activeTab}
               onValueChange={(v) => {
-                return setActiveTab(v as OrgManageTab);
+                return handleTabChange(v as OrgManageTab);
               }}
             >
               <SelectTrigger className="h-9 w-full">
@@ -231,7 +234,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
                           key={item.id}
                           type="button"
                           onClick={() => {
-                            return setActiveTab(item.id);
+                            return handleTabChange(item.id);
                           }}
                           className={cn(
                             "flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200",
@@ -270,11 +273,13 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
           >
             {!hideHeader && (
               <header className="shrink-0 px-4 sm:px-10 pt-6 sm:pt-8 pb-1">
-                <h2 className="hidden sm:block text-xl font-semibold tracking-tight text-foreground">
-                  {meta.title}
-                </h2>
+                <div className="flex min-h-7 items-center gap-2">
+                  <h2 className="hidden h-7 items-center text-xl font-semibold tracking-tight text-foreground sm:flex">
+                    {meta.title}
+                  </h2>
+                </div>
                 <p
-                  className="text-sm text-muted-foreground mt-1"
+                  className="mt-1 truncate whitespace-nowrap text-sm text-muted-foreground"
                   data-testid="tab-description"
                 >
                   {meta.description}

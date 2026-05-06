@@ -11,6 +11,7 @@ import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { setMockComposesList } from "../../../mocks/handlers/api-agents.ts";
+import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -42,6 +43,8 @@ function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
 describe("activity detail polling with initially empty events", () => {
   it("should pick up events that appear after the initial empty fetch", async () => {
     let eventFetchCount = 0;
+    let eventsAvailable = false;
+    let status: LogDetail["status"] = "running";
 
     setMockComposesList([]);
     server.use(
@@ -49,16 +52,16 @@ describe("activity detail polling with initially empty events", () => {
         return respond(
           200,
           makeLogDetail({
-            // Stay "running" so polling continues
-            status: eventFetchCount < 3 ? "running" : "completed",
+            status,
           }),
         );
       }),
       mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) => {
         eventFetchCount++;
 
-        // First 2 fetches return empty events (run just started)
-        if (eventFetchCount <= 2) {
+        // Initial fetches can legitimately be empty while the run is still
+        // writing events.
+        if (!eventsAvailable) {
           return respond(200, {
             events: [],
             hasMore: false,
@@ -99,9 +102,15 @@ describe("activity detail polling with initially empty events", () => {
       ).toBeInTheDocument();
     });
 
-    // The polling loop auto-iterates (setLoop yields via setTimeout(0) in
-    // VITEST, so each iteration runs as fast as React can flush). Wait for
-    // the events to arrive naturally.
+    const topic = "run:changed:a0000000-0000-4000-a000-000000000099";
+    await waitFor(() => {
+      expect(hasSubscription(topic)).toBeTruthy();
+    });
+
+    status = "completed";
+    eventsAvailable = true;
+    triggerAblyEvent(topic);
+
     await waitFor(() => {
       expect(screen.getByText("Polled response arrived")).toBeInTheDocument();
     });

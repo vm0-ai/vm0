@@ -1,4 +1,4 @@
-import { Component, type MouseEvent, type ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
@@ -8,12 +8,32 @@ import {
   IconPhoto,
   IconVideo,
   IconLoader2,
+  IconZoomIn,
+  IconZoomOut,
+  IconZoomReset,
   IconX,
 } from "@tabler/icons-react";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
 import { logger } from "../../signals/log.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import {
+  IMAGE_LIGHTBOX_MAX_ZOOM,
+  IMAGE_LIGHTBOX_MIN_ZOOM,
+  imageLightboxImageRef$,
+  imageLightboxKeyboardShortcutsRef$,
+  imageLightboxState$,
+  imageLoadStatusByKey$,
+  imageLoadStatusRef$,
+  resetImageLightboxZoom$,
+  setImageLightboxStatus$,
+  setImageLoadStatus$,
+  textPreviewLoaderRef$,
+  textPreviewLoadStateByKey$,
+  type TextPreviewLoadState,
+  zoomImageLightboxIn$,
+  zoomImageLightboxOut$,
+} from "../../signals/view-component-state.ts";
 import { Markdown } from "../components/markdown.tsx";
 import {
   lightboxUrl$,
@@ -30,7 +50,6 @@ import docJsonIcon from "./assets/doc-json.svg";
 import docHtmlIcon from "./assets/doc-html.svg";
 
 const log = logger("zero-attachment-chips");
-const TEXT_PREVIEW_MAX_BYTES = 65_536;
 
 /**
  * Return the icon path for a known file extension, or null for unknown types.
@@ -43,6 +62,8 @@ function getFileTypeIcon(filename: string): string | null {
     }
     case "doc":
     case "docx":
+    case "odt":
+    case "rtf":
     case "md": {
       return docDocIcon;
     }
@@ -57,6 +78,16 @@ function getFileTypeIcon(filename: string): string | null {
     }
     case "csv": {
       return docCsvIcon;
+    }
+    case "xls":
+    case "xlsx":
+    case "ods": {
+      return docCsvIcon;
+    }
+    case "ppt":
+    case "pptx":
+    case "odp": {
+      return docDocIcon;
     }
     default: {
       return null;
@@ -96,6 +127,19 @@ function getAttachmentDownloadUrl(url: string): string {
   return parsed.toString();
 }
 
+export function getAttachmentRawUrl(url: string): string {
+  if (!URL.canParse(url, window.location.origin)) {
+    return url;
+  }
+  const parsed = new URL(url, window.location.origin);
+  const isFileRoute = /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
+  if (isFileRoute) {
+    parsed.searchParams.delete("download");
+    parsed.searchParams.set("raw", "1");
+  }
+  return parsed.toString();
+}
+
 function triggerDirectDownload(url: string, filename: string): void {
   const a = document.createElement("a");
   a.href = getAttachmentDownloadUrl(url);
@@ -105,137 +149,34 @@ function triggerDirectDownload(url: string, filename: string): void {
   a.remove();
 }
 
-function toRawUrl(url: string): string {
-  if (!URL.canParse(url, window.location.origin)) {
-    const hashIndex = url.indexOf("#");
-    const base = hashIndex === -1 ? url : url.slice(0, hashIndex);
-    const hash = hashIndex === -1 ? "" : url.slice(hashIndex);
-    if (base.includes("raw=1")) {
-      return url;
-    }
-    return `${base}${base.includes("?") ? "&" : "?"}raw=1${hash}`;
-  }
-
-  const parsed = new URL(url, window.location.origin);
-  if (parsed.searchParams.get("raw") !== "1") {
-    parsed.searchParams.set("raw", "1");
-  }
-  return parsed.toString();
-}
-
-async function readLimitedText(response: Response): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    return "";
-  }
-
-  const chunks: Uint8Array[] = [];
-  let received = 0;
-  let reachedLimit = false;
-
-  while (received < TEXT_PREVIEW_MAX_BYTES) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-
-    const remaining = TEXT_PREVIEW_MAX_BYTES - received;
-    const chunk =
-      value.byteLength > remaining ? value.slice(0, remaining) : value;
-    chunks.push(chunk);
-    received += chunk.byteLength;
-    if (received >= TEXT_PREVIEW_MAX_BYTES) {
-      reachedLimit = true;
-      break;
-    }
-  }
-
-  if (reachedLimit) {
-    await reader.cancel();
-  }
-
-  const bytes = new Uint8Array(received);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return new TextDecoder().decode(bytes);
-}
-
-function fetchPreviewText(url: string, signal: AbortSignal): Promise<string> {
-  return fetch(toRawUrl(url), {
-    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
-    signal,
-  }).then(async (res) => {
-    if (!res.ok) {
-      throw new Error(`HTTP ${String(res.status)}`);
-    }
-    return await readLimitedText(res);
-  });
-}
-
-type TextLoadState = {
-  status: "loading" | "loaded" | "error";
-  text: string;
-};
-
-class TextPreviewLoader extends Component<
-  {
-    url: string;
-    signal: AbortSignal;
-    children: (state: TextLoadState) => ReactNode;
-  },
-  TextLoadState
-> {
-  state: TextLoadState = {
+function TextPreviewLoader({
+  url,
+  children,
+}: {
+  url: string;
+  signal: AbortSignal;
+  children: (state: TextPreviewLoadState) => ReactNode;
+}) {
+  const textPreviewLoadStates = useGet(textPreviewLoadStateByKey$);
+  const textPreviewLoaderRef = useSet(textPreviewLoaderRef$);
+  const textPreviewKey = `attachment-lightbox:${url}`;
+  const loadState = textPreviewLoadStates[textPreviewKey] ?? {
     status: "loading",
     text: "",
   };
 
-  #active = false;
-
-  componentDidMount() {
-    this.#active = true;
-    this.loadText();
-  }
-
-  componentDidUpdate(
-    previousProps: Readonly<{ url: string; signal: AbortSignal }>,
-  ) {
-    if (
-      previousProps.url !== this.props.url ||
-      previousProps.signal !== this.props.signal
-    ) {
-      this.loadText();
-    }
-  }
-
-  componentWillUnmount() {
-    this.#active = false;
-  }
-
-  loadText() {
-    this.setState({ status: "loading", text: "" });
-    const { signal, url } = this.props;
-
-    fetchPreviewText(url, signal)
-      .then((text) => {
-        if (this.#active && this.props.url === url && !signal.aborted) {
-          this.setState({ status: "loaded", text });
-        }
-      })
-      .catch(() => {
-        if (this.#active && this.props.url === url && !signal.aborted) {
-          this.setState({ status: "error", text: "" });
-        }
-      });
-  }
-
-  render() {
-    const { status, text } = this.state;
-    return this.props.children({ status, text });
-  }
+  return (
+    <>
+      <span
+        key={textPreviewKey}
+        ref={textPreviewLoaderRef}
+        data-text-preview-key={textPreviewKey}
+        data-text-preview-url={url}
+        hidden
+      />
+      {children(loadState)}
+    </>
+  );
 }
 
 function formatPlainPreviewText(
@@ -282,38 +223,198 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 // a successful fetch is a real bug and propagates to the caller. The
 // fallback keeps the user on the same page and lets the app's `/f/...`
 // route force `Content-Disposition: attachment` via `?download=1`.
-function fetchBlobOrOpen(
+async function fetchBlobOrOpen(
   url: string,
   signal: AbortSignal,
 ): Promise<Blob | null> {
-  return fetch(getAttachmentDownloadUrl(url), { mode: "cors", signal })
-    .then((res) => {
-      if (!res.ok) {
-        throw new Error(`fetch failed: ${String(res.status)}`);
-      }
-      return res.blob();
-    })
-    .catch((error: unknown) => {
-      signal.throwIfAborted();
-      log.warn(
-        "downloadUrl: fetch failed, falling back to direct download",
-        error,
-      );
-      triggerDirectDownload(url, filenameFromUrl(url));
-      return null;
+  // The catch branch performs the direct-download fallback.
+  // Confirmed by ethan@vm0.ai.
+  // eslint-disable-next-line no-restricted-syntax -- fetch/CORS failures intentionally fall back to direct download
+  try {
+    const res = await fetch(getAttachmentDownloadUrl(url), {
+      mode: "cors",
+      signal,
     });
+    if (!res.ok) {
+      throw new Error(`fetch failed: ${String(res.status)}`);
+    }
+    return await res.blob();
+  } catch (error) {
+    signal.throwIfAborted();
+    log.warn(
+      "downloadUrl: fetch failed, falling back to direct download",
+      error,
+    );
+    triggerDirectDownload(url, filenameFromUrl(url));
+    return null;
+  }
 }
 
-export function downloadAttachmentUrl(
+export async function downloadAttachmentUrl(
   url: string,
   signal: AbortSignal,
   filename = filenameFromUrl(url),
 ): Promise<void> {
-  return fetchBlobOrOpen(url, signal).then((blob) => {
-    if (blob !== null) {
-      triggerBlobDownload(blob, filename);
-    }
-  });
+  const blob = await fetchBlobOrOpen(url, signal);
+  if (blob !== null) {
+    triggerBlobDownload(blob, filename);
+  }
+}
+
+function isImageLightboxZoomAtReset(zoom: number): boolean {
+  return Math.abs(zoom - 1) < 0.001;
+}
+
+function ImageLightboxControls({
+  closeLightbox,
+  download,
+  resetZoom,
+  zoom,
+  zoomIn,
+  zoomOut,
+}: {
+  closeLightbox: () => void;
+  download: () => void;
+  resetZoom: () => void;
+  zoom: number;
+  zoomIn: () => void;
+  zoomOut: () => void;
+}) {
+  return (
+    <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
+      <div className="flex items-center gap-1 rounded-full bg-black/50 p-1 text-white">
+        <button
+          type="button"
+          onClick={zoomOut}
+          disabled={zoom <= IMAGE_LIGHTBOX_MIN_ZOOM}
+          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <IconZoomOut size={18} stroke={2} />
+        </button>
+        <span className="min-w-10 text-center text-xs font-medium tabular-nums">
+          {Math.round(zoom * 100)}%
+        </span>
+        <button
+          type="button"
+          onClick={zoomIn}
+          disabled={zoom >= IMAGE_LIGHTBOX_MAX_ZOOM}
+          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <IconZoomIn size={18} stroke={2} />
+        </button>
+        <button
+          type="button"
+          onClick={resetZoom}
+          disabled={isImageLightboxZoomAtReset(zoom)}
+          className="rounded-full p-1.5 transition-colors hover:bg-white/15 disabled:pointer-events-none disabled:opacity-40"
+          aria-label="Reset zoom"
+          title="Reset zoom"
+        >
+          <IconZoomReset size={18} stroke={2} />
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={download}
+        className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
+        aria-label="Download"
+      >
+        <IconDownload size={20} stroke={2} />
+      </button>
+      <button
+        type="button"
+        onClick={closeLightbox}
+        className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+        aria-label="Close"
+      >
+        <IconX size={20} stroke={2} />
+      </button>
+    </div>
+  );
+}
+
+function ImageLightboxKeyboardShortcuts() {
+  const keyboardShortcutsRef = useSet(imageLightboxKeyboardShortcutsRef$);
+
+  return <span ref={keyboardShortcutsRef} hidden />;
+}
+
+function ImageLightboxContent({
+  closeLightbox,
+  pageSignal,
+  url,
+}: {
+  closeLightbox: () => void;
+  pageSignal: AbortSignal;
+  url: string;
+}) {
+  const imageLightboxImageRef = useSet(imageLightboxImageRef$);
+  const imageState = useGet(imageLightboxState$);
+  const resetZoom = useSet(resetImageLightboxZoom$);
+  const setImageLightboxStatus = useSet(setImageLightboxStatus$);
+  const zoomIn = useSet(zoomImageLightboxIn$);
+  const zoomOut = useSet(zoomImageLightboxOut$);
+
+  const download = () => {
+    detach(
+      downloadAttachmentUrl(url, pageSignal),
+      Reason.DomCallback,
+      "attachment download",
+    );
+  };
+
+  const { imageStatus, zoom } = imageState;
+
+  return (
+    <>
+      <ImageLightboxKeyboardShortcuts />
+      <ImageLightboxControls
+        closeLightbox={closeLightbox}
+        download={download}
+        resetZoom={resetZoom}
+        zoom={zoom}
+        zoomIn={zoomIn}
+        zoomOut={zoomOut}
+      />
+      <div
+        className="relative flex items-center justify-center transition-transform duration-150 animate-in zoom-in-95"
+        style={{ transform: `scale(${String(zoom)})` }}
+      >
+        {imageStatus !== "loaded" && (
+          <div
+            data-testid="attachment-lightbox-image-loading"
+            className="flex h-[min(85vh,480px)] w-[min(90vw,720px)] items-center justify-center rounded-lg bg-black/30 text-white shadow-2xl"
+          >
+            {imageStatus === "loading" ? (
+              <IconLoader2 size={24} stroke={1.8} className="animate-spin" />
+            ) : (
+              <IconPhoto size={24} stroke={1.5} />
+            )}
+          </div>
+        )}
+        <img
+          key={url}
+          ref={imageLightboxImageRef}
+          src={url}
+          alt=""
+          data-testid="attachment-lightbox-image"
+          onLoad={() => {
+            setImageLightboxStatus("loaded");
+          }}
+          onError={() => {
+            setImageLightboxStatus("error");
+          }}
+          className={`max-h-[85vh] max-w-[90vw] rounded-lg object-contain shadow-2xl ${
+            imageStatus === "loaded" ? "" : "absolute inset-0 opacity-0"
+          }`}
+        />
+      </div>
+    </>
+  );
 }
 
 function ImageLightbox({ url }: { url: string }) {
@@ -338,36 +439,10 @@ function ImageLightbox({ url }: { url: string }) {
       aria-modal="true"
       data-testid="attachment-lightbox"
     >
-      <div className="absolute top-4 right-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            detach(
-              downloadAttachmentUrl(url, pageSignal),
-              Reason.DomCallback,
-              "attachment download",
-            );
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors cursor-pointer"
-          aria-label="Download"
-        >
-          <IconDownload size={20} stroke={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            return closeLightbox();
-          }}
-          className="p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
-          aria-label="Close"
-        >
-          <IconX size={20} stroke={2} />
-        </button>
-      </div>
-      <img
-        src={url}
-        alt=""
-        className="max-h-[85vh] max-w-[90vw] rounded-lg shadow-2xl object-contain animate-in zoom-in-95 duration-200"
+      <ImageLightboxContent
+        closeLightbox={closeLightbox}
+        pageSignal={pageSignal}
+        url={url}
       />
     </div>,
     document.body,
@@ -724,6 +799,91 @@ export function PreviewableFileAttachmentChip({
 // AttachmentChip — chip shown in the composer before the message is sent
 // ---------------------------------------------------------------------------
 
+function ComposerImagePreviewButton({
+  filename,
+  openImageLightbox,
+  url,
+}: {
+  filename: string;
+  openImageLightbox: (url: string) => void;
+  url: string | undefined;
+}) {
+  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const imageLoadKey = url ? `composer-image:${url}` : null;
+
+  const currentImageStatus = imageLoadKey
+    ? (imageLoadStatuses[imageLoadKey] ?? "loading")
+    : "loading";
+
+  if (!url || !imageLoadKey) {
+    return (
+      <button
+        type="button"
+        disabled
+        aria-label={`Open image preview for ${filename}`}
+        title={filename}
+        className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+      >
+        <IconPhoto
+          size={20}
+          stroke={1.5}
+          className="text-muted-foreground m-auto h-full"
+        />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        openImageLightbox(url);
+      }}
+      aria-label={`Open image preview for ${filename}`}
+      title={filename}
+      className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
+    >
+      {currentImageStatus !== "loaded" && (
+        <span
+          data-testid="composer-image-preview-loading"
+          className="absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground"
+        >
+          {currentImageStatus === "loading" ? (
+            <IconLoader2 size={14} stroke={1.8} className="animate-spin" />
+          ) : (
+            <IconPhoto size={16} stroke={1.5} />
+          )}
+        </span>
+      )}
+      <img
+        key={imageLoadKey}
+        ref={imageLoadStatusRef}
+        src={url}
+        alt=""
+        data-image-load-key={imageLoadKey}
+        loading="lazy"
+        onLoad={() => {
+          setImageLoadStatus(imageLoadKey, "loaded");
+        }}
+        onError={() => {
+          setImageLoadStatus(imageLoadKey, "error");
+        }}
+        className={`h-full w-full object-cover ${
+          currentImageStatus === "loaded" ? "" : "opacity-0"
+        }`}
+      />
+      <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/image-preview:bg-black/30">
+        <IconPhoto
+          size={18}
+          className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
+        />
+      </span>
+    </button>
+  );
+}
+
 function AttachmentChip({
   attachment,
   onRemove,
@@ -748,34 +908,11 @@ function AttachmentChip({
         title={attachment.filename}
       >
         {isImage ? (
-          <button
-            type="button"
-            onClick={() => {
-              return url && openImageLightbox(url);
-            }}
-            disabled={!url}
-            aria-label={`Open image preview for ${attachment.filename}`}
-            title={attachment.filename}
-            className="group relative h-9 w-9 rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
-          >
-            {url ? (
-              <>
-                <img src={url} alt="" className="h-full w-full object-cover" />
-                <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
-                  <IconPhoto
-                    size={18}
-                    className="text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow"
-                  />
-                </span>
-              </>
-            ) : (
-              <IconPhoto
-                size={20}
-                stroke={1.5}
-                className="text-muted-foreground m-auto h-full"
-              />
-            )}
-          </button>
+          <ComposerImagePreviewButton
+            filename={attachment.filename}
+            openImageLightbox={openImageLightbox}
+            url={url}
+          />
         ) : isVideo ? (
           <IconVideo size={28} stroke={1.5} className="text-muted-foreground" />
         ) : isAudio ? (

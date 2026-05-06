@@ -37,15 +37,19 @@ To find the Vercel Project ID:
 
 ## Step 3: Verify SPA Configuration
 
-The platform already includes `vercel.json` with SPA rewrites:
+The platform already includes `vercel.json` with SPA rewrites that exclude
+static assets and file-extension paths:
 
 ```json
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/((?!assets/|.*\\..*).*)", "destination": "/index.html" }
+  ]
 }
 ```
 
-This ensures client-side routing works correctly.
+This ensures client-side routing works correctly without serving `index.html`
+for missing static assets.
 
 ## Step 4: Test Deployment
 

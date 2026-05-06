@@ -8,6 +8,12 @@ export {
   deleteOrgCacheEntry,
   insertOrgMembersEntry,
   insertOrgDefaultModelProvider,
+  insertOrgNonDefaultModelProvider,
+  insertOrgMultiAuthModelProvider,
+  insertUserDefaultModelProvider,
+  insertUserNonDefaultModelProvider,
+  enablePersonalModelProviderForUser,
+  deleteTestModelProvider,
   setOrgCredits,
   lockOrgAndSetCredits,
 } from "../db-test-seeders/org";
@@ -19,6 +25,8 @@ export {
   getOrgMembersEntry,
   countOrgRows,
   getOrgCredits,
+  findTestModelProviderTokenState,
+  setTestModelProviderTokenExpiresAt,
 } from "../db-test-assertions/org";
 
 // Re-exports: test-helpers infrastructure

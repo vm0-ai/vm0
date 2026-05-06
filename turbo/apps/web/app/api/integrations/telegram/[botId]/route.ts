@@ -14,6 +14,7 @@ import {
   buildTelegramBotStatus,
   type TelegramInstallation,
 } from "../telegram-status";
+import { publishTelegramOrgChangedSafely } from "../../../../../src/lib/zero/telegram/realtime";
 
 const patchBodySchema = z.object({
   defaultAgentId: z.string().trim().min(1),
@@ -177,6 +178,8 @@ export async function PATCH(
     )
     .returning();
 
+  await publishTelegramOrgChangedSafely(visible.installation.orgId);
+
   return NextResponse.json(
     await buildTelegramBotStatus(
       updated ?? visible.installation,
@@ -238,6 +241,8 @@ export async function DELETE(
         visible.installation.telegramBotId,
       ),
     );
+
+  await publishTelegramOrgChangedSafely(visible.installation.orgId);
 
   return new NextResponse(null, { status: 204 });
 }

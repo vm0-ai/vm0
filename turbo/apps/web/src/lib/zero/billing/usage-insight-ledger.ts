@@ -58,23 +58,6 @@ function usageRowsCte(p: UsageInsightSqlParams): string {
   return `
     usage_rows AS (
       SELECT
-        'legacy' AS ledger,
-        cu.created_at AS activity_time,
-        cu.run_id,
-        cu.user_id,
-        cu.org_id,
-        COALESCE(cu.credits_charged, 0)::bigint AS credits_charged,
-        (cu.input_tokens + cu.output_tokens + cu.cache_read_input_tokens + cu.cache_creation_input_tokens)::bigint AS tokens
-      FROM credit_usage cu
-      WHERE cu.user_id = ${p.userIdLit}
-        AND cu.org_id = ${p.orgIdLit}
-        AND cu.status = 'processed'
-        AND ${activityTimeWindowPredicate("cu", p)}
-
-      UNION ALL
-
-      SELECT
-        'event' AS ledger,
         ue.created_at AS activity_time,
         ue.run_id,
         ue.user_id,
@@ -95,7 +78,7 @@ function usageRowsWith(p: UsageInsightSqlParams): string {
 
 function agentNameExpr(): string {
   return `CASE
-    WHEN ${USAGE_ROW_ALIAS}.ledger = 'event' AND ar.id IS NULL THEN 'others'
+    WHEN ar.id IS NULL THEN 'others'
     ELSE COALESCE(za.display_name, za.name, acv_compose.name, 'unknown')
   END`;
 }
@@ -144,7 +127,6 @@ export async function queryUsageInsightAgentBuckets(
         LEFT JOIN agent_compose_versions acv ON acv.id = ar.agent_compose_version_id
         LEFT JOIN agent_composes acv_compose ON acv_compose.id = acv.compose_id
         LEFT JOIN zero_agents za ON za.id = acv_compose.id
-        WHERE ${USAGE_ROW_ALIAS}.ledger = 'event' OR ar.id IS NOT NULL
         GROUP BY 1
         ORDER BY 2 DESC
       ),
@@ -163,7 +145,6 @@ export async function queryUsageInsightAgentBuckets(
       LEFT JOIN agent_compose_versions acv ON acv.id = ar.agent_compose_version_id
       LEFT JOIN agent_composes acv_compose ON acv_compose.id = acv.compose_id
       LEFT JOIN zero_agents za ON za.id = acv_compose.id
-      WHERE ${USAGE_ROW_ALIAS}.ledger = 'event' OR ar.id IS NOT NULL
       GROUP BY 1, 2
       ORDER BY 1
     `),
@@ -245,6 +226,7 @@ export async function queryUsageInsightTopSchedules(
   const rows = await db.execute<{
     schedule_id: string | null;
     schedule_name: string | null;
+    schedule_description: string | null;
     credits: string;
     tokens: string;
     rn: string;
@@ -255,6 +237,7 @@ export async function queryUsageInsightTopSchedules(
         SELECT
           zr.schedule_id,
           COALESCE(zas.name, 'Unnamed schedule') AS schedule_name,
+          zas.description AS schedule_description,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.credits_charged), 0)::bigint AS credits,
           COALESCE(SUM(${USAGE_ROW_ALIAS}.tokens), 0)::bigint AS tokens,
           ROW_NUMBER() OVER (ORDER BY SUM(${USAGE_ROW_ALIAS}.credits_charged) DESC NULLS LAST) AS rn
@@ -262,13 +245,14 @@ export async function queryUsageInsightTopSchedules(
         INNER JOIN zero_runs zr ON zr.id = ${USAGE_ROW_ALIAS}.run_id
         LEFT JOIN zero_agent_schedules zas ON zas.id = zr.schedule_id
         WHERE zr.schedule_id IS NOT NULL
-        GROUP BY zr.schedule_id, zas.name
+        GROUP BY zr.schedule_id, zas.name, zas.description
       )
       SELECT * FROM agg WHERE rn <= 100
       UNION ALL
       SELECT
         NULL AS schedule_id,
         'others' AS schedule_name,
+        NULL AS schedule_description,
         COALESCE(SUM(credits), 0)::bigint AS credits,
         COALESCE(SUM(tokens), 0)::bigint AS tokens,
         101 AS rn
@@ -288,6 +272,7 @@ export async function queryUsageInsightTopSchedules(
       schedules.push({
         scheduleId: row.schedule_id,
         scheduleName: row.schedule_name ?? "Unnamed schedule",
+        scheduleDescription: row.schedule_description,
         credits: Number(row.credits),
         tokens: Number(row.tokens),
       });
