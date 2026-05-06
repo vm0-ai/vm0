@@ -4,6 +4,7 @@ import {
   type TelegramLinkStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { accept } from "../../lib/accept.ts";
+import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { apiBaseForNavigation$ } from "../fetch.ts";
@@ -122,6 +123,14 @@ export const connectTelegramAccount$ = command(
       [200],
     );
     signal.throwIfAborted();
+
+    capturePlausibleEvent("telegram_connect", {
+      props: {
+        method: params.connectSignature
+          ? "connect_signature"
+          : "telegram_login",
+      },
+    });
 
     return result.body;
   },
