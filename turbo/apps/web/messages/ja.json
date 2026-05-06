@@ -1005,83 +1005,6 @@
           "定期スキャンをスケジュールし、新しい負債が複合する前にキャッチしましょう。月次またはスプリントごとのケイデンスが効果的です。"
         ]
       },
-      "competitor-audit": {
-        "title": "Xとウェブ全体で週次の競合分析を実行",
-        "description": "Zeroに競合リストを渡してください。Xアカウントを監視し、ウェブサイトの更新をスクレイピングし、すべての発見をNotionに保存し、スケジュールに従って毎週Slackにダイジェストを投稿します。",
-        "timeSaved": "週あたり約3時間節約",
-        "scenario": "競合を把握することは週次の習慣であるべきです。実際には、誰かがXで何かを見つけ、ツイートをSlackに転送し、2日後にアクションなしでスレッドが消えるときに起こります。Zeroがプロセス全体を引き受けます。競合リストを渡してください。Xアカウントをチェックし、プロダクトページの変更を読み、すべてをNotionの構造化されたログに保存し、頼まなくても毎週月曜にSlackにダイジェストを投稿します。",
-        "promptVariants": [
-          {
-            "label": "週次モニタリングを設定",
-            "prompt": "@Zero 毎週月曜9時に、Xでの@e2b_dev、@daytonaio、@replitの過去7日間の投稿をスキャンしてください。ウェブサイトで新しいプロダクト発表を確認してください。NotionのCompetitor Auditデータベースに発見を保存し、#competitiveにダイジェストを投稿してください。"
-          },
-          {
-            "label": "今すぐキャッチアップ",
-            "prompt": "@Zero Xでの@e2b_devと@daytonaioの過去2週間の活動を取得してください。彼らが何をシップしたか、何を言ったか、注目すべきエンゲージメントをまとめてください。"
-          },
-          {
-            "label": "単一競合の深掘り",
-            "prompt": "@Zero @replitが過去30日間にXとウェブサイトで何をしていたか完全な内訳をください。Notionに保存してください。"
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Scarlett",
-            "text": "@Zero 毎週月曜、競合のXアカウントとウェブサイトをスキャン。Notionに保存して#competitiveにダイジェストを投稿。"
-          },
-          {
-            "name": "Zero",
-            "text": "競合ダイジェスト - 4月13日の週\n\ne2b: 新しいサンドボックス価格をシップ、開発者ユースケースに関する3つの投稿\nDaytona: 新しいGitHub統合を発表、CEOがエージェンティックワークフローについて投稿\nReplit: 大きなプロダクト更新なし、活発なコミュニティエンゲージメント\n\n完全なログをNotionに保存しました。"
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zeroが競合のXアカウントをスキャン",
-            "description": "Zeroが各競合ハンドルの最近の投稿を取得し、プロダクト発表、ポジショニングステートメント、注目すべきエンゲージメントを抽出します。彼らが何を言い、オーディエンスがどう反応しているかを読みます。"
-          },
-          {
-            "title": "Zeroがウェブサイトをチェック",
-            "description": "Zeroがプロダクトページ、チェンジログ、ブログセクションを新しいコンテンツについてスクレイピングします。前回のスキャン以降の価格変更、機能ローンチ、リポジショニングをフラグします。"
-          },
-          {
-            "title": "発見の保存とダイジェストの投稿",
-            "description": "ZeroがNotionのCompetitor Auditデータベースに構造化されたレコードを保存し、指定されたSlackチャンネルに簡潔な週次ダイジェストを投稿します。"
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "発見を深掘り",
-            "description": "特定の競合の動きを分析",
-            "examplePrompt": "@Zero e2bの過去30日間のサンドボックス価格に関するすべての投稿を取得し、ポジショニングの変化をまとめてください。"
-          },
-          {
-            "title": "リストに新しい競合を追加",
-            "description": "モニタリングスコープを拡大",
-            "examplePrompt": "@Zero 週次競合スキャンに@val_townを追加してください。Xアカウントとウェブサイトを含めてください。"
-          },
-          {
-            "title": "リーダーシップと共有",
-            "description": "四半期まとめレポートを送信",
-            "examplePrompt": "@Zero Q1にNotionに記録されたすべての競合活動をまとめ、#leadershipにレポートを送信してください。"
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Zeroが競合ハンドルの公開投稿を読み、アナウンスやメッセージングを追跡します。"
-          },
-          {
-            "description": "Zeroが構造化された競合の発見をNotionデータベースに保存し、長期追跡します。"
-          },
-          {
-            "description": "Zeroが選択したSlackチャンネルに週次ダイジェストを投稿します。"
-          }
-        ],
-        "tips": [
-          "Zeroに特定のシグナルを監視するよう指示してください。「価格、統合、資金調達に関する投稿をフラグ」は一般的なスウィープよりもタイトなダイジェストを生成します。",
-          "Competitor、Category、Dateなどのプロパティを持つ構造化されたNotionデータベースに発見を保存し、フィルタリングとトレンド分析ができるようにしましょう。",
-          "定期スケジュールを設定する前に、まずキャッチアップスキャンを実行してベースラインデータでデータベースをシードしましょう。"
-        ]
-      },
       "error-triage-daily": {
         "title": "Sentryを開かずに毎朝プロダクションエラーを分類",
         "description": "Zeroを毎日実行するようスケジュールします。SentryとAxiomから未解決のエラーを取得し、ソース間で重複排除し、完全なスタックトレース付きのGitHub issueを開き、自動的に適切なエンジニアにアサインします。",
@@ -1400,80 +1323,6 @@
           "ノイズを減らすために、プロンプトにカスタム閾値の指示を追加しましょう。例えば、移動平均の2倍を超える指標のみフラグ付けすることで、日常的な小さな変動によるアラートを防げます。"
         ]
       },
-      "competitor-pricing-monitor": {
-        "title": "競合の料金ページを監視し、変更を毎週フラグ付け",
-        "description": "@Zeroに競合の料金ページURLリストを渡します。毎週月曜日に各ページをスクレイピングし、先週のNotionスナップショットと差分を比較し、検出された各変更のインパクトサマリーを作成し、完全なレポートをNotionに保存し、ダイジェストをSlackに投稿します。",
-        "timeSaved": "週あたり約2時間の時間削減",
-        "scenario": "競合がひっそりと無料プランを廃止します。別の競合が新しいエンタープライズプランを追加します。3週間後、すでにその競合を選んだ見込み客から知ることになります。@Zeroは毎週月曜日に競合の料金ページをチェックし、先週からの変更を比較し、検出された各変更の明確なインパクトサマリーを作成し、チームの週が始まる前にSlackにダイジェストを投稿します。",
-        "promptVariants": [
-          {
-            "label": "週次モニタリングを設定",
-            "prompt": "@Zero every Monday at 9am, scrape the pricing pages of e2b.dev, daytona.io, cursor.com, and replit.com. Compare against last week's Notion snapshot. Flag any changes to tiers, prices, or CTAs, write a 2–3 sentence impact summary for each, save the full report to Notion under Competitor Pricing Log, and post a digest to #competitive."
-          },
-          {
-            "label": "単発チェックを実行",
-            "prompt": "@Zero scrape the pricing pages of e2b.dev and daytona.io right now. Compare against the last saved Notion snapshot and tell me what changed."
-          },
-          {
-            "label": "特定の競合を深掘り",
-            "prompt": "@Zero pull the full pricing history for cursor.com from the Competitor Pricing Log in Notion. Summarize how their tiers and CTAs have evolved over time."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Scarlett",
-            "text": "@Zero every Monday at 9am, scrape competitor pricing pages and compare against last week's Notion snapshot. Post a digest to #competitive."
-          },
-          {
-            "name": "Zero",
-            "text": "Competitor Pricing Digest - Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
-          }
-        ],
-        "steps": [
-          {
-            "title": "@Zeroが各料金ページをスクレイピング",
-            "description": "@Zeroは指定された各料金URLの現在のコンテンツを取得し、プラン名、価格、機能リスト、トライアルオファー、CTAを抽出します。"
-          },
-          {
-            "title": "@Zeroが先週のNotionスナップショットと差分比較",
-            "description": "@Zeroは今日のコンテンツを先週Notionに保存されたバージョンと比較します。料金プラン、プラン名、含まれる機能、トライアル条件、CTAの変更をフラグ付けします。"
-          },
-          {
-            "title": "インパクトサマリーを保存しダイジェストを投稿",
-            "description": "検出された各変更について、@Zeroは何が変わったか、何を示唆しているか、何を検討すべきかを網羅する2〜3文のインパクトサマリーを作成します。完全なレポートはNotionに保存され、簡潔なダイジェストがSlackに投稿されます。"
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "特定の変更を深掘りする",
-            "description": "競合の動きについてより詳しいコンテキストを取得",
-            "examplePrompt": "@Zero pull up everything we have on Cursor's pricing history in Notion. Summarize how they've repositioned their tiers since Q1."
-          },
-          {
-            "title": "監視リストに新しい競合を追加する",
-            "description": "監視対象のページを拡張",
-            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the baseline."
-          },
-          {
-            "title": "リーダーシップにロールアップを共有する",
-            "description": "四半期の料金変更サマリーを送信",
-            "examplePrompt": "@Zero summarize all competitor pricing changes logged in Notion this quarter and post a report to #leadership."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "@Zeroは週次の料金スナップショットと変更レポートをNotionワークスペースに保存し、長期的な追跡と差分比較に活用します。"
-          },
-          {
-            "description": "@Zeroは指定したSlackチャンネルに簡潔な週次ダイジェストを投稿します。"
-          }
-        ],
-        "tips": [
-          "まず初回スクレイピングを実行してNotionにベースラインスナップショットを設定しましょう。これがないと@Zeroは差分比較対象がなく、すべてを変更として扱います。",
-          "何をフラグ付けするか具体的に指定しましょう。「料金プラン、プラン名、トライアルオファー、CTAの変更を監視」は、一般的なスキャンよりも精度の高い結果を得られます。",
-          "Notionログに競合名、変更タイプ、日付などのプロパティを設定して、履歴全体で何がいつ変わったかをフィルタリングできるようにしましょう。"
-        ]
-      },
       "customer-360": {
         "title": "会議や更新コールの前に顧客の全体像を構築",
         "description": "@Zeroに顧客名または企業名を渡します。Gmail、Calendar、Slack、Linear、GitHubを同時に検索し、構造化されたブリーフを返します：関係ステージ、直近のアクティビティ、未解決事項、推奨アクション付きのエグゼクティブサマリー。",
@@ -1642,90 +1491,6 @@
           "ダイジェストを毎週Notionにアーカイブしてメタトレンドを発見しましょう - 複数の日にわたって繰り返し表示されるトピックは、多くの場合、本当の変化を示しています。"
         ]
       },
-      "content-performance-report": {
-        "title": "自分でデータを引き出さずに週次コンテンツパフォーマンスレポートを取得",
-        "description": "毎週月曜日に@Zeroが過去7日間の投稿指標をXから取得し、各投稿をエンゲージメントでスコアリングし、短いナラティブレポートを作成します：トップパフォーマー、最大のアンダーパフォーマー、前週比の変化、1つの具体的な推奨事項。ナラティブはSlackに投稿され、完全なデータはNotionにアーカイブされます。",
-        "timeSaved": "毎週約2時間の時間削減",
-        "scenario": "コンテンツパフォーマンスを毎週レビューすべきだとわかっています。しかし3週間やっていません。Xから数値を引き出し、フォーマットし、ナラティブを書くのに90分かかり、月曜の朝にはその時間がないからです。@Zeroはすべてをスケジュール通りに実行します。数値を取得し、スコアリング式を実行し、ナラティブを書き、Slackに投稿し、生データをNotionにアーカイブします - すべて最初のミーティングの前に完了します。",
-        "promptVariants": [
-          {
-            "label": "週次スケジュール",
-            "prompt": "@Zero every Monday at 9am PST, pull the past 7 days of post performance from @vm0_ai on X. Score each post: (likes×1) + (retweets×3) + (replies×2). Write a short report: top performer and why, biggest underperformer and likely cause, week-over-week total engagement change, and one concrete recommendation for the week. Post the narrative to #marketing-and-community. Archive the full report with raw metrics to Notion under 'Content Performance Reports > Week of [Mon Date]'."
-          },
-          {
-            "label": "オンデマンド",
-            "prompt": "@Zero pull last week's X performance for @vm0_ai and give me the top 3 posts by engagement score with one sentence on each."
-          },
-          {
-            "label": "フォーマット実験の振り返り",
-            "prompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) - which format is driving higher engagement and why?"
-          },
-          {
-            "label": "エグゼクティブサマリー",
-            "prompt": "@Zero one paragraph on last week's X performance - suitable for the Monday leadership brief."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Zero",
-            "text": "Content Performance Report - Week of Apr 7\n\nTop performer: 'AI sandbox in 30 seconds' demo post - score 142. Short-form video outperforms text by 3×.\nUnderperformer: 'Feature Drop: new connector library' - score 18. Feature-first framing rarely lands without a use case hook.\nWeek-over-week: +23% total engagement vs. prior week.\nRecommendation: Lead next week's feature drop with a before/after scenario rather than the feature name.\n\nFull report archived to Notion."
-          },
-          {
-            "name": "Alex",
-            "text": "@Zero give me the top 3 posts from last week by score, one sentence each."
-          }
-        ],
-        "steps": [
-          {
-            "title": "@ZeroがXから投稿指標を取得",
-            "description": "@Zeroは指定されたXアカウントの過去7日間に公開されたすべての投稿のインプレッション、いいね、リツイート、リプライを取得します。ウィンドウ内のすべての投稿の生の数値をキャプチャします。"
-          },
-          {
-            "title": "投稿をスコアリングしてランク付け",
-            "description": "@Zeroは（いいね × 1）+（リツイート × 3）+（リプライ × 2）を使用して各投稿のエンゲージメントスコアを算出します。トップパフォーマー、3日以上のデータがある最低スコアの投稿を特定し、エンゲージメント合計の前週比変化を計算します。"
-          },
-          {
-            "title": "ナラティブを投稿しデータをアーカイブ",
-            "description": "@Zeroはトップパフォーマー、アンダーパフォーマー、前週比変化、1つの具体的な推奨事項をカバーする短いナラティブを作成します。ナラティブをSlackチャンネルに投稿し、指定したNotionページに完全な指標テーブルを保存します。"
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "オンデマンドで取得",
-            "description": "月曜日を待たずに先週のレポートを取得",
-            "examplePrompt": "@Zero pull last week's X performance for @vm0_ai and give me the top 3 posts by engagement score with one sentence on each."
-          },
-          {
-            "title": "コンテンツフォーマットを比較",
-            "description": "スプリント終了時にどのテンプレートが効果的かを評価",
-            "examplePrompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) - which format is driving higher engagement and why?"
-          },
-          {
-            "title": "リーダーシップへのブリーフ",
-            "description": "月曜の同期に適した1段落のサマリー",
-            "examplePrompt": "@Zero one paragraph on last week's X performance - suitable for the Monday leadership brief."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "@Zeroは指定されたウィンドウ内のすべての投稿のインプレッション、いいね、リツイート、リプライを取得します。"
-          },
-          {
-            "description": "@Zeroはスケジュールに従ってナラティブレポートをSlackチャンネルに投稿します。"
-          },
-          {
-            "description": "@Zeroは生の指標テーブル付きの完全なレポートを指定されたNotionページにアーカイブします。"
-          },
-          {
-            "description": "@Zeroは投稿エンゲージメントと実際のサイト訪問を相関させ、単なるソーシャルアクティビティではなく実際のトラフィックを生み出した投稿を表面化します。オプションですが推奨です。"
-          }
-        ],
-        "tips": [
-          "日曜日ではなく月曜日に実行しましょう。過去48時間以内に公開された投稿のX指標はまだ安定しておらず、朝までに変動します。",
-          "Plausibleを追加して、どの投稿が実際のサイト訪問をもたらしたかを確認しましょう。エンゲージメントスコアが高くてもトラフィッククリックがゼロの投稿は、成長の勝利ではなく虚栄の勝利です。",
-          "2週間スプリントの終了時にフォーマット実験の振り返りを行い、どのコンテンツフォーマットをスケールし、反復し、または廃止するかを決定しましょう。"
-        ]
-      },
       "pr-review": {
         "title": "Get a PR reviewed with severity-ranked issues before you merge",
         "description": "Ask Zero to review any pull request. Zero reads the diff, flags critical issues as P0, improvement opportunities as P1, and surfaces them in Slack so the team can act before merging.",
@@ -1872,80 +1637,6 @@
           "Specify a threshold in your prompt - 'flag events over 3 seconds' - so Zero's findings match your SLO, not a generic cutoff.",
           "Ask Zero to check the endpoint right after a deploy to catch regressions before they affect users at scale.",
           "Combine with Daily Error Triage for a complete morning health check: errors from Sentry plus performance from Axiom in one brief."
-        ]
-      },
-      "marketing-analytics": {
-        "title": "Analyze your traffic channels and surface growth insights from Plausible",
-        "description": "Ask Zero to pull your Plausible traffic data and tell you what's working. Zero breaks down sources, channels, and trends - then surfaces the insight you actually need to act on.",
-        "timeSaved": "~20 min saved",
-        "scenario": "You know your traffic dashboard exists. You even open it occasionally. But turning raw pageview counts into an actionable insight takes time you don't have. Zero reads your Plausible data and delivers the answer - which channels are growing, which are flat, where the bounce rate spiked - in plain language, in Slack, on demand.",
-        "promptVariants": [
-          {
-            "label": "Weekly overview",
-            "prompt": "@Zero based on Plausible traffic, analyze our performance last week - channels, sources, any standout trends."
-          },
-          {
-            "label": "Channel deep dive",
-            "prompt": "@Zero pull Plausible for the last 30 days and break down organic vs direct vs referral traffic. Which channel grew the most week-over-week?"
-          },
-          {
-            "label": "Scheduled report",
-            "prompt": "@Zero every Monday at 9am, pull last week's Plausible traffic and post a summary to #marketing - top 3 sources, WoW change, and one insight."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Ming",
-            "text": "@Zero based on plausible traffic, analyze our recent traffic performance, channels, sources, any insights?"
-          },
-          {
-            "name": "Zero",
-            "text": "Last 7 days - Plausible traffic breakdown:\n\nTop sources: Direct (38%), Organic search (29%), X/Twitter (18%)\nWoW: Overall UV +12%, PV +8%\nStandout: X-driven sessions are up 34% WoW - the Apr 13 thread drove a spike. Organic is flat.\n\nRecommendation: The X spike is worth investigating. If that thread's topic drives conversions, consider a follow-up post."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero queries Plausible for the time window",
-            "description": "Zero pulls visitors, pageviews, bounce rate, and session data for the specified period, broken down by source and channel."
-          },
-          {
-            "title": "Zero analyzes trends",
-            "description": "Zero computes week-over-week changes, identifies the fastest-growing and fastest-declining channels, and flags any anomalies worth investigating."
-          },
-          {
-            "title": "Insights delivered in Slack",
-            "description": "Zero posts a concise summary: top channels, growth rates, and one concrete observation - not just a data dump, but a read."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Correlate with content",
-            "description": "See which posts drove real site visits",
-            "examplePrompt": "@Zero compare Plausible traffic spikes last week with the X posts published on those days. Which post drove the most visits?"
-          },
-          {
-            "title": "Schedule a weekly report",
-            "description": "Automate traffic analysis every Monday",
-            "examplePrompt": "@Zero every Monday at 9am, pull last week's Plausible data and post a traffic summary to #marketing with WoW changes."
-          },
-          {
-            "title": "Archive to Notion",
-            "description": "Save the weekly report for trend tracking",
-            "examplePrompt": "@Zero save today's Plausible traffic analysis to Notion under 'Weekly Traffic Reports > Week of [date]'."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Plausible is required. Zero reads your site analytics including sessions, sources, and pageviews."
-          },
-          {
-            "description": "Notion is optional. Zero archives traffic reports to a Notion database for week-over-week trend tracking."
-          }
-        ],
-        "tips": [
-          "Specify the time window explicitly - 'last 7 days' vs 'last 30 days' produces very different reads on channel trends.",
-          "Ask Zero to flag anomalies, not just report numbers. 'Tell me if anything looks unusual' catches spikes you wouldn't notice otherwise.",
-          "Pair with Content Performance Report to close the loop: traffic from Plausible plus engagement from X in one session."
         ]
       },
       "production-db-query": {
@@ -2476,80 +2167,6 @@
           "コストレポートは月次ではなく週次で確認しましょう - 小さな漏れはすぐに積み重なり、週次の頻度なら請求書が届く前に問題を発見できます。"
         ]
       },
-      "merge-queue-monitor": {
-        "title": "詰まったPRがリリースをブロックする前に検知",
-        "description": "ZeroがGitHubマージキューを監視し、PRが詰まっている原因を診断し、適切な担当者にアラート - リリースパイプラインが音もなく止まることはもうありません。",
-        "timeSaved": "毎日約10分節約",
-        "scenario": "PR #9842がマージキューに2時間入っています。CIはPRの変更とは無関係な不安定なテストで失敗し続けています。後ろにさらに3つのPRが積み上がっています。全員が自分の作業に没頭しているため誰も気づかず、GitHubはPRがキューで詰まっても通知を送りません。リリースがブロックされています。午後4時に誰かが気づく頃には、その日のデプロイウィンドウの半分が過ぎています。Zeroは数分でこれを検知します。",
-        "promptVariants": [
-          {
-            "label": "詳細",
-            "prompt": "@Zero vm0-ai/vm0のマージキューを監視して。CI失敗で30分以上キューに入っているPRがあれば、失敗原因を診断してPR作成者にSlackでアラートして。"
-          },
-          {
-            "label": "クイック",
-            "prompt": "@Zero マージキューで詰まってるものはある？"
-          },
-          {
-            "label": "定期実行",
-            "prompt": "@Zero 毎日正午にマージキューを確認して、詰まったPRがあればアラートして。CI失敗で30分以上キューに入っているPRがあれば原因を診断して#devに投稿して。"
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Ethan",
-            "text": "@Zero マージキューで詰まってるものはある？"
-          },
-          {
-            "name": "Zero",
-            "text": "**マージキューステータス - vm0-ai/vm0**\n\n⚠️ **1件のPRが詰まり中**（キュー投入から2時間14分）：\n\n**PR #9842** - feat: チャットスレッド既読インジケーターを追加\n• ステータス: CI失敗（14チェック中1チェック）\n• 失敗チェック: `cli-e2e-03-runner` - 8分でタイムアウト\n• 原因: 既知の不安定なテスト（PRの変更とは無関係）\n• ブロック中: 後ろに3件のPRが待機中\n• 作成者: @Qiqi\n\n**推奨アクション**: 失敗したチェックを再実行してください。通過すれば数分以内にマージされます。\n\n他に3件のPRがキュー内 - すべて正常、順番待ち。"
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zeroがスケジュールでマージキューを確認",
-            "description": "ZeroがGitHubのマージキューAPIを検索し、キュー内の各PRを調査 - 待機時間、CIの通過状況、後ろのPRをブロックしているかどうかを確認します。"
-          },
-          {
-            "title": "Zeroが詰まったPRの原因を診断",
-            "description": "キューに入りすぎている、またはチェックが失敗しているPRについて、ZeroがCIログを読み取り、具体的な失敗テストやチェックを特定し、PRの変更に関連しているか、既知のインフラ問題かを判断します。"
-          },
-          {
-            "title": "Zeroがアクション可能なコンテキスト付きで適切な担当者にアラート",
-            "description": "一般的な「PRが詰まっています」の通知ではなく、ZeroがSlackに詳細な診断結果を投稿します：どのチェックが失敗したか、なぜ失敗したか、誰がPRを作成したか、何をすればブロックが解除されるか。適切な担当者が見て行動できる - 調査作業は不要です。"
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "失敗したCIチェックを再実行",
-            "description": "Zeroに不安定なテストをクリアするため、特定の失敗チェックの再実行を依頼します。",
-            "examplePrompt": "@Zero PR #9842のcli-e2e-03-runnerチェックを再実行して"
-          },
-          {
-            "title": "既知の不安定なテストをホワイトリストに登録",
-            "description": "Zeroにどのテストが不安定かを伝えて、過剰なアラートを防ぎます。",
-            "examplePrompt": "@Zero cli-e2e-03-runnerは既知の不安定なテストとして記録して - 3回連続で失敗した場合以外はアラートしないで"
-          },
-          {
-            "title": "定期実行にする",
-            "description": "チームのPR速度に合わせてマージキュー確認をスケジュールします。",
-            "examplePrompt": "@Zero 毎日正午と午後4時にマージキューを確認して、詰まったPRがあれば#devにアラートして"
-          }
-        ],
-        "integrations": [
-          {
-            "description": "GitHub - マージキュー、CIチェックステータス、PR詳細への読み取りアクセス。失敗したチェックの再実行にはオプションの書き込みアクセス。"
-          },
-          {
-            "description": "Slack - 診断詳細付きのマージキューアラートをエンジニアリングチャンネルに投稿します。"
-          }
-        ],
-        "tips": [
-          "チェック頻度はチームのPR速度に合わせて設定してください - 高速なチームは毎時チェックが必要ですが、ほとんどのチームは1日2回で十分です。",
-          "既知の不安定なテストのリストを管理し、Zeroにアラートから除外するよう伝えましょう。これによりアラート疲れを防ぎ、シグナルの質を保てます。",
-          "auto-merge-releasesと組み合わせて完全なリリースパイプラインに：merge-queue-monitorが詰まったPRを検出し、auto-merge-releasesがキューが空いたらリリースを出荷します。"
-        ]
-      },
       "voice-driven-agent": {
         "title": "音声でコーディングタスクを起動。キーボードは不要",
         "description": "Zeroに音声で指示するだけで、サンドボックスを立ち上げ、リポジトリをクローンし、セットアップを実行し、タスクを処理します。Zeroがバックグラウンドエージェントを起動し、進捗をSlackに報告します。",
@@ -2862,80 +2479,6 @@
           "ペースを5分より短くしないこと。それより速いと、受信箱の不安を Slack に再現しているだけです。",
           "広めから始めて、徐々に絞る。1日分のアラートを見て、ノイズだと分かったものに基づいてフィルターを締める。",
           "集中時間中はポーズを。`@Zero 受信箱監視を午後3時まで止めて` でDMが止まり、深い作業ができます。"
-        ]
-      },
-      "release-readiness-check": {
-        "title": "手動確認なしで、リリースが出荷可能か把握",
-        "description": "Zero がリリースパイプラインを監視し、CIゲートとバージョンバンプを確認し、リリースPRが準備完了した瞬間を、あるいはブロッカーを、正確に伝えます。",
-        "timeSaved": "リリースチェックあたり約15分短縮",
-        "scenario": "リリース前には毎回、誰かが確認する必要があります：CIチェックすべて緑、バージョンが正しくバンプ、changelog 生成済み、ブロッカーラベルなし、特別なケアが必要なマイグレーションなし。タブをまたいでクリックすること10分、どこで問題が浮上してもおかしくない。リリース準備状況チェックはそれを1つのプロンプトに変えます。Zero がPRを読み、すべてのゲートを検証し、欠けているものを浮き彫りにし、はっきりと伝えます：準備OK、または X でブロック。OKならチームは Slack で青信号を受け取り、NGなら何を直すべきか正確に分かります。",
-        "promptVariants": [
-          {
-            "label": "詳細版",
-            "prompt": "@Zero オープンなリリースPRをチェックして。すべてのCIチェックが通ったか、バージョンがセマバー通りにバンプされたか、changelog が更新されたか、`do-not-merge` ラベルが付いてないか、マイグレーションファイルに触れてないか検証して。判定を #release-notify に投稿して。"
-          },
-          {
-            "label": "クイック",
-            "prompt": "@Zero リリース準備できてる？"
-          },
-          {
-            "label": "スケジュール",
-            "prompt": "@Zero 平日の午後2時に、リリースパイプラインをチェックして準備状況を #release-notify に投稿して。"
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Morgan",
-            "text": "@Zero リリース準備できてる？"
-          },
-          {
-            "name": "Zero",
-            "text": "リリースPR #2847：❌ まだ準備未完了。\n\n✅ CIチェック14件すべて緑\n✅ バージョン 1.8.0 → 1.9.0 にバンプ済み\n✅ changelog 更新済み（14エントリ）\n❌ `needs-security-review` ラベルがまだ付いている（@security 待ち）\n✅ マイグレーションファイルに変更なし\n\nセキュリティレビューラベルが外れれば、このPRはマージOK。"
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero がオープンなリリースPRを読み込む",
-            "description": "Zero はPRのメタデータ、ファイル差分、CIステータス、ラベル、changelog を取得します。すべてが1つのリリースあたりのチェックリストに正規化されます。"
-          },
-          {
-            "title": "Zero が定義された各準備ゲートを検証",
-            "description": "Zero は指定されたゲートを順番にチェックします：CI緑、セマバー準拠のバージョンバンプ、changelog 更新、ブロッカーラベルなし、センシティブなファイル変更なし、レビュー承認済み。各ゲートは証拠付きで合否判定されます。"
-          },
-          {
-            "title": "Zero が単一の判定を報告",
-            "description": "結果は1つの Slack メッセージ：「準備OK」または「未準備、X でブロック」。曖昧でなく、14個のリンクを順にクリックする必要もない。OKなら、チームは自信を持ってマージできます。"
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "ゲートを強化",
-            "description": "その場で新しい準備基準を追加。",
-            "examplePrompt": "@Zero 今後は、PR説明が空、またはターゲットブランチが `main` でない場合もリリースチェックを失敗にして。"
-          },
-          {
-            "title": "適切な人に通知",
-            "description": "ブロッカーを関連オンコールにルーティング。",
-            "examplePrompt": "@Zero リリースがセキュリティレビューでブロックされているときは、一般チャンネルではなく準備状況投稿で @security をタグ付けして。"
-          },
-          {
-            "title": "すべてのゲートが緑なら自動マージ",
-            "description": "オートマージリリースのユースケースと連結して、ハンズオフ出荷。",
-            "examplePrompt": "@Zero すべての準備ゲートが緑になったら、リリースPRで auto-merge を有効にして、branch protection が外れた瞬間に出荷されるように。"
-          }
-        ],
-        "integrations": [
-          {
-            "description": "GitHub：Zero はPRステータス、ファイル差分、CIチェック、ラベル、changelog を読み込みます。リポジトリへの読み取りアクセスが必要、書き込みはオートマージと連結する場合のみ必要です。"
-          },
-          {
-            "description": "Slack：Zero は指定チャンネルに準備状況の判定を投稿します。チャンネルへの書き込みアクセスが必要です。"
-          }
-        ],
-        "tips": [
-          "「準備OK」を一度、事前に定義しておきましょう。プロンプトに「CI緑 + changelog + マイグレーションなし」をエンコードするのは一度の投資で、以降のすべてのリリースで恩恵が得られます。",
-          "朝会の後ではなく前に実行。準備状況チェックが最も役立つのは、チームに行動を促す時であって、リリースがすでに4時間放置された後ではありません。",
-          "すべてのゲートを通したリリースを真にハンズオフ出荷するため、オートマージリリースと連結しましょう。"
         ]
       },
       "docs-auto-update": {
@@ -3939,6 +3482,265 @@
           "Zeroに与えるコンテキストが豊富なほど、ページの質が上がります。一行のメッセージではなく、実際の例やスクリーンショット、短い動画の説明を含むスレッドを共有しましょう。",
           "マージ前にデプロイプレビューを確認してください。Zeroは構造を毎回正確に作りますが、ブランドの声を最もよく知っているのはあなたのチームです。簡単なコピーチェックでページがブランドに馴染みます。",
           "コンテンツパフォーマンスレポートのユースケースと組み合わせて、どのページが最も多くのサインアップを生んでいるかを追跡し、そのワークフローカテゴリに注力しましょう。"
+        ]
+      },
+      "competitor-intelligence": {
+        "title": "X、ウェブサイト、料金ページ全体で競合の動きを追跡",
+        "description": "Zeroに競合リストを渡してください。Xアカウントの監視、ウェブサイトや料金ページの変更スクレイピング、先週との差分比較、全発見事項のNotion保存、スケジュールに従ったSlackダイジェスト投稿を実行します。",
+        "timeSaved": "週あたり約4時間節約",
+        "headings": {
+          "scenario": "なぜ競合追跡は後回しになるのか",
+          "prompt": "Zeroに競合モニタリングを依頼する方法",
+          "steps": "Zeroが競合インテリジェンスを構築する仕組み",
+          "nextActions": "発見を戦略的優位性に変換",
+          "integrations": "必要な連携: X、Notion、Slack",
+          "tips": "自動競合モニタリングのベストプラクティス"
+        },
+        "scenario": "競合を把握することは週次の習慣であるべきです。実際には、誰かがXで何かを見つけ、ツイートをSlackに転送し、2日後にアクションなしでスレッドが消えるときに起こります。その間に、競合がひっそりと無料プランを廃止したり新しいエンタープライズプランを追加したりし、3週間後にすでにその競合を選んだ見込み客から知ることになります。Zeroがプロセス全体を引き受けます。Xアカウントをチェックし、プロダクトページや料金ページの変更を読み取り、先週のデータと比較し、毎週月曜に構造化されたダイジェストをSlackに投稿します。",
+        "promptVariants": [
+          {
+            "label": "フル週次モニタリング",
+            "prompt": "@Zero 毎週月曜9時に、Xでの@e2b_dev、@daytonaio、@replitの過去7日間の投稿をスキャンしてください。ウェブサイトで新しいプロダクト発表を確認。料金ページをスクレイピングし、先週のNotionスナップショットと比較。NotionのCompetitor Intelligenceデータベースに発見を保存し、#competitiveにダイジェストを投稿してください。"
+          },
+          {
+            "label": "クイックステータスチェック",
+            "prompt": "@Zero Xでの@e2b_devと@daytonaioの過去2週間の活動を取得。彼らが何をシップしたか、何を言ったかをまとめ、料金変更があればフラグしてください。"
+          },
+          {
+            "label": "単一競合の深掘り",
+            "prompt": "@Zero @replitが過去30日間にX、ウェブサイト、料金で何をしていたか完全な内訳をください。Notionに保存してください。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero 毎週月曜、競合のXアカウント、ウェブサイト、料金ページをスキャン。Notionに保存して#competitiveにダイジェストを投稿。"
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Intelligenceダイジェスト - 4月13日の週\n\ne2b: 新しいサンドボックス価格をシップ（無料枠を100時間から50時間に削減）。開発者ユースケースに関する3つの投稿。\nDaytona: 新しいGitHub統合を発表。CEOがエージェンティックワークフローについて投稿。料金変更なし。\nReplit: 新しいTeams Proプラン（$40/席）を追加。活発なコミュニティエンゲージメント、大きなプロダクト更新なし。\n\n完全なログと料金差分をNotionに保存しました。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroが競合のXアカウントとウェブサイトをスキャン",
+            "description": "Zeroが各競合ハンドルの最近の投稿を取得し、プロダクト発表とポジショニングを抽出します。さらにプロダクトページ、チェンジログ、ブログを新しいコンテンツについてスクレイピングし、前回のスキャン以降の機能ローンチやリポジショニングをフラグします。"
+          },
+          {
+            "title": "Zeroが料金ページを先週と差分比較",
+            "description": "Zeroが各競合の料金ページを取得し、先週Notionに保存されたスナップショットと比較。プラン、価格、機能リスト、トライアルオファー、CTAの変更をフラグします。各変更には短いインパクトサマリーが付きます。"
+          },
+          {
+            "title": "発見の保存とダイジェストの投稿",
+            "description": "ZeroがNotionのCompetitor Intelligenceデータベースに構造化されたレコードを保存し、プロダクトの動き、メッセージングの変化、料金変更を一覧にまとめた簡潔な週次ダイジェストをSlackに投稿します。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "発見を深掘り",
+            "description": "特定の競合の動きや料金変更を詳しく調査",
+            "examplePrompt": "@Zero Notionに保存されているCursorの料金履歴をすべて取得してください。Q1以降のプランとポジショニングの変化をまとめてください。"
+          },
+          {
+            "title": "ウォッチリストに新しい競合を追加",
+            "description": "モニタリングスコープを拡大",
+            "examplePrompt": "@Zero 週次競合スキャンに@val_townを追加してください。Xアカウント、ウェブサイト、料金ページを含めてください。"
+          },
+          {
+            "title": "リーダーシップに四半期ロールアップを共有",
+            "description": "四半期のすべての競合活動をまとめる",
+            "examplePrompt": "@Zero 今四半期にNotionに記録されたすべての競合活動と料金変更をまとめ、#leadershipにレポートを投稿してください。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "X (Twitter) - Zeroが競合ハンドルの公開投稿を読み、アナウンス、メッセージング、エンゲージメントを追跡します。"
+          },
+          {
+            "description": "Notion - Zeroが構造化された競合の発見、料金スナップショット、変更履歴をNotionデータベースに保存し、長期追跡します。"
+          },
+          {
+            "description": "Slack - Zeroが選択したチャンネルに週次ダイジェストを投稿します。"
+          }
+        ],
+        "tips": [
+          "まず初回スクレイピングを実行してNotionにベースラインを設定しましょう。これがないとZeroは料金ページの差分比較対象がなく、すべてを新規として扱います。",
+          "Zeroに特定のシグナルを監視するよう指示してください。「価格、統合、資金調達に関する投稿をフラグ」は一般的なスウィープよりもタイトなダイジェストを生成します。",
+          "Notionデータベースに競合名、カテゴリ、変更タイプ、日付などのプロパティを設定して、フィルタリングとトレンド分析ができるようにしましょう。"
+        ]
+      },
+      "marketing-performance-report": {
+        "title": "トラフィックとエンゲージメントを統合したマーケティングパフォーマンスレポートを取得",
+        "description": "毎週、ZeroがPlausibleのトラフィックデータとXのエンゲージメント指標を取得し、各投稿をスコアリングし、ソーシャル活動と実際のサイト訪問を相関させ、ナラティブレポートをSlackに投稿し、完全なデータをNotionにアーカイブします。",
+        "timeSaved": "毎週約2時間節約",
+        "headings": {
+          "scenario": "なぜマーケティングパフォーマンスデータの収集に時間がかかるのか",
+          "prompt": "Zeroにパフォーマンスレポートを依頼する方法",
+          "steps": "Zeroが統合レポートを作成する仕組み",
+          "nextActions": "パフォーマンスデータをより良いコンテンツ判断に変換",
+          "integrations": "必要な連携: X、Plausible、Slack、Notion",
+          "tips": "自動パフォーマンスレポーティングのベストプラクティス"
+        },
+        "scenario": "トラフィックとコンテンツパフォーマンスの両方を毎週レビューすべきだとわかっています。PlausibleダッシュボードとXの分析が別々のタブで開いています。生のページビュー数と投稿指標からアクション可能なインサイトにするのに90分かかり、月曜の朝にはその時間がありません。Zeroはすべてをスケジュール通りに実行します。Plausibleからトラフィックデータ、Xからエンゲージメント指標を取得し、どの投稿が実際のサイト訪問を生んだかを相関させ、ナラティブを書き、最初のミーティング前にSlackに投稿します。",
+        "promptVariants": [
+          {
+            "label": "フル週次レポート",
+            "prompt": "@Zero 毎週月曜9時に、先週のPlausibleトラフィックと@vm0_aiのXエンゲージメントを取得。各投稿をスコアリング：(いいね x1) + (リツイート x3) + (リプライ x2)。Plausibleのトラフィックスパイクと相関。レポート作成：トップチャネル、トップパフォーマー、アンダーパフォーマー、前週比変化、1つの推奨。#marketingに投稿。Notionにアーカイブ。"
+          },
+          {
+            "label": "クイックトラフィックチェック",
+            "prompt": "@Zero 過去7日間のPlausibleを取得。オーガニック vs ダイレクト vs リファラルを分類。どのチャネルが前週比で最も成長した？"
+          },
+          {
+            "label": "コンテンツフォーマット比較",
+            "prompt": "@Zero Template C（ホットテイク）vs Template A（フィーチャードロップ）の直近4投稿を比較 - どのフォーマットがより高いエンゲージメントとサイト訪問を生んでいる？"
+          },
+          {
+            "label": "エグゼクティブサマリー",
+            "prompt": "@Zero 先週のマーケティングパフォーマンス（トラフィックとコンテンツ）について、月曜のリーダーシップブリーフに適した1段落。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "マーケティングパフォーマンスレポート - 4月7日の週\n\nトラフィック: UV +12% 前週比。トップソース: Direct (38%), Organic (29%), X (18%)。\nX経由のセッション+34% - 4月13日のスレッドがスパイクを生成。\n\nトップ投稿: 'AI sandbox in 30 seconds' デモ - スコア142、89サイト訪問。ショートフォーム動画がテキストを3倍上回る。\nアンダーパフォーマー: 'Feature Drop: new connector library' - スコア18、3訪問。機能先行のフレーミングにはユースケースのフックが必要。\n\n推奨: 来週のフィーチャードロップはビフォー/アフターシナリオで始める。4月13日のスレッド形式は繰り返す価値あり。\n\n完全なレポートをNotionにアーカイブしました。"
+          },
+          {
+            "name": "Alex",
+            "text": "@Zero リーダーシップブリーフ用に先週のマーケティングパフォーマンスを1段落で。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroがトラフィックとエンゲージメントデータを取得",
+            "description": "ZeroがPlausibleに訪問者、ページビュー、バウンス率、ソースを照会。同時に、過去7日間に公開されたすべての投稿のインプレッション、いいね、リツイート、リプライをXから取得します。"
+          },
+          {
+            "title": "Zeroがスコアリング、ランキング、相関分析",
+            "description": "Zeroが各投稿のエンゲージメントスコアを算出し、トップとボトムのパフォーマーを特定し、トラフィックとエンゲージメント両方の前週比デルタを計算し、ソーシャル活動とPlausibleの実際のサイト訪問スパイクを相関させます。"
+          },
+          {
+            "title": "ナラティブを投稿しデータをアーカイブ",
+            "description": "Zeroがトラフィックチャネル、トップパフォーマー、アンダーパフォーマー、前週比変化、1つの具体的な推奨をカバーする簡潔なナラティブを作成。Slackに投稿し、完全な指標テーブルをNotionにアーカイブします。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "トラフィックスパイクを深掘り",
+            "description": "どの投稿が実際のサイト訪問を生んだかを確認",
+            "examplePrompt": "@Zero 先週のPlausibleトラフィックスパイクとその日に公開されたX投稿を比較。どの投稿が最も多く訪問を生んだ？"
+          },
+          {
+            "title": "コンテンツフォーマットを比較",
+            "description": "どのテンプレートが最も効果的かを評価",
+            "examplePrompt": "@Zero Template C（ホットテイク）vs Template A（フィーチャードロップ）の直近4投稿を比較 - どのフォーマットがより高いエンゲージメントを生んでいて、なぜ？"
+          },
+          {
+            "title": "ルーティンにする",
+            "description": "毎週月曜にフルレポートを自動化",
+            "examplePrompt": "@Zero 毎週月曜9時に、先週のPlausibleトラフィックとXエンゲージメントを取得し、パフォーマンスレポートを作成し、#marketingに投稿し、Notionにアーカイブして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "X (Twitter) - Zeroが指定されたウィンドウ内のすべての投稿のインプレッション、いいね、リツイート、リプライを取得します。"
+          },
+          {
+            "description": "Plausible - Zeroがサイト分析（セッション、ソース、ページビュー）を読み取り、ソーシャル活動と実際のトラフィックを相関させます。"
+          },
+          {
+            "description": "Slack - Zeroがスケジュールに従ってナラティブレポートをチャンネルに投稿します。"
+          },
+          {
+            "description": "Notion - Zeroが生の指標テーブル付きの完全なレポートをアーカイブし、前週比トレンドトラッキングに活用します。"
+          }
+        ],
+        "tips": [
+          "日曜日ではなく月曜日に実行しましょう。過去48時間以内に公開された投稿のX指標はまだ安定しておらず、朝までに変動します。",
+          "レポートには必ずPlausibleを含めましょう。エンゲージメントスコアが高くてもトラフィッククリックがゼロの投稿は、成長の勝利ではなく虚栄の勝利です。",
+          "2週間スプリントの終了時にフォーマット比較プロンプトを使い、どのコンテンツフォーマットをスケールし、反復し、または廃止するかを決定しましょう。"
+        ]
+      },
+      "release-pipeline-monitor": {
+        "title": "マージキューから出荷準備完了までリリースパイプラインを監視",
+        "description": "Zeroがマージキューの詰まったPRを監視し、リリース準備ゲートを検証し、明確な判定をSlackに投稿します。リリースパイプラインが音もなく止まることはなく、出荷可能かどうか常に把握できます。",
+        "timeSaved": "リリースあたり約25分節約",
+        "headings": {
+          "scenario": "なぜリリースは誰にも気づかれずに停滞するのか",
+          "prompt": "Zeroにリリースパイプラインの監視を依頼する方法",
+          "steps": "Zeroがパイプラインを動かし続ける仕組み",
+          "nextActions": "パイプラインの可視性をより速い出荷に変換",
+          "integrations": "必要な連携: GitHubとSlack",
+          "tips": "リリースパイプライン監視のベストプラクティス"
+        },
+        "scenario": "PR #9842がマージキューに2時間入っています。CIは変更とは無関係な不安定なテストで失敗しました。後ろにさらに3つのPRが積み上がっています。誰も気づいていません。一方、キューにあるリリースPRは誰かの確認が必要です：CIチェックすべて緑、バージョンバンプ済み、changelog更新済み、ブロッカーラベルなし。誰も時間がないタブ間クリック10分。Zeroは詰まったPRを数分で検知し、すべての準備ゲートを検証するので、明確な答えが得られます：準備OK、またはXでブロック。",
+        "promptVariants": [
+          {
+            "label": "フルパイプラインチェック",
+            "prompt": "@Zero vm0-ai/vm0のマージキューで詰まったPRをチェック。次にオープンなリリースPRをチェック - すべてのCIチェックが通ったか、バージョンがセマバー通りにバンプされたか、changelogが更新されたか、ブロッカーラベルがないか検証。フルステータスを#release-notifyに投稿して。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero マージキューで詰まってるものはある？リリースは準備できてる？"
+          },
+          {
+            "label": "定期実行",
+            "prompt": "@Zero 平日の正午と午後4時に、マージキューの詰まったPRを確認しリリース準備状況を検証。ステータスを#release-notifyに投稿して。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero マージキューとリリース準備状況をチェック。"
+          },
+          {
+            "name": "Zero",
+            "text": "リリースパイプラインステータス - vm0-ai/vm0\n\nマージキュー: 1件のPRが詰まり中（キュー投入から2時間14分）\n- PR #9842 - feat: チャットスレッド既読インジケーターを追加\n- 失敗チェック: cli-e2e-03-runner（タイムアウト、既知の不安定なテスト）\n- 後ろに3件のPRをブロック中\n- 推奨: 失敗したチェックを再実行\n\nリリースPR #2847: まだ準備未完了\n- CIチェック14件すべて緑\n- バージョン 1.8.0 から 1.9.0 にバンプ\n- changelog更新済み（14エントリ）\n- ブロック: needs-security-reviewラベルがまだ設定中\n\nキューがクリアされ、セキュリティラベルが削除されれば、このリリースは出荷可能です。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroがマージキューの詰まったPRをチェック",
+            "description": "ZeroがGitHubのマージキューAPIを検索し、キュー内の各PRを調査 - 待機時間、CIの通過状況、他のPRをブロックしているかどうか。詰まったPRがあれば、CIログを読み取り根本原因を診断します。"
+          },
+          {
+            "title": "Zeroがリリース準備ゲートを検証",
+            "description": "ZeroがリリースPRのメタデータ、ファイル差分、CIステータス、ラベル、changelogを読み取ります。定義されたゲートを順番にチェック：CI緑、セマバー準拠のバージョンバンプ、changelog更新、ブロッカーラベルなし、センシティブなファイル変更なし、レビュー承認済み。"
+          },
+          {
+            "title": "Zeroがアクション可能なコンテキスト付きで単一の判定を投稿",
+            "description": "確認すべきリンクの壁ではなく、Zeroが1つの構造化されたメッセージを投稿：マージキューの健全性、リリース準備判定、各問題を解消する正確なアクション。適切な担当者が見て行動します。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "失敗したCIチェックを再実行",
+            "description": "マージキューをブロックしている不安定なテストをクリア",
+            "examplePrompt": "@Zero PR #9842のcli-e2e-03-runnerチェックを再実行して"
+          },
+          {
+            "title": "準備ゲートを強化",
+            "description": "リリースチェックに新しい基準を追加",
+            "examplePrompt": "@Zero 今後は、PR説明が空、またはターゲットブランチがmainでない場合もリリースチェックを失敗にして。"
+          },
+          {
+            "title": "すべてのゲートがクリアしたら自動マージ",
+            "description": "ハンズオフ出荷のためにオートマージと連結",
+            "examplePrompt": "@Zero すべての準備ゲートが緑でマージキューがクリアになったら、リリースPRで auto-merge を有効にして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub - マージキュー、CIチェックステータス、PR詳細、ラベル、changelogへの読み取りアクセス。失敗したチェックの再実行にはオプションの書き込みアクセス。"
+          },
+          {
+            "description": "Slack - パイプラインステータスと準備判定をエンジニアリングチャンネルに投稿します。"
+          }
+        ],
+        "tips": [
+          "チェック頻度はチームのPR速度に合わせて設定してください - 高速なチームは毎時チェックが必要ですが、ほとんどのチームは1日2回で十分です。",
+          "「準備OK」を一度、事前に定義しておきましょう。プロンプトに「CI緑 + changelog + マイグレーションなし」をエンコードするのは一度の投資で、以降のすべてのリリースで恩恵が得られます。",
+          "Auto-Merge Releasesと連結して真にハンズオフな出荷を：このユースケースが問題を検知し、オートマージがすべてクリアになったらリリースを出荷します。"
         ]
       }
     },
