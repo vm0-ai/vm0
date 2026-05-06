@@ -118,7 +118,12 @@ export function MobileBottomTabBar() {
     return null;
   }
 
-  // Only render on index-level pages (not deep/detail pages).
+  // Bottom nav is persistent on every top-level destination — the four
+  // tab routes (chatList / agents / schedules / connectors) and the three
+  // surfaces reached from the More tab (insights / works / account). It
+  // only hides on deep / detail pages (chat thread, agent detail, OAuth
+  // flows, schedule detail, activity detail) where the user needs an
+  // immersive view.
   if (activeId === null) {
     return null;
   }
@@ -128,6 +133,9 @@ export function MobileBottomTabBar() {
     "agents",
     "schedules",
     "connectors",
+    "insights",
+    "works",
+    "account",
   ];
   if (!TAB_ROUTES.includes(activeId)) {
     return null;
