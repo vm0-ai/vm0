@@ -401,7 +401,7 @@ function GlobalConnectorCard({
         </span>
         <span
           data-testid="connector-card-label"
-          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
+          className="min-w-0 flex-1 text-[17px] font-medium text-foreground truncate"
         >
           {connector.label}
         </span>
@@ -472,7 +472,7 @@ function AvailableConnectorCard({
         </span>
         <span
           data-testid="connector-card-label"
-          className="min-w-0 flex-1 text-sm font-medium text-foreground truncate"
+          className="min-w-0 flex-1 text-[17px] font-medium text-foreground truncate"
         >
           {connector.label}
         </span>
@@ -494,7 +494,7 @@ function AvailableConnectorCard({
       <div className="px-5 pb-4 pt-1">
         <div
           data-testid="connector-help-text"
-          className="text-xs text-muted-foreground line-clamp-2"
+          className="text-[13px] text-muted-foreground line-clamp-2"
         >
           {isGoogleOAuthConnector(connector.type) ? (
             <>
@@ -636,7 +636,7 @@ function ConnectorsDesktopHeader({
               placeholder="Find connectors"
               value={search}
               onChange={onSearchChange}
-              className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+              className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-base text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
             />
           </div>
         </div>
@@ -673,7 +673,7 @@ function MobileConnectorsSearchBar() {
             setSearch(e.target.value);
           }}
           data-testid="mobile-connectors-search-input"
-          className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+          className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-base text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
         />
       </div>
     </div>

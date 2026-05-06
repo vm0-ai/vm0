@@ -273,13 +273,13 @@ function ScheduleListCard<T extends ScheduleEntry>({
       {/* Left: text content — pointer-events disabled so clicks pass through to the Link overlay */}
       <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
         {showAgent && (
-          <span className="block text-sm font-medium text-foreground truncate">
+          <span className="block text-[13px] font-medium text-muted-foreground truncate">
             {agentLabel}
           </span>
         )}
         <span
           className={cn(
-            "block text-sm text-foreground leading-snug truncate",
+            "block text-[17px] text-foreground leading-snug truncate",
             dimmed && "text-muted-foreground",
           )}
         >
@@ -287,7 +287,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
         </span>
         <span
           className={cn(
-            "text-sm text-muted-foreground tabular-nums truncate",
+            "text-[13px] text-muted-foreground tabular-nums truncate",
             dimmed && "text-muted-foreground/80",
           )}
         >

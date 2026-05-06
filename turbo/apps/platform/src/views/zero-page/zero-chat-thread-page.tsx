@@ -315,7 +315,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
             <Skeleton className="h-5 w-32 shrink-0 rounded" />
           )}
           {showThreadTitle && (
-            <span className="min-w-0 truncate text-sm font-medium text-muted-foreground">
+            <span className="min-w-0 truncate text-[15px] font-medium text-muted-foreground">
               {threadTitle}
             </span>
           )}
@@ -1092,7 +1092,7 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
         <p className="text-xs font-medium uppercase text-muted-foreground">
           {getFileExtension(file.filename)}
         </p>
-        <p className="mt-1 max-w-[260px] truncate text-sm text-foreground">
+        <p className="mt-1 max-w-[260px] truncate text-[15px] text-foreground">
           {file.filename}
         </p>
       </div>
@@ -1125,10 +1125,10 @@ function ArtifactPreviewPanel({
           <ArtifactPreviewBadge file={file} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">
+          <p className="truncate text-[15px] font-medium text-foreground">
             {file.filename}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
             <span>{formatBytes(file.size)}</span>
             <span aria-hidden>·</span>
             <span>{getFileExtension(file.filename)}</span>
@@ -1253,12 +1253,12 @@ function ArtifactFileRow({
         <ArtifactThumbnail file={file} selected={selected} />
         <div className="min-w-0 flex-1">
           <span
-            className="block max-w-full truncate text-sm font-medium text-foreground"
+            className="block max-w-full truncate text-[15px] font-medium text-foreground"
             title={file.filename}
           >
             {file.filename}
           </span>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
             <span>{formatBytes(file.size)}</span>
             <span aria-hidden>·</span>
             <span>{getFileExtension(file.filename)}</span>
@@ -1291,7 +1291,7 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
 
   if (loadable.state === "hasError") {
     return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-[15px] text-destructive">
         Failed to load artifacts
       </div>
     );
@@ -1321,7 +1321,7 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
           loading="lazy"
           className="h-24 w-24 object-contain opacity-80"
         />
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[15px] text-muted-foreground">
           No uploaded files in this chat yet.
         </p>
       </div>
@@ -1623,7 +1623,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">
                     <IconAlertCircle size={16} />
-                    <p className="text-sm">{sessionError}</p>
+                    <p className="text-[15px]">{sessionError}</p>
                   </div>
                 </div>
               )}
@@ -1639,7 +1639,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                       loading="lazy"
                       className="h-24 w-24 object-contain opacity-80"
                     />
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-[15px] text-muted-foreground">
                       Send a message to start the conversation
                     </p>
                   </div>
@@ -1855,7 +1855,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const pageSignal = useGet(pageSignal$);
 
   const thinkingLabel = isQueued ? (
-    <p className="zero-shimmer-text text-xs truncate">
+    <p className="zero-shimmer-text text-[13px] truncate">
       Waiting in{" "}
       <button
         type="button"
@@ -1868,7 +1868,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
       </button>
     </p>
   ) : (
-    <p className="zero-shimmer-text text-xs truncate">{rotatingLabel}</p>
+    <p className="zero-shimmer-text text-[13px] truncate">{rotatingLabel}</p>
   );
 
   if (!lastGroup) {
@@ -1917,7 +1917,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <AssistantBubbleAvatar thread={thread} />
-        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
+        <div className="zero-chat-bubble-assistant rounded-xl py-4 text-base leading-relaxed min-w-0 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
             <span className="zero-blocks shrink-0" style={blockStyle}>
               <span />
@@ -2464,7 +2464,7 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-base leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
                 <BodyContentBlocks
@@ -2557,7 +2557,7 @@ function PagedAssistantMessageItem({
 
   if (message.error) {
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-base leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         <AssistantErrorContent error={message.error} />
       </div>
     );
@@ -2566,7 +2566,7 @@ function PagedAssistantMessageItem({
   if (message.content) {
     const { blocks } = message;
     return (
-      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 [overflow-wrap:anywhere]">
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-base leading-relaxed min-w-0 [overflow-wrap:anywhere]">
         {blocks.length > 0 ? (
           <BodyContentBlocks
             blocks={blocks}
