@@ -24,7 +24,10 @@ import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
-import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
+import {
+  prepareUserMessageFromDraft$,
+  shouldExcludeVisualAttachments,
+} from "./resolve-draft-attachments.ts";
 import {
   allPendingChatThreads$,
   clearMatchingOptimisticChatThread$,
@@ -346,6 +349,10 @@ const sendNewThreadMessage$ = command(
       prepareUserMessageFromDraft$,
       draft,
       prompt,
+      {
+        excludeVisualAttachments:
+          shouldExcludeVisualAttachments(modelSelection),
+      },
       signal,
     );
 

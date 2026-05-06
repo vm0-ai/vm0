@@ -17,6 +17,7 @@ import {
 import {
   collectSuccessfulAttachmentInfos,
   prepareUserMessageFromDraft$,
+  shouldExcludeVisualAttachments,
 } from "./resolve-draft-attachments.ts";
 import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
 import {
@@ -1100,6 +1101,10 @@ function createSendMessage(deps: SendMessageDeps) {
         prepareUserMessageFromDraft$,
         draft,
         prompt,
+        {
+          excludeVisualAttachments:
+            shouldExcludeVisualAttachments(modelSelection),
+        },
         signal,
       );
       if (!result) {
