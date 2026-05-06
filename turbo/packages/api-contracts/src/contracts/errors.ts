@@ -32,6 +32,14 @@ export const ApiError = {
     status: 422 as const,
     code: "PROVIDER_DELETED",
   },
+  CODEX_AUTH_JSON_SHAPE_INVALID: {
+    status: 400 as const,
+    code: "CODEX_AUTH_JSON_SHAPE_INVALID",
+  },
+  CODEX_FREE_PLAN_REJECTED: {
+    status: 400 as const,
+    code: "CODEX_FREE_PLAN_REJECTED",
+  },
   INTERNAL_SERVER_ERROR: {
     status: 500 as const,
     code: "INTERNAL_SERVER_ERROR",
