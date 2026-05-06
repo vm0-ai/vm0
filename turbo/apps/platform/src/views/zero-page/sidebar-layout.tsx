@@ -37,6 +37,7 @@ import {
   setSidebarExpanded$,
   isChatRoute,
   navigateToChat$,
+  setMobileNewSessionSheetOpen$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -46,8 +47,6 @@ import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
-  setMobileChatListSearchOpen$,
-  mobileChatListSearchOpen$,
   setMobileConnectorsSearchOpen$,
   mobileConnectorsSearchOpen$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
@@ -79,6 +78,7 @@ import {
 } from "../pwa-install/install-banner.tsx";
 import { MobileBottomTabBar } from "./mobile-bottom-tab-bar.tsx";
 import { MobileMoreSheet } from "./mobile-more-sheet.tsx";
+import { MobileNewSessionSheet } from "./mobile-new-session-sheet.tsx";
 import { MobileWorkspaceDrawer } from "./mobile-workspace-drawer.tsx";
 
 function AgentAvatarInTopBar() {
@@ -223,27 +223,16 @@ function MobileTopBarActions({
   );
 }
 
-function ChatListHeaderSearchToggle() {
-  const open = useGet(mobileChatListSearchOpen$);
-  const setOpen = useSet(setMobileChatListSearchOpen$);
+function ChatListHeaderSearchLink() {
   return (
-    <button
-      type="button"
-      onClick={() => {
-        setOpen(!open);
-      }}
-      aria-pressed={open}
+    <Link
+      pathname="/search"
       aria-label="Search chats"
       data-testid="mobile-chat-list-search-toggle"
-      className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-        open
-          ? "bg-muted text-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-      )}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors no-underline"
     >
       <IconSearch size={16} stroke={1.6} />
-    </button>
+    </Link>
   );
 }
 
@@ -369,6 +358,19 @@ function NewCustomConnectorHeaderButton() {
 // Per-route action cluster on the right of the mobile top bar. Account avatar
 // only appears on the chat-list (Home) tab; per-page primary actions live in
 // the same slot so each surface has at most one or two icons + the avatar.
+function NewSessionHeaderButton() {
+  const setOpen = useSet(setMobileNewSessionSheetOpen$);
+  return (
+    <HeaderIconButton
+      label="Start new chat with another agent"
+      testId="mobile-new-session"
+      onClick={() => {
+        setOpen(true);
+      }}
+    />
+  );
+}
+
 function MobileTopBarPageActions({
   activeId,
 }: {
@@ -377,7 +379,8 @@ function MobileTopBarPageActions({
   if (activeId === "chatList") {
     return (
       <>
-        <ChatListHeaderSearchToggle />
+        <NewSessionHeaderButton />
+        <ChatListHeaderSearchLink />
         <HeaderAccountAvatar />
       </>
     );
@@ -445,16 +448,34 @@ function mobileTopBarTitle(route: RouteKey | null): string | undefined {
   }
 }
 
-function BackToChatListButton() {
+function BackButton({
+  pathname,
+  label,
+  testId,
+}: {
+  pathname: "/chats" | "/account";
+  label: string;
+  testId: string;
+}) {
   return (
     <Link
-      pathname="/chats"
-      aria-label="Back to chat list"
-      data-testid="mobile-back-to-chat-list"
+      pathname={pathname}
+      aria-label={label}
+      data-testid={testId}
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors no-underline"
     >
       <IconArrowLeft size={18} stroke={1.8} />
     </Link>
+  );
+}
+
+// Routes that live under the Account hub (entered from /account) and need a
+// back arrow to return there instead of being orphan pages on mobile.
+function isAccountSubRoute(route: RouteKey | null): boolean {
+  return (
+    route === "settings" ||
+    route === "usage" ||
+    route === "settingsApiKeys"
   );
 }
 
@@ -492,7 +513,22 @@ function MobileTopBarLeftSlot({
     return <MobileWorkspaceDrawer />;
   }
   if (activeId === "chat") {
-    return <BackToChatListButton />;
+    return (
+      <BackButton
+        pathname="/chats"
+        label="Back to chat list"
+        testId="mobile-back-to-chat-list"
+      />
+    );
+  }
+  if (isAccountSubRoute(activeId)) {
+    return (
+      <BackButton
+        pathname="/account"
+        label="Back to account"
+        testId="mobile-back-to-account"
+      />
+    );
   }
   return null;
 }
@@ -623,6 +659,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         <MobileBottomTabBar />
       </div>
       <MobileMoreSheet />
+      <MobileNewSessionSheet />
     </div>
   );
 }

@@ -34,14 +34,15 @@ import {
   currentChatThreadId$,
   currentChatAgentId$,
 } from "../../signals/agent-chat.ts";
-import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
+import {
+  AvatarFromUrl,
+  useChatThreadsTitleLabels,
+} from "./zero-sidebar-shared.tsx";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   chatListQuery$,
   setChatListQuery$,
-  mobileChatListSearchOpen$,
-  setMobileChatListSearchOpen$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -79,20 +80,16 @@ export function ZeroChatListPage() {
   const features = useLastResolved(featureSwitch$);
   const mobileNativeOn =
     features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
-  const mobileSearchOpen = useGet(mobileChatListSearchOpen$);
-  const setMobileSearchOpen = useSet(setMobileChatListSearchOpen$);
 
-  // On mobile native the search bar is collapsible; the top-bar icon owns
-  // its open state. On desktop / non-redesign mobile we keep the
-  // always-visible search row above the list.
-  const showSearchBar = !mobileNativeOn || mobileSearchOpen;
-
+  // Mobile-native delegates search to the dedicated /search page, so the
+  // term filter only applies on desktop / non-redesign mobile.
   const trimmedTerm = searchTerm.trim().toLowerCase();
-  const filteredSessions = trimmedTerm
-    ? recentSessions.filter((s) => {
-        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
-      })
-    : recentSessions;
+  const filteredSessions =
+    !mobileNativeOn && trimmedTerm
+      ? recentSessions.filter((s) => {
+          return (s.title ?? "").toLowerCase().includes(trimmedTerm);
+        })
+      : recentSessions;
 
   const onNewChat = (pane: OptimisticChatPane) => {
     detach(
@@ -111,8 +108,9 @@ export function ZeroChatListPage() {
       <div className="shrink-0 px-4 pt-4 pb-2">
         <MobileChatAgentSwitcher />
 
-        {/* Search — collapsible on mobile-native, always visible elsewhere */}
-        {showSearchBar && (
+        {/* Always-visible search bar — desktop / non-redesign mobile only.
+            Mobile-native sends the search icon to the dedicated /search page. */}
+        {!mobileNativeOn && (
           <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 h-10">
             <IconSearch
               size={16}
@@ -127,18 +125,13 @@ export function ZeroChatListPage() {
               }}
               placeholder={searchPlaceholder}
               data-testid="chat-list-search-input"
-              autoFocus={mobileNativeOn && mobileSearchOpen}
               className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
             />
-            {(searchTerm || (mobileNativeOn && mobileSearchOpen)) && (
+            {searchTerm && (
               <button
                 type="button"
                 onClick={() => {
-                  if (mobileNativeOn && mobileSearchOpen) {
-                    setMobileSearchOpen(false);
-                  } else {
-                    setSearchTerm("");
-                  }
+                  setSearchTerm("");
                 }}
                 className="shrink-0 text-muted-foreground hover:text-foreground"
                 aria-label="Clear search"
@@ -316,6 +309,34 @@ function ChatList({
   );
 }
 
+// Compact relative-date label for the right column of a chat list row.
+// Today/Yesterday for very recent threads, M/D for the rest of this year,
+// YYYY/M/D once the year flips.
+function formatThreadDateLabel(iso: string, now: Date): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
+  const startOf = (date: Date) => {
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    ).getTime();
+  };
+  const dayDiff = Math.round((startOf(now) - startOf(d)) / 86_400_000);
+  if (dayDiff === 0) {
+    return "Today";
+  }
+  if (dayDiff === 1) {
+    return "Yesterday";
+  }
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  }
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 function ChatListItem({
   session,
   isSelected,
@@ -327,6 +348,11 @@ function ChatListItem({
   onSelect: (id: string) => void;
   onDelete: () => void;
 }) {
+  const dateLabel = formatThreadDateLabel(
+    session.updatedAt ?? session.createdAt,
+    new Date(),
+  );
+  const isUnread = !session.isRead;
   return (
     <div className="group relative">
       <Link
@@ -339,30 +365,54 @@ function ChatListItem({
           e.preventDefault();
           onSelect(session.id);
         }}
-        className={`flex h-12 items-center gap-3 rounded-lg px-3 text-left text-sm transition-colors ${
+        className={cn(
+          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors no-underline",
           isSelected
-            ? "bg-accent text-accent-foreground font-medium"
-            : "text-foreground hover:bg-accent/50"
-        }`}
+            ? "bg-accent text-accent-foreground"
+            : "text-foreground hover:bg-accent/50",
+        )}
       >
-        <span className="truncate min-w-0 flex-1">
-          {session.title ?? "New chat"}
+        <span className="relative shrink-0">
+          <AvatarFromUrl
+            avatarUrl={session.agent.avatarUrl}
+            alt=""
+            className="h-10 w-10 rounded-full object-cover object-top"
+          />
+          {isUnread && (
+            <span
+              aria-label="Unread"
+              className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background"
+            />
+          )}
         </span>
+        <span className="min-w-0 flex-1 flex items-center gap-2">
+          <span
+            className={cn(
+              "truncate text-sm",
+              isUnread ? "font-semibold" : "font-medium",
+            )}
+          >
+            {session.title ?? "New chat"}
+          </span>
+        </span>
+        {dateLabel && (
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+            {dateLabel}
+          </span>
+        )}
       </Link>
-      <div className="absolute right-2 top-0 flex h-12 items-center">
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="flex h-8 w-8 items-center justify-center rounded-md invisible group-hover:visible text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-          aria-label="Delete chat"
-        >
-          <IconTrash size={14} stroke={2} />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete();
+        }}
+        className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-opacity"
+        aria-label="Delete chat"
+      >
+        <IconTrash size={14} stroke={2} />
+      </button>
     </div>
   );
 }

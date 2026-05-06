@@ -59,26 +59,8 @@ export const setChatListQuery$ = command(({ set }, query: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Mobile chat list search bar visibility — toggled from the top-bar search
-// icon. Closing also clears the query so the next open starts fresh.
-// ---------------------------------------------------------------------------
-const internalMobileChatListSearchOpen$ = state(false);
-export const mobileChatListSearchOpen$ = computed((get) => {
-  return get(internalMobileChatListSearchOpen$);
-});
-export const setMobileChatListSearchOpen$ = command(
-  ({ set }, open: boolean) => {
-    set(internalMobileChatListSearchOpen$, open);
-    if (!open) {
-      set(internalChatListQuery$, "");
-    }
-  },
-);
-
-// ---------------------------------------------------------------------------
-// Mobile connectors search bar visibility — same pattern as the chat list
-// search above; the header search input is hidden on mobile and toggled
-// from the top-bar search icon instead.
+// Mobile connectors search bar visibility — the page header search input is
+// hidden on mobile and toggled from the top-bar search icon instead.
 // ---------------------------------------------------------------------------
 const internalMobileConnectorsSearchOpen$ = state(false);
 export const mobileConnectorsSearchOpen$ = computed((get) => {

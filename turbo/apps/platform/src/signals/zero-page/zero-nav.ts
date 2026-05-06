@@ -82,6 +82,18 @@ export const setMobileMoreSheetOpen$ = command(({ set }, open: boolean) => {
   set(internalMobileMoreSheetOpen$, open);
 });
 
+const internalMobileNewSessionSheetOpen$ = state(false);
+
+export const mobileNewSessionSheetOpen$ = computed((get) => {
+  return get(internalMobileNewSessionSheetOpen$);
+});
+
+export const setMobileNewSessionSheetOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(internalMobileNewSessionSheetOpen$, open);
+  },
+);
+
 export type SidebarNavId =
   | "chat"
   | "agents"

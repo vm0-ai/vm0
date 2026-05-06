@@ -17,9 +17,8 @@ import {
   IconPlus,
   IconMail,
 } from "@tabler/icons-react";
-import { clerk$, currentOrgInfo$, user$ } from "../../signals/auth.ts";
+import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
 import { detach, Reason, withCleanup } from "../../signals/utils.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
   mobileWorkspaceDrawerOpen$,
   setMobileWorkspaceDrawerOpen$,
@@ -41,56 +40,6 @@ import {
   OrgAvatar,
   PendingInvitationsBadge,
 } from "./zero-org-switcher.tsx";
-
-function UserIdentityCard({ onClose }: { onClose: () => void }) {
-  const userLoadable = useLastLoadable(user$);
-  const navigate = useSet(detachedNavigateTo$);
-  const user = userLoadable.state === "hasData" ? userLoadable.data : null;
-  const name = user?.fullName ?? "You";
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const imageUrl = user?.imageUrl;
-  const initial = name.charAt(0).toUpperCase();
-
-  const handleOpenAccount = () => {
-    onClose();
-    navigate("/account");
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={handleOpenAccount}
-      data-testid="drawer-account-link"
-      aria-label="Open account settings"
-      className="flex w-full items-center gap-3 px-1 py-1 rounded-lg hover:bg-accent transition-colors text-left"
-    >
-      {imageUrl ? (
-        <img
-          src={imageUrl}
-          alt={name}
-          className="h-10 w-10 rounded-full object-cover shrink-0"
-        />
-      ) : (
-        <div className="h-10 w-10 rounded-full bg-[hsl(var(--gray-200))] text-[hsl(var(--primary-700))] flex items-center justify-center text-base font-bold shrink-0">
-          {initial}
-        </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <p
-          data-testid="drawer-user-name"
-          className="text-sm font-semibold leading-tight truncate text-foreground"
-        >
-          {name}
-        </p>
-        {email && (
-          <p className="text-xs text-muted-foreground truncate mt-0.5">
-            {email}
-          </p>
-        )}
-      </div>
-    </button>
-  );
-}
 
 function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
   const currentOrg = useLastResolved(currentOrgInfo$);
@@ -338,11 +287,10 @@ export function MobileWorkspaceDrawer() {
         className="gap-5 px-4 py-5"
         hideClose
       >
-        <SheetTitle className="sr-only">Workspace and identity</SheetTitle>
+        <SheetTitle className="sr-only">Workspaces</SheetTitle>
         <SheetDescription className="sr-only">
-          Switch workspaces, manage your account, and create a new workspace.
+          Switch workspaces or create a new one.
         </SheetDescription>
-        <UserIdentityCard onClose={close} />
         <div className="flex flex-col gap-2">
           <SectionLabel>Workspaces</SectionLabel>
           <CurrentWorkspaceRow onClose={close} />

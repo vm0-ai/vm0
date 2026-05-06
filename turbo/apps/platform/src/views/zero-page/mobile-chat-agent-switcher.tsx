@@ -22,10 +22,7 @@ export function MobileChatAgentSwitcher() {
   const currentId = useResolved(currentChatAgentId$);
   const setAgentId = useSet(setChatAgentId$);
 
-  // Hide entirely when there's a single pinned agent — the strip then just
-  // duplicates the chat-list title's agent name and the lone outlined card
-  // looks accidental rather than a switcher.
-  if (!enabled || pinned.length < 2) {
+  if (!enabled || pinned.length === 0) {
     return null;
   }
 

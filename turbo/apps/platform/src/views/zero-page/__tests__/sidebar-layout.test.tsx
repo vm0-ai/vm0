@@ -17,6 +17,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  chatThreadsContract,
 } from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
@@ -51,6 +52,29 @@ function mockBaseAPIs() {
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
+}
+
+// Inject one thread so the chat-list-page setup doesn't redirect new users
+// (with zero threads) to the default agent's chat page on mobile-native.
+function mockOneChatThread() {
+  server.use(
+    mockApi(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, {
+        threads: [
+          {
+            id: "thread-existing-1",
+            title: "Existing thread",
+            agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+            createdAt: "2026-04-25T00:00:00Z",
+            updatedAt: "2026-04-25T00:00:00Z",
+            isRead: true,
+            isArchived: false,
+            running: false,
+          },
+        ],
+      });
+    }),
+  );
 }
 
 function mockChatThread(threadId: string) {
@@ -359,6 +383,7 @@ describe("mobile top bar - hamburger hidden when redesign on (MOBILE-TOP-001)", 
 describe("mobile top bar - workspace drawer trigger shown when redesign on (MOBILE-TOP-002)", () => {
   it("renders the workspace drawer trigger on the chat list page", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
       path: "/chats",
@@ -413,6 +438,7 @@ describe("mobile top bar - workspace pill hidden on non-chat pages (MOBILE-TOP-0
 describe("mobile workspace drawer - opens on trigger click (MOBILE-DRAWER-001)", () => {
   it("opens the side drawer when the workspace trigger is tapped", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
       path: "/chats",
@@ -443,6 +469,7 @@ describe("mobile workspace drawer - opens on trigger click (MOBILE-DRAWER-001)",
 describe("mobile workspace drawer - shows workspace name (MOBILE-DRAWER-002)", () => {
   it("renders the current workspace name inside the drawer", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
       path: "/chats",
@@ -579,9 +606,10 @@ describe("mobile more sheet - Insights navigates to /insights (MOBILE-MORE-001)"
   });
 });
 
-describe("mobile workspace drawer - account link navigates to /account (MOBILE-DRAWER-003)", () => {
-  it("closes the drawer and routes to /account when the user card is tapped", async () => {
+describe("mobile workspace drawer - drops the user identity card (MOBILE-DRAWER-003)", () => {
+  it("does not render an account-link inside the drawer", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
       path: "/chats",
@@ -597,14 +625,12 @@ describe("mobile workspace drawer - account link navigates to /account (MOBILE-D
     });
     click(trigger);
 
-    const accountLink = await waitFor(() => {
-      return screen.getByTestId("drawer-account-link");
-    });
-    click(accountLink);
-
     await waitFor(() => {
-      expect(pathname()).toBe("/account");
+      return screen.getByTestId("mobile-workspace-drawer");
     });
+    expect(
+      screen.queryByTestId("drawer-account-link"),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -678,6 +704,7 @@ describe("mobile top bar - centered title hidden on chat detail pages (MOBILE-TO
 describe("mobile workspace drawer - no close X button (MOBILE-DRAWER-004)", () => {
   it("does not render the built-in sheet close button inside the drawer", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
       path: "/chats",
@@ -701,6 +728,7 @@ describe("mobile workspace drawer - no close X button (MOBILE-DRAWER-004)", () =
 describe("mobile top bar - centered title shows 'Home' on chat list (MOBILE-TOP-009)", () => {
   it("renders 'Home' centered when on /chats with the redesign on", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
       path: "/chats",
