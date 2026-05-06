@@ -191,7 +191,7 @@ class SseUsageScanner:
 
         event_name = value.decode("utf-8", errors="replace")
         self._event_name = event_name
-        if not self._handler.should_capture_event(event_name):
+        if self._capturing_event and not self._handler.should_capture_event(event_name):
             self._discard_current_event(event_name)
 
     def _start_data_line(self) -> None:
@@ -199,6 +199,10 @@ class SseUsageScanner:
             self._event_name is None and self._capture_data_without_event
         )
         if self._discard_event or not should_capture:
+            if not self._capturing_event:
+                self._discard_event = True
+            else:
+                self._discard_current_event(self._event_name)
             self._state = "discard_line"
             return
 

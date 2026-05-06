@@ -1713,6 +1713,15 @@ class TestAnthropicSseUsageExtractor:
         assert usage["model"] == "claude-sonnet-4-6"
         assert usage["tokens.input"] == 56
 
+    def test_accepts_data_level_type_without_event_line(self):
+        parse, usage = create_anthropic_messages_sse_usage_extractor()
+        parse(
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":58}}}\n\n'
+        )
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["tokens.input"] == 58
+
     def test_empty_chunks(self):
         parse, usage = create_anthropic_messages_sse_usage_extractor()
         parse(b"")

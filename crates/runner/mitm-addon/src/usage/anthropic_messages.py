@@ -22,6 +22,7 @@ _MODEL_JSON_SCALAR_FIELDS = {
 }
 
 _ANTHROPIC_SSE_SCALAR_FIELDS = {
+    ("type",): ScalarField("string", max_bytes=1024),
     ("message", "id"): ScalarField("string", max_bytes=1024),
     ("message", "model"): ScalarField("string", max_bytes=1024),
     **{
@@ -95,7 +96,13 @@ class _AnthropicMessagesSseUsageHandler:
         if not result.complete:
             return
 
-        if event_name == "message_start":
+        event_type = event_name
+        if event_type is None:
+            data_type = result.values.get(("type",))
+            if isinstance(data_type, str):
+                event_type = data_type
+
+        if event_type == "message_start":
             model = result.values.get(("message", "model"))
             if isinstance(model, str) and model:
                 self._usage["model"] = model
@@ -103,7 +110,7 @@ class _AnthropicMessagesSseUsageHandler:
             if isinstance(message_id, str) and message_id:
                 self._usage["message_id"] = message_id
             _store_selected_usage_values(result.values, self._usage, ("message", "usage"))
-        elif event_name == "message_delta":
+        elif event_type == "message_delta":
             _store_selected_usage_values(result.values, self._usage, ("usage",))
 
     def on_event_discard(self, _event_name: str | None) -> None:

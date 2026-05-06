@@ -96,6 +96,31 @@ def test_discards_data_before_ignored_event_name() -> None:
     assert handler.discarded == ["ignored"]
 
 
+def test_event_name_can_change_before_data_starts() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(b"event: ignored\n")
+    scanner.feed(b"event: target\n")
+    scanner.feed(b"data: ok\n\n")
+
+    assert handler.events == [("target", b"ok")]
+    assert handler.discarded == []
+
+
+def test_target_after_discarded_data_does_not_emit_partial_event() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(b"event: ignored\n")
+    scanner.feed(b"data: already-discarded\n")
+    scanner.feed(b"event: target\n")
+    scanner.feed(b"data: partial\n\n")
+
+    assert handler.events == []
+    assert handler.discarded == []
+
+
 @pytest.mark.parametrize("newline", [b"\n", b"\r\n", b"\r"])
 def test_supports_sse_line_endings(newline: bytes) -> None:
     handler = _CaptureHandler({"target"})
