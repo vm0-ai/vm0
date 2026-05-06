@@ -25,15 +25,17 @@ setup_file() {
 }
 
 @test "t57-1: connect endpoint returns 404 when feature switch off" {
-    # No enable_chatgpt_oauth_provider call — switch defaults to off.
-    # disable_* (best-effort cleanup; safe even if nothing to delete).
-    disable_chatgpt_oauth_provider
-
     local token
-    token=$(_chatgpt_oauth_token)
+    token=$(chatgpt_oauth_feature_off_token)
     if [ -z "$token" ]; then
         skip "no auth token available — VM0_TEST_TOKEN/ZERO_TOKEN/VM0_TOKEN not set and ~/.vm0/config.json absent"
     fi
+
+    # The registry can enable staff orgs by identity hash; write an explicit
+    # false override against the serial E2E user when available. Runner E2E
+    # chunks run in parallel, so this negative-path probe must not flip the
+    # shared runner user's switch while t54/t55 may be using it.
+    force_disable_chatgpt_oauth_provider "$token"
 
     local curl_args=(-s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token")
     if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
@@ -47,9 +49,12 @@ setup_file() {
     # isChatgptOauthEligible returns false, route emits NotFound. This
     # keeps the entire surface hidden from production users.
     if [ "$code" != "404" ]; then
+        disable_chatgpt_oauth_provider "$token"
         echo "Expected 404, got $code" >&2
         return 1
     fi
+
+    disable_chatgpt_oauth_provider "$token"
 }
 
 # Test 4 server-side portion. Requires Wave 3 (#11932): the runner guard

@@ -90,31 +90,60 @@ _chatgpt_oauth_token() {
     fi
 }
 
-# Enable the chatgptOauthProvider feature switch for the current test user.
-# Required so isChatgptOauthEligible(orgId, userId) returns true and the
-# OAuth connect/callback routes don't 404. The switch is staff-only by
-# default, so production users see no surface.
-enable_chatgpt_oauth_provider() {
-    local token
-    token=$(_chatgpt_oauth_token)
+# Prefer the serial E2E token for the feature-off probe so runner chunks do
+# not race each other by mutating the shared runner user's feature switches.
+chatgpt_oauth_feature_off_token() {
+    local config="${CHATGPT_OAUTH_FEATURE_OFF_TOKEN_CONFIG:-/tmp/e2e-token-serial.json}"
+    if [ -f "$config" ]; then
+        jq -r '.token // empty' "$config"
+        return
+    fi
+    _chatgpt_oauth_token
+}
+
+# Set the chatgptOauthProvider feature switch override for the current test user.
+_set_chatgpt_oauth_provider() {
+    local enabled="$1"
+    local token="${2:-}"
     if [ -z "$token" ]; then
-        echo "enable_chatgpt_oauth_provider: no auth token (env or ~/.vm0/config.json)" >&2
+        token=$(_chatgpt_oauth_token)
+    fi
+    if [ -z "$token" ]; then
+        echo "_set_chatgpt_oauth_provider: no auth token (env or ~/.vm0/config.json)" >&2
         return 1
     fi
+    local body
+    body=$(jq -n --argjson enabled "$enabled" '{switches:{chatgptOauthProvider:$enabled}}')
     local curl_args=(-fsS -X POST -H "Content-Type: application/json"
         -H "Authorization: Bearer $token"
-        -d '{"switches":{"chatgptOauthProvider":true}}')
+        -d "$body")
     if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
         curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
     curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/feature-switches" >/dev/null
 }
 
+# Enable the chatgptOauthProvider feature switch for the current test user.
+# Required so isChatgptOauthEligible(orgId, userId) returns true and the
+# OAuth connect/callback routes don't 404. The switch is staff-only by
+# default, so production users see no surface.
+enable_chatgpt_oauth_provider() {
+    _set_chatgpt_oauth_provider true "$@"
+}
+
+# Force the chatgptOauthProvider feature switch off for the current test user.
+# Clearing overrides is not enough when the static registry enables staff orgs.
+force_disable_chatgpt_oauth_provider() {
+    _set_chatgpt_oauth_provider false "$@"
+}
+
 # Best-effort cleanup of feature-switch overrides — DELETE clears all
 # overrides for the user (test_user_id resolved server-side).
 disable_chatgpt_oauth_provider() {
-    local token
-    token=$(_chatgpt_oauth_token)
+    local token="${1:-}"
+    if [ -z "$token" ]; then
+        token=$(_chatgpt_oauth_token)
+    fi
     if [ -z "$token" ]; then
         return 0
     fi
