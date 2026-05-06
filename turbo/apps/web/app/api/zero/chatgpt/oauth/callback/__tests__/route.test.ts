@@ -3,6 +3,7 @@ import { HttpResponse } from "msw";
 import { GET } from "../route";
 import { GET as listModelProvidersRoute } from "../../../../model-providers/route";
 import { createTestRequest } from "../../../../../../../src/__tests__/api-test-helpers";
+import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../../src/mocks/server";
 import { http } from "../../../../../../../src/__tests__/msw";
 import {
@@ -116,6 +117,7 @@ describe("GET /api/zero/chatgpt/oauth/callback", () => {
   let stateValue: string;
 
   beforeEach(async () => {
+    vi.clearAllMocks();
     context.setupMocks();
     mockIsFeatureEnabled.mockReturnValue(true);
     user = await context.setupUser();
@@ -292,6 +294,64 @@ describe("GET /api/zero/chatgpt/oauth/callback", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("error=ineligible");
+
+    const providers = await listOrgProviders();
+    expect(providers).toHaveLength(0);
+  });
+
+  it("returns unauthenticated when caller has no session", async () => {
+    mockClerk({ userId: null });
+
+    const request = makeCallbackRequest({
+      code: "c",
+      state: stateValue,
+      stateCookie: stateValue,
+      pkceCookie: "v",
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("error=unauthenticated");
+
+    // Re-auth as the original user to verify nothing was persisted
+    mockClerk({ userId: user.userId });
+    const providers = await listOrgProviders();
+    expect(providers).toHaveLength(0);
+  });
+
+  it("rejects state cookie bound to a different org than the auth context", async () => {
+    // Forged state cookie carrying another org's id
+    const forgedState = makeState("attacker-org-id", user.userId);
+
+    const request = makeCallbackRequest({
+      code: "c",
+      state: forgedState,
+      stateCookie: forgedState,
+      pkceCookie: "v",
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("error=state_mismatch");
+
+    const providers = await listOrgProviders();
+    expect(providers).toHaveLength(0);
+  });
+
+  it("rejects state cookie bound to a different user than the auth context", async () => {
+    // Forged state cookie carrying the right org but a different vm0UserId
+    const forgedState = makeState(user.orgId, "attacker-user-id");
+
+    const request = makeCallbackRequest({
+      code: "c",
+      state: forgedState,
+      stateCookie: forgedState,
+      pkceCookie: "v",
+    });
+    const response = await GET(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("error=state_mismatch");
 
     const providers = await listOrgProviders();
     expect(providers).toHaveLength(0);

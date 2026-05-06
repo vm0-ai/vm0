@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
+import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
+import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { getOrigin } from "../../../../../../src/lib/shared/request/get-origin";
 import { getAppUrl } from "../../../../../../src/lib/zero/url";
 import { logger } from "../../../../../../src/lib/shared/logger";
@@ -24,12 +26,16 @@ const log = logger("api:zero-chatgpt-oauth-callback");
  *
  * GET /api/zero/chatgpt/oauth/callback?code=...&state=...&error=...
  *
- * 1. Validate state matches the cookie set at connect time (CSRF).
- * 2. Re-check eligibility (in case the feature switch was disabled mid-flow).
- * 3. Exchange code → tokens via PKCE (uses code_verifier from cookie).
- * 4. Reject free-plan accounts with a clear redirect.
- * 5. Persist the 4 secrets via upsertOrgMultiAuthModelProvider.
- * 6. Redirect to the model-providers settings page.
+ * 1. Require an authenticated session (matches the connect-time session).
+ * 2. Validate state matches the cookie set at connect time (CSRF).
+ * 3. Bind state to the auth context: state.orgId/vm0UserId MUST match the
+ *    resolved org and authenticated user — prevents an attacker from
+ *    completing OAuth against an org they don't belong to.
+ * 4. Re-check eligibility (in case the feature switch was disabled mid-flow).
+ * 5. Exchange code → tokens via PKCE (uses code_verifier from cookie).
+ * 6. Reject free-plan accounts with a clear redirect.
+ * 7. Persist the 4 secrets via upsertOrgMultiAuthModelProvider.
+ * 8. Redirect to the model-providers settings page.
  *
  * `CHATGPT_REFRESH_TOKEN` and `CHATGPT_ID_TOKEN` are flagged `serverOnly`
  * in the model-provider type definition; the runner-secret-forwarding
@@ -59,6 +65,13 @@ export async function GET(request: Request) {
     return response;
   };
 
+  const authHeader = request.headers.get("authorization") ?? undefined;
+  const authCtx = await getAuthContext(authHeader);
+  if (!authCtx) {
+    return clearCookies(redirectError(appUrl, "unauthenticated"));
+  }
+  const { org } = await resolveOrg(authCtx);
+
   if (error) {
     return clearCookies(redirectError(appUrl, error));
   }
@@ -75,6 +88,14 @@ export async function GET(request: Request) {
   const state = parseState(stateParam);
   if (!state) {
     return clearCookies(redirectError(appUrl, "invalid_state"));
+  }
+
+  // Bind state to the auth context. The state cookie is HttpOnly + SameSite=Lax,
+  // but we still verify the encoded orgId/vm0UserId match the authenticated
+  // session — defense-in-depth against any path that might let an attacker
+  // forge or replay a state cookie for another org.
+  if (state.orgId !== org.orgId || state.vm0UserId !== authCtx.userId) {
+    return clearCookies(redirectError(appUrl, "state_mismatch"));
   }
 
   const eligible = await isChatgptOauthEligible(state.orgId, state.vm0UserId);
