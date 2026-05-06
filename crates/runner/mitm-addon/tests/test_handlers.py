@@ -2637,6 +2637,42 @@ class TestResponseUsageReporting:
             "tokens.cache_read": 10,
         }
 
+    def test_response_then_error_does_not_enqueue_model_usage_twice(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        """If mitmproxy fires both hooks for one flow, model usage reports once."""
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_network_log_path"] = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_proxy_log_path"] = str(tmp_path / "proxy.jsonl")
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["model_provider_usage"] = {
+            "model": "gpt-5.5",
+            "tokens.output": 20,
+        }
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "application/json"}),
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            flow.error = Error("connection reset after response")
+            mitm_addon.error(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        assert [event["category"] for event in events] == ["tokens.output"]
+
     def test_full_pipeline_large_model_json_uses_bounded_buffer(
         self, tmp_path, real_flow, mitm_ctx, headers, fresh_usage_executor
     ):
@@ -5367,6 +5403,25 @@ class TestUsagePendingCounter:
             }
         finally:
             usage.counters._decrement_reports()
+
+    def test_submit_failure_rolls_back_pending_report(self, tmp_path):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+
+        with (
+            patch.object(usage.webhook.usage_executor, "submit", side_effect=OSError("no threads")),
+            pytest.raises(OSError, match="no threads"),
+        ):
+            usage.webhook._enqueue_webhook(
+                "https://api.vm0.ai/api/webhooks/agent/usage-event",
+                "tok",
+                {"runId": "run-1", "events": [{"category": "tokens.input", "quantity": 1}]},
+                "",
+                "usage_event",
+            )
+
+        assert usage.counters._pending_reports == 0
+        _assert_pending(pending_path, flows=0, reports=0)
 
     def test_set_pending_path_accepts_explicit_usage_state_id(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
