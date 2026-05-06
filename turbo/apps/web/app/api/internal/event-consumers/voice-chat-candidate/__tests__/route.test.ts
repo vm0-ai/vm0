@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
 import {
   testContext,
@@ -9,13 +8,29 @@ import { seedTestCompose } from "../../../../../../src/__tests__/db-test-seeders
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import { createSignedCallbackRequest } from "../../../../../../src/__tests__/api-test-helpers/callbacks";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
-import { initServices } from "../../../../../../src/lib/init-services";
-// eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { createVoiceChatCandidateSession } from "../../../../../../src/lib/zero/voice-chat-candidate/session-service";
-// eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { createVoiceChatCandidateTask } from "../../../../../../src/lib/zero/voice-chat-candidate/task-service";
-// eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-import { voiceChatTasks } from "@vm0/db/schema/voice-chat";
+import {
+  getRequest,
+  paramsFor,
+  postRequest,
+  seedCandidateAgent,
+  seedCandidateSession,
+  setupCandidateOrg,
+} from "../../../../zero/voice-chat-candidate/__tests__/_helpers";
+
+vi.mock("@vm0/core/feature-switch", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@vm0/core/feature-switch")>();
+  return {
+    ...actual,
+    isFeatureEnabled: vi.fn().mockReturnValue(true),
+  };
+});
+
+const { isFeatureEnabled } = await import("@vm0/core/feature-switch");
+const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
+
+const { POST: createTaskPOST, GET: listTasksGET } =
+  await import("../../../../zero/voice-chat-candidate/[id]/tasks/route");
 
 const SECRETS_ENCRYPTION_KEY =
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -48,50 +63,80 @@ function buildToolUseEvent(sequenceNumber: number): Record<string, unknown> {
   };
 }
 
-async function seedSessionWithQueuedTask() {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route covers this path
-  initServices();
-  const ctx = testContext();
-  const { userId, orgId } = await ctx.setupUser();
-  const { composeId } = await seedTestCompose({
-    userId,
-    orgId,
-    name: uniqueId("vcc-consumer"),
-  });
-  const session = await createVoiceChatCandidateSession({
-    orgId,
-    userId,
-    agentId: composeId,
-  });
-  const { runId } = await seedTestRun(userId, composeId, {
-    status: "queued",
-    orgId,
-  });
-  const task = await createVoiceChatCandidateTask({
-    sessionId: session.id,
-    callId: "call-1",
-    prompt: "p",
-    spawnRun: async () => {
-      return {
-        runId,
-        status: "queued",
-        createdAt: new Date(),
-        sessionId: session.id,
-        markResponseReady: () => {
-          return undefined;
-        },
-      };
-    },
-  });
-  return { userId, orgId, session, task, runId };
-}
+type AssistantMessage = {
+  type: "assistant";
+  content: string;
+  at: string;
+};
+
+type VoiceChatCandidateTaskBody = {
+  id: string;
+  runId: string;
+  status: string;
+  startedAt: string | null;
+  assistantMessages: AssistantMessage[];
+};
 
 const context = testContext();
+
+async function seedSessionWithQueuedTask() {
+  const { userId } = await context.setupUser();
+  const { orgId } = await setupCandidateOrg(userId);
+  const { agentId } = await seedCandidateAgent(userId, orgId);
+  const session = await seedCandidateSession({
+    orgId,
+    userId,
+    agentId,
+  });
+
+  const taskResponse = await createTaskPOST(
+    postRequest(`/${session.id}/tasks`, {
+      prompt: "p",
+      callId: uniqueId("call"),
+    }),
+    paramsFor(session.id),
+  );
+  const taskBody = (await taskResponse.json()) as {
+    task: VoiceChatCandidateTaskBody;
+  };
+
+  await context.mocks.flushAfter();
+  mockAblyPublish.mockClear();
+
+  return {
+    userId,
+    orgId,
+    session,
+    task: taskBody.task,
+    runId: taskBody.task.runId,
+  };
+}
+
+async function getTaskFromRoute(
+  sessionId: string,
+  taskId: string,
+): Promise<VoiceChatCandidateTaskBody> {
+  const response = await listTasksGET(
+    getRequest(`/${sessionId}/tasks`),
+    paramsFor(sessionId),
+  );
+  const body = (await response.json()) as {
+    tasks: VoiceChatCandidateTaskBody[];
+  };
+  const task = body.tasks.find((candidate) => {
+    return candidate.id === taskId;
+  });
+  if (!task) {
+    throw new Error(`Expected task ${taskId} in voice-chat-candidate response`);
+  }
+  return task;
+}
 
 describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
   beforeEach(() => {
     mockAblyPublish.mockClear();
     context.setupMocks();
+    mockIsFeatureEnabled.mockReturnValue(true);
   });
 
   function signed(body: unknown) {
@@ -136,26 +181,22 @@ describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
   });
 
   it("flips queued→running on first event and appends assistant text", async () => {
-    const { userId, session, task, runId } = await seedSessionWithQueuedTask();
+    const { userId, orgId, session, task, runId } =
+      await seedSessionWithQueuedTask();
 
     const response = await POST(
       signed({
         runId,
         events: [buildAssistantEvent(1, "hello")],
-        context: { userId, orgId: session.orgId },
+        context: { userId, orgId },
       }),
     );
     expect(response.status).toBe(200);
 
-    // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-    const db = globalThis.services.db;
-    const [row] = await db
-      .select()
-      .from(voiceChatTasks)
-      .where(eq(voiceChatTasks.id, task.id));
-    expect(row!.status).toBe("running");
-    expect(row!.startedAt).not.toBeNull();
-    expect(row!.assistantMessages).toEqual([
+    const taskRow = await getTaskFromRoute(session.id, task.id);
+    expect(taskRow.status).toBe("running");
+    expect(taskRow.startedAt).not.toBeNull();
+    expect(taskRow.assistantMessages).toEqual([
       { type: "assistant", content: "hello", at: expect.any(String) },
     ]);
 
@@ -163,57 +204,49 @@ describe("POST /api/internal/event-consumers/voice-chat-candidate", () => {
   });
 
   it("keeps running status and appends on subsequent events", async () => {
-    const { userId, session, task, runId } = await seedSessionWithQueuedTask();
+    const { userId, orgId, session, task, runId } =
+      await seedSessionWithQueuedTask();
 
     await POST(
       signed({
         runId,
         events: [buildAssistantEvent(1, "one")],
-        context: { userId, orgId: session.orgId },
+        context: { userId, orgId },
       }),
     );
     await POST(
       signed({
         runId,
         events: [buildAssistantEvent(2, "two")],
-        context: { userId, orgId: session.orgId },
+        context: { userId, orgId },
       }),
     );
 
-    // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-    const db = globalThis.services.db;
-    const [row] = await db
-      .select()
-      .from(voiceChatTasks)
-      .where(eq(voiceChatTasks.id, task.id));
-    expect(row!.status).toBe("running");
-    expect(row!.assistantMessages).toHaveLength(2);
+    const taskRow = await getTaskFromRoute(session.id, task.id);
+    expect(taskRow.status).toBe("running");
+    expect(taskRow.assistantMessages).toHaveLength(2);
     expect(
-      row!.assistantMessages.map((e) => {
+      taskRow.assistantMessages.map((e) => {
         return e.content;
       }),
     ).toEqual(["one", "two"]);
   });
 
   it("tool_use-only event flips status but appends nothing", async () => {
-    const { userId, session, task, runId } = await seedSessionWithQueuedTask();
+    const { userId, orgId, session, task, runId } =
+      await seedSessionWithQueuedTask();
 
     const response = await POST(
       signed({
         runId,
         events: [buildToolUseEvent(1)],
-        context: { userId, orgId: session.orgId },
+        context: { userId, orgId },
       }),
     );
     expect(response.status).toBe(200);
 
-    // eslint-disable-next-line web/no-direct-db-in-tests -- verify DB side-effects directly
-    const db = globalThis.services.db;
-    const [row] = await db
-      .select()
-      .from(voiceChatTasks)
-      .where(eq(voiceChatTasks.id, task.id));
-    expect(row!.status).toBe("running");
-    expect(row!.assistantMessages).toEqual([]);
+    const taskRow = await getTaskFromRoute(session.id, task.id);
+    expect(taskRow.status).toBe("running");
+    expect(taskRow.assistantMessages).toEqual([]);
   });
 });
