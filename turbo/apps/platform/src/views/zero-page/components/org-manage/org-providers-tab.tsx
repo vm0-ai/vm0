@@ -4,6 +4,7 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconDotsVertical, IconPlus } from "@tabler/icons-react";
 import {
   MODEL_PROVIDER_TYPES,
+  type ModelProviderResponse,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -135,6 +136,50 @@ function DefaultProviderSection() {
   );
 }
 
+/**
+ * Optional fields that the chatgpt-oauth-token callback populates on a
+ * provider row (delivered in #11909). The platform reads them defensively
+ * so this PR ships before the API contract widens.
+ */
+type ChatgptProviderExtras = {
+  workspaceName?: string;
+  planType?: "plus" | "pro" | "business" | "edu" | "enterprise";
+};
+
+function capitalizePlan(plan: string): string {
+  return plan.charAt(0).toUpperCase() + plan.slice(1);
+}
+
+export function ProviderRowFooter({
+  provider,
+}: {
+  provider: ModelProviderResponse;
+}) {
+  if (provider.type === "chatgpt-oauth-token") {
+    const extras = provider as ModelProviderResponse &
+      Partial<ChatgptProviderExtras>;
+    if (extras.workspaceName) {
+      return (
+        <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+          <span className="truncate">{extras.workspaceName}</span>
+          {extras.planType && (
+            <span className="ml-1 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-foreground">
+              {capitalizePlan(extras.planType)}
+            </span>
+          )}
+        </span>
+      );
+    }
+  }
+  return (
+    <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+      Configured
+    </span>
+  );
+}
+
 function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
   const providersLoadable = useLoadable(orgConfiguredProviders$);
   const addDialogOpen = useGet(orgAddProviderDialogOpen$);
@@ -234,10 +279,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                       : undefined
                   }
                 >
-                  <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                    Configured
-                  </span>
+                  <ProviderRowFooter provider={p} />
                   {isAdmin && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
