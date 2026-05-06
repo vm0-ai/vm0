@@ -630,7 +630,11 @@ impl SnapshotPublishAttempt {
         let state = std::mem::replace(&mut self.state, SnapshotPublishState::Empty);
         match state {
             SnapshotPublishState::KeptCow(kept_cow) => {
-                cleanup_kept_cow_after_publish_cancellation(&kept_cow).await
+                let cleaned = cleanup_kept_cow_after_publish_cancellation(&kept_cow).await;
+                if !cleaned {
+                    self.state = SnapshotPublishState::KeptCow(kept_cow);
+                }
+                cleaned
             }
             SnapshotPublishState::Committed | SnapshotPublishState::Empty => true,
             other => {
@@ -2055,6 +2059,41 @@ mod tests {
 
         let provider = FirecrackerSnapshotProvider;
         assert!(!provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_cleanup_keeps_retry_state_when_temp_cleanup_fails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let cow_file = snapshot_attempt_cow_file(&output.work_dir(), "cleanup-retry");
+        let attempt_dir = cow_file.parent().expect("attempt dir");
+        tokio::fs::create_dir_all(&cow_file)
+            .await
+            .expect("create cow path as directory");
+        let bitmap_file = attempt_dir.join("cow.img.bitmap");
+        tokio::fs::write(&bitmap_file, b"bitmap")
+            .await
+            .expect("write bitmap");
+        let mut publish_attempt = SnapshotPublishAttempt::new_with_kept_cow_for_test(KeptCow {
+            cow_file,
+            bitmap_file,
+        });
+
+        assert!(
+            !publish_attempt.cleanup_after_cancellation().await,
+            "cleanup should report failure when a temp artifact cannot be removed"
+        );
+        assert!(
+            publish_attempt.has_cleanup_work(),
+            "failed temp cleanup must retain publish state for a later retry"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "failed cleanup must not publish marker"
+        );
     }
 
     #[tokio::test]
