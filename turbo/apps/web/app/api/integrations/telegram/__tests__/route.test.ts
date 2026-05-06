@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { GET } from "../route";
@@ -13,8 +13,10 @@ import {
 } from "../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
+import { reloadEnv } from "../../../../../src/env";
 
 const context = testContext();
+const OFFICIAL_BOT_TOKEN = "777000:official-token";
 
 function telegramRequest() {
   return new Request("http://localhost:3000/api/integrations/telegram");
@@ -39,6 +41,11 @@ function telegramGetMe(token: string, response: "valid" | "invalid") {
       },
     });
   });
+}
+
+function setupOfficialTelegramEnv() {
+  vi.stubEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
+  reloadEnv();
 }
 
 describe("/api/integrations/telegram", () => {
@@ -70,6 +77,25 @@ describe("/api/integrations/telegram", () => {
           kind: "official",
           isOwner: false,
           isConnected: false,
+        }),
+      ]);
+    });
+
+    it("includes the official bot avatar URL when the official token is configured", async () => {
+      setupOfficialTelegramEnv();
+      await context.setupUser();
+
+      const response = await GET(telegramRequest());
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.bots).toEqual([
+        expect.objectContaining({
+          id: OFFICIAL_TELEGRAM_BOT_ID,
+          kind: "official",
+          avatarUrl: expect.stringContaining(
+            `http://localhost:3000/api/integrations/telegram/${OFFICIAL_TELEGRAM_BOT_ID}/avatar?exp=`,
+          ),
         }),
       ]);
     });

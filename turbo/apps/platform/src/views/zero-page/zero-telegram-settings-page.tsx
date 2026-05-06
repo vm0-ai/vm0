@@ -117,7 +117,6 @@ interface DefaultAgentLabel {
 const TELEGRAM_COMMAND_CLASS =
   "cursor-pointer rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-accent active:bg-accent/80";
 const BOT_FATHER_HANDLE = "@BotFather";
-const TELEGRAM_ORG_DEFAULT_AGENT_VALUE = "__org_default__";
 
 function isOfficialTelegramBot(bot: TelegramBot): boolean {
   return bot.kind === "official" || bot.id === OFFICIAL_TELEGRAM_BOT_ID;
@@ -1295,10 +1294,7 @@ function TelegramBotAgentSelect({
   const pageSignal = useGet(pageSignal$);
   const [, updateBotAgent] = useLoadableSet(updateTelegramBotAgent$);
   const isOfficial = isOfficialTelegramBot(bot);
-  const selectedValue =
-    isOfficial && bot.official?.usesDefaultAgent
-      ? TELEGRAM_ORG_DEFAULT_AGENT_VALUE
-      : (bot.agent?.id ?? "");
+  const selectedValue = bot.agent?.id ?? "";
 
   return (
     <Select
@@ -1312,13 +1308,7 @@ function TelegramBotAgentSelect({
         await bestEffort(
           updateBotAgent(
             isOfficial
-              ? {
-                  botId: bot.id,
-                  selectedAgentId:
-                    nextAgentId === TELEGRAM_ORG_DEFAULT_AGENT_VALUE
-                      ? null
-                      : nextAgentId,
-                }
+              ? { botId: bot.id, selectedAgentId: nextAgentId }
               : { botId: bot.id, defaultAgentId: nextAgentId },
             pageSignal,
           ),
@@ -1333,13 +1323,6 @@ function TelegramBotAgentSelect({
         <SelectValue placeholder="Select agent" />
       </SelectTrigger>
       <SelectContent>
-        {isOfficial ? (
-          <SelectItem value={TELEGRAM_ORG_DEFAULT_AGENT_VALUE}>
-            {defaultAgent.displayName
-              ? `Workspace default (${defaultAgent.displayName})`
-              : "Workspace default"}
-          </SelectItem>
-        ) : null}
         {options.map((agent) => {
           return (
             <SelectItem key={agent.id} value={agent.id}>
@@ -1593,11 +1576,16 @@ function TelegramBotRow({
             </div>
             <TelegramStatusBadge bot={bot} />
           </div>
-          {bot.tokenStatus === "invalid" && !isOfficial ? (
+          {isOfficial ? (
+            <div className="mt-1 text-sm text-muted-foreground">
+              Official bot provided by VM0.
+            </div>
+          ) : bot.tokenStatus === "invalid" ? (
             <div className="mt-1 text-sm text-muted-foreground">
               Reinstall the bot with a fresh token from BotFather.
             </div>
-          ) : isOfficial && bot.official?.configured === false ? (
+          ) : null}
+          {isOfficial && bot.official?.configured === false ? (
             <div className="mt-1 text-sm text-muted-foreground">
               Official bot configuration is missing.
             </div>

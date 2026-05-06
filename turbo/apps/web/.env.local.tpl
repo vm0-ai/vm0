@@ -39,6 +39,11 @@ SLACK_CLIENT_SECRET=op://Development/slack/SLACK_CLIENT_SECRET
 SLACK_SIGNING_SECRET=op://Development/slack/SLACK_SIGNING_SECRET
 VM0_DEFAULT_AGENT=op://Development/vm0/VM0_DEFAULT_AGENT
 
+# Optional: Official Telegram Bot
+TELEGRAM_OFFICIAL_BOT_TOKEN=op://Development/telegram/TELEGRAM_OFFICIAL_BOT_TOKEN
+TELEGRAM_OFFICIAL_BOT_USERNAME=op://Development/telegram/TELEGRAM_OFFICIAL_BOT_USERNAME
+TELEGRAM_OFFICIAL_WEBHOOK_SECRET=op://Development/telegram/TELEGRAM_OFFICIAL_WEBHOOK_SECRET
+
 # Required: Claude Code Version URL
 CLAUDE_CODE_VERSION_URL=https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases/latest
 

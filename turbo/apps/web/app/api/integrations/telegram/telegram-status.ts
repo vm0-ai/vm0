@@ -291,7 +291,10 @@ export async function buildOfficialTelegramBot(params: {
     id: OFFICIAL_TELEGRAM_BOT_ID,
     kind: "official",
     username: config.botUsername,
-    avatarUrl: null,
+    avatarUrl:
+      config.botToken && config.botId
+        ? buildTelegramBotAvatarUrl(OFFICIAL_TELEGRAM_BOT_ID)
+        : null,
     agent: officialCompose.compose
       ? { id: officialCompose.compose.id, name: officialCompose.compose.name }
       : null,
