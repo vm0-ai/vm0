@@ -65,10 +65,12 @@ const MOBILE_TABS: readonly MobileTab[] = [
 
 // Each tab: icon + label, same outline icon in both states (we don't
 // shape-swap the icon between selected and unselected — the pill bg +
-// brand color carry the active state). The pill sits inside the glass
-// dock so it reads as a soft tinted lozenge over the blur.
+// brand color carry the active state). The pill sits inside a 6px-padded
+// glass dock; its corner radius (rounded-[18px]) is the dock's
+// rounded-3xl (24px) minus the 6px inset, so the inner and outer corners
+// stay concentric.
 const TAB_BASE =
-  "flex flex-1 flex-col items-center justify-center gap-1 mx-0.5 my-1 px-2 py-1.5 rounded-2xl text-[13px] leading-none no-underline transition-colors";
+  "flex flex-1 flex-col items-center justify-center gap-1 px-2 py-2 rounded-[18px] text-[13px] leading-none no-underline transition-colors";
 const TAB_ACTIVE = "bg-foreground/5 text-primary font-semibold";
 const TAB_INACTIVE = "text-muted-foreground font-medium";
 const ICON_SIZE = 24;
@@ -127,7 +129,7 @@ export function MobileBottomTabBar() {
       aria-label="Primary"
       data-testid="mobile-bottom-tab-bar"
     >
-      <div className="flex items-stretch rounded-3xl border border-border/60 bg-card/70 backdrop-blur-xl shadow-[0_4px_20px_-4px_rgb(0_0_0/0.06)]">
+      <div className="flex items-stretch gap-0.5 p-1.5 rounded-3xl border border-border/60 bg-card/70 backdrop-blur-xl shadow-[0_4px_20px_-4px_rgb(0_0_0/0.06)]">
         {MOBILE_TABS.map((tab) => {
           return (
             <MobileTabLink
