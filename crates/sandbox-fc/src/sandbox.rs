@@ -307,6 +307,9 @@ impl SandboxRuntimeHandles {
             balloon.abort();
         }
         if let Some(process) = self.process.take() {
+            // Ask the monitor to kill the process group before it reaps the
+            // child. This avoids signalling by a cached PID after the child
+            // could have exited and been reused by the OS.
             process.kill();
         }
     }
