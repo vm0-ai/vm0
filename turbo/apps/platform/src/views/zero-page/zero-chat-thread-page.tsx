@@ -26,7 +26,6 @@ import {
   IconArrowBarToUp,
   IconBrandGoogleDrive,
   IconDownload,
-  IconEye,
   IconFile,
   IconLink,
   IconLoader2,
@@ -71,14 +70,22 @@ import {
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import {
+  detach,
+  jsonParseOr,
+  Reason,
+  onDomEventFn,
+} from "../../signals/utils.ts";
 import { zeroClient$ } from "../../signals/api-client.ts";
 import {
   AttachmentLightbox,
+  CsvPreviewTable,
   downloadAttachmentUrl,
   FileAttachmentChip,
   getAttachmentRawUrl,
+  parseCsvRows,
   PreviewableFileAttachmentChip,
+  TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
 import {
   classifyChatAttachment,
@@ -90,6 +97,7 @@ import {
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
+  openDocumentLightbox$ as openAttachmentDocumentLightbox$,
   openImageLightbox$ as openAttachmentImageLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
@@ -506,6 +514,167 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
   }
 
   return <ArtifactFileIcon file={file} />;
+}
+
+type ArtifactTextPreviewKind = "markdown" | "text" | "json" | "csv";
+type ArtifactDocumentPreviewKind = ArtifactTextPreviewKind | "pdf";
+
+function getArtifactTextPreviewKind(
+  file: ChatThreadArtifactFile,
+): ArtifactTextPreviewKind | null {
+  const kind = classifyChatAttachment({
+    filename: file.filename,
+    url: file.url,
+    contentType: file.contentType,
+  });
+
+  if (
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv"
+  ) {
+    return kind;
+  }
+
+  if (/\.log$/i.test(file.filename)) {
+    return "text";
+  }
+
+  return null;
+}
+
+function formatArtifactTextPreview(
+  kind: Exclude<ArtifactTextPreviewKind, "markdown">,
+  text: string,
+): string {
+  if (kind === "json") {
+    const parsed = jsonParseOr<unknown>(text, null);
+    return parsed === null ? text : JSON.stringify(parsed, null, 2);
+  }
+  return text;
+}
+
+function getArtifactDocumentPreviewKind(
+  file: ChatThreadArtifactFile,
+): ArtifactDocumentPreviewKind | null {
+  const textKind = getArtifactTextPreviewKind(file);
+  if (textKind) {
+    return textKind;
+  }
+
+  const contentType = file.contentType.toLowerCase();
+  const filename = file.filename.toLowerCase();
+  if (contentType === "application/pdf" || filename.endsWith(".pdf")) {
+    return "pdf";
+  }
+
+  return null;
+}
+
+function ArtifactTextDocumentPreviewFrame({
+  file,
+  kind,
+}: {
+  file: ChatThreadArtifactFile;
+  kind: ArtifactTextPreviewKind;
+}) {
+  const pageSignal = useGet(pageSignal$);
+
+  return (
+    <TextPreviewLoader url={file.url} signal={pageSignal}>
+      {({ status, text }) => {
+        if (status === "loading") {
+          return (
+            <div className="flex h-full w-full items-center justify-center bg-muted/40 text-muted-foreground">
+              <IconLoader2 size={18} className="animate-spin" />
+            </div>
+          );
+        }
+
+        if (status === "error") {
+          return (
+            <div className="flex h-full w-full items-center justify-center bg-muted/40 px-6 text-center text-sm text-muted-foreground">
+              {kind === "markdown"
+                ? "Markdown"
+                : kind === "json"
+                  ? "JSON"
+                  : kind === "csv"
+                    ? "CSV"
+                    : "Text"}{" "}
+              preview unavailable.
+            </div>
+          );
+        }
+
+        if (kind === "csv") {
+          const rows = parseCsvRows(text);
+          if (rows.length === 0) {
+            return (
+              <div className="flex h-full w-full items-center justify-center bg-muted/40 px-6 text-center text-sm text-muted-foreground">
+                CSV preview unavailable.
+              </div>
+            );
+          }
+
+          return (
+            <div className="h-full w-full overflow-auto bg-background p-4">
+              <CsvPreviewTable rows={rows} />
+            </div>
+          );
+        }
+
+        if (kind !== "markdown") {
+          const display = formatArtifactTextPreview(kind, text);
+          return (
+            <div className="h-full w-full overflow-auto bg-background p-4">
+              <pre className="whitespace-pre-wrap break-words text-xs text-foreground">
+                {display.length > 16_000
+                  ? `${display.slice(0, 16_000)}\n\n…`
+                  : display}
+              </pre>
+            </div>
+          );
+        }
+
+        return (
+          <div className="h-full w-full overflow-auto bg-background p-4 text-sm">
+            <Markdown source={text} />
+          </div>
+        );
+      }}
+    </TextPreviewLoader>
+  );
+}
+
+function ArtifactPreviewOpenOverlay({
+  children,
+  filename,
+  onOpen,
+}: {
+  children: ReactNode;
+  filename: string;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="group/artifact-preview relative h-full w-full">
+      {children}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/artifact-preview:bg-black/30 group-hover/artifact-preview:opacity-100 group-focus-within/artifact-preview:bg-black/30 group-focus-within/artifact-preview:opacity-100">
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Open preview for ${filename}`}
+          className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-lg text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          <IconFile
+            size={24}
+            stroke={1.8}
+            className="drop-shadow transition-opacity"
+          />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 async function copyArtifactLinkToClipboard(
@@ -945,7 +1114,6 @@ type ChatImagePreviewButtonProps = {
   buttonClassName: string;
   imageClassName: string;
   onPreview: () => void;
-  overlayIcon?: "eye" | "photo";
   placeholderClassName: string;
   url: string;
 };
@@ -956,7 +1124,6 @@ function ChatImagePreviewButton({
   buttonClassName,
   imageClassName,
   onPreview,
-  overlayIcon = "photo",
   placeholderClassName,
   url,
 }: ChatImagePreviewButtonProps) {
@@ -1012,16 +1179,10 @@ function ChatImagePreviewButton({
         )}
       />
       <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100">
-        {overlayIcon === "eye" ? (
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
-            <IconEye size={18} stroke={1.8} />
-          </span>
-        ) : (
-          <IconPhoto
-            size={18}
-            className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
-          />
-        )}
+        <IconPhoto
+          size={18}
+          className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
+        />
       </span>
     </button>
   );
@@ -1029,6 +1190,7 @@ function ChatImagePreviewButton({
 
 function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
+  const openDocumentLightbox = useSet(openAttachmentDocumentLightbox$);
   const previewKind = getArtifactPreviewKind(file);
 
   if (previewKind === "image") {
@@ -1041,7 +1203,6 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
         onPreview={() => {
           openImageLightbox(file.url);
         }}
-        overlayIcon="eye"
         placeholderClassName="h-full w-full"
         url={file.url}
       />
@@ -1074,12 +1235,45 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   }
 
   if (previewKind === "document") {
+    const documentPreviewKind = getArtifactDocumentPreviewKind(file);
+    if (!documentPreviewKind) {
+      return (
+        <div className="flex h-full w-full items-center justify-center bg-muted/40">
+          <ArtifactFileIcon file={file} className="h-10 w-10" />
+        </div>
+      );
+    }
+
+    const openPreview = () => {
+      openDocumentLightbox({
+        kind: documentPreviewKind,
+        url: file.url,
+        filename: file.filename,
+      });
+    };
+
+    if (documentPreviewKind !== "pdf") {
+      return (
+        <ArtifactPreviewOpenOverlay
+          filename={file.filename}
+          onOpen={openPreview}
+        >
+          <ArtifactTextDocumentPreviewFrame
+            file={file}
+            kind={documentPreviewKind}
+          />
+        </ArtifactPreviewOpenOverlay>
+      );
+    }
+
     return (
-      <iframe
-        src={file.url}
-        title={`Preview ${file.filename}`}
-        className="h-full w-full bg-background"
-      />
+      <ArtifactPreviewOpenOverlay filename={file.filename} onOpen={openPreview}>
+        <iframe
+          src={file.url}
+          title={`Preview ${file.filename}`}
+          className="h-full w-full bg-background"
+        />
+      </ArtifactPreviewOpenOverlay>
     );
   }
 

@@ -909,7 +909,80 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(screen.getByText("Artifacts")).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Select data.csv"));
-    expect(screen.getByTitle("Preview data.csv")).toBeInTheDocument();
+    await waitFor(() => {
+      const table = screen.getByRole("table");
+      expect(within(table).getByText("label")).toBeInTheDocument();
+      expect(within(table).getByText("value")).toBeInTheDocument();
+      expect(within(table).getByText("alpha")).toBeInTheDocument();
+      expect(within(table).getByText("1")).toBeInTheDocument();
+    });
+  });
+
+  it("renders markdown artifacts through the text loader instead of an iframe", async () => {
+    const user = userEvent.setup();
+    let requestedUrl = "";
+    let requestedRange = "";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create markdown",
+          runId: "run-markdown-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      http.get("https://example.com/readme.md", ({ request }) => {
+        requestedUrl = request.url;
+        requestedRange = request.headers.get("Range") ?? "";
+        return HttpResponse.text("# 发布说明\n\n这里是中文内容");
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-markdown-artifact",
+              files: [
+                {
+                  id: "file-md",
+                  filename: "readme.md",
+                  contentType: "text/markdown",
+                  size: 1024,
+                  url: "https://example.com/readme.md",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("发布说明")).toBeInTheDocument();
+      expect(screen.getByText("这里是中文内容")).toBeInTheDocument();
+    });
+    expect(new URL(requestedUrl).searchParams.get("raw")).toBe("1");
+    expect(requestedRange).toBe("bytes=0-65535");
+    expect(
+      document.querySelector('iframe[title="Preview readme.md"]'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Open preview for readme.md"));
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(within(lightbox).getByText("发布说明")).toBeInTheDocument();
   });
 
   it("refreshes uploaded files from the artifacts Ably signal while the drawer is open", async () => {
