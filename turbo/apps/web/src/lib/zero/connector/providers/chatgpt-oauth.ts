@@ -46,6 +46,30 @@ export function isChatgptRefreshError(
   );
 }
 
+/**
+ * Typed error thrown when an OAuth exchange returns an account whose
+ * `chatgpt_plan_type` is `"free"`. ChatGPT free plans don't have access
+ * to the Codex backend; the calling route should surface a clear
+ * "upgrade required" message to the user rather than a generic error.
+ */
+interface ChatgptFreePlanError extends Error {
+  readonly name: "ChatgptFreePlanError";
+}
+
+function createChatgptFreePlanError(): ChatgptFreePlanError {
+  const err = new Error(
+    "ChatGPT free plan is not supported — upgrade to Plus, Pro, Business, Edu, or Enterprise",
+  );
+  err.name = "ChatgptFreePlanError";
+  return err as ChatgptFreePlanError;
+}
+
+export function isChatgptFreePlanError(
+  value: unknown,
+): value is ChatgptFreePlanError {
+  return value instanceof Error && value.name === "ChatgptFreePlanError";
+}
+
 interface ChatgptExchangeResult {
   accessToken: string;
   refreshToken: string;
@@ -229,9 +253,7 @@ export async function exchangeChatgptCode(
     throw new Error("ChatGPT id_token missing required auth claims");
   }
   if (auth.chatgpt_plan_type === "free") {
-    throw new Error(
-      "ChatGPT free plan is not supported — upgrade to Plus, Pro, Business, Edu, or Enterprise",
-    );
+    throw createChatgptFreePlanError();
   }
 
   const expiresIn =
