@@ -385,8 +385,18 @@ function threadKind(session: ChatThreadListItem): ThreadKind {
 // Three-state icon for the chat list avatar slot. The avatar is a 40px
 // circle with no ring; the kind controls the icon and (for drafts) a warm
 // amber tint that distinguishes "you have unfinished business here" from
-// the neutral chat / schedule states.
-function ThreadKindIcon({ kind }: { kind: ThreadKind }) {
+// the neutral chat / schedule states. Unread / running indicators are
+// rendered as overlays on top of this circle so the avatar's left edge
+// can sit flush with the pinned-agent strip above it.
+function ThreadKindIcon({
+  kind,
+  isUnread,
+  isRunning,
+}: {
+  kind: ThreadKind;
+  isUnread: boolean;
+  isRunning: boolean;
+}) {
   const Icon =
     kind === "draft"
       ? IconPencil
@@ -403,14 +413,30 @@ function ThreadKindIcon({ kind }: { kind: ThreadKind }) {
     <span
       aria-label={label}
       data-thread-kind={kind}
-      className={cn(
-        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
-        kind === "draft"
-          ? "bg-amber-100 text-amber-700"
-          : "bg-[hsl(var(--gray-200))] text-foreground/80",
-      )}
+      className="relative shrink-0"
     >
-      <Icon size={18} stroke={1.6} />
+      <span
+        className={cn(
+          "flex h-10 w-10 items-center justify-center rounded-full",
+          kind === "draft"
+            ? "bg-amber-100 text-amber-700"
+            : "bg-[hsl(var(--gray-200))] text-foreground/80",
+        )}
+      >
+        <Icon size={18} stroke={1.6} />
+      </span>
+      {isRunning && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-full bg-blue-500/30 animate-ping"
+        />
+      )}
+      {(isUnread || isRunning) && (
+        <span
+          aria-hidden
+          className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-background"
+        />
+      )}
     </span>
   );
 }
@@ -515,31 +541,18 @@ function ChatListItem({
           onSelect(session.id);
         }}
         className={cn(
-          "flex items-center gap-3 px-2 py-3 text-left transition-transform no-underline bg-background",
+          "flex items-center gap-3 py-3 text-left transition-transform no-underline bg-background",
           isOpen ? "-translate-x-20" : "translate-x-0",
           isSelected
             ? "text-accent-foreground"
             : "text-foreground",
         )}
       >
-        {/* Fixed-width gutter holds the unread / running indicator so
-            titles stay aligned across rows. Running threads get a soft
-            pulsing halo (animate-ping) on top of the static dot. */}
-        <span
-          aria-hidden={!isUnread && !isRunning}
-          aria-label={
-            isRunning ? "Running" : isUnread ? "Unread" : undefined
-          }
-          className="relative flex w-3 shrink-0 items-center justify-center"
-        >
-          {isRunning && (
-            <span className="absolute inline-flex h-[7px] w-[7px] rounded-full bg-blue-500 opacity-75 animate-ping" />
-          )}
-          {(isUnread || isRunning) && (
-            <span className="relative h-[7px] w-[7px] rounded-full bg-blue-500" />
-          )}
-        </span>
-        <ThreadKindIcon kind={kind} />
+        <ThreadKindIcon
+          kind={kind}
+          isUnread={isUnread}
+          isRunning={isRunning}
+        />
         <span className="min-w-0 flex-1 flex flex-col gap-0.5">
           <span
             className={cn(
