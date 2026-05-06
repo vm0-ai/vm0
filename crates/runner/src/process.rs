@@ -320,7 +320,7 @@ const PPID_CHAIN_MAX_DEPTH: usize = 16;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PpidChainWalk {
     FoundTarget,
-    ReachedInit,
+    ReachedBoundary,
     Unreadable,
     MaxDepth,
 }
@@ -343,7 +343,7 @@ where
             return PpidChainWalk::FoundTarget;
         }
         if ppid <= 1 {
-            return PpidChainWalk::ReachedInit;
+            return PpidChainWalk::ReachedBoundary;
         }
         current = ppid;
     }
@@ -353,7 +353,7 @@ where
 fn process_has_ancestor_from_walk(walk: PpidChainWalk) -> Option<bool> {
     match walk {
         PpidChainWalk::FoundTarget => Some(true),
-        PpidChainWalk::ReachedInit | PpidChainWalk::MaxDepth => Some(false),
+        PpidChainWalk::ReachedBoundary | PpidChainWalk::MaxDepth => Some(false),
         PpidChainWalk::Unreadable => None,
     }
 }
@@ -374,7 +374,7 @@ pub async fn process_has_ancestor(pid: u32, ancestor_pids: &[u32]) -> Option<boo
 fn is_orphan_from_walk(walk: PpidChainWalk) -> bool {
     match walk {
         PpidChainWalk::FoundTarget | PpidChainWalk::Unreadable | PpidChainWalk::MaxDepth => false,
-        PpidChainWalk::ReachedInit => true,
+        PpidChainWalk::ReachedBoundary => true,
     }
 }
 
@@ -384,7 +384,7 @@ fn is_orphan_from_walk(walk: PpidChainWalk) -> bool {
 /// `runner → sudo → ip netns exec → sudo -u → firecracker`, so checking
 /// only the immediate ppid is insufficient. This function walks up the
 /// process tree until it either finds a runner PID (not orphan) or reaches
-/// PID 1 / init (orphan).
+/// PID 1 / init or the PPid 0 boundary (orphan).
 ///
 /// Returns `false` (not orphan) when the ppid chain cannot be read, to
 /// avoid false positives.
@@ -699,7 +699,7 @@ mod tests {
     async fn ppid_chain_empty_targets_reaches_init() {
         let walk = walk_test_ppid_chain(10, &[], &[(10, Some(9)), (9, Some(1))]).await;
 
-        assert_eq!(walk, PpidChainWalk::ReachedInit);
+        assert_eq!(walk, PpidChainWalk::ReachedBoundary);
         assert_eq!(process_has_ancestor_from_walk(walk), Some(false));
         assert!(is_orphan_from_walk(walk));
     }
@@ -736,7 +736,7 @@ mod tests {
     async fn ppid_chain_reaches_pid_one_boundary() {
         let walk = walk_test_ppid_chain(10, &[99], &[(10, Some(9)), (9, Some(1))]).await;
 
-        assert_eq!(walk, PpidChainWalk::ReachedInit);
+        assert_eq!(walk, PpidChainWalk::ReachedBoundary);
         assert_eq!(process_has_ancestor_from_walk(walk), Some(false));
         assert!(is_orphan_from_walk(walk));
     }
@@ -745,7 +745,7 @@ mod tests {
     async fn ppid_chain_reaches_pid_zero_boundary() {
         let walk = walk_test_ppid_chain(10, &[99], &[(10, Some(9)), (9, Some(0))]).await;
 
-        assert_eq!(walk, PpidChainWalk::ReachedInit);
+        assert_eq!(walk, PpidChainWalk::ReachedBoundary);
         assert_eq!(process_has_ancestor_from_walk(walk), Some(false));
         assert!(is_orphan_from_walk(walk));
     }
