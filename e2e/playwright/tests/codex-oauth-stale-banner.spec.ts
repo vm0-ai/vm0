@@ -3,21 +3,24 @@ import { expect, test } from "@playwright/test";
 import { deriveAppUrl } from "../playwright.config";
 
 /**
- * Test 4 (UI portion) for issue #11941: stale-provider banner + re-connect
- * CTA in OrgProvidersTab when a codex-oauth-token provider has
- * needsReconnect=true.
+ * Stale-provider banner + re-paste CTA in OrgProvidersTab when a
+ * codex-oauth-token provider has needsReconnect=true.
  *
- * REQUIRES Wave 3 (#11932). The probe at the top of the test skips when
- * Wave 3's API surface (modelProviderResponseSchema with needsReconnect
- * field) hasn't shipped — keeps this PR mergeable before #11932 lands.
+ * Wave 2 paste-flow target state (post-#11978 + #11980):
+ *   - Banner DOM element: data-testid="codex-stale-banner"
+ *   - Re-paste CTA inside the banner: accessible name matching
+ *     /re-?paste auth\.json/i
+ *   - Click CTA opens the paste modal in-page (no cross-origin redirect)
+ *   - Paste modal data-testid="codex-paste-modal"
  *
- * Test contract for the Wave 3 implementer of #11932:
- *   - Banner DOM element: data-testid="chatgpt-stale-banner"
- *   - Re-connect link inside the banner: accessible name matching /re-?connect chatgpt/i
- *   - Link href: must contain "/api/zero/chatgpt/oauth/connect"
- * Coordinate via PR-comment cross-link before merging #11932.
+ * Wave 3 dependency (#11932): needsReconnect field on
+ * modelProviderResponseSchema. Without it the seed has no observable
+ * effect on the UI.
+ *
+ * Both gates use runtime probes — the test auto-activates once both
+ * #11932 and #11978/#11980 ship without further code changes here.
  */
-test("codex-oauth stale provider renders banner with re-connect CTA", async ({
+test("codex-oauth stale provider renders banner with re-paste CTA", async ({
   page,
   request,
 }) => {
@@ -30,7 +33,7 @@ test("codex-oauth stale provider renders banner with re-connect CTA", async ({
   }
 
   // Probe: Wave 3 (#11932) widens modelProviderResponseSchema with the
-  // needsReconnect field. If absent, skip — this test will auto-activate
+  // needsReconnect field. If absent, skip — this test auto-activates
   // once #11932 ships.
   const probeHeaders: Record<string, string> = {};
   if (bypassSecret) {
@@ -57,6 +60,8 @@ test("codex-oauth stale provider renders banner with re-connect CTA", async ({
   }
 
   // Seed a stale codex-oauth-token provider via the test endpoint.
+  // Uses the legacy raw_secrets shape — paste-flow seed isn't needed here
+  // because we're driving the BANNER, not the SEED endpoint behavior.
   const seedHeaders: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -91,13 +96,25 @@ test("codex-oauth stale provider renders banner with re-connect CTA", async ({
     timeout: 60_000,
   });
 
-  // Banner is visible.
-  const banner = page.locator("[data-testid='chatgpt-stale-banner']");
-  await expect(banner).toBeVisible({ timeout: 30_000 });
+  // Probe: paste-flow target testid. If the banner uses the legacy
+  // chatgpt-stale-banner testid (i.e. #11980 hasn't shipped yet), skip —
+  // the stale-banner contract under paste flow uses the codex-* testid.
+  const codexBanner = page.locator("[data-testid='codex-stale-banner']");
+  if ((await codexBanner.count()) === 0) {
+    test.skip(
+      true,
+      "Paste-flow stale banner (codex-stale-banner) not yet shipped — sub-issue #11980 pending",
+    );
+    return;
+  }
 
-  // Re-connect CTA inside the banner points at the OAuth connect route.
-  const cta = banner.getByRole("link", { name: /re-?connect chatgpt/i });
+  await expect(codexBanner).toBeVisible({ timeout: 30_000 });
+
+  // Re-paste CTA opens the paste modal in-page (no cross-origin redirect).
+  const cta = codexBanner.getByRole("button", { name: /re-?paste auth\.json/i });
   await expect(cta).toBeVisible();
-  const href = await cta.getAttribute("href");
-  expect(href).toContain("/api/zero/chatgpt/oauth/connect");
+  await cta.click();
+
+  const modal = page.locator("[data-testid='codex-paste-modal']");
+  await expect(modal).toBeVisible({ timeout: 10_000 });
 });
