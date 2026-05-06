@@ -308,24 +308,30 @@ describe("fetchNextPage$ cursor", () => {
     ];
 
     // 3 pages worth: page1 (50), page2 (50), page3 (20) → total 120
-    const page1 = Array.from({ length: 50 }, (_, i) => ({
-      id: `p1-${i}`,
-      role: "user" as const,
-      content: `page1 msg ${i}`,
-      createdAt: "2026-05-01T00:00:01Z",
-    }));
-    const page2 = Array.from({ length: 50 }, (_, i) => ({
-      id: `p2-${i}`,
-      role: "user" as const,
-      content: `page2 msg ${i}`,
-      createdAt: "2026-05-01T00:00:02Z",
-    }));
-    const page3 = Array.from({ length: 20 }, (_, i) => ({
-      id: `p3-${i}`,
-      role: "user" as const,
-      content: `page3 msg ${i}`,
-      createdAt: "2026-05-01T00:00:03Z",
-    }));
+    const page1 = Array.from({ length: 50 }, (_, i) => {
+      return {
+        id: `p1-${i}`,
+        role: "user" as const,
+        content: `page1 msg ${i}`,
+        createdAt: "2026-05-01T00:00:01Z",
+      };
+    });
+    const page2 = Array.from({ length: 50 }, (_, i) => {
+      return {
+        id: `p2-${i}`,
+        role: "user" as const,
+        content: `page2 msg ${i}`,
+        createdAt: "2026-05-01T00:00:02Z",
+      };
+    });
+    const page3 = Array.from({ length: 20 }, (_, i) => {
+      return {
+        id: `p3-${i}`,
+        role: "user" as const,
+        content: `page3 msg ${i}`,
+        createdAt: "2026-05-01T00:00:03Z",
+      };
+    });
 
     let callCount = 0;
 
@@ -406,7 +412,11 @@ describe("fetchNextPage$ cursor", () => {
 
     // Verify all messages appear in the grouped output
     const groups = await context.store.get(thread.groupedChatMessages$);
-    const allContent = groups.flatMap((g) => g.messages.map((m) => m.content));
+    const allContent = groups.flatMap((g) => {
+      return g.messages.map((m) => {
+        return m.content;
+      });
+    });
     expect(allContent).toContain("baseline");
     expect(allContent).toContain("page1 msg 0");
     expect(allContent).toContain("page1 msg 49");

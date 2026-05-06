@@ -27,13 +27,13 @@ describe("chat thread realtime catch-up", () => {
   it("drains all pending pages when fetching after a burst", async () => {
     const threadId = "catchup-thread";
 
-    const baselineMessages = Array.from({ length: 5 }, (_, i) =>
-      makeMsg(`base-${i}`, `Baseline ${i}`),
-    );
+    const baselineMessages = Array.from({ length: 5 }, (_, i) => {
+      return makeMsg(`base-${i}`, `Baseline ${i}`);
+    });
 
-    const burstMessages = Array.from({ length: 120 }, (_, i) =>
-      makeMsg(`burst-${i}`, `Burst ${i}`),
-    );
+    const burstMessages = Array.from({ length: 120 }, (_, i) => {
+      return makeMsg(`burst-${i}`, `Burst ${i}`);
+    });
 
     let listAfterCallCount = 0;
 
@@ -88,7 +88,7 @@ describe("chat thread realtime catch-up", () => {
       () => {
         expect(screen.getByText("Burst 119")).toBeInTheDocument();
       },
-      { timeout: 10_000 },
+      {},
     );
 
     // 120 messages → 3 pages (50 + 50 + 20). The last page has < 50 messages
