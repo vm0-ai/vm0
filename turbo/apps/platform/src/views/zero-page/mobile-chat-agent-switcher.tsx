@@ -52,7 +52,7 @@ export function MobileChatAgentSwitcher() {
           >
             <span
               className={cn(
-                "flex items-center justify-center rounded-full transition-colors",
+                "flex items-center justify-center rounded-xl transition-colors",
                 active
                   ? "h-[52px] w-[52px] bg-muted"
                   : "h-12 w-12 bg-transparent",
@@ -61,7 +61,7 @@ export function MobileChatAgentSwitcher() {
               <AvatarFromUrl
                 avatarUrl={agent.avatarUrl}
                 alt=""
-                className="block h-11 w-11 rounded-full object-cover object-top"
+                className="block h-11 w-11 rounded-xl object-cover object-top"
               />
             </span>
             <span
@@ -86,7 +86,7 @@ export function MobileChatAgentSwitcher() {
         data-testid="mobile-new-session-chip"
         className="flex flex-col items-center gap-1 shrink-0 snap-start text-[13px] font-medium"
       >
-        <span className="block h-12 w-12 rounded-full bg-muted/60 ring-1 ring-border flex items-center justify-center text-muted-foreground">
+        <span className="block h-12 w-12 rounded-xl bg-muted/60 ring-1 ring-border flex items-center justify-center text-muted-foreground">
           <IconPlus size={20} stroke={1.8} />
         </span>
         <span className="max-w-[64px] truncate text-muted-foreground">
