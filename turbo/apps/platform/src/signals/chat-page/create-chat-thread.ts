@@ -12,6 +12,7 @@ import { setAblyLoop$ } from "../realtime.ts";
 import { createScrollSignals } from "../auto-scroll.ts";
 import {
   createDraftSignals,
+  createRestoredAttachment,
   type DraftSignals,
 } from "../zero-page/chat-draft.ts";
 import {
@@ -159,6 +160,7 @@ export interface ChatThreadSignals {
     [string, ModelSelectionRequest | null, AbortSignal]
   >;
   queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
+  recallPendingMessage$: Command<Promise<void>, [AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -1013,41 +1015,64 @@ function createRunTracking({
     dataSource,
   });
 
-  const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
-    L.debug("subscribeChatThread$ start", { threadId });
+  const subscribeChatThread$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      L.debug("subscribeChatThread$ start", { threadId });
 
-    // Catch up any messages that arrived since the initial page was loaded.
-    // On IDB cache hit this fetches messages that arrived after the cache
-    // was written; on cache miss fetchNextPage$ hits reachedEnd (no-op).
-    await set(fetchNextPage$, signal);
+      // Catch up any messages that arrived since the initial page was loaded.
+      // On IDB cache hit this fetches messages that arrived after the cache
+      // was written; on cache miss fetchNextPage$ hits reachedEnd (no-op).
+      await set(fetchNextPage$, signal);
 
-    const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
-      await set(fetchNextPage$, sig);
-      await set(markThreadReadIfNeeded$, sig);
-      animationFrame(
-        () => {
-          set(autoScroll$);
-        },
-        { signal },
-      );
-      return false;
-    });
+      // Track pending-message presence across reloads so we can re-scroll once
+      // the server consumes a queued message: `onRunChanged$` reloads the
+      // thread, the composer's queued card unmounts, and the message-list area
+      // grows. Re-running autoScroll on the next frame keeps the viewport
+      // pinned to the bottom across that layout shift.
+      const initialThread = await get(threadData$);
+      signal.throwIfAborted();
+      let previouslyHadPending = Boolean(initialThread?.pendingMessage);
 
-    const onRunChanged$ = command(({ set }) => {
-      set(reloadThread$);
-      return false;
-    });
+      const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
+        await set(fetchNextPage$, sig);
+        await set(markThreadReadIfNeeded$, sig);
+        animationFrame(
+          () => {
+            set(autoScroll$);
+          },
+          { signal },
+        );
+        return false;
+      });
 
-    await Promise.all([
-      set(markThreadReadIfNeeded$, signal),
-      set(
-        dataSource.subscribeRealtime$,
-        { threadId, handlers: { onMessageCreated$, onRunChanged$ } },
-        signal,
-      ),
-    ]);
-    signal.throwIfAborted();
-  });
+      const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
+        set(reloadThread$);
+        const refreshed = await get(threadData$);
+        sig.throwIfAborted();
+        const hasPending = Boolean(refreshed?.pendingMessage);
+        if (previouslyHadPending && !hasPending) {
+          animationFrame(
+            () => {
+              set(autoScroll$);
+            },
+            { signal },
+          );
+        }
+        previouslyHadPending = hasPending;
+        return false;
+      });
+
+      await Promise.all([
+        set(markThreadReadIfNeeded$, signal),
+        set(
+          dataSource.subscribeRealtime$,
+          { threadId, handlers: { onMessageCreated$, onRunChanged$ } },
+          signal,
+        ),
+      ]);
+      signal.throwIfAborted();
+    },
+  );
 
   const cancelRun$ = command(async ({ get, set }, signal: AbortSignal) => {
     const thread = await get(threadData$);
@@ -1206,6 +1231,7 @@ interface QueueMessageDeps {
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
   reloadThread$: Command<void, []>;
+  scrollToBottom$: Command<void, []>;
   dataSource: ChatThreadDataSource;
 }
 
@@ -1218,6 +1244,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
     cancelDraftSync$,
     flushDraftClear$,
     reloadThread$,
+    scrollToBottom$,
     dataSource,
   } = deps;
   return command(async ({ get, set }, prompt: string, signal: AbortSignal) => {
@@ -1270,16 +1297,55 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
     set(reloadThread$);
     set(reloadChatThreads$);
+    // Scroll to bottom so the freshly-appended queued message is visible —
+    // mirrors the optimistic-scroll the user gets from `sendMessage$`.
+    animationFrame(
+      () => {
+        set(scrollToBottom$);
+      },
+      { signal },
+    );
     L.debug("queueMessage$ done", { threadId });
   });
 }
 
-interface MessageCommandsDeps extends SendMessageDeps, QueueMessageDeps {}
+interface RecallMessageDeps {
+  threadId: string;
+  draft: DraftSignals;
+  cancelDraftSync$: Command<void, []>;
+  reloadThread$: Command<void, []>;
+  dataSource: ChatThreadDataSource;
+}
+
+function createRecallPendingMessage(deps: RecallMessageDeps) {
+  const { threadId, draft, cancelDraftSync$, reloadThread$, dataSource } = deps;
+  return command(async ({ set }, signal: AbortSignal) => {
+    L.debug("recallPendingMessage$ start", { threadId });
+    set(cancelDraftSync$);
+    const result = await set(
+      dataSource.recallPendingMessage$,
+      { threadId },
+      signal,
+    );
+    signal.throwIfAborted();
+    const restoredAttachments = (result.draftAttachments ?? []).map(
+      createRestoredAttachment,
+    );
+    set(draft.seed$, result.draftContent ?? "", restoredAttachments);
+    set(reloadThread$);
+    set(reloadChatThreads$);
+    L.debug("recallPendingMessage$ done", { threadId });
+  });
+}
+
+interface MessageCommandsDeps
+  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
 
 function createMessageCommands(deps: MessageCommandsDeps) {
   return {
     sendMessage$: createSendMessage(deps),
     queueMessage$: createQueueMessage(deps),
+    recallPendingMessage$: createRecallPendingMessage(deps),
   };
 }
 
@@ -1401,18 +1467,19 @@ export function createChatThreadSignals(
     dataSource,
   });
 
-  const { sendMessage$, queueMessage$ } = createMessageCommands({
-    threadId,
-    threadData$,
-    modelSelection$,
-    draft,
-    cancelDraftSync$,
-    flushDraftClear$,
-    insertOptimisticMessage$,
-    scrollToBottom$,
-    reloadThread$,
-    dataSource,
-  });
+  const { sendMessage$, queueMessage$, recallPendingMessage$ } =
+    createMessageCommands({
+      threadId,
+      threadData$,
+      modelSelection$,
+      draft,
+      cancelDraftSync$,
+      flushDraftClear$,
+      insertOptimisticMessage$,
+      scrollToBottom$,
+      reloadThread$,
+      dataSource,
+    });
 
   const { setInputRef$, focusInput$ } = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
@@ -1435,6 +1502,7 @@ export function createChatThreadSignals(
     setModelSelection$,
     sendMessage$,
     queueMessage$,
+    recallPendingMessage$,
     cancelRun$,
     setScrollContainer$,
     autoScroll$,

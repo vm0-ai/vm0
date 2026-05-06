@@ -7,6 +7,7 @@ import type { ChatThread } from "../agent-chat.ts";
 import type {
   AppendPendingMessageArgs,
   ChatThreadDataSource,
+  RecallPendingMessageResult,
 } from "./chat-thread-data-source.ts";
 
 const localPatchDraft$ = command((): Promise<void> => {
@@ -26,6 +27,12 @@ const localAppendPendingMessage$ = command(
       createdAt: now,
       updatedAt: now,
     });
+  },
+);
+
+const localRecallPendingMessage$ = command(
+  (): Promise<RecallPendingMessageResult> => {
+    return Promise.resolve({ draftContent: null, draftAttachments: null });
   },
 );
 
@@ -79,6 +86,7 @@ export function createLocalChatThreadDataSource(input: {
     initialPage$,
     patchDraft$: localPatchDraft$,
     appendPendingMessage$: localAppendPendingMessage$,
+    recallPendingMessage$: localRecallPendingMessage$,
     listMessagesAfter$: localListMessagesAfter$,
     listMessagesBefore$: localListMessagesBefore$,
     cancelRuns$,

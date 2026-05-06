@@ -8,7 +8,7 @@ import type { ChatThread } from "../agent-chat.ts";
 
 export interface ChatThreadRealtimeHandlers {
   onMessageCreated$: Command<Promise<boolean>, [AbortSignal]>;
-  onRunChanged$: Command<boolean, []>;
+  onRunChanged$: Command<Promise<boolean>, [AbortSignal]>;
 }
 
 export interface InitialPage {
@@ -26,6 +26,15 @@ export interface AppendPendingMessageArgs {
   threadId: string;
   content: string | undefined;
   attachments: PersistedAttachment[] | undefined;
+}
+
+export interface RecallPendingMessageArgs {
+  threadId: string;
+}
+
+export interface RecallPendingMessageResult {
+  draftContent: string | null;
+  draftAttachments: PersistedAttachment[] | null;
 }
 
 export interface ListMessagesAfterArgs {
@@ -61,6 +70,10 @@ export interface ChatThreadDataSource {
   appendPendingMessage$: Command<
     Promise<PendingMessage>,
     [AppendPendingMessageArgs, AbortSignal]
+  >;
+  recallPendingMessage$: Command<
+    Promise<RecallPendingMessageResult>,
+    [RecallPendingMessageArgs, AbortSignal]
   >;
   listMessagesAfter$: Command<
     Promise<{ messages: PagedChatMessage[]; reachedEnd: boolean }>,

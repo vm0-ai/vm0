@@ -217,7 +217,7 @@ describe("chat thread pending message routes", () => {
       [200],
     );
 
-    expect(second.body.pendingMessage.content).toBe("first\n\nsecond");
+    expect(second.body.pendingMessage.content).toBe("first\nsecond");
     expect(second.body.pendingMessage.attachments).toStrictEqual([
       attachment("first"),
       attachment("second"),

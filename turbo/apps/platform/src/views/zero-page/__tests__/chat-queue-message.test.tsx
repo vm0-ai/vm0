@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -71,13 +72,78 @@ describe("chat pending message queue", () => {
     await user.keyboard("{Enter}");
 
     await waitFor(() => {
-      expect(
-        screen.getByText((_content, element) => {
-          return element?.textContent === "first pending\n\nsecond pending";
-        }),
-      ).toBeInTheDocument();
+      const queued = screen.getByLabelText("Queued message");
+      expect(queued).toHaveTextContent("first pending");
+      expect(queued).toHaveTextContent("second pending");
     });
     expect(appendedContents).toStrictEqual(["first pending", "second pending"]);
+  });
+
+  it("recalls multiple queued messages joined by a single newline", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle({});
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    let textarea = await startActiveRun(user);
+    await fill(textarea, "first pending");
+    await user.keyboard("{Enter}");
+
+    textarea = await getActiveRunTextarea();
+    await fill(textarea, "second pending");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      const queued = screen.getByLabelText("Queued message");
+      expect(queued).toHaveTextContent("first pending");
+      expect(queued).toHaveTextContent("second pending");
+    });
+
+    await user.click(screen.getByLabelText("Recall queued message"));
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    });
+    textarea = await getActiveRunTextarea();
+    expect(textarea.value).toBe("first pending\nsecond pending");
+  });
+
+  it("disables the recall button and shows a spinner while the request is in flight", async () => {
+    const user = userEvent.setup({ delay: null });
+    const gate = createDeferredPromise<void>(context.signal);
+    mockChatLifecycle({ recallGate: gate.promise });
+
+    detachedSetupPage({
+      context,
+      path: CHAT_PATH,
+      featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+    });
+
+    const textarea = await startActiveRun(user);
+    await fill(textarea, "draft to recall");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Recall queued message"));
+
+    await waitFor(() => {
+      const button = screen.getByLabelText("Recall queued message");
+      expect(button).toBeDisabled();
+      expect(button.querySelector(".animate-spin")).not.toBeNull();
+    });
+
+    gate.resolve();
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+    });
   });
 
   it("does not queue keyboard sends while the feature switch is disabled", async () => {

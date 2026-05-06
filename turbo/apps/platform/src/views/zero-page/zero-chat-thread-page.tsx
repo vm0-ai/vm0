@@ -1926,6 +1926,9 @@ function ChatThreadComposer({
   const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const [recallLoadable, recallPendingMessage] = useLoadableSet(
+    thread.recallPendingMessage$,
+  );
   const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
@@ -1982,6 +1985,10 @@ function ChatThreadComposer({
     detach(queueMessage(text, rootSignal), Reason.DomCallback);
   };
 
+  const handleRecallPendingMessage = () => {
+    detach(recallPendingMessage(rootSignal), Reason.DomCallback);
+  };
+
   return (
     <footer
       data-chat-composer
@@ -2000,6 +2007,8 @@ function ChatThreadComposer({
             sending={sending}
             queueWhileSending={queueWhileSending}
             pendingMessage={threadData?.pendingMessage ?? null}
+            onRecallPendingMessage={handleRecallPendingMessage}
+            recallPendingMessageLoading={recallLoadable.state === "loading"}
             onCancel={
               allFinishedResolved
                 ? () => {

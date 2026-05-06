@@ -14,5 +14,21 @@ export const setupChatThreadInitScroll$ = command(
       },
       { signal },
     );
+
+    // When the thread has a queued (pending) message attached, the queued-
+    // message card renders below the message list and grows the scrollable
+    // content after `groupedChatMessages$` resolves. Re-scroll on the next
+    // frame so the user lands at the bottom — same shape as the grouped-
+    // message scroll above, but gated on `pendingMessage` being present.
+    const threadData = await get(thread.threadData$);
+    signal.throwIfAborted();
+    if (threadData?.pendingMessage) {
+      animationFrame(
+        () => {
+          set(thread.scrollToBottom$);
+        },
+        { signal },
+      );
+    }
   },
 );

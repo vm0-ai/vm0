@@ -267,6 +267,12 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve(createEmptyPendingMessage());
         },
       ),
+      recallPendingMessage$: command(() => {
+        return Promise.resolve({
+          draftContent: null,
+          draftAttachments: null,
+        });
+      }),
       listMessagesAfter$: command((_, args) => {
         capturedSinceId = args.sinceId;
         return Promise.resolve({ messages: [], reachedEnd: true });
@@ -388,6 +394,12 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve(createEmptyPendingMessage());
         },
       ),
+      recallPendingMessage$: command(() => {
+        return Promise.resolve({
+          draftContent: null,
+          draftAttachments: null,
+        });
+      }),
       listMessagesAfter$: command((_ctx, _args) => {
         callCount++;
         const pages = [page1, page2, page3];

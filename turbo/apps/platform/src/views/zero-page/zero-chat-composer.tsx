@@ -10,6 +10,7 @@ import {
 } from "ccstate-react";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
+  IconArrowBackUp,
   IconArrowUp,
   IconFile,
   IconLoader2,
@@ -95,6 +96,7 @@ import {
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
+import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
@@ -158,6 +160,10 @@ interface ZeroChatComposerProps {
   sending?: boolean;
   queueWhileSending?: boolean;
   pendingMessage?: PendingMessage | null;
+  /** Recall the queued pending message back into the draft. */
+  onRecallPendingMessage?: () => void;
+  /** True while the recall request is in flight — shows a spinner and disables the button. */
+  recallPendingMessageLoading?: boolean;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
   displayName: string;
@@ -846,8 +852,12 @@ function hasPendingMessageContent(
 
 function PendingMessagePreview({
   pendingMessage,
+  onRecall,
+  recallLoading,
 }: {
   pendingMessage: PendingMessage;
+  onRecall?: () => void;
+  recallLoading?: boolean;
 }) {
   const content = pendingMessage.content?.trim() ?? "";
   const attachments = pendingMessage.attachments ?? [];
@@ -856,14 +866,32 @@ function PendingMessagePreview({
       className="border-b border-border/50 bg-muted/30 px-4 py-3"
       aria-label="Queued message"
     >
-      <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-        <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-        Queued
+      <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+          Queued
+        </div>
+        {onRecall && (
+          <button
+            type="button"
+            onClick={onRecall}
+            disabled={recallLoading}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            aria-label="Recall queued message"
+          >
+            {recallLoading ? (
+              <IconLoader2 size={13} stroke={1.75} className="animate-spin" />
+            ) : (
+              <IconArrowBackUp size={13} stroke={1.75} />
+            )}
+            Recall
+          </button>
+        )}
       </div>
       {content && (
-        <p className="line-clamp-3 whitespace-pre-wrap text-sm leading-5 text-foreground">
-          {content}
-        </p>
+        <div className="max-h-[100px] overflow-y-auto text-sm leading-5 text-foreground [overflow-wrap:anywhere]">
+          <Markdown source={content.replace(/\n/g, "  \n")} />
+        </div>
       )}
       {attachments.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -920,6 +948,8 @@ export function ZeroChatComposer({
   sending,
   queueWhileSending = false,
   pendingMessage = null,
+  onRecallPendingMessage,
+  recallPendingMessageLoading,
   onCancel,
   displayName,
   className,
@@ -1290,7 +1320,11 @@ export function ZeroChatComposer({
         <CardContent className="p-0">
           <div className="flex flex-col">
             {hasPendingMessage && (
-              <PendingMessagePreview pendingMessage={pendingMessage} />
+              <PendingMessagePreview
+                pendingMessage={pendingMessage}
+                onRecall={onRecallPendingMessage}
+                recallLoading={recallPendingMessageLoading}
+              />
             )}
             {visibleAttachments.length > 0 && (
               <AttachmentChips

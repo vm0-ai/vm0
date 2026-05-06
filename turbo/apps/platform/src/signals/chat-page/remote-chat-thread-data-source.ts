@@ -4,6 +4,7 @@ import {
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   chatThreadPendingMessageAppendContract,
+  chatThreadPendingMessageRecallContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept } from "../../lib/accept.ts";
@@ -20,6 +21,8 @@ import type {
   ListMessagesBeforeArgs,
   MarkReadArgs,
   PatchDraftArgs,
+  RecallPendingMessageArgs,
+  RecallPendingMessageResult,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
 
@@ -66,6 +69,30 @@ const appendPendingMessage$ = command(
     );
     signal.throwIfAborted();
     return result.body.pendingMessage;
+  },
+);
+
+const recallPendingMessage$ = command(
+  async (
+    { get },
+    { threadId }: RecallPendingMessageArgs,
+    signal: AbortSignal,
+  ): Promise<RecallPendingMessageResult> => {
+    const client = get(zeroClient$)(chatThreadPendingMessageRecallContract, {
+      apiBase: "api",
+    });
+    const result = await accept(
+      client.recall({
+        params: { id: threadId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return {
+      draftContent: result.body.draftContent,
+      draftAttachments: result.body.draftAttachments,
+    };
   },
 );
 
@@ -263,6 +290,7 @@ export function createRemoteChatThreadDataSource(
     initialPage$,
     patchDraft$,
     appendPendingMessage$,
+    recallPendingMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
     cancelRuns$,

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
@@ -10,6 +12,8 @@ import {
   chatThreadMessagesContract,
   chatThreadByIdContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
+import { hasSubscription, triggerAblyEvent } from "../../../mocks/ably.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -512,6 +516,231 @@ describe("zero chat thread page - scrolls before hiding skeleton", () => {
       expect(container).not.toBeNull();
       expect(container!.style.visibility).toBe("visible");
       expect(scrollContainer!.scrollTop).toBe(800);
+    } finally {
+      observer.disconnect();
+    }
+  });
+});
+
+// Helper: install a MutationObserver that patches the scroll container's
+// scrollHeight to a non-zero value as soon as it mounts. Returns the observer
+// so the caller can disconnect it after the relevant assertions.
+function patchScrollHeightOnMount(scrollHeight: number): MutationObserver {
+  const observer = new MutationObserver(() => {
+    const el = document.querySelector<HTMLElement>("[data-scroll-container]");
+    if (!el) {
+      return;
+    }
+    Object.defineProperty(el, "scrollHeight", {
+      get: () => {
+        return scrollHeight;
+      },
+      configurable: true,
+    });
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  return observer;
+}
+
+// CHAT-SCROLL-010: appending a queued message must auto-scroll to the bottom.
+// The queued-message card renders below the message list, so when the user
+// queues another message during an active run the new card should be visible
+// without requiring a manual scroll. `queueMessage$` schedules an animation
+// frame that sets scrollTop to scrollHeight after the data source append
+// resolves — same shape as the optimistic-scroll in `sendMessage$`.
+describe("zero chat thread page - queueMessage$ scrolls to bottom on append", () => {
+  it("scrollTop lands at scrollHeight after the queued message is appended (CHAT-SCROLL-010)", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-queue-scroll";
+    mockChatLifecycle({ threadId });
+
+    const observer = patchScrollHeightOnMount(900);
+
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      // Start an active run so the composer enters queue-message mode.
+      const composer = await waitFor(() => {
+        return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+      });
+      await fill(composer, "start the active run");
+      await user.keyboard("{Enter}");
+
+      // Wait for the active-run composer placeholder to show, then queue
+      // another message — `queueMessage$` should fire an autoScroll after the
+      // pending-message append succeeds.
+      const queueComposer = await waitFor(() => {
+        return screen.getByPlaceholderText(
+          /Type your next message/,
+        ) as HTMLTextAreaElement;
+      });
+      await fill(queueComposer, "queued while running");
+      await user.keyboard("{Enter}");
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+      });
+
+      const scrollContainer = document.querySelector<HTMLElement>(
+        "[data-scroll-container]",
+      );
+      expect(scrollContainer).not.toBeNull();
+      await waitFor(() => {
+        expect(scrollContainer!.scrollTop).toBe(scrollContainer!.scrollHeight);
+      });
+    } finally {
+      observer.disconnect();
+    }
+  });
+});
+
+// CHAT-SCROLL-012: when the server consumes the queue (the previous run
+// finishes and the queued message becomes a real user message), the queued-
+// message card unmounts and the message-list area grows. `subscribeChatThread
+// $`'s `onRunChanged$` callback tracks pending-message presence across
+// reloads; when it transitions from non-null to null, it schedules an
+// animationFrame that re-runs `autoScroll$` so the viewport stays pinned.
+describe("zero chat thread page - autoscroll when queued message is consumed", () => {
+  it("scrolls to bottom after onRunChanged$ clears the pending message (CHAT-SCROLL-012)", async () => {
+    const threadId = "thread-queue-consume";
+    const ctrl = mockChatLifecycle({
+      threadId,
+      historyMessages: [
+        {
+          role: "user",
+          content: "First user turn",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Working on it",
+          runId: "run-active",
+          status: "running",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      pendingMessage: {
+        content: "queued in flight",
+        attachments: null,
+        createdAt: "2026-03-10T00:00:02Z",
+        updatedAt: "2026-03-10T00:00:02Z",
+      },
+    });
+
+    const observer = patchScrollHeightOnMount(1500);
+
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      // Wait for the queued card and the run-update subscription. The
+      // subscription must exist before we publish the simulated event,
+      // otherwise the callback never fires.
+      await waitFor(() => {
+        expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+        expect(
+          hasSubscription(`chatThreadRunUpdated:${threadId}`),
+        ).toBeTruthy();
+      });
+
+      const scrollContainer = document.querySelector<HTMLElement>(
+        "[data-scroll-container]",
+      );
+      expect(scrollContainer).not.toBeNull();
+
+      // Bump the container's scrollHeight to a larger value so the post-clear
+      // autoScroll has somewhere new to land. If we kept the same scrollHeight
+      // the assertion would still pass after the initial scroll — making the
+      // test indistinguishable from "no second scroll fired."
+      Object.defineProperty(scrollContainer!, "scrollHeight", {
+        get: () => {
+          return 2400;
+        },
+        configurable: true,
+      });
+      // Park the viewport off the bottom so we can prove autoScroll re-snaps.
+      scrollContainer!.scrollTop = 0;
+
+      // Server-side consume: drop the queued pending message, then publish
+      // the run-updated event so onRunChanged$ reloads the thread, sees the
+      // pending → null transition, and schedules the autoScroll.
+      ctrl.clearPendingMessage();
+      triggerAblyEvent(`chatThreadRunUpdated:${threadId}`);
+
+      await waitFor(() => {
+        expect(
+          screen.queryByLabelText("Queued message"),
+        ).not.toBeInTheDocument();
+        expect(scrollContainer!.scrollTop).toBe(scrollContainer!.scrollHeight);
+      });
+    } finally {
+      observer.disconnect();
+    }
+  });
+});
+
+// CHAT-SCROLL-011: opening a thread that already has a queued message must
+// scroll past the queued-message card on initial paint. `setupChatThreadInit
+// Scroll$` awaits `groupedChatMessages$`, then — when `threadData$.pendingMess
+// age` is set — schedules a second `animationFrame` that snaps scrollTop to
+// scrollHeight after the queued-message card renders below the message list.
+describe("zero chat thread page - opening a thread with a queued message", () => {
+  it("scrolls past the queued-message card on initial paint when pendingMessage is set (CHAT-SCROLL-011)", async () => {
+    const threadId = "thread-queue-open";
+    mockChatLifecycle({
+      threadId,
+      historyMessages: [
+        {
+          role: "user",
+          content: "Hi while waiting",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "Working on it",
+          runId: "run-active",
+          status: "running",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      pendingMessage: {
+        content: "queued before reload",
+        attachments: null,
+        createdAt: "2026-03-10T00:00:02Z",
+        updatedAt: "2026-03-10T00:00:02Z",
+      },
+    });
+
+    const observer = patchScrollHeightOnMount(1200);
+
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${threadId}`,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      // Wait for the queued-message card to render — this is the row that
+      // grows the scrollable content past the message list and is the reason
+      // we need a second `scrollToBottom$` after the first one.
+      await waitFor(() => {
+        expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+      });
+
+      const scrollContainer = document.querySelector<HTMLElement>(
+        "[data-scroll-container]",
+      );
+      expect(scrollContainer).not.toBeNull();
+      await waitFor(() => {
+        expect(scrollContainer!.scrollTop).toBe(scrollContainer!.scrollHeight);
+      });
     } finally {
       observer.disconnect();
     }

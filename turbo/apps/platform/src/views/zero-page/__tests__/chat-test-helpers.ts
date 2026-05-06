@@ -13,6 +13,7 @@ import {
   chatThreadMessagesContract,
   chatMessagesContract,
   chatThreadPendingMessageAppendContract,
+  chatThreadPendingMessageRecallContract,
   type PendingMessage,
   type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -173,6 +174,12 @@ interface MockLifecycleControl {
   completeRun: (content?: string) => void;
   failRun: (error: string) => void;
   cancelRun: () => void;
+  /**
+   * Drop the queued pending message — simulates the server consuming the
+   * queue when the previous run finishes. The next chatThreadByIdContract.get
+   * will respond with `pendingMessage: null`.
+   */
+  clearPendingMessage: () => void;
 }
 
 export function mockChatLifecycle(options?: {
@@ -213,6 +220,12 @@ export function mockChatLifecycle(options?: {
     content?: string;
     attachments?: PersistedAttachment[];
   }) => void;
+  onPendingMessageRecall?: () => void;
+  /**
+   * Promise the recall handler awaits before responding. Lets a test observe
+   * the in-flight loading state before letting the request complete.
+   */
+  recallGate?: Promise<void>;
   onRunCreate?: () => void;
 }): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -374,7 +387,7 @@ export function mockChatLifecycle(options?: {
           body.content === undefined
             ? (pendingMessage?.content ?? null)
             : pendingMessage?.content
-              ? `${pendingMessage.content}\n\n${body.content}`
+              ? `${pendingMessage.content}\n${body.content}`
               : body.content;
         const nextAttachments = [
           ...(pendingMessage?.attachments ?? []),
@@ -387,6 +400,28 @@ export function mockChatLifecycle(options?: {
           updatedAt: now,
         };
         return respond(200, { pendingMessage });
+      },
+    ),
+    mockApi(
+      chatThreadPendingMessageRecallContract.recall,
+      async ({ respond }) => {
+        if (options?.recallGate) {
+          await options.recallGate;
+        }
+        if (!pendingMessage) {
+          return respond(404, {
+            error: { message: "Pending message not found", code: "NOT_FOUND" },
+          });
+        }
+        const draftContent = pendingMessage.content;
+        const draftAttachments = pendingMessage.attachments;
+        pendingMessage = null;
+        options?.onPendingMessageRecall?.();
+        return respond(200, {
+          draftContent,
+          draftAttachments,
+          pendingMessage: null,
+        });
       },
     ),
     mockApi(chatThreadsContract.list, ({ respond }) => {
@@ -515,6 +550,9 @@ export function mockChatLifecycle(options?: {
       assistantVersion++;
       updateChatRun(threadId);
       createChatMessage(threadId);
+    },
+    clearPendingMessage: () => {
+      pendingMessage = null;
     },
   };
 }

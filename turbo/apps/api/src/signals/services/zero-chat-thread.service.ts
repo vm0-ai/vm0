@@ -276,7 +276,7 @@ function appendPendingText(
   if (currentContent === null || currentContent === "") {
     return nextContent;
   }
-  return `${currentContent}\n\n${nextContent}`;
+  return `${currentContent}\n${nextContent}`;
 }
 
 export const appendZeroChatThreadPendingMessage$ = command(
