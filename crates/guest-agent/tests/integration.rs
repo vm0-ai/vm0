@@ -82,6 +82,30 @@ async fn post_json_success_json_response() {
 }
 
 #[tokio::test]
+async fn for_current_env_uses_enabled_client_when_api_token_is_set()
+-> Result<(), Box<dyn std::error::Error>> {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/test/for-current-env")
+            .header("Authorization", "Bearer test-token-abc123");
+        then.status(200).json_body(json!({"status": "ok"}));
+    });
+
+    let url = format!("{}/test/for-current-env", server.base_url());
+    let result = guest_agent::http::HttpClient::for_current_env()?
+        .post_json(&url, &json!({}), 1)
+        .await?;
+
+    mock.assert_calls_async(1).await;
+    assert_eq!(result.unwrap()["status"], "ok");
+    mock.delete_async().await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn post_json_success_empty_response() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
