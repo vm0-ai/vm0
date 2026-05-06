@@ -6,6 +6,8 @@ import { POST as setDefaultPOST } from "../[type]/default/route";
 import {
   createTestRequest,
   setTestModelProviderNeedsReconnect,
+  findTestConnectorSecret,
+  findTestModelProviderTokenState,
   ORG_SENTINEL_USER_ID,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
@@ -482,6 +484,264 @@ describe("Org-level model provider routes", () => {
       expect(stale).toBeDefined();
       expect(stale?.needsReconnect).toBe(true);
       expect(stale?.lastRefreshErrorCode).toBe("refresh_token_expired");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // codex-oauth-token auth_json paste flow
+  // ---------------------------------------------------------------------------
+
+  describe("codex-oauth-token auth_json paste flow", () => {
+    function base64UrlEncode(input: string): string {
+      return Buffer.from(input, "utf-8")
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    }
+
+    function makeJwt(payload: Record<string, unknown>): string {
+      const header = base64UrlEncode(
+        JSON.stringify({ alg: "RS256", typ: "JWT" }),
+      );
+      const body = base64UrlEncode(JSON.stringify(payload));
+      return `${header}.${body}.fake-signature`;
+    }
+
+    function makeIdToken(opts: {
+      accountId: string;
+      planType: string;
+      workspaceName?: string;
+      exp?: number;
+    }): string {
+      const auth: Record<string, unknown> = {
+        chatgpt_account_id: opts.accountId,
+        chatgpt_plan_type: opts.planType,
+      };
+      if (opts.workspaceName !== undefined) {
+        auth.organization = { title: opts.workspaceName };
+      }
+      return makeJwt({
+        "https://api.openai.com/auth": auth,
+        exp: opts.exp ?? Math.floor(Date.now() / 1000) + 3600,
+      });
+    }
+
+    function makeAuthJson(overrides?: {
+      accessToken?: string;
+      refreshToken?: string;
+      idToken?: string;
+      planType?: string;
+    }): string {
+      const accessExp = Math.floor(Date.now() / 1000) + 7200;
+      return JSON.stringify({
+        OPENAI_API_KEY: null,
+        tokens: {
+          access_token: overrides?.accessToken ?? makeJwt({ exp: accessExp }),
+          refresh_token:
+            overrides?.refreshToken ?? "rt_synthetic_test_high_entropy",
+          account_id: "ws_acct_plain",
+          id_token:
+            overrides?.idToken ??
+            makeIdToken({
+              accountId: "ws_acct_from_id_token",
+              planType: overrides?.planType ?? "plus",
+              workspaceName: "Acme Corp",
+            }),
+        },
+      });
+    }
+
+    async function pasteAuthJson(rawJson: string): Promise<Response> {
+      const request = createTestRequest(upsertUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: rawJson },
+        }),
+      });
+      return POST(request);
+    }
+
+    it("happy path: paste valid auth.json persists 4 derived secrets and metadata", async () => {
+      const response = await pasteAuthJson(makeAuthJson());
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.provider.type).toBe("codex-oauth-token");
+      expect(data.provider.authMethod).toBe("oauth");
+      expect(data.provider.workspaceName).toBe("Acme Corp");
+      expect(data.provider.planType).toBe("plus");
+      expect(data.provider.needsReconnect).toBe(false);
+
+      // The four derived CHATGPT_* fields are persisted
+      const access = await findTestConnectorSecret(
+        user.orgId,
+        "CHATGPT_ACCESS_TOKEN",
+        "model-provider",
+      );
+      const refresh = await findTestConnectorSecret(
+        user.orgId,
+        "CHATGPT_REFRESH_TOKEN",
+        "model-provider",
+      );
+      const accountId = await findTestConnectorSecret(
+        user.orgId,
+        "CHATGPT_ACCOUNT_ID",
+        "model-provider",
+      );
+      const idToken = await findTestConnectorSecret(
+        user.orgId,
+        "CHATGPT_ID_TOKEN",
+        "model-provider",
+      );
+      expect(access).toBeTypeOf("string");
+      expect(refresh).toBe("rt_synthetic_test_high_entropy");
+      // accountId comes from id_token claim, NOT tokens.account_id
+      expect(accountId).toBe("ws_acct_from_id_token");
+      expect(accountId).not.toBe("ws_acct_plain");
+      expect(idToken).toBeTypeOf("string");
+
+      // Metadata persisted on the row
+      const state = await findTestModelProviderTokenState(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "codex-oauth-token",
+      );
+      expect(state).not.toBeNull();
+      expect(state!.tokenExpiresAt).toBeInstanceOf(Date);
+      expect(state!.tokenExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+      expect(state!.workspaceName).toBe("Acme Corp");
+      expect(state!.planType).toBe("plus");
+      expect(state!.needsReconnect).toBe(false);
+      expect(state!.lastRefreshErrorCode).toBeNull();
+    });
+
+    it("never persists the raw CODEX_AUTH_JSON blob", async () => {
+      const response = await pasteAuthJson(makeAuthJson());
+      expect(response.status).toBe(201);
+
+      // Defense-in-depth: the raw blob must not appear under the wire-shape key
+      const rawUpper = await findTestConnectorSecret(
+        user.orgId,
+        "CODEX_AUTH_JSON",
+        "model-provider",
+      );
+      const rawLower = await findTestConnectorSecret(
+        user.orgId,
+        "codex_auth_json",
+        "model-provider",
+      );
+      expect(rawUpper).toBeUndefined();
+      expect(rawLower).toBeUndefined();
+    });
+
+    it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID on malformed JSON", async () => {
+      const response = await pasteAuthJson("{ not json");
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("CODEX_AUTH_JSON_SHAPE_INVALID");
+    });
+
+    it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID when tokens.refresh_token is missing", async () => {
+      const incomplete = JSON.stringify({
+        tokens: {
+          access_token: makeJwt({ exp: Date.now() }),
+          // refresh_token omitted
+          account_id: "ws_acct",
+          id_token: makeIdToken({ accountId: "ws_acct", planType: "plus" }),
+        },
+      });
+      const response = await pasteAuthJson(incomplete);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("CODEX_AUTH_JSON_SHAPE_INVALID");
+    });
+
+    it("returns 400 CODEX_FREE_PLAN_REJECTED for free-plan accounts", async () => {
+      const response = await pasteAuthJson(makeAuthJson({ planType: "free" }));
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("CODEX_FREE_PLAN_REJECTED");
+    });
+
+    it("returns 400 BAD_REQUEST when CODEX_AUTH_JSON is missing from secrets", async () => {
+      const request = createTestRequest(upsertUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: {},
+        }),
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("re-paste atomically clears needsReconnect and lastRefreshErrorCode", async () => {
+      // First paste — provider becomes healthy
+      await pasteAuthJson(makeAuthJson());
+
+      // Pretend the firewall refresh pipeline marked it stale
+      await setTestModelProviderNeedsReconnect(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "codex-oauth-token",
+        true,
+        "refresh_token_expired",
+      );
+
+      const beforeReset = await findTestModelProviderTokenState(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "codex-oauth-token",
+      );
+      expect(beforeReset?.needsReconnect).toBe(true);
+      expect(beforeReset?.lastRefreshErrorCode).toBe("refresh_token_expired");
+
+      // User re-pastes a fresh auth.json
+      const newAccess = makeJwt({
+        exp: Math.floor(Date.now() / 1000) + 7200,
+        sub: "fresh",
+      });
+      const response = await pasteAuthJson(
+        makeAuthJson({ accessToken: newAccess, refreshToken: "rt_fresh" }),
+      );
+      expect(response.status).toBe(200);
+
+      const afterReset = await findTestModelProviderTokenState(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "codex-oauth-token",
+      );
+      expect(afterReset?.needsReconnect).toBe(false);
+      expect(afterReset?.lastRefreshErrorCode).toBeNull();
+
+      // The new refresh token replaced the old one
+      const refresh = await findTestConnectorSecret(
+        user.orgId,
+        "CHATGPT_REFRESH_TOKEN",
+        "model-provider",
+      );
+      expect(refresh).toBe("rt_fresh");
+    });
+
+    it("returns 404 when codexOauthProvider feature switch is disabled", async () => {
+      // Default mock returns true; flip to false for this single call only.
+      mockIsFeatureEnabled.mockImplementationOnce(
+        (key: { name?: string } | string) => {
+          const keyName = typeof key === "string" ? key : key.name;
+          return keyName !== "codexOauthProvider";
+        },
+      );
+      const response = await pasteAuthJson(makeAuthJson());
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error.code).toBe("NOT_FOUND");
     });
   });
 });
