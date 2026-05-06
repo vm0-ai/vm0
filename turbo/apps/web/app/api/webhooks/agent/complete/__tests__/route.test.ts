@@ -100,6 +100,11 @@ describe("POST /api/webhooks/agent/complete", () => {
     );
     const checkpointResponse = await checkpointWebhook(checkpointRequest);
     expect(checkpointResponse.status).toBe(200);
+    return checkpointResponse.json() as Promise<{
+      checkpointId: string;
+      agentSessionId: string;
+      conversationId: string;
+    }>;
   }
 
   describe("Authentication", () => {
@@ -558,8 +563,8 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
     });
 
-    it("should keep failed run result empty even when a recovery checkpoint exists", async () => {
-      await createCheckpoint();
+    it("should store failed run result when a recovery checkpoint exists", async () => {
+      const checkpoint = await createCheckpoint();
 
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
@@ -581,7 +586,14 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(200);
       const run = await findTestRunRecord(testRunId);
       expect(run!.status).toBe("failed");
-      expect(run!.result).toBeNull();
+      expect(run!.result).toMatchObject({
+        checkpointId: checkpoint.checkpointId,
+        agentSessionId: checkpoint.agentSessionId,
+        conversationId: checkpoint.conversationId,
+        artifact: {
+          "test-artifact": "v1",
+        },
+      });
     });
   });
 
@@ -768,6 +780,56 @@ describe("POST /api/webhooks/agent/complete", () => {
       // Verify the callback received the error with report-error link
       expect(capturedBody).toBeDefined();
       expect(capturedBody!.error).toContain(`/runs/${testRunId}/report-error`);
+    });
+
+    it("should dispatch callback with result for failed recoverable run", async () => {
+      const checkpoint = await createCheckpoint();
+      let capturedBody:
+        | { result?: { checkpointId?: string; agentSessionId?: string } }
+        | undefined;
+
+      server.use(
+        http.post(
+          "http://localhost/api/internal/callbacks/test",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as {
+              result?: { checkpointId?: string; agentSessionId?: string };
+            };
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
+
+      await createTestCallback({
+        runId: testRunId,
+        url: "http://localhost/api/internal/callbacks/test",
+        payload: { testKey: "testValue" },
+      });
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      expect(capturedBody?.result).toMatchObject({
+        checkpointId: checkpoint.checkpointId,
+        agentSessionId: checkpoint.agentSessionId,
+      });
     });
 
     it("should register an after() callback for dispatch", async () => {

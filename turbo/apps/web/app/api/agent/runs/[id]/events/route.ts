@@ -15,10 +15,11 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../../src/lib/shared/axiom";
-import type {
-  RunStatus,
-  RunResult,
-  RunState,
+import {
+  isCheckpointResumableRunStatus,
+  type RunResult,
+  type RunStatus,
+  type RunState,
 } from "../../../../../../src/lib/infra/run/types";
 import { extractFrameworkFromCompose } from "../../../../../../src/lib/infra/framework/framework-config";
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
@@ -114,8 +115,12 @@ const router = tsr.router(runEventsContract, {
       status: runWithCompose.status as RunStatus,
     };
 
-    // Include result if completed
-    if (runWithCompose.status === "completed" && runWithCompose.result) {
+    // Include checkpoint metadata for any terminal run that saved it. Failed
+    // recoverable runs keep status/error, but still expose the resume result.
+    if (
+      runWithCompose.result &&
+      isCheckpointResumableRunStatus(runWithCompose.status)
+    ) {
       runState.result = runWithCompose.result as RunResult;
     }
 

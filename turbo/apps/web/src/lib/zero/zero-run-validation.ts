@@ -5,11 +5,17 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "@vm0/db/schema/agent-compose";
-import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
+import {
+  notFound,
+  unauthorized,
+  badRequest,
+  conflict,
+} from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
 import type { AgentComposeSnapshot } from "../infra/checkpoint/types";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
 import { getAgentSessionWithConversation } from "../infra/agent-session";
+import { isCheckpointResumableRunStatus } from "../infra/run/types";
 
 const log = logger("service:zero-run-validation");
 
@@ -52,13 +58,6 @@ async function validateCheckpoint(
 }> {
   log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
-  const resumableStatuses = new Set([
-    "completed",
-    "failed",
-    "timeout",
-    "cancelled",
-  ]);
-
   // Load checkpoint with associated run in a single query
   const [result] = await globalThis.services.db
     .select({
@@ -86,8 +85,8 @@ async function validateCheckpoint(
     throw unauthorized("Checkpoint does not belong to authenticated user");
   }
 
-  if (!result.runStatus || !resumableStatuses.has(result.runStatus)) {
-    throw badRequest(
+  if (!isCheckpointResumableRunStatus(result.runStatus)) {
+    throw conflict(
       `Checkpoint is not ready to resume while run is ${result.runStatus ?? "missing"}`,
     );
   }

@@ -419,15 +419,11 @@ async fn create_checkpoint_impl(mode: CheckpointMode) -> Result<(), AgentError> 
         record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
         Ok(())
     } else {
-        log_error!(LOG_TAG, "Checkpoint API returned invalid response");
-        record_sandbox_op(
+        Err(fail(
+            mode,
             "checkpoint_api_call",
-            api_start.elapsed(),
-            false,
-            Some("Invalid response"),
-        );
-        Err(AgentError::Checkpoint(
-            "Invalid checkpoint API response".into(),
+            api_start,
+            "Invalid checkpoint API response",
         ))
     }
 }

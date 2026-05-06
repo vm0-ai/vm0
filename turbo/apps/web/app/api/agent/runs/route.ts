@@ -113,7 +113,7 @@ function handleCreateRunError(error: unknown) {
     const message =
       error.code === "UNAUTHORIZED" ? "Resource not found" : error.message;
     return {
-      status: status as 400 | 401 | 402 | 403 | 404 | 422 | 429 | 503,
+      status: status as 400 | 401 | 402 | 403 | 404 | 409 | 422 | 429 | 503,
       body: { error: { message, code } },
     };
   }

@@ -58,17 +58,23 @@ export async function transitionRunStatus(
 export async function dispatchTerminalSideEffects(
   runId: string,
   status: RunStatus,
-  error?: string,
-  drain?: () => Promise<void>,
+  options: {
+    error?: string;
+    result?: RunResult;
+    drain?: () => Promise<void>;
+  } = {},
 ): Promise<void> {
   const callbackStatus = status === "completed" ? "completed" : "failed";
-  await dispatchCallbacks(runId, callbackStatus, undefined, error).catch(
-    (err) => {
-      return log.error("Failed to dispatch callbacks", { err });
-    },
-  );
-  if (drain) {
-    await drain().catch((err) => {
+  await dispatchCallbacks(
+    runId,
+    callbackStatus,
+    options.result,
+    options.error,
+  ).catch((err) => {
+    return log.error("Failed to dispatch callbacks", { err });
+  });
+  if (options.drain) {
+    await options.drain().catch((err) => {
       return log.error("Failed to drain org queue", { err });
     });
   }

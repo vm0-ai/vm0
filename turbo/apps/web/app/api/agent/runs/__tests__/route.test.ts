@@ -13,6 +13,7 @@ import {
   createTestOrgMultiAuthModelProvider,
   createTestConnector,
   createTestRun,
+  createTestCheckpoint,
   getTestRun,
   completeTestRun,
   insertOrgCacheEntry,
@@ -1195,6 +1196,33 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
 
       expect(response.status).toBe(404);
       expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("should return 409 when checkpoint run is still in flight", async () => {
+      const { runId } = await createTestRun(
+        testComposeId,
+        "In-flight checkpoint",
+      );
+      const { checkpointId } = await createTestCheckpoint(user.userId, runId);
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            checkpointId,
+            prompt: "Resume in-flight checkpoint",
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(data.error.code).toBe("CONFLICT");
+      expect(data.error.message).toContain("not ready to resume");
     });
 
     it("should return 404 when checkpoint belongs to different user (security)", async () => {

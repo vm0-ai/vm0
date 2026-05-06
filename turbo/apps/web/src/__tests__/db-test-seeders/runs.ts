@@ -921,3 +921,22 @@ export async function setTestCheckpointArtifactSnapshots(
     WHERE id = ${checkpointId}::uuid
   `);
 }
+
+/**
+ * Overwrite `checkpoints.agent_compose_snapshot` JSONB for a checkpoint.
+ *
+ * @why-db-direct Resolver auth-order tests need to seed malformed checkpoint
+ * internals and verify unauthorized callers do not observe shape errors.
+ */
+export async function setTestCheckpointAgentComposeSnapshot(
+  checkpointId: string,
+  snapshot: unknown,
+): Promise<void> {
+  initServices();
+  const payload = JSON.stringify(snapshot);
+  await globalThis.services.db.execute(sql`
+    UPDATE checkpoints
+    SET agent_compose_snapshot = ${payload}::jsonb
+    WHERE id = ${checkpointId}::uuid
+  `);
+}

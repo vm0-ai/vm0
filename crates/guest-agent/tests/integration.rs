@@ -54,6 +54,21 @@ fn cleanup_session_checkpoint_files() {
     let _ = std::fs::remove_file(guest_agent::paths::checkpoint_error_file());
 }
 
+struct SessionCheckpointFilesGuard;
+
+impl SessionCheckpointFilesGuard {
+    fn new() -> Self {
+        cleanup_session_checkpoint_files();
+        Self
+    }
+}
+
+impl Drop for SessionCheckpointFilesGuard {
+    fn drop(&mut self) {
+        cleanup_session_checkpoint_files();
+    }
+}
+
 // =========================================================================
 // Group 1: post_json core
 // =========================================================================
@@ -944,7 +959,7 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    cleanup_session_checkpoint_files();
+    let _files_guard = SessionCheckpointFilesGuard::new();
     let dir = tempfile::tempdir().unwrap();
     let history_path = dir.path().join("history.jsonl");
     let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
@@ -992,7 +1007,6 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
     prepare_mock.delete_async().await;
     upload_mock.delete_async().await;
     checkpoint_mock.delete_async().await;
-    cleanup_session_checkpoint_files();
 }
 
 #[tokio::test]
@@ -1000,7 +1014,7 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    cleanup_session_checkpoint_files();
+    let _files_guard = SessionCheckpointFilesGuard::new();
     let dir = tempfile::tempdir().unwrap();
     let history_path = dir.path().join("partial.jsonl");
     std::fs::write(
@@ -1036,7 +1050,6 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
     checkpoint_mock.assert_calls_async(0).await;
     prepare_mock.delete_async().await;
     checkpoint_mock.delete_async().await;
-    cleanup_session_checkpoint_files();
 }
 
 #[tokio::test]
@@ -1044,7 +1057,7 @@ async fn recovery_checkpoint_skips_when_session_id_is_missing() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    cleanup_session_checkpoint_files();
+    let _files_guard = SessionCheckpointFilesGuard::new();
 
     let prepare_mock = server.mock(|when, then| {
         when.method(POST)
@@ -1067,7 +1080,6 @@ async fn recovery_checkpoint_skips_when_session_id_is_missing() {
     checkpoint_mock.assert_calls_async(0).await;
     prepare_mock.delete_async().await;
     checkpoint_mock.delete_async().await;
-    cleanup_session_checkpoint_files();
 }
 
 #[tokio::test]
@@ -1075,7 +1087,7 @@ async fn recovery_checkpoint_skips_when_history_marker_is_missing() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    cleanup_session_checkpoint_files();
+    let _files_guard = SessionCheckpointFilesGuard::new();
     std::fs::write(guest_agent::paths::session_id_file(), "missing-history").unwrap();
 
     let prepare_mock = server.mock(|when, then| {
@@ -1099,7 +1111,6 @@ async fn recovery_checkpoint_skips_when_history_marker_is_missing() {
     checkpoint_mock.assert_calls_async(0).await;
     prepare_mock.delete_async().await;
     checkpoint_mock.delete_async().await;
-    cleanup_session_checkpoint_files();
 }
 
 // =========================================================================

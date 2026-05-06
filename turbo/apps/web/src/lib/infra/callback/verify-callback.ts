@@ -19,7 +19,7 @@ interface VerifiedCallback<P = unknown> {
   callbackId?: string;
   runId: string;
   status: "completed" | "failed" | "progress";
-  result?: Record<string, unknown>;
+  result?: unknown;
   error?: string;
   payload: P;
 }
@@ -53,7 +53,7 @@ export async function verifyCallback<P = unknown>(
     callbackId?: string;
     runId?: string;
     status: "completed" | "failed" | "progress";
-    result?: Record<string, unknown>;
+    result?: unknown;
     error?: string;
     payload: P;
   };

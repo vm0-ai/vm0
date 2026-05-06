@@ -6,6 +6,9 @@ import {
   createTestCompose,
   createTestRun,
   completeTestRun,
+  createTestCheckpoint,
+  failTestRun,
+  setTestRunResult,
   createTestCliToken,
   deleteTestCliToken,
 } from "../../../../../../../src/__tests__/api-test-helpers";
@@ -438,6 +441,28 @@ describe("GET /api/agent/runs/:id/events", () => {
       expect(data.run.error).toBeUndefined();
     });
 
+    it("should not expose result while run is still in-flight", async () => {
+      await setTestRunResult(testRunId, {
+        checkpointId: "checkpoint-dirty",
+        agentSessionId: "session-dirty",
+        conversationId: "conversation-dirty",
+      });
+
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.run).toBeDefined();
+      expect(data.run.status).toBe("pending");
+      expect(data.run.result).toBeUndefined();
+    });
+
     it("should return run state with result for completed run", async () => {
       // Complete the run via webhook helpers
       await completeTestRun(user.userId, testRunId);
@@ -454,6 +479,27 @@ describe("GET /api/agent/runs/:id/events", () => {
       const data = await response.json();
       expect(data.run).toBeDefined();
       expect(data.run.status).toBe("completed");
+      expect(data.run.result).toBeDefined();
+      expect(data.run.result.checkpointId).toBeDefined();
+    });
+
+    it("should return run state with result for failed recoverable run", async () => {
+      await createTestCheckpoint(user.userId, testRunId);
+      await failTestRun(user.userId, testRunId);
+
+      context.mocks.axiom.queryAxiom.mockResolvedValue([]);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/agent/runs/${testRunId}/events`,
+      );
+
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.run).toBeDefined();
+      expect(data.run.status).toBe("failed");
+      expect(data.run.error).toBeDefined();
       expect(data.run.result).toBeDefined();
       expect(data.run.result.checkpointId).toBeDefined();
     });

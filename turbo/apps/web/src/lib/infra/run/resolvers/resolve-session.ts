@@ -13,14 +13,9 @@ import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
 import type { VolumeVersionsSnapshot } from "../../checkpoint/types";
 import { decodeToContextArtifacts } from "../../checkpoint/decode-artifact-snapshots";
+import { isCheckpointResumableRunStatus } from "../types";
 
 const log = logger("run:resolve-session");
-
-const FAILED_RECOVERABLE_RUN_STATUSES = new Set([
-  "failed",
-  "timeout",
-  "cancelled",
-]);
 
 /**
  * Resolve session to ConversationResolution
@@ -66,7 +61,7 @@ export async function resolveSession(
   // Run independent operations in parallel:
   // - Compose → version chain (needs session.agentComposeId)
   // - Session history from R2 (needs session.conversation)
-  // - Last run vars and optional failed-recovery checkpoint snapshot
+  // - Last run vars and optional terminal checkpoint snapshot
   //   (needs conversation.runId)
   const [composeResult, sessionHistory, runSnapshotResult] = await Promise.all([
     // Compose → version (serial chain)
@@ -107,9 +102,9 @@ export async function resolveSession(
       conversation.cliAgentSessionHistory,
     ),
     // Last run vars as fallback for continue operations. When the linked
-    // conversation belongs to a terminal failed run with a checkpoint, the
-    // checkpoint snapshot is the only durable workspace state left after VM
-    // teardown, so session continue must restore from it.
+    // conversation belongs to a terminal run with a checkpoint, the checkpoint
+    // snapshot is the durable workspace state left after VM teardown, so
+    // session continue restores artifacts and compose volumes from it.
     globalThis.services.db
       .select({
         vars: agentRuns.vars,
@@ -128,27 +123,19 @@ export async function resolveSession(
   const [lastRun] = runSnapshotResult;
   const lastRunVars =
     (lastRun?.vars as Record<string, string> | null) ?? undefined;
-  const failedRecoveryCheckpoint = Boolean(
-    lastRun?.checkpointId &&
-    FAILED_RECOVERABLE_RUN_STATUSES.has(lastRun.status),
+  const terminalCheckpoint = Boolean(
+    lastRun?.checkpointId && isCheckpointResumableRunStatus(lastRun.status),
   );
-  const checkpointVolumeVersions = failedRecoveryCheckpoint
+  const checkpointVolumeVersions = terminalCheckpoint
     ? (lastRun?.volumeVersionsSnapshot as VolumeVersionsSnapshot | null)
     : null;
-  const checkpointAdditionalVolumes =
-    checkpointVolumeVersions?.additionalVolumes?.map((vol) => {
-      return {
-        name: vol.name,
-        version: vol.versionId,
-        mountPath: vol.mountPath,
-      };
-    });
-  const checkpointArtifacts = failedRecoveryCheckpoint
+  const checkpointArtifacts = terminalCheckpoint
     ? lastRun?.artifactSnapshots
     : null;
-  const artifacts = failedRecoveryCheckpoint
-    ? decodeToContextArtifacts(checkpointArtifacts)
-    : session.artifacts;
+  const artifacts =
+    terminalCheckpoint && checkpointArtifacts != null
+      ? decodeToContextArtifacts(checkpointArtifacts)
+      : session.artifacts;
   const workingDir = extractWorkingDir(version.content);
 
   return {
@@ -163,7 +150,6 @@ export async function resolveSession(
     artifacts,
     vars: lastRunVars,
     volumeVersions: checkpointVolumeVersions?.versions,
-    additionalVolumes: checkpointAdditionalVolumes,
     previousRunId: conversation.runId,
     sessionFramework: conversation.cliAgentType,
   };

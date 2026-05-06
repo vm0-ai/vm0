@@ -37,10 +37,15 @@ function scheduleTerminalSideEffects(
   status: "completed" | "failed",
   orgId: string,
   errorMsg?: string,
+  result?: RunResult,
 ): void {
   after(async () => {
-    await dispatchTerminalSideEffects(runId, status, errorMsg, () => {
-      return drainOrgQueue(orgId, dispatchQueuedZeroRun);
+    await dispatchTerminalSideEffects(runId, status, {
+      error: errorMsg,
+      result,
+      drain: () => {
+        return drainOrgQueue(orgId, dispatchQueuedZeroRun);
+      },
     });
     await processOrgUsageEvents(orgId);
   });
@@ -76,6 +81,29 @@ function buildRunResult(
   }
 
   return result;
+}
+
+async function buildRunResultForRun(
+  runId: string,
+): Promise<RunResult | undefined> {
+  const [checkpoint] = await globalThis.services.db
+    .select()
+    .from(checkpoints)
+    .where(eq(checkpoints.runId, runId))
+    .limit(1);
+
+  if (!checkpoint) {
+    return undefined;
+  }
+
+  // Get agent session for the conversation
+  const [session] = await globalThis.services.db
+    .select()
+    .from(agentSessions)
+    .where(eq(agentSessions.conversationId, checkpoint.conversationId))
+    .limit(1);
+
+  return buildRunResult(checkpoint, session?.id);
 }
 
 const router = tsr.router(webhookCompleteContract, {
@@ -134,16 +162,13 @@ const router = tsr.router(webhookCompleteContract, {
 
     let finalStatus: "completed" | "failed";
     let errorMessage: string | undefined;
+    let finalResult: RunResult | undefined;
 
     if (body.exitCode === 0) {
       // Success: query checkpoint and store result in run table
-      const [checkpoint] = await globalThis.services.db
-        .select()
-        .from(checkpoints)
-        .where(eq(checkpoints.runId, body.runId))
-        .limit(1);
+      const result = await buildRunResultForRun(body.runId);
 
-      if (!checkpoint) {
+      if (!result) {
         const transitioned = await transitionRunStatus(
           body.runId,
           {
@@ -180,15 +205,6 @@ const router = tsr.router(webhookCompleteContract, {
           },
         };
       }
-
-      // Get agent session for the conversation
-      const [session] = await globalThis.services.db
-        .select()
-        .from(agentSessions)
-        .where(eq(agentSessions.conversationId, checkpoint.conversationId))
-        .limit(1);
-
-      const result = buildRunResult(checkpoint, session?.id);
 
       if (body.lastEventSequence !== undefined) {
         const visibility = await waitForAgentEventPrefixVisible(
@@ -237,6 +253,7 @@ const router = tsr.router(webhookCompleteContract, {
       await publishRunChangedForUserSafely(run.userId, body.runId, {
         status: "completed",
       });
+      finalResult = result;
       finalStatus = "completed";
       log.debug(`Run ${body.runId} completed successfully`);
     } else {
@@ -247,12 +264,15 @@ const router = tsr.router(webhookCompleteContract, {
       // Also accept "timeout" so the sandbox's own exit-code-based error
       // (with the report-error link) supersedes a stale "Run timed out
       // (no heartbeat)" stamped earlier by the cleanup cron.
+      const result = await buildRunResultForRun(body.runId);
+      finalResult = result;
       const transitioned = await transitionRunStatus(
         body.runId,
         {
           status: "failed",
           completedAt: new Date(),
           error: errorMessage,
+          ...(result ? { result } : {}),
           sandboxId: body.sandboxId,
           sandboxReuseResult: body.sandboxReuseResult,
         },
@@ -282,6 +302,7 @@ const router = tsr.router(webhookCompleteContract, {
       finalStatus,
       run.orgId,
       errorMessage,
+      finalResult,
     );
 
     return {

@@ -27,8 +27,33 @@ export type RunStatus =
   | "cancelled";
 
 /**
- * Run result stored in agent_runs.result when status = 'completed'
- * Contains checkpoint and artifact information for session continuation
+ * Run statuses whose checkpoint can be used as a stable resume source.
+ * In-flight checkpoints are not resumable because their snapshots may lag
+ * behind the still-running sandbox.
+ */
+const CHECKPOINT_RESUMABLE_RUN_STATUSES = [
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+] as const satisfies readonly RunStatus[];
+
+type CheckpointResumableRunStatus =
+  (typeof CHECKPOINT_RESUMABLE_RUN_STATUSES)[number];
+
+export function isCheckpointResumableRunStatus(
+  status: string | null | undefined,
+): status is CheckpointResumableRunStatus {
+  return (
+    status !== null &&
+    status !== undefined &&
+    (CHECKPOINT_RESUMABLE_RUN_STATUSES as readonly string[]).includes(status)
+  );
+}
+
+/**
+ * Run result stored in agent_runs.result when a terminal run has a checkpoint.
+ * Contains checkpoint and artifact information for session continuation.
  */
 export interface RunResult {
   checkpointId: string;
@@ -44,7 +69,7 @@ export interface RunResult {
  */
 export interface RunState {
   status: RunStatus;
-  result?: RunResult; // Present when status = 'completed'
+  result?: RunResult; // Present when terminal run has checkpoint metadata
   error?: string; // Present when status = 'failed'
 }
 

@@ -6,7 +6,10 @@ import {
   createTestRun,
   setTestRunStatus,
 } from "../../../../../__tests__/api-test-helpers";
-import { setTestCheckpointArtifactSnapshots } from "../../../../../__tests__/db-test-seeders/runs";
+import {
+  setTestCheckpointAgentComposeSnapshot,
+  setTestCheckpointArtifactSnapshots,
+} from "../../../../../__tests__/db-test-seeders/runs";
 import {
   testContext,
   uniqueId,
@@ -79,6 +82,13 @@ describe("resolveCheckpoint — artifactSnapshots decoding", () => {
     await expect(resolveCheckpoint(checkpointId, user.userId)).rejects.toThrow(
       /not ready to resume/,
     );
+    await expect(
+      resolveCheckpoint(checkpointId, user.userId),
+    ).rejects.toMatchObject({
+      name: "ConflictError",
+      code: "CONFLICT",
+      statusCode: 409,
+    });
   });
 
   it("allows terminal failed checkpoints", async () => {
@@ -89,5 +99,26 @@ describe("resolveCheckpoint — artifactSnapshots decoding", () => {
     const resolution = await resolveCheckpoint(checkpointId, user.userId);
 
     expect(resolution.conversationId).toBeDefined();
+  });
+
+  it("checks ownership before exposing malformed checkpoint snapshot errors", async () => {
+    const otherUser = await context.setupUser({ prefix: "other-cp" });
+    const otherCompose = await createTestCompose(uniqueId("other-cp"));
+    const { runId } = await createTestRun(
+      otherCompose.composeId,
+      "foreign malformed checkpoint run",
+    );
+    const { checkpointId } = await createTestCheckpoint(
+      otherUser.userId,
+      runId,
+    );
+    await setTestCheckpointAgentComposeSnapshot(checkpointId, {});
+
+    await expect(
+      resolveCheckpoint(checkpointId, user.userId),
+    ).rejects.toMatchObject({
+      name: "UnauthorizedError",
+      code: "UNAUTHORIZED",
+    });
   });
 });

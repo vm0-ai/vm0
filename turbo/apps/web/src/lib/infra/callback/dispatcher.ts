@@ -41,7 +41,7 @@ export function getApiUrl(): string {
 export async function dispatchCallbacks(
   runId: string,
   status: "completed" | "failed",
-  result?: Record<string, unknown>,
+  result?: unknown,
   error?: string,
 ): Promise<DispatchResult[]> {
   const { SECRETS_ENCRYPTION_KEY } = env();
@@ -103,7 +103,7 @@ async function dispatchSingleCallback(
   callback: CallbackRecord,
   runId: string,
   status: "completed" | "failed",
-  result: Record<string, unknown> | undefined,
+  result: unknown,
   error: string | undefined,
   encryptionKey: string,
 ): Promise<DispatchResult> {

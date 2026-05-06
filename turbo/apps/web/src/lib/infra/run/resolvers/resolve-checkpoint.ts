@@ -3,7 +3,12 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { conversations } from "@vm0/db/schema/conversation";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
-import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
+import {
+  notFound,
+  unauthorized,
+  badRequest,
+  conflict,
+} from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import type {
   AgentComposeSnapshot,
@@ -11,18 +16,12 @@ import type {
 } from "../../checkpoint/types";
 import { decodeToContextArtifacts } from "../../checkpoint/decode-artifact-snapshots";
 import type { AgentComposeYaml } from "../../agent-compose/types";
+import { isCheckpointResumableRunStatus } from "../types";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
 
 const log = logger("run:resolve-checkpoint");
-
-const RESUMABLE_CHECKPOINT_RUN_STATUSES = new Set([
-  "completed",
-  "failed",
-  "timeout",
-  "cancelled",
-]);
 
 /**
  * Resolve checkpoint to ConversationResolution
@@ -50,8 +49,28 @@ export async function resolveCheckpoint(
     throw notFound("Checkpoint not found");
   }
 
-  // Extract snapshots. Artifact entries are stored directly in
-  // checkpoint.artifactSnapshots — no join to agent_sessions required.
+  // Verify checkpoint belongs to user
+  const [originalRun] = await globalThis.services.db
+    .select({ runId: agentRuns.id, status: agentRuns.status })
+    .from(agentRuns)
+    .where(
+      and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
+    )
+    .limit(1);
+
+  if (!originalRun) {
+    throw unauthorized("Checkpoint does not belong to authenticated user");
+  }
+
+  if (!isCheckpointResumableRunStatus(originalRun.status)) {
+    throw conflict(
+      `Checkpoint is not ready to resume while run is ${originalRun.status}`,
+    );
+  }
+
+  // Extract snapshots only after ownership/status checks. Unauthorized callers
+  // must not be able to distinguish malformed checkpoint internals from valid
+  // checkpoint internals owned by another user.
   const agentComposeSnapshot =
     checkpoint.agentComposeSnapshot as unknown as AgentComposeSnapshot;
   // artifactSnapshots is a Drizzle jsonb column (runtime type `unknown`).
@@ -74,25 +93,6 @@ export async function resolveCheckpoint(
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;
   if (!agentComposeVersionId) {
     throw badRequest("Invalid checkpoint: missing agentComposeVersionId");
-  }
-
-  // Verify checkpoint belongs to user
-  const [originalRun] = await globalThis.services.db
-    .select({ runId: agentRuns.id, status: agentRuns.status })
-    .from(agentRuns)
-    .where(
-      and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
-    )
-    .limit(1);
-
-  if (!originalRun) {
-    throw unauthorized("Checkpoint does not belong to authenticated user");
-  }
-
-  if (!RESUMABLE_CHECKPOINT_RUN_STATUSES.has(originalRun.status)) {
-    throw badRequest(
-      `Checkpoint is not ready to resume while run is ${originalRun.status}`,
-    );
   }
 
   // Run independent queries in parallel:

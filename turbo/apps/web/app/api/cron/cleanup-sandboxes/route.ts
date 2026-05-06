@@ -237,14 +237,12 @@ const router = tsr.router(cronCleanupSandboxesContract, {
           }
 
           // Dispatch callbacks (e.g., loop schedule advancement) and drain queue
-          await dispatchTerminalSideEffects(
-            run.id,
-            "timeout",
-            timeoutReason,
-            () => {
+          await dispatchTerminalSideEffects(run.id, "timeout", {
+            error: timeoutReason,
+            drain: () => {
               return drainOrgQueue(run.orgId, dispatchQueuedZeroRun);
             },
-          );
+          });
 
           await processOrgUsageEvents(run.orgId);
 

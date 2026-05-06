@@ -148,7 +148,7 @@ const runEventSchema = z.object({
 });
 
 /**
- * Run result schema (present when status = 'completed')
+ * Run result schema (present when a terminal run has checkpoint metadata)
  */
 const runResultSchema = z.object({
   checkpointId: z.string(),
@@ -242,6 +242,7 @@ export const runsMainContract = c.router({
       402: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
       422: apiErrorSchema,
       503: apiErrorSchema,
     },

@@ -284,7 +284,9 @@ export async function markRunFailed(
   // Dispatch callbacks (e.g., loop schedule advancement) if transition succeeded
   if (transitioned) {
     await publishRunChangedSafely(runId, { status: "failed" });
-    await dispatchTerminalSideEffects(runId, "failed", errorMessage);
+    await dispatchTerminalSideEffects(runId, "failed", {
+      error: errorMessage,
+    });
   }
 
   // Attach run metadata so callers can return partial results. sessionId is
@@ -615,16 +617,14 @@ export async function dispatchCancelSideEffects(
   const shouldDrain =
     result.previousStatus === "running" || result.previousStatus === "pending";
 
-  await dispatchTerminalSideEffects(
-    result.runId,
-    "cancelled",
-    "Run cancelled",
-    shouldDrain
+  await dispatchTerminalSideEffects(result.runId, "cancelled", {
+    error: "Run cancelled",
+    drain: shouldDrain
       ? () => {
           return drain(result.orgId);
         }
       : undefined,
-  );
+  });
 
   return shouldDrain;
 }

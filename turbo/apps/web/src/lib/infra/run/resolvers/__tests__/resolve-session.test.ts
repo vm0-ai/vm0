@@ -8,6 +8,7 @@ import {
   setTestRunStatus,
 } from "../../../../../__tests__/api-test-helpers";
 import {
+  createTestSessionWithConversation,
   setTestSessionArtifacts,
   setTestSessionFramework,
 } from "../../../../../__tests__/db-test-seeders/agents";
@@ -25,18 +26,23 @@ const WORKING_DIR = "/home/user/workspace";
 describe("resolveSession — artifacts passthrough", () => {
   let user: UserContext;
   let composeId: string;
+  let composeVersionId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("sess-resolver"));
     composeId = compose.composeId;
+    composeVersionId = compose.versionId;
   });
 
   it("returns session.artifacts verbatim from the DB", async () => {
-    const { runId } = await createTestRun(composeId, "session expansion run");
-    const { agentSessionId } = await completeTestRun(user.userId, runId);
-    await setTestSessionFramework(agentSessionId, "claude-code");
+    const { id: agentSessionId } = await createTestSessionWithConversation(
+      user.userId,
+      composeId,
+      composeVersionId,
+      "claude-code",
+    );
     const entries = [
       { name: "mem", version: "latest", mountPath: "/opt/mem" },
       { name: "ctx", version: "latest", mountPath: WORKING_DIR },
@@ -49,9 +55,12 @@ describe("resolveSession — artifacts passthrough", () => {
   });
 
   it("returns empty artifact list when session has no artifacts", async () => {
-    const { runId } = await createTestRun(composeId, "empty session run");
-    const { agentSessionId } = await completeTestRun(user.userId, runId);
-    await setTestSessionFramework(agentSessionId, "claude-code");
+    const { id: agentSessionId } = await createTestSessionWithConversation(
+      user.userId,
+      composeId,
+      composeVersionId,
+      "claude-code",
+    );
     await setTestSessionArtifacts(agentSessionId, []);
 
     const resolution = await resolveSession(agentSessionId, user.userId);
@@ -69,7 +78,66 @@ describe("resolveSession — artifacts passthrough", () => {
     expect(resolution.sessionFramework).toBe("codex");
   });
 
-  it("uses failed checkpoint artifacts when continuing a recoverable failed session", async () => {
+  it("uses checkpoint artifacts when continuing a completed session with checkpoint", async () => {
+    const { runId } = await createTestRun(
+      composeId,
+      "completed checkpoint run",
+    );
+    const { agentSessionId, checkpointId } = await completeTestRun(
+      user.userId,
+      runId,
+      {
+        volumeVersionsSnapshot: {
+          versions: { workspace: "vol-completed" },
+        },
+      },
+    );
+    await setTestSessionFramework(agentSessionId, "claude-code");
+    await setTestSessionArtifacts(agentSessionId, [
+      { name: "stale", version: "latest", mountPath: WORKING_DIR },
+    ]);
+
+    const checkpointArtifacts = [
+      { name: "workspace", version: "snap-completed", mountPath: WORKING_DIR },
+    ];
+    await setTestCheckpointArtifactSnapshots(checkpointId, checkpointArtifacts);
+
+    const resolution = await resolveSession(agentSessionId, user.userId);
+
+    expect(resolution.artifacts).toEqual(checkpointArtifacts);
+    expect(resolution.volumeVersions).toEqual({
+      workspace: "vol-completed",
+    });
+    expect(resolution.additionalVolumes).toBeUndefined();
+  });
+
+  it("falls back to session artifacts when terminal checkpoint has no artifact snapshot", async () => {
+    const { runId } = await createTestRun(composeId, "null checkpoint run");
+    const { agentSessionId, checkpointId } = await completeTestRun(
+      user.userId,
+      runId,
+      {
+        volumeVersionsSnapshot: {
+          versions: { workspace: "vol-completed" },
+        },
+      },
+    );
+    const sessionArtifacts = [
+      { name: "session", version: "latest", mountPath: WORKING_DIR },
+    ];
+    await setTestSessionFramework(agentSessionId, "claude-code");
+    await setTestSessionArtifacts(agentSessionId, sessionArtifacts);
+    await setTestCheckpointArtifactSnapshots(checkpointId, null);
+
+    const resolution = await resolveSession(agentSessionId, user.userId);
+
+    expect(resolution.artifacts).toEqual(sessionArtifacts);
+    expect(resolution.volumeVersions).toEqual({
+      workspace: "vol-completed",
+    });
+  });
+
+  it("uses checkpoint artifacts when continuing a recoverable failed session", async () => {
     const { runId } = await createTestRun(composeId, "failed recovery run", {
       additionalVolumes: [
         {
@@ -106,13 +174,7 @@ describe("resolveSession — artifacts passthrough", () => {
       workspace: "vol-failed",
       memory: "mem-failed",
     });
-    expect(resolution.additionalVolumes).toEqual([
-      {
-        name: "memory",
-        version: "mem-failed",
-        mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
-      },
-    ]);
+    expect(resolution.additionalVolumes).toBeUndefined();
   });
 
   it("does not use checkpoint artifacts while the linked run is still running", async () => {
