@@ -2281,6 +2281,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn factory_cleanup_group_closed_logging_wait_suppresses_panic() {
+        let group = FactoryCleanupGroup::new();
+        group.shutdown().await;
+
+        let cleanup = group.spawn(FactoryCleanupTaskKind::Rollback, "closed", async {
+            panic!("rollback cleanup failed");
+        });
+
+        let result = AssertUnwindSafe(cleanup.wait_logging_panic())
+            .catch_unwind()
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn factory_cleanup_group_drop_aborts_in_flight_task() {
+        let group = FactoryCleanupGroup::new();
+        let aborted = Arc::new(AtomicBool::new(false));
+        let aborted_clone = Arc::clone(&aborted);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "drop-abort", async move {
+            let _flag = AbortFlag(aborted_clone);
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        drop(waiter);
+
+        started_rx.await.unwrap();
+        drop(group);
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while !aborted.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
     async fn factory_cleanup_group_start_accepting_reopens_after_shutdown() {
         let group = Arc::new(FactoryCleanupGroup::new());
         group.shutdown().await;
