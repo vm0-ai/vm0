@@ -754,6 +754,16 @@ export {
   type ZeroModelProvidersUpdateModelContract,
 } from "./zero-model-providers";
 export {
+  zeroPersonalModelProvidersMainContract,
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersDefaultContract,
+  zeroPersonalModelProvidersUpdateModelContract,
+  type ZeroPersonalModelProvidersMainContract,
+  type ZeroPersonalModelProvidersByTypeContract,
+  type ZeroPersonalModelProvidersDefaultContract,
+  type ZeroPersonalModelProvidersUpdateModelContract,
+} from "./zero-personal-model-providers";
+export {
   zeroUserPreferencesContract,
   type ZeroUserPreferencesContract,
 } from "./zero-user-preferences";
