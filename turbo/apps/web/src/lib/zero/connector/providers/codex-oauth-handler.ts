@@ -1,52 +1,33 @@
 import { type ProviderHandler } from "../provider-types";
 import {
-  CHATGPT_OAUTH_CLIENT_ID,
-  buildChatgptAuthorizationUrl,
-  exchangeChatgptCode,
   getChatgptRefreshSecretName,
   getChatgptSecretName,
   refreshChatgptToken,
-  revokeChatgptToken,
 } from "./codex-oauth";
 
+const REFRESH_ONLY_MESSAGE =
+  "codex-oauth is refresh-only — providers are added via the codex auth.json paste flow, not OAuth code exchange";
+
+/**
+ * Refresh-only handler for the codex-oauth-token model provider type.
+ *
+ * The full OAuth flow (authorize/exchange/revoke) was removed in favor of the
+ * paste-based codex auth.json flow. This handler stays registered in
+ * PROVIDER_HANDLERS so the firewall refresh pipeline can call
+ * refreshChatgptToken when ChatGPT returns 401. The buildAuthUrl/exchangeCode
+ * stubs throw because the connectors framework no longer dispatches to this
+ * handler (the codex-oauth connector entry was removed alongside the routes).
+ */
 export const codexOauthHandler: ProviderHandler = {
-  buildAuthUrl: buildChatgptAuthorizationUrl,
-  async exchangeCode(
-    clientId,
-    clientSecret,
-    code,
-    redirectUri,
-    _state,
-    codeVerifier,
-  ) {
-    if (!codeVerifier) {
-      throw new Error(
-        "ChatGPT OAuth requires PKCE code_verifier for token exchange",
-      );
-    }
-    const result = await exchangeChatgptCode(
-      clientId,
-      clientSecret,
-      code,
-      redirectUri,
-      codeVerifier,
-    );
-    return {
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      expiresIn: result.expiresIn,
-      scopes: result.scopes,
-      userInfo: {
-        id: result.accountId,
-        username: result.workspaceName,
-        email: null,
-      },
-    };
+  buildAuthUrl: () => {
+    throw new Error(REFRESH_ONLY_MESSAGE);
+  },
+  exchangeCode: async () => {
+    throw new Error(REFRESH_ONLY_MESSAGE);
   },
   refreshToken: refreshChatgptToken,
-  revokeToken: revokeChatgptToken,
   getClientId: () => {
-    return CHATGPT_OAUTH_CLIENT_ID;
+    return "app_EMoamEEZ73f0CkXaXp7hrann";
   },
   getClientSecret: () => {
     return undefined;
