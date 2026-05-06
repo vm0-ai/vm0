@@ -1,4 +1,11 @@
-use std::{any::Any, collections::HashMap, future::Future, panic::AssertUnwindSafe, path::PathBuf};
+use std::{
+    any::Any,
+    collections::HashMap,
+    future::Future,
+    panic::AssertUnwindSafe,
+    path::PathBuf,
+    sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard, TryLockError},
+};
 
 use async_trait::async_trait;
 use futures_util::FutureExt;
@@ -212,7 +219,7 @@ impl FactoryCleanupWaiter {
 }
 
 struct FactoryCleanupGroup {
-    state: tokio::sync::Mutex<FactoryCleanupGroupState>,
+    state: StdMutex<FactoryCleanupGroupState>,
 }
 
 struct FactoryCleanupGroupState {
@@ -294,18 +301,28 @@ where
 impl FactoryCleanupGroup {
     fn new() -> Self {
         Self {
-            state: tokio::sync::Mutex::new(FactoryCleanupGroupState::new()),
+            state: StdMutex::new(FactoryCleanupGroupState::new()),
         }
     }
 
-    async fn start_accepting(&self) {
-        let mut state = self.state.lock().await;
+    fn lock_state(&self) -> StdMutexGuard<'_, FactoryCleanupGroupState> {
+        match self.state.lock() {
+            Ok(state) => state,
+            Err(poisoned) => {
+                warn!("factory cleanup group state mutex was poisoned; continuing");
+                poisoned.into_inner()
+            }
+        }
+    }
+
+    fn start_accepting(&self) {
+        let mut state = self.lock_state();
         Self::reap_completed_locked(&mut state, false);
         state.accepting = true;
         state.closed = false;
     }
 
-    async fn spawn<F>(
+    fn spawn<F>(
         &self,
         kind: FactoryCleanupTaskKind,
         label: impl Into<String>,
@@ -316,7 +333,7 @@ impl FactoryCleanupGroup {
     {
         let label = label.into();
         let waiter_label = label.clone();
-        let mut state = self.state.lock().await;
+        let mut state = self.lock_state();
         Self::reap_completed_locked(&mut state, false);
         if state.closed {
             warn!(
@@ -362,7 +379,7 @@ impl FactoryCleanupGroup {
         tokio::pin!(timeout);
 
         loop {
-            let Some((mut tasks, mut records)) = self.take_shutdown_batch().await else {
+            let Some((mut tasks, mut records)) = self.take_shutdown_batch() else {
                 return;
             };
 
@@ -376,13 +393,13 @@ impl FactoryCleanupGroup {
         }
     }
 
-    async fn take_shutdown_batch(
+    fn take_shutdown_batch(
         &self,
     ) -> Option<(
         JoinSet<FactoryCleanupTaskFinished>,
         HashMap<TaskId, FactoryCleanupTaskRecord>,
     )> {
-        let mut state = self.state.lock().await;
+        let mut state = self.lock_state();
         state.accepting = false;
         Self::reap_completed_locked(&mut state, false);
         if state.tasks.is_empty() {
@@ -439,7 +456,7 @@ impl FactoryCleanupGroup {
     async fn abort_remaining_after_shutdown_timeout(&self) {
         loop {
             let (mut tasks, mut records) = {
-                let mut state = self.state.lock().await;
+                let mut state = self.lock_state();
                 state.accepting = false;
                 state.closed = true;
                 Self::reap_completed_locked(&mut state, false);
@@ -558,8 +575,19 @@ impl Drop for FactoryCleanupGroup {
                 );
                 state.tasks.abort_all();
             }
-            Err(_) => {
+            Err(TryLockError::WouldBlock) => {
                 warn!("factory cleanup group dropped while locked; cleanup tasks may keep running");
+            }
+            Err(TryLockError::Poisoned(poisoned)) => {
+                let mut state = poisoned.into_inner();
+                Self::reap_completed_locked(&mut state, false);
+                if !state.tasks.is_empty() {
+                    warn!(
+                        task_count = state.tasks.len(),
+                        "factory cleanup group dropped with poisoned state and in-flight tasks; aborting without await"
+                    );
+                    state.tasks.abort_all();
+                }
             }
         }
     }
@@ -914,16 +942,14 @@ async fn rollback_create_transaction<C>(
     C: CreateRollbackCleanup + Send + Sync + 'static,
 {
     let rollback_id = tx.id.clone();
-    let rollback_waiter = cleanup_group
-        .spawn(
-            FactoryCleanupTaskKind::Rollback,
-            rollback_id.clone(),
-            async move {
-                let mut tx = tx;
-                tx.rollback(&cleanup).await;
-            },
-        )
-        .await;
+    let rollback_waiter = cleanup_group.spawn(
+        FactoryCleanupTaskKind::Rollback,
+        rollback_id.clone(),
+        async move {
+            let mut tx = tx;
+            tx.rollback(&cleanup).await;
+        },
+    );
     rollback_waiter.wait_logging_panic().await;
 }
 
@@ -1249,7 +1275,7 @@ impl SandboxFactory for FirecrackerFactory {
                 message: "factory already started".into(),
             });
         }
-        self.cleanup_group.start_accepting().await;
+        self.cleanup_group.start_accepting();
 
         // Create netns pool only if not provided externally (shared pool case).
         if self.netns_pool.is_none() {
@@ -1460,14 +1486,11 @@ impl SandboxFactory for FirecrackerFactory {
         // If the caller drops this destroy future mid-cleanup, the task keeps
         // running instead of letting FirecrackerSandbox::Drop race the COW
         // finalizer and directory cleanup.
-        let waiter = self
-            .cleanup_group
-            .spawn(
-                FactoryCleanupTaskKind::Destroy,
-                sandbox_id,
-                destroy_firecracker_sandbox(sandbox, netns_pool),
-            )
-            .await;
+        let waiter = self.cleanup_group.spawn(
+            FactoryCleanupTaskKind::Destroy,
+            sandbox_id,
+            destroy_firecracker_sandbox(sandbox, netns_pool),
+        );
         waiter.wait_propagating_panic().await;
     }
 
@@ -1955,11 +1978,9 @@ mod tests {
         let ran = Arc::new(AtomicBool::new(false));
         let ran_clone = Arc::clone(&ran);
 
-        let waiter = group
-            .spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
-                ran_clone.store(true, Ordering::SeqCst);
-            })
-            .await;
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
+            ran_clone.store(true, Ordering::SeqCst);
+        });
 
         waiter.wait_propagating_panic().await;
         group.shutdown().await;
@@ -1975,13 +1996,11 @@ mod tests {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
 
         let completed_clone = Arc::clone(&completed);
-        let waiter = group
-            .spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
-                let _ = started_tx.send(());
-                let _ = release_rx.await;
-                completed_clone.store(true, Ordering::SeqCst);
-            })
-            .await;
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
+            let _ = started_tx.send(());
+            let _ = release_rx.await;
+            completed_clone.store(true, Ordering::SeqCst);
+        });
 
         started_rx.await.unwrap();
         let waiter_task = tokio::spawn(waiter.wait_propagating_panic());
@@ -2002,13 +2021,11 @@ mod tests {
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
 
         let completed_clone = Arc::clone(&completed);
-        let waiter = group
-            .spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
-                let _ = started_tx.send(());
-                let _ = release_rx.await;
-                completed_clone.store(true, Ordering::SeqCst);
-            })
-            .await;
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
+            let _ = started_tx.send(());
+            let _ = release_rx.await;
+            completed_clone.store(true, Ordering::SeqCst);
+        });
         drop(waiter);
 
         started_rx.await.unwrap();
@@ -2032,12 +2049,10 @@ mod tests {
         let late_completed = Arc::new(AtomicBool::new(false));
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
 
-        let waiter = group
-            .spawn(FactoryCleanupTaskKind::Destroy, "first", async move {
-                let _ = started_tx.send(());
-                let _ = release_rx.await;
-            })
-            .await;
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "first", async move {
+            let _ = started_tx.send(());
+            let _ = release_rx.await;
+        });
         drop(waiter);
 
         started_rx.await.unwrap();
@@ -2049,11 +2064,9 @@ mod tests {
         assert!(!shutdown_task.is_finished());
 
         let late_completed_clone = Arc::clone(&late_completed);
-        let late_waiter = group
-            .spawn(FactoryCleanupTaskKind::Destroy, "late", async move {
-                late_completed_clone.store(true, Ordering::SeqCst);
-            })
-            .await;
+        let late_waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "late", async move {
+            late_completed_clone.store(true, Ordering::SeqCst);
+        });
         drop(late_waiter);
 
         release_tx.send(()).unwrap();
@@ -2069,11 +2082,9 @@ mod tests {
 
         let ran = Arc::new(AtomicBool::new(false));
         let ran_clone = Arc::clone(&ran);
-        let cleanup = group
-            .spawn(FactoryCleanupTaskKind::Destroy, "closed", async move {
-                ran_clone.store(true, Ordering::SeqCst);
-            })
-            .await;
+        let cleanup = group.spawn(FactoryCleanupTaskKind::Destroy, "closed", async move {
+            ran_clone.store(true, Ordering::SeqCst);
+        });
 
         assert!(!ran.load(Ordering::SeqCst));
         cleanup.wait_propagating_panic().await;
@@ -2088,13 +2099,11 @@ mod tests {
         let aborted_clone = Arc::clone(&aborted);
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
 
-        let waiter = group
-            .spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
-                let _flag = AbortFlag(aborted_clone);
-                let _ = started_tx.send(());
-                std::future::pending::<()>().await;
-            })
-            .await;
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
+            let _flag = AbortFlag(aborted_clone);
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
         drop(waiter);
 
         started_rx.await.unwrap();
@@ -2110,11 +2119,9 @@ mod tests {
     #[tokio::test]
     async fn factory_cleanup_destroy_waiter_propagates_panic() {
         let group = FactoryCleanupGroup::new();
-        let waiter = group
-            .spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async {
-                panic!("destroy cleanup failed");
-            })
-            .await;
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async {
+            panic!("destroy cleanup failed");
+        });
 
         let result = AssertUnwindSafe(waiter.wait_propagating_panic())
             .catch_unwind()
@@ -2143,12 +2150,12 @@ mod tests {
             handle: Some(handle),
         });
 
-        let waiter = factory
-            .cleanup_group
-            .spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
-                cleanup_events.lock().unwrap().push("cleanup_group");
-            })
-            .await;
+        let waiter =
+            factory
+                .cleanup_group
+                .spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
+                    cleanup_events.lock().unwrap().push("cleanup_group");
+                });
         drop(waiter);
 
         factory.shutdown().await;
