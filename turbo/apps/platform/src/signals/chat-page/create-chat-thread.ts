@@ -37,6 +37,8 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { orgModelProviders$ } from "../external/org-model-providers.ts";
 import { agentById } from "../agent.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
 import {
   writeChatMessageToClipboard,
@@ -1028,8 +1030,13 @@ function createRunTracking({
       // the server consumes a queued message: `onRunChanged$` reloads the
       // thread, the composer's queued card unmounts, and the message-list area
       // grows. Re-running autoScroll on the next frame keeps the viewport
-      // pinned to the bottom across that layout shift.
-      const initialThread = await get(threadData$);
+      // pinned to the bottom across that layout shift. Gated on the feature
+      // switch so the run-update realtime callback stays byte-identical for
+      // users without the queue feature — no extra threadData$ read, no
+      // extra animationFrame.
+      const queueEnabled =
+        get(featureSwitch$)[FeatureSwitchKey.QueueMessage] ?? false;
+      const initialThread = queueEnabled ? await get(threadData$) : null;
       signal.throwIfAborted();
       let previouslyHadPending = Boolean(initialThread?.pendingMessage);
 
@@ -1047,6 +1054,9 @@ function createRunTracking({
 
       const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
         set(reloadThread$);
+        if (!queueEnabled) {
+          return false;
+        }
         const refreshed = await get(threadData$);
         sig.throwIfAborted();
         const hasPending = Boolean(refreshed?.pendingMessage);
