@@ -171,39 +171,22 @@ _post_test_codex_oauth() {
     curl "${curl_args[@]}" "${VM0_API_URL}/api/cli/auth/test-codex-oauth?email=${encoded_email}"
 }
 
-# Seed a codex-oauth-token model provider via the new auth_json paste path.
+# Seed a codex-oauth-token model provider via the auth_json paste path.
 #
 # Usage:
-#   seed_codex_oauth_via_authjson <raw_auth_json> [expires_in] [needs_reconnect] [last_refresh_error_code]
+#   seed_codex_oauth_via_authjson <raw_auth_json>
 #
-# raw_auth_json: the codex CLI's auth.json contents (JSON string).
-# expires_in: seconds from now until token expiry (default 600; negative pre-expires).
-# needs_reconnect: "true" or "false" (default "false").
-# last_refresh_error_code: optional refresh-error code for stale-state simulation.
+# raw_auth_json: the codex CLI's auth.json contents (JSON string). The
+# server-side parser derives tokenExpiresAt, needsReconnect=false from
+# the parsed claims; the legacy seed_codex_oauth helper is the way to
+# inject explicit metadata (pre-expired tokens, stale state, etc.).
 #
-# Returns nonzero if HTTP != 200. Used by the *-paste tests under
-# E2E_PASTE_FLOW_ENABLED.
+# Returns nonzero if HTTP != 200. Used by the *-paste tests.
 seed_codex_oauth_via_authjson() {
     local raw_json="$1"
-    local expires_in="${2:-600}"
-    local needs_reconnect="${3:-false}"
-    local last_refresh_error_code="${4:-}"
 
     local body
-    if [ -n "$last_refresh_error_code" ]; then
-        body=$(jq -n \
-            --arg aj "$raw_json" \
-            --argjson ei "$expires_in" \
-            --argjson nr "$needs_reconnect" \
-            --arg lrec "$last_refresh_error_code" \
-            '{kind: "auth_json", authJson: $aj, expiresIn: $ei, needsReconnect: $nr, lastRefreshErrorCode: $lrec}')
-    else
-        body=$(jq -n \
-            --arg aj "$raw_json" \
-            --argjson ei "$expires_in" \
-            --argjson nr "$needs_reconnect" \
-            '{kind: "auth_json", authJson: $aj, expiresIn: $ei, needsReconnect: $nr}')
-    fi
+    body=$(jq -n --arg aj "$raw_json" '{authJson: $aj}')
 
     local resp http_code resp_body
     resp=$(_post_test_codex_oauth "$body")
@@ -217,25 +200,19 @@ seed_codex_oauth_via_authjson() {
     fi
 }
 
-# Probe whether the paste flow (#11978 + #11980) is wired in the running
-# server. Used to gate the *-paste tests so this PR can ship before
-# dependencies merge.
+# Probe whether the paste flow (#11978's parser) is wired in the running
+# server. Mostly redundant after #11978 merged into main — kept as a
+# robust runtime probe so the tests gracefully skip if the test endpoint
+# regresses.
 #
-# Returns 0 if the test endpoint accepts the auth_json variant and does
-# NOT return paste_flow_not_wired. Returns 1 otherwise.
-#
-# Implementation: POST a clearly-invalid authJson and inspect the error
-# code. If the parser is wired we get auth_json_shape_invalid (400); if
-# not, we get paste_flow_not_wired (503).
+# Returns 0 if a clearly-invalid authJson POST yields a 400 response.
 codex_oauth_paste_supported() {
-    local body='{"kind":"auth_json","authJson":"not json"}'
-    local resp http_code resp_body
+    local body='{"authJson":"{ not json"}'
+    local resp http_code
     resp=$(_post_test_codex_oauth "$body" 2>/dev/null)
     http_code=$(echo "$resp" | tail -n1)
-    resp_body=$(echo "$resp" | head -n-1)
 
-    [ "$http_code" = "400" ] && \
-        echo "$resp_body" | jq -e '.error == "auth_json_shape_invalid"' >/dev/null 2>&1
+    [ "$http_code" = "400" ]
 }
 
 # Probe whether Wave 3 (#11932) features are present. Used to gate Test 4

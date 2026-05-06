@@ -113,7 +113,7 @@ teardown_file() {
         skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
     fi
     if ! codex_oauth_paste_supported; then
-        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+        skip "Test endpoint authJson variant unavailable; #11978 parser missing"
     fi
 
     local raw_json

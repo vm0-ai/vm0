@@ -46,15 +46,15 @@ _make_id_token_with_plan() {
     printf 'hdr.%s.sig' "$payload"
 }
 
-@test "t57-paste-malformed-json: paste with invalid JSON returns auth_json_shape_invalid" {
+@test "t57-paste-malformed-json: paste with invalid JSON returns 400 shape error" {
     if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
-        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+        skip "Paste flow not yet wired (sub-issue #11980 pending)"
     fi
     if ! codex_oauth_paste_supported; then
-        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+        skip "Test endpoint authJson variant unavailable; #11978 parser missing"
     fi
 
-    local body='{"kind":"auth_json","authJson":"not valid json {"}'
+    local body='{"authJson":"not valid json {"}'
     local resp http_code resp_body
     resp=$(_post_test_codex_oauth "$body")
     http_code=$(echo "$resp" | tail -n1)
@@ -65,15 +65,16 @@ _make_id_token_with_plan() {
         echo "Response: $resp_body" >&2
         return 1
     fi
-    echo "$resp_body" | jq -e '.error == "auth_json_shape_invalid"' >/dev/null
+    # #11978 parser returns "auth.json shape invalid: <reason>"
+    echo "$resp_body" | jq -e '.error | startswith("auth.json shape invalid")' >/dev/null
 }
 
-@test "t57-paste-missing-refresh-token: paste with missing refresh_token returns auth_json_shape_invalid" {
+@test "t57-paste-missing-refresh-token: paste with missing refresh_token returns 400 shape error" {
     if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
-        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+        skip "Paste flow not yet wired (sub-issue #11980 pending)"
     fi
     if ! codex_oauth_paste_supported; then
-        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+        skip "Test endpoint authJson variant unavailable; #11978 parser missing"
     fi
 
     # Auth.json shape with only access_token + account_id + id_token; the
@@ -83,7 +84,7 @@ _make_id_token_with_plan() {
     raw_json=$(jq -n \
         '{OPENAI_API_KEY: null, tokens: {access_token: "at", account_id: "ai", id_token: "hdr.payload.sig"}}')
     local body
-    body=$(jq -n --arg aj "$raw_json" '{kind: "auth_json", authJson: $aj}')
+    body=$(jq -n --arg aj "$raw_json" '{authJson: $aj}')
 
     local resp http_code resp_body
     resp=$(_post_test_codex_oauth "$body")
@@ -95,15 +96,15 @@ _make_id_token_with_plan() {
         echo "Response: $resp_body" >&2
         return 1
     fi
-    echo "$resp_body" | jq -e '.error == "auth_json_shape_invalid"' >/dev/null
+    echo "$resp_body" | jq -e '.error | startswith("auth.json shape invalid")' >/dev/null
 }
 
-@test "t57-paste-free-plan: paste with free-plan id_token returns free_plan_rejected" {
+@test "t57-paste-free-plan: paste with free-plan id_token returns 400 free-plan error" {
     if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
-        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+        skip "Paste flow not yet wired (sub-issue #11980 pending)"
     fi
     if ! codex_oauth_paste_supported; then
-        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+        skip "Test endpoint authJson variant unavailable; #11978 parser missing"
     fi
 
     local id_token
@@ -112,7 +113,7 @@ _make_id_token_with_plan() {
     raw_json=$(jq -n --arg it "$id_token" \
         '{OPENAI_API_KEY: null, tokens: {access_token: "at", refresh_token: "rt", account_id: "ai", id_token: $it}}')
     local body
-    body=$(jq -n --arg aj "$raw_json" '{kind: "auth_json", authJson: $aj}')
+    body=$(jq -n --arg aj "$raw_json" '{authJson: $aj}')
 
     local resp http_code resp_body
     resp=$(_post_test_codex_oauth "$body")
@@ -124,7 +125,8 @@ _make_id_token_with_plan() {
         echo "Response: $resp_body" >&2
         return 1
     fi
-    echo "$resp_body" | jq -e '.error == "free_plan_rejected"' >/dev/null
+    # #11978 parser returns "Free plan rejected by parser"
+    echo "$resp_body" | jq -e '.error | test("[Ff]ree plan")' >/dev/null
 }
 
 # Test 4 server-side portion. Requires Wave 3 (#11932): the runner guard

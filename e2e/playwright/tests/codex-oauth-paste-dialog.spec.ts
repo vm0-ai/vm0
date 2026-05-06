@@ -10,8 +10,8 @@ import { deriveAppUrl } from "../playwright.config";
  *   - Textarea data-testid="codex-paste-modal-textarea"
  *   - Submit button data-testid="codex-paste-modal-submit"
  *   - Inline error data-testid="codex-paste-modal-error" with text
- *     content matching the typed error code (auth_json_shape_invalid /
- *     free_plan_rejected)
+ *     content matching the parser's typed-error message (shape error /
+ *     free-plan rejection — assertions tolerant to wording shifts)
  *
  * Skips via runtime probe when paste flow is not yet wired (server-side
  * parser absent OR modal testid absent in DOM).
@@ -45,14 +45,18 @@ async function pasteFlowSupported(
     `${apiUrl}/api/cli/auth/test-codex-oauth?email=${encodedEmail}`,
     {
       headers,
-      data: { kind: "auth_json", authJson: "not json" },
+      data: { authJson: "{ not json" },
     },
   );
+  // #11978's parser returns 400 for any malformed authJson. If the test
+  // endpoint hasn't accepted the authJson variant (which would manifest
+  // as a 400 from zod with "Invalid body shape"), the body has an
+  // `issues` array; the parser path returns `error` only.
   if (resp.status() !== 400) {
     return false;
   }
   const body = await resp.json();
-  return body.error === "auth_json_shape_invalid";
+  return typeof body.error === "string" && !("issues" in body);
 }
 
 async function ensurePasteModalAvailable(
@@ -164,7 +168,7 @@ test.describe("codex-oauth paste flow", () => {
 
     const error = modal.locator("[data-testid='codex-paste-modal-error']");
     await expect(error).toBeVisible({ timeout: 10_000 });
-    await expect(error).toContainText(/auth_json_shape_invalid|invalid/i);
+    await expect(error).toContainText(/shape invalid|invalid/i);
     await expect(modal).toBeVisible();
   });
 
@@ -226,7 +230,7 @@ test.describe("codex-oauth paste flow", () => {
 
     const error = modal.locator("[data-testid='codex-paste-modal-error']");
     await expect(error).toBeVisible({ timeout: 10_000 });
-    await expect(error).toContainText(/free_plan_rejected|free plan/i);
+    await expect(error).toContainText(/free plan/i);
     await expect(modal).toBeVisible();
   });
 });
