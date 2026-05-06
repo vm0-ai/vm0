@@ -412,7 +412,7 @@ function mobileTopBarTitle(route: RouteKey | null): string | undefined {
       return "Agents";
     }
     case "schedules": {
-      return "Schedules";
+      return "Scheduled";
     }
     case "connectors": {
       return "Connectors";
