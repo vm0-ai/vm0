@@ -408,6 +408,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn disabled_client_raw_upload_fails_before_request_build() {
+        let client = HttpClient { inner: None };
+        let result = client
+            .put_presigned(
+                "http://127.0.0.1:1/upload",
+                Bytes::from_static(b"manifest"),
+                "application/json",
+            )
+            .await;
+
+        let Err(AgentError::Http(message)) = result else {
+            panic!("expected disabled HTTP client error");
+        };
+        assert!(message.contains("HTTP client is disabled"));
+    }
+
+    #[tokio::test]
     async fn disabled_client_stream_upload_fails_before_file_open() {
         let client = HttpClient { inner: None };
         let result = client
