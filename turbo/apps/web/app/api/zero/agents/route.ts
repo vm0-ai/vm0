@@ -73,6 +73,7 @@ const router = tsr.router(zeroAgentsMainContract, {
       customSkills,
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
+      preferPersonalProvider: body.preferPersonalProvider ?? false,
     };
 
     // Enforce maximum 7 agents per organization.
@@ -160,6 +161,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
+        preferPersonalProvider: zeroAgents.preferPersonalProvider,
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
@@ -182,6 +184,7 @@ const router = tsr.router(zeroAgentsMainContract, {
           ),
           modelProviderId: row.modelProviderId ?? null,
           selectedModel: row.selectedModel ?? null,
+          preferPersonalProvider: row.preferPersonalProvider ?? false,
           customSkills: row.customSkills,
         };
       }),

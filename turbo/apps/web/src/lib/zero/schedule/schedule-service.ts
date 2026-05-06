@@ -53,6 +53,7 @@ export interface ScheduleResponse {
   updatedAt: string;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 }
 
 /**
@@ -85,6 +86,7 @@ interface DeployScheduleRequest {
   volumeVersions?: Record<string, string>;
   modelProviderId?: string | null;
   selectedModel?: string | null;
+  preferPersonalProvider?: boolean;
 }
 
 /**
@@ -157,6 +159,7 @@ function toResponse(
     updatedAt: schedule.updatedAt.toISOString(),
     modelProviderId: schedule.modelProviderId ?? null,
     selectedModel: schedule.selectedModel ?? null,
+    preferPersonalProvider: schedule.preferPersonalProvider ?? false,
   };
 }
 
@@ -252,6 +255,12 @@ async function updateExistingSchedule(
   triggerType: "cron" | "once" | "loop",
   nextRunAt: Date | null,
 ): Promise<typeof zeroAgentSchedules.$inferSelect> {
+  // `preferPersonalProvider` follows partial-update semantics (mirrors the
+  // agent PUT/PATCH route): omitting the field preserves the persisted value
+  // rather than resetting to false. This avoids a footgun where a client
+  // PATCHing only `name` would silently flip the flag back. Other fields
+  // (modelProviderId / selectedModel) keep the existing reset-on-omit
+  // semantics for backward compatibility.
   const [updated] = await globalThis.services.db
     .update(zeroAgentSchedules)
     .set({
@@ -271,6 +280,9 @@ async function updateExistingSchedule(
       updatedAt: new Date(),
       modelProviderId: request.modelProviderId ?? null,
       selectedModel: request.selectedModel ?? null,
+      ...(request.preferPersonalProvider !== undefined && {
+        preferPersonalProvider: request.preferPersonalProvider,
+      }),
     })
     .where(eq(zeroAgentSchedules.id, existingId))
     .returning();
@@ -318,6 +330,7 @@ async function insertNewSchedule(
       updatedAt: now,
       modelProviderId: request.modelProviderId ?? null,
       selectedModel: request.selectedModel ?? null,
+      preferPersonalProvider: request.preferPersonalProvider ?? false,
     })
     .returning();
 

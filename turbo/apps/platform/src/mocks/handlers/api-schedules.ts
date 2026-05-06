@@ -36,6 +36,7 @@ export function createMockScheduleResponse(
     consecutiveFailures: 0,
     modelProviderId: null,
     selectedModel: null,
+    preferPersonalProvider: false,
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
     ...overrides,
@@ -83,6 +84,7 @@ export const apiSchedulesHandlers = [
       consecutiveFailures: 0,
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
+      preferPersonalProvider: body.preferPersonalProvider ?? false,
       createdAt: now,
       updatedAt: now,
     };

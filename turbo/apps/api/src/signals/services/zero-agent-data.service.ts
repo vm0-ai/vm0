@@ -23,6 +23,7 @@ function agentResponse(row: {
   readonly customSkills: readonly string[];
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
+  readonly preferPersonalProvider: boolean;
 }): ZeroAgentResponse {
   return {
     agentId: row.agentId,
@@ -38,6 +39,7 @@ function agentResponse(row: {
     customSkills: [...row.customSkills],
     modelProviderId: row.modelProviderId,
     selectedModel: row.selectedModel,
+    preferPersonalProvider: row.preferPersonalProvider,
   };
 }
 
@@ -75,6 +77,7 @@ export function zeroAgentList(
         customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
+        preferPersonalProvider: zeroAgents.preferPersonalProvider,
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))
@@ -104,6 +107,7 @@ export function zeroAgentDetail(args: {
         customSkills: zeroAgents.customSkills,
         modelProviderId: zeroAgents.modelProviderId,
         selectedModel: zeroAgents.selectedModel,
+        preferPersonalProvider: zeroAgents.preferPersonalProvider,
       })
       .from(zeroAgents)
       .innerJoin(agentComposes, eq(zeroAgents.id, agentComposes.id))

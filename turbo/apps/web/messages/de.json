@@ -1005,83 +1005,6 @@
           "Planen Sie wiederkehrende Scans, damit neue Schulden erkannt werden, bevor sie sich aufbauen. Ein monatlicher oder sprintweiser Rhythmus funktioniert gut."
         ]
       },
-      "competitor-audit": {
-        "title": "Führen Sie ein wöchentliches Wettbewerber-Audit über X und das Web durch",
-        "description": "Geben Sie Zero eine Liste von Wettbewerbern. Es überwacht ihre X-Accounts, scrapt ihre Websites nach Updates, speichert alle Ergebnisse in Notion und postet jede Woche planmäßig einen Digest in Slack.",
-        "timeSaved": "~3 Std. pro Woche gespart",
-        "scenario": "Wettbewerber im Blick zu behalten sollte eine wöchentliche Gewohnheit sein. In der Praxis passiert es, wenn jemand etwas auf X entdeckt, einen Tweet an Slack weiterleitet und der Thread zwei Tage später ohne Aktion stirbt. Zero übernimmt den gesamten Prozess. Geben Sie eine Liste von Wettbewerbern an. Es prüft ihre X-Accounts, liest ihre Produktseiten auf Änderungen, speichert alles in einem strukturierten Notion-Log und postet jeden Montag ohne Aufforderung einen Digest in Slack.",
-        "promptVariants": [
-          {
-            "label": "Wöchentliches Monitoring einrichten",
-            "prompt": "@Zero jeden Montag um 9 Uhr, scanne die letzten 7 Tage Posts von @e2b_dev, @daytonaio und @replit auf X. Prüfe ihre Websites auf neue Produktankündigungen. Speichere Ergebnisse in der Competitor-Audit-Datenbank in Notion und poste einen Digest in #competitive."
-          },
-          {
-            "label": "Jetzt aufholen",
-            "prompt": "@Zero hole die letzten zwei Wochen Aktivität von @e2b_dev und @daytonaio auf X. Fasse zusammen, was sie ausgeliefert haben, was sie gesagt haben und auffälliges Engagement."
-          },
-          {
-            "label": "Einzelner Wettbewerber Deep Dive",
-            "prompt": "@Zero gib mir eine vollständige Aufschlüsselung dessen, was @replit in den letzten 30 Tagen auf X und auf ihrer Website gemacht hat. Speichere es in Notion."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Scarlett",
-            "text": "@Zero jeden Montag, scanne Wettbewerber-X-Accounts und Websites. In Notion speichern und Digest in #competitive posten."
-          },
-          {
-            "name": "Zero",
-            "text": "Wettbewerber-Digest - Woche vom 13. Apr\n\ne2b: Neue Sandbox-Preise ausgeliefert, 3 Posts zu Developer-Use-Cases\nDaytona: Neue GitHub-Integration angekündigt, CEO postete zu agentischen Workflows\nReplit: Keine größeren Produktupdates, aktives Community-Engagement\n\nVollständiges Log in Notion gespeichert."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero scannt Wettbewerber-X-Accounts",
-            "description": "Zero ruft aktuelle Posts von jedem Wettbewerber-Handle ab, extrahiert Produktankündigungen, Positionierungsaussagen und auffälliges Engagement. Es liest, was sie sagen und wie das Publikum reagiert."
-          },
-          {
-            "title": "Zero prüft ihre Websites",
-            "description": "Zero scrapt Produktseiten, Changelogs und Blog-Bereiche nach neuem Content. Es markiert alle Preisänderungen, Feature-Launches oder Repositionierungen seit dem letzten Scan."
-          },
-          {
-            "title": "Ergebnisse gespeichert und Digest gepostet",
-            "description": "Zero speichert einen strukturierten Datensatz in Ihrer Notion-Competitor-Audit-Datenbank und postet einen prägnanten wöchentlichen Digest im angegebenen Slack-Kanal."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Einen Befund vertiefen",
-            "description": "Eine bestimmte Wettbewerberbewegung analysieren",
-            "examplePrompt": "@Zero hole alle Posts von e2b über Sandbox-Preise der letzten 30 Tage und fasse ihre Positionierungsverschiebung zusammen."
-          },
-          {
-            "title": "Einen neuen Wettbewerber zur Liste hinzufügen",
-            "description": "Den Monitoring-Umfang erweitern",
-            "examplePrompt": "@Zero füge @val_town zum wöchentlichen Wettbewerber-Scan hinzu. Inkludiere ihren X-Account und ihre Website."
-          },
-          {
-            "title": "Mit der Führungsebene teilen",
-            "description": "Einen vierteljährlichen Zusammenfassungsbericht senden",
-            "examplePrompt": "@Zero fasse alle in Q1 in Notion protokollierten Wettbewerberaktivitäten zusammen und sende einen Bericht an #leadership."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Zero liest öffentliche Posts von Wettbewerber-Handles, um Ankündigungen und Messaging zu verfolgen."
-          },
-          {
-            "description": "Zero speichert strukturierte Wettbewerberbefunde in Ihrer Notion-Datenbank für langfristiges Tracking."
-          },
-          {
-            "description": "Zero postet den wöchentlichen Digest in Ihrem gewählten Slack-Kanal."
-          }
-        ],
-        "tips": [
-          "Geben Sie Zero spezifische Signale zum Beobachten an. ‚Posts über Preise, Integrationen oder Finanzierung markieren' liefert straffere Digests als ein allgemeiner Sweep.",
-          "Speichern Sie Ergebnisse in einer strukturierten Notion-Datenbank mit Eigenschaften wie Wettbewerber, Kategorie und Datum, damit Sie filtern und Trends verfolgen können.",
-          "Führen Sie zuerst einen Aufhol-Scan durch, um die Datenbank mit Basisdaten zu füllen, bevor Sie den wiederkehrenden Zeitplan einrichten."
-        ]
-      },
       "error-triage-daily": {
         "title": "Triagieren Sie Produktionsfehler jeden Morgen, ohne Sentry zu öffnen",
         "description": "Planen Sie Zero für tägliche Ausführung. Es ruft ungelöste Fehler von Sentry und Axiom ab, dedupliziert über Quellen hinweg, eröffnet ein GitHub-Issue mit dem vollständigen Stack-Trace und weist es automatisch dem richtigen Ingenieur zu.",
@@ -1326,80 +1249,6 @@
           "Füge einen benutzerdefinierten Schwellenwert-Hinweis in deinen Prompt ein, um Rauschen zu reduzieren. Markiere zum Beispiel nur Metriken, die mehr als das 2-Fache des gleitenden Durchschnitts betragen, damit geringfügige tägliche Schwankungen keine Warnungen auslösen."
         ]
       },
-      "competitor-pricing-monitor": {
-        "title": "Preisseiten von Wettbewerbern überwachen und Änderungen wöchentlich melden",
-        "description": "Gib Zero eine Liste von Preisseiten-URLs deiner Wettbewerber. Es scrapt jede Seite jeden Montag, vergleicht sie mit dem Notion-Snapshot der letzten Woche, schreibt eine Auswirkungsanalyse für jede gefundene Änderung, speichert den vollständigen Bericht in Notion und postet eine Zusammenfassung in Slack.",
-        "timeSaved": "~2 Std. pro Woche gespart",
-        "scenario": "Ein Wettbewerber streicht stillschweigend sein kostenloses Angebot. Ein anderer führt einen neuen Enterprise-Plan ein. Du erfährst es drei Wochen später von einem Interessenten, der sich bereits für sie entschieden hat. Zero prüft jeden Montag deine Wettbewerber-Preisseiten, vergleicht, was sich seit letzter Woche geändert hat, schreibt eine klare Auswirkungsanalyse für jede gefundene Änderung und postet eine Zusammenfassung in Slack, bevor die Woche deines Teams richtig losgeht.",
-        "promptVariants": [
-          {
-            "label": "Wöchentliche Überwachung einrichten",
-            "prompt": "@Zero every Monday at 9am, scrape the pricing pages of e2b.dev, daytona.io, cursor.com, and replit.com. Compare against last week's Notion snapshot. Flag any changes to tiers, prices, or CTAs, write a 2–3 sentence impact summary for each, save the full report to Notion under Competitor Pricing Log, and post a digest to #competitive."
-          },
-          {
-            "label": "Einmalige Prüfung durchführen",
-            "prompt": "@Zero scrape the pricing pages of e2b.dev and daytona.io right now. Compare against the last saved Notion snapshot and tell me what changed."
-          },
-          {
-            "label": "Deep Dive zu einem Wettbewerber",
-            "prompt": "@Zero pull the full pricing history for cursor.com from the Competitor Pricing Log in Notion. Summarize how their tiers and CTAs have evolved over time."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Scarlett",
-            "text": "@Zero every Monday at 9am, scrape competitor pricing pages and compare against last week's Notion snapshot. Post a digest to #competitive."
-          },
-          {
-            "name": "Zero",
-            "text": "Competitor Pricing Digest - Apr 14\n\nCursor: Added new Ultra tier at $200/month. Signals growing confidence in a high-willingness-to-pay power-user segment.\nDaytona: Increased startup credit offer from $25K to $50K. Signals aggressive developer acquisition push.\n\nNo changes detected: E2B, Replit\n\nFull report saved to Notion."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero scrapt jede Preisseite",
-            "description": "Zero ruft den aktuellen Inhalt jeder angegebenen Preis-URL ab und extrahiert Tarifnamen, Preise, Feature-Listen, Testangebote und CTAs."
-          },
-          {
-            "title": "Zero vergleicht mit dem Notion-Snapshot der Vorwoche",
-            "description": "Zero vergleicht den heutigen Inhalt mit der letzte Woche in Notion gespeicherten Version. Es markiert jede Änderung an Preisstufen, Plannamen, enthaltenen Features, Testbedingungen oder Handlungsaufforderungen."
-          },
-          {
-            "title": "Auswirkungsanalysen gespeichert und Zusammenfassung gepostet",
-            "description": "Für jede gefundene Änderung schreibt Zero eine 2–3-Satz-Auswirkungsanalyse, die beschreibt, was sich geändert hat, was es signalisiert und was zu beachten ist. Der vollständige Bericht wird in Notion gespeichert und eine kompakte Zusammenfassung in Slack gepostet."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Einzelne Änderung vertiefen",
-            "description": "Mehr Kontext zu einem bestimmten Wettbewerber-Schritt erhalten",
-            "examplePrompt": "@Zero pull up everything we have on Cursor's pricing history in Notion. Summarize how they've repositioned their tiers since Q1."
-          },
-          {
-            "title": "Neuen Wettbewerber zur Watchlist hinzufügen",
-            "description": "Die überwachten Seiten erweitern",
-            "examplePrompt": "@Zero add replit.com/pricing to the weekly pricing monitor and run an initial scrape now to set the baseline."
-          },
-          {
-            "title": "Zusammenfassung mit der Führungsebene teilen",
-            "description": "Eine Quartalszusammenfassung der Preisänderungen senden",
-            "examplePrompt": "@Zero summarize all competitor pricing changes logged in Notion this quarter and post a report to #leadership."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Zero speichert wöchentliche Preis-Snapshots und Änderungsberichte in deinem Notion-Workspace für langfristiges Tracking und Vergleiche."
-          },
-          {
-            "description": "Zero postet eine kompakte wöchentliche Zusammenfassung in den von dir angegebenen Slack-Channel."
-          }
-        ],
-        "tips": [
-          "Führe zuerst einen initialen Scrape durch, um den Baseline-Snapshot in Notion zu erstellen. Ohne diesen hat Zero nichts zum Vergleichen und behandelt alles als Änderung.",
-          "Sei konkret, was markiert werden soll. 'Achte auf Änderungen bei Preisstufen, Plannamen, Testangeboten und CTAs' liefert präzisere Ergebnisse als eine allgemeine Übersicht.",
-          "Strukturiere dein Notion-Log mit Eigenschaften wie Wettbewerber, Änderungstyp und Datum, damit du über die gesamte Historie filtern kannst, was sich wann geändert hat."
-        ]
-      },
       "customer-360": {
         "title": "Vollständiges Kundenbild vor jedem Meeting oder Renewal-Call aufbauen",
         "description": "Gib Zero einen Kundennamen oder ein Unternehmen. Es durchsucht Gmail, Calendar, Slack, Linear und GitHub gleichzeitig und liefert ein strukturiertes Briefing: Beziehungsstatus, aktuelle Aktivität, offene Punkte und eine Executive Summary mit empfohlener nächster Aktion.",
@@ -1568,90 +1417,6 @@
           "Archiviere Digests wöchentlich in Notion, um Meta-Trends zu erkennen - Themen, die über mehrere Tage immer wieder auftauchen, signalisieren oft eine echte Verschiebung."
         ]
       },
-      "content-performance-report": {
-        "title": "Wöchentlichen Content-Performance-Bericht erhalten, ohne die Daten selbst zusammenzustellen",
-        "description": "Jeden Montag ruft Zero die Post-Metriken der letzten 7 Tage von X ab, bewertet jeden Post nach Engagement und schreibt einen kurzen narrativen Bericht: Top-Performer, größter Underperformer, Woche-über-Woche-Veränderung und eine konkrete Empfehlung. Der Bericht wird in Slack gepostet; die vollständigen Daten werden in Notion archiviert.",
-        "timeSaved": "~2 Std. wöchentlich gespart",
-        "scenario": "Du weißt, dass du die Content-Performance wöchentlich auswerten solltest. Du hast es seit drei Wochen nicht getan, weil das Zusammentragen der Zahlen von X, das Formatieren und das Schreiben eines Berichts 90 Minuten kostet, die du am Montagmorgen nicht hast. Zero erledigt das Ganze nach Zeitplan. Es ruft die Zahlen ab, wendet die Bewertungsformel an, schreibt den Bericht, postet ihn in Slack und archiviert die Rohdaten in Notion - alles vor deinem ersten Meeting.",
-        "promptVariants": [
-          {
-            "label": "Geplant wöchentlich",
-            "prompt": "@Zero every Monday at 9am PST, pull the past 7 days of post performance from @vm0_ai on X. Score each post: (likes×1) + (retweets×3) + (replies×2). Write a short report: top performer and why, biggest underperformer and likely cause, week-over-week total engagement change, and one concrete recommendation for the week. Post the narrative to #marketing-and-community. Archive the full report with raw metrics to Notion under 'Content Performance Reports > Week of [Mon Date]'."
-          },
-          {
-            "label": "Auf Abruf",
-            "prompt": "@Zero pull last week's X performance for @vm0_ai and give me the top 3 posts by engagement score with one sentence on each."
-          },
-          {
-            "label": "Format-Experiment-Auswertung",
-            "prompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) - which format is driving higher engagement and why?"
-          },
-          {
-            "label": "Executive Summary",
-            "prompt": "@Zero one paragraph on last week's X performance - suitable for the Monday leadership brief."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Zero",
-            "text": "Content Performance Report - Week of Apr 7\n\nTop performer: 'AI sandbox in 30 seconds' demo post - score 142. Short-form video outperforms text by 3×.\nUnderperformer: 'Feature Drop: new connector library' - score 18. Feature-first framing rarely lands without a use case hook.\nWeek-over-week: +23% total engagement vs. prior week.\nRecommendation: Lead next week's feature drop with a before/after scenario rather than the feature name.\n\nFull report archived to Notion."
-          },
-          {
-            "name": "Alex",
-            "text": "@Zero give me the top 3 posts from last week by score, one sentence each."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero ruft Post-Metriken von X ab",
-            "description": "Zero ruft Impressionen, Likes, Retweets und Antworten für alle Posts ab, die in den letzten 7 Tagen vom angegebenen X-Account veröffentlicht wurden. Es erfasst die Rohzahlen für jeden Post im Zeitfenster."
-          },
-          {
-            "title": "Posts werden bewertet und gerankt",
-            "description": "Zero berechnet einen Engagement-Score für jeden Post mit der Formel (Likes × 1) + (Retweets × 3) + (Antworten × 2). Es identifiziert den Top-Performer, den Post mit dem niedrigsten Score bei mindestens 3 Tagen Daten und berechnet die Woche-über-Woche-Veränderung beim Gesamtengagement."
-          },
-          {
-            "title": "Bericht gepostet und Daten archiviert",
-            "description": "Zero schreibt einen kurzen narrativen Bericht über den Top-Performer, den Underperformer, die Woche-über-Woche-Veränderung und eine konkrete Empfehlung. Es postet den Bericht in deinen Slack-Channel und speichert eine vollständige Metriktabelle auf der von dir angegebenen Notion-Seite."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Auf Abruf abrufen",
-            "description": "Den Bericht der letzten Woche erhalten, ohne auf Montag zu warten",
-            "examplePrompt": "@Zero pull last week's X performance for @vm0_ai and give me the top 3 posts by engagement score with one sentence on each."
-          },
-          {
-            "title": "Content-Formate vergleichen",
-            "description": "Zum Sprint-Ende auswerten, welche Templates funktionieren",
-            "examplePrompt": "@Zero compare the last 4 posts using Template C (Hot Take) vs Template A (Feature Drop) - which format is driving higher engagement and why?"
-          },
-          {
-            "title": "Führungsebene briefen",
-            "description": "Ein Absatz, passend für den Montags-Sync",
-            "examplePrompt": "@Zero one paragraph on last week's X performance - suitable for the Monday leadership brief."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Zero ruft Impressionen, Likes, Retweets und Antworten für alle Posts im angegebenen Zeitfenster ab."
-          },
-          {
-            "description": "Zero postet den narrativen Bericht nach Zeitplan in deinen Slack-Channel."
-          },
-          {
-            "description": "Zero archiviert den vollständigen Bericht mit Rohdaten-Metriktabelle auf der angegebenen Notion-Seite."
-          },
-          {
-            "description": "Zero korreliert Post-Engagement mit tatsächlichen Website-Besuchen und zeigt auf, welche Posts echten Traffic generiert haben und nicht nur Social-Media-Aktivität. Optional, aber empfohlen."
-          }
-        ],
-        "tips": [
-          "Führe den Bericht montags aus, nicht sonntags - X-Metriken für Posts der letzten 48 Stunden sind noch nicht stabil und ändern sich bis zum Morgen.",
-          "Füge Plausible hinzu, um zu sehen, welche Posts echte Website-Besuche gebracht haben - ein Post mit hohem Engagement-Score, aber null Traffic-Klicks ist ein Eitelkeits-Erfolg, kein Wachstums-Erfolg.",
-          "Nutze die Format-Experiment-Auswertung am Ende jedes 2-Wochen-Sprints, um zu entscheiden, welche Content-Formate skaliert, iteriert oder eingestellt werden sollen."
-        ]
-      },
       "pr-review": {
         "title": "Get a PR reviewed with severity-ranked issues before you merge",
         "description": "Ask Zero to review any pull request. Zero reads the diff, flags critical issues as P0, improvement opportunities as P1, and surfaces them in Slack so the team can act before merging.",
@@ -1798,80 +1563,6 @@
           "Specify a threshold in your prompt - 'flag events over 3 seconds' - so Zero's findings match your SLO, not a generic cutoff.",
           "Ask Zero to check the endpoint right after a deploy to catch regressions before they affect users at scale.",
           "Combine with Daily Error Triage for a complete morning health check: errors from Sentry plus performance from Axiom in one brief."
-        ]
-      },
-      "marketing-analytics": {
-        "title": "Analyze your traffic channels and surface growth insights from Plausible",
-        "description": "Ask Zero to pull your Plausible traffic data and tell you what's working. Zero breaks down sources, channels, and trends - then surfaces the insight you actually need to act on.",
-        "timeSaved": "~20 min saved",
-        "scenario": "You know your traffic dashboard exists. You even open it occasionally. But turning raw pageview counts into an actionable insight takes time you don't have. Zero reads your Plausible data and delivers the answer - which channels are growing, which are flat, where the bounce rate spiked - in plain language, in Slack, on demand.",
-        "promptVariants": [
-          {
-            "label": "Weekly overview",
-            "prompt": "@Zero based on Plausible traffic, analyze our performance last week - channels, sources, any standout trends."
-          },
-          {
-            "label": "Channel deep dive",
-            "prompt": "@Zero pull Plausible for the last 30 days and break down organic vs direct vs referral traffic. Which channel grew the most week-over-week?"
-          },
-          {
-            "label": "Scheduled report",
-            "prompt": "@Zero every Monday at 9am, pull last week's Plausible traffic and post a summary to #marketing - top 3 sources, WoW change, and one insight."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Ming",
-            "text": "@Zero based on plausible traffic, analyze our recent traffic performance, channels, sources, any insights?"
-          },
-          {
-            "name": "Zero",
-            "text": "Last 7 days - Plausible traffic breakdown:\n\nTop sources: Direct (38%), Organic search (29%), X/Twitter (18%)\nWoW: Overall UV +12%, PV +8%\nStandout: X-driven sessions are up 34% WoW - the Apr 13 thread drove a spike. Organic is flat.\n\nRecommendation: The X spike is worth investigating. If that thread's topic drives conversions, consider a follow-up post."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero queries Plausible for the time window",
-            "description": "Zero pulls visitors, pageviews, bounce rate, and session data for the specified period, broken down by source and channel."
-          },
-          {
-            "title": "Zero analyzes trends",
-            "description": "Zero computes week-over-week changes, identifies the fastest-growing and fastest-declining channels, and flags any anomalies worth investigating."
-          },
-          {
-            "title": "Insights delivered in Slack",
-            "description": "Zero posts a concise summary: top channels, growth rates, and one concrete observation - not just a data dump, but a read."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Correlate with content",
-            "description": "See which posts drove real site visits",
-            "examplePrompt": "@Zero compare Plausible traffic spikes last week with the X posts published on those days. Which post drove the most visits?"
-          },
-          {
-            "title": "Schedule a weekly report",
-            "description": "Automate traffic analysis every Monday",
-            "examplePrompt": "@Zero every Monday at 9am, pull last week's Plausible data and post a traffic summary to #marketing with WoW changes."
-          },
-          {
-            "title": "Archive to Notion",
-            "description": "Save the weekly report for trend tracking",
-            "examplePrompt": "@Zero save today's Plausible traffic analysis to Notion under 'Weekly Traffic Reports > Week of [date]'."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "Plausible is required. Zero reads your site analytics including sessions, sources, and pageviews."
-          },
-          {
-            "description": "Notion is optional. Zero archives traffic reports to a Notion database for week-over-week trend tracking."
-          }
-        ],
-        "tips": [
-          "Specify the time window explicitly - 'last 7 days' vs 'last 30 days' produces very different reads on channel trends.",
-          "Ask Zero to flag anomalies, not just report numbers. 'Tell me if anything looks unusual' catches spikes you wouldn't notice otherwise.",
-          "Pair with Content Performance Report to close the loop: traffic from Plausible plus engagement from X in one session."
         ]
       },
       "production-db-query": {
@@ -2476,80 +2167,6 @@
           "Kostenberichte wöchentlich überprüfen, nicht monatlich - kleine Lecks addieren sich schnell."
         ]
       },
-      "merge-queue-monitor": {
-        "title": "Erkennen Sie feststeckende PRs, bevor sie Ihr Release blockieren",
-        "description": "Zero überwacht Ihre GitHub-Merge-Queue, diagnostiziert warum PRs feststecken und alarmiert die richtigen Personen - damit Ihre Release-Pipeline nie unbemerkt stoppt.",
-        "timeSaved": "~10 Min. pro Tag gespart",
-        "scenario": "PR #9842 sitzt seit zwei Stunden in der Merge-Queue. CI scheitert an einem instabilen Test, der nichts mit den PR-Änderungen zu tun hat. Drei weitere PRs stapeln sich dahinter. Niemand hat es bemerkt, weil alle in ihre eigene Arbeit vertieft sind. Das Release ist blockiert. Bis es jemand um 16 Uhr entdeckt, ist das halbe Tages-Deploy-Fenster vorbei. Zero erfasst das in Minuten.",
-        "promptVariants": [
-          {
-            "label": "Detailliert",
-            "prompt": "@Zero überwache die vm0-ai/vm0 Merge-Queue. Prüfe auf PRs, die länger als 30 Minuten mit fehlerhaftem CI in der Queue sind. Diagnostiziere die Fehlerursache und alarmiere den PR-Autor in Slack."
-          },
-          {
-            "label": "Schnell",
-            "prompt": "@Zero ist etwas in der Merge-Queue feststeckend?"
-          },
-          {
-            "label": "Geplant",
-            "prompt": "@Zero jeden Tag um Mittag die Merge-Queue auf feststeckende PRs prüfen. Wenn ein PR länger als 30 Minuten mit CI-Fehlern in der Queue ist, diagnostizieren und in #dev alarmieren."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Ethan",
-            "text": "@Zero ist etwas in der Merge-Queue feststeckend?"
-          },
-          {
-            "name": "Zero",
-            "text": "**Merge-Queue-Status - vm0-ai/vm0**\n\n⚠️ **1 PR feststeckend** (seit 2h 14m in der Queue):\n\n**PR #9842** - feat: Chat-Thread-Leseanzeige hinzufügen\n• Status: CI fehlgeschlagen (1 von 14 Checks)\n• Fehlgeschlagener Check: `cli-e2e-03-runner` - Timeout nach 8 Minuten\n• Ursache: Bekannter instabiler Test (unabhängig von PR-Änderungen)\n• Blockiert: 3 PRs dahinter in der Queue\n• Autor: @Qiqi\n\n**Empfohlene Aktion**: Den fehlgeschlagenen Check erneut ausführen. Wenn er besteht, sollte der PR innerhalb weniger Minuten gemergt werden.\n\n3 weitere PRs in der Queue - alle gesund, warten auf ihren Reihe."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero prüft die Merge-Queue nach Ihrem Zeitplan",
-            "description": "Zero fragt die GitHub Merge-Queue-API ab und untersucht jeden gelisteten PR - wie lange er wartet, ob CI grün ist und ob er andere PRs blockiert."
-          },
-          {
-            "title": "Zero diagnostiziert, warum feststeckende PRs feststecken",
-            "description": "Für jeden PR mit fehlerhaften Checks liest Zero die CI-Protokolle, identifiziert den spezifischen fehlgeschlagenen Test und bestimmt, ob er mit den PR-Änderungen zusammenhängt oder ein bekanntes Infrastruktur-Problem ist."
-          },
-          {
-            "title": "Zero alarmiert die richtigen Personen mit nutzbarem Kontext",
-            "description": "Zero postet eine detaillierte Diagnose in Slack: welcher Check fehlgeschlagen ist, warum, wer den PR erstellt hat und welche Aktion ihn entblockt. Die richtige Person sieht es und handelt - keine Detektivarbeit nötig."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Einen fehlgeschlagenen CI-Check erneut ausführen",
-            "description": "Zero bitten, den spezifischen Check neu auszuführen.",
-            "examplePrompt": "@Zero den cli-e2e-03-runner-Check auf PR #9842 erneut ausführen"
-          },
-          {
-            "title": "Bekannte instabile Tests auf die Whitelist setzen",
-            "description": "Zero mitteilen, welche Tests als instabil bekannt sind.",
-            "examplePrompt": "@Zero notiere cli-e2e-03-runner als bekannten instabilen Test - nicht alarmieren, außer bei 3 aufeinanderfolgenden Fehlschlägen"
-          },
-          {
-            "title": "Zur Routine machen",
-            "description": "Merge-Queue-Prüfungen einplanen.",
-            "examplePrompt": "@Zero jeden Tag um Mittag und 16 Uhr die Merge-Queue prüfen und bei feststeckenden PRs in #dev alarmieren"
-          }
-        ],
-        "integrations": [
-          {
-            "description": "GitHub - Lesezugriff auf die Merge-Queue, CI-Check-Status und PR-Details. Optionaler Schreibzugriff zum erneuten Ausführen fehlgeschlagener Checks."
-          },
-          {
-            "description": "Slack - postet Merge-Queue-Alarme mit Diagnose-Details in Ihren Engineering-Kanal."
-          }
-        ],
-        "tips": [
-          "Passen Sie die Prüffrequenz an die PR-Geschwindigkeit Ihres Teams an - High-Velocity-Teams brauchen stündliche Checks, für die meisten Teams reichen zweimal täglich.",
-          "Pflegen Sie eine Liste bekannter instabiler Tests und weisen Sie Zero an, sie von Alarmen auszunehmen. Das verhindert Alarmmüdigkeit.",
-          "Kombinieren Sie mit auto-merge-releases für eine vollständige Release-Pipeline: merge-queue-monitor erkennt feststeckende PRs, auto-merge-releases liefert das Release, sobald die Queue frei ist."
-        ]
-      },
       "voice-driven-agent": {
         "title": "Coding-Aufgaben per Sprachbefehl starten - ganz ohne Tastatur",
         "description": "Sag Zero per Sprache, er soll eine Sandbox hochfahren, dein Repo klonen, Setup ausführen und eine Aufgabe erledigen. Zero schickt einen Hintergrund-Agent los und meldet den Fortschritt zurück nach Slack.",
@@ -2862,80 +2479,6 @@
           "Setze den Takt nicht unter 5 Minuten - schneller und du baust dir nur Postfach-Stress in Slack nach.",
           "Fang breit an, dann enge ein. Beobachte einen Tag Alerts und verfeinere den Filter anhand dessen, was sich als Rauschen herausstellte.",
           "Pausiere es in Focus-Time. `@Zero pausiere den Inbox-Watcher bis 15 Uhr` stoppt die DMs, damit du in Deep Work kannst."
-        ]
-      },
-      "release-readiness-check": {
-        "title": "Wissen, wann ein Release safe ist - ohne manuelles Checken",
-        "description": "Zero überwacht deine Release-Pipeline, prüft CI-Gates und Version-Bumps und sagt dir in dem Moment, in dem ein Release-PR bereit ist - oder was ihn genau blockiert.",
-        "timeSaved": "~15 Min. pro Release-Check gespart",
-        "scenario": "Vor jedem Release muss jemand verifizieren: Alle CI-Checks grün, Version korrekt gebumpt, Changelog generiert, keine blockierenden Labels, keine Migrationen mit besonderem Handling. Zehn Minuten Klicken zwischen Tabs, und jeder könnte ein Problem zutage fördern. Release Readiness Check verdichtet das auf einen Prompt - Zero liest den PR, verifiziert jedes Gate, listet Fehlendes auf und sagt klar: bereit oder blockiert bei X. Ist alles bereit, bekommt das Team in Slack grünes Licht; ist es nicht, wissen alle genau, was zu fixen ist.",
-        "promptVariants": [
-          {
-            "label": "Ausführlich",
-            "prompt": "@Zero prüfe den offenen Release-PR - verifiziere dass alle CI-Checks grün sind, die Version nach Semver gebumpt wurde, der Changelog aktualisiert wurde, kein `do-not-merge`-Label gesetzt ist und keine Migrations-Dateien angefasst wurden. Poste das Urteil in #release-notify."
-          },
-          {
-            "label": "Schnell",
-            "prompt": "@Zero ist der Release bereit?"
-          },
-          {
-            "label": "Geplant",
-            "prompt": "@Zero prüfe jeden Werktag um 14 Uhr die Release-Pipeline und poste die Readiness in #release-notify."
-          }
-        ],
-        "slackPreview": [
-          {
-            "name": "Morgan",
-            "text": "@Zero ist der release bereit?"
-          },
-          {
-            "name": "Zero",
-            "text": "Release-PR #2847 - ❌ noch nicht bereit.\n\n✅ Alle 14 CI-Checks grün\n✅ Version gebumpt 1.8.0 → 1.9.0\n✅ Changelog aktualisiert (14 Einträge)\n❌ `needs-security-review`-Label noch gesetzt - wartet auf @security\n✅ Keine Migrations angefasst\n\nSobald das Security-Review-Label entfernt ist, kann der PR gemergt werden."
-          }
-        ],
-        "steps": [
-          {
-            "title": "Zero liest den offenen Release-PR",
-            "description": "Zero zieht PR-Metadaten, Datei-Diffs, CI-Status, Labels und Changelog. Alles wird in eine Checkliste pro Release normalisiert."
-          },
-          {
-            "title": "Zero verifiziert jedes Readiness-Gate, das du definiert hast",
-            "description": "Zero geht deine Gates durch - CI grün, Semver-korrekter Version-Bump, Changelog aktualisiert, keine blockierenden Labels, keine sensiblen Datei-Änderungen, Reviewer approved. Jedes Gate besteht oder fällt mit Beleg."
-          },
-          {
-            "title": "Zero gibt ein einziges Urteil ab",
-            "description": "Das Ergebnis ist eine Slack-Nachricht: 'bereit' oder 'nicht bereit, blockiert bei X'. Nicht mehrdeutig, keine Liste von 14 Links. Ist es bereit, kann das Team mit Sicherheit mergen."
-          }
-        ],
-        "nextActions": [
-          {
-            "title": "Gates verschärfen",
-            "description": "Im laufenden Betrieb ein neues Readiness-Kriterium ergänzen.",
-            "examplePrompt": "@Zero ab jetzt, lass den Release-Check auch fehlschlagen, wenn die PR-Beschreibung leer ist oder der Ziel-Branch nicht `main` ist."
-          },
-          {
-            "title": "Die richtigen Leute benachrichtigen",
-            "description": "Blocker zum zuständigen On-Call routen.",
-            "examplePrompt": "@Zero wenn der Release auf Security-Review blockiert, tagge @security im Readiness-Post, nicht nur den allgemeinen Channel."
-          },
-          {
-            "title": "Auto-Merge, wenn alle Gates grün sind",
-            "description": "Mit dem Auto-Merge-Releases-Use-Case für hands-off Shipping verketten.",
-            "examplePrompt": "@Zero wenn alle Readiness-Gates grün sind, aktiviere Auto-Merge am Release-PR, damit er rausgeht sobald Branch Protection freigibt."
-          }
-        ],
-        "integrations": [
-          {
-            "description": "GitHub - Zero liest PR-Status, Datei-Diffs, CI-Checks, Labels und Changelog. Lesezugriff auf das Repo ist erforderlich; Schreibzugriff nur wenn mit Auto-Merge verkettet."
-          },
-          {
-            "description": "Slack - Zero postet Readiness-Urteile in den Channel, den du nennst. Schreibzugriff auf den Channel erforderlich."
-          }
-        ],
-        "tips": [
-          "Definiere 'bereit' einmal im Voraus. 'CI grün + Changelog + keine Migrations' im Prompt festzuzurren ist die einmalige Investition; jeder folgende Release profitiert.",
-          "Lass es vor dem Standup laufen, nicht danach. Der Readiness-Check ist am nützlichsten, wenn er das Team zum Handeln anstößt - nicht wenn der Release schon vier Stunden liegt.",
-          "Verkette mit Auto-Merge Releases für echtes Hands-off-Shipping bei den Releases, die alle Gates passieren."
         ]
       },
       "docs-auto-update": {
@@ -3939,6 +3482,265 @@
           "Je mehr Kontext ihr Zero gebt, desto besser wird die Seite. Teilt einen Thread mit echten Beispielen, Screenshots oder einer kurzen Videobeschreibung statt nur einem Einzeiler.",
           "Prueft die Deploy-Vorschau vor dem Mergen. Zero trifft die Struktur jedes Mal, aber euer Team kennt die Markensprache am besten. Ein kurzer Text-Check macht die Seite authentisch.",
           "Kombiniert das mit dem Content-Performance-Report-Use-Case, um zu sehen, welche Seiten die meisten Anmeldungen bringen, und setzt auf diese Workflow-Kategorien."
+        ]
+      },
+      "competitor-intelligence": {
+        "title": "Wettbewerberbewegungen auf X, Websites und Preisseiten verfolgen",
+        "description": "Geben Sie Zero eine Liste von Wettbewerbern. Es überwacht ihre X-Accounts, scrapt ihre Websites und Preisseiten auf Änderungen, vergleicht mit der Vorwoche, speichert alle Ergebnisse in Notion und postet nach Ihrem Zeitplan einen Digest in Slack.",
+        "timeSaved": "~4 Std. pro Woche gespart",
+        "headings": {
+          "scenario": "Warum Wettbewerbsbeobachtung unter den Tisch fällt",
+          "prompt": "So beauftragen Sie Zero mit der Wettbewerberüberwachung",
+          "steps": "So baut Zero Ihre Competitive Intelligence auf",
+          "nextActions": "Erkenntnisse in strategischen Vorteil verwandeln",
+          "integrations": "Benötigte Integrationen: X, Notion und Slack",
+          "tips": "Best Practices für automatisierte Wettbewerberüberwachung"
+        },
+        "scenario": "Wettbewerber im Blick zu behalten sollte eine wöchentliche Gewohnheit sein. In der Praxis passiert es, wenn jemand etwas auf X entdeckt, einen Tweet an Slack weiterleitet und der Thread zwei Tage später ohne Aktion stirbt. Währenddessen streicht ein Wettbewerber stillschweigend sein kostenloses Angebot oder führt einen neuen Enterprise-Plan ein, und Sie erfahren es drei Wochen später von einem Interessenten, der sich bereits für sie entschieden hat. Zero übernimmt den gesamten Prozess. Es prüft ihre X-Accounts, liest ihre Produktseiten und Preisseiten auf Änderungen, vergleicht mit den Daten der Vorwoche und postet jeden Montag einen strukturierten Digest in Slack.",
+        "promptVariants": [
+          {
+            "label": "Vollständiges Wochenmonitoring",
+            "prompt": "@Zero jeden Montag um 9 Uhr, scanne die letzten 7 Tage Posts von @e2b_dev, @daytonaio und @replit auf X. Prüfe ihre Websites auf neue Produktankündigungen. Scrape ihre Preisseiten und vergleiche mit dem Notion-Snapshot der Vorwoche. Speichere Ergebnisse in der Competitor-Intelligence-Datenbank in Notion und poste einen Digest in #competitive."
+          },
+          {
+            "label": "Schneller Statuscheck",
+            "prompt": "@Zero hole die letzten zwei Wochen Aktivität von @e2b_dev und @daytonaio auf X. Fasse zusammen, was sie ausgeliefert haben, was sie gesagt haben und markiere Preisänderungen."
+          },
+          {
+            "label": "Einzelner Wettbewerber Deep Dive",
+            "prompt": "@Zero gib mir eine vollständige Aufschlüsselung dessen, was @replit auf X, auf ihrer Website und bei ihren Preisen in den letzten 30 Tagen gemacht hat. Speichere es in Notion."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero jeden Montag, Wettbewerber-X-Accounts, Websites und Preisseiten scannen. In Notion speichern und Digest in #competitive posten."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor Intelligence Digest - Woche vom 13. Apr\n\ne2b: Neue Sandbox-Preise ausgeliefert (kostenloses Kontingent von 100 auf 50 Stunden reduziert). 3 Posts zu Developer-Use-Cases.\nDaytona: Neue GitHub-Integration angekündigt. CEO postete zu agentischen Workflows. Preise unverändert.\nReplit: Neuer Teams-Pro-Tarif für 40 $/Platz hinzugefügt. Aktives Community-Engagement, keine größeren Produktupdates.\n\nVollständiges Log und Preis-Diffs in Notion gespeichert."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scannt Wettbewerber-X-Accounts und Websites",
+            "description": "Zero ruft aktuelle Posts von jedem Wettbewerber-Handle ab und extrahiert Produktankündigungen und Positionierung. Zusätzlich scrapt es Produktseiten, Changelogs und Blogs nach neuem Content und markiert Feature-Launches oder Repositionierungen seit dem letzten Scan."
+          },
+          {
+            "title": "Zero vergleicht Preisseiten mit der Vorwoche",
+            "description": "Zero ruft die Preisseite jedes Wettbewerbers ab, vergleicht sie mit dem letzte Woche in Notion gespeicherten Snapshot und markiert Änderungen an Tarifen, Preisen, Feature-Listen, Testangeboten oder Handlungsaufforderungen. Jede Änderung erhält eine kurze Auswirkungsanalyse."
+          },
+          {
+            "title": "Ergebnisse gespeichert und Digest gepostet",
+            "description": "Zero speichert einen strukturierten Datensatz in Ihrer Notion-Competitor-Intelligence-Datenbank und postet einen prägnanten wöchentlichen Digest in Slack, der Produktbewegungen, Messaging-Verschiebungen und Preisänderungen in einer Übersicht zusammenfasst."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen Befund vertiefen",
+            "description": "Eine bestimmte Wettbewerberbewegung oder Preisänderung genauer betrachten",
+            "examplePrompt": "@Zero hole alles, was wir über Cursors Preishistorie in Notion haben. Fasse zusammen, wie sich ihre Tarife und Positionierung seit Q1 entwickelt haben."
+          },
+          {
+            "title": "Neuen Wettbewerber zur Watchlist hinzufügen",
+            "description": "Den Monitoring-Umfang erweitern",
+            "examplePrompt": "@Zero füge @val_town zum wöchentlichen Wettbewerber-Scan hinzu. Inkludiere X-Account, Website und Preisseite."
+          },
+          {
+            "title": "Quartals-Rollup mit der Führungsebene teilen",
+            "description": "Alle Wettbewerbsaktivitäten des Quartals zusammenfassen",
+            "examplePrompt": "@Zero fasse alle in diesem Quartal in Notion protokollierten Wettbewerbsaktivitäten und Preisänderungen zusammen und poste einen Bericht in #leadership."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "X (Twitter) - Zero liest öffentliche Posts von Wettbewerber-Handles, um Ankündigungen, Messaging und Engagement zu verfolgen."
+          },
+          {
+            "description": "Notion - Zero speichert strukturierte Wettbewerberbefunde, Preis-Snapshots und Änderungshistorie in Ihrer Notion-Datenbank für langfristiges Tracking."
+          },
+          {
+            "description": "Slack - Zero postet den wöchentlichen Digest in Ihrem gewählten Kanal."
+          }
+        ],
+        "tips": [
+          "Führen Sie zuerst einen initialen Scrape durch, um die Baseline in Notion zu setzen. Ohne diese hat Zero nichts zum Vergleichen der Preisseiten und behandelt alles als neu.",
+          "Geben Sie Zero spezifische Signale zum Beobachten an. 'Posts über Preise, Integrationen oder Finanzierung markieren' liefert straffere Digests als ein allgemeiner Sweep.",
+          "Strukturieren Sie Ihre Notion-Datenbank mit Eigenschaften wie Wettbewerber, Kategorie, Änderungstyp und Datum, damit Sie filtern und Trends verfolgen können."
+        ]
+      },
+      "marketing-performance-report": {
+        "title": "Einen einheitlichen Marketing-Performance-Bericht zu Traffic und Engagement erhalten",
+        "description": "Jede Woche ruft Zero Ihre Plausible-Traffic-Daten und X-Engagement-Metriken ab, bewertet jeden Post, korreliert Social-Aktivität mit echten Website-Besuchen und postet einen narrativen Bericht in Slack mit vollständiger Archivierung in Notion.",
+        "timeSaved": "~2 Std. pro Woche gespart",
+        "headings": {
+          "scenario": "Warum das Zusammentragen von Marketing-Performance-Daten ewig dauert",
+          "prompt": "So fragen Sie Zero nach Ihrem Performance-Bericht",
+          "steps": "So erstellt Zero Ihren einheitlichen Bericht",
+          "nextActions": "Performance-Daten in bessere Content-Entscheidungen verwandeln",
+          "integrations": "Benötigte Integrationen: X, Plausible, Slack und Notion",
+          "tips": "Best Practices für automatisiertes Performance-Reporting"
+        },
+        "scenario": "Sie wissen, dass Sie sowohl Traffic als auch Content-Performance wöchentlich auswerten sollten. Sie haben das Plausible-Dashboard und die X-Analytik in separaten Tabs geöffnet. Aus rohen Seitenaufrufen und Post-Metriken einen umsetzbaren Insight zu machen, kostet 90 Minuten, die Sie am Montagmorgen nicht haben. Zero erledigt das Ganze nach Zeitplan - es ruft Traffic-Daten von Plausible ab, Engagement-Metriken von X, korreliert welche Posts echte Website-Besuche gebracht haben, schreibt einen Bericht und postet ihn in Slack vor Ihrem ersten Meeting.",
+        "promptVariants": [
+          {
+            "label": "Vollständiger Wochenbericht",
+            "prompt": "@Zero jeden Montag um 9 Uhr, letzte Woche Plausible-Traffic und X-Engagement für @vm0_ai abrufen. Jeden Post bewerten: (Likes x1) + (Retweets x3) + (Antworten x2). Mit Plausible-Traffic-Spitzen korrelieren. Bericht schreiben: Top-Kanäle, Top-Performer, Underperformer, WoW-Änderungen und eine Empfehlung. In #marketing posten. In Notion archivieren."
+          },
+          {
+            "label": "Schneller Traffic-Check",
+            "prompt": "@Zero Plausible für die letzten 7 Tage abrufen. Organic vs. Direct vs. Referral aufschlüsseln. Welcher Kanal ist Woche-über-Woche am stärksten gewachsen?"
+          },
+          {
+            "label": "Content-Format-Vergleich",
+            "prompt": "@Zero die letzten 4 Posts mit Template C (Hot Take) vs. Template A (Feature Drop) vergleichen - welches Format erzielt höheres Engagement und mehr Website-Besuche?"
+          },
+          {
+            "label": "Executive Summary",
+            "prompt": "@Zero einen Absatz zur Marketing-Performance der letzten Woche - Traffic und Content - passend für das Montags-Leadership-Briefing."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Zero",
+            "text": "Marketing Performance Report - Woche vom 7. Apr\n\nTraffic: UV +12% WoW. Top-Quellen: Direct (38%), Organic (29%), X (18%).\nX-getriebene Sessions +34% - der Thread vom 13. Apr erzeugte einen Spike.\n\nTop-Post: 'AI sandbox in 30 seconds' Demo - Score 142, 89 Website-Besuche. Kurzvideos übertreffen Text um das 3-fache.\nUnderperformer: 'Feature Drop: new connector library' - Score 18, 3 Besuche. Feature-First-Framing braucht einen Use-Case-Hook.\n\nEmpfehlung: Nächste Woche den Feature Drop mit einem Vorher/Nachher-Szenario einleiten. Das Thread-Format vom 13. Apr ist wiederholenswert.\n\nVollständiger Bericht in Notion archiviert."
+          },
+          {
+            "name": "Alex",
+            "text": "@Zero einen Absatz zur Marketing-Performance der letzten Woche für das Leadership-Briefing."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero ruft Traffic- und Engagement-Daten ab",
+            "description": "Zero fragt Plausible nach Besuchern, Seitenaufrufen, Bounce-Rate und Quellen ab. Gleichzeitig ruft es Impressionen, Likes, Retweets und Antworten für alle in den letzten 7 Tagen veröffentlichten Posts von X ab."
+          },
+          {
+            "title": "Zero bewertet, rankt und korreliert",
+            "description": "Zero berechnet Engagement-Scores für jeden Post, identifiziert Top- und Underperformer, berechnet Woche-über-Woche-Deltas für sowohl Traffic als auch Engagement und korreliert Social-Aktivität mit tatsächlichen Website-Besuch-Spitzen aus Plausible."
+          },
+          {
+            "title": "Bericht gepostet und Daten archiviert",
+            "description": "Zero schreibt einen prägnanten narrativen Bericht über Traffic-Kanäle, Top-Performer, Underperformer, Woche-über-Woche-Änderungen und eine konkrete Empfehlung. Es postet in Slack und archiviert die vollständige Metriktabelle in Notion."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen Traffic-Spike vertiefen",
+            "description": "Sehen, welche Posts echte Website-Besuche generiert haben",
+            "examplePrompt": "@Zero Plausible-Traffic-Spitzen der letzten Woche mit den an diesen Tagen veröffentlichten X-Posts vergleichen. Welcher Post hat die meisten Besuche gebracht?"
+          },
+          {
+            "title": "Content-Formate vergleichen",
+            "description": "Auswerten, welche Templates am besten funktionieren",
+            "examplePrompt": "@Zero die letzten 4 Posts mit Template C (Hot Take) vs. Template A (Feature Drop) vergleichen - welches Format erzielt höheres Engagement und warum?"
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Den vollständigen Bericht jeden Montag automatisieren",
+            "examplePrompt": "@Zero jeden Montag um 9 Uhr letzte Woche Plausible-Traffic und X-Engagement abrufen, Performance-Bericht schreiben, in #marketing posten und in Notion archivieren."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "X (Twitter) - Zero ruft Impressionen, Likes, Retweets und Antworten für alle Posts im angegebenen Zeitfenster ab."
+          },
+          {
+            "description": "Plausible - Zero liest Ihre Website-Analytik inklusive Sessions, Quellen und Seitenaufrufe, um Social-Aktivität mit echtem Traffic zu korrelieren."
+          },
+          {
+            "description": "Slack - Zero postet den narrativen Bericht nach Zeitplan in Ihren Kanal."
+          },
+          {
+            "description": "Notion - Zero archiviert den vollständigen Bericht mit Rohdaten-Metriktabellen für Woche-über-Woche-Trendtracking."
+          }
+        ],
+        "tips": [
+          "Führen Sie den Bericht montags aus, nicht sonntags - X-Metriken für Posts der letzten 48 Stunden sind noch nicht stabil und ändern sich bis zum Morgen.",
+          "Immer Plausible in den Bericht einbeziehen. Ein Post mit hohem Engagement-Score, aber null Traffic-Klicks ist ein Eitelkeits-Erfolg, kein Wachstums-Erfolg.",
+          "Nutzen Sie den Format-Vergleich-Prompt am Ende jedes 2-Wochen-Sprints, um zu entscheiden, welche Content-Formate skaliert, iteriert oder eingestellt werden sollen."
+        ]
+      },
+      "release-pipeline-monitor": {
+        "title": "Release-Pipeline vom Merge-Queue bis zur Auslieferung überwachen",
+        "description": "Zero überwacht Ihre Merge-Queue auf feststeckende PRs, verifiziert die Release-Readiness-Gates und postet ein klares Urteil in Slack - damit Ihre Release-Pipeline nie unbemerkt stoppt und Sie immer wissen, wann sicher ausgeliefert werden kann.",
+        "timeSaved": "~25 Min. pro Release gespart",
+        "headings": {
+          "scenario": "Warum Releases unbemerkt stocken",
+          "prompt": "So beauftragen Sie Zero mit der Pipeline-Überwachung",
+          "steps": "So hält Zero Ihre Pipeline in Bewegung",
+          "nextActions": "Pipeline-Transparenz in schnelleres Shipping verwandeln",
+          "integrations": "Benötigte Integrationen: GitHub und Slack",
+          "tips": "Best Practices für Release-Pipeline-Monitoring"
+        },
+        "scenario": "PR #9842 sitzt seit zwei Stunden in der Merge-Queue. CI scheitert an einem instabilen Test, der nichts mit der Änderung zu tun hat. Drei weitere PRs stapeln sich dahinter. Niemand hat es bemerkt. Gleichzeitig wartet der Release-PR darauf, dass jemand verifiziert: alle CI-Checks grün, Version gebumpt, Changelog aktualisiert, keine blockierenden Labels. Zehn Minuten Klicken zwischen Tabs, für die niemand Zeit hat. Zero erkennt feststeckende PRs in Minuten und verifiziert jedes Readiness-Gate, sodass Sie eine klare Antwort erhalten: bereit, oder blockiert bei X.",
+        "promptVariants": [
+          {
+            "label": "Vollständiger Pipeline-Check",
+            "prompt": "@Zero prüfe die vm0-ai/vm0 Merge-Queue auf feststeckende PRs. Dann prüfe den offenen Release-PR - verifiziere dass alle CI-Checks bestanden, die Version nach Semver gebumpt, der Changelog aktualisiert und keine blockierenden Labels gesetzt sind. Poste den vollständigen Status in #release-notify."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero ist etwas in der Merge-Queue feststeckend? Ist der Release bereit?"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero jeden Werktag um 12 Uhr und 16 Uhr, Merge-Queue auf feststeckende PRs prüfen und Release-Readiness verifizieren. Status in #release-notify posten."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero Merge-Queue und Release-Readiness prüfen."
+          },
+          {
+            "name": "Zero",
+            "text": "Release-Pipeline-Status - vm0-ai/vm0\n\nMerge-Queue: 1 PR feststeckend (seit 2h 14m in der Queue)\n- PR #9842 - feat: Chat-Thread-Leseanzeige hinzufügen\n- Fehlgeschlagener Check: cli-e2e-03-runner (Timeout, bekannter instabiler Test)\n- Blockiert 3 PRs dahinter\n- Empfehlung: Fehlgeschlagenen Check erneut ausführen\n\nRelease-PR #2847: Noch nicht bereit\n- Alle 14 CI-Checks grün\n- Version gebumpt 1.8.0 auf 1.9.0\n- Changelog aktualisiert (14 Einträge)\n- Blockiert: needs-security-review-Label noch gesetzt\n\nSobald die Queue frei ist und das Security-Label entfernt wird, ist dieses Release bereit zum Ausliefern."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero prüft die Merge-Queue auf feststeckende PRs",
+            "description": "Zero fragt die GitHub Merge-Queue-API ab und untersucht jeden gelisteten PR - wie lange er wartet, ob CI grün ist und ob er andere PRs blockiert. Bei jedem feststeckenden PR liest es die CI-Logs und diagnostiziert die Ursache."
+          },
+          {
+            "title": "Zero verifiziert die Release-Readiness-Gates",
+            "description": "Zero liest die Metadaten des Release-PRs, Datei-Diffs, CI-Status, Labels und Changelog. Es geht die definierten Gates durch: CI grün, Semver-korrekter Version-Bump, Changelog aktualisiert, keine blockierenden Labels, keine sensiblen Datei-Änderungen, Reviewer approved."
+          },
+          {
+            "title": "Zero postet ein einziges Urteil mit handlungsfähigem Kontext",
+            "description": "Statt einer Wand von Links zum Prüfen postet Zero eine strukturierte Nachricht: Merge-Queue-Zustand, Release-Readiness-Urteil und genau die Aktion, die jedes Problem löst. Die richtige Person sieht es und handelt."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Einen fehlgeschlagenen CI-Check erneut ausführen",
+            "description": "Einen instabilen Test in der Merge-Queue beseitigen",
+            "examplePrompt": "@Zero den cli-e2e-03-runner-Check auf PR #9842 erneut ausführen"
+          },
+          {
+            "title": "Readiness-Gates verschärfen",
+            "description": "Ein neues Kriterium zum Release-Check hinzufügen",
+            "examplePrompt": "@Zero ab jetzt lass den Release-Check auch fehlschlagen, wenn die PR-Beschreibung leer ist oder der Ziel-Branch nicht main ist."
+          },
+          {
+            "title": "Auto-Merge wenn alle Gates grün sind",
+            "description": "Mit Auto-Merge für Hands-off-Shipping verketten",
+            "examplePrompt": "@Zero wenn alle Readiness-Gates grün sind und die Merge-Queue leer ist, aktiviere Auto-Merge am Release-PR."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHub - Lesezugriff auf die Merge-Queue, CI-Check-Status, PR-Details, Labels und Changelogs. Optionaler Schreibzugriff zum erneuten Ausführen fehlgeschlagener Checks."
+          },
+          {
+            "description": "Slack - postet Pipeline-Status und Readiness-Urteile in Ihren Engineering-Kanal."
+          }
+        ],
+        "tips": [
+          "Passen Sie die Prüffrequenz an die PR-Geschwindigkeit Ihres Teams an - High-Velocity-Teams brauchen stündliche Checks, für die meisten Teams reichen zweimal täglich.",
+          "Definieren Sie 'bereit' einmal im Voraus. 'CI grün + Changelog + keine Migrations' im Prompt festzuzurren ist die einmalige Investition; jeder folgende Release profitiert.",
+          "Verketten Sie mit Auto-Merge Releases für echtes Hands-off-Shipping: Dieser Use Case erkennt Probleme, Auto-Merge liefert das Release aus, sobald alles frei ist."
         ]
       }
     },
