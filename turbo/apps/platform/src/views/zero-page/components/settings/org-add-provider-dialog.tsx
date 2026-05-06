@@ -75,7 +75,7 @@ export function OrgAddProviderDialog({
   const features = useLastResolved(featureSwitch$);
   const codexBetaEnabled = features?.[FeatureSwitchKey.CodexBeta] ?? false;
   const chatgptOauthEnabled =
-    features?.[FeatureSwitchKey.ChatgptOauthProvider] ?? false;
+    features?.[FeatureSwitchKey.CodexOauthProvider] ?? false;
   const openAdd = useSet(orgOpenAddDialog$);
   const configuredSet = new Set(
     configuredProviders?.map((p) => {

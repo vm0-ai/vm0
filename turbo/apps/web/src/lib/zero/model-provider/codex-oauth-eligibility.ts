@@ -15,7 +15,7 @@ export async function isCodexOauthEligible(
   userId: string,
 ): Promise<boolean> {
   const overrides = await loadFeatureSwitchOverrides(orgId, userId);
-  return isFeatureEnabled(FeatureSwitchKey.ChatgptOauthProvider, {
+  return isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, {
     orgId,
     userId,
     overrides,

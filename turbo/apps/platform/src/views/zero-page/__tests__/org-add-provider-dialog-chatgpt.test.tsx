@@ -2,7 +2,7 @@
  * Tests for the Connect ChatGPT entry on the model-providers settings tab.
  *
  * Covers:
- * - Card hidden when ChatgptOauthProvider feature switch is off (DoD: gate-off)
+ * - Card hidden when CodexOauthProvider feature switch is off (DoD: gate-off)
  * - Card visible when feature switch is on (DoD: gate-on)
  * - Click on the card redirects to /api/zero/chatgpt/oauth/connect (DoD: redirect)
  * - Existing-provider row renders workspace name + plan pill when fields
@@ -95,7 +95,7 @@ describe("connect ChatGPT card — feature switch gating", () => {
 
   it("shows the ChatGPT card when the feature switch is on", async () => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ChatgptOauthProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
     });
 
     await openProvidersPage();
@@ -115,7 +115,7 @@ describe("connect ChatGPT card — click handler", () => {
 
   beforeEach(() => {
     setMockFeatureSwitches({
-      [FeatureSwitchKey.ChatgptOauthProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     resetMockOrgModelProviders();
     // jsdom marks window.location.assign as non-configurable in some versions;

@@ -21,7 +21,7 @@ describe("isCodexOauthEligible", () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
     await updateUserFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ChatgptOauthProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
     });
 
     const result = await isCodexOauthEligible(orgId, userId);
@@ -33,7 +33,7 @@ describe("isCodexOauthEligible", () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
     await updateUserFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ChatgptOauthProvider]: false,
+      [FeatureSwitchKey.CodexOauthProvider]: false,
     });
 
     const result = await isCodexOauthEligible(orgId, userId);

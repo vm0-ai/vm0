@@ -309,7 +309,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatgptOauthProvider]: {
+  [FeatureSwitchKey.CodexOauthProvider]: {
     maintainer: "lancy@vm0.ai",
     description:
       "Gate the ChatGPT-OAuth model provider in zero web (Epic #11872). " +
