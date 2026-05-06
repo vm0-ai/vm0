@@ -292,7 +292,7 @@ export const zeroLogsSearchContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       keyword: z.string().min(1),
-      agent: z.string().optional(),
+      agent: z.string().uuid().optional(), // canonical Zero agent ID
       runId: z.string().optional(),
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(50).default(20),

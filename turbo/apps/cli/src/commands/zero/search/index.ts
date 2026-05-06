@@ -200,7 +200,7 @@ export const zeroSearchCommand = new Command()
     collectSource,
     [] as string[],
   )
-  .option("--agent <name>", "Filter by agent name")
+  .option("--agent <agent>", "Filter by agent (logs use ID; chat uses name)")
   .option("--run <id>", "Filter by run ID")
   .option("--since <time>", "Time window (e.g., 7d, 2h)")
   .option("--limit <n>", "Maximum number of matches")

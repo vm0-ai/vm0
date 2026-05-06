@@ -69,6 +69,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
       ownerUserId: user.userId,
     });
     const uploadId = randomUUID();
+    const telegramFileId = uniqueId("tg-doc-file");
     const s3Key = `uploads/${user.userId}/${uploadId}/report.pdf`;
     const fileUrl = `http://localhost:3000/f/${encodeURIComponent(user.userId)}/${uploadId}/report.pdf`;
     const telegramFileId = uniqueId("tg-doc-file-id");

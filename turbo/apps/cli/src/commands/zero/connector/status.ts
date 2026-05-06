@@ -2,9 +2,11 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   CONNECTOR_TYPES,
+  type ConnectorType,
   connectorTypeSchema,
 } from "@vm0/connectors/connectors";
 import {
+  getConnectorEnvironmentMapping,
   getScopeDiff,
   hasRequiredScopes,
 } from "@vm0/connectors/connector-utils";
@@ -15,6 +17,20 @@ import { resolveAgentContext } from "./agent-context";
 import { getPlatformOrigin } from "../doctor/platform-url";
 
 const LABEL_WIDTH = 16;
+
+function getDoctorCommand(type: ConnectorType): string | null {
+  const [envName] = Object.keys(getConnectorEnvironmentMapping(type));
+  return envName ? `zero doctor check-connector --env-name ${envName}` : null;
+}
+
+function printDoctorHint(type: ConnectorType): void {
+  const command = getDoctorCommand(type);
+  if (command) {
+    console.log(`Diagnose it with: ${command}`);
+  } else {
+    console.log("Having trouble? Run: zero doctor --help");
+  }
+}
 
 export const statusCommand = new Command()
   .name("status")
@@ -100,7 +116,15 @@ export const statusCommand = new Command()
             : `${agentCtx.displayName} (${agentCtx.agentId})`;
 
         console.log();
-        if (authorized) {
+        if (authorized && !isConnected) {
+          const origin = await getPlatformOrigin();
+          const url = `${origin}/connectors/${parseResult.data}/connect?agentId=${agentCtx.agentId}`;
+          console.log(
+            `The ${parseResult.data} connector is authorized for agent ${agentLabel}, but it is not connected.`,
+          );
+          console.log(`Connect it at: [Connect ${parseResult.data}](${url})`);
+          printDoctorHint(parseResult.data);
+        } else if (authorized) {
           console.log(
             `The ${parseResult.data} connector is authorized for agent ${agentLabel}.`,
           );
@@ -111,6 +135,7 @@ export const statusCommand = new Command()
             `The ${parseResult.data} connector is not connected. Once connected, it will be authorized for agent ${agentLabel}.`,
           );
           console.log(`Connect it at: [Connect ${parseResult.data}](${url})`);
+          printDoctorHint(parseResult.data);
         } else {
           const origin = await getPlatformOrigin();
           const url = `${origin}/connectors/${parseResult.data}/authorize?agentId=${agentCtx.agentId}`;
@@ -121,6 +146,9 @@ export const statusCommand = new Command()
             `Authorize it at: [Authorize ${parseResult.data}](${url})`,
           );
         }
+      } else if (!connector) {
+        console.log();
+        printDoctorHint(parseResult.data);
       }
     }),
   );

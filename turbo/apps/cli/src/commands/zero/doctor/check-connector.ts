@@ -153,7 +153,10 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   console.log("");
   if (!isConnected) {
     console.log(`The ${ctx.label} connector is not connected.`);
-    if (!ctx.agentId) {
+    if (ctx.agentId && hasPermission) {
+      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect?agentId=${ctx.agentId}`;
+      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
+    } else if (!ctx.agentId) {
       // No agentId: can't scope the authorize page, so fall back to a plain
       // connect link. With agentId, 2b's Authorize link performs the initial
       // OAuth connect before granting permission — one link covers both steps.
@@ -185,7 +188,11 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
       `Skipped — agent authorization can only be checked once the ${ctx.label} connector is reconnected (see 2a).`,
     );
   } else if (hasPermission) {
-    console.log(`The ${ctx.label} connector is authorized for this agent.`);
+    console.log(
+      isConnected
+        ? `The ${ctx.label} connector is authorized for this agent.`
+        : `The ${ctx.label} connector is authorized for this agent, but it is not connected.`,
+    );
   } else {
     const url = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/authorize?agentId=${ctx.agentId}`;
     console.log(

@@ -16,6 +16,19 @@ import { http } from "../../../../../src/__tests__/msw";
 import { server } from "../../../../../src/mocks/server";
 
 const context = testContext();
+const testCronNow = Date.parse("2000-01-01T00:10:00.000Z");
+const staleCreatedAt = new Date(testCronNow - 6 * 60 * 1000);
+
+async function runCleanup(
+  request: Parameters<typeof GET>[0],
+): Promise<Response> {
+  const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(testCronNow);
+  try {
+    return await GET(request);
+  } finally {
+    dateNowSpy.mockRestore();
+  }
+}
 
 describe("GET /api/cron/cleanup-sandboxes", () => {
   const cronSecret = "test-cron-secret";
@@ -30,10 +43,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     vi.stubEnv("CRON_SECRET", cronSecret);
     reloadEnv();
 
-    // The cron is intentionally global and may sweep stale runs left by
-    // previously executed tests. Keep callback dispatch at the HTTP boundary
-    // mocked so suite stability does not depend on the whole test DB being
-    // pristine.
+    // Keep callback dispatch at the HTTP boundary mocked so suite stability
+    // does not depend on external callback routes.
     server.use(
       http.post(/.*\/api\/internal\/callbacks\/.*/, () => {
         return HttpResponse.json({ success: true });
@@ -54,7 +65,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         "http://localhost:3000/api/cron/cleanup-sandboxes",
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(401);
       const data = await response.json();
@@ -71,7 +82,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         },
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(401);
     });
@@ -86,7 +97,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         },
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(200);
     });
@@ -103,7 +114,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         },
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -130,7 +141,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         },
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -143,10 +154,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should cleanup expired sandbox after heartbeat timeout", async () => {
-      // Create only this run as stale. Moving global Date.now forward causes
-      // the cron to sweep unrelated pending runs from other tests in the shard.
       const { runId } = await seedTestRun(user.userId, testComposeId, {
-        createdAt: new Date(Date.now() - 6 * 60 * 1000),
+        createdAt: staleCreatedAt,
       });
 
       const request = createTestRequest(
@@ -158,7 +167,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         },
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -175,7 +184,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       // Create a completed run older than the timeout window.
       const { runId } = await seedTestRun(user.userId, testComposeId, {
         status: "completed",
-        createdAt: new Date(Date.now() - 10 * 60 * 1000),
+        createdAt: staleCreatedAt,
       });
 
       const request = createTestRequest(
@@ -187,7 +196,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         },
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -200,8 +209,6 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should cleanup multiple expired sandboxes from different users", async () => {
-      const staleCreatedAt = new Date(Date.now() - 6 * 60 * 1000);
-
       // Create run for first user directly in pending state
       const { runId: runId1 } = await seedTestRun(user.userId, testComposeId, {
         createdAt: staleCreatedAt,
@@ -229,7 +236,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         },
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -243,9 +250,8 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
 
     it("should set run status to timeout with appropriate reason", async () => {
-      // Create only this run as stale; keep the cron's global clock real.
       const { runId } = await seedTestRun(user.userId, testComposeId, {
-        createdAt: new Date(Date.now() - 6 * 60 * 1000),
+        createdAt: staleCreatedAt,
       });
 
       const request = createTestRequest(
@@ -257,7 +263,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
         },
       );
 
-      const response = await GET(request);
+      const response = await runCleanup(request);
 
       expect(response.status).toBe(200);
       const data = await response.json();

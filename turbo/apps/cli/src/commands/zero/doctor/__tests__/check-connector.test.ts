@@ -219,6 +219,47 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("needs to be connected and authorized");
     });
 
+    it("should report connector authorized but not connected with a connect URL", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(
+            { error: { message: "Not found", code: "NOT_FOUND" } },
+            { status: 404 },
+          );
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json(runContextResponse);
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("not connected");
+      expect(output).toContain(
+        "The GitHub connector is authorized for this agent, but it is not connected.",
+      );
+      expect(output).toContain(
+        "[Connect GitHub](https://app.vm0.ai/connectors/github/connect?agentId=agent-abc-123)",
+      );
+      expect(output).not.toContain("[Authorize GitHub]");
+    });
+
     it("should report connector expired with reconnect URL", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");

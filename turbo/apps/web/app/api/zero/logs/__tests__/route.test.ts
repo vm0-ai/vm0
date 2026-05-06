@@ -206,9 +206,9 @@ describe("GET /api/zero/logs", () => {
       await completeTestRun(user.userId, run2);
     });
 
-    it("should filter by exact agent name", async () => {
+    it("should filter by exact agent ID", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/logs?agent=${alphaName}`,
+        `http://localhost:3000/api/zero/logs?agent=${alphaComposeId}`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -220,7 +220,7 @@ describe("GET /api/zero/logs", () => {
 
     it("should return empty list when agent has no runs", async () => {
       const request = createTestRequest(
-        "http://localhost:3000/api/zero/logs?agent=nonexistent-agent",
+        `http://localhost:3000/api/zero/logs?agent=${randomUUID()}`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -229,21 +229,20 @@ describe("GET /api/zero/logs", () => {
       expect(data.data).toEqual([]);
     });
 
-    it("should use exact match, not fuzzy", async () => {
-      // Search for partial name should return nothing with agent filter
+    it("should reject agent names for the agent filter", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/logs?agent=agent-alpha`,
+        `http://localhost:3000/api/zero/logs?agent=${alphaName}`,
       );
       const response = await GET(request);
       const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.data).toEqual([]);
+      expect(response.status).toBe(400);
+      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("should take precedence over search param", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/logs?agent=${alphaName}&search=beta`,
+        `http://localhost:3000/api/zero/logs?agent=${alphaComposeId}&search=beta`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -314,7 +313,7 @@ describe("GET /api/zero/logs", () => {
 
     it("name param should take precedence over agent param", async () => {
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/logs?name=${agentName}&agent=nonexistent`,
+        `http://localhost:3000/api/zero/logs?name=${agentName}&agent=${randomUUID()}`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -589,7 +588,7 @@ describe("GET /api/zero/logs", () => {
 
       // Filter for slack source + the other agent
       const request = createTestRequest(
-        `http://localhost:3000/api/zero/logs?triggerSource=slack&agent=${otherName}`,
+        `http://localhost:3000/api/zero/logs?triggerSource=slack&agent=${otherComposeId}`,
       );
       const response = await GET(request);
       const data = await response.json();
@@ -679,7 +678,7 @@ describe("GET /api/zero/logs", () => {
       expect(data.filters.sources).toContain("web");
     });
 
-    it("should return available agent names from user's runs", async () => {
+    it("should return available agent IDs from user's runs", async () => {
       const agentA = `filter-agent-a-${randomUUID().slice(0, 8)}`;
       const agentB = `filter-agent-b-${randomUUID().slice(0, 8)}`;
       const { composeId: composeA } = await createTestCompose(agentA);
@@ -701,8 +700,8 @@ describe("GET /api/zero/logs", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.filters.agents).toContain(agentA);
-      expect(data.filters.agents).toContain(agentB);
+      expect(data.filters.agents).toContain(composeA);
+      expect(data.filters.agents).toContain(composeB);
     });
 
     it("should not include null trigger sources in filters", async () => {

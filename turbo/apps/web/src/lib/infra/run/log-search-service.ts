@@ -4,6 +4,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, inArray, gte } from "drizzle-orm";
 import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 
@@ -33,7 +34,8 @@ async function getAgentNames(
   const rows = await globalThis.services.db
     .select({
       runId: agentRuns.id,
-      composeName: agentComposes.name,
+      composeId: agentComposes.id,
+      displayName: zeroAgents.displayName,
     })
     .from(agentRuns)
     .leftJoin(
@@ -44,6 +46,7 @@ async function getAgentNames(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(
       and(
         inArray(agentRuns.id, runIds),
@@ -53,7 +56,7 @@ async function getAgentNames(
     );
 
   for (const row of rows) {
-    result.set(row.runId, row.composeName || "unknown");
+    result.set(row.runId, row.displayName ?? row.composeId ?? "unknown");
   }
 
   return result;
@@ -63,7 +66,7 @@ async function getUserRunIds(
   userId: string,
   orgId: string,
   since: Date,
-  agentName?: string,
+  agentId?: string,
 ): Promise<string[]> {
   const conditions = [
     eq(agentRuns.userId, userId),
@@ -71,7 +74,7 @@ async function getUserRunIds(
     gte(agentRuns.createdAt, since),
   ];
 
-  if (agentName) {
+  if (agentId) {
     const rows = await globalThis.services.db
       .select({ runId: agentRuns.id })
       .from(agentRuns)
@@ -83,7 +86,8 @@ async function getUserRunIds(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .where(and(...conditions, eq(agentComposes.name, agentName)));
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .where(and(...conditions, eq(zeroAgents.id, agentId)));
 
     return rows.map((r) => {
       return r.runId;

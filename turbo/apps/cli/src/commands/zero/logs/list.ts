@@ -30,7 +30,7 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List agent run logs")
-  .option("--agent <name>", "Filter by agent name")
+  .option("--agent <id>", "Filter by Zero agent ID")
   .option(
     "--status <status>",
     "Filter by status (queued|pending|running|completed|failed|timeout|cancelled)",
@@ -45,7 +45,7 @@ export const listCommand = new Command()
     `
 Examples:
   zero logs list
-  zero logs list --agent my-agent
+  zero logs list --agent 123e4567-e89b-12d3-a456-426614174000
   zero logs list --status completed --limit 10
   zero logs list --since 1h
   zero logs list --since 1d --status completed`,
