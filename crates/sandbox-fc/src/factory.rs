@@ -904,13 +904,15 @@ impl SandboxCreateTransaction {
         C: CreateRollbackCleanup + Sync,
     {
         let keep_workspace = if let Some(cow_device) = self.cow_device.take() {
-            !cleanup.destroy_cow_device(cow_device).await
+            // The COW finalizer continues in the background if this future is
+            // cancelled. Keep the workspace until the finalizer reports success.
+            self.delete_workspace_on_leak_cleanup = false;
+            let cow_destroyed = cleanup.destroy_cow_device(cow_device).await;
+            self.delete_workspace_on_leak_cleanup = cow_destroyed;
+            !cow_destroyed
         } else {
             false
         };
-        if keep_workspace {
-            self.delete_workspace_on_leak_cleanup = false;
-        }
         if let Some(network) = self.network.take() {
             self.network = Some(network);
             cleanup.release_network(&mut self.network).await;
@@ -1660,12 +1662,18 @@ async fn destroy_firecracker_sandbox(mut sandbox: FirecrackerSandbox, netns_pool
     // releasing file descriptors (particularly the NBD device fd).
     // Retry a few times to let it finish.
     let cow_destroyed = match sandbox.cow_device.take() {
-        Some(cow_device) => destroy_cow_device_with_retries(&sandbox_id, cow_device).await,
+        Some(cow_device) => {
+            // If shutdown aborts this task while the COW finalizer is running,
+            // Drop-based leak cleanup must not delete the backing workspace.
+            sandbox.preserve_workspace_on_leak_cleanup();
+            let cow_destroyed = destroy_cow_device_with_retries(&sandbox_id, cow_device).await;
+            if cow_destroyed {
+                sandbox.allow_workspace_delete_on_leak_cleanup();
+            }
+            cow_destroyed
+        }
         None => true,
     };
-    if !cow_destroyed {
-        sandbox.preserve_workspace_on_leak_cleanup();
-    }
 
     // Return the network namespace to the pool.
     let outcome = netns_pool.release(sandbox.network.lease_mut()).await;

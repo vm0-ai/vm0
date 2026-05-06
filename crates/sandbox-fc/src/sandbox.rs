@@ -386,6 +386,10 @@ impl FirecrackerSandbox {
         self.delete_workspace_on_leak_cleanup = false;
     }
 
+    pub(crate) fn allow_workspace_delete_on_leak_cleanup(&mut self) {
+        self.delete_workspace_on_leak_cleanup = true;
+    }
+
     fn current_state(&self) -> SandboxState {
         SandboxState::from_u8(self.state.load(Ordering::Acquire))
     }
