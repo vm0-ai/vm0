@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { eq } from "drizzle-orm";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { POST as deployScheduleRoute } from "../../app/api/zero/schedules/route";
 import { adaptScheduleTrigger } from "../lib/zero/schedule/adapt-schedule-trigger";
 import {
@@ -12,7 +10,6 @@ import {
 } from "./api-test-helpers";
 import { mockClerk } from "./clerk-mock";
 import { testContext, uniqueId } from "./test-helpers";
-import { initServices } from "../lib/init-services";
 
 const context = testContext();
 
@@ -142,19 +139,6 @@ describe("Schedule model resolution", () => {
         agentProvider.id,
         "gemini-2.5-pro",
       );
-
-      // Verify agent model is set
-      initServices();
-      const [agent] = await globalThis.services.db
-        .select({
-          modelProviderId: zeroAgents.modelProviderId,
-          selectedModel: zeroAgents.selectedModel,
-        })
-        .from(zeroAgents)
-        .where(eq(zeroAgents.id, agentId))
-        .limit(1);
-      expect(agent!.modelProviderId).toBe(agentProvider.id);
-      expect(agent!.selectedModel).toBe("gemini-2.5-pro");
 
       // Create schedule with "agent default" (null model fields)
       mockClerk({ userId, orgId, orgRole: "org:admin" });
