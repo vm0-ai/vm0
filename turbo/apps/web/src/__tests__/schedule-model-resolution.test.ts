@@ -54,9 +54,9 @@ describe("Schedule model resolution", () => {
       // Create model provider for the agent's model
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const provider = await createTestOrgModelProvider(
-        "openai-api-key",
-        "test-openai-key",
-        "gpt-4o",
+        "moonshot-api-key",
+        "test-moonshot-key",
+        "kimi-k2.6",
       );
 
       mockClerk({ userId, orgId, orgRole: "org:admin" });
@@ -72,7 +72,7 @@ describe("Schedule model resolution", () => {
             prompt: "Test schedule with explicit model override",
             cronExpression: "0 0 * * *",
             modelProviderId: provider.id,
-            selectedModel: "gpt-4o",
+            selectedModel: "kimi-k2.6",
           }),
         }),
       );
@@ -80,7 +80,7 @@ describe("Schedule model resolution", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.schedule.modelProviderId).toBe(provider.id);
-      expect(data.schedule.selectedModel).toBe("gpt-4o");
+      expect(data.schedule.selectedModel).toBe("kimi-k2.6");
     });
 
     it("returns 400 when modelProviderId references a provider not in the org", async () => {
@@ -123,18 +123,22 @@ describe("Schedule model resolution", () => {
         "claude-sonnet-4-6",
       );
 
-      // Create an openai provider that will be the agent's custom model
+      // Create a moonshot provider that will be the agent's custom model
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const agentProvider = await createTestOrgModelProvider(
-        "openai-api-key",
-        "test-openai-key",
-        "gpt-4o",
+        "moonshot-api-key",
+        "test-moonshot-key",
+        "kimi-k2.6",
       );
 
       // Create agent with a specific model (different from org default)
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const { agentId } = await createTestCompose(uniqueId("agent"));
-      await setTestZeroAgentModelProvider(agentId, agentProvider.id, "gpt-4o");
+      await setTestZeroAgentModelProvider(
+        agentId,
+        agentProvider.id,
+        "kimi-k2.6",
+      );
 
       // Create schedule with "agent default" (null model fields)
       mockClerk({ userId, orgId, orgRole: "org:admin" });
