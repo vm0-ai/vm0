@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { eq } from "drizzle-orm";
 
 import { writeDb$ } from "../../../external/db";
@@ -20,6 +21,8 @@ interface SeedChatThreadOptions {
   readonly userId?: string;
   readonly orgId?: string;
   readonly title?: string | null;
+  readonly pinnedAt?: Date | null;
+  readonly renamedAt?: Date | null;
 }
 
 export const seedZeroChatThread$ = command(
@@ -41,11 +44,20 @@ export const seedZeroChatThread$ = command(
       name: `compose-${composeId.slice(0, 8)}`,
     });
     signal.throwIfAborted();
+    await writeDb.insert(zeroAgents).values({
+      id: composeId,
+      orgId,
+      owner: userId,
+      name: `agent-${composeId.slice(0, 8)}`,
+    });
+    signal.throwIfAborted();
     await writeDb.insert(chatThreads).values({
       id: threadId,
       userId,
       agentComposeId: composeId,
       title: options.title ?? "chat thread",
+      pinnedAt: options.pinnedAt ?? null,
+      renamedAt: options.renamedAt ?? null,
     });
     signal.throwIfAborted();
 
@@ -63,6 +75,10 @@ export const deleteZeroChatThread$ = command(
     await writeDb
       .delete(chatThreads)
       .where(eq(chatThreads.id, fixture.threadId));
+    signal.throwIfAborted();
+    await writeDb
+      .delete(zeroAgents)
+      .where(eq(zeroAgents.id, fixture.composeId));
     signal.throwIfAborted();
     await writeDb
       .delete(agentComposes)
