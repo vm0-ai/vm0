@@ -25,6 +25,8 @@ export {
   getOrgMembersEntry,
   countOrgRows,
   getOrgCredits,
+  findTestModelProviderTokenState,
+  setTestModelProviderTokenExpiresAt,
 } from "../db-test-assertions/org";
 
 // Re-exports: test-helpers infrastructure

@@ -29,6 +29,8 @@ import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { loadFeatureSwitchOverrides } from "../user/feature-switches-service";
+import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
+import { PROVIDER_HANDLERS } from "../connector/provider-registry";
 
 const log = logger("zero:build-context");
 
@@ -164,6 +166,51 @@ interface ModelProviderSecretResult {
   /** The logical model name selected by the user (e.g. "claude-sonnet-4-6").
    *  Used for model usage billing. */
   selectedModel?: string;
+  /** Maps secret/env-var names → connector handler key for refresh-capable
+   *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "chatgpt-oauth").
+   *  Merged into the wire `secretConnectorMap` AFTER `filterSecretConnectorMap`
+   *  runs — the filter would otherwise drop these because they also appear in
+   *  `secrets`, but model-provider entries ARE the source, not an override target. */
+  secretConnectorMap?: Record<string, string>;
+}
+
+/**
+ * Build the secretConnectorMap entries for a model-provider type whose
+ * tokens are OAuth-refreshable (e.g. chatgpt-oauth-token).
+ *
+ * Returns undefined when the provider has no bridged handler or its handler
+ * lacks `refreshToken` — for non-OAuth providers the firewall has nothing
+ * to refresh and should not see the secret in the map.
+ *
+ * The returned map is merged INTO the wire `secretConnectorMap` after
+ * `filterSecretConnectorMap` runs; see `build-zero-context.ts`.
+ */
+function buildModelProviderSecretConnectorMap(
+  providerType: ModelProviderType,
+): Record<string, string> | undefined {
+  const handlerKey = MODEL_PROVIDER_HANDLER_KEY[providerType];
+  if (!handlerKey) return undefined;
+
+  const handler =
+    PROVIDER_HANDLERS[handlerKey as keyof typeof PROVIDER_HANDLERS];
+  if (!handler?.refreshToken) return undefined;
+
+  const accessSecretName = handler.getSecretName();
+  const result: Record<string, string> = { [accessSecretName]: handlerKey };
+
+  // Mirror the connector-side aliasing logic: any environmentMapping entry
+  // that references the access-token secret should also appear in the map
+  // so the firewall can refresh tokens regardless of which name a template
+  // references.
+  const envMapping = getEnvironmentMapping(providerType);
+  if (envMapping) {
+    for (const [envVar, valueRef] of Object.entries(envMapping)) {
+      if (valueRef === `$secrets.${accessSecretName}`) {
+        result[envVar] = handlerKey;
+      }
+    }
+  }
+  return result;
 }
 
 /**
@@ -280,6 +327,7 @@ async function resolveMultiAuthProviderSecrets(
     resolvedModelProvider: providerType,
     framework: getFrameworkForType(providerType),
     selectedModel,
+    secretConnectorMap: buildModelProviderSecretConnectorMap(providerType),
   };
 }
 

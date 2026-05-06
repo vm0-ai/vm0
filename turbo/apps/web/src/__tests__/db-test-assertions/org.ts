@@ -102,6 +102,63 @@ export async function getOrgCredits(orgId: string): Promise<number | null> {
 }
 
 /**
+ * Read the OAuth token state columns from a model_providers row.
+ * Used by firewall refresh tests to verify the refresh pipeline persisted
+ * tokenExpiresAt / needsReconnect / lastRefreshErrorCode correctly.
+ */
+export async function findTestModelProviderTokenState(
+  orgId: string,
+  userId: string,
+  type: string,
+): Promise<{
+  tokenExpiresAt: Date | null;
+  needsReconnect: boolean;
+  lastRefreshErrorCode: string | null;
+} | null> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      tokenExpiresAt: modelProviders.tokenExpiresAt,
+      needsReconnect: modelProviders.needsReconnect,
+      lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+    })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Set tokenExpiresAt on a model_providers row directly.
+ * Used by firewall refresh tests to seed an "expired" state without
+ * waiting for real time.
+ */
+export async function setTestModelProviderTokenExpiresAt(
+  orgId: string,
+  userId: string,
+  type: string,
+  tokenExpiresAt: Date | null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ tokenExpiresAt })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
+    );
+}
+
+/**
  * Look up the uuid of a model provider by org + type. Useful for tests that
  * need to reference a provider they just seeded via insertOrgDefaultModelProvider.
  */

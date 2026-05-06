@@ -496,3 +496,79 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
     expect(result.secrets?.OPENAI_API_KEY).toBe("personal-pin-key");
   });
 });
+
+describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("emits CHATGPT_ACCESS_TOKEN → 'chatgpt-oauth' for chatgpt-oauth-token", async () => {
+    const userId = uniqueId("scm-chatgpt");
+    const orgId = await setupOrg(userId);
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+    );
+    for (const [name, value] of [
+      ["CHATGPT_ACCESS_TOKEN", "at-1"],
+      ["CHATGPT_REFRESH_TOKEN", "rt-1"],
+      ["CHATGPT_ACCOUNT_ID", "ws_acc"],
+      ["CHATGPT_ID_TOKEN", "id-1"],
+    ] as const) {
+      await insertTestOrgModelProviderSecret({ orgId, name, value });
+    }
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      false,
+    );
+
+    expect(result.secretConnectorMap).toEqual({
+      CHATGPT_ACCESS_TOKEN: "chatgpt-oauth",
+    });
+  });
+
+  it("returns undefined secretConnectorMap for openai-api-key (no refreshToken on handler)", async () => {
+    const userId = uniqueId("scm-openai");
+    const orgId = await setupOrg(userId);
+    await insertOrgDefaultModelProvider(orgId, "openai-api-key");
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      false,
+    );
+
+    expect(result.secretConnectorMap).toBeUndefined();
+  });
+
+  it("does not emit secretConnectorMap when chatgpt-oauth-token is missing required secrets", async () => {
+    const userId = uniqueId("scm-chatgpt-incomplete");
+    const orgId = await setupOrg(userId);
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+    );
+    // Only seed access token; refresh/account/id missing → resolver returns
+    // the no-secrets fallback path; no secretConnectorMap.
+    await insertTestOrgModelProviderSecret({
+      orgId,
+      name: "CHATGPT_ACCESS_TOKEN",
+      value: "at-1",
+    });
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      false,
+    );
+
+    expect(result.secretConnectorMap).toBeUndefined();
+  });
+});
