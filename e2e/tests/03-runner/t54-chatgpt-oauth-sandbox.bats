@@ -130,8 +130,8 @@ teardown_file() {
 # runs and exercises the full audit. Otherwise it skips with a clear
 # message so the load-bearing intent is documented in CI output.
 @test "t54-2: sandbox auth.json contains only placeholders; no real tokens leak" {
-    if [ -z "${OPENAI_API_KEY:-}" ]; then
-        skip "Requires real codex (mock codex doesn't invoke Bash tool); placeholder claims covered by Rust tests in crates/guest-agent/src/codex_auth.rs"
+    if [ -z "${E2E_CHATGPT_REAL_ACCOUNT_TOKENS:-}" ]; then
+        skip "Requires REAL ChatGPT account tokens (synthetic seed produces 401 from real codex; mock codex doesn't invoke Bash tool). Placeholder claims covered by Rust tests in crates/guest-agent/src/codex_auth.rs. Run with E2E_CHATGPT_REAL_ACCOUNT_TOKENS=1 in nightly real-account job."
     fi
 
     audit_sandbox_via_agent "$AGENT_NAME"
@@ -169,8 +169,8 @@ teardown_file() {
 # rationale as t54-2 — skip when no OPENAI_API_KEY in env. Firewall
 # rule existence is unit-tested at the api-contracts level.
 @test "t54-7: sandbox cannot reach auth.openai.com" {
-    if [ -z "${OPENAI_API_KEY:-}" ]; then
-        skip "Requires real codex (mock codex doesn't invoke Bash tool); firewall rule covered by api-contracts unit tests"
+    if [ -z "${E2E_CHATGPT_REAL_ACCOUNT_TOKENS:-}" ]; then
+        skip "Requires REAL ChatGPT account tokens (synthetic seed produces 401 from real codex). Firewall rule covered by api-contracts unit tests. Run with E2E_CHATGPT_REAL_ACCOUNT_TOKENS=1 in nightly real-account job."
     fi
 
     run $VM0_CLI run "$AGENT_NAME" \
