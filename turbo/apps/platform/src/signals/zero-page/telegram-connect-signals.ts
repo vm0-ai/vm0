@@ -91,6 +91,7 @@ export const connectTelegramAccount$ = command(
     const { params } = parsed;
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
     const linkStatus = await get(telegramConnectLinkStatus$);
+    signal.throwIfAborted();
     const telegramLoginBotId =
       linkStatus?.linked === false
         ? linkStatus.installation?.loginBotId
