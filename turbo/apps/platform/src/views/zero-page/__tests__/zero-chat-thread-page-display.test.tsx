@@ -723,10 +723,13 @@ describe("zero chat thread page display - body link document preview", () => {
       detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
       await waitFor(() => {
+        const textPreview = screen.getByTestId("attachment-preview-text");
+        expect(textPreview).toBeInTheDocument();
         expect(
-          screen.getByTestId("attachment-preview-text"),
+          within(textPreview).getByText((content) => {
+            return content.includes(expectedText);
+          }),
         ).toBeInTheDocument();
-        expect(screen.getByText(new RegExp(expectedText))).toBeInTheDocument();
       });
     },
   );
