@@ -16,6 +16,7 @@ import {
   IconPaperclip,
   IconPlayerStop,
   IconPlug,
+  IconPhotoOff,
   IconPlus,
 } from "@tabler/icons-react";
 import {
@@ -67,10 +68,15 @@ import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import type {
-  ModelProviderResponse,
-  ModelProviderType,
+import {
+  getDefaultModel,
+  getModelImageInputSupport,
+  getModels,
+  modelSupportsImageInput,
+  type ModelProviderResponse,
+  type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -196,6 +202,8 @@ interface ZeroChatComposerProps {
   };
 }
 
+type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -215,6 +223,92 @@ function resolveConnectorLabel(
   connectorMap: Map<ConnectorType, { label: string }>,
 ): string {
   return connectorMap.get(type as ConnectorType)?.label ?? type;
+}
+
+interface ResolvedComposerModel {
+  modelProviderId: string;
+  selectedModel: string;
+}
+
+function resolveProviderSelection(
+  provider: ModelProviderResponse | undefined,
+): ResolvedComposerModel | null {
+  if (!provider) {
+    return null;
+  }
+  const selectedModel =
+    provider.selectedModel ?? getDefaultModel(provider.type);
+  if (!selectedModel) {
+    return null;
+  }
+  return {
+    modelProviderId: provider.id,
+    selectedModel,
+  };
+}
+
+function resolveCurrentComposerModel(
+  modelPicker: ComposerModelPicker | undefined,
+): ResolvedComposerModel | null {
+  if (!modelPicker) {
+    return null;
+  }
+  if (modelPicker.value) {
+    return modelPicker.value;
+  }
+  if (modelPicker.agentDefault) {
+    return modelPicker.agentDefault;
+  }
+  const defaultProvider = modelPicker.providers.find((provider) => {
+    return provider.isDefault;
+  });
+  return resolveProviderSelection(defaultProvider);
+}
+
+function findRecommendedImageInputModel(
+  modelPicker: ComposerModelPicker | undefined,
+): ResolvedComposerModel | null {
+  if (!modelPicker || modelPicker.disabled) {
+    return null;
+  }
+  const candidates = modelPicker.providers.flatMap((provider) => {
+    return (getModels(provider.type) ?? [])
+      .filter((model) => {
+        return modelSupportsImageInput(model);
+      })
+      .map((model) => {
+        return {
+          modelProviderId: provider.id,
+          selectedModel: model,
+        };
+      });
+  });
+  return (
+    candidates.find((candidate) => {
+      return candidate.selectedModel === "claude-sonnet-4-6";
+    }) ??
+    candidates[0] ??
+    null
+  );
+}
+
+function getImageInputWarningState(
+  modelPicker: ComposerModelPicker | undefined,
+): {
+  currentModelName: string;
+  recommendation: ResolvedComposerModel | null;
+} | null {
+  const currentModel = resolveCurrentComposerModel(modelPicker);
+  if (
+    getModelImageInputSupport(currentModel?.selectedModel) !== "unsupported" ||
+    !currentModel
+  ) {
+    return null;
+  }
+  return {
+    currentModelName: getModelDisplayName(currentModel.selectedModel),
+    recommendation: findRecommendedImageInputModel(modelPicker),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +800,40 @@ function toPersistedAttachments(
     });
 }
 
+function ImageInputWarning({
+  currentModelName,
+  recommendation,
+  onSwitch,
+}: {
+  currentModelName: string;
+  recommendation: ResolvedComposerModel | null;
+  onSwitch: (selection: ResolvedComposerModel) => void;
+}) {
+  return (
+    <div className="mx-3 mt-3 flex flex-col gap-2 rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-50 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-2">
+        <IconPhotoOff size={16} stroke={1.7} className="shrink-0" />
+        <span className="min-w-0">
+          <span className="font-medium">{currentModelName}</span> cannot
+          recognize images.
+        </span>
+      </div>
+      {recommendation && (
+        <button
+          type="button"
+          className="self-start rounded-md px-2 py-1 font-medium text-amber-950 underline-offset-2 transition-colors hover:bg-amber-100 hover:underline dark:text-amber-50 dark:hover:bg-amber-400/20 sm:self-auto"
+          onClick={() => {
+            onSwitch(recommendation);
+          }}
+          aria-label={`Switch to ${getModelDisplayName(recommendation.selectedModel)}`}
+        >
+          Switch to {getModelDisplayName(recommendation.selectedModel)}
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
@@ -979,6 +1107,8 @@ export function ZeroChatComposer({
     e.target.value = "";
   };
 
+  const imageInputWarning = getImageInputWarningState(modelPicker);
+
   return (
     <>
       <input
@@ -1001,6 +1131,15 @@ export function ZeroChatComposer({
       >
         <CardContent className="p-0">
           <div className="flex flex-col">
+            {imageInputWarning && (
+              <ImageInputWarning
+                currentModelName={imageInputWarning.currentModelName}
+                recommendation={imageInputWarning.recommendation}
+                onSwitch={(selection) => {
+                  modelPicker?.onChange(selection);
+                }}
+              />
+            )}
             {attachments.length > 0 && (
               <AttachmentChips
                 attachments={attachments}

@@ -23,6 +23,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
@@ -340,6 +341,30 @@ describe("chat composer — default model resolution", () => {
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Claude Sonnet 4.6");
+  });
+
+  it("warns for image uploads on a text-only model and switches to a vision model", async () => {
+    const user = userEvent.setup();
+    mockOrgProviders({
+      defaultProviderId: ZAI_PROVIDER_ID,
+      defaultSelectedModel: "glm-5.1",
+    });
+    mockAgent({ modelProviderId: null, selectedModel: null });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+
+    await expectComposerShowsModel("GLM-5.1");
+    expect(screen.getByText(/cannot recognize images/i)).toBeInTheDocument();
+
+    await user.click(screen.getByText("Switch to Claude Sonnet 4.6"));
+
+    await expectComposerShowsModel("Claude Sonnet 4.6");
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/cannot recognize images/i),
+      ).not.toBeInTheDocument();
+    });
   });
 
   // ---------------------------------------------------------------------------
