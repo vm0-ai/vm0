@@ -264,7 +264,7 @@ export function MobileWorkspaceDrawer() {
           type="button"
           aria-label="Open workspace drawer"
           data-testid="mobile-org-switcher"
-          className="flex h-8 max-w-[160px] items-center gap-1.5 rounded-lg pl-1 pr-1.5 text-foreground hover:bg-muted/50 transition-colors shrink-0"
+          className="flex h-9 max-w-[180px] items-center gap-2 rounded-full pl-1 pr-3 text-foreground bg-card/70 backdrop-blur-xl border border-border/60 shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:bg-card transition-colors shrink-0"
         >
           <span className="relative shrink-0">
             <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />

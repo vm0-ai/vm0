@@ -80,6 +80,13 @@ import { MobileMoreSheet } from "./mobile-more-sheet.tsx";
 import { MobileNewSessionSheet } from "./mobile-new-session-sheet.tsx";
 import { MobileWorkspaceDrawer } from "./mobile-workspace-drawer.tsx";
 
+// Glass treatment for top-bar tap targets when MobileNativeV1 is on. Bar
+// surface stays transparent — only interactive elements lift, with the same
+// `bg-card/70 backdrop-blur-xl` recipe the bottom dock uses, plus a 1px
+// shadow that's intentionally weaker than the dock's so the top reads quieter.
+const TOPBAR_GLASS =
+  "bg-card/70 backdrop-blur-xl border border-border/60 shadow-[0_1px_2px_rgb(0_0_0/0.04)]";
+
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
   if (!agent) {
@@ -228,7 +235,10 @@ function ChatListHeaderSearchLink() {
       pathname="/search"
       aria-label="Search chats"
       data-testid="mobile-chat-list-search-toggle"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors no-underline"
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors no-underline",
+        TOPBAR_GLASS,
+      )}
     >
       <IconSearch size={16} stroke={1.6} />
     </Link>
@@ -248,10 +258,11 @@ function ConnectorsHeaderSearchToggle() {
       aria-label="Search connectors"
       data-testid="mobile-connectors-search-toggle"
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
+        TOPBAR_GLASS,
         open
-          ? "bg-muted text-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+          ? "text-foreground bg-card"
+          : "text-muted-foreground hover:text-foreground",
       )}
     >
       <IconSearch size={16} stroke={1.6} />
@@ -270,10 +281,10 @@ function HeaderAccountAvatar() {
       pathname="/account"
       aria-label="Open account"
       data-testid="mobile-header-account"
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-hidden no-underline ring-1 ring-border hover:ring-primary/40 transition-colors"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full overflow-hidden no-underline border border-border/60 shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:ring-2 hover:ring-primary/30 transition-all"
     >
       {imageUrl ? (
-        <img src={imageUrl} alt="" className="h-8 w-8 object-cover" />
+        <img src={imageUrl} alt="" className="h-full w-full object-cover" />
       ) : (
         <span className="flex h-full w-full items-center justify-center bg-[hsl(var(--gray-200))] text-xs font-semibold text-[hsl(var(--primary-700))]">
           {initial}
@@ -301,7 +312,10 @@ function HeaderIconButton({
       disabled={disabled}
       aria-label={label}
       data-testid={testId}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50",
+        TOPBAR_GLASS,
+      )}
     >
       <IconPlus size={18} stroke={1.8} />
     </button>
@@ -447,7 +461,10 @@ function BackButton({
       pathname={pathname}
       aria-label={label}
       data-testid={testId}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors no-underline"
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors no-underline",
+        TOPBAR_GLASS,
+      )}
     >
       <IconArrowLeft size={18} stroke={1.8} />
     </Link>
@@ -587,7 +604,12 @@ function MobileTopBar() {
 
   return (
     <div
-      className="md:hidden shrink-0 relative flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10"
+      className={cn(
+        "md:hidden shrink-0 relative flex items-center px-3 gap-2 z-10",
+        mobileNativeOn
+          ? "min-h-14 py-1.5"
+          : "min-h-12 bg-background border-b border-border/50",
+      )}
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
       <MobileTopBarLeftSlot
