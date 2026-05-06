@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   Reason,
+  clearAllDetached,
   detach,
+  markDetachedErrorHandled,
   resetSignal,
   createDeferredPromise,
   geometryStyle,
@@ -9,6 +11,11 @@ import {
   MAX_LOOP_COUNT_IN_TEST,
 } from "../utils.ts";
 import { createStore } from "ccstate";
+import { resetLoggerForTest, setLogErrorHandler } from "../log.ts";
+
+afterEach(() => {
+  resetLoggerForTest();
+});
 
 describe("utils", () => {
   describe("reason enum", () => {
@@ -31,6 +38,34 @@ describe("utils", () => {
       expect(() => {
         return detach(Promise.resolve("value"), Reason.Entrance);
       }).not.toThrow();
+    });
+
+    it("should log unhandled promise rejections", async () => {
+      const handler = vi.fn();
+      const error = new Error("boom");
+      setLogErrorHandler(handler);
+
+      detach(Promise.reject(error), Reason.DomCallback);
+      await clearAllDetached();
+
+      expect(handler).toHaveBeenCalledWith("Promise", [
+        "Detached promise rejected [dom_callback]",
+        error,
+      ]);
+    });
+
+    it("should not log handled promise rejections", async () => {
+      const handler = vi.fn();
+      const error = new Error("handled");
+      setLogErrorHandler(handler);
+
+      detach(
+        Promise.reject(markDetachedErrorHandled(error)),
+        Reason.DomCallback,
+      );
+      await clearAllDetached();
+
+      expect(handler).not.toHaveBeenCalled();
     });
   });
 

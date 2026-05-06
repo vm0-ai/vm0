@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -18,6 +18,8 @@ import {
   zeroScheduleRunContract,
   type ScheduleResponse,
 } from "@vm0/api-contracts/contracts/zero-schedules";
+import { clearAllDetached, detach, Reason } from "../../utils.ts";
+import { resetLoggerForTest, setLogErrorHandler } from "../../log.ts";
 import {
   fetchZeroSchedules$,
   zeroScheduleEntries$,
@@ -34,6 +36,10 @@ import {
 
 const context = testContext();
 const mockApi = createMockApi(context);
+
+afterEach(() => {
+  resetLoggerForTest();
+});
 
 function mockScheduleResponse(): ScheduleResponse {
   return createMockScheduleResponse({
@@ -897,6 +903,41 @@ describe("org schedule signals", () => {
       expect(errorSpy).toHaveBeenCalledWith(
         "Scheduled time must be in the future",
       );
+    });
+
+    it("should not log detached pre-API validation errors after toast", async () => {
+      const errorSpy = vi.spyOn(toast, "error").mockImplementation(() => {
+        return "" as unknown as ReturnType<typeof toast.error>;
+      });
+      const logHandler = vi.fn();
+
+      await setup();
+      await clearAllDetached();
+      setLogErrorHandler(logHandler);
+
+      detach(
+        context.store.set(
+          saveOrgSchedule$,
+          {
+            prompt: "One-time task in the past",
+            freq: "once",
+            date: "2000-01-01",
+            hour: 9,
+            minute: 0,
+            timezone: "UTC",
+            intervalSeconds: 0,
+            agentId: "e0000000-0000-4000-a000-000000000010",
+          },
+          context.signal,
+        ),
+        Reason.DomCallback,
+      );
+      await clearAllDetached();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        "Scheduled time must be in the future",
+      );
+      expect(logHandler).not.toHaveBeenCalled();
     });
   });
 
