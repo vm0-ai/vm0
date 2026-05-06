@@ -83,6 +83,7 @@ function buildAgentToolsPrompt(): string {
     "- The user cannot see files on your local filesystem. If the user needs to view or download a local file, upload it through the appropriate integration first: use `zero web upload-file` for web chat, `zero slack upload-file` for Slack, or `zero telegram upload-file` for Telegram, then share the returned URL or platform file reference. Do not present a local path as something the user can open.",
     "- Third-party services (GitHub, Slack, Notion, 100+ more) are accessed via connectors that expose env vars like `GH_TOKEN`. Find: `zero connector search <keyword>`. List connected: `zero connector list`. Inspect: `zero connector status <type>`.",
     "- Diagnose connector health (token presence, firewall rules, permission policies): `zero doctor check-connector --help`.",
+    "- When the user asks to generate anything (for example, image, video, audio, or website), run `zero doctor generate -h`.",
     "- Troubleshoot permission denials: `zero doctor permission-deny --help` to identify which permission covers a blocked request.",
     "- Request permission changes: `zero doctor permission-change --help` to enable or disable a permission.",
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",

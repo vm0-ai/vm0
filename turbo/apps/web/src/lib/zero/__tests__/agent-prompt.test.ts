@@ -21,6 +21,10 @@ describe("buildAgentPrompt", () => {
     expect(prompt).toContain("zero telegram bot list");
     expect(prompt).toContain("explicitly choose the bot with `--bot-id`");
     expect(prompt).toContain(
+      "When the user asks to generate anything (for example, image, video, audio, or website)",
+    );
+    expect(prompt).toContain("run `zero doctor generate -h`");
+    expect(prompt).toContain(
       "Do not present a local path as something the user can open",
     );
   });
