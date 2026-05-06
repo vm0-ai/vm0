@@ -1,4 +1,4 @@
-import { command, state, type Command } from "ccstate";
+import { command, state, type Command, type Setter } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
 import { zeroClient$ } from "./api-client.ts";
@@ -20,6 +20,133 @@ interface PendingAblySubscription {
 }
 
 const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
+
+function errorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    return error.message;
+  }
+  return undefined;
+}
+
+function isAblyConnectionClosedError(error: unknown): boolean {
+  return errorMessage(error) === "Connection closed";
+}
+
+async function runWithChannel({
+  set,
+  channel,
+  topic,
+  loopCommand$,
+  signal,
+}: {
+  set: Setter;
+  channel: RealtimeChannel;
+  topic: string;
+  loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  signal: AbortSignal;
+}): Promise<void> {
+  // No implicit prime on subscribe. Callers whose loop body sets up baseline
+  // state (voice-chat session instructions, connector `initialUpdatedAt`) must
+  // run the body themselves before calling this. Chat / queue / slack
+  // subscribers don't need a baseline because their data is fetched through
+  // separate computeds.
+  let deferred = createDeferredPromise(signal);
+
+  const pokeLoop = () => {
+    deferred.resolve(true);
+    deferred = createDeferredPromise(signal);
+  };
+
+  const callback = (message: InboundMessage) => {
+    L.debug("got message from topic", topic, message);
+    pokeLoop();
+  };
+  const onVisibilityChange = () => {
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+    L.debug("tab visible, poking loop", topic);
+    pokeLoop();
+  };
+  let subscribed = false;
+  let registeredPoke = false;
+
+  const cleanup = () => {
+    set(subscriberPokeRegistry$, (prev) => {
+      if (!registeredPoke) {
+        return prev;
+      }
+      const next = new Set(prev);
+      next.delete(pokeLoop);
+      return next;
+    });
+    registeredPoke = false;
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    if (subscribed) {
+      subscribed = false;
+      channel.unsubscribe(topic, callback);
+    }
+  };
+
+  document.addEventListener("visibilitychange", onVisibilityChange, {
+    signal,
+  });
+  set(subscriberPokeRegistry$, (prev) => {
+    const next = new Set(prev);
+    next.add(pokeLoop);
+    return next;
+  });
+  registeredPoke = true;
+  signal.addEventListener("abort", cleanup, { once: true });
+
+  // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
+  try {
+    await channel.subscribe(topic, callback);
+    subscribed = true;
+    signal.throwIfAborted();
+    L.debug("subscribed to topic: " + topic);
+
+    while (!signal.aborted) {
+      await deferred.promise;
+      signal.throwIfAborted();
+
+      // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
+      try {
+        const done = await set(loopCommand$, signal);
+        signal.throwIfAborted();
+        if (done) {
+          cleanup();
+          return;
+        }
+      } catch (error) {
+        signal.throwIfAborted();
+        throwIfAbort(error);
+        L.warn(`transient error in ably notification`, error);
+      }
+    }
+  } catch (error) {
+    signal.throwIfAborted();
+    throwIfAbort(error);
+    if (isAblyConnectionClosedError(error)) {
+      L.debug("Ably connection closed before subscription completed", {
+        topic,
+      });
+      return;
+    }
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", cleanup);
+    cleanup();
+  }
+}
 
 /**
  * Initialize the Ably realtime client and subscribe to the user's channel.
@@ -120,84 +247,9 @@ export const setAblyLoop$ = command(
   ) => {
     signal.throwIfAborted();
 
-    const runWithChannel = async (channel: RealtimeChannel) => {
-      // No implicit prime on subscribe. Callers whose loop body sets up
-      // baseline state (voice-chat session instructions, connector
-      // `initialUpdatedAt`) must run the body themselves before calling this.
-      // Chat / queue / slack subscribers don't need a baseline because their
-      // data is fetched through separate computeds, and the implicit prime
-      // fanned out through multiple run/message channels caused duplicate
-      // refetches on every route change.
-
-      let deferred = createDeferredPromise(signal);
-
-      const pokeLoop = () => {
-        deferred.resolve(true);
-        deferred = createDeferredPromise(signal);
-      };
-
-      const callback = (message: InboundMessage) => {
-        L.debug("got message from topic", topic, message);
-        pokeLoop();
-      };
-      // The browser may throttle or suspend this tab in the background, which
-      // can drop the Ably connection or leave us unaware of missed events.
-      // When the tab becomes visible again, poke the loop so it re-runs once
-      // and resyncs state with the server.
-      const onVisibilityChange = () => {
-        if (document.visibilityState !== "visible") {
-          return;
-        }
-        L.debug("tab visible, poking loop", topic);
-        pokeLoop();
-      };
-      document.addEventListener("visibilitychange", onVisibilityChange, {
-        signal,
-      });
-      set(subscriberPokeRegistry$, (prev) => {
-        const next = new Set(prev);
-        next.add(pokeLoop);
-        return next;
-      });
-      signal.addEventListener("abort", () => {
-        set(subscriberPokeRegistry$, (prev) => {
-          const next = new Set(prev);
-          next.delete(pokeLoop);
-          return next;
-        });
-        channel.unsubscribe(topic, callback);
-      });
-      await channel.subscribe(topic, callback);
-      if (signal.aborted) {
-        channel.unsubscribe(topic, callback);
-        signal.throwIfAborted();
-      }
-      signal.throwIfAborted();
-      L.debug("subscribed to topic: " + topic);
-
-      while (!signal.aborted) {
-        await deferred.promise;
-        signal.throwIfAborted();
-
-        // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
-        try {
-          const done = await set(loopCommand$, signal);
-          signal.throwIfAborted();
-          if (done) {
-            channel.unsubscribe(topic, callback);
-            return;
-          }
-        } catch (error) {
-          signal.throwIfAborted();
-          throwIfAbort(error);
-          L.warn(`transient error in ably notification`, error);
-        }
-      }
-    };
-
     const channel = get(internalUserChannel$);
     if (channel) {
-      await runWithChannel(channel);
+      await runWithChannel({ set, channel, topic, loopCommand$, signal });
       signal.throwIfAborted();
       return;
     }
@@ -211,7 +263,13 @@ export const setAblyLoop$ = command(
         if (startDeferred.settled()) {
           return;
         }
-        loopPromise = runWithChannel(pendingChannel);
+        loopPromise = runWithChannel({
+          set,
+          channel: pendingChannel,
+          topic,
+          loopCommand$,
+          signal,
+        });
         startDeferred.resolve();
       },
       reject: (reason?: unknown) => {

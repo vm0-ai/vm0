@@ -10,6 +10,8 @@ import {
   getAuthTokenHistory,
   resetAblySubscriptions,
   hasSubscription,
+  triggerAblyConnectionClosed,
+  rejectNextAblySubscribe,
 } from "../../mocks/ably.ts";
 import { server } from "../../mocks/server.ts";
 import { apiRealtimeHandlers } from "../../mocks/handlers/api-realtime.ts";
@@ -107,6 +109,44 @@ describe("setAblyLoop$ with mock Ably", () => {
       "Ably connection failed: Realtime service unavailable",
     );
     expect(hasSubscription("pending-topic")).toBeFalsy();
+  });
+
+  it("does not surface Ably connection closed when subscribe races teardown", async () => {
+    const { store, controller } = setupTestStore();
+
+    await store.set(setupRealtime$, controller.signal);
+
+    const loopPromise = store.set(
+      setAblyLoop$,
+      "closing-topic",
+      neverDoneLoop$,
+      controller.signal,
+    );
+    triggerAblyConnectionClosed();
+
+    await expect(loopPromise).resolves.toBeUndefined();
+    expect(hasSubscription("closing-topic")).toBeFalsy();
+
+    controller.abort();
+  });
+
+  it("still rejects non-close subscribe errors", async () => {
+    const { store, controller } = setupTestStore();
+
+    await store.set(setupRealtime$, controller.signal);
+
+    rejectNextAblySubscribe("subscribe failed");
+    const loopPromise = store.set(
+      setAblyLoop$,
+      "failing-topic",
+      neverDoneLoop$,
+      controller.signal,
+    );
+
+    await expect(loopPromise).rejects.toThrow("subscribe failed");
+    expect(hasSubscription("failing-topic")).toBeFalsy();
+
+    controller.abort();
   });
 
   it("does not invoke loopCommand$ before the first ably event", async () => {
