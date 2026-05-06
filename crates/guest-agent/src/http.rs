@@ -331,9 +331,9 @@ impl HttpClient {
         content_type: &str,
     ) -> Result<(), AgentError> {
         let max_retries = constants::HTTP_MAX_RETRIES;
+        let client = self.inner()?;
         let source_file = Arc::new(tokio::fs::File::open(path).await?);
         let file_len = source_file.metadata().await?.len();
-        let client = self.inner()?;
 
         send_with_retry(
             "PUT presigned",
@@ -399,6 +399,23 @@ mod tests {
         let client = HttpClient { inner: None };
         let result = client
             .post_json("http://127.0.0.1:1/test", &serde_json::json!({}), 1)
+            .await;
+
+        let Err(AgentError::Http(message)) = result else {
+            panic!("expected disabled HTTP client error");
+        };
+        assert!(message.contains("HTTP client is disabled"));
+    }
+
+    #[tokio::test]
+    async fn disabled_client_stream_upload_fails_before_file_open() {
+        let client = HttpClient { inner: None };
+        let result = client
+            .put_presigned_file(
+                "http://127.0.0.1:1/upload",
+                Path::new("/definitely/missing/source.bin"),
+                "application/octet-stream",
+            )
             .await;
 
         let Err(AgentError::Http(message)) = result else {
