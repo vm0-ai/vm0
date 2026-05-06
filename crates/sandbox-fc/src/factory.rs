@@ -626,7 +626,8 @@ impl FactoryCleanupGroup {
                     Self::handle_join_result(record, result, false);
                 }
                 Poll::Pending => {
-                    state.tasks.push(task);
+                    state.tasks.insert(index, task);
+                    index += 1;
                 }
             };
         }
