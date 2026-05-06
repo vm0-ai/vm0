@@ -26,11 +26,9 @@ import {
 } from "../model-provider/model-provider-service";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { loadFeatureSwitchOverrides } from "../user/feature-switches-service";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
+import { isPersonalTierEligible } from "../personal-tier-gate";
 
 const log = logger("zero:build-context");
 
@@ -329,26 +327,6 @@ async function resolveMultiAuthProviderSecrets(
     selectedModel,
     secretConnectorMap: buildModelProviderSecretConnectorMap(providerType),
   };
-}
-
-/**
- * Personal-tier eligibility: caller must opt-in via the agent/schedule flag
- * AND the `personalModelProvider` feature switch must be on for them.
- * Loads the per-user feature switch overrides only when the flag is true so
- * the common (flag=false) path stays free of the DB read.
- */
-async function isPersonalTierEligible(
-  orgId: string,
-  userId: string,
-  preferPersonalProvider: boolean | undefined,
-): Promise<boolean> {
-  if (!preferPersonalProvider) return false;
-  const overrides = await loadFeatureSwitchOverrides(orgId, userId);
-  return isFeatureEnabled(FeatureSwitchKey.PersonalModelProvider, {
-    orgId,
-    userId,
-    overrides,
-  });
 }
 
 /**
