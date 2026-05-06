@@ -49,9 +49,9 @@ import {
 } from "./parse-body-blocks.ts";
 import { clerk$ } from "../auth.ts";
 import {
-  readThreadAgentId$,
-  writeThreadAgentId$,
-} from "../external/idb-thread-agent-store.ts";
+  patchThreadMeta$,
+  readThreadMeta$,
+} from "../external/idb-thread-meta-store.ts";
 
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
@@ -336,15 +336,15 @@ function createAgentInfoSignals(
     const orgId = clerk?.organization?.id ?? null;
 
     if (userId !== null && orgId !== null) {
-      const cached = await readThreadAgentId$(userId, orgId, threadId);
-      if (cached) {
-        return cached;
+      const meta = await readThreadMeta$(userId, orgId, threadId);
+      if (meta?.agentId) {
+        return meta.agentId;
       }
     }
     const thread = await get(threadData$);
     const agentId = thread?.agentId ?? null;
     if (agentId && userId !== null && orgId !== null) {
-      await writeThreadAgentId$(userId, orgId, threadId, agentId);
+      await patchThreadMeta$(userId, orgId, threadId, { agentId });
     }
     return agentId;
   });

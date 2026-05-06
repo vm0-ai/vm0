@@ -1,7 +1,7 @@
 import { command, computed } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { clerk$ } from "../auth.ts";
-import { writeThreadAgentId$ } from "../external/idb-thread-agent-store.ts";
+import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
@@ -60,7 +60,7 @@ const writeThreadAgentToCache$ = command(
     if (!userId || !orgId) {
       return;
     }
-    await writeThreadAgentId$(userId, orgId, threadId, agentId, signal);
+    await patchThreadMeta$(userId, orgId, threadId, { agentId }, signal);
   },
 );
 

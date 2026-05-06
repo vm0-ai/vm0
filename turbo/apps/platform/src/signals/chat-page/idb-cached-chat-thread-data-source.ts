@@ -1,6 +1,10 @@
 import { command, computed } from "ccstate";
 import { clerk$ } from "../auth.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
+import {
+  patchThreadMeta$,
+  readThreadMeta$,
+} from "../external/idb-thread-meta-store.ts";
 import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import type {
@@ -10,10 +14,23 @@ import type {
   ListMessagesBeforeArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
+import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
 const L = logger("ChatIdbCache");
 
 type Stores = ReturnType<typeof createIdbMessageStores>;
+
+function reachedStart(
+  cached: PagedChatMessage[],
+  startMessageId: string | null,
+): boolean {
+  if (!startMessageId) {
+    return false;
+  }
+  return cached.some((m) => {
+    return m.id === startMessageId;
+  });
+}
 
 function createListMessagesBefore(
   remote: ChatThreadDataSource,
@@ -44,12 +61,15 @@ function createListMessagesBefore(
       const cached = await readStore.readBefore(tid, beforeId, 50, signal);
 
       if (cached.length > 0) {
+        const meta = await readThreadMeta$(userId, orgId, tid, signal);
+        const hasMore = !reachedStart(cached, meta?.startMessageId ?? null);
         L.debug("listBefore:cacheHit", {
           threadId: tid,
           beforeId,
           count: cached.length,
+          hasMore,
         });
-        return { messages: cached, hasMore: true };
+        return { messages: cached, hasMore };
       }
 
       L.debug("listBefore:cacheMiss", { threadId: tid, beforeId });
@@ -66,6 +86,14 @@ function createListMessagesBefore(
         beforeId,
         count: result.messages.length,
       });
+
+      if (!result.hasMore) {
+        // Remote confirms we've reached the start. Persist the first message
+        // id (or `beforeId` itself when there were no older messages) so
+        // subsequent cache hits can compute hasMore without re-fetching.
+        const startMessageId = result.messages[0]?.id ?? beforeId;
+        await patchThreadMeta$(userId, orgId, tid, { startMessageId }, signal);
+      }
 
       return result;
     },
@@ -176,8 +204,17 @@ export function createIdbCachedDataSource(
     const cached = await readStore.readLatest(threadId, 50);
 
     if (cached.length > 0) {
-      L.debug("initialPage:cacheHit", { threadId, count: cached.length });
-      return { messages: cached, hasHistoryBefore: true };
+      const meta = await readThreadMeta$(userId, orgId, threadId);
+      const hasHistoryBefore = !reachedStart(
+        cached,
+        meta?.startMessageId ?? null,
+      );
+      L.debug("initialPage:cacheHit", {
+        threadId,
+        count: cached.length,
+        hasHistoryBefore,
+      });
+      return { messages: cached, hasHistoryBefore };
     }
 
     L.debug("initialPage:cacheMiss", { threadId });
@@ -189,6 +226,15 @@ export function createIdbCachedDataSource(
       threadId,
       count: page.messages.length,
     });
+
+    if (!page.hasHistoryBefore && page.messages.length > 0) {
+      // Remote confirms the latest page already contains the very first
+      // message. Persist its id so subsequent cache hits don't show a
+      // phantom "Load history" button.
+      await patchThreadMeta$(userId, orgId, threadId, {
+        startMessageId: page.messages[0].id,
+      });
+    }
 
     return page;
   });
