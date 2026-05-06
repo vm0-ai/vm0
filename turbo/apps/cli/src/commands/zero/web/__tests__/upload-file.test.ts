@@ -119,7 +119,7 @@ describe("zero web upload-file command", () => {
       });
     });
 
-    it("should respect --content-type override", async () => {
+    it("should use prepared content type for PUT after override normalization", async () => {
       const filePath = join(tmpDir, "data.bin");
       writeFileSync(filePath, Buffer.from("col1,col2\n1,2"));
 
@@ -128,7 +128,7 @@ describe("zero web upload-file command", () => {
       server.use(
         http.post(PREPARE_URL, async ({ request }) => {
           const body = (await request.json()) as { contentType: string };
-          expect(body.contentType).toBe("text/csv");
+          expect(body.contentType).toBe("Text/CSV; charset=utf-8");
 
           return HttpResponse.json(
             {
@@ -163,7 +163,7 @@ describe("zero web upload-file command", () => {
         "-f",
         filePath,
         "--content-type",
-        "text/csv",
+        "Text/CSV; charset=utf-8",
       ]);
 
       expect(putReceivedContentType).toBe("text/csv");

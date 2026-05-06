@@ -162,7 +162,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       const putRes = await fetch(prepared.body.uploadUrl, {
         method: "PUT",
         body: file,
-        headers: { "content-type": contentType },
+        headers: { "content-type": prepared.body.contentType },
         signal,
       });
       parentSignal.throwIfAborted();

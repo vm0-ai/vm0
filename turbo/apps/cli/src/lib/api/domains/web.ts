@@ -301,7 +301,7 @@ export async function uploadWebFile(
   const bytes = readFileSync(localPath);
   const putRes = await fetch(prepared.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": contentType },
+    headers: { "Content-Type": prepared.contentType },
     body: new Uint8Array(bytes),
   });
 
