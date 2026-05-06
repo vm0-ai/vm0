@@ -118,7 +118,7 @@ import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thre
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
-import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -1712,7 +1712,7 @@ function ChatThreadComposer({
   // internally flips to a user-override once `setModelSelection$` is called,
   // so unsaved edits survive subsequent threadData$ reloads.
   const threadData = useLastResolved(thread.threadData$);
-  const orgProviders = useLastResolved(orgModelProviders$);
+  const composerProviders = useLastResolved(composerModelProviders$);
   const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
   const agentModelDefault = useLastResolved(thread.agentModelDefault$) ?? null;
@@ -1769,9 +1769,10 @@ function ChatThreadComposer({
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
             modelPicker={
-              orgProviders && orgProviders.modelProviders.length > 0
+              composerProviders && composerProviders.providers.length > 0
                 ? {
-                    providers: orgProviders.modelProviders,
+                    providers: composerProviders.providers,
+                    tiers: composerProviders.tiers,
                     value: modelSelection,
                     onChange: setModelSelection,
                     sessionProviderType:
