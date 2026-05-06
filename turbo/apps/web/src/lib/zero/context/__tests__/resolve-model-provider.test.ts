@@ -186,7 +186,12 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
       await insertTestOrgModelProviderSecret({ orgId, name, value });
     }
 
-    const result = await resolveModelProviderSecrets(orgId, "codex", false);
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      false,
+    );
 
     expect(result.resolvedModelProvider).toBe("chatgpt-oauth-token");
     expect(result.framework).toBe("codex");
