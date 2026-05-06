@@ -158,6 +158,76 @@ teardown_file() {
     assert_agent_output_no_forbidden_hits "$output"
 }
 
+# Test 1-paste — same as t54-1 but seeds via the auth_json paste path.
+# Env-gated until #11978 (parser) and #11980 (paste modal UI) merge.
+# The downstream behavior should be identical: the seed endpoint runs the
+# raw auth.json through parseCodexAuthJson, derives 4 secrets, and upserts
+# via the auth_json authMethod. The firewall token-replacement layer and
+# sandbox guest-agent bootstrap are unchanged.
+@test "t54-1-paste: codex agent run completes when seeded via auth_json paste path" {
+    if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
+        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+    fi
+    if ! codex_oauth_paste_supported; then
+        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+    fi
+
+    # Synthetic auth.json shape matching codex CLI output. Uses the same
+    # forbidden tokens as the regular seed so the audit invariants still
+    # hold.
+    local raw_json
+    raw_json=$(jq -n \
+        --arg at "$CHATGPT_AUDIT_FORBIDDEN_ACCESS_TOKEN" \
+        --arg rt "$CHATGPT_AUDIT_FORBIDDEN_REFRESH_TOKEN" \
+        --arg ai "$CHATGPT_AUDIT_FORBIDDEN_ACCOUNT_ID" \
+        --arg it "$CHATGPT_AUDIT_FORBIDDEN_ID_TOKEN" \
+        '{OPENAI_API_KEY: null, tokens: {access_token: $at, refresh_token: $rt, account_id: $ai, id_token: $it}, last_refresh: "2026-05-06T00:00:00Z"}')
+
+    seed_codex_oauth_via_authjson "$raw_json"
+
+    run $VM0_CLI run "$AGENT_NAME" -- "Reply with exactly RESULT=579"
+
+    assert_success
+    assert_output --partial "RESULT=579"
+}
+
+# Test 2-paste — sandbox audit invariance after paste-path seed.
+# Same load-bearing assertion as t54-2 but with the paste-flow seed: even
+# though the raw authJson contains all 4 token strings concatenated, the
+# parser derives the 4 secrets and discards the raw blob. The sandbox
+# must show no trace of any forbidden token AND no trace of the raw
+# authJson blob signature.
+@test "t54-2-paste: sandbox auth.json contains only placeholders after paste-path seed" {
+    if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
+        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+    fi
+    if [ -z "${E2E_CHATGPT_REAL_ACCOUNT_TOKENS:-}" ]; then
+        skip "Requires REAL ChatGPT account tokens (mock codex doesn't invoke Bash tool). Run with E2E_CHATGPT_REAL_ACCOUNT_TOKENS=1 in nightly real-account job."
+    fi
+    if ! codex_oauth_paste_supported; then
+        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+    fi
+
+    local raw_json
+    raw_json=$(jq -n \
+        --arg at "$CHATGPT_AUDIT_FORBIDDEN_ACCESS_TOKEN" \
+        --arg rt "$CHATGPT_AUDIT_FORBIDDEN_REFRESH_TOKEN" \
+        --arg ai "$CHATGPT_AUDIT_FORBIDDEN_ACCOUNT_ID" \
+        --arg it "$CHATGPT_AUDIT_FORBIDDEN_ID_TOKEN" \
+        '{OPENAI_API_KEY: null, tokens: {access_token: $at, refresh_token: $rt, account_id: $ai, id_token: $it}, last_refresh: "2026-05-06T00:00:00Z"}')
+
+    seed_codex_oauth_via_authjson "$raw_json"
+
+    audit_sandbox_via_agent "$AGENT_NAME"
+
+    assert_chatgpt_auth_mode
+    assert_placeholder_account_id
+    assert_openai_api_key_null
+    assert_refresh_url_override_set
+    assert_no_forbidden_hits
+    assert_agent_output_no_forbidden_hits "$output"
+}
+
 # Test 7 — auth.openai.com denied from sandbox. The firewall config in
 # turbo/packages/api-contracts/src/contracts/model-providers.ts:725-728
 # adds an explicit deny on auth.openai.com for the codex-oauth-token

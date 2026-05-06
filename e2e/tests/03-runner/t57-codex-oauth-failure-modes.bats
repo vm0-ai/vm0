@@ -24,37 +24,107 @@ setup_file() {
     fi
 }
 
-@test "t57-1: connect endpoint returns 404 when feature switch off" {
-    local token
-    token=$(codex_oauth_feature_off_token)
-    if [ -z "$token" ]; then
-        skip "no auth token available — VM0_TEST_TOKEN/ZERO_TOKEN/VM0_TOKEN not set and ~/.vm0/config.json absent"
+# Note: t57-1 (connect endpoint returns 404 when feature switch off) was
+# removed in this PR. The /api/zero/chatgpt/oauth/connect route is deleted
+# by sub-issue #11979 (Wave 2), at which point the 404 is trivially true
+# (no route exists) and the test loses meaning. Feature-gating is now
+# tested at the paste-modal eligibility level (Playwright) and at the
+# parser-rejection level (the t57-paste-* tests below).
+
+# Helper: build an id_token JWT-shaped string with a `chatgpt_plan_type`
+# claim. The body is base64url-encoded but uses a non-base64 signature so
+# Semgrep's JWT detection rule does not match the fixture (existing
+# pattern from t54-codex-oauth-sandbox.bats).
+_make_id_token_with_plan() {
+    local plan="$1"
+    local payload
+    payload=$(jq -n --arg p "$plan" \
+        '{"https://api.openai.com/auth": {chatgpt_plan_type: $p, chatgpt_account_id: "test-acc"}}' \
+        | base64 -w0 \
+        | tr '+/' '-_' \
+        | tr -d '=')
+    printf 'hdr.%s.sig' "$payload"
+}
+
+@test "t57-paste-malformed-json: paste with invalid JSON returns auth_json_shape_invalid" {
+    if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
+        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+    fi
+    if ! codex_oauth_paste_supported; then
+        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
     fi
 
-    # The registry can enable staff orgs by identity hash; write an explicit
-    # false override against the serial E2E user when available. Runner E2E
-    # chunks run in parallel, so this negative-path probe must not flip the
-    # shared runner user's switch while t54/t55 may be using it.
-    force_disable_codex_oauth_provider "$token"
+    local body='{"kind":"auth_json","authJson":"not valid json {"}'
+    local resp http_code resp_body
+    resp=$(_post_test_codex_oauth "$body")
+    http_code=$(echo "$resp" | tail -n1)
+    resp_body=$(echo "$resp" | head -n-1)
 
-    local curl_args=(-s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $token")
-    if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
-        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
-
-    local code
-    code=$(curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/chatgpt/oauth/connect")
-
-    # The endpoint MUST return 404 (not 403) when the user is ineligible —
-    # isCodexOauthEligible returns false, route emits NotFound. This
-    # keeps the entire surface hidden from production users.
-    if [ "$code" != "404" ]; then
-        disable_codex_oauth_provider "$token"
-        echo "Expected 404, got $code" >&2
+    if [ "$http_code" != "400" ]; then
+        echo "Expected 400, got $http_code" >&2
+        echo "Response: $resp_body" >&2
         return 1
     fi
+    echo "$resp_body" | jq -e '.error == "auth_json_shape_invalid"' >/dev/null
+}
 
-    disable_codex_oauth_provider "$token"
+@test "t57-paste-missing-refresh-token: paste with missing refresh_token returns auth_json_shape_invalid" {
+    if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
+        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+    fi
+    if ! codex_oauth_paste_supported; then
+        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+    fi
+
+    # Auth.json shape with only access_token + account_id + id_token; the
+    # parser must reject because refresh_token is required for the firewall
+    # refresh pipeline.
+    local raw_json
+    raw_json=$(jq -n \
+        '{OPENAI_API_KEY: null, tokens: {access_token: "at", account_id: "ai", id_token: "hdr.payload.sig"}}')
+    local body
+    body=$(jq -n --arg aj "$raw_json" '{kind: "auth_json", authJson: $aj}')
+
+    local resp http_code resp_body
+    resp=$(_post_test_codex_oauth "$body")
+    http_code=$(echo "$resp" | tail -n1)
+    resp_body=$(echo "$resp" | head -n-1)
+
+    if [ "$http_code" != "400" ]; then
+        echo "Expected 400, got $http_code" >&2
+        echo "Response: $resp_body" >&2
+        return 1
+    fi
+    echo "$resp_body" | jq -e '.error == "auth_json_shape_invalid"' >/dev/null
+}
+
+@test "t57-paste-free-plan: paste with free-plan id_token returns free_plan_rejected" {
+    if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
+        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+    fi
+    if ! codex_oauth_paste_supported; then
+        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+    fi
+
+    local id_token
+    id_token=$(_make_id_token_with_plan "free")
+    local raw_json
+    raw_json=$(jq -n --arg it "$id_token" \
+        '{OPENAI_API_KEY: null, tokens: {access_token: "at", refresh_token: "rt", account_id: "ai", id_token: $it}}')
+    local body
+    body=$(jq -n --arg aj "$raw_json" '{kind: "auth_json", authJson: $aj}')
+
+    local resp http_code resp_body
+    resp=$(_post_test_codex_oauth "$body")
+    http_code=$(echo "$resp" | tail -n1)
+    resp_body=$(echo "$resp" | head -n-1)
+
+    if [ "$http_code" != "400" ]; then
+        echo "Expected 400, got $http_code" >&2
+        echo "Response: $resp_body" >&2
+        return 1
+    fi
+    echo "$resp_body" | jq -e '.error == "free_plan_rejected"' >/dev/null
 }
 
 # Test 4 server-side portion. Requires Wave 3 (#11932): the runner guard

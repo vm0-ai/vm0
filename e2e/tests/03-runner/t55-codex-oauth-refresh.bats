@@ -103,3 +103,40 @@ teardown_file() {
         fi
     fi
 }
+
+# Test 1-paste — same refresh-rotation invariance but seeded via the
+# auth_json paste path. The refresh pipeline is independent of seed shape
+# (the firewall reads CHATGPT_REFRESH_TOKEN from secrets regardless of how
+# it got there), so this test mirrors t55-1 to confirm parity.
+@test "t55-1-paste: codex run with expired token completes when seeded via auth_json paste path" {
+    if [ -z "${E2E_PASTE_FLOW_ENABLED:-}" ]; then
+        skip "Paste flow not yet wired (sub-issues #11978 + #11980 pending)"
+    fi
+    if ! codex_oauth_paste_supported; then
+        skip "Test endpoint reports paste_flow_not_wired; auth_json parser not deployed yet"
+    fi
+
+    local raw_json
+    raw_json=$(jq -n \
+        --arg at "$INITIAL_AT" \
+        --arg rt "$INITIAL_RT" \
+        --arg ai "$INITIAL_ACC" \
+        --arg it "id-tok" \
+        '{OPENAI_API_KEY: null, tokens: {access_token: $at, refresh_token: $rt, account_id: $ai, id_token: $it}, last_refresh: "2026-05-06T00:00:00Z"}')
+
+    seed_codex_oauth_via_authjson "$raw_json" -60
+
+    run $VM0_CLI run "$AGENT_NAME" -- "Reply with exactly RESULT=ok"
+
+    if [ "$status" -eq 0 ]; then
+        assert_output --partial "RESULT=ok"
+    else
+        if echo "$output" | grep -qE "chatgpt|refresh|TOKEN_REFRESH_FAILED|auth\.openai\.com"; then
+            :
+        else
+            echo "Run failed but not via the codex-oauth refresh path:" >&2
+            echo "$output" >&2
+            return 1
+        fi
+    fi
+}
