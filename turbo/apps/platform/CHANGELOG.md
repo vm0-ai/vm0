@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.326.0](https://github.com/vm0-ai/vm0/compare/app-v0.325.1...app-v0.326.0) (2026-05-06)
+
+
+### Features
+
+* add official Telegram Zero bot ([#11928](https://github.com/vm0-ai/vm0/issues/11928)) ([8d1e622](https://github.com/vm0-ai/vm0/commit/8d1e622408117626bd307fea5cc1a7fd07bdb01f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.258.0
+
 ## [0.325.1](https://github.com/vm0-ai/vm0/compare/app-v0.325.0...app-v0.325.1) (2026-05-06)
 
 
