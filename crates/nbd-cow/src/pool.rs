@@ -98,7 +98,11 @@ impl Drop for DeviceLease {
         let index = claim.index();
         let (done, _done_rx) = oneshot::channel();
         if return_to
-            .send(DevicePoolCommand::RetireUncertain { claim, done })
+            .send(DevicePoolCommand::ReturnLease {
+                action: LeaseReturnAction::RetireUncertain,
+                claim,
+                done,
+            })
             .is_err()
         {
             tracing::warn!(
@@ -129,6 +133,55 @@ pub struct DevicePoolHandle {
     commands: mpsc::UnboundedSender<DevicePoolCommand>,
 }
 
+#[derive(Clone, Copy)]
+enum LeaseReturnAction {
+    ReleaseClean,
+    Discard,
+    RetireUncertain,
+}
+
+#[derive(Clone, Copy)]
+enum LeaseReturnOperation {
+    CleanRelease,
+    Discard,
+    UncertainRetire,
+    DetachedUncertainRetire,
+}
+
+impl LeaseReturnOperation {
+    fn action(self) -> LeaseReturnAction {
+        match self {
+            Self::CleanRelease => LeaseReturnAction::ReleaseClean,
+            Self::Discard => LeaseReturnAction::Discard,
+            Self::UncertainRetire | Self::DetachedUncertainRetire => {
+                LeaseReturnAction::RetireUncertain
+            }
+        }
+    }
+
+    fn missing_claim_message(self) -> &'static str {
+        match self {
+            Self::CleanRelease => "device lease missing claim before clean release",
+            Self::Discard => "device lease missing claim before discard",
+            Self::UncertainRetire => "device lease missing claim before uncertain retire",
+            Self::DetachedUncertainRetire => {
+                "device lease missing claim before detached uncertain retire"
+            }
+        }
+    }
+
+    fn actor_stopped_message(self) -> &'static str {
+        match self {
+            Self::CleanRelease => "device pool actor stopped before clean release",
+            Self::Discard => "device pool actor stopped before discard",
+            Self::UncertainRetire => "device pool actor stopped before uncertain retire",
+            Self::DetachedUncertainRetire => {
+                "device pool actor stopped before detached uncertain retire"
+            }
+        }
+    }
+}
+
 enum DevicePoolCommand {
     Warmup {
         done: oneshot::Sender<()>,
@@ -136,15 +189,8 @@ enum DevicePoolCommand {
     Acquire {
         respond_to: oneshot::Sender<Result<DeviceLease>>,
     },
-    ReleaseClean {
-        claim: NbdDeviceClaim,
-        done: oneshot::Sender<()>,
-    },
-    Discard {
-        claim: NbdDeviceClaim,
-        done: oneshot::Sender<()>,
-    },
-    RetireUncertain {
+    ReturnLease {
+        action: LeaseReturnAction,
         claim: NbdDeviceClaim,
         done: oneshot::Sender<()>,
     },
@@ -229,85 +275,58 @@ impl DevicePoolHandle {
     }
 
     pub(crate) async fn release_clean(&self, lease: DeviceLease) {
-        let Some(claim) = lease.into_claim() else {
-            tracing::warn!("device lease missing claim before clean release");
-            return;
-        };
-        let index = claim.index();
-        let (done, done_rx) = oneshot::channel();
-        if self
-            .commands
-            .send(DevicePoolCommand::ReleaseClean { claim, done })
-            .is_err()
+        if let Some(done_rx) = self.enqueue_lease_return(lease, LeaseReturnOperation::CleanRelease)
         {
-            tracing::warn!(
-                device_index = index,
-                "device pool actor stopped before clean release"
-            );
-            return;
+            let _ = done_rx.await;
         }
-        let _ = done_rx.await;
     }
 
     pub(crate) async fn discard(&self, lease: DeviceLease) {
-        let Some(claim) = lease.into_claim() else {
-            tracing::warn!("device lease missing claim before discard");
-            return;
-        };
-        let index = claim.index();
-        let (done, done_rx) = oneshot::channel();
-        if self
-            .commands
-            .send(DevicePoolCommand::Discard { claim, done })
-            .is_err()
-        {
-            tracing::warn!(
-                device_index = index,
-                "device pool actor stopped before discard"
-            );
-            return;
+        if let Some(done_rx) = self.enqueue_lease_return(lease, LeaseReturnOperation::Discard) {
+            let _ = done_rx.await;
         }
-        let _ = done_rx.await;
     }
 
     pub(crate) async fn retire_uncertain(&self, lease: DeviceLease) {
+        if let Some(done_rx) =
+            self.enqueue_lease_return(lease, LeaseReturnOperation::UncertainRetire)
+        {
+            let _ = done_rx.await;
+        }
+    }
+
+    pub(crate) fn retire_uncertain_detached(&self, lease: DeviceLease) {
+        let _ = self.enqueue_lease_return(lease, LeaseReturnOperation::DetachedUncertainRetire);
+    }
+
+    fn enqueue_lease_return(
+        &self,
+        lease: DeviceLease,
+        operation: LeaseReturnOperation,
+    ) -> Option<oneshot::Receiver<()>> {
         let Some(claim) = lease.into_claim() else {
-            tracing::warn!("device lease missing claim before uncertain retire");
-            return;
+            tracing::warn!("{}", operation.missing_claim_message());
+            return None;
         };
         let index = claim.index();
         let (done, done_rx) = oneshot::channel();
         if self
             .commands
-            .send(DevicePoolCommand::RetireUncertain { claim, done })
+            .send(DevicePoolCommand::ReturnLease {
+                action: operation.action(),
+                claim,
+                done,
+            })
             .is_err()
         {
             tracing::warn!(
                 device_index = index,
-                "device pool actor stopped before uncertain retire"
+                "{}",
+                operation.actor_stopped_message()
             );
-            return;
+            return None;
         }
-        let _ = done_rx.await;
-    }
-
-    pub(crate) fn retire_uncertain_detached(&self, lease: DeviceLease) {
-        let Some(claim) = lease.into_claim() else {
-            tracing::warn!("device lease missing claim before detached uncertain retire");
-            return;
-        };
-        let index = claim.index();
-        let (done, _done_rx) = oneshot::channel();
-        if self
-            .commands
-            .send(DevicePoolCommand::RetireUncertain { claim, done })
-            .is_err()
-        {
-            tracing::warn!(
-                device_index = index,
-                "device pool actor stopped before detached uncertain retire"
-            );
-        }
+        Some(done_rx)
     }
 
     #[cfg(test)]
@@ -391,18 +410,16 @@ impl DevicePoolActor {
             DevicePoolCommand::Acquire { respond_to } => {
                 self.pool.handle_acquire(respond_to);
             }
-            DevicePoolCommand::ReleaseClean { claim, done } => {
-                self.pool.release_claim(claim);
-                self.pool.ensure_waiting_progress();
-                let _ = done.send(());
-            }
-            DevicePoolCommand::Discard { claim, done } => {
-                self.pool.discard_claim(claim);
-                self.pool.ensure_waiting_progress();
-                let _ = done.send(());
-            }
-            DevicePoolCommand::RetireUncertain { claim, done } => {
-                self.pool.retire_uncertain_claim(claim);
+            DevicePoolCommand::ReturnLease {
+                action,
+                claim,
+                done,
+            } => {
+                match action {
+                    LeaseReturnAction::ReleaseClean => self.pool.release_claim(claim),
+                    LeaseReturnAction::Discard => self.pool.discard_claim(claim),
+                    LeaseReturnAction::RetireUncertain => self.pool.retire_uncertain_claim(claim),
+                }
                 self.pool.ensure_waiting_progress();
                 let _ = done.send(());
             }
@@ -1159,6 +1176,42 @@ mod tests {
         })
         .await
         .expect("detached retire did not reach actor");
+        handle.cleanup().await;
+    }
+
+    #[tokio::test]
+    async fn discard_releases_in_flight_lease_without_cooldown() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut pool = test_pool_for_pending_scan(dir.path());
+        pool.in_flight.insert(3);
+        let complete_scan = queue_controlled_scan(&mut pool);
+        let handle = DevicePoolHandle::from_pool(pool);
+        let acquire_task = tokio::spawn({
+            let handle = handle.clone();
+            async move { handle.acquire().await }
+        });
+
+        wait_for_scan_waiter(&handle).await;
+
+        handle.discard(lease(3, dir.path())).await;
+
+        let snapshot = handle.snapshot().await;
+        assert!(!snapshot.in_flight.contains(&3));
+        assert!(snapshot.cooldown.is_empty());
+        assert!(
+            device_lock::try_acquire_device_claim_in(3, dir.path())
+                .expect("lock probe")
+                .is_some()
+        );
+
+        complete_scan.send(Ok(claim(4, dir.path()))).unwrap();
+        let lease = tokio::time::timeout(Duration::from_secs(1), acquire_task)
+            .await
+            .expect("acquire did not finish after discard")
+            .expect("acquire task panicked")
+            .expect("acquire failed");
+        assert_eq!(lease.index(), 4);
+        handle.discard(lease).await;
         handle.cleanup().await;
     }
 
