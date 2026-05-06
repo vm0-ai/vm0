@@ -845,7 +845,9 @@ export async function insertTestUsageDaily(params: {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 async function waitForBlockedAgentRunsQuery(params: {
@@ -992,8 +994,12 @@ export async function seedInFlightCheckpointWhileAgentRunLocked<T>(params: {
 
       await waitForBlockedAgentRunsQuery({
         lockingBackendPid: lockingBackend.pid,
-        hasOperationSettled: () => operationSettled,
-        getOperationError: () => operationError,
+        hasOperationSettled: () => {
+          return operationSettled;
+        },
+        getOperationError: () => {
+          return operationError;
+        },
       });
     });
   } catch (error) {
