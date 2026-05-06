@@ -90,6 +90,22 @@ interface ModelProviderPickerProps {
    * the agent itself falls back to workspace.
    */
   inheritLabel?: "agent" | "workspace";
+  /**
+   * Per-provider tier annotation (Wave 3 of Epic #11868). When provided,
+   * the picker groups items into "Personal" and "Org" sections with
+   * personal first, and shows distinct default badges ("Your default"
+   * for personal-tier rows vs "Workspace default" for org-tier rows).
+   *
+   * The "workspace default" anchor for the inherit toggle is filtered to
+   * org-tier rows when this map is set — the personal default is a
+   * separate concept that the user picks explicitly via the personal
+   * section, not via inheritance.
+   *
+   * Omitted by settings / schedule editor consumers (they pass org-only
+   * lists and never need tier sectioning) — falls back to today's flat
+   * per-type grouping with no behavior change.
+   */
+  tiers?: Map<string, "personal" | "org">;
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -511,13 +527,29 @@ interface RenderProviderGroupContext {
   selectedModel: string | null;
   showAll: boolean;
   onToggleShowAll: () => void;
+  /**
+   * Tier of this provider's row (Wave 3, Epic #11868). When set, the row
+   * shows a tier-specific default badge (`"Your default"` vs `"Workspace
+   * default"`) when the provider is its tier's default. Omitted for the
+   * legacy flat-list render, which kept no per-row default indicator.
+   */
+  tier?: "personal" | "org";
+}
+
+function DefaultBadge({ tier }: { tier: "personal" | "org" }) {
+  const text = tier === "personal" ? "Your default" : "Workspace default";
+  return (
+    <span className="ml-1.5 shrink-0 rounded bg-accent px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      {text}
+    </span>
+  );
 }
 
 function renderProviderGroup(
   group: ProviderGroup,
   ctx: RenderProviderGroupContext,
 ): ReactNode[] {
-  const { idx, last, selectedModel, showAll, onToggleShowAll } = ctx;
+  const { idx, last, selectedModel, showAll, onToggleShowAll, tier } = ctx;
   // Only the VM0 group is collapsible — BYOK groups list a handful of models.
   const collapsible = group.isVm0;
   const visibleModels =
@@ -527,6 +559,14 @@ function renderProviderGroup(
         })
       : group.models;
   const hiddenCount = group.models.length - visibleModels.length;
+  // Default badge shows on the row matching the provider's selectedModel
+  // (or the type's default when selectedModel is unset). Only fires when
+  // tier-aware so legacy callers (settings / schedule editors) keep
+  // their no-badge behavior.
+  const defaultRowModel =
+    tier && group.provider.isDefault
+      ? (group.provider.selectedModel ?? getDefaultModel(group.provider.type))
+      : null;
   const rendered: ReactNode[] = [
     <SelectGroup key={group.provider.id}>
       <SelectLabel className="pl-2 pr-8 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60">
@@ -541,6 +581,7 @@ function renderProviderGroup(
         const multiplier = group.isVm0
           ? getVm0ModelMultiplier(model)
           : undefined;
+        const isDefaultRow = tier !== undefined && model === defaultRowModel;
         return (
           <SelectItem
             key={`${group.provider.id}::${model}`}
@@ -552,6 +593,7 @@ function renderProviderGroup(
               {multiplier !== undefined && (
                 <MultiplierBadge multiplier={multiplier} />
               )}
+              {isDefaultRow && tier && <DefaultBadge tier={tier} />}
             </span>
           </SelectItem>
         );
@@ -571,6 +613,70 @@ function renderProviderGroup(
   return rendered;
 }
 
+function partitionGroupsByTier(
+  groups: ProviderGroup[],
+  tiers: Map<string, "personal" | "org">,
+): { personal: ProviderGroup[]; org: ProviderGroup[] } {
+  const personal: ProviderGroup[] = [];
+  const org: ProviderGroup[] = [];
+  for (const group of groups) {
+    const tier = tiers.get(group.provider.id) ?? "org";
+    if (tier === "personal") {
+      personal.push(group);
+    } else {
+      org.push(group);
+    }
+  }
+  return { personal, org };
+}
+
+function TierSectionHeader({ tier }: { tier: "personal" | "org" }) {
+  return (
+    <div className="px-2 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/80">
+      {tier === "personal" ? "Personal" : "Workspace"}
+    </div>
+  );
+}
+
+function renderTieredSections(
+  groups: ProviderGroup[],
+  tiers: Map<string, "personal" | "org">,
+  ctx: Omit<RenderProviderGroupContext, "idx" | "last" | "tier">,
+): ReactNode[] {
+  const { personal, org } = partitionGroupsByTier(groups, tiers);
+  const out: ReactNode[] = [];
+  if (personal.length > 0) {
+    out.push(
+      <TierSectionHeader key="tier-personal" tier="personal" />,
+      ...personal.flatMap((group, idx) => {
+        return renderProviderGroup(group, {
+          ...ctx,
+          idx,
+          last: personal.length - 1,
+          tier: "personal",
+        });
+      }),
+    );
+  }
+  if (org.length > 0) {
+    if (personal.length > 0) {
+      out.push(<SelectSeparator key="sep-tier-boundary" />);
+    }
+    out.push(
+      <TierSectionHeader key="tier-org" tier="org" />,
+      ...org.flatMap((group, idx) => {
+        return renderProviderGroup(group, {
+          ...ctx,
+          idx,
+          last: org.length - 1,
+          tier: "org",
+        });
+      }),
+    );
+  }
+  return out;
+}
+
 function ModelSelectDropdown({
   groups,
   value,
@@ -585,6 +691,7 @@ function ModelSelectDropdown({
   open,
   onOpenChange,
   showUseDefault,
+  tiers,
 }: {
   groups: ProviderGroup[];
   value: ModelProviderSelection | null;
@@ -599,6 +706,7 @@ function ModelSelectDropdown({
   open: boolean | undefined;
   onOpenChange: ((open: boolean) => void) | undefined;
   showUseDefault: boolean;
+  tiers: Map<string, "personal" | "org"> | undefined;
 }) {
   const resolved = value ?? effectiveDefault;
   const triggerAriaLabel = resolved
@@ -656,15 +764,21 @@ function ModelSelectDropdown({
           <SelectSeparator key="sep-inherit" className="my-0" />
         )}
         {(!showUseDefault || value !== null) &&
-          groups.flatMap((group, idx) => {
-            return renderProviderGroup(group, {
-              idx,
-              last: lastGroupIdx,
-              selectedModel: resolved?.selectedModel ?? null,
-              showAll,
-              onToggleShowAll: toggleShowAll,
-            });
-          })}
+          (tiers
+            ? renderTieredSections(groups, tiers, {
+                selectedModel: resolved?.selectedModel ?? null,
+                showAll,
+                onToggleShowAll: toggleShowAll,
+              })
+            : groups.flatMap((group, idx) => {
+                return renderProviderGroup(group, {
+                  idx,
+                  last: lastGroupIdx,
+                  selectedModel: resolved?.selectedModel ?? null,
+                  showAll,
+                  onToggleShowAll: toggleShowAll,
+                });
+              }))}
       </SelectContent>
     </Select>
   );
@@ -684,6 +798,7 @@ export function ModelProviderPicker({
   disabled = false,
   agentDefault,
   inheritLabel,
+  tiers,
 }: ModelProviderPickerProps) {
   if (disabled) {
     return (
@@ -699,8 +814,17 @@ export function ModelProviderPicker({
     );
   }
 
+  // Workspace default for the inherit toggle row resolves against org-tier
+  // rows only when tiers are provided — the user's personal default is a
+  // separate concept, picked explicitly via the Personal section, not
+  // inherited via the agent → workspace chain (Wave 3, Epic #11868).
+  const inheritScope = tiers
+    ? providers.filter((p) => {
+        return tiers.get(p.id) !== "personal";
+      })
+    : providers;
   const { effectiveDefault, defaultSource: autoSource } =
-    resolveEffectiveDefault(agentDefault, providers);
+    resolveEffectiveDefault(agentDefault, inheritScope);
   const defaultSource: DefaultSource = inheritLabel ?? autoSource;
 
   const groups = buildProviderGroups(providers, sessionProviderType);
@@ -719,6 +843,7 @@ export function ModelProviderPicker({
       open={open}
       onOpenChange={onOpenChange}
       showUseDefault
+      tiers={tiers}
     />
   );
 }

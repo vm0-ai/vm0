@@ -49,7 +49,7 @@ import {
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
-import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
 import {
   chatPageInput$,
   chatPageModelSelection$,
@@ -471,7 +471,7 @@ export function AgentChatPage() {
   const rootSignal = useGet(rootSignal$);
   const pageSignal = useGet(pageSignal$);
 
-  const orgProviders = useLastResolved(orgModelProviders$);
+  const composerProviders = useLastResolved(composerModelProviders$);
   const modelSelection = useLastResolved(chatPageModelSelection$) ?? null;
   const setModelSelection = useSet(setChatPageModelSelection$);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
@@ -558,9 +558,10 @@ export function AgentChatPage() {
             displayName={currentChatAgentDisplayName ?? ""}
             autoFocus
             modelPicker={
-              orgProviders && orgProviders.modelProviders.length > 0
+              composerProviders && composerProviders.providers.length > 0
                 ? {
-                    providers: orgProviders.modelProviders,
+                    providers: composerProviders.providers,
+                    tiers: composerProviders.tiers,
                     value: modelSelection,
                     onChange: setModelSelection,
                     // No prior session exists on the landing page.

@@ -193,6 +193,15 @@ interface ZeroChatComposerProps {
    */
   modelPicker?: {
     providers: ModelProviderResponse[];
+    /**
+     * Per-provider tier annotation (Wave 3 of Epic #11868). When provided,
+     * the picker groups items into "Personal" and "Workspace" sections
+     * with personal first and renders distinct default badges. Composer
+     * call sites pass the merged map from `composerModelProviders$`;
+     * settings / schedule editors omit it for byte-for-byte unchanged
+     * behavior.
+     */
+    tiers?: Map<string, "personal" | "org">;
     value: ModelProviderSelection | null;
     onChange: (value: ModelProviderSelection | null) => void;
     /**
@@ -1359,6 +1368,7 @@ export function ZeroChatComposer({
                     {modelPicker && (
                       <ModelProviderPicker
                         providers={modelPicker.providers}
+                        tiers={modelPicker.tiers}
                         value={modelPicker.value}
                         onChange={handleModelPickerChange}
                         placeholder="Default"

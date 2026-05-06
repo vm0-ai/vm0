@@ -149,7 +149,7 @@ function triggerDirectDownload(url: string, filename: string): void {
   a.remove();
 }
 
-function TextPreviewLoader({
+export function TextPreviewLoader({
   url,
   children,
 }: {
@@ -190,7 +190,7 @@ function formatPlainPreviewText(
   return text;
 }
 
-function parseCsvRows(text: string): string[][] {
+export function parseCsvRows(text: string): string[][] {
   return text
     .split(/\r?\n/)
     .map((line) => {
@@ -204,6 +204,51 @@ function parseCsvRows(text: string): string[][] {
         return cell.trim();
       });
     });
+}
+
+export function CsvPreviewTable({ rows }: { rows: string[][] }) {
+  const [header, ...body] = rows;
+
+  return (
+    <div className="overflow-auto rounded-lg border border-foreground/10">
+      <table className="min-w-full divide-y divide-foreground/10 text-sm">
+        <thead className="bg-muted/40">
+          <tr>
+            {header.map((cell) => {
+              return (
+                <th
+                  key={`header-${cell}`}
+                  className="whitespace-nowrap px-3 py-2 text-left font-medium text-foreground"
+                >
+                  {cell}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-foreground/10 bg-background">
+          {body.map((row) => {
+            const rowKey = `row-${row.join("\u0001")}`;
+            return (
+              <tr key={rowKey}>
+                {header.map((column, cellIndex) => {
+                  const value = row[cellIndex] ?? "";
+                  return (
+                    <td
+                      key={`${rowKey}-${column}-${value}`}
+                      className="whitespace-nowrap px-3 py-2 text-foreground"
+                    >
+                      {value}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
@@ -677,48 +722,9 @@ function CsvLightboxBody({
           );
         }
 
-        const [header, ...body] = rows;
-
         return (
           <div className="h-[min(78vh,900px)] overflow-auto p-6">
-            <div className="overflow-auto rounded-lg border border-foreground/10">
-              <table className="min-w-full divide-y divide-foreground/10 text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    {header.map((cell) => {
-                      return (
-                        <th
-                          key={`header-${cell}`}
-                          className="whitespace-nowrap px-3 py-2 text-left font-medium text-foreground"
-                        >
-                          {cell}
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-foreground/10 bg-background">
-                  {body.map((row) => {
-                    const rowKey = `row-${row.join("\u0001")}`;
-                    return (
-                      <tr key={rowKey}>
-                        {header.map((column, cellIndex) => {
-                          const value = row[cellIndex] ?? "";
-                          return (
-                            <td
-                              key={`${rowKey}-${column}-${value}`}
-                              className="whitespace-nowrap px-3 py-2 text-foreground"
-                            >
-                              {value}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <CsvPreviewTable rows={rows} />
           </div>
         );
       }}
