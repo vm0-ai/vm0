@@ -1,7 +1,5 @@
 """OpenAI Responses API usage parsing primitives."""
 
-from collections.abc import Callable
-
 import body_utils
 
 from .json_selective import JsonSelectiveExtractor, ScalarField
@@ -10,7 +8,7 @@ from .model_tokens import (
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
 )
-from .sse import SseUsageScanner
+from .sse import SseUsageParser
 
 _RESPONSES_USAGE_EVENTS = frozenset(("response.completed", "response.done"))
 
@@ -111,30 +109,27 @@ def _store_sse_result_values(
     _store_response_values(values, target, prefix)
 
 
-def create_openai_responses_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
+def create_openai_responses_sse_usage_extractor() -> tuple[SseUsageParser, dict]:
     """Create an incremental SSE parser for OpenAI Responses streams."""
 
     usage: dict = {}
-    scanner = SseUsageScanner(_OpenAIResponsesSseUsageHandler(usage))
-
-    def parse_chunk(chunk: bytes) -> None:
-        scanner.feed(chunk)
-
-    return parse_chunk, usage
+    parser = SseUsageParser(
+        _OpenAIResponsesSseUsageHandler(usage),
+        capture_data_without_event=True,
+    )
+    return parser, usage
 
 
 class _OpenAIResponsesSseUsageHandler:
     def __init__(self, usage: dict) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
-        self._event_name: str | None = None
 
     def should_capture_event(self, event_name: str | None) -> bool:
         return event_name is None or event_name in _RESPONSES_USAGE_EVENTS
 
-    def on_event_start(self, event_name: str | None) -> None:
+    def on_event_start(self, _event_name: str | None) -> None:
         self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
-        self._event_name = event_name
 
     def on_data(self, chunk: bytes) -> None:
         if self._extractor is not None:
@@ -143,11 +138,9 @@ class _OpenAIResponsesSseUsageHandler:
     def on_data_separator(self) -> None:
         self.on_data(b"\n")
 
-    def on_event_end(self, _event_name: str | None) -> None:
+    def on_event_end(self, event_name: str | None) -> None:
         extractor = self._extractor
-        event_name = self._event_name
         self._extractor = None
-        self._event_name = None
         if extractor is None:
             return
         result = extractor.finish()
@@ -156,7 +149,6 @@ class _OpenAIResponsesSseUsageHandler:
 
     def on_event_discard(self, _event_name: str | None) -> None:
         self._extractor = None
-        self._event_name = None
 
 
 class OpenAIResponsesJsonUsageExtractor:

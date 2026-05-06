@@ -389,6 +389,7 @@ def response(flow: http.HTTPFlow) -> None:
 
         log_network_entry(network_log_path, log_entry)
 
+    response_streaming.finalize_model_sse_usage(flow)
     response_streaming.finalize_model_json_usage(flow, proxy_log_path)
 
     # Report proxy-extracted usage for model provider responses.
@@ -506,6 +507,7 @@ def error(flow: http.HTTPFlow) -> None:
     # Report proxy-extracted usage for model provider responses.
     # The SSE parser may have partially populated model_provider_usage before the
     # connection error occurred.  Partial data is better than none.
+    response_streaming.finalize_model_sse_usage(flow)
     usage.report_model_provider_usage(flow, run_id)
 
     # Billable connector usage for X NDJSON streams that crash mid-flight

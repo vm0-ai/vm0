@@ -4,13 +4,11 @@ Pure parsers shared by both the SSE streaming path and the non-streaming
 JSON fallback.
 """
 
-from collections.abc import Callable
-
 import body_utils
 
 from .json_selective import JsonSelectiveExtractor, ScalarField
 from .model_tokens import ANTHROPIC_USAGE_FIELD_CATEGORIES
-from .sse import SseUsageScanner
+from .sse import SseUsageParser
 
 _ANTHROPIC_MESSAGES_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
 
@@ -37,24 +35,6 @@ _ANTHROPIC_SSE_SCALAR_FIELDS = {
 }
 
 
-def _extract_billing_usage(raw_usage, target: dict) -> None:
-    """Extract known billing fields from an Anthropic usage object into *target*.
-
-    Anthropic usage fields are normalized to usage_event categories at the
-    extraction boundary so the reporting path can forward category names
-    directly.
-
-    Only positive values overwrite existing entries — ``message_delta`` may
-    send ``0`` for fields already set correctly by ``message_start``.
-    """
-    if not raw_usage or not isinstance(raw_usage, dict):
-        return
-    for k, v in raw_usage.items():
-        category = ANTHROPIC_USAGE_FIELD_CATEGORIES.get(k)
-        if category and _is_usage_quantity(v) and (v > 0 or category not in target):
-            target[category] = v
-
-
 def _is_usage_quantity(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
@@ -66,7 +46,7 @@ def _store_selected_usage_values(values: dict, target: dict, prefix: tuple[str, 
             target[category] = value
 
 
-def create_anthropic_messages_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
+def create_anthropic_messages_sse_usage_extractor() -> tuple[SseUsageParser, dict]:
     """Create an incremental SSE parser that extracts usage from Anthropic API streams.
 
     Anthropic-shaped model providers use the Anthropic Messages API streaming
@@ -80,26 +60,23 @@ def create_anthropic_messages_sse_usage_extractor() -> tuple[Callable[[bytes], N
     incrementally and *usage* is a dict that accumulates extracted fields.
     """
     usage: dict = {}
-    scanner = SseUsageScanner(_AnthropicMessagesSseUsageHandler(usage))
-
-    def parse_chunk(chunk: bytes) -> None:
-        scanner.feed(chunk)
-
-    return parse_chunk, usage
+    parser = SseUsageParser(
+        _AnthropicMessagesSseUsageHandler(usage),
+        capture_data_without_event=True,
+    )
+    return parser, usage
 
 
 class _AnthropicMessagesSseUsageHandler:
     def __init__(self, usage: dict) -> None:
         self._usage = usage
         self._extractor: JsonSelectiveExtractor | None = None
-        self._event_name: str | None = None
 
     def should_capture_event(self, event_name: str | None) -> bool:
         return event_name in _ANTHROPIC_MESSAGES_USAGE_EVENTS
 
-    def on_event_start(self, event_name: str | None) -> None:
+    def on_event_start(self, _event_name: str | None) -> None:
         self._extractor = JsonSelectiveExtractor(scalar_fields=_ANTHROPIC_SSE_SCALAR_FIELDS)
-        self._event_name = event_name
 
     def on_data(self, chunk: bytes) -> None:
         if self._extractor is not None:
@@ -108,11 +85,9 @@ class _AnthropicMessagesSseUsageHandler:
     def on_data_separator(self) -> None:
         self.on_data(b"\n")
 
-    def on_event_end(self, _event_name: str | None) -> None:
+    def on_event_end(self, event_name: str | None) -> None:
         extractor = self._extractor
-        event_name = self._event_name
         self._extractor = None
-        self._event_name = None
         if extractor is None:
             return
 
@@ -133,7 +108,6 @@ class _AnthropicMessagesSseUsageHandler:
 
     def on_event_discard(self, _event_name: str | None) -> None:
         self._extractor = None
-        self._event_name = None
 
 
 class AnthropicMessagesJsonUsageExtractor:

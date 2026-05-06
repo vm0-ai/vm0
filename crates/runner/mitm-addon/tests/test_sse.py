@@ -52,6 +52,38 @@ def test_streams_target_multi_data_with_newline_injection() -> None:
     assert handler.discarded == []
 
 
+def test_finish_flushes_current_event_without_blank_line() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler)
+
+    scanner.feed(b"event: target\ndata: ok\n")
+    scanner.finish()
+    scanner.finish()
+
+    assert handler.events == [("target", b"ok")]
+
+
+def test_can_capture_data_before_target_event_name() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler, capture_data_without_event=True)
+
+    scanner.feed(b"data: ok\n")
+    scanner.feed(b"event: target\n\n")
+
+    assert handler.events == [("target", b"ok")]
+
+
+def test_discards_data_before_ignored_event_name() -> None:
+    handler = _CaptureHandler({"target"})
+    scanner = SseUsageScanner(handler, capture_data_without_event=True)
+
+    scanner.feed(b"data: ignored\n")
+    scanner.feed(b"event: ignored\n\n")
+
+    assert handler.events == []
+    assert handler.discarded == ["ignored"]
+
+
 @pytest.mark.parametrize("newline", [b"\n", b"\r\n", b"\r"])
 def test_supports_sse_line_endings(newline: bytes) -> None:
     handler = _CaptureHandler({"target"})

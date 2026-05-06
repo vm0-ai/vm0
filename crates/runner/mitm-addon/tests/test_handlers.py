@@ -19,6 +19,7 @@ import auth
 import body_utils
 import mitm_addon
 import registry as registry_cache
+import response_streaming
 import usage
 from usage import (
     create_anthropic_messages_sse_usage_extractor,
@@ -1681,6 +1682,27 @@ class TestAnthropicSseUsageExtractor:
         parse(b"event: message_start\ndata: {invalid json}\n\n")
         assert usage == {}  # no crash, no data
 
+    def test_finish_flushes_message_start_without_blank_line(self):
+        parse, usage = create_anthropic_messages_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":55}}}\n'
+        )
+        parse.finish()
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["tokens.input"] == 55
+
+    def test_accepts_event_name_after_data_line(self):
+        parse, usage = create_anthropic_messages_sse_usage_extractor()
+        parse(
+            b'data: {"message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":56}}}\n'
+            b"event: message_start\n\n"
+        )
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["tokens.input"] == 56
+
     def test_empty_chunks(self):
         parse, usage = create_anthropic_messages_sse_usage_extractor()
         parse(b"")
@@ -1959,6 +1981,27 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         assert usage["model"] == "gpt-5.4-mini"
         assert usage["tokens.input"] == 3
+
+    def test_finish_flushes_response_completed_without_blank_line(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":4}}}\n'
+        )
+        parse.finish()
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 4
+
+    def test_accepts_event_name_after_data_line(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b'data: {"response":{"model":"gpt-5.4",'
+            b'"usage":{"output_tokens":4}}}\n'
+            b"event: response.completed\n\n"
+        )
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 4
 
     def test_handles_chunked_event_and_data_prefix(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
@@ -2249,6 +2292,30 @@ class TestResponseHeadersSseParser:
         )
         assert flow.metadata["model_provider_usage"]["model"] == "gpt-5.5"
         assert flow.metadata["model_provider_usage"]["tokens.output"] == 5
+
+    def test_finalizes_sse_parser_for_trailing_event_without_blank_line(self, real_flow):
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "text/event-stream"}),
+        )
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["firewall_billable"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        callback(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5",'
+            b'"usage":{"output_tokens":7}}}\n'
+        )
+        assert flow.metadata["model_provider_usage"] == {}
+
+        response_streaming.finalize_model_sse_usage(flow)
+
+        assert flow.metadata["model_provider_usage"]["model"] == "gpt-5.5"
+        assert flow.metadata["model_provider_usage"]["tokens.output"] == 7
 
     def test_sets_up_openai_sse_parser_for_openai_model_provider(self, real_flow, headers):
         flow = real_flow(with_response=False, host="api.openai.com")

@@ -15,6 +15,7 @@ _HTTP_STATUS_REDIRECT_MIN = 300
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_JSON_USAGE_FINALIZED = "_model_json_usage_finalized"
+_MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _X_JSON_RESPONSE_FINISH = "x_json_response_finish"
 
@@ -91,6 +92,7 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
                 parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor()
             sse_parser = parser_fn
             flow.metadata["model_provider_usage"] = usage_dict
+            flow.metadata[_MODEL_SSE_USAGE_FINISH] = parser_fn.finish
             sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
         else:
             if _is_openai_responses_provider(firewall_name):
@@ -172,6 +174,12 @@ def finalize_model_json_usage(flow: http.HTTPFlow, proxy_log_path: str) -> None:
         )
 
 
+def finalize_model_sse_usage(flow: http.HTTPFlow) -> None:
+    finish = flow.metadata.pop(_MODEL_SSE_USAGE_FINISH, None)
+    if finish is not None:
+        finish()
+
+
 def finalize_x_json_state(flow: http.HTTPFlow) -> None:
     finish = flow.metadata.pop(_X_JSON_RESPONSE_FINISH, None)
     if finish is None:
@@ -187,6 +195,7 @@ def release_response_stream_state(flow: http.HTTPFlow) -> None:
     flow.metadata.pop("stream_buffer", None)
     flow.metadata.pop("stream_buffer_state", None)
     flow.metadata.pop(_MODEL_JSON_USAGE_FINISH, None)
+    flow.metadata.pop(_MODEL_SSE_USAGE_FINISH, None)
     flow.metadata.pop(_X_JSON_RESPONSE_FINISH, None)
     if stream_callback is not None and flow.response and flow.response.stream is stream_callback:
         flow.response.stream = False
