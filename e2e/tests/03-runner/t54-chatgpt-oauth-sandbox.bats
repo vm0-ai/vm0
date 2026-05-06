@@ -116,7 +116,24 @@ teardown_file() {
 
 # Test 2 — placeholder-only sandbox state. Epic SC #4 + #5 — THE
 # load-bearing test for the entire approach α.
+#
+# REQUIRES real codex. Mock codex (CI default) echoes the prompt verbatim
+# and does not actually invoke the Bash tool, so audit-runner.sh never
+# runs inside the sandbox and the audit JSON is never produced. The
+# placeholder-claim half of this assertion is already covered by the Rust
+# unit tests in crates/guest-agent/src/codex_auth.rs (which run on every
+# CI). The end-to-end "no real token string in sandbox env/file" half
+# requires a real codex run — deferred to the nightly real-account smoke
+# job (per plan-phase Q1 decision: A2).
+#
+# When OPENAI_API_KEY is in CI env (nightly real-account job), this test
+# runs and exercises the full audit. Otherwise it skips with a clear
+# message so the load-bearing intent is documented in CI output.
 @test "t54-2: sandbox auth.json contains only placeholders; no real tokens leak" {
+    if [ -z "${OPENAI_API_KEY:-}" ]; then
+        skip "Requires real codex (mock codex doesn't invoke Bash tool); placeholder claims covered by Rust tests in crates/guest-agent/src/codex_auth.rs"
+    fi
+
     audit_sandbox_via_agent "$AGENT_NAME"
 
     # The guest-agent's auth.json fabrication put the sandbox in ChatGPT
@@ -147,8 +164,17 @@ teardown_file() {
 # model provider. This is defense-in-depth: the guest-agent already
 # overrides CODEX_REFRESH_TOKEN_URL_OVERRIDE to localhost:1, but if codex
 # ever ignores the override, this firewall rule still prevents egress.
+#
+# REQUIRES real codex (mock codex doesn't run the curl command). Same
+# rationale as t54-2 — skip when no OPENAI_API_KEY in env. Firewall
+# rule existence is unit-tested at the api-contracts level.
 @test "t54-7: sandbox cannot reach auth.openai.com" {
+    if [ -z "${OPENAI_API_KEY:-}" ]; then
+        skip "Requires real codex (mock codex doesn't invoke Bash tool); firewall rule covered by api-contracts unit tests"
+    fi
+
     run $VM0_CLI run "$AGENT_NAME" \
+        --debug-no-mock-codex \
         -- "Run this exact Bash command and include its output:
 curl -sS -m 10 -o /tmp/curl-out.txt -w 'HTTP_CODE=%{http_code} EXIT=%{exitcode}' https://auth.openai.com/oauth/token; echo
 cat /tmp/curl-out.txt 2>/dev/null || echo 'NO_RESPONSE_BODY'"
