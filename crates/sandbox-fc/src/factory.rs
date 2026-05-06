@@ -2155,6 +2155,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn factory_cleanup_group_drains_task_after_waiter_drop_without_waiting() {
+        let group = FactoryCleanupGroup::new();
+        let completed = Arc::new(AtomicBool::new(false));
+        let completed_clone = Arc::clone(&completed);
+
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
+            completed_clone.store(true, Ordering::SeqCst);
+        });
+        drop(waiter);
+
+        group.shutdown().await;
+
+        assert!(completed.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
     async fn factory_cleanup_group_shutdown_waits_for_running_task() {
         let group = Arc::new(FactoryCleanupGroup::new());
         let (release_tx, release_rx) = tokio::sync::oneshot::channel();
