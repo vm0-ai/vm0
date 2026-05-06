@@ -1337,8 +1337,10 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
         <div>
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h1 className="text-xl font-semibold">Insights &amp; Usage</h1>
-              <p className="text-sm text-muted-foreground mt-1">
+              <h1 className="hidden md:block text-xl font-semibold">
+                Insights &amp; Usage
+              </h1>
+              <p className="hidden md:block text-sm text-muted-foreground mt-1">
                 Monitor what your agents access, how credits are spent, which
                 permissions they use, and spot anything unusual.
               </p>
