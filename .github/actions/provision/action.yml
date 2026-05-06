@@ -45,9 +45,28 @@ runs:
         fi
 
         ANSIBLE_HASH=$(git rev-parse HEAD:ansible)
+        ssh_with_retry() {
+          local host="$1"
+          shift
+          local attempt
+          for attempt in 1 2 3; do
+            if ssh "${METAL_USER}@${host}" "$@"; then
+              return 0
+            fi
+            echo "SSH command failed for ${host} (attempt ${attempt}/3)" >&2
+            if [ "$attempt" != "3" ]; then
+              sleep 2
+            fi
+          done
+          return 1
+        }
+
         STALE_HOSTS=""
         for HOST in $(echo "$HOSTS" | tr ',' ' '); do
-          REMOTE_HASH=$(ssh "${METAL_USER}@${HOST}" "cat ~/.vm0-provision-hash 2>/dev/null" || true)
+          if ! REMOTE_HASH=$(ssh_with_retry "${HOST}" "cat ~/.vm0-provision-hash 2>/dev/null || true"); then
+            echo "::error::Failed to read provision hash from ${HOST} after retries"
+            exit 1
+          fi
           if [ "$ANSIBLE_HASH" != "$REMOTE_HASH" ]; then
             echo "Host ${HOST} needs provisioning (${REMOTE_HASH:0:8} != ${ANSIBLE_HASH:0:8})"
             STALE_HOSTS="${STALE_HOSTS:+${STALE_HOSTS},}${HOST}"
@@ -86,5 +105,5 @@ runs:
           -e "env_label=${ENV_LABEL}" -v
 
         for HOST in $(echo "$STALE_HOSTS" | tr ',' ' '); do
-          ssh "${METAL_USER}@${HOST}" "echo ${ANSIBLE_HASH} > ~/.vm0-provision-hash"
+          ssh_with_retry "${HOST}" "echo ${ANSIBLE_HASH} > ~/.vm0-provision-hash"
         done
