@@ -849,7 +849,10 @@ export function ZeroConnectorsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                  // Hidden below md: the mobile top bar already hosts the
+                  // "+ New connector" action, so the page-level button is
+                  // duplicate chrome on small screens.
+                  className="hidden md:inline-flex zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
                   onClick={openCreateCustom}
                 >
                   <IconPlus size={14} stroke={2} />

@@ -268,7 +268,7 @@ function ChatList({
 
   return (
     <>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col">
         {sessions.map((session) => {
           return (
             <ChatListItem
@@ -397,7 +397,7 @@ function ChatListItem({
   };
   return (
     <div
-      className="relative overflow-hidden rounded-xl"
+      className="relative overflow-hidden"
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
@@ -432,20 +432,30 @@ function ChatListItem({
           onSelect(session.id);
         }}
         className={cn(
-          "relative flex items-center gap-3 px-3 py-3 text-left transition-transform no-underline bg-background",
+          "flex items-center px-2 py-3 text-left transition-transform no-underline bg-background border-b border-border/40 last:border-b-0",
           isOpen ? "-translate-x-20" : "translate-x-0",
           isSelected
             ? "text-accent-foreground"
             : "text-foreground",
         )}
       >
-        {isUnread && (
-          <span
-            aria-label="Unread"
-            className="absolute left-0 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-primary"
-          />
-        )}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium pl-3">
+        {/* Fixed-width gutter holds the unread dot so titles align across
+            read and unread rows (iMessage-style). */}
+        <span
+          aria-hidden={!isUnread}
+          aria-label={isUnread ? "Unread" : undefined}
+          className="flex w-3 shrink-0 items-center justify-center"
+        >
+          {isUnread && (
+            <span className="h-[7px] w-[7px] rounded-full bg-primary" />
+          )}
+        </span>
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-[15px] leading-snug pr-3",
+            isUnread ? "font-semibold" : "font-medium",
+          )}
+        >
           {session.title ?? "New chat"}
         </span>
         {dateLabel && (

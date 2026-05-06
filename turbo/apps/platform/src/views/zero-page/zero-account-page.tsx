@@ -251,7 +251,11 @@ export function ZeroPreferencesPage() {
               return setTab(v);
             }}
           >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+            <TabsList
+              className={`zero-tabs h-9 gap-1 px-1 py-1 w-full md:w-auto md:inline-flex grid ${
+                showDebug ? "grid-cols-3" : "grid-cols-2"
+              }`}
+            >
               <TabsTrigger
                 value="appearance"
                 className="gap-1.5 text-sm data-[state=active]:bg-background px-3"

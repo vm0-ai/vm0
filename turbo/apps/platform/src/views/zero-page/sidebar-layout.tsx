@@ -438,7 +438,7 @@ function BackButton({
   label,
   testId,
 }: {
-  pathname: "/chats" | "/account" | "/agents";
+  pathname: "/chats" | "/account" | "/agents" | "/schedules";
   label: string;
   testId: string;
 }) {
@@ -518,6 +518,15 @@ function MobileTopBarLeftSlot({
       />
     );
   }
+  if (activeId === "scheduleDetail") {
+    return (
+      <BackButton
+        pathname="/schedules"
+        label="Back to schedules"
+        testId="mobile-back-to-schedules"
+      />
+    );
+  }
   if (isAccountSubRoute(activeId)) {
     return (
       <BackButton
@@ -538,13 +547,18 @@ function resolveTopBarSurface(
   mobileNativeOn: boolean,
 ): { showBreadcrumb: boolean; centeredTitle: string | undefined } {
   const isChatPage = isChatRoute(activeId);
-  const isAgentSubpage =
-    activeId === "agentDetail" || activeId === "agentPermissions";
+  // Detail pages that render as "back arrow + name title" instead of a
+  // breadcrumb. The agent / schedule name is more useful as the title than
+  // the section repeating what the back arrow already conveys.
+  const isBackTitleRoute =
+    activeId === "agentDetail" ||
+    activeId === "agentPermissions" ||
+    activeId === "scheduleDetail";
   const hasDetailName = breadcrumb?.name !== undefined;
   const showBreadcrumb =
     breadcrumb !== null &&
-    (!mobileNativeOn || isChatPage || (hasDetailName && !isAgentSubpage));
-  if (mobileNativeOn && isAgentSubpage && breadcrumb?.name) {
+    (!mobileNativeOn || isChatPage || (hasDetailName && !isBackTitleRoute));
+  if (mobileNativeOn && isBackTitleRoute && breadcrumb?.name) {
     return { showBreadcrumb: false, centeredTitle: breadcrumb.name };
   }
   const fallbackTitle =
