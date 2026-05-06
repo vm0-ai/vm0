@@ -89,8 +89,9 @@ export const updateCodexPasteContent$ = command(({ set }, paste: string) => {
  * `auth_json` authMethod. Server-side parser lives in #11978.
  *
  * Suppresses the default toast on error (`{ toast: false }`) so the paste
- * dialog can render typed error codes inline (e.g. `auth_json_shape_invalid`,
- * `free_plan_rejected`) — `useLoadableSet` in the component reads these
+ * dialog can render typed error codes inline (e.g.
+ * `CODEX_AUTH_JSON_SHAPE_INVALID`, `CODEX_FREE_PLAN_REJECTED`) —
+ * `useLoadableSet` in the component reads these
  * codes off the rejected ApiError. On success, closes the dialog, resets
  * the paste textarea, and triggers an org-providers refetch so the stale
  * banner unmounts after a re-paste.

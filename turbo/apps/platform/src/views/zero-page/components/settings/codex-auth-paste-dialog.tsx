@@ -32,9 +32,9 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
  * Submit POSTs `{ type: 'codex-oauth-token', authMethod: 'auth_json',
  * secrets: { CODEX_AUTH_JSON: <raw> } }` to /api/zero/model-providers; the
  * server-side parser lands in #11978. Typed error codes
- * (`auth_json_shape_invalid`, `free_plan_rejected`) surface inline rather
- * than via toast — the user is staring at the textarea, an inline message
- * keeps cause-and-effect close.
+ * (`CODEX_AUTH_JSON_SHAPE_INVALID`, `CODEX_FREE_PLAN_REJECTED`) surface
+ * inline rather than via toast — the user is staring at the textarea, an
+ * inline message keeps cause-and-effect close.
  */
 export function CodexAuthPasteDialog() {
   const dialog = useGet(codexPasteDialogState$);
@@ -145,10 +145,10 @@ function computeLocalParseError(trimmed: string): string | null {
 }
 
 function getErrorCopy(error: ApiError): string {
-  if (error.code === "auth_json_shape_invalid") {
+  if (error.code === "CODEX_AUTH_JSON_SHAPE_INVALID") {
     return "auth.json format unrecognized — your codex CLI may need updating. Re-run `codex login` and try again.";
   }
-  if (error.code === "free_plan_rejected") {
+  if (error.code === "CODEX_FREE_PLAN_REJECTED") {
     return "Free ChatGPT plans cannot use Codex via vm0. Upgrade to Plus or Pro and re-run `codex login`.";
   }
   return error.message;

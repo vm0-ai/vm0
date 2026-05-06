@@ -4,8 +4,9 @@
  * Covers:
  * - Empty paste / malformed JSON disables submit (client-side sanity check)
  * - Happy path posts the auth_json shape and closes the dialog
- * - Server-typed error codes (auth_json_shape_invalid, free_plan_rejected)
- *   surface inline; toast.error is NOT fired (UX choice — see #11980 plan)
+ * - Server-typed error codes (CODEX_AUTH_JSON_SHAPE_INVALID,
+ *   CODEX_FREE_PLAN_REJECTED) surface inline; toast.error is NOT fired
+ *   (UX choice — see #11980 plan)
  * - Reconnect mode renders a different title
  * - Cancel resets transient state for the next open
  */
@@ -146,12 +147,12 @@ describe("codex paste dialog — submit happy path", () => {
 });
 
 describe("codex paste dialog — server typed errors", () => {
-  it("renders friendly copy for auth_json_shape_invalid without firing toast", async () => {
+  it("renders friendly copy for CODEX_AUTH_JSON_SHAPE_INVALID without firing toast", async () => {
     server.use(
       mockApi(zeroModelProvidersMainContract.upsert, ({ respond }) => {
         return respond(400, {
           error: {
-            code: "auth_json_shape_invalid",
+            code: "CODEX_AUTH_JSON_SHAPE_INVALID",
             message: "shape invalid",
           },
         });
@@ -174,12 +175,12 @@ describe("codex paste dialog — server typed errors", () => {
     expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
   });
 
-  it("renders friendly copy for free_plan_rejected", async () => {
+  it("renders friendly copy for CODEX_FREE_PLAN_REJECTED", async () => {
     server.use(
       mockApi(zeroModelProvidersMainContract.upsert, ({ respond }) => {
         return respond(400, {
           error: {
-            code: "free_plan_rejected",
+            code: "CODEX_FREE_PLAN_REJECTED",
             message: "free plan",
           },
         });
