@@ -33,6 +33,34 @@ export const setOrgAddProviderDialogOpen$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Codex auth.json paste dialog (replaces broken cross-origin OAuth redirect;
+// see #11980). Same dialog handles both first-time connect and re-paste
+// recovery from a stale session — only the title differs by mode.
+// ---------------------------------------------------------------------------
+
+type CodexPasteDialogMode = "connect" | "reconnect";
+
+interface CodexPasteDialogState {
+  open: boolean;
+  mode: CodexPasteDialogMode;
+}
+
+const internalCodexPasteDialogState$ = state<CodexPasteDialogState>({
+  open: false,
+  mode: "connect",
+});
+
+export const codexPasteDialogState$ = computed((get) => {
+  return get(internalCodexPasteDialogState$);
+});
+
+export const setCodexPasteDialogState$ = command(
+  ({ set }, next: CodexPasteDialogState) => {
+    set(internalCodexPasteDialogState$, next);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Dialog state (add/edit single provider form)
 // ---------------------------------------------------------------------------
 

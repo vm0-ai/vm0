@@ -10,15 +10,7 @@
  *   present on codex-oauth-token provider (DoD: post-OAuth display)
  */
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  type Mock,
-} from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
@@ -107,33 +99,15 @@ describe("connect ChatGPT card — feature switch gating", () => {
   });
 });
 
-describe("connect ChatGPT card — click handler", () => {
-  let assignSpy: Mock;
-  let originalAssign: Location["assign"];
-
+describe("connect Codex card — click handler", () => {
   beforeEach(() => {
     setMockFeatureSwitches({
       [FeatureSwitchKey.CodexOauthProvider]: true,
     });
     resetMockOrgModelProviders();
-    // jsdom marks window.location.assign as non-configurable in some versions;
-    // replace it via defineProperty so we can spy without "Cannot redefine".
-    originalAssign = window.location.assign;
-    assignSpy = vi.fn();
-    Object.defineProperty(window.location, "assign", {
-      configurable: true,
-      value: assignSpy,
-    });
   });
 
-  afterEach(() => {
-    Object.defineProperty(window.location, "assign", {
-      configurable: true,
-      value: originalAssign,
-    });
-  });
-
-  it("redirects to /api/zero/chatgpt/oauth/connect when card is clicked", async () => {
+  it("opens the auth.json paste dialog when the codex card is clicked", async () => {
     await openProvidersPage();
     context.store.set(setOrgAddProviderDialogOpen$, true);
 
@@ -142,7 +116,11 @@ describe("connect ChatGPT card — click handler", () => {
     );
     click(card);
 
-    expect(assignSpy).toHaveBeenCalledWith("/api/zero/chatgpt/oauth/connect");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: /Connect Codex/i }),
+      ).toBeInTheDocument();
+    });
   });
 });
 

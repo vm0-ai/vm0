@@ -28,6 +28,7 @@ import {
   orgSetDefaultProvider$,
   orgOpenEditDialog$,
   orgOpenDeleteDialog$,
+  setCodexPasteDialogState$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { getUILabel } from "../settings/provider-ui-config.ts";
@@ -35,6 +36,7 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { OrgAddProviderDialog } from "../settings/org-add-provider-dialog.tsx";
 import { OrgProviderDialog } from "../settings/org-provider-dialog.tsx";
 import { OrgDeleteProviderDialog } from "../settings/org-delete-provider-dialog.tsx";
+import { CodexAuthPasteDialog } from "../settings/codex-auth-paste-dialog.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
@@ -50,6 +52,7 @@ export function OrgProvidersTab() {
       <ProviderListSection isAdmin={isAdmin} />
       <OrgDeleteProviderDialog />
       <OrgProviderDialog />
+      <CodexAuthPasteDialog />
     </div>
   );
 }
@@ -73,6 +76,7 @@ function StaleProviderBanner({
 }: {
   providers: ModelProviderResponse[];
 }) {
+  const setPasteDialog = useSet(setCodexPasteDialogState$);
   const stale = providers.find((p) => {
     return p.type === "codex-oauth-token" && p.needsReconnect;
   });
@@ -92,12 +96,15 @@ function StaleProviderBanner({
           {staleMessage(stale.lastRefreshErrorCode)}
         </p>
       </div>
-      <a
-        href="/api/zero/chatgpt/oauth/connect"
+      <button
+        type="button"
+        onClick={() => {
+          return setPasteDialog({ open: true, mode: "reconnect" });
+        }}
         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
       >
-        Re-connect ChatGPT
-      </a>
+        Re-paste auth.json
+      </button>
     </section>
   );
 }
