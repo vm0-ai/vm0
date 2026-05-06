@@ -296,7 +296,7 @@ describe("mobile bottom tab bar - renders five tabs (MOBILE-TAB-001)", () => {
     });
 
     expect(screen.getByTestId("mobile-tab-home")).toBeInTheDocument();
-    expect(screen.getByTestId("mobile-tab-teammates")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-tab-agents")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-schedules")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-connectors")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-more")).toBeInTheDocument();
@@ -519,7 +519,7 @@ describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () =
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("mobile-tab-teammates")).toHaveAttribute(
+      expect(screen.getByTestId("mobile-tab-agents")).toHaveAttribute(
         "aria-current",
         "page",
       );
@@ -629,7 +629,7 @@ describe("mobile bottom tab bar - Schedules link navigates (MOBILE-TAB-004)", ()
 });
 
 describe("mobile top bar - centered title shows tab label on index pages (MOBILE-TOP-006)", () => {
-  it("renders 'Teammates' centered in the top bar when on /agents with the redesign on", async () => {
+  it("renders 'Agents' centered in the top bar when on /agents with the redesign on", async () => {
     mockBaseAPIs();
     detachedSetupPage({
       context,
@@ -639,7 +639,7 @@ describe("mobile top bar - centered title shows tab label on index pages (MOBILE
 
     await waitFor(() => {
       expect(screen.getByTestId("mobile-top-bar-title")).toHaveTextContent(
-        "Teammates",
+        "Agents",
       );
     });
   });

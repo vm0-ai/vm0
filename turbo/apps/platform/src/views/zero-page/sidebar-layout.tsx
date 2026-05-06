@@ -10,6 +10,7 @@ import {
   IconArrowLeft,
   IconMenu2,
   IconPlus,
+  IconSearch,
   IconUserPlus,
   IconVolume2,
 } from "@tabler/icons-react";
@@ -43,6 +44,19 @@ import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrum
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { user$ } from "../../signals/auth.ts";
+import {
+  setMobileChatListSearchOpen$,
+  mobileChatListSearchOpen$,
+  setMobileConnectorsSearchOpen$,
+  mobileConnectorsSearchOpen$,
+} from "../../signals/zero-page/zero-sidebar-state.ts";
+import { setJobsDialogOpen$ } from "../../signals/zero-page/zero-jobs-page.ts";
+import { openCreateScheduleDialog$ } from "../../signals/schedule-page/schedule-page-ui.ts";
+import {
+  connectorsPageTab$,
+  openCustomConnectorCreateDialog$,
+} from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
   setActiveOrgManageTab$,
   setBillingSubPage$,
@@ -180,12 +194,22 @@ function NewOrUnreadChatButtonLeaf() {
   );
 }
 
-function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
+function MobileTopBarActions({
+  activeId,
+  mobileNativeOn,
+}: {
+  activeId: RouteKey | null;
+  mobileNativeOn: boolean;
+}) {
   const inChatRoute = isChatRoute(activeId);
   const features = useLastResolved(featureSwitch$);
   const newButtonEnabled =
     features?.[FeatureSwitchKey.ChatHeaderNewButton] ?? false;
   const audioOutputEnabled = features?.[FeatureSwitchKey.AudioOutput] ?? false;
+
+  if (mobileNativeOn) {
+    return <MobileTopBarPageActions activeId={activeId} />;
+  }
   return (
     <>
       {inChatRoute && audioOutputEnabled && <AutoReadToggleLeaf />}
@@ -199,6 +223,182 @@ function MobileTopBarActions({ activeId }: { activeId: RouteKey | null }) {
   );
 }
 
+function ChatListHeaderSearchToggle() {
+  const open = useGet(mobileChatListSearchOpen$);
+  const setOpen = useSet(setMobileChatListSearchOpen$);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setOpen(!open);
+      }}
+      aria-pressed={open}
+      aria-label="Search chats"
+      data-testid="mobile-chat-list-search-toggle"
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+        open
+          ? "bg-muted text-foreground"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+      )}
+    >
+      <IconSearch size={16} stroke={1.6} />
+    </button>
+  );
+}
+
+function ConnectorsHeaderSearchToggle() {
+  const open = useGet(mobileConnectorsSearchOpen$);
+  const setOpen = useSet(setMobileConnectorsSearchOpen$);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setOpen(!open);
+      }}
+      aria-pressed={open}
+      aria-label="Search connectors"
+      data-testid="mobile-connectors-search-toggle"
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
+        open
+          ? "bg-muted text-foreground"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+      )}
+    >
+      <IconSearch size={16} stroke={1.6} />
+    </button>
+  );
+}
+
+function HeaderAccountAvatar() {
+  const userLoadable = useLastLoadable(user$);
+  const user = userLoadable.state === "hasData" ? userLoadable.data : null;
+  const name = user?.fullName ?? "Account";
+  const initial = name.charAt(0).toUpperCase();
+  const imageUrl = user?.imageUrl;
+  return (
+    <Link
+      pathname="/account"
+      aria-label="Open account"
+      data-testid="mobile-header-account"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full overflow-hidden no-underline ring-1 ring-border hover:ring-primary/40 transition-colors"
+    >
+      {imageUrl ? (
+        <img src={imageUrl} alt="" className="h-8 w-8 object-cover" />
+      ) : (
+        <span className="flex h-full w-full items-center justify-center bg-[hsl(var(--gray-200))] text-xs font-semibold text-[hsl(var(--primary-700))]">
+          {initial}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+function HeaderIconButton({
+  label,
+  testId,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  testId: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      data-testid={testId}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
+    >
+      <IconPlus size={18} stroke={1.8} />
+    </button>
+  );
+}
+
+function NewAgentHeaderButton() {
+  const setOpen = useSet(setJobsDialogOpen$);
+  return (
+    <HeaderIconButton
+      label="New agent"
+      testId="mobile-new-agent"
+      onClick={() => {
+        setOpen(true);
+      }}
+    />
+  );
+}
+
+function NewScheduleHeaderButton() {
+  const openDialog = useSet(openCreateScheduleDialog$);
+  const pageSignal = useGet(pageSignal$);
+  return (
+    <HeaderIconButton
+      label="New schedule"
+      testId="mobile-new-schedule"
+      onClick={() => {
+        detach(openDialog(pageSignal), Reason.DomCallback);
+      }}
+    />
+  );
+}
+
+function NewCustomConnectorHeaderButton() {
+  const isAdminLoadable = useLastLoadable(isOrgAdmin$);
+  const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
+  const tab = useGet(connectorsPageTab$);
+  const openDialog = useSet(openCustomConnectorCreateDialog$);
+  if (!isAdmin || tab !== "custom") {
+    return null;
+  }
+  return (
+    <HeaderIconButton
+      label="New connector"
+      testId="mobile-new-connector"
+      onClick={() => {
+        openDialog();
+      }}
+    />
+  );
+}
+
+// Per-route action cluster on the right of the mobile top bar. Account avatar
+// only appears on the chat-list (Home) tab; per-page primary actions live in
+// the same slot so each surface has at most one or two icons + the avatar.
+function MobileTopBarPageActions({
+  activeId,
+}: {
+  activeId: RouteKey | null;
+}) {
+  if (activeId === "chatList") {
+    return (
+      <>
+        <ChatListHeaderSearchToggle />
+        <HeaderAccountAvatar />
+      </>
+    );
+  }
+  if (activeId === "agents") {
+    return <NewAgentHeaderButton />;
+  }
+  if (activeId === "schedules") {
+    return <NewScheduleHeaderButton />;
+  }
+  if (activeId === "connectors") {
+    return (
+      <>
+        <ConnectorsHeaderSearchToggle />
+        <NewCustomConnectorHeaderButton />
+      </>
+    );
+  }
+  return null;
+}
+
 // Resolves a centered page title for the mobile top bar from the active route.
 // Chat routes are excluded — they keep their breadcrumb-style agent label.
 function mobileTopBarTitle(route: RouteKey | null): string | undefined {
@@ -207,7 +407,7 @@ function mobileTopBarTitle(route: RouteKey | null): string | undefined {
       return "Home";
     }
     case "agents": {
-      return "Teammates";
+      return "Agents";
     }
     case "schedules": {
       return "Schedules";
@@ -365,7 +565,10 @@ function MobileTopBar() {
           {centeredTitle}
         </h1>
       )}
-      <MobileTopBarActions activeId={activeId} />
+      <MobileTopBarActions
+        activeId={activeId}
+        mobileNativeOn={mobileNativeOn}
+      />
     </div>
   );
 }

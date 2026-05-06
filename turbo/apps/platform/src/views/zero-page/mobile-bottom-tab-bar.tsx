@@ -18,7 +18,7 @@ import { setMobileMoreSheetOpen$ } from "../../signals/zero-page/zero-nav.ts";
 type TabIcon = (props: { size?: number; stroke?: number }) => ReactNode;
 
 interface MobileTab {
-  readonly id: "home" | "teammates" | "schedules" | "connectors";
+  readonly id: "home" | "agents" | "schedules" | "connectors";
   readonly activeKeys: readonly RouteKey[];
   readonly pathname: "/" | "/agents" | "/schedules" | "/connectors";
   readonly label: string;
@@ -41,10 +41,10 @@ const MOBILE_TABS: readonly MobileTab[] = [
     icon: IconHome as TabIcon,
   },
   {
-    id: "teammates",
+    id: "agents",
     activeKeys: ["agents", "agentDetail", "agentPermissions"],
     pathname: "/agents",
-    label: "Teammates",
+    label: "Agents",
     icon: IconUsers as TabIcon,
   },
   {

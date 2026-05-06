@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import {
   useGet,
   useSet,
@@ -28,6 +28,7 @@ import {
   openCustomConnectorCreateDialog$,
 } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
+import { mobileConnectorsSearchOpen$ } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { Vm0ManagedBadge } from "./components/settings/vm0-managed-badge.tsx";
@@ -598,6 +599,85 @@ function renderBuiltinList({
   );
 }
 
+function ConnectorsDesktopHeader({
+  mobileNativeOn,
+  search,
+  onSearchChange,
+}: {
+  mobileNativeOn: boolean;
+  search: string;
+  onSearchChange: (e: ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <header
+      className={`shrink-0 bg-transparent px-4 sm:px-6 md:pt-10 md:pb-3 ${
+        mobileNativeOn ? "hidden md:block" : "pt-3 pb-0"
+      }`}
+    >
+      <div className="mx-auto w-full max-w-[900px]">
+        <div className="flex w-full max-w-[900px] flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0 hidden md:block">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              Connectors
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Connect third-party services for your agents to use.
+            </p>
+          </div>
+          <div className="relative w-full md:w-56">
+            <IconSearch
+              size={15}
+              stroke={1.5}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+            />
+            <input
+              type="text"
+              placeholder="Find connectors"
+              value={search}
+              onChange={onSearchChange}
+              className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+            />
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function MobileConnectorsSearchBar() {
+  const open = useGet(mobileConnectorsSearchOpen$);
+  const features = useLastResolved(featureSwitch$);
+  const mobileNativeOn =
+    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const search = useGet(connectorsSearch$);
+  const setSearch = useSet(setConnectorsSearch$);
+  if (!mobileNativeOn || !open) {
+    return null;
+  }
+  return (
+    <div className="md:hidden shrink-0 px-4 pt-3">
+      <div className="relative">
+        <IconSearch
+          size={15}
+          stroke={1.5}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+        />
+        <input
+          type="text"
+          placeholder="Find connectors"
+          value={search}
+          autoFocus
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            setSearch(e.target.value);
+          }}
+          data-testid="mobile-connectors-search-input"
+          className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const pollingType = useGet(pollingConnectorType$);
@@ -633,6 +713,9 @@ export function ZeroConnectorsPage() {
 
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
+
+  const mobileNativeOn =
+    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
@@ -726,36 +809,14 @@ export function ZeroConnectorsPage() {
       ref={scrollContainerRef}
       className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]"
     >
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
-        <div className="mx-auto w-full max-w-[900px]">
-          <div className="flex w-full max-w-[900px] flex-wrap items-end justify-between gap-4">
-            <div className="min-w-0 hidden md:block">
-              <h1 className="text-lg font-semibold tracking-tight text-foreground">
-                Connectors
-              </h1>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Connect third-party services for your agents to use.
-              </p>
-            </div>
-            <div className="relative w-full md:w-56">
-              <IconSearch
-                size={15}
-                stroke={1.5}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
-              />
-              <input
-                type="text"
-                placeholder="Find connectors"
-                value={search}
-                onChange={(e) => {
-                  return setSearch(e.target.value);
-                }}
-                className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
-              />
-            </div>
-          </div>
-        </div>
-      </header>
+      <ConnectorsDesktopHeader
+        mobileNativeOn={mobileNativeOn}
+        search={search}
+        onSearchChange={(e) => {
+          setSearch(e.target.value);
+        }}
+      />
+      <MobileConnectorsSearchBar />
 
       <main className="flex-1 px-4 sm:px-6 pt-3 pb-16">
         <div className="relative mx-auto w-full max-w-[900px]">

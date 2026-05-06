@@ -7,8 +7,10 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { IconPlus, IconSearch, IconX, IconTrash } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -38,7 +40,10 @@ import {
   setPendingDeleteThreadId$,
   chatListQuery$,
   setChatListQuery$,
+  mobileChatListSearchOpen$,
+  setMobileChatListSearchOpen$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -71,6 +76,17 @@ export function ZeroChatListPage() {
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
 
+  const features = useLastResolved(featureSwitch$);
+  const mobileNativeOn =
+    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const mobileSearchOpen = useGet(mobileChatListSearchOpen$);
+  const setMobileSearchOpen = useSet(setMobileChatListSearchOpen$);
+
+  // On mobile native the search bar is collapsible; the top-bar icon owns
+  // its open state. On desktop / non-redesign mobile we keep the
+  // always-visible search row above the list.
+  const showSearchBar = !mobileNativeOn || mobileSearchOpen;
+
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
     ? recentSessions.filter((s) => {
@@ -90,59 +106,75 @@ export function ZeroChatListPage() {
   };
 
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <div className="relative flex flex-1 flex-col min-h-0">
       {/* Header */}
       <div className="shrink-0 px-4 pt-4 pb-2">
         <MobileChatAgentSwitcher />
 
-        {/* Search */}
-        <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 h-10">
-          <IconSearch
-            size={16}
-            stroke={2}
-            className="shrink-0 text-muted-foreground"
-          />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => {
-              return setSearchTerm(e.target.value);
-            }}
-            placeholder={searchPlaceholder}
-            className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
-          />
-          {searchTerm && (
-            <button
-              type="button"
-              onClick={() => {
-                return setSearchTerm("");
+        {/* Search — collapsible on mobile-native, always visible elsewhere */}
+        {showSearchBar && (
+          <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 h-10">
+            <IconSearch
+              size={16}
+              stroke={2}
+              className="shrink-0 text-muted-foreground"
+            />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => {
+                return setSearchTerm(e.target.value);
               }}
-              className="shrink-0 text-muted-foreground hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <IconX size={14} stroke={2} />
-            </button>
-          )}
-        </div>
+              placeholder={searchPlaceholder}
+              data-testid="chat-list-search-input"
+              autoFocus={mobileNativeOn && mobileSearchOpen}
+              className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+            />
+            {(searchTerm || (mobileNativeOn && mobileSearchOpen)) && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (mobileNativeOn && mobileSearchOpen) {
+                    setMobileSearchOpen(false);
+                  } else {
+                    setSearchTerm("");
+                  }
+                }}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label="Clear search"
+              >
+                <IconX size={14} stroke={2} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* New chat button */}
-      <div className="shrink-0 px-4 py-2">
-        <button
-          type="button"
-          onClick={(event) => {
-            onNewChat(event.altKey ? "sidebar" : "main");
-          }}
-          disabled={creating}
-          className="flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-        >
-          <IconPlus size={16} stroke={2} />
-          New chat
-        </button>
-      </div>
+      {/* New chat button — full-width on desktop, hidden on mobile-native
+          (replaced by the FAB below) */}
+      {!mobileNativeOn && (
+        <div className="shrink-0 px-4 py-2">
+          <button
+            type="button"
+            onClick={(event) => {
+              onNewChat(event.altKey ? "sidebar" : "main");
+            }}
+            disabled={creating}
+            className="flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+          >
+            <IconPlus size={16} stroke={2} />
+            New chat
+          </button>
+        </div>
+      )}
 
       {/* Chat list */}
-      <div className="flex-1 overflow-auto px-4 pb-4">
+      <div
+        className={cn(
+          "flex-1 overflow-auto px-4",
+          mobileNativeOn ? "pt-2 pb-24" : "pb-4",
+        )}
+      >
         <ChatList
           loading={loading}
           error={error}
@@ -152,6 +184,24 @@ export function ZeroChatListPage() {
           onRecentSelect={onRecentSelect}
         />
       </div>
+
+      {/* Floating action button — mobile-native only; sits above the bottom
+          tab bar so the New chat entry stays accessible without occupying
+          a full-width row. */}
+      {mobileNativeOn && (
+        <button
+          type="button"
+          onClick={() => {
+            onNewChat("main");
+          }}
+          disabled={creating}
+          aria-label="New chat"
+          data-testid="mobile-new-chat-fab"
+          className="md:hidden absolute right-4 bottom-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/20 hover:bg-primary/90 transition-colors disabled:opacity-50"
+        >
+          <IconPlus size={24} stroke={2} />
+        </button>
+      )}
     </div>
   );
 }

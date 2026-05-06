@@ -22,13 +22,16 @@ export function MobileChatAgentSwitcher() {
   const currentId = useResolved(currentChatAgentId$);
   const setAgentId = useSet(setChatAgentId$);
 
-  if (!enabled || pinned.length === 0) {
+  // Hide entirely when there's a single pinned agent — the strip then just
+  // duplicates the chat-list title's agent name and the lone outlined card
+  // looks accidental rather than a switcher.
+  if (!enabled || pinned.length < 2) {
     return null;
   }
 
   return (
     <div
-      className="md:hidden -mx-4 px-4 pb-3 flex gap-3 overflow-x-auto snap-x"
+      className="md:hidden -mx-4 px-4 pb-3 pt-1 flex gap-4 overflow-x-auto snap-x"
       data-testid="mobile-chat-agent-switcher"
       aria-label="Pinned teammates"
     >
@@ -47,16 +50,18 @@ export function MobileChatAgentSwitcher() {
             data-testid={`mobile-chat-agent-${agent.id}`}
             className="flex flex-col items-center gap-1 shrink-0 snap-start text-xs font-medium"
           >
-            <AvatarFromUrl
-              avatarUrl={agent.avatarUrl}
-              alt=""
+            <span
               className={cn(
-                "h-12 w-12 rounded-full object-cover object-top transition-shadow",
-                active
-                  ? "ring-2 ring-primary ring-offset-2 ring-offset-background"
-                  : "ring-1 ring-border",
+                "rounded-full p-0.5 transition-colors",
+                active ? "bg-primary" : "bg-transparent",
               )}
-            />
+            >
+              <AvatarFromUrl
+                avatarUrl={agent.avatarUrl}
+                alt=""
+                className="block h-11 w-11 rounded-full object-cover object-top ring-2 ring-background"
+              />
+            </span>
             <span
               className={cn(
                 "max-w-[64px] truncate",

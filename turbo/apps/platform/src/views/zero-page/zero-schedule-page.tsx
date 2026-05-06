@@ -1,8 +1,10 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
   Tabs,
@@ -548,6 +550,13 @@ export function ZeroSchedulePage() {
   const setRunningIds = useSet(setPageRunningIds$);
   const setPendingDelete = useSet(setPagePendingDelete$);
 
+  const features = useLastResolved(featureSwitch$);
+  const mobileNativeOn =
+    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  // Mobile-native: top bar owns "+ Add schedule"; force list view (calendar
+  // is desktop-only) and hide the page header so the surface is the list.
+  const effectiveListTab = mobileNativeOn ? "list" : activeListTab;
+
   const saving = useGet(creatingOrgSchedule$);
   const createSchedule = useSet(createOrgScheduleFromForm$);
   const onCreateSave = onDomEventFn((values: ScheduleFormValues) => {
@@ -603,7 +612,11 @@ export function ZeroSchedulePage() {
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
+      <header
+        className={`shrink-0 bg-transparent px-4 sm:px-6 md:pt-10 md:pb-3 ${
+          mobileNativeOn ? "hidden md:block" : "pt-3 pb-0"
+        }`}
+      >
         <div className="mx-auto max-w-[900px] flex flex-wrap items-end justify-between gap-4">
           <div className="min-w-0 hidden md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
@@ -656,16 +669,20 @@ export function ZeroSchedulePage() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
+      <main
+        className={`flex-1 overflow-auto px-4 sm:px-6 pb-8 ${
+          mobileNativeOn ? "pt-4 md:pt-3" : "pt-3"
+        }`}
+      >
         <div className="mx-auto max-w-[900px]">
           <div className="zero-card overflow-hidden pb-3">
             {isInitialLoading ? (
-              activeListTab === "calendar" ? (
+              effectiveListTab === "calendar" ? (
                 <ScheduleCalendarSkeleton />
               ) : (
                 <ScheduleListSkeleton />
               )
-            ) : activeListTab === "list" ? (
+            ) : effectiveListTab === "list" ? (
               <ScheduleListView
                 entries={combinedSchedule}
                 togglingIds={togglingIds}
