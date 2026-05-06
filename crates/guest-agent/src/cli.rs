@@ -245,7 +245,7 @@ fn build_codex_command(use_mock: bool) -> Vec<String> {
 pub fn setup_codex() -> Result<(), AgentError> {
     use std::io::Write as _;
 
-    if env::is_chatgpt_oauth_mode() {
+    if env::is_codex_oauth_mode() {
         return setup_codex_chatgpt();
     }
 
