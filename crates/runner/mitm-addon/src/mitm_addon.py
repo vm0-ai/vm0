@@ -33,7 +33,6 @@ import body_utils
 import registry
 import response_streaming
 import usage
-import vendor_check
 from auth import (
     _firewall_header_cache,
     handle_firewall_request,
@@ -42,12 +41,6 @@ from auth import (
 from logging_utils import add_firewall_metadata, log_network_entry, log_proxy_entry
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
 from url_utils import get_original_url
-
-# Enforce the vendor-shadow invariant while sys.path[0] is still the addon dir
-# (mitmproxy restores sys.path after exec_module — any verification has to run
-# during top-level execution).  Aborts mitmdump loudly if a bundled package
-# starts shadowing our vendored copy; see vendor_check.py for the playbook.
-vendor_check.verify()
 
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401

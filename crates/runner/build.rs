@@ -84,11 +84,10 @@ fn main() {
 ///
 /// - `*.py` — Python addon source consumed by mitmdump at runtime.
 /// - `LICENSE*`, `COPYING*`, `NOTICE*` — license / attribution files from
-///   vendored third-party packages (e.g. `vendor/ijson/LICENSE.txt`).
-///   Required to ship with the binary to satisfy BSD-3-Clause §2, Apache-2.0
-///   §4(d), etc.  Extracting them at `{addon_dir}/vendor/*/LICENSE*` alongside
-///   the code keeps the source and its license physically co-located both in
-///   the binary and on disk.
+///   any third-party code shipped under the addon source tree. Required to
+///   ship with the binary to satisfy license obligations such as BSD-3-Clause
+///   §2 or Apache-2.0 §4(d). Extracting them alongside the code keeps source
+///   and license files physically co-located both in the binary and on disk.
 fn generate_addon_files() {
     let src_dir = PathBuf::from("mitm-addon/src");
 
@@ -144,9 +143,8 @@ fn collect_addon_files(root: &Path, cur: &Path, out: &mut Vec<(String, PathBuf)>
 /// Decide whether a file under `mitm-addon/src/` ships with the runner binary.
 ///
 /// Accepts `.py` (addon sources) and the conventional license / attribution
-/// filenames used by third-party packages (e.g. vendored ijson's
-/// `LICENSE.txt`).  `include_str!` requires valid UTF-8, which all of these
-/// always are in practice.
+/// filenames used by third-party packages. `include_str!` requires valid
+/// UTF-8, which all of these always are in practice.
 fn should_embed(path: &Path) -> bool {
     if path.extension().is_some_and(|ext| ext == "py") {
         return true;
