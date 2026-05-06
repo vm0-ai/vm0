@@ -24,9 +24,11 @@ export function InlineSettingsRow({
       )}
     >
       <div className="min-w-0 w-full sm:w-[46%] sm:shrink-0 sm:self-start">
-        <p className="text-sm font-medium text-foreground">{label}</p>
+        <p className="text-[17px] sm:text-sm font-medium text-foreground">
+          {label}
+        </p>
         {description ? (
-          <p className="text-xs text-muted-foreground mt-1 leading-snug">
+          <p className="text-[15px] sm:text-xs text-muted-foreground mt-1 leading-snug">
             {description}
           </p>
         ) : null}

@@ -41,7 +41,7 @@ function AccountRow({
       data-testid={testId}
       className="flex w-full items-center gap-3 px-3 py-3 rounded-xl bg-muted/40 hover:bg-muted text-left transition-colors"
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--gray-200))]">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center text-muted-foreground">
         <Icon size={18} stroke={1.6} />
       </span>
       <span className="flex-1 min-w-0">

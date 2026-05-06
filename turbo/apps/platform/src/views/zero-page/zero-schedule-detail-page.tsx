@@ -541,10 +541,10 @@ function ScheduleSettingsForm({
           <CardContent className="p-4 sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
               <div className="min-w-0 sm:max-w-[46%]">
-                <h3 className="text-sm font-medium text-foreground">
+                <h3 className="text-[17px] sm:text-sm font-medium text-foreground">
                   Danger zone
                 </h3>
-                <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                <p className="text-[15px] sm:text-xs text-muted-foreground mt-1 leading-snug">
                   Deleting removes this schedule permanently.
                 </p>
               </div>
@@ -881,10 +881,10 @@ function ScheduleDetailView({
                 />
               </div>
               <div className="min-w-0 flex-1 flex flex-col gap-1">
-                <h1 className="min-w-0 text-base sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
+                <h1 className="min-w-0 text-[17px] sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground leading-tight">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[15px] sm:text-xs text-muted-foreground leading-tight">
                   <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span
                       className={cn(

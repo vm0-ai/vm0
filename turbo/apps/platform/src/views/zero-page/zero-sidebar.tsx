@@ -131,9 +131,18 @@ const FOOTER_NAV = [
     id: "works",
     activeKeys: ["works"],
     pathname: "/works",
-    label: "Where Zero works",
+    label: "Slack & Telegram",
     icon: IconLayoutGrid as NavIcon,
     iconImg: slackIcon,
+    featureGate: undefined,
+  },
+  {
+    id: "insights",
+    activeKeys: ["insights"],
+    pathname: "/insights",
+    label: "Insights & Usage",
+    icon: IconSparkles as NavIcon,
+    iconImg: undefined,
     featureGate: undefined,
   },
   {
@@ -388,32 +397,6 @@ function SidebarNavContent() {
           </nav>
 
           <div className="flex w-full shrink-0 flex-col items-center gap-1 pb-2 pt-1">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link
-                    pathname="/insights"
-                    onClick={(e) => {
-                      if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                        return;
-                      }
-                      e.preventDefault();
-                      onSelect("insights");
-                    }}
-                    className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                      activeId === "insights"
-                        ? "bg-gray-200 text-gray-900"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent"
-                    }`}
-                  >
-                    <IconSparkles size={16} className="shrink-0" />
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p className="text-xs">Insights &amp; Usage</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
             <AccountDropdown onAccountAction={onAccountAction} collapsed />
           </div>
         </aside>
@@ -625,38 +608,7 @@ function SidebarNavContent() {
               </DropdownMenu>
             )}
             <div className="h-px bg-border/30 mx-1 my-1" />
-            {/* Insights + Account */}
-            <div className="flex items-center gap-1">
-              <div className="flex-1 min-w-0">
-                <AccountDropdown onAccountAction={onAccountAction} />
-              </div>
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Link
-                      pathname="/insights"
-                      onClick={(e) => {
-                        if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                          return;
-                        }
-                        e.preventDefault();
-                        onSelect("insights");
-                      }}
-                      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                        activeId === "insights"
-                          ? "bg-gray-200 text-gray-900"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
-                      }`}
-                    >
-                      <IconSparkles size={16} className="shrink-0" />
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    <p className="text-xs">Insights &amp; Usage</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
+            <AccountDropdown onAccountAction={onAccountAction} />
           </div>
         </div>
       </aside>

@@ -338,7 +338,7 @@ describe("zero sidebar - pinned agents display (SIDEBAR-D-008)", () => {
 });
 
 describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => {
-  it("shows the Where Zero works link when Slack scope mismatch is true", async () => {
+  it("shows the Slack & Telegram link when Slack scope mismatch is true", async () => {
     server.use(
       mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
         return respond(200, {
@@ -367,7 +367,7 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
     await waitFor(() => {
       expect(
         screen.getAllByRole("link").find((el) => {
-          return /Where Zero works/i.test(el.textContent ?? "");
+          return /Slack & Telegram/i.test(el.textContent ?? "");
         }),
       ).toBeDefined();
     });

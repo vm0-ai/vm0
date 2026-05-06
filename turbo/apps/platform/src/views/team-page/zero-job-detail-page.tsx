@@ -337,17 +337,17 @@ function PermissionRow({
         <ConnectorIcon type={connector.type} size={20} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-foreground">
+            <span className="text-[17px] sm:text-sm font-medium text-foreground">
               {connector.label}
             </span>
             {connector.connector?.externalUsername && (
-              <span className="text-xs text-muted-foreground">
+              <span className="text-[15px] sm:text-xs text-muted-foreground">
                 @{connector.connector.externalUsername}
               </span>
             )}
           </div>
           {connector.helpText && (
-            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+            <p className="text-[15px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-1">
               {connector.helpText
                 .replace(/^Connect your \w+ account to /i, "")
                 .replace(/^access /i, "")
@@ -781,10 +781,10 @@ function AgentHeader({
             )}
           </div>
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
+            <h1 className="text-[17px] font-semibold tracking-tight text-foreground sm:text-xl truncate">
               {displayName}
             </h1>
-            <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
+            <p className="text-[15px] sm:text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
               {description || "Your AI teammate, tuned to you"}
             </p>
           </div>

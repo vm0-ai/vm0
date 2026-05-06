@@ -48,7 +48,6 @@ export function OrgAvatar({
   size?: "sm" | "lg";
 }) {
   const dim = size === "lg" ? "h-10 w-10" : "h-6 w-6";
-  const radius = size === "lg" ? "rounded-xl" : "rounded-md";
   const textSize = size === "lg" ? "text-base" : "text-[11px]";
   const initial = name.charAt(0).toUpperCase();
 
@@ -57,14 +56,14 @@ export function OrgAvatar({
       <img
         src={imageUrl}
         alt={name}
-        className={`${dim} ${radius} object-cover shrink-0`}
+        className={`${dim} rounded-full object-cover shrink-0`}
       />
     );
   }
 
   return (
     <div
-      className={`${dim} ${radius} bg-[hsl(var(--gray-200))] text-[hsl(var(--primary-700))] flex items-center justify-center ${textSize} font-bold shrink-0`}
+      className={`${dim} rounded-full bg-[hsl(var(--gray-200))] text-[hsl(var(--primary-700))] flex items-center justify-center ${textSize} font-bold shrink-0`}
     >
       {initial}
     </div>

@@ -441,7 +441,7 @@ function AgentCard({ agent }: AgentProps) {
           <span className="text-[17px] font-medium text-foreground truncate block">
             {displayName}
           </span>
-          <p className="text-[13px] text-muted-foreground mt-0.5 line-clamp-1">
+          <p className="text-[15px] sm:text-[13px] text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>
         </div>
@@ -471,7 +471,7 @@ function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
           <span className="text-[17px] font-medium text-foreground truncate block">
             {displayName}
           </span>
-          <p className="text-[13px] text-muted-foreground mt-0.5 line-clamp-1">
+          <p className="text-[15px] sm:text-[13px] text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>
         </div>
