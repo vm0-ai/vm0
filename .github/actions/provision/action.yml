@@ -48,9 +48,10 @@ runs:
         ssh_with_retry() {
           local host="$1"
           shift
-          local attempt
+          local attempt output
           for attempt in 1 2 3; do
-            if ssh "${METAL_USER}@${host}" "$@"; then
+            if output=$(ssh "${METAL_USER}@${host}" "$@"); then
+              printf '%s' "$output"
               return 0
             fi
             echo "SSH command failed for ${host} (attempt ${attempt}/3)" >&2
