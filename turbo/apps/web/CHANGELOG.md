@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.334.0](https://github.com/vm0-ai/vm0/compare/web-v12.333.0...web-v12.334.0) (2026-05-06)
+
+
+### Features
+
+* **runner:** add OpenAI Responses usage billing ([#11950](https://github.com/vm0-ai/vm0/issues/11950)) ([467cdc8](https://github.com/vm0-ai/vm0/commit/467cdc8fc88897c16b0b21365c70a1786e5fda3e))
+* support common web upload file types ([#11947](https://github.com/vm0-ai/vm0/issues/11947)) ([de2643a](https://github.com/vm0-ai/vm0/commit/de2643a3140b698109a8a535ea2f59699bcc80a3))
+* **zero:** wire chatgpt-oauth metadata + stale-provider ux ([#11945](https://github.com/vm0-ai/vm0/issues/11945)) ([00da00d](https://github.com/vm0-ai/vm0/commit/00da00dee821515aaba65627f0b9128175797d13))
+
 ## [12.333.0](https://github.com/vm0-ai/vm0/compare/web-v12.332.1...web-v12.333.0) (2026-05-06)
 
 

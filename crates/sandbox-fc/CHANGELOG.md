@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.15](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.14...sandbox-fc-v0.27.15) (2026-05-06)
+
+
+### Refactoring
+
+* **sandbox-fc:** add factory cleanup task group ([#11922](https://github.com/vm0-ai/vm0/issues/11922)) ([9751119](https://github.com/vm0-ai/vm0/commit/9751119e3424a26046a5ca304e9d352a75ec7a04))
+
 ## [0.27.14](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.13...sandbox-fc-v0.27.14) (2026-05-06)
 
 ## [0.27.13](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.12...sandbox-fc-v0.27.13) (2026-05-06)

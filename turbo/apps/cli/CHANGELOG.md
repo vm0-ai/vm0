@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.142.0](https://github.com/vm0-ai/vm0/compare/cli-v9.141.1...cli-v9.142.0) (2026-05-06)
+
+
+### Features
+
+* support common web upload file types ([#11947](https://github.com/vm0-ai/vm0/issues/11947)) ([de2643a](https://github.com/vm0-ai/vm0/commit/de2643a3140b698109a8a535ea2f59699bcc80a3))
+
 ## [9.141.1](https://github.com/vm0-ai/vm0/compare/cli-v9.141.0...cli-v9.141.1) (2026-05-06)
 
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.327.0](https://github.com/vm0-ai/vm0/compare/app-v0.326.0...app-v0.327.0) (2026-05-06)
+
+
+### Features
+
+* support common web upload file types ([#11947](https://github.com/vm0-ai/vm0/issues/11947)) ([de2643a](https://github.com/vm0-ai/vm0/commit/de2643a3140b698109a8a535ea2f59699bcc80a3))
+* **zero:** wire chatgpt-oauth metadata + stale-provider ux ([#11945](https://github.com/vm0-ai/vm0/issues/11945)) ([00da00d](https://github.com/vm0-ai/vm0/commit/00da00dee821515aaba65627f0b9128175797d13))
+
 ## [0.326.0](https://github.com/vm0-ai/vm0/compare/app-v0.325.1...app-v0.326.0) (2026-05-06)
 
 

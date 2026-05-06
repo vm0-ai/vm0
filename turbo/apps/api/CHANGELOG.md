@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/vm0-ai/vm0/compare/api-v1.16.1...api-v1.17.0) (2026-05-06)
+
+
+### Features
+
+* **zero:** wire chatgpt-oauth metadata + stale-provider ux ([#11945](https://github.com/vm0-ai/vm0/issues/11945)) ([00da00d](https://github.com/vm0-ai/vm0/commit/00da00dee821515aaba65627f0b9128175797d13))
+
 ## [1.16.1](https://github.com/vm0-ai/vm0/compare/api-v1.16.0...api-v1.16.1) (2026-05-06)
 
 
