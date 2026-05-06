@@ -384,6 +384,7 @@ async fn create_checkpoint_impl(mode: CheckpointMode) -> Result<(), AgentError> 
         "cliAgentType": cli_agent_type,
         "cliAgentSessionId": session_id,
         "cliAgentSessionHistoryHash": history_hash,
+        "cliAgentSessionHistorySize": history_size,
     });
 
     if let Some(snaps) = artifact_snapshots

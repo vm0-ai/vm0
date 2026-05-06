@@ -35,6 +35,7 @@ export {
   findTestCallbacksByRunId,
   findMostRecentRunForUser,
   findTestSandboxTelemetry,
+  getTestBlobRecord,
   getTestBlobRefCount,
   getTestConversationHistoryHash,
 } from "../db-test-assertions/runs";

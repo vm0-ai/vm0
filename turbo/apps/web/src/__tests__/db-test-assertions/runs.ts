@@ -181,6 +181,21 @@ export async function getTestBlobRefCount(
 }
 
 /**
+ * Read blob metadata for checkpoint/session-history reference tests.
+ */
+export async function getTestBlobRecord(
+  hash: string,
+): Promise<{ refCount: number; size: number } | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ refCount: blobs.refCount, size: blobs.size })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  return row;
+}
+
+/**
  * Read the persisted session-history blob hash for a run conversation.
  */
 export async function getTestConversationHistoryHash(

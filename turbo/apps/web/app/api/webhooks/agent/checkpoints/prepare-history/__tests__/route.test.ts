@@ -5,6 +5,7 @@ import {
   createTestCompose,
   createTestRun,
   createTestSandboxToken,
+  getTestBlobRefCount,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -49,6 +50,7 @@ describe("POST /api/webhooks/agent/checkpoints/prepare-history", () => {
 
   beforeEach(async () => {
     context.setupMocks();
+    context.mocks.s3.s3ObjectExists.mockResolvedValue(false);
     user = await context.setupUser();
 
     const { composeId } = await createTestCompose(uniqueId("prep-history"));
@@ -127,21 +129,23 @@ describe("POST /api/webhooks/agent/checkpoints/prepare-history", () => {
       expect(data.existing).toBe(false);
       expect(data.presignedUrl).toBeDefined();
       expect(typeof data.presignedUrl).toBe("string");
+      expect(await getTestBlobRefCount(hash)).toBeUndefined();
     });
 
-    it("should return existing=true for blob already in DB and S3", async () => {
-      // Pre-seed the blob via the service layer + upload to S3
-      const content = Buffer.from("pre-existing-content", "utf-8");
+    it("should return existing=true for blob already in S3", async () => {
+      // Pre-seed the content-addressed object in S3. The DB reference is
+      // claimed later by the checkpoint webhook, not by prepare-history.
+      const content = Buffer.from(
+        `pre-existing-content-${randomUUID()}`,
+        "utf-8",
+      );
       const hash = createHash("sha256").update(content).digest("hex");
 
       const { uploadS3Buffer } =
         await import("../../../../../../../src/lib/infra/s3/s3-client");
       const bucketName = "test-storages-bucket";
       await uploadS3Buffer(bucketName, `blobs/${hash}.blob`, content);
-
-      const { registerSessionHistoryBlob } =
-        await import("../../../../../../../src/lib/infra/session-history/session-history-service");
-      await registerSessionHistoryBlob(hash);
+      context.mocks.s3.s3ObjectExists.mockResolvedValueOnce(true);
 
       const request = makePrepareRequest(testToken, {
         runId: testRunId,
@@ -155,6 +159,7 @@ describe("POST /api/webhooks/agent/checkpoints/prepare-history", () => {
       const data = await response.json();
       expect(data.existing).toBe(true);
       expect(data.presignedUrl).toBeUndefined();
+      expect(await getTestBlobRefCount(hash)).toBeUndefined();
     });
   });
 });

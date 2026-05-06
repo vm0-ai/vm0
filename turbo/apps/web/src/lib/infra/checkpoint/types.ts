@@ -49,6 +49,7 @@ export interface CheckpointRequest {
   cliAgentType: string;
   cliAgentSessionId: string;
   cliAgentSessionHistoryHash: string;
+  cliAgentSessionHistorySize?: number;
   // Multi-artifact snapshot payload. Canonical array shape only; persisted
   // verbatim to the JSONB column. May be empty or missing when the guest
   // snapshotted nothing.

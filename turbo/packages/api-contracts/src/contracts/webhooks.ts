@@ -160,6 +160,11 @@ export const webhookCheckpointsContract = c.router({
             64,
             "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
           ),
+        cliAgentSessionHistorySize: z
+          .number()
+          .int()
+          .nonnegative("cliAgentSessionHistorySize must be non-negative")
+          .optional(),
         // Multi-artifact snapshot payload. Canonical
         // `Array<{name, version, mountPath}>` form persisted verbatim to
         // checkpoints.artifact_snapshots.

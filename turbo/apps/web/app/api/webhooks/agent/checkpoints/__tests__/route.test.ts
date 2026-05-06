@@ -10,6 +10,7 @@ import {
   getTestAgentSessionWithConversation,
   setTestRunResult,
   setTestRunStatus,
+  getTestBlobRecord,
   getTestBlobRefCount,
   getTestConversationHistoryHash,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -757,11 +758,13 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
   describe("Uniqueness", () => {
     it("should handle duplicate checkpoint requests via upsert", async () => {
       const historyHash = sha256(`test-session-unique-history-${testRunId}`);
+      const historySize = 1234;
       const requestBody = {
         runId: testRunId,
         cliAgentType: "claude-code",
         cliAgentSessionId: "test-session-unique",
         cliAgentSessionHistoryHash: historyHash,
+        cliAgentSessionHistorySize: historySize,
         artifactSnapshots: [
           {
             name: "test-artifact",
@@ -801,7 +804,10 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       ]);
       expect(response1.status).toBe(200);
       expect(response2.status).toBe(200);
-      expect(await getTestBlobRefCount(historyHash)).toBe(1);
+      expect(await getTestBlobRecord(historyHash)).toEqual({
+        refCount: 1,
+        size: historySize,
+      });
     });
 
     it("should move session history blob reference when upsert replaces hash", async () => {

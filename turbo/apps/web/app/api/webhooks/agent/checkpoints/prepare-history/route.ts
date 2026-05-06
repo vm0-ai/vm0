@@ -2,9 +2,7 @@ import { createHandler, tsr } from "../../../../../../src/lib/ts-rest-handler";
 import { webhookCheckpointsPrepareHistoryContract } from "@vm0/api-contracts/contracts/webhooks";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { blobs } from "@vm0/db/schema/blob";
 import { eq, and } from "drizzle-orm";
-import { preRegisterSessionHistoryBlob } from "../../../../../../src/lib/infra/session-history";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
 import {
   generatePresignedPutUrl,
@@ -60,26 +58,18 @@ const router = tsr.router(webhookCheckpointsPrepareHistoryContract, {
     const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
     const s3Key = `blobs/${hash}.blob`;
 
-    // Check if blob already exists in DB
-    const [existingBlob] = await globalThis.services.db
-      .select({ hash: blobs.hash })
-      .from(blobs)
-      .where(eq(blobs.hash, hash))
-      .limit(1);
-
-    if (existingBlob) {
-      // Verify blob actually exists in S3 (DB record might be stale)
-      const exists = await s3ObjectExists(bucketName, s3Key);
-      if (exists) {
-        log.debug(`Session history blob already exists: hash=${hash}`);
-        return {
-          status: 200 as const,
-          body: { existing: true },
-        };
-      }
-      log.debug(
-        `Session history blob in DB but missing from S3, generating new presigned URL: hash=${hash}`,
-      );
+    // The R2 object is the source of truth during prepare. We intentionally do
+    // not pre-register a refCount=0 blob row here: if the sandbox is killed
+    // after upload but before checkpoint, that DB row would become a permanent
+    // unreferenced resource. The checkpoint webhook claims the DB reference
+    // atomically once the uploaded history is actually used.
+    const exists = await s3ObjectExists(bucketName, s3Key);
+    if (exists) {
+      log.debug(`Session history blob already exists: hash=${hash}`);
+      return {
+        status: 200 as const,
+        body: { existing: true },
+      };
     }
 
     // Generate presigned PUT URL for direct S3 upload
@@ -90,11 +80,6 @@ const router = tsr.router(webhookCheckpointsPrepareHistoryContract, {
       3600,
       true, // usePublicEndpoint for sandbox access
     );
-
-    // Pre-register the blob record with the correct size.
-    // The subsequent checkpoint call claims a refCount when the conversation
-    // does not already reference this hash.
-    await preRegisterSessionHistoryBlob(hash, size);
 
     log.debug(`Presigned URL generated for session history: hash=${hash}`);
 

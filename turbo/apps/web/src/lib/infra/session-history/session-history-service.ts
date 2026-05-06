@@ -13,53 +13,37 @@ import type { Database } from "../../../types/global";
 const log = logger("session-history");
 
 /**
- * Pre-register a session history blob with correct size before S3 upload.
- * Creates the blob record with refCount 0; a subsequent checkpoint call claims
- * the reference if its conversation does not already point at this hash.
- *
- * On conflict (blob already exists), updates size to the correct value.
- *
- * @param hash SHA-256 hash of the content
- * @param size File size in bytes
- */
-export async function preRegisterSessionHistoryBlob(
-  hash: string,
-  size: number,
-): Promise<void> {
-  log.debug(`Pre-registering session history blob, hash=${hash}, size=${size}`);
-
-  await globalThis.services.db
-    .insert(blobs)
-    .values({ hash, size, refCount: 0 })
-    .onConflictDoUpdate({
-      target: blobs.hash,
-      set: { size },
-    });
-}
-
-/**
  * Register a session history blob that was uploaded directly to S3 via presigned URL.
- * The blob record (with correct size) is pre-created by the prepare-history endpoint;
- * this function increments refCount to track usage.
+ * The checkpoint webhook calls this only when a conversation claims the
+ * uploaded content, so abnormal exits do not leave refCount=0 DB rows behind.
  *
  * Note: The guest-agent flow is sequential: prepare-history → S3 upload → checkpoint.
- * The blob record and S3 object are guaranteed to exist before this is called.
+ * The S3 object is guaranteed to exist before this is called.
  *
  * @param hash SHA-256 hash of the content (already verified by the caller)
+ * @param size File size in bytes. Older callers may omit it; existing non-zero
+ * sizes are preserved when size is 0.
  * @returns The hash
  */
-export async function registerSessionHistoryBlob(
+async function registerSessionHistoryBlob(
   hash: string,
+  size: number = 0,
   db: Pick<Database, "insert"> = globalThis.services.db,
 ): Promise<string> {
   log.debug(`Registering session history blob, hash=${hash}`);
 
   await db
     .insert(blobs)
-    .values({ hash, size: 0, refCount: 1 })
+    .values({ hash, size, refCount: 1 })
     .onConflictDoUpdate({
       target: blobs.hash,
-      set: { refCount: sql`${blobs.refCount} + 1` },
+      set: {
+        size:
+          size > 0
+            ? sql`CASE WHEN ${blobs.size} = 0 THEN ${size} ELSE ${blobs.size} END`
+            : sql`${blobs.size}`,
+        refCount: sql`${blobs.refCount} + 1`,
+      },
     });
 
   return hash;
@@ -75,13 +59,14 @@ export async function registerSessionHistoryBlob(
 export async function replaceSessionHistoryBlobReference(
   hash: string,
   previousHash: string | null | undefined,
+  size: number = 0,
   db: Pick<Database, "insert" | "update"> = globalThis.services.db,
 ): Promise<string> {
   if (previousHash === hash) {
     return hash;
   }
 
-  await registerSessionHistoryBlob(hash, db);
+  await registerSessionHistoryBlob(hash, size, db);
 
   if (previousHash) {
     await db

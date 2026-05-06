@@ -185,6 +185,7 @@ export async function createCheckpoint(
       const historyHash = await replaceSessionHistoryBlobReference(
         request.cliAgentSessionHistoryHash,
         existingConversation?.cliAgentSessionHistoryHash,
+        request.cliAgentSessionHistorySize,
         tx,
       );
       log.debug(`Session history blob registered, hash=${historyHash}`);
