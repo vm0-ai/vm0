@@ -566,6 +566,77 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
+  it.each([
+    {
+      filename: "config.xml",
+      content: "<settings><enabled>true</enabled></settings>",
+      expectedText: "settings",
+    },
+    {
+      filename: "deploy.yaml",
+      content: "enabled: true\nregion: us-east-1",
+      expectedText: "region: us-east-1",
+    },
+    {
+      filename: "table.tsv",
+      content: "name\tvalue\nalpha\t1",
+      expectedText: "alpha",
+    },
+  ])(
+    "renders $filename body links as text previews for platform file urls",
+    async ({ filename, content, expectedText }) => {
+      const fileUrl = `https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/${filename}`;
+      server.use(
+        http.get(fileUrl, () => {
+          return HttpResponse.text(content);
+        }),
+      );
+
+      mockChatLifecycle({
+        chatMessages: [
+          {
+            role: "assistant",
+            content: `[file](${fileUrl})`,
+            createdAt: "2026-03-10T00:00:00Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("attachment-preview-text"),
+        ).toBeInTheDocument();
+        expect(screen.getByText(new RegExp(expectedText))).toBeInTheDocument();
+      });
+    },
+  );
+
+  it("renders non-inline platform file links as generic file previews", async () => {
+    const docUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/budget.xlsx";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[budget](${docUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-preview-file")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
+        "href",
+        `${docUrl}?download=1`,
+      );
+    });
+  });
+
   it("preserves assistant soft line breaks without forcing hard breaks", async () => {
     mockChatLifecycle({
       chatMessages: [
@@ -983,6 +1054,128 @@ describe("zero chat thread page display - artifacts drawer", () => {
     await user.click(screen.getByLabelText("Open preview for readme.md"));
     const lightbox = await screen.findByTestId("attachment-lightbox");
     expect(within(lightbox).getByText("发布说明")).toBeInTheDocument();
+  });
+
+  it("renders xml artifacts through the text loader instead of an iframe", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create XML",
+          runId: "run-xml-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      http.get("https://example.com/config.xml", () => {
+        return HttpResponse.text("<config><enabled>true</enabled></config>");
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-xml-artifact",
+              files: [
+                {
+                  id: "file-xml",
+                  filename: "config.xml",
+                  contentType: "application/xml",
+                  size: 512,
+                  url: "https://example.com/config.xml",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/<config>/)).toBeInTheDocument();
+    });
+    expect(
+      document.querySelector('iframe[title="Preview config.xml"]'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Open preview for config.xml"));
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(within(lightbox).getByText(/<config>/)).toBeInTheDocument();
+  });
+
+  it("renders html artifacts as document iframe previews", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create HTML",
+          runId: "run-html-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      http.get("https://example.com/report.html", () => {
+        return HttpResponse.html("<html><body>report preview</body></html>");
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-html-artifact",
+              files: [
+                {
+                  id: "file-html",
+                  filename: "report.html",
+                  contentType: "text/html",
+                  size: 1024,
+                  url: "https://example.com/report.html",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('iframe[title="Preview report.html"]'),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Open preview for report.html"));
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(within(lightbox).getByTitle("report.html preview")).toHaveAttribute(
+      "src",
+      "https://example.com/report.html",
+    );
   });
 
   it("refreshes uploaded files from the artifacts Ably signal while the drawer is open", async () => {

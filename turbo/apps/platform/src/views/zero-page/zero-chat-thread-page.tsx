@@ -54,14 +54,6 @@ import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
-import docAudioIcon from "./assets/doc-audio.svg";
-import docCsvIcon from "./assets/doc-csv.svg";
-import docDocIcon from "./assets/doc-doc.svg";
-import docHtmlIcon from "./assets/doc-html.svg";
-import docJsonIcon from "./assets/doc-json.svg";
-import docPdfIcon from "./assets/doc-pdf.svg";
-import docTxtIcon from "./assets/doc-txt.svg";
-import docVideoIcon from "./assets/doc-video.svg";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
@@ -82,6 +74,7 @@ import {
   CsvPreviewTable,
   downloadAttachmentUrl,
   FileAttachmentChip,
+  getFileTypeIcon,
   getAttachmentRawUrl,
   parseCsvRows,
   PreviewableFileAttachmentChip,
@@ -407,24 +400,28 @@ function getFileExtension(filename: string): string {
 function getArtifactPreviewKind(
   file: ChatThreadArtifactFile,
 ): ArtifactPreviewKind {
-  const contentType = file.contentType.toLowerCase();
-  const filename = file.filename.toLowerCase();
+  const kind = classifyChatAttachment({
+    filename: file.filename,
+    url: file.url,
+    contentType: file.contentType,
+  });
 
-  if (contentType.startsWith("image/") || isImageFilename(filename)) {
+  if (kind === "image") {
     return "image";
   }
-  if (contentType.startsWith("video/") || isVideoFilename(filename)) {
+  if (kind === "video") {
     return "video";
   }
-  if (contentType.startsWith("audio/") || isAudioFilename(filename)) {
+  if (kind === "audio") {
     return "audio";
   }
   if (
-    contentType === "application/pdf" ||
-    contentType === "application/json" ||
-    contentType === "text/csv" ||
-    (contentType.startsWith("text/") && contentType !== "text/html") ||
-    /\.(pdf|txt|md|csv|json|log)$/i.test(filename)
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv" ||
+    kind === "pdf" ||
+    kind === "html"
   ) {
     return "document";
   }
@@ -442,37 +439,7 @@ function flattenArtifactRuns(
 }
 
 function getArtifactFileIconSrc(file: ChatThreadArtifactFile): string | null {
-  const kind = classifyChatAttachment({
-    filename: file.filename,
-    url: file.url,
-    contentType: file.contentType,
-  });
-
-  if (kind === "pdf") {
-    return docPdfIcon;
-  }
-  if (kind === "html") {
-    return docHtmlIcon;
-  }
-  if (kind === "csv") {
-    return docCsvIcon;
-  }
-  if (kind === "json") {
-    return docJsonIcon;
-  }
-  if (kind === "text") {
-    return docTxtIcon;
-  }
-  if (kind === "markdown") {
-    return docDocIcon;
-  }
-  if (kind === "video") {
-    return docVideoIcon;
-  }
-  if (kind === "audio") {
-    return docAudioIcon;
-  }
-  return null;
+  return getFileTypeIcon(file.filename, file.contentType);
 }
 
 function ArtifactFileIcon({
@@ -517,7 +484,7 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
 }
 
 type ArtifactTextPreviewKind = "markdown" | "text" | "json" | "csv";
-type ArtifactDocumentPreviewKind = ArtifactTextPreviewKind | "pdf";
+type ArtifactDocumentPreviewKind = ArtifactTextPreviewKind | "pdf" | "html";
 
 function getArtifactTextPreviewKind(
   file: ChatThreadArtifactFile,
@@ -567,6 +534,13 @@ function getArtifactDocumentPreviewKind(
   const filename = file.filename.toLowerCase();
   if (contentType === "application/pdf" || filename.endsWith(".pdf")) {
     return "pdf";
+  }
+  if (
+    contentType === "text/html" ||
+    filename.endsWith(".html") ||
+    filename.endsWith(".htm")
+  ) {
+    return "html";
   }
 
   return null;
@@ -1252,7 +1226,7 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
       });
     };
 
-    if (documentPreviewKind !== "pdf") {
+    if (documentPreviewKind !== "pdf" && documentPreviewKind !== "html") {
       return (
         <ArtifactPreviewOpenOverlay
           filename={file.filename}
@@ -2229,15 +2203,17 @@ function BodyContentBlocks({
 }
 
 function isImageFilename(filename: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif|heic|heif|tiff?|psd)$/i.test(
+    filename,
+  );
 }
 
 function isVideoFilename(filename: string): boolean {
-  return /\.(mp4|webm|mov)$/i.test(filename);
+  return /\.(mp4|webm|mov|ogv)$/i.test(filename);
 }
 
 function isAudioFilename(filename: string): boolean {
-  return /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|mpga)$/i.test(filename);
+  return /\.(mp3|wav|wave|m4a|aac|ogg|oga|opus|flac|mpga)$/i.test(filename);
 }
 
 function AssistantErrorContent({ error }: { error: string }) {
@@ -2452,18 +2428,77 @@ function inferAttachmentContentType(filename: string, kind: string): string {
     gif: "image/gif",
     webp: "image/webp",
     svg: "image/svg+xml",
+    bmp: "image/bmp",
+    avif: "image/avif",
+    heic: "image/heic",
+    heif: "image/heif",
+    tif: "image/tiff",
+    tiff: "image/tiff",
+    psd: "image/vnd.adobe.photoshop",
     mp4: "video/mp4",
     webm: "video/webm",
     mov: "video/quicktime",
     mp3: "audio/mpeg",
     mpga: "audio/mpeg",
     wav: "audio/wav",
+    wave: "audio/wave",
     m4a: "audio/mp4",
     aac: "audio/aac",
     ogg: "audio/ogg",
     oga: "audio/ogg",
     opus: "audio/opus",
     flac: "audio/flac",
+    pdf: "application/pdf",
+    txt: "text/plain",
+    log: "text/plain",
+    csv: "text/csv",
+    md: "text/markdown",
+    html: "text/html",
+    htm: "text/html",
+    json: "application/json",
+    xml: "application/xml",
+    yaml: "application/yaml",
+    yml: "application/yaml",
+    tsv: "text/tab-separated-values",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    docm: "application/vnd.ms-word.document.macroenabled.12",
+    dotm: "application/vnd.ms-word.template.macroenabled.12",
+    dotx: "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+    odt: "application/vnd.oasis.opendocument.text",
+    rtf: "application/rtf",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xlsb: "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+    xlsm: "application/vnd.ms-excel.sheet.macroenabled.12",
+    xltm: "application/vnd.ms-excel.template.macroenabled.12",
+    xltx: "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    potm: "application/vnd.ms-powerpoint.template.macroenabled.12",
+    potx: "application/vnd.openxmlformats-officedocument.presentationml.template",
+    odp: "application/vnd.oasis.opendocument.presentation",
+    ppsx: "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+    ppsm: "application/vnd.ms-powerpoint.slideshow.macroenabled.12",
+    pptm: "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+    zip: "application/zip",
+    rar: "application/vnd.rar",
+    "7z": "application/x-7z-compressed",
+    tar: "application/x-tar",
+    gz: "application/gzip",
+    tgz: "application/gzip",
+    bz2: "application/x-bzip2",
+    xz: "application/x-xz",
+    pages: "application/vnd.apple.pages",
+    numbers: "application/vnd.apple.numbers",
+    key: "application/vnd.apple.keynote",
+    parquet: "application/vnd.apache.parquet",
+    sqlite: "application/vnd.sqlite3",
+    sqlite3: "application/vnd.sqlite3",
+    db: "application/vnd.sqlite3",
+    epub: "application/epub+zip",
+    ai: "application/postscript",
   };
   const lower = filename.toLowerCase();
   const extension = lower.includes(".") ? lower.split(".").pop() : undefined;

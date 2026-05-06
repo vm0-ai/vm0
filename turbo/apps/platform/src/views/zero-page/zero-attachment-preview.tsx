@@ -4,6 +4,7 @@ import {
   IconChevronUp,
   IconDownload,
   IconEye,
+  IconFile,
   IconFileMusic,
   IconLoader2,
 } from "@tabler/icons-react";
@@ -19,6 +20,7 @@ import {
   classifyChatAttachment,
   EMPTY_TEXT$,
 } from "../../signals/chat-page/parse-body-blocks.ts";
+import { getFileTypeIcon } from "./zero-attachment-chips.tsx";
 import docPdfIcon from "./assets/doc-pdf.svg";
 import docDocIcon from "./assets/doc-doc.svg";
 import docCsvIcon from "./assets/doc-csv.svg";
@@ -263,6 +265,52 @@ function AudioPreview({ filename, url }: { filename: string; url: string }) {
   );
 }
 
+function GenericFilePreview({
+  filename,
+  url,
+  contentType,
+}: {
+  filename: string;
+  url: string;
+  contentType?: string;
+}) {
+  const iconSrc = getFileTypeIcon(filename, contentType);
+
+  return (
+    <div
+      className="relative flex w-full max-w-md items-center gap-3 rounded-xl border border-foreground/10 bg-background/60 p-3"
+      data-testid="attachment-preview-file"
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground">
+        {iconSrc ? (
+          <img
+            alt=""
+            aria-hidden="true"
+            src={iconSrc}
+            className="h-7 w-7 object-contain opacity-90"
+          />
+        ) : (
+          <IconFile size={22} stroke={1.6} />
+        )}
+      </div>
+      <div className="min-w-0 flex-1 pr-10">
+        <div className="truncate text-sm font-medium text-foreground">
+          {filename}
+        </div>
+      </div>
+      <a
+        href={toDownloadUrl(url)}
+        download={filename}
+        title={filename}
+        aria-label={`Download ${filename}`}
+        className="absolute right-3 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-background/90 text-muted-foreground hover:text-foreground"
+      >
+        <IconDownload size={12} />
+      </a>
+    </div>
+  );
+}
+
 export function AttachmentPreview({
   attachment,
   text$,
@@ -332,6 +380,15 @@ export function AttachmentPreview({
     case "audio": {
       return (
         <AudioPreview filename={attachment.filename} url={attachment.url} />
+      );
+    }
+    case "file": {
+      return (
+        <GenericFilePreview
+          filename={attachment.filename}
+          url={attachment.url}
+          contentType={attachment.contentType}
+        />
       );
     }
     default: {

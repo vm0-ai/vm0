@@ -57,6 +57,17 @@ describe("attachment preview component", () => {
     expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
   });
 
+  it.each(["config.xml", "settings.yaml", "table.tsv"])(
+    "should render text preview for %s files",
+    (filename) => {
+      renderPreview({
+        filename,
+        url: `https://example.com/${filename}`,
+      });
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    },
+  );
+
   it("should render json preview for .json files", () => {
     renderPreview({
       filename: "data.json",
@@ -126,12 +137,16 @@ describe("attachment preview component", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("should render null for unknown file types (.zip)", () => {
-    const { container } = renderPreview({
+  it("should render generic file preview for non-inline upload file types (.zip)", () => {
+    renderPreview({
       filename: "archive.zip",
       url: "https://example.com/archive.zip",
     });
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByTestId("attachment-preview-file")).toBeInTheDocument();
+    expect(screen.getByLabelText("Download archive.zip")).toHaveAttribute(
+      "href",
+      "https://example.com/archive.zip?download=1",
+    );
   });
 
   // Content-type fallback (filename has no extension)
@@ -183,6 +198,22 @@ describe("attachment preview component", () => {
     });
     expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
   });
+
+  it.each([
+    ["application/xml", "xml-file"],
+    ["application/yaml", "yaml-file"],
+    ["text/tab-separated-values", "tsv-file"],
+  ])(
+    "should classify by content-type %s as text preview",
+    (contentType, filename) => {
+      renderPreview({
+        filename,
+        url: `https://example.com/${filename}`,
+        contentType,
+      });
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    },
+  );
 
   it("should classify by content-type audio/mpeg when filename has no extension", () => {
     renderPreview({

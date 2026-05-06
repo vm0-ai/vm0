@@ -13,7 +13,8 @@ export type BodyPreviewKind =
   | "json"
   | "csv"
   | "pdf"
-  | "html";
+  | "html"
+  | "file";
 
 export type BodyRenderBlock =
   | {
@@ -32,17 +33,7 @@ export type BodyRenderBlock =
       };
     };
 
-type ChatAttachmentKind =
-  | "image"
-  | "video"
-  | "audio"
-  | "markdown"
-  | "text"
-  | "json"
-  | "csv"
-  | "pdf"
-  | "html"
-  | "file";
+type ChatAttachmentKind = BodyPreviewKind;
 
 interface ChatAttachmentDescriptor {
   filename: string;
@@ -73,12 +64,66 @@ function normalizeType(contentType?: string): string {
   return (contentType ?? "").split(";")[0]?.trim().toLowerCase();
 }
 
-export function classifyChatAttachment(
-  attachment: ChatAttachmentDescriptor,
-): ChatAttachmentKind {
-  const type = normalizeType(attachment.contentType);
-  const ext = fileExt(attachment.filename);
+const CHAT_KIND_BY_CONTENT_TYPE: Readonly<Record<string, BodyPreviewKind>> = {
+  "text/markdown": "markdown",
+  "text/x-markdown": "markdown",
+  "text/plain": "text",
+  "text/tab-separated-values": "text",
+  "text/xml": "text",
+  "text/yaml": "text",
+  "text/x-yaml": "text",
+  "application/xml": "text",
+  "application/yaml": "text",
+  "application/x-yaml": "text",
+  "application/json": "json",
+  "text/csv": "csv",
+  "application/pdf": "pdf",
+  "text/html": "html",
+} as const;
 
+const CHAT_KIND_BY_EXTENSION: Readonly<Record<string, BodyPreviewKind>> = {
+  md: "markdown",
+  txt: "text",
+  log: "text",
+  xml: "text",
+  yaml: "text",
+  yml: "text",
+  tsv: "text",
+  json: "json",
+  csv: "csv",
+  pdf: "pdf",
+  html: "html",
+  htm: "html",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  webp: "image",
+  svg: "image",
+  bmp: "image",
+  avif: "image",
+  heic: "image",
+  heif: "image",
+  tif: "image",
+  tiff: "image",
+  psd: "image",
+  mp4: "video",
+  webm: "video",
+  mov: "video",
+  ogv: "video",
+  mp3: "audio",
+  wav: "audio",
+  wave: "audio",
+  m4a: "audio",
+  aac: "audio",
+  ogg: "audio",
+  oga: "audio",
+  opus: "audio",
+  flac: "audio",
+  mpga: "audio",
+} as const;
+
+function mediaKindFromContentType(type: string): BodyPreviewKind | null {
   if (type.startsWith("image/")) {
     return "image";
   }
@@ -88,43 +133,23 @@ export function classifyChatAttachment(
   if (type.startsWith("audio/")) {
     return "audio";
   }
+  return null;
+}
 
-  if (type === "text/markdown" || ext === "md") {
-    return "markdown";
-  }
-  if (type === "text/plain" || ext === "txt") {
-    return "text";
-  }
-  if (type === "application/json" || ext === "json") {
-    return "json";
-  }
-  if (type === "text/csv" || ext === "csv") {
-    return "csv";
-  }
-  if (type === "application/pdf" || ext === "pdf") {
-    return "pdf";
-  }
-  if (type === "text/html" || ext === "html" || ext === "htm") {
-    return "html";
+export function classifyChatAttachment(
+  attachment: ChatAttachmentDescriptor,
+): ChatAttachmentKind {
+  const type = normalizeType(attachment.contentType);
+  const ext = fileExt(attachment.filename);
+  const mediaKind = mediaKindFromContentType(type);
+
+  if (mediaKind) {
+    return mediaKind;
   }
 
-  if (
-    ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"].includes(ext)
-  ) {
-    return "image";
-  }
-  if (["mp4", "webm", "mov", "ogv"].includes(ext)) {
-    return "video";
-  }
-  if (
-    ["mp3", "wav", "m4a", "aac", "ogg", "oga", "opus", "flac", "mpga"].includes(
-      ext,
-    )
-  ) {
-    return "audio";
-  }
-
-  return "file";
+  return (
+    CHAT_KIND_BY_CONTENT_TYPE[type] ?? CHAT_KIND_BY_EXTENSION[ext] ?? "file"
+  );
 }
 
 function filenameFromUrl(url: string): string {
@@ -146,7 +171,8 @@ function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
     kind === "json" ||
     kind === "csv" ||
     kind === "pdf" ||
-    kind === "html"
+    kind === "html" ||
+    kind === "file"
   );
 }
 
@@ -174,6 +200,9 @@ export function contentTypeForBodyPreviewKind(kind: BodyPreviewKind): string {
   }
   if (kind === "audio") {
     return "audio/*";
+  }
+  if (kind === "file") {
+    return "application/octet-stream";
   }
   return "video/*";
 }

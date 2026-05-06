@@ -48,51 +48,162 @@ import docCsvIcon from "./assets/doc-csv.svg";
 import docTxtIcon from "./assets/doc-txt.svg";
 import docJsonIcon from "./assets/doc-json.svg";
 import docHtmlIcon from "./assets/doc-html.svg";
+import docAudioIcon from "./assets/doc-audio.svg";
+import docVideoIcon from "./assets/doc-video.svg";
 
 const log = logger("zero-attachment-chips");
+
+const FILE_ICON_BY_EXTENSION: Readonly<Record<string, string>> = {
+  pdf: docPdfIcon,
+  doc: docDocIcon,
+  docx: docDocIcon,
+  docm: docDocIcon,
+  dotm: docDocIcon,
+  dotx: docDocIcon,
+  odt: docDocIcon,
+  rtf: docDocIcon,
+  pages: docDocIcon,
+  epub: docDocIcon,
+  ai: docDocIcon,
+  eps: docDocIcon,
+  ps: docDocIcon,
+  md: docDocIcon,
+  txt: docTxtIcon,
+  log: docTxtIcon,
+  xml: docTxtIcon,
+  yaml: docTxtIcon,
+  yml: docTxtIcon,
+  json: docJsonIcon,
+  html: docHtmlIcon,
+  htm: docHtmlIcon,
+  csv: docCsvIcon,
+  tsv: docCsvIcon,
+  xls: docCsvIcon,
+  xlsx: docCsvIcon,
+  xlsb: docCsvIcon,
+  xlsm: docCsvIcon,
+  xltm: docCsvIcon,
+  xltx: docCsvIcon,
+  numbers: docCsvIcon,
+  ods: docCsvIcon,
+  ppt: docDocIcon,
+  pptx: docDocIcon,
+  pptm: docDocIcon,
+  potm: docDocIcon,
+  potx: docDocIcon,
+  ppsx: docDocIcon,
+  ppsm: docDocIcon,
+  key: docDocIcon,
+  odp: docDocIcon,
+  mp3: docAudioIcon,
+  mpga: docAudioIcon,
+  wav: docAudioIcon,
+  wave: docAudioIcon,
+  m4a: docAudioIcon,
+  aac: docAudioIcon,
+  ogg: docAudioIcon,
+  oga: docAudioIcon,
+  opus: docAudioIcon,
+  flac: docAudioIcon,
+  mp4: docVideoIcon,
+  webm: docVideoIcon,
+  mov: docVideoIcon,
+  ogv: docVideoIcon,
+  parquet: docCsvIcon,
+  sqlite: docCsvIcon,
+  sqlite3: docCsvIcon,
+  db: docCsvIcon,
+} as const;
+
+const FILE_ICON_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
+  "application/pdf": docPdfIcon,
+  "application/json": docJsonIcon,
+  "text/html": docHtmlIcon,
+  "text/csv": docCsvIcon,
+  "text/tab-separated-values": docCsvIcon,
+  "text/plain": docTxtIcon,
+  "text/xml": docTxtIcon,
+  "text/yaml": docTxtIcon,
+  "text/x-yaml": docTxtIcon,
+  "application/xml": docTxtIcon,
+  "application/yaml": docTxtIcon,
+  "application/x-yaml": docTxtIcon,
+  "text/markdown": docDocIcon,
+  "text/x-markdown": docDocIcon,
+  "application/msword": docDocIcon,
+  "application/rtf": docDocIcon,
+  "text/rtf": docDocIcon,
+  "application/postscript": docDocIcon,
+  "application/illustrator": docDocIcon,
+  "application/vnd.adobe.illustrator": docDocIcon,
+  "application/epub+zip": docDocIcon,
+  "application/vnd.apple.pages": docDocIcon,
+  "application/x-iwork-pages-sffpages": docDocIcon,
+  "application/vnd.oasis.opendocument.text": docDocIcon,
+  "application/vnd.ms-excel": docCsvIcon,
+  "application/vnd.apple.numbers": docCsvIcon,
+  "application/x-iwork-numbers-sffnumbers": docCsvIcon,
+  "application/vnd.oasis.opendocument.spreadsheet": docCsvIcon,
+  "application/vnd.apache.parquet": docCsvIcon,
+  "application/x-parquet": docCsvIcon,
+  "application/vnd.sqlite3": docCsvIcon,
+  "application/x-sqlite3": docCsvIcon,
+  "application/vnd.ms-powerpoint": docDocIcon,
+  "application/vnd.apple.keynote": docDocIcon,
+  "application/x-iwork-keynote-sffkey": docDocIcon,
+  "application/vnd.oasis.opendocument.presentation": docDocIcon,
+} as const;
+
+const FILE_ICON_CONTENT_TYPE_PREFIXES = [
+  { prefix: "audio/", icon: docAudioIcon },
+  { prefix: "video/", icon: docVideoIcon },
+  { prefix: "application/vnd.ms-word", icon: docDocIcon },
+  {
+    prefix: "application/vnd.openxmlformats-officedocument.wordprocessingml.",
+    icon: docDocIcon,
+  },
+  { prefix: "application/vnd.ms-excel.", icon: docCsvIcon },
+  {
+    prefix: "application/vnd.openxmlformats-officedocument.spreadsheetml.",
+    icon: docCsvIcon,
+  },
+  { prefix: "application/vnd.ms-powerpoint.", icon: docDocIcon },
+  {
+    prefix: "application/vnd.openxmlformats-officedocument.presentationml.",
+    icon: docDocIcon,
+  },
+] as const satisfies readonly {
+  readonly prefix: string;
+  readonly icon: string;
+}[];
+
+function getFileTypeIconByContentType(contentType: string): string | null {
+  const exactIcon = FILE_ICON_BY_CONTENT_TYPE[contentType];
+  if (exactIcon) {
+    return exactIcon;
+  }
+  return (
+    FILE_ICON_CONTENT_TYPE_PREFIXES.find(({ prefix }) => {
+      return contentType.startsWith(prefix);
+    })?.icon ?? null
+  );
+}
 
 /**
  * Return the icon path for a known file extension, or null for unknown types.
  */
-function getFileTypeIcon(filename: string): string | null {
+export function getFileTypeIcon(
+  filename: string,
+  contentType?: string,
+): string | null {
+  const type = (contentType ?? "").split(";")[0]?.trim().toLowerCase();
   const ext = filename.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "pdf": {
-      return docPdfIcon;
-    }
-    case "doc":
-    case "docx":
-    case "odt":
-    case "rtf":
-    case "md": {
-      return docDocIcon;
-    }
-    case "txt": {
-      return docTxtIcon;
-    }
-    case "json": {
-      return docJsonIcon;
-    }
-    case "html": {
-      return docHtmlIcon;
-    }
-    case "csv": {
-      return docCsvIcon;
-    }
-    case "xls":
-    case "xlsx":
-    case "ods": {
-      return docCsvIcon;
-    }
-    case "ppt":
-    case "pptx":
-    case "odp": {
-      return docDocIcon;
-    }
-    default: {
-      return null;
-    }
+  const extensionIcon = ext ? FILE_ICON_BY_EXTENSION[ext] : undefined;
+  if (extensionIcon) {
+    return extensionIcon;
   }
+
+  return type ? getFileTypeIconByContentType(type) : null;
 }
 
 function getPreviewIconSrc(preview: {
@@ -906,7 +1017,9 @@ function AttachmentChip({
   const isVideo = attachment.contentType.startsWith("video/");
   const isAudio = attachment.contentType.startsWith("audio/");
   const iconSrc =
-    isImage || isVideo || isAudio ? null : getFileTypeIcon(attachment.filename);
+    isImage || isVideo || isAudio
+      ? null
+      : getFileTypeIcon(attachment.filename, attachment.contentType);
   return (
     <>
       <div
