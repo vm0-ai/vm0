@@ -58,6 +58,7 @@ function mockAgentResponse() {
     customSkills: [],
     modelProviderId: null,
     selectedModel: null,
+    preferPersonalProvider: false,
   };
 }
 
