@@ -3,7 +3,6 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconDownload,
-  IconFile,
   IconFileMusic,
   IconPhoto,
   IconVideo,
@@ -42,178 +41,37 @@ import {
   openImageLightbox$,
   lightboxDialogRef$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import docPdfIcon from "./assets/doc-pdf.svg";
-import docDocIcon from "./assets/doc-doc.svg";
-import docCsvIcon from "./assets/doc-csv.svg";
-import docTxtIcon from "./assets/doc-txt.svg";
-import docJsonIcon from "./assets/doc-json.svg";
-import docHtmlIcon from "./assets/doc-html.svg";
-import docAudioIcon from "./assets/doc-audio.svg";
-import docVideoIcon from "./assets/doc-video.svg";
+import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 
 const log = logger("zero-attachment-chips");
 
-const FILE_ICON_BY_EXTENSION: Readonly<Record<string, string>> = {
-  pdf: docPdfIcon,
-  doc: docDocIcon,
-  docx: docDocIcon,
-  docm: docDocIcon,
-  dotm: docDocIcon,
-  dotx: docDocIcon,
-  odt: docDocIcon,
-  rtf: docDocIcon,
-  pages: docDocIcon,
-  epub: docDocIcon,
-  ai: docDocIcon,
-  eps: docDocIcon,
-  ps: docDocIcon,
-  md: docDocIcon,
-  txt: docTxtIcon,
-  log: docTxtIcon,
-  xml: docTxtIcon,
-  yaml: docTxtIcon,
-  yml: docTxtIcon,
-  json: docJsonIcon,
-  html: docHtmlIcon,
-  htm: docHtmlIcon,
-  csv: docCsvIcon,
-  tsv: docCsvIcon,
-  xls: docCsvIcon,
-  xlsx: docCsvIcon,
-  xlsb: docCsvIcon,
-  xlsm: docCsvIcon,
-  xltm: docCsvIcon,
-  xltx: docCsvIcon,
-  numbers: docCsvIcon,
-  ods: docCsvIcon,
-  ppt: docDocIcon,
-  pptx: docDocIcon,
-  pptm: docDocIcon,
-  potm: docDocIcon,
-  potx: docDocIcon,
-  ppsx: docDocIcon,
-  ppsm: docDocIcon,
-  key: docDocIcon,
-  odp: docDocIcon,
-  mp3: docAudioIcon,
-  mpga: docAudioIcon,
-  wav: docAudioIcon,
-  wave: docAudioIcon,
-  m4a: docAudioIcon,
-  aac: docAudioIcon,
-  ogg: docAudioIcon,
-  oga: docAudioIcon,
-  opus: docAudioIcon,
-  flac: docAudioIcon,
-  mp4: docVideoIcon,
-  webm: docVideoIcon,
-  mov: docVideoIcon,
-  ogv: docVideoIcon,
-  parquet: docCsvIcon,
-  sqlite: docCsvIcon,
-  sqlite3: docCsvIcon,
-  db: docCsvIcon,
-} as const;
+type DocumentAttachmentPreviewKind =
+  | "markdown"
+  | "text"
+  | "json"
+  | "csv"
+  | "html"
+  | "pdf";
 
-const FILE_ICON_BY_CONTENT_TYPE: Readonly<Record<string, string>> = {
-  "application/pdf": docPdfIcon,
-  "application/json": docJsonIcon,
-  "text/html": docHtmlIcon,
-  "text/csv": docCsvIcon,
-  "text/tab-separated-values": docCsvIcon,
-  "text/plain": docTxtIcon,
-  "text/xml": docTxtIcon,
-  "text/yaml": docTxtIcon,
-  "text/x-yaml": docTxtIcon,
-  "application/xml": docTxtIcon,
-  "application/yaml": docTxtIcon,
-  "application/x-yaml": docTxtIcon,
-  "text/markdown": docDocIcon,
-  "text/x-markdown": docDocIcon,
-  "application/msword": docDocIcon,
-  "application/rtf": docDocIcon,
-  "text/rtf": docDocIcon,
-  "application/postscript": docDocIcon,
-  "application/illustrator": docDocIcon,
-  "application/vnd.adobe.illustrator": docDocIcon,
-  "application/epub+zip": docDocIcon,
-  "application/vnd.apple.pages": docDocIcon,
-  "application/x-iwork-pages-sffpages": docDocIcon,
-  "application/vnd.oasis.opendocument.text": docDocIcon,
-  "application/vnd.ms-excel": docCsvIcon,
-  "application/vnd.apple.numbers": docCsvIcon,
-  "application/x-iwork-numbers-sffnumbers": docCsvIcon,
-  "application/vnd.oasis.opendocument.spreadsheet": docCsvIcon,
-  "application/vnd.apache.parquet": docCsvIcon,
-  "application/x-parquet": docCsvIcon,
-  "application/vnd.sqlite3": docCsvIcon,
-  "application/x-sqlite3": docCsvIcon,
-  "application/vnd.ms-powerpoint": docDocIcon,
-  "application/vnd.apple.keynote": docDocIcon,
-  "application/x-iwork-keynote-sffkey": docDocIcon,
-  "application/vnd.oasis.opendocument.presentation": docDocIcon,
-} as const;
-
-const FILE_ICON_CONTENT_TYPE_PREFIXES = [
-  { prefix: "audio/", icon: docAudioIcon },
-  { prefix: "video/", icon: docVideoIcon },
-  { prefix: "application/vnd.ms-word", icon: docDocIcon },
-  {
-    prefix: "application/vnd.openxmlformats-officedocument.wordprocessingml.",
-    icon: docDocIcon,
-  },
-  { prefix: "application/vnd.ms-excel.", icon: docCsvIcon },
-  {
-    prefix: "application/vnd.openxmlformats-officedocument.spreadsheetml.",
-    icon: docCsvIcon,
-  },
-  { prefix: "application/vnd.ms-powerpoint.", icon: docDocIcon },
-  {
-    prefix: "application/vnd.openxmlformats-officedocument.presentationml.",
-    icon: docDocIcon,
-  },
-] as const satisfies readonly {
-  readonly prefix: string;
-  readonly icon: string;
-}[];
-
-function getFileTypeIconByContentType(contentType: string): string | null {
-  const exactIcon = FILE_ICON_BY_CONTENT_TYPE[contentType];
-  if (exactIcon) {
-    return exactIcon;
+function contentTypeForDocumentAttachmentPreviewKind(
+  kind: DocumentAttachmentPreviewKind,
+): string {
+  if (kind === "csv") {
+    return "text/csv";
   }
-  return (
-    FILE_ICON_CONTENT_TYPE_PREFIXES.find(({ prefix }) => {
-      return contentType.startsWith(prefix);
-    })?.icon ?? null
-  );
-}
-
-/**
- * Return the icon path for a known file extension, or null for unknown types.
- */
-function getFileTypeIcon(
-  filename: string,
-  contentType?: string,
-): string | null {
-  const type = (contentType ?? "").split(";")[0]?.trim().toLowerCase();
-  const ext = filename.split(".").pop()?.toLowerCase();
-  const extensionIcon = ext ? FILE_ICON_BY_EXTENSION[ext] : undefined;
-  if (extensionIcon) {
-    return extensionIcon;
+  if (kind === "markdown") {
+    return "text/markdown";
   }
-
-  return type ? getFileTypeIconByContentType(type) : null;
-}
-
-function getPreviewIconSrc(preview: {
-  kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
-  filename: string;
-}): string | null {
-  if (preview.kind === "csv") {
-    return docCsvIcon;
+  if (kind === "text") {
+    return "text/plain";
   }
-  return getFileTypeIcon(preview.filename);
+  if (kind === "json") {
+    return "application/json";
+  }
+  if (kind === "html") {
+    return "text/html";
+  }
+  return "application/pdf";
 }
 
 // ---------------------------------------------------------------------------
@@ -619,8 +477,6 @@ export function AttachmentLightbox() {
     return <ImageLightbox url={preview.url} />;
   }
 
-  const iconSrc = getPreviewIconSrc(preview);
-
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
       closeLightbox();
@@ -667,20 +523,13 @@ export function AttachmentLightbox() {
       <div className="w-[min(92vw,1100px)] rounded-2xl bg-background shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center gap-3 border-b border-foreground/10 px-4 py-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-            {iconSrc ? (
-              <img
-                alt=""
-                aria-hidden="true"
-                src={iconSrc}
-                className="h-7 w-7 object-contain opacity-90"
-              />
-            ) : (
-              <IconFile
-                size={22}
-                stroke={1.8}
-                className="text-muted-foreground"
-              />
-            )}
+            <FilePreviewIcon
+              filename={preview.filename}
+              contentType={contentTypeForDocumentAttachmentPreviewKind(
+                preview.kind,
+              )}
+              testId="attachment-lightbox-file-icon"
+            />
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-foreground">
@@ -854,7 +703,6 @@ export function FileAttachmentChip({
   filename: string;
   url: string;
 }) {
-  const iconSrc = getFileTypeIcon(filename);
   return (
     <a
       href={getAttachmentDownloadUrl(url)}
@@ -862,16 +710,11 @@ export function FileAttachmentChip({
       title={filename}
       className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
     >
-      {iconSrc ? (
-        <img
-          alt=""
-          className="h-9 w-9 object-contain opacity-80"
-          aria-hidden="true"
-          src={iconSrc}
-        />
-      ) : (
-        <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
-      )}
+      <FilePreviewIcon
+        filename={filename}
+        className="h-9 w-9"
+        testId="attachment-chip-file-icon"
+      />
     </a>
   );
 }
@@ -885,7 +728,6 @@ export function PreviewableFileAttachmentChip({
   url: string;
   kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
 }) {
-  const iconSrc = getFileTypeIcon(filename);
   const openDocumentLightbox = useSet(openDocumentLightbox$);
 
   return (
@@ -898,16 +740,12 @@ export function PreviewableFileAttachmentChip({
       aria-label={`Open ${kind} preview for ${filename}`}
       className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
     >
-      {iconSrc ? (
-        <img
-          alt=""
-          className="h-9 w-9 object-contain opacity-80"
-          aria-hidden="true"
-          src={iconSrc}
-        />
-      ) : (
-        <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
-      )}
+      <FilePreviewIcon
+        filename={filename}
+        contentType={contentTypeForDocumentAttachmentPreviewKind(kind)}
+        className="h-9 w-9"
+        testId="attachment-chip-file-icon"
+      />
     </button>
   );
 }
@@ -1016,10 +854,6 @@ function AttachmentChip({
   const isImage = attachment.contentType.startsWith("image/");
   const isVideo = attachment.contentType.startsWith("video/");
   const isAudio = attachment.contentType.startsWith("audio/");
-  const iconSrc =
-    isImage || isVideo || isAudio
-      ? null
-      : getFileTypeIcon(attachment.filename, attachment.contentType);
   return (
     <>
       <div
@@ -1040,15 +874,13 @@ function AttachmentChip({
             stroke={1.5}
             className="text-muted-foreground"
           />
-        ) : iconSrc ? (
-          <img
-            alt=""
-            className="h-9 w-9 object-contain opacity-80"
-            aria-hidden="true"
-            src={iconSrc}
-          />
         ) : (
-          <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
+          <FilePreviewIcon
+            filename={attachment.filename}
+            contentType={attachment.contentType}
+            className="h-9 w-9"
+            testId="composer-attachment-file-icon"
+          />
         )}
         {uploading && (
           <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">

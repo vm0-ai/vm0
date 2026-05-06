@@ -170,9 +170,16 @@ describe("zero chat thread page display - attachment document preview", () => {
 });
 
 describe("zero chat thread page display - body link document preview", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "location",
+      new URL("https://app.vm0.ai/chats/thread-test-1"),
+    );
+  });
+
   it("renders markdown body links inline for platform file urls", async () => {
     const docUrl =
-      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/notes.md";
+      "https://api.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/notes.md";
     server.use(
       http.get(docUrl, () => {
         return HttpResponse.text("# Linked PRD\n\nPreview body");
@@ -232,6 +239,117 @@ describe("zero chat thread page display - body link document preview", () => {
     expect(
       screen.queryByTestId("attachment-preview-markdown"),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps external /f links as plain links and does not render preview cards", async () => {
+    const docUrl =
+      "https://example.com/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/notes.md";
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[notes](${docUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByText("notes").closest("a")).toHaveAttribute(
+        "href",
+        docUrl,
+      );
+    });
+
+    expect(
+      screen.queryByTestId("attachment-preview-markdown"),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(["vm0.ai", "vm6.ai", "vm7.ai"])(
+    "renders %s file host links as thumbnail preview blocks",
+    async (host) => {
+      const fileUrl = `https://www.${host}/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/test_files.zip`;
+
+      mockChatLifecycle({
+        chatMessages: [
+          {
+            role: "assistant",
+            content: `[test_files.zip](${fileUrl})`,
+            createdAt: "2026-03-10T00:00:00Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+      const preview = await screen.findByTestId("attachment-preview-file");
+      expect(
+        within(preview).getByTestId("attachment-preview-file-icon"),
+      ).toBeInTheDocument();
+      expect(within(preview).getByText("ZIP")).toBeInTheDocument();
+    },
+  );
+
+  it("renders matching tunnel host file links as thumbnail preview blocks", async () => {
+    vi.stubGlobal(
+      "location",
+      new URL("https://tunnel-yuma-vm0-app.vm7.ai/chats/thread-test-1"),
+    );
+    const fileUrl =
+      "https://tunnel-yuma-vm0-www.vm7.ai/f/user_3BennfUepyJwP3OaiYD0rK8CZKs/bce0a522-aed9-4d72-a86c-3164177fb44c/test_files.zip";
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[test_files.zip](${fileUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const preview = await screen.findByTestId("attachment-preview-file");
+    expect(
+      within(preview).getByTestId("attachment-preview-file-icon"),
+    ).toBeInTheDocument();
+    expect(within(preview).getByText("ZIP")).toBeInTheDocument();
+    expect(screen.getByLabelText("Download test_files.zip")).toHaveAttribute(
+      "href",
+      `${fileUrl}?download=1`,
+    );
+  });
+
+  it("keeps platform file links inside markdown tables as table links", async () => {
+    const docUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/budget.xlsx";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: [
+            "| File | Link |",
+            "| --- | --- |",
+            `| Budget | [budget.xlsx](${docUrl}) |`,
+          ].join("\n"),
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("budget.xlsx").closest("a")).toHaveAttribute(
+      "href",
+      docUrl,
+    );
+    expect(screen.queryByTestId("attachment-preview-file")).toBeNull();
   });
 
   it("renders html body links as preview cards for platform file urls", async () => {
