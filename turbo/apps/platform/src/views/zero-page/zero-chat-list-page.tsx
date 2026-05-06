@@ -119,7 +119,12 @@ export function ZeroChatListPage() {
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
       {/* Header */}
-      <div className="shrink-0 px-4 pt-4 pb-2">
+      <div
+        className={cn(
+          "shrink-0 px-4",
+          mobileRedesign ? "pt-1 pb-0" : "pt-4 pb-2",
+        )}
+      >
         <MobileChatAgentSwitcher />
 
         {/* Always-visible search bar — desktop / non-redesign mobile only.
@@ -278,11 +283,13 @@ function ChatList({
 
   if (sessions.length === 0) {
     return (
-      <p className="px-3 py-8 text-sm max-md:text-[15px] text-muted-foreground text-center">
-        {searchTerm.trim()
-          ? "No chats match your search"
-          : "Start a conversation and it'll show up here"}
-      </p>
+      <div className="flex h-full items-center justify-center px-3">
+        <p className="text-sm max-md:text-[15px] text-muted-foreground text-center">
+          {searchTerm.trim()
+            ? "No chats match your search"
+            : "Start a conversation and it'll show up here"}
+        </p>
+      </div>
     );
   }
 

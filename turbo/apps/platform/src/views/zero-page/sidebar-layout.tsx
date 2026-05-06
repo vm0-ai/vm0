@@ -516,15 +516,7 @@ function MobileTopBarLeftSlot({
   if (!mobileNativeOn) {
     return <HamburgerButton />;
   }
-  // Top-level destinations reached via tab or More all share the same
-  // workspace pill on the left — it's the global "switch workspace"
-  // affordance and shouldn't disappear when the user moves between tabs.
-  if (
-    activeId === "chatList" ||
-    activeId === "insights" ||
-    activeId === "works" ||
-    activeId === "account"
-  ) {
+  if (activeId === "chatList") {
     return <MobileWorkspaceDrawer />;
   }
   if (activeId === "chat") {
