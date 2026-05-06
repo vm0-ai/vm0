@@ -175,7 +175,7 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(data.schedule.preferPersonalProvider).toBe(true);
   });
 
-  it("should reset preferPersonalProvider to false on update without field", async () => {
+  it("should preserve preferPersonalProvider on update without field", async () => {
     await POST(
       createTestRequest(`http://localhost:3000/api/zero/schedules`, {
         method: "POST",
@@ -191,6 +191,8 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
       }),
     );
 
+    // Re-deploy without the field — partial-update semantics preserve the
+    // previously persisted value (mirrors agent PUT/PATCH behaviour).
     const response = await POST(
       createTestRequest(`http://localhost:3000/api/zero/schedules`, {
         method: "POST",
@@ -201,6 +203,42 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
           cronExpression: "0 9 * * *",
           timezone: "UTC",
           prompt: "Test",
+        }),
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.schedule.preferPersonalProvider).toBe(true);
+  });
+
+  it("should clear preferPersonalProvider when explicitly set to false", async () => {
+    await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "explicit-clear-prefer",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+          preferPersonalProvider: true,
+        }),
+      }),
+    );
+
+    const response = await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "explicit-clear-prefer",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+          preferPersonalProvider: false,
         }),
       }),
     );
