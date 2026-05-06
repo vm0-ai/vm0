@@ -17,6 +17,7 @@ import type { SendMode } from "@vm0/api-contracts/contracts/zero-user-preference
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
+import { PersonalProvidersTab } from "./components/preferences/personal-providers-tab.tsx";
 import {
   themePreference$,
   setTheme$,
@@ -227,6 +228,8 @@ function CaptureNetworkBodiesSettings() {
 export function ZeroPreferencesPage() {
   const features = useLastResolved(featureSwitch$);
   const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
+  const showPersonal =
+    features?.[FeatureSwitchKey.PersonalModelProvider] ?? false;
   const tab = useGet(preferencesTab$);
   const setTab = useSet(setPreferencesTab$);
 
@@ -264,6 +267,14 @@ export function ZeroPreferencesPage() {
               >
                 Time Zone
               </TabsTrigger>
+              {showPersonal && (
+                <TabsTrigger
+                  value="personal-providers"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  Model Providers
+                </TabsTrigger>
+              )}
               {showDebug && (
                 <TabsTrigger
                   value="debug"
@@ -282,6 +293,9 @@ export function ZeroPreferencesPage() {
                 </div>
               )}
               {tab === "timezone" && <TimezoneSettings />}
+              {tab === "personal-providers" && showPersonal && (
+                <PersonalProvidersTab />
+              )}
               {tab === "debug" && showDebug && (
                 <div className="flex flex-col gap-6">
                   <CaptureNetworkBodiesSettings />
