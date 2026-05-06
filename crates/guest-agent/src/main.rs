@@ -99,10 +99,10 @@ async fn run() -> i32 {
     log_info!(LOG_TAG, "Telemetry upload started");
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
 
-    // Execute main logic (init + CLI + checkpoint + final telemetry).
-    // `execute` owns the final telemetry upload — on the success path it's run
-    // in parallel with `checkpoint` so the ~1s upload doesn't serialize behind
-    // the ~4s snapshot work.
+    // Execute main logic (init + CLI + checkpoint + cleanup telemetry).
+    // On the success path, `execute` overlaps the pre-checkpoint telemetry
+    // flush with checkpoint creation; the final flush still runs after
+    // `/complete` so the acknowledgement log line is uploaded.
     let exit_code = execute(&masker, start, heartbeat_handle, &telemetry, http).await;
 
     // Stop all background processes. Telemetry uses its own command
