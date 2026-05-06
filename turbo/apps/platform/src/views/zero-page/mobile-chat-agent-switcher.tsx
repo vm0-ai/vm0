@@ -52,14 +52,16 @@ export function MobileChatAgentSwitcher() {
           >
             <span
               className={cn(
-                "rounded-full p-0.5 transition-colors",
-                active ? "bg-primary" : "bg-transparent",
+                "flex items-center justify-center rounded-full transition-colors",
+                active
+                  ? "h-[52px] w-[52px] bg-muted"
+                  : "h-12 w-12 bg-transparent",
               )}
             >
               <AvatarFromUrl
                 avatarUrl={agent.avatarUrl}
                 alt=""
-                className="block h-11 w-11 rounded-full object-cover object-top ring-2 ring-background"
+                className="block h-11 w-11 rounded-full object-cover object-top"
               />
             </span>
             <span
