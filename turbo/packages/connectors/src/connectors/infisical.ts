@@ -5,26 +5,20 @@ export const infisical = {
     label: "Infisical",
     category: "engineering-team-execution",
     environmentMapping: {
-      INFISICAL_CLIENT_ID: "$secrets.INFISICAL_CLIENT_ID",
-      INFISICAL_CLIENT_SECRET: "$secrets.INFISICAL_CLIENT_SECRET",
+      INFISICAL_TOKEN: "$secrets.INFISICAL_TOKEN",
     },
     helpText:
-      "Connect your Infisical account to fetch secrets from your projects and environments using Machine Identity credentials",
+      "Connect your Infisical account to fetch secrets from your projects and environments using a Token Auth identity",
     authMethods: {
       "api-token": {
-        label: "Machine Identity",
+        label: "Token Auth",
         helpText:
-          "1. Log in to [Infisical](https://app.infisical.com)\n2. Go to **Access Control > Machine Identities**\n3. Create a new Machine Identity with **Universal Auth**\n4. Copy the **Client ID** and **Client Secret**\n5. Assign the identity to your project with the desired role",
+          "1. Log in to [Infisical](https://app.infisical.com)\n2. Go to **Access Control > Machine Identities**\n3. Create a new Machine Identity with **Token Auth**\n4. Copy the **Token**\n5. Assign the identity to your project with the desired role",
         secrets: {
-          INFISICAL_CLIENT_ID: {
-            label: "Client ID",
+          INFISICAL_TOKEN: {
+            label: "Token",
             required: true,
-            placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-          },
-          INFISICAL_CLIENT_SECRET: {
-            label: "Client Secret",
-            required: true,
-            placeholder: "your-client-secret",
+            placeholder: "your-infisical-token",
           },
         },
       },
