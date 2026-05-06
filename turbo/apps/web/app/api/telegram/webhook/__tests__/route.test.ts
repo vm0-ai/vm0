@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HttpResponse } from "msw";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import {
   testContext,
   uniqueId,
@@ -8,12 +9,18 @@ import {
   createTestCompose,
   createTelegramInstallation,
   createTelegramPendingLinkInstallation,
+  findTestRunCallbacks,
+  findTestRunsByUserAndPromptContaining,
+  findTestZeroRun,
+  insertTestOfficialTelegramUserLink,
   PENDING_TELEGRAM_USER_ID,
+  setDefaultAgentByComposeId,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[telegramBotId]/route";
+import { reloadEnv } from "../../../../../src/env";
 import {
   nextAfterArgForms,
   nextAfterCallbacks,
@@ -38,6 +45,8 @@ const context = testContext();
 
 const WEBHOOK_SECRET = "webhook-secret";
 const TEST_BOT_TOKEN = "123456:ABC-pending-test";
+const OFFICIAL_BOT_TOKEN = "777000:official-route-test";
+const OFFICIAL_WEBHOOK_SECRET = "official-webhook-secret";
 
 function createWebhookRequest(
   body: Record<string, unknown>,
@@ -264,6 +273,84 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
       const afterData = await afterResponse.json();
       expect(afterData.linked).toBe(true);
       expect(afterData.telegramUserId).toBe(String(telegramUserId));
+    });
+  });
+
+  describe("official bot inbound messages", () => {
+    it("routes a linked official DM to the user's org default agent", async () => {
+      context.setupMocks();
+      vi.stubEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
+      vi.stubEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", "zero_vm0_bot");
+      vi.stubEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", OFFICIAL_WEBHOOK_SECRET);
+      reloadEnv();
+
+      const user = await context.setupUser();
+      const { composeId } = await createTestCompose(uniqueId("agent"));
+      await setDefaultAgentByComposeId(user.orgId, composeId);
+      const telegramUserId = 456777;
+      const officialLink = await insertTestOfficialTelegramUserLink({
+        telegramUserId: String(telegramUserId),
+        telegramUsername: "official_user",
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+      });
+
+      const sendChatActionHandler = http.post(
+        `https://api.telegram.org/bot${OFFICIAL_BOT_TOKEN}/sendChatAction`,
+        () => {
+          return HttpResponse.json({ ok: true, result: true });
+        },
+      );
+      server.use(sendChatActionHandler.handler);
+
+      const response = await POST(
+        createWebhookRequest(
+          {
+            update_id: 200,
+            message: {
+              message_id: 17,
+              chat: { id: telegramUserId, type: "private" },
+              from: { id: telegramUserId, username: "official_user" },
+              text: "hello official zero",
+            },
+          },
+          OFFICIAL_WEBHOOK_SECRET,
+        ),
+        {
+          params: Promise.resolve({
+            telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          }),
+        },
+      );
+
+      expect(response.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      expect(sendChatActionHandler.mocked).toHaveBeenCalledTimes(1);
+      const runs = await findTestRunsByUserAndPromptContaining(
+        user.userId,
+        "hello official zero",
+      );
+      expect(runs).toHaveLength(1);
+      expect(runs[0]?.orgId).toBe(user.orgId);
+      await expect(findTestZeroRun(runs[0]!.id)).resolves.toEqual(
+        expect.objectContaining({ triggerSource: "telegram" }),
+      );
+
+      const callbacks = await findTestRunCallbacks(runs[0]!.id);
+      expect(callbacks).toHaveLength(1);
+      expect(callbacks[0]?.payload).toEqual(
+        expect.objectContaining({
+          installationId: OFFICIAL_TELEGRAM_BOT_ID,
+          chatId: String(telegramUserId),
+          messageId: "17",
+          rootMessageId: "dm",
+          userLinkId: officialLink.id,
+          agentId: composeId,
+          existingSessionId: null,
+          isDM: true,
+        }),
+      );
     });
   });
 
