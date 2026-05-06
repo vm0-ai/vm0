@@ -84,8 +84,10 @@ import { MobileWorkspaceDrawer } from "./mobile-workspace-drawer.tsx";
 // surface stays transparent — only interactive elements lift, with the same
 // `bg-card/70 backdrop-blur-xl` recipe the bottom dock uses, plus a 1px
 // shadow that's intentionally weaker than the dock's so the top reads quieter.
+// All glass tap targets share the same frame, hover, and shadow so the
+// workspace pill, search button, and avatar feel like siblings.
 const TOPBAR_GLASS =
-  "bg-card/70 backdrop-blur-xl border border-border/60 shadow-[0_1px_2px_rgb(0_0_0/0.04)]";
+  "bg-card/70 backdrop-blur-xl border border-border/60 shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:bg-card hover:shadow-[0_2px_6px_rgb(0_0_0/0.06)] transition-all";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -236,7 +238,7 @@ function ChatListHeaderSearchLink() {
       aria-label="Search chats"
       data-testid="mobile-chat-list-search-toggle"
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors no-underline",
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground no-underline",
         TOPBAR_GLASS,
       )}
     >
@@ -258,7 +260,7 @@ function ConnectorsHeaderSearchToggle() {
       aria-label="Search connectors"
       data-testid="mobile-connectors-search-toggle"
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
         TOPBAR_GLASS,
         open
           ? "text-foreground bg-card"
@@ -281,7 +283,10 @@ function HeaderAccountAvatar() {
       pathname="/account"
       aria-label="Open account"
       data-testid="mobile-header-account"
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full overflow-hidden no-underline border border-border/60 shadow-[0_1px_2px_rgb(0_0_0/0.04)] hover:ring-2 hover:ring-primary/30 transition-all"
+      className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full overflow-hidden no-underline",
+        TOPBAR_GLASS,
+      )}
     >
       {imageUrl ? (
         <img src={imageUrl} alt="" className="h-full w-full object-cover" />
@@ -313,7 +318,7 @@ function HeaderIconButton({
       aria-label={label}
       data-testid={testId}
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50",
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground disabled:opacity-50",
         TOPBAR_GLASS,
       )}
     >
@@ -462,7 +467,7 @@ function BackButton({
       aria-label={label}
       data-testid={testId}
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground transition-colors no-underline",
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground no-underline",
         TOPBAR_GLASS,
       )}
     >
