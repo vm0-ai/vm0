@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -292,5 +293,61 @@ describe("talk navigation", () => {
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
     });
+  });
+});
+
+describe("optimistic message preservation on thread resolution", () => {
+  it("preserves messages sent during the optimistic window after the thread resolves", async () => {
+    const user = userEvent.setup();
+    const createDeferred = createDeferredPromise<void>(context.signal);
+
+    mockChatAPIs();
+    server.use(
+      mockApi(chatThreadsContract.create, async ({ body, respond }) => {
+        await createDeferred.promise;
+        return respond(201, {
+          id: body.clientThreadId ?? "fallback",
+          title: null,
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
+      featureSwitches: { [FeatureSwitchKey.ChatHeaderNewButton]: true },
+    });
+
+    const newButton = await waitFor(() => {
+      return screen.getByTestId("chat-header-new-button");
+    });
+    await user.click(newButton);
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+
+    await fill(textarea, "Message during optimistic window");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Message during optimistic window"),
+      ).toBeInTheDocument();
+    });
+
+    // Resolve the thread creation, triggering the optimistic→remote handoff
+    // in resolvePaneThread$. The message must survive the transition.
+    await act(async () => {
+      createDeferred.resolve();
+      for (let i = 0; i < 30; i++) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(
+      screen.getByText("Message during optimistic window"),
+    ).toBeInTheDocument();
   });
 });
