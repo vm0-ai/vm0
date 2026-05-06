@@ -9,7 +9,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use futures_util::FutureExt;
+use futures_util::{FutureExt, task::noop_waker_ref};
 use sandbox::{
     Sandbox, SandboxConfig, SandboxError, SandboxFactory, SandboxInitializationPhase,
     SandboxInvalidStateContext,
@@ -618,11 +618,17 @@ impl FactoryCleanupGroup {
                 continue;
             }
 
-            let task = state.tasks.swap_remove(index);
-            let Some((record, result)) = task.now_or_never() else {
-                continue;
+            let mut task = state.tasks.swap_remove(index);
+            let waker = noop_waker_ref();
+            let mut cx = Context::from_waker(waker);
+            match Pin::new(&mut task).poll(&mut cx) {
+                Poll::Ready((record, result)) => {
+                    Self::handle_join_result(record, result, false);
+                }
+                Poll::Pending => {
+                    state.tasks.push(task);
+                }
             };
-            Self::handle_join_result(record, result, false);
         }
     }
 
