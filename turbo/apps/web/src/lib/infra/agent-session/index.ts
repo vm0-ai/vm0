@@ -1,4 +1,1 @@
-export {
-  getAgentSessionWithConversation,
-  updateAgentSession,
-} from "./agent-session-service";
+export { getAgentSessionWithConversation } from "./agent-session-service";

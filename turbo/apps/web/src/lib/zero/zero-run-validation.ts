@@ -52,11 +52,19 @@ async function validateCheckpoint(
 }> {
   log.debug(`Validating checkpoint ${checkpointId} for user ${userId}`);
 
+  const resumableStatuses = new Set([
+    "completed",
+    "failed",
+    "timeout",
+    "cancelled",
+  ]);
+
   // Load checkpoint with associated run in a single query
   const [result] = await globalThis.services.db
     .select({
       agentComposeSnapshot: checkpoints.agentComposeSnapshot,
       runUserId: agentRuns.userId,
+      runStatus: agentRuns.status,
       runVars: agentRuns.vars,
       runSecretNames: agentRuns.secretNames,
     })
@@ -76,6 +84,12 @@ async function validateCheckpoint(
 
   if (result.runUserId !== userId) {
     throw unauthorized("Checkpoint does not belong to authenticated user");
+  }
+
+  if (!result.runStatus || !resumableStatuses.has(result.runStatus)) {
+    throw badRequest(
+      `Checkpoint is not ready to resume while run is ${result.runStatus ?? "missing"}`,
+    );
   }
 
   // Get version ID from snapshot

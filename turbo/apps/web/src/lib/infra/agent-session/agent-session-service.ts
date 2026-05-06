@@ -1,7 +1,6 @@
 import { eq } from "drizzle-orm";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
-import { notFound } from "@vm0/api-services/errors";
 import type { AgentSessionData, AgentSessionWithConversation } from "./types";
 
 /**
@@ -45,29 +44,6 @@ export async function getAgentSessionWithConversation(
         }
       : null,
   };
-}
-
-/**
- * Update an existing agent session's conversation reference.
- */
-export async function updateAgentSession(
-  id: string,
-  conversationId: string,
-): Promise<AgentSessionData> {
-  const [session] = await globalThis.services.db
-    .update(agentSessions)
-    .set({
-      conversationId,
-      updatedAt: new Date(),
-    })
-    .where(eq(agentSessions.id, id))
-    .returning();
-
-  if (!session) {
-    throw notFound("AgentSession not found");
-  }
-
-  return mapToAgentSessionData(session);
 }
 
 function mapToAgentSessionData(

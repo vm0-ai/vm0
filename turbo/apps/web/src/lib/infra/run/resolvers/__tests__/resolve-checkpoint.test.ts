@@ -4,6 +4,7 @@ import {
   createTestCheckpoint,
   createTestCompose,
   createTestRun,
+  setTestRunStatus,
 } from "../../../../../__tests__/api-test-helpers";
 import { setTestCheckpointArtifactSnapshots } from "../../../../../__tests__/db-test-seeders/runs";
 import {
@@ -29,6 +30,7 @@ describe("resolveCheckpoint — artifactSnapshots decoding", () => {
   it("passes canonical ContextArtifact[] through unchanged", async () => {
     const { runId } = await createTestRun(composeId, "new shape run");
     const { checkpointId } = await createTestCheckpoint(user.userId, runId);
+    await setTestRunStatus(runId, "completed");
 
     const newShape: ContextArtifact[] = [
       { name: "m", version: "v", mountPath: "/custom/mount" },
@@ -45,6 +47,7 @@ describe("resolveCheckpoint — artifactSnapshots decoding", () => {
   it("returns empty artifact list when artifactSnapshots is null", async () => {
     const { runId } = await createTestRun(composeId, "null snapshot run");
     const { checkpointId } = await createTestCheckpoint(user.userId, runId);
+    await setTestRunStatus(runId, "completed");
 
     await setTestCheckpointArtifactSnapshots(checkpointId, null);
 
@@ -56,6 +59,7 @@ describe("resolveCheckpoint — artifactSnapshots decoding", () => {
   it("rejects malformed array entries with a descriptive error", async () => {
     const { runId } = await createTestRun(composeId, "malformed array run");
     const { checkpointId } = await createTestCheckpoint(user.userId, runId);
+    await setTestRunStatus(runId, "completed");
 
     // Array-shape snapshot with a malformed entry (missing mountPath).
     // Bypass the ContextArtifact type so we can stuff a bad payload into jsonb.
@@ -66,5 +70,24 @@ describe("resolveCheckpoint — artifactSnapshots decoding", () => {
     await expect(resolveCheckpoint(checkpointId, user.userId)).rejects.toThrow(
       /artifactSnapshots\[0\]/,
     );
+  });
+
+  it("rejects in-flight checkpoints before the run reaches a terminal state", async () => {
+    const { runId } = await createTestRun(composeId, "running checkpoint run");
+    const { checkpointId } = await createTestCheckpoint(user.userId, runId);
+
+    await expect(resolveCheckpoint(checkpointId, user.userId)).rejects.toThrow(
+      /not ready to resume/,
+    );
+  });
+
+  it("allows terminal failed checkpoints", async () => {
+    const { runId } = await createTestRun(composeId, "failed checkpoint run");
+    const { checkpointId } = await createTestCheckpoint(user.userId, runId);
+    await setTestRunStatus(runId, "failed");
+
+    const resolution = await resolveCheckpoint(checkpointId, user.userId);
+
+    expect(resolution.conversationId).toBeDefined();
   });
 });

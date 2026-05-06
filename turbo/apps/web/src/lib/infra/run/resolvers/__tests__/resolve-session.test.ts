@@ -2,13 +2,16 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { resolveSession } from "../resolve-session";
 import {
   completeTestRun,
+  createTestCheckpoint,
   createTestCompose,
   createTestRun,
+  setTestRunStatus,
 } from "../../../../../__tests__/api-test-helpers";
 import {
   setTestSessionArtifacts,
   setTestSessionFramework,
 } from "../../../../../__tests__/db-test-seeders/agents";
+import { setTestCheckpointArtifactSnapshots } from "../../../../../__tests__/db-test-seeders/runs";
 import {
   testContext,
   uniqueId,
@@ -64,5 +67,72 @@ describe("resolveSession — artifacts passthrough", () => {
     const resolution = await resolveSession(agentSessionId, user.userId);
 
     expect(resolution.sessionFramework).toBe("codex");
+  });
+
+  it("uses failed checkpoint artifacts when continuing a recoverable failed session", async () => {
+    const { runId } = await createTestRun(composeId, "failed recovery run", {
+      additionalVolumes: [
+        {
+          name: "memory",
+          version: "mem-base",
+          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+        },
+      ],
+    });
+    const { agentSessionId, checkpointId } = await createTestCheckpoint(
+      user.userId,
+      runId,
+      {
+        volumeVersionsSnapshot: {
+          versions: { workspace: "vol-failed", memory: "mem-failed" },
+        },
+      },
+    );
+    await setTestRunStatus(runId, "failed");
+    await setTestSessionFramework(agentSessionId, "claude-code");
+    await setTestSessionArtifacts(agentSessionId, [
+      { name: "stale", version: "latest", mountPath: WORKING_DIR },
+    ]);
+
+    const checkpointArtifacts = [
+      { name: "workspace", version: "snap-failed", mountPath: WORKING_DIR },
+    ];
+    await setTestCheckpointArtifactSnapshots(checkpointId, checkpointArtifacts);
+
+    const resolution = await resolveSession(agentSessionId, user.userId);
+
+    expect(resolution.artifacts).toEqual(checkpointArtifacts);
+    expect(resolution.volumeVersions).toEqual({
+      workspace: "vol-failed",
+      memory: "mem-failed",
+    });
+    expect(resolution.additionalVolumes).toEqual([
+      {
+        name: "memory",
+        version: "mem-failed",
+        mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+      },
+    ]);
+  });
+
+  it("does not use checkpoint artifacts while the linked run is still running", async () => {
+    const { runId } = await createTestRun(composeId, "in-flight recovery run");
+    const { agentSessionId, checkpointId } = await createTestCheckpoint(
+      user.userId,
+      runId,
+    );
+    await setTestSessionFramework(agentSessionId, "claude-code");
+    const sessionArtifacts = [
+      { name: "session", version: "latest", mountPath: WORKING_DIR },
+    ];
+    await setTestSessionArtifacts(agentSessionId, sessionArtifacts);
+    await setTestCheckpointArtifactSnapshots(checkpointId, [
+      { name: "checkpoint", version: "snap", mountPath: WORKING_DIR },
+    ]);
+
+    const resolution = await resolveSession(agentSessionId, user.userId);
+
+    expect(resolution.artifacts).toEqual(sessionArtifacts);
+    expect(resolution.volumeVersions).toBeUndefined();
   });
 });

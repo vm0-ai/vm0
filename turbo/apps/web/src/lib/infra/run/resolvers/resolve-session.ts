@@ -4,14 +4,23 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { notFound, unauthorized, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../../shared/logger";
 import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
+import type { VolumeVersionsSnapshot } from "../../checkpoint/types";
+import { decodeToContextArtifacts } from "../../checkpoint/decode-artifact-snapshots";
 
 const log = logger("run:resolve-session");
+
+const FAILED_RECOVERABLE_RUN_STATUSES = new Set([
+  "failed",
+  "timeout",
+  "cancelled",
+]);
 
 /**
  * Resolve session to ConversationResolution
@@ -57,8 +66,9 @@ export async function resolveSession(
   // Run independent operations in parallel:
   // - Compose → version chain (needs session.agentComposeId)
   // - Session history from R2 (needs session.conversation)
-  // - Last run vars (needs conversation.runId)
-  const [composeResult, sessionHistory, lastRunResult] = await Promise.all([
+  // - Last run vars and optional failed-recovery checkpoint snapshot
+  //   (needs conversation.runId)
+  const [composeResult, sessionHistory, runSnapshotResult] = await Promise.all([
     // Compose → version (serial chain)
     (async () => {
       const [compose] = await globalThis.services.db
@@ -96,20 +106,49 @@ export async function resolveSession(
       conversation.cliAgentSessionHistoryHash,
       conversation.cliAgentSessionHistory,
     ),
-    // Last run vars as fallback for continue operations
+    // Last run vars as fallback for continue operations. When the linked
+    // conversation belongs to a terminal failed run with a checkpoint, the
+    // checkpoint snapshot is the only durable workspace state left after VM
+    // teardown, so session continue must restore from it.
     globalThis.services.db
       .select({
         vars: agentRuns.vars,
+        status: agentRuns.status,
+        checkpointId: checkpoints.id,
+        artifactSnapshots: checkpoints.artifactSnapshots,
+        volumeVersionsSnapshot: checkpoints.volumeVersionsSnapshot,
       })
       .from(agentRuns)
+      .leftJoin(checkpoints, eq(checkpoints.runId, agentRuns.id))
       .where(eq(agentRuns.id, conversation.runId))
       .limit(1),
   ]);
 
   const { versionId, version } = composeResult;
-  const [lastRun] = lastRunResult;
+  const [lastRun] = runSnapshotResult;
   const lastRunVars =
     (lastRun?.vars as Record<string, string> | null) ?? undefined;
+  const failedRecoveryCheckpoint = Boolean(
+    lastRun?.checkpointId &&
+    FAILED_RECOVERABLE_RUN_STATUSES.has(lastRun.status),
+  );
+  const checkpointVolumeVersions = failedRecoveryCheckpoint
+    ? (lastRun?.volumeVersionsSnapshot as VolumeVersionsSnapshot | null)
+    : null;
+  const checkpointAdditionalVolumes =
+    checkpointVolumeVersions?.additionalVolumes?.map((vol) => {
+      return {
+        name: vol.name,
+        version: vol.versionId,
+        mountPath: vol.mountPath,
+      };
+    });
+  const checkpointArtifacts = failedRecoveryCheckpoint
+    ? lastRun?.artifactSnapshots
+    : null;
+  const artifacts = failedRecoveryCheckpoint
+    ? decodeToContextArtifacts(checkpointArtifacts)
+    : session.artifacts;
   const workingDir = extractWorkingDir(version.content);
 
   return {
@@ -121,9 +160,10 @@ export async function resolveSession(
       cliAgentSessionId: conversation.cliAgentSessionId,
       cliAgentSessionHistory: sessionHistory,
     },
-    artifacts: session.artifacts,
+    artifacts,
     vars: lastRunVars,
-    volumeVersions: undefined,
+    volumeVersions: checkpointVolumeVersions?.versions,
+    additionalVolumes: checkpointAdditionalVolumes,
     previousRunId: conversation.runId,
     sessionFramework: conversation.cliAgentType,
   };

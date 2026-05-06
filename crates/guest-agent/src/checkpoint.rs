@@ -12,19 +12,53 @@ use crate::session_history;
 use crate::urls;
 use bytes::Bytes;
 use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info};
+use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::ErrorKind;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
+#[derive(Clone, Copy)]
+enum CheckpointMode {
+    Success,
+    Recovery,
+}
+
+impl CheckpointMode {
+    fn total_op(self) -> &'static str {
+        match self {
+            Self::Success => "checkpoint_total",
+            Self::Recovery => "recovery_checkpoint_total",
+        }
+    }
+
+    fn log_label(self) -> &'static str {
+        match self {
+            Self::Success => "checkpoint",
+            Self::Recovery => "recovery checkpoint",
+        }
+    }
+
+    fn validate_history(self) -> bool {
+        matches!(self, Self::Recovery)
+    }
+}
+
 /// Log the message, record a failed `sandbox_op`, and build a matching
-/// `Checkpoint` error — all three channels share the same message so
-/// telemetry and logs stay in sync.
-fn fail(op: &str, start: std::time::Instant, msg: impl Into<String>) -> AgentError {
+/// `Checkpoint` error. Success-path checkpoint failures are run-fatal and
+/// logged as errors; recovery checkpoint skips are best-effort and stay warn.
+fn fail(
+    mode: CheckpointMode,
+    op: &str,
+    start: std::time::Instant,
+    msg: impl Into<String>,
+) -> AgentError {
     let msg = msg.into();
-    log_error!(LOG_TAG, "{msg}");
+    match mode {
+        CheckpointMode::Success => log_error!(LOG_TAG, "{msg}"),
+        CheckpointMode::Recovery => log_warn!(LOG_TAG, "{msg}"),
+    }
     record_sandbox_op(op, start.elapsed(), false, Some(&msg));
     AgentError::Checkpoint(msg)
 }
@@ -209,13 +243,31 @@ async fn snapshot_artifacts() -> Result<Option<serde_json::Value>, AgentError> {
 /// Create a checkpoint after a successful run.
 pub async fn create_checkpoint() -> Result<(), AgentError> {
     let start = std::time::Instant::now();
-    let result = create_checkpoint_impl().await;
-    record_sandbox_op("checkpoint_total", start.elapsed(), result.is_ok(), None);
+    let result = create_checkpoint_impl(CheckpointMode::Success).await;
+    record_sandbox_op(
+        CheckpointMode::Success.total_op(),
+        start.elapsed(),
+        result.is_ok(),
+        None,
+    );
     result
 }
 
-async fn create_checkpoint_impl() -> Result<(), AgentError> {
-    log_info!(LOG_TAG, "Creating checkpoint...");
+/// Create a best-effort recovery checkpoint after an abnormal CLI exit.
+pub async fn create_recovery_checkpoint() -> Result<(), AgentError> {
+    let start = std::time::Instant::now();
+    let result = create_checkpoint_impl(CheckpointMode::Recovery).await;
+    record_sandbox_op(
+        CheckpointMode::Recovery.total_op(),
+        start.elapsed(),
+        result.is_ok(),
+        None,
+    );
+    result
+}
+
+async fn create_checkpoint_impl(mode: CheckpointMode) -> Result<(), AgentError> {
+    log_info!(LOG_TAG, "Creating {}...", mode.log_label());
 
     // Read session ID. Let `read_to_string` surface `NotFound` directly — an
     // explicit `exists()` check would be a redundant stat plus a TOCTOU race
@@ -225,6 +277,7 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
         Ok(s) => s.trim().to_string(),
         Err(e) if e.kind() == ErrorKind::NotFound => {
             return Err(fail(
+                mode,
                 "session_id_read",
                 session_id_start,
                 "No session ID found",
@@ -232,6 +285,7 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
         }
         Err(e) => {
             return Err(fail(
+                mode,
                 "session_id_read",
                 session_id_start,
                 format!("Failed to read session ID: {e}"),
@@ -240,6 +294,7 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     };
     if session_id.is_empty() {
         return Err(fail(
+            mode,
             "session_id_read",
             session_id_start,
             "Session ID is empty",
@@ -257,6 +312,7 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
             Ok(b) => b,
             Err(e) => {
                 return Err(fail(
+                    mode,
                     "session_history_read",
                     history_read_start,
                     e.to_string(),
@@ -268,6 +324,7 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
         Ok(s) => s,
         Err(e) => {
             return Err(fail(
+                mode,
                 "session_history_read",
                 history_read_start,
                 format!("Session history is not valid UTF-8: {e}"),
@@ -277,10 +334,16 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
 
     if session_history.trim().is_empty() {
         return Err(fail(
+            mode,
             "session_history_read",
             history_read_start,
             "Session history is empty",
         ));
+    }
+
+    if mode.validate_history() {
+        validate_recoverable_session_history(&session_history)
+            .map_err(|msg| fail(mode, "session_history_validate", history_read_start, msg))?;
     }
 
     let line_count = session_history.lines().count();
@@ -352,7 +415,7 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
         .and_then(|v| v.as_str());
 
     if let Some(id) = checkpoint_id {
-        log_info!(LOG_TAG, "Checkpoint created successfully: {id}");
+        log_info!(LOG_TAG, "{} created successfully: {id}", mode.log_label());
         record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
         Ok(())
     } else {
@@ -367,6 +430,31 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
             "Invalid checkpoint API response".into(),
         ))
     }
+}
+
+fn validate_recoverable_session_history(session_history: &str) -> Result<(), String> {
+    let mut line_count = 0usize;
+    for (index, line) in session_history.lines().enumerate() {
+        if line.trim().is_empty() {
+            return Err(format!(
+                "Session history line {} is empty; recovery checkpoint skipped",
+                index + 1
+            ));
+        }
+        serde_json::from_str::<serde_json::Value>(line).map_err(|e| {
+            format!(
+                "Session history line {} is not valid JSON; recovery checkpoint skipped: {e}",
+                index + 1
+            )
+        })?;
+        line_count += 1;
+    }
+
+    if line_count == 0 {
+        return Err("Session history has no JSONL entries; recovery checkpoint skipped".into());
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -397,5 +485,30 @@ mod tests {
         assert!(obj.contains_key("version"));
         assert!(obj.contains_key("mountPath"));
         assert!(!obj.contains_key("mount_path"));
+    }
+
+    #[test]
+    fn recoverable_session_history_accepts_valid_jsonl() {
+        let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"#;
+
+        assert!(validate_recoverable_session_history(&history).is_ok());
+    }
+
+    #[test]
+    fn recoverable_session_history_rejects_partial_trailing_json() {
+        let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant""#;
+
+        let err = validate_recoverable_session_history(&history).unwrap_err();
+
+        assert!(err.contains("line 2"));
+    }
+
+    #[test]
+    fn recoverable_session_history_rejects_blank_lines() {
+        let history = r#"{"type":"system"}"#.to_string() + "\n\n" + r#"{"type":"assistant"}"#;
+
+        let err = validate_recoverable_session_history(&history).unwrap_err();
+
+        assert!(err.contains("line 2"));
     }
 }

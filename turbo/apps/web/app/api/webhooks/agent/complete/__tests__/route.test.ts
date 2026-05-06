@@ -557,6 +557,32 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(response.status).toBe(200);
       expect(context.mocks.axiom.queryAxiom).not.toHaveBeenCalled();
     });
+
+    it("should keep failed run result empty even when a recovery checkpoint exists", async () => {
+      await createCheckpoint();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.status).toBe("failed");
+      expect(run!.result).toBeNull();
+    });
   });
 
   describe("Error Handling", () => {

@@ -17,6 +17,13 @@ import { resolveSessionHistory } from "./resolve-session-history";
 
 const log = logger("run:resolve-checkpoint");
 
+const RESUMABLE_CHECKPOINT_RUN_STATUSES = new Set([
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+]);
+
 /**
  * Resolve checkpoint to ConversationResolution
  *
@@ -71,7 +78,7 @@ export async function resolveCheckpoint(
 
   // Verify checkpoint belongs to user
   const [originalRun] = await globalThis.services.db
-    .select({ runId: agentRuns.id })
+    .select({ runId: agentRuns.id, status: agentRuns.status })
     .from(agentRuns)
     .where(
       and(eq(agentRuns.id, checkpoint.runId), eq(agentRuns.userId, userId)),
@@ -80,6 +87,12 @@ export async function resolveCheckpoint(
 
   if (!originalRun) {
     throw unauthorized("Checkpoint does not belong to authenticated user");
+  }
+
+  if (!RESUMABLE_CHECKPOINT_RUN_STATUSES.has(originalRun.status)) {
+    throw badRequest(
+      `Checkpoint is not ready to resume while run is ${originalRun.status}`,
+    );
   }
 
   // Run independent queries in parallel:

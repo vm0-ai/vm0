@@ -1,9 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { notFound } from "@vm0/api-services/errors";
-import { updateAgentSession } from "../agent-session";
 import { registerSessionHistoryBlob } from "../session-history";
 import { logger } from "../../shared/logger";
 import type {
@@ -69,31 +69,6 @@ export async function createCheckpoint(
   );
   log.debug(`Session history blob registered, hash=${historyHash}`);
 
-  // Upsert conversation record (handles retries atomically)
-  const [conversation] = await globalThis.services.db
-    .insert(conversations)
-    .values({
-      runId: request.runId,
-      cliAgentType: request.cliAgentType,
-      cliAgentSessionId: request.cliAgentSessionId,
-      cliAgentSessionHistoryHash: historyHash,
-    })
-    .onConflictDoUpdate({
-      target: conversations.runId,
-      set: {
-        cliAgentType: request.cliAgentType,
-        cliAgentSessionId: request.cliAgentSessionId,
-        cliAgentSessionHistoryHash: historyHash,
-      },
-    })
-    .returning();
-
-  if (!conversation) {
-    throw new Error("Failed to upsert conversation record");
-  }
-
-  log.debug(`Conversation created: ${conversation.id}, storing checkpoint...`);
-
   // Build agent compose snapshot using version ID for reproducibility
   // Environment is re-expanded from vars/secrets on resume
   // Note: secrets values are NEVER stored - only names for validation
@@ -145,7 +120,6 @@ export async function createCheckpoint(
     : decodeToContextArtifacts(rawPayload);
 
   const snapshotFields = {
-    conversationId: conversation.id,
     agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
       string,
       unknown
@@ -157,38 +131,83 @@ export async function createCheckpoint(
     > | null,
   };
 
-  const [checkpoint] = await globalThis.services.db
-    .insert(checkpoints)
-    .values({
-      runId: request.runId,
-      ...snapshotFields,
-    })
-    .onConflictDoUpdate({
-      target: checkpoints.runId,
-      set: snapshotFields,
-    })
-    .returning();
+  const { conversation, checkpoint, agentSession } =
+    await globalThis.services.db.transaction(async (tx) => {
+      // Upsert conversation, checkpoint, and session link together. A failed
+      // session update must not leave a checkpoint row that normal sessionId
+      // continuation cannot discover.
+      const [conversation] = await tx
+        .insert(conversations)
+        .values({
+          runId: request.runId,
+          cliAgentType: request.cliAgentType,
+          cliAgentSessionId: request.cliAgentSessionId,
+          cliAgentSessionHistoryHash: historyHash,
+        })
+        .onConflictDoUpdate({
+          target: conversations.runId,
+          set: {
+            cliAgentType: request.cliAgentType,
+            cliAgentSessionId: request.cliAgentSessionId,
+            cliAgentSessionHistoryHash: historyHash,
+          },
+        })
+        .returning();
 
-  if (!checkpoint) {
-    throw new Error("Failed to upsert checkpoint record");
-  }
+      if (!conversation) {
+        throw new Error("Failed to upsert conversation record");
+      }
+
+      log.debug(
+        `Conversation created: ${conversation.id}, storing checkpoint...`,
+      );
+
+      const [checkpoint] = await tx
+        .insert(checkpoints)
+        .values({
+          runId: request.runId,
+          conversationId: conversation.id,
+          ...snapshotFields,
+        })
+        .onConflictDoUpdate({
+          target: checkpoints.runId,
+          set: {
+            conversationId: conversation.id,
+            ...snapshotFields,
+          },
+        })
+        .returning();
+
+      if (!checkpoint) {
+        throw new Error("Failed to upsert checkpoint record");
+      }
+
+      if (!run.sessionId) {
+        throw notFound("Agent run has no session_id");
+      }
+
+      const [agentSession] = await tx
+        .update(agentSessions)
+        .set({
+          conversationId: conversation.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(agentSessions.id, run.sessionId))
+        .returning();
+
+      if (!agentSession) {
+        throw notFound("AgentSession not found");
+      }
+
+      return { conversation, checkpoint, agentSession };
+    });
 
   log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
+  log.debug(`Agent session updated/created: ${agentSession.id}`);
 
-  // Bind the pre-created agent session (always populated since #10323 made
-  // agent_runs.session_id NOT NULL) to this conversation and record per-run
-  // snapshot fields that were not known when the session was created eagerly
-  // at run insertion.
   const volumeSnapshot = request.volumeVersionsSnapshot as
     | VolumeVersionsSnapshot
     | undefined;
-
-  if (!run.sessionId) {
-    throw notFound("Agent run has no session_id");
-  }
-  const agentSession = await updateAgentSession(run.sessionId, conversation.id);
-
-  log.debug(`Agent session updated/created: ${agentSession.id}`);
 
   // Use volume versions from snapshot for return value
   const volumes = volumeSnapshot?.versions;
