@@ -309,9 +309,10 @@ describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () 
 describe("mobile bottom tab bar - renders five tabs (MOBILE-TAB-001)", () => {
   it("renders Home, Teammates, Schedules, Connectors, and More tabs when MobileNativeV1 is on", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
-      path: "/",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
     });
 
@@ -330,9 +331,10 @@ describe("mobile bottom tab bar - renders five tabs (MOBILE-TAB-001)", () => {
 describe("mobile bottom tab bar - Connectors tab navigates to /connectors (MOBILE-TAB-006)", () => {
   it("clicking the Connectors tab navigates to /connectors", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
-      path: "/",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
     });
 
@@ -564,9 +566,10 @@ describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () =
 describe("mobile bottom tab bar - More opens the More sheet (MOBILE-TAB-003)", () => {
   it("opens the mobile more sheet when the More tab is clicked", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
-      path: "/",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
     });
 
@@ -588,9 +591,10 @@ describe("mobile bottom tab bar - More opens the More sheet (MOBILE-TAB-003)", (
 describe("mobile more sheet - Insights navigates to /insights (MOBILE-MORE-001)", () => {
   it("closes the sheet and routes to /insights when Insights is tapped", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
-      path: "/",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
     });
 
@@ -641,9 +645,10 @@ describe("mobile workspace drawer - drops the user identity card (MOBILE-DRAWER-
 describe("mobile bottom tab bar - Schedules link navigates (MOBILE-TAB-004)", () => {
   it("navigates to /schedules when the Schedules tab is clicked", async () => {
     mockBaseAPIs();
+    mockOneChatThread();
     detachedSetupPage({
       context,
-      path: "/",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
     });
 
