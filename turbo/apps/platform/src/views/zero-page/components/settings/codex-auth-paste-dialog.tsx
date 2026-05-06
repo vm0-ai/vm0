@@ -1,5 +1,5 @@
 import { useGet, useSet } from "ccstate-react";
-import { useState } from "react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   Dialog,
   DialogContent,
@@ -10,12 +10,14 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
+  codexPasteContent$,
   codexPasteDialogState$,
   setCodexPasteDialogState$,
+  submitCodexAuthJson$,
+  updateCodexPasteContent$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
-import { submitCodexAuthJson$ } from "../../../../signals/external/org-model-providers.ts";
 import { ApiError } from "../../../../lib/accept.ts";
-import { detach, Reason } from "../../../../signals/utils.ts";
+import { detach, isValidJson, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
 /**
@@ -32,51 +34,29 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
  * server-side parser lands in #11978. Typed error codes
  * (`auth_json_shape_invalid`, `free_plan_rejected`) surface inline rather
  * than via toast — the user is staring at the textarea, an inline message
- * keeps the cause-and-effect close.
+ * keeps cause-and-effect close.
  */
 export function CodexAuthPasteDialog() {
   const dialog = useGet(codexPasteDialogState$);
+  const paste = useGet(codexPasteContent$);
   const setDialog = useSet(setCodexPasteDialogState$);
-  const submit = useSet(submitCodexAuthJson$);
+  const updatePaste = useSet(updateCodexPasteContent$);
   const pageSignal = useGet(pageSignal$);
+  const [submitLoadable, submit] = useLoadableSet(submitCodexAuthJson$);
 
-  const [paste, setPaste] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [serverError, setServerError] = useState<ApiError | null>(null);
-
-  function resetTransientState(): void {
-    setPaste("");
-    setServerError(null);
-    setSubmitting(false);
-  }
-
-  function handleOpenChange(nextOpen: boolean): void {
-    if (!nextOpen) {
-      resetTransientState();
-    }
-    setDialog({ ...dialog, open: nextOpen });
-  }
+  const submitting = submitLoadable.state === "loading";
+  const serverError =
+    submitLoadable.state === "hasError" &&
+    submitLoadable.error instanceof ApiError
+      ? submitLoadable.error
+      : null;
 
   const trimmed = paste.trim();
   const localParseError = computeLocalParseError(trimmed);
   const canSubmit = trimmed !== "" && localParseError === null && !submitting;
 
-  async function handleSubmit(): Promise<void> {
-    setSubmitting(true);
-    setServerError(null);
-    try {
-      await submit(trimmed, pageSignal);
-      resetTransientState();
-      setDialog({ ...dialog, open: false });
-    } catch (error) {
-      if (error instanceof ApiError) {
-        setServerError(error);
-      } else {
-        throw error;
-      }
-    } finally {
-      setSubmitting(false);
-    }
+  function handleOpenChange(nextOpen: boolean): void {
+    setDialog({ ...dialog, open: nextOpen });
   }
 
   const title =
@@ -111,10 +91,7 @@ export function CodexAuthPasteDialog() {
         <textarea
           value={paste}
           onChange={(e) => {
-            setPaste(e.target.value);
-            if (serverError) {
-              setServerError(null);
-            }
+            return updatePaste(e.target.value);
           }}
           placeholder='{"OPENAI_API_KEY": "...", "tokens": {...}, ...}'
           rows={8}
@@ -137,7 +114,7 @@ export function CodexAuthPasteDialog() {
           <Button
             variant="outline"
             onClick={() => {
-              handleOpenChange(false);
+              return handleOpenChange(false);
             }}
             disabled={submitting}
           >
@@ -145,7 +122,7 @@ export function CodexAuthPasteDialog() {
           </Button>
           <Button
             onClick={() => {
-              detach(handleSubmit(), Reason.DomCallback);
+              detach(submit(pageSignal), Reason.DomCallback);
             }}
             disabled={!canSubmit}
             data-testid="codex-paste-submit"
@@ -162,12 +139,9 @@ function computeLocalParseError(trimmed: string): string | null {
   if (trimmed === "") {
     return null;
   }
-  try {
-    JSON.parse(trimmed);
-    return null;
-  } catch {
-    return "Looks like the paste isn't valid JSON yet.";
-  }
+  return isValidJson(trimmed)
+    ? null
+    : "Looks like the paste isn't valid JSON yet.";
 }
 
 function getErrorCopy(error: ApiError): string {

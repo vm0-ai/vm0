@@ -100,7 +100,7 @@ describe("codex paste dialog — local sanity", () => {
 });
 
 describe("codex paste dialog — submit happy path", () => {
-  it("POSTs auth_json shape and closes the dialog on success", async () => {
+  it("posts auth_json shape and closes the dialog on success", async () => {
     let receivedBody: unknown = null;
     server.use(
       mockApi(zeroModelProvidersMainContract.upsert, ({ body, respond }) => {

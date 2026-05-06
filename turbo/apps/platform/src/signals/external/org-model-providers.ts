@@ -7,7 +7,6 @@ import {
 import type {
   UpsertModelProviderRequest,
   ModelProviderType,
-  UpsertModelProviderResponse,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
@@ -78,40 +77,16 @@ export const setDefaultOrgModelProvider$ = command(
 );
 
 /**
- * Submit a raw `~/.codex/auth.json` payload for the codex-oauth-token
- * provider via the `auth_json` authMethod (server-side parser lives in
- * #11978). Suppresses the default toast on error so the paste dialog can
- * render typed error codes inline (e.g. `auth_json_shape_invalid`,
- * `free_plan_rejected`); callers handle the thrown ApiError.
+ * Force a refetch of `orgModelProviders$`. Used by higher-level commands
+ * that mutate provider state through a different code path (e.g. the codex
+ * auth.json paste flow in #11980, which lives in settings/ to share dialog
+ * state with the paste dialog).
  */
-export const submitCodexAuthJson$ = command(
-  async (
-    { get, set },
-    rawJson: string,
-    signal: AbortSignal,
-  ): Promise<UpsertModelProviderResponse> => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroModelProvidersMainContract);
-    const result = await accept(
-      client.upsert({
-        body: {
-          type: "codex-oauth-token",
-          authMethod: "auth_json",
-          secrets: { CODEX_AUTH_JSON: rawJson },
-        },
-        fetchOptions: { signal },
-      }),
-      [200, 201],
-      { toast: false },
-    );
-
-    set(internalReloadOrgModelProviders$, (x) => {
-      return x + 1;
-    });
-
-    return result.body;
-  },
-);
+export const reloadOrgModelProviders$ = command(({ set }) => {
+  set(internalReloadOrgModelProviders$, (x) => {
+    return x + 1;
+  });
+});
 
 /**
  * Delete an org model provider by type (admin only).

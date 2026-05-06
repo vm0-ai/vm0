@@ -88,20 +88,23 @@ async function openProvidersPage(): Promise<void> {
   });
 }
 
+async function findRepasteButton(): Promise<HTMLElement> {
+  return await screen.findByText("Re-paste auth.json");
+}
+
+function findReconnectDialogTitle(): HTMLElement | null {
+  return screen.queryByText("Re-connect Codex");
+}
+
 describe("org-providers-tab — stale banner reconnect", () => {
   it("opens the paste dialog in reconnect mode when Re-paste button is clicked", async () => {
     setMockOrgModelProviders([makeStaleProvider()]);
     await openProvidersPage();
 
-    const button = await screen.findByRole("button", {
-      name: /Re-paste auth\.json/i,
-    });
-    click(button);
+    click(await findRepasteButton());
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("dialog", { name: /Re-connect Codex/i }),
-      ).toBeInTheDocument();
+      expect(findReconnectDialogTitle()).toBeInTheDocument();
     });
   });
 
@@ -120,11 +123,13 @@ describe("org-providers-tab — stale banner reconnect", () => {
 
     await openProvidersPage();
 
-    expect(
-      await screen.findByText(/ChatGPT session needs reconnection/i),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/ChatGPT session needs reconnection/i),
+      ).toBeInTheDocument();
+    });
 
-    click(await screen.findByRole("button", { name: /Re-paste auth\.json/i }));
+    click(await findRepasteButton());
 
     await fill(
       await screen.findByTestId("codex-paste-textarea"),
@@ -137,8 +142,6 @@ describe("org-providers-tab — stale banner reconnect", () => {
         screen.queryByText(/ChatGPT session needs reconnection/i),
       ).not.toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("dialog", { name: /Re-connect Codex/i }),
-    ).not.toBeInTheDocument();
+    expect(findReconnectDialogTitle()).not.toBeInTheDocument();
   });
 });
