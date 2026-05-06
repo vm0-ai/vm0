@@ -64,9 +64,11 @@ const MOBILE_TABS: readonly MobileTab[] = [
 ] as const;
 
 const TAB_CLASSES =
-  "flex flex-1 flex-col items-center justify-center gap-0.5 h-14 text-xs font-medium no-underline transition-colors";
+  "relative flex flex-1 flex-col items-center justify-center gap-0.5 h-14 text-xs no-underline transition-colors";
+const ACTIVE_DOT =
+  "absolute bottom-1 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-primary";
 const ICON_SIZE = 22;
-const ICON_STROKE = 1.6;
+const ICON_STROKE = 1.5;
 
 function MobileTabLink({ tab, active }: { tab: MobileTab; active: boolean }) {
   const Icon = tab.icon;
@@ -76,12 +78,15 @@ function MobileTabLink({ tab, active }: { tab: MobileTab; active: boolean }) {
       aria-current={active ? "page" : undefined}
       className={cn(
         TAB_CLASSES,
-        active ? "text-foreground" : "text-muted-foreground",
+        active
+          ? "text-foreground font-semibold"
+          : "text-muted-foreground font-medium",
       )}
       data-testid={`mobile-tab-${tab.id}`}
     >
       <Icon size={ICON_SIZE} stroke={ICON_STROKE} />
       <span>{tab.label}</span>
+      {active ? <span aria-hidden className={ACTIVE_DOT} /> : null}
     </Link>
   );
 }
@@ -97,12 +102,15 @@ function MoreTab({ active }: { active: boolean }) {
       aria-label="Open more menu"
       className={cn(
         TAB_CLASSES,
-        active ? "text-foreground" : "text-muted-foreground",
+        active
+          ? "text-foreground font-semibold"
+          : "text-muted-foreground font-medium",
       )}
       data-testid="mobile-tab-more"
     >
       <IconMenu2 size={ICON_SIZE} stroke={ICON_STROKE} />
       <span>More</span>
+      {active ? <span aria-hidden className={ACTIVE_DOT} /> : null}
     </button>
   );
 }
@@ -122,21 +130,23 @@ export function MobileBottomTabBar() {
 
   return (
     <nav
-      className="md:hidden shrink-0 flex items-stretch border-t border-border/50 bg-background z-10"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      className="md:hidden shrink-0 px-3 pt-2 z-10"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
       aria-label="Primary"
       data-testid="mobile-bottom-tab-bar"
     >
-      {MOBILE_TABS.map((tab) => {
-        return (
-          <MobileTabLink
-            key={tab.id}
-            tab={tab}
-            active={matchedTabId === tab.id}
-          />
-        );
-      })}
-      <MoreTab active={matchedTabId === undefined} />
+      <div className="flex items-stretch rounded-3xl border border-border/60 bg-card/70 backdrop-blur-xl shadow-[0_4px_20px_-4px_rgb(0_0_0/0.06)]">
+        {MOBILE_TABS.map((tab) => {
+          return (
+            <MobileTabLink
+              key={tab.id}
+              tab={tab}
+              active={matchedTabId === tab.id}
+            />
+          );
+        })}
+        <MoreTab active={matchedTabId === undefined} />
+      </div>
     </nav>
   );
 }
