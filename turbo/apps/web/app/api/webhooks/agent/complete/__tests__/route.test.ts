@@ -595,6 +595,39 @@ describe("POST /api/webhooks/agent/complete", () => {
         },
       });
     });
+
+    it("should backfill result when recovery checkpoint arrives after failed complete", async () => {
+      const completeRequest = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+          }),
+        },
+      );
+
+      const completeResponse = await POST(completeRequest);
+      expect(completeResponse.status).toBe(200);
+
+      const checkpoint = await createCheckpoint();
+
+      const run = await findTestRunRecord(testRunId);
+      expect(run!.status).toBe("failed");
+      expect(run!.result).toMatchObject({
+        checkpointId: checkpoint.checkpointId,
+        agentSessionId: checkpoint.agentSessionId,
+        conversationId: checkpoint.conversationId,
+        artifact: {
+          "test-artifact": "v1",
+        },
+      });
+    });
   });
 
   describe("Error Handling", () => {

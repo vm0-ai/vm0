@@ -489,6 +489,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
     });
 
     it("should not overwrite checkpoint when terminal result already exists", async () => {
+      const firstHistoryHash = sha256(`first-terminal-history-${testRunId}`);
+      const staleHistoryHash = sha256(`stale-terminal-history-${testRunId}`);
       const artifactSnapshots = [
         {
           name: "test-artifact",
@@ -510,7 +512,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
               runId: testRunId,
               cliAgentType: "claude-code",
               cliAgentSessionId: "first-terminal-session",
-              cliAgentSessionHistoryHash: sha256("first-terminal-history"),
+              cliAgentSessionHistoryHash: firstHistoryHash,
               artifactSnapshots,
             }),
           },
@@ -540,7 +542,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
               runId: testRunId,
               cliAgentType: "claude-code",
               cliAgentSessionId: "stale-terminal-session",
-              cliAgentSessionHistoryHash: sha256("stale-terminal-history"),
+              cliAgentSessionHistoryHash: staleHistoryHash,
               artifactSnapshots: [
                 {
                   name: "test-artifact",
@@ -567,6 +569,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(run?.result).toMatchObject({
         artifact: { "test-artifact": "version-first" },
       });
+      expect(await getBlobRefCount(firstHistoryHash)).toBe(1);
+      expect(await getBlobRefCount(staleHistoryHash)).toBeUndefined();
     });
 
     it("should keep checkpoint and result consistent for concurrent terminal checkpoints", async () => {
