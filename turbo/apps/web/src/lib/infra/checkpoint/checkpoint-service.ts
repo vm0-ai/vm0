@@ -4,7 +4,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { notFound } from "@vm0/api-services/errors";
-import { registerSessionHistoryBlob } from "../session-history";
+import { replaceSessionHistoryBlobReference } from "../session-history";
 import { logger } from "../../shared/logger";
 import type {
   CheckpointRequest,
@@ -170,12 +170,21 @@ export async function createCheckpoint(
         > | null,
       };
 
+      const [existingConversation] = await tx
+        .select({
+          cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+        })
+        .from(conversations)
+        .where(eq(conversations.runId, request.runId))
+        .limit(1);
+
       // Upsert conversation, checkpoint, and session link together. A failed
       // session update must not leave a checkpoint row that normal sessionId
       // continuation cannot discover.
       // Register session history blob (content already uploaded via presigned URL).
-      const historyHash = await registerSessionHistoryBlob(
+      const historyHash = await replaceSessionHistoryBlobReference(
         request.cliAgentSessionHistoryHash,
+        existingConversation?.cliAgentSessionHistoryHash,
         tx,
       );
       log.debug(`Session history blob registered, hash=${historyHash}`);

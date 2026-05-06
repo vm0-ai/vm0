@@ -92,7 +92,8 @@ const router = tsr.router(webhookCheckpointsPrepareHistoryContract, {
     );
 
     // Pre-register the blob record with the correct size.
-    // The subsequent checkpoint call will increment refCount via registerSessionHistoryBlob.
+    // The subsequent checkpoint call claims a refCount when the conversation
+    // does not already reference this hash.
     await preRegisterSessionHistoryBlob(hash, size);
 
     log.debug(`Presigned URL generated for session history: hash=${hash}`);

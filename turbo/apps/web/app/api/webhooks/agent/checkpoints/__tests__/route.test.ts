@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
+import { blobs } from "@vm0/db/schema/blob";
+import { conversations } from "@vm0/db/schema/conversation";
+import { eq } from "drizzle-orm";
 import {
   createTestRequest,
   createTestCompose,
@@ -24,6 +27,26 @@ import type { VolumeVersionsSnapshot } from "../../../../../../src/lib/infra/che
 
 function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
+}
+
+async function getBlobRefCount(hash: string): Promise<number | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ refCount: blobs.refCount })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  return row?.refCount;
+}
+
+async function getConversationHistoryHash(
+  runId: string,
+): Promise<string | null | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ hash: conversations.cliAgentSessionHistoryHash })
+    .from(conversations)
+    .where(eq(conversations.runId, runId))
+    .limit(1);
+  return row?.hash;
 }
 
 const context = testContext();
@@ -750,11 +773,12 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
   describe("Uniqueness", () => {
     it("should handle duplicate checkpoint requests via upsert", async () => {
+      const historyHash = sha256(`test-session-unique-history-${testRunId}`);
       const requestBody = {
         runId: testRunId,
         cliAgentType: "claude-code",
         cliAgentSessionId: "test-session-unique",
-        cliAgentSessionHistoryHash: sha256("test-session-unique-history"),
+        cliAgentSessionHistoryHash: historyHash,
         artifactSnapshots: [
           {
             name: "test-artifact",
@@ -764,7 +788,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         ],
       };
 
-      // First request - should succeed
       const request1 = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -777,10 +800,6 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         },
       );
 
-      const response1 = await POST(request1);
-      expect(response1.status).toBe(200);
-
-      // Second request - should succeed via upsert (update existing)
       const request2 = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/checkpoints",
         {
@@ -793,8 +812,50 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         },
       );
 
-      const response2 = await POST(request2);
+      const [response1, response2] = await Promise.all([
+        POST(request1),
+        POST(request2),
+      ]);
+      expect(response1.status).toBe(200);
       expect(response2.status).toBe(200);
+      expect(await getBlobRefCount(historyHash)).toBe(1);
+    });
+
+    it("should move session history blob reference when upsert replaces hash", async () => {
+      const firstHistoryHash = sha256(`history-first-${testRunId}`);
+      const secondHistoryHash = sha256(`history-second-${testRunId}`);
+
+      const makeRequest = (historyHash: string) => {
+        return createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${testToken}`,
+            },
+            body: JSON.stringify({
+              runId: testRunId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: `session-${historyHash.slice(0, 8)}`,
+              cliAgentSessionHistoryHash: historyHash,
+            }),
+          },
+        );
+      };
+
+      const firstResponse = await POST(makeRequest(firstHistoryHash));
+      expect(firstResponse.status).toBe(200);
+      expect(await getBlobRefCount(firstHistoryHash)).toBe(1);
+
+      const secondResponse = await POST(makeRequest(secondHistoryHash));
+      expect(secondResponse.status).toBe(200);
+
+      expect(await getConversationHistoryHash(testRunId)).toBe(
+        secondHistoryHash,
+      );
+      expect(await getBlobRefCount(firstHistoryHash)).toBe(0);
+      expect(await getBlobRefCount(secondHistoryHash)).toBe(1);
     });
   });
 

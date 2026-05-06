@@ -1,5 +1,5 @@
 export {
   preRegisterSessionHistoryBlob,
-  registerSessionHistoryBlob,
+  replaceSessionHistoryBlobReference,
   resolveSessionHistory,
 } from "./session-history-service";

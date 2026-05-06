@@ -6,7 +6,7 @@
 
 import { downloadBlob } from "../blob/blob-service";
 import { blobs } from "@vm0/db/schema/blob";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 import type { Database } from "../../../types/global";
 
@@ -14,8 +14,8 @@ const log = logger("session-history");
 
 /**
  * Pre-register a session history blob with correct size before S3 upload.
- * Creates the blob record with refCount 0; the subsequent checkpoint call
- * will increment refCount via registerSessionHistoryBlob.
+ * Creates the blob record with refCount 0; a subsequent checkpoint call claims
+ * the reference if its conversation does not already point at this hash.
  *
  * On conflict (blob already exists), updates size to the correct value.
  *
@@ -61,6 +61,34 @@ export async function registerSessionHistoryBlob(
       target: blobs.hash,
       set: { refCount: sql`${blobs.refCount} + 1` },
     });
+
+  return hash;
+}
+
+/**
+ * Move one conversation's session-history reference to `hash`.
+ *
+ * Checkpoint writes are upserts: repeated webhook delivery for the same run
+ * should not keep incrementing the same blob, and replacing a checkpoint's
+ * history hash must release the old blob reference for future GC.
+ */
+export async function replaceSessionHistoryBlobReference(
+  hash: string,
+  previousHash: string | null | undefined,
+  db: Pick<Database, "insert" | "update"> = globalThis.services.db,
+): Promise<string> {
+  if (previousHash === hash) {
+    return hash;
+  }
+
+  await registerSessionHistoryBlob(hash, db);
+
+  if (previousHash) {
+    await db
+      .update(blobs)
+      .set({ refCount: sql`${blobs.refCount} - 1` })
+      .where(eq(blobs.hash, previousHash));
+  }
 
   return hash;
 }
