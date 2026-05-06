@@ -148,7 +148,7 @@ export function MobileBottomTabBar() {
   return (
     <nav
       className="md:hidden shrink-0 px-3 pt-2 z-10"
-      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.5rem)" }}
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0.5rem)" }}
       aria-label="Primary"
       data-testid="mobile-bottom-tab-bar"
     >
