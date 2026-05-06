@@ -383,12 +383,10 @@ function threadKind(session: ChatThreadListItem): ThreadKind {
   return "chat";
 }
 
-// Three-state icon for the chat list avatar slot. The avatar is a 40px
-// circle with no ring; the kind controls the icon and (for drafts) a warm
-// amber tint that distinguishes "you have unfinished business here" from
-// the neutral chat / schedule states. Unread / running indicators are
-// rendered as overlays on top of this circle so the avatar's left edge
-// can sit flush with the pinned-agent strip above it.
+// Three-state kind icon for chat list rows. Rendered as a 36px rounded
+// square (Slack convention) so it reads as "thread metadata" rather than
+// a person avatar — the pinned-agent strip above keeps full circles for
+// agent identity, and the shape contrast preserves visual hierarchy.
 function ThreadKindIcon({
   kind,
   isUnread,
@@ -418,7 +416,7 @@ function ThreadKindIcon({
     >
       <span
         className={cn(
-          "flex h-10 w-10 items-center justify-center rounded-full",
+          "flex h-9 w-9 items-center justify-center rounded-xl",
           kind === "draft"
             ? "bg-amber-100 text-amber-700"
             : "bg-[hsl(var(--gray-200))] text-foreground/80",
@@ -429,7 +427,7 @@ function ThreadKindIcon({
       {isRunning && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-full bg-blue-500/30 animate-ping"
+          className="pointer-events-none absolute inset-0 rounded-xl bg-blue-500/30 animate-ping"
         />
       )}
       {(isUnread || isRunning) && (

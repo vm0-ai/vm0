@@ -63,11 +63,14 @@ const MOBILE_TABS: readonly MobileTab[] = [
   },
 ] as const;
 
+// 64px dock + 24px icons + 13px label matches iOS HIG (10pt SF Caption ≈
+// 13.3px CSS at default Dynamic Type); the previous text-xs / 22-stroke
+// combo read as undersized vs. native chrome.
 const TAB_CLASSES =
-  "relative flex flex-1 flex-col items-center justify-center gap-0.5 h-14 text-xs no-underline transition-colors";
+  "relative flex flex-1 flex-col items-center justify-center gap-1 h-16 text-[13px] leading-none font-medium no-underline transition-colors";
 const ACTIVE_DOT =
-  "absolute bottom-1 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-primary";
-const ICON_SIZE = 22;
+  "absolute bottom-1.5 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-primary";
+const ICON_SIZE = 24;
 const ICON_STROKE = 1.5;
 
 function MobileTabLink({ tab, active }: { tab: MobileTab; active: boolean }) {
