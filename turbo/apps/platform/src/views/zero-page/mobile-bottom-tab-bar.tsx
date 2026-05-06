@@ -145,16 +145,15 @@ export function MobileBottomTabBar() {
     return activeId !== null && tab.activeKeys.includes(activeId);
   })?.id;
 
-  // The full safe-area-inset (~34pt on home-indicator iPhones) leaves a
-  // noticeable gap below the floating dock. Subtract 22px so the dock
-  // sits closer to the bottom edge — the home indicator is a translucent
-  // overlay and won't be obscured at this distance.
+  // Flat 6px gap below the dock on every device. We deliberately ignore
+  // env(safe-area-inset-bottom) — in PWA standalone mode it returns the
+  // full ~34pt home-indicator inset and stranded the dock high above the
+  // screen edge. The home indicator is a translucent system overlay and
+  // won't be obscured at this short distance (matches Apple's floating
+  // mini-player + Camera Roll docks).
   return (
     <nav
-      className="md:hidden shrink-0 px-3 pt-2 z-10"
-      style={{
-        paddingBottom: "max(env(safe-area-inset-bottom) - 22px, 6px)",
-      }}
+      className="md:hidden shrink-0 px-3 pt-2 pb-1.5 z-10"
       aria-label="Primary"
       data-testid="mobile-bottom-tab-bar"
     >
