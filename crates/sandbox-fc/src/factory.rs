@@ -1,10 +1,11 @@
 use std::{
     any::Any,
-    collections::HashMap,
     future::Future,
     panic::AssertUnwindSafe,
     path::PathBuf,
+    pin::Pin,
     sync::{Mutex as StdMutex, MutexGuard as StdMutexGuard, TryLockError},
+    task::{Context, Poll},
 };
 
 use async_trait::async_trait;
@@ -14,7 +15,7 @@ use sandbox::{
     SandboxInvalidStateContext,
 };
 use sha2::{Digest, Sha256};
-use tokio::task::{Id as TaskId, JoinError, JoinSet};
+use tokio::task::{JoinError, JoinHandle};
 use tracing::{info, warn};
 
 use nbd_cow::{DestroyRetryPolicy, PooledNbdCowDevice};
@@ -167,6 +168,7 @@ impl FactoryCleanupTaskKind {
     }
 }
 
+#[derive(Clone)]
 struct FactoryCleanupTaskRecord {
     kind: FactoryCleanupTaskKind,
     label: String,
@@ -175,6 +177,40 @@ struct FactoryCleanupTaskRecord {
 struct FactoryCleanupTaskFinished {
     kind: FactoryCleanupTaskKind,
     label: String,
+}
+
+struct FactoryCleanupTaskHandle {
+    record: FactoryCleanupTaskRecord,
+    handle: JoinHandle<FactoryCleanupTaskFinished>,
+}
+
+impl FactoryCleanupTaskHandle {
+    fn abort(&self) {
+        self.handle.abort();
+    }
+
+    fn is_finished(&self) -> bool {
+        self.handle.is_finished()
+    }
+
+    fn record(&self) -> &FactoryCleanupTaskRecord {
+        &self.record
+    }
+}
+
+impl Future for FactoryCleanupTaskHandle {
+    type Output = (
+        FactoryCleanupTaskRecord,
+        Result<FactoryCleanupTaskFinished, JoinError>,
+    );
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let result = match Pin::new(&mut self.handle).poll(cx) {
+            Poll::Ready(result) => result,
+            Poll::Pending => return Poll::Pending,
+        };
+        Poll::Ready((self.record.clone(), result))
+    }
 }
 
 enum FactoryCleanupTaskOutcome {
@@ -225,8 +261,7 @@ struct FactoryCleanupGroup {
 struct FactoryCleanupGroupState {
     accepting: bool,
     closed: bool,
-    tasks: JoinSet<FactoryCleanupTaskFinished>,
-    records: HashMap<TaskId, FactoryCleanupTaskRecord>,
+    tasks: Vec<FactoryCleanupTaskHandle>,
 }
 
 impl FactoryCleanupGroupState {
@@ -234,9 +269,79 @@ impl FactoryCleanupGroupState {
         Self {
             accepting: true,
             closed: false,
-            tasks: JoinSet::new(),
-            records: HashMap::new(),
+            tasks: Vec::new(),
         }
+    }
+}
+
+struct FactoryCleanupBatch<'a> {
+    group: &'a FactoryCleanupGroup,
+    tasks: Vec<FactoryCleanupTaskHandle>,
+}
+
+impl FactoryCleanupBatch<'_> {
+    fn is_empty(&self) -> bool {
+        self.tasks.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.tasks.len()
+    }
+
+    fn abort_all(&self) {
+        for task in &self.tasks {
+            task.abort();
+        }
+    }
+
+    fn records(&self) -> impl Iterator<Item = &FactoryCleanupTaskRecord> {
+        self.tasks.iter().map(FactoryCleanupTaskHandle::record)
+    }
+
+    async fn next_finished(
+        &mut self,
+    ) -> Option<(
+        FactoryCleanupTaskRecord,
+        Result<FactoryCleanupTaskFinished, JoinError>,
+    )> {
+        std::future::poll_fn(|cx| {
+            let mut index = 0;
+            while index < self.tasks.len() {
+                let poll_result = {
+                    let Some(task) = self.tasks.get_mut(index) else {
+                        break;
+                    };
+                    Pin::new(task).poll(cx)
+                };
+                match poll_result {
+                    Poll::Ready(result) => {
+                        self.tasks.swap_remove(index);
+                        return Poll::Ready(Some(result));
+                    }
+                    Poll::Pending => {
+                        index += 1;
+                    }
+                }
+            }
+
+            if self.tasks.is_empty() {
+                Poll::Ready(None)
+            } else {
+                Poll::Pending
+            }
+        })
+        .await
+    }
+}
+
+impl Drop for FactoryCleanupBatch<'_> {
+    fn drop(&mut self) {
+        if self.tasks.is_empty() {
+            return;
+        }
+
+        let mut state = self.group.lock_state();
+        state.tasks.append(&mut self.tasks);
     }
 }
 
@@ -317,7 +422,7 @@ impl FactoryCleanupGroup {
 
     fn start_accepting(&self) {
         let mut state = self.lock_state();
-        Self::reap_completed_locked(&mut state, false);
+        Self::reap_completed_locked(&mut state);
         state.accepting = true;
         state.closed = false;
     }
@@ -334,7 +439,7 @@ impl FactoryCleanupGroup {
         let label = label.into();
         let waiter_label = label.clone();
         let mut state = self.lock_state();
-        Self::reap_completed_locked(&mut state, false);
+        Self::reap_completed_locked(&mut state);
         if state.closed {
             warn!(
                 kind = kind.as_str(),
@@ -358,14 +463,14 @@ impl FactoryCleanupGroup {
 
         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
         let task = Self::cleanup_task(kind, label.clone(), cleanup, done_tx);
-        let abort_handle = state.tasks.spawn(task);
-        state.records.insert(
-            abort_handle.id(),
-            FactoryCleanupTaskRecord {
+        let handle = tokio::spawn(task);
+        state.tasks.push(FactoryCleanupTaskHandle {
+            record: FactoryCleanupTaskRecord {
                 kind,
                 label: label.clone(),
             },
-        );
+            handle,
+        });
 
         FactoryCleanupRegistration::Waiter(FactoryCleanupWaiter {
             kind,
@@ -379,74 +484,69 @@ impl FactoryCleanupGroup {
         tokio::pin!(timeout);
 
         loop {
-            let Some((mut tasks, mut records)) = self.take_shutdown_batch() else {
+            let Some(mut batch) = self.take_shutdown_batch() else {
                 return;
             };
 
-            if self
-                .drain_shutdown_batch(&mut tasks, &mut records, &mut timeout)
-                .await
-            {
+            if self.drain_shutdown_batch(&mut batch, &mut timeout).await {
                 self.abort_remaining_after_shutdown_timeout().await;
                 return;
             }
         }
     }
 
-    fn take_shutdown_batch(
-        &self,
-    ) -> Option<(
-        JoinSet<FactoryCleanupTaskFinished>,
-        HashMap<TaskId, FactoryCleanupTaskRecord>,
-    )> {
+    fn take_shutdown_batch(&self) -> Option<FactoryCleanupBatch<'_>> {
         let mut state = self.lock_state();
         state.accepting = false;
-        Self::reap_completed_locked(&mut state, false);
+        Self::reap_completed_locked(&mut state);
         if state.tasks.is_empty() {
             state.closed = true;
             return None;
         }
-        Some((
-            std::mem::replace(&mut state.tasks, JoinSet::new()),
-            std::mem::take(&mut state.records),
-        ))
+        Some(FactoryCleanupBatch {
+            group: self,
+            tasks: std::mem::take(&mut state.tasks),
+        })
     }
 
     async fn drain_shutdown_batch(
         &self,
-        tasks: &mut JoinSet<FactoryCleanupTaskFinished>,
-        records: &mut HashMap<TaskId, FactoryCleanupTaskRecord>,
+        batch: &mut FactoryCleanupBatch<'_>,
         timeout: &mut std::pin::Pin<&mut tokio::time::Sleep>,
     ) -> bool {
         loop {
-            if tasks.is_empty() {
+            if batch.is_empty() {
                 return false;
             }
 
             tokio::select! {
-                result = tasks.join_next_with_id() => {
-                    Self::handle_join_result(records, result, false);
+                result = batch.next_finished() => {
+                    let Some((record, result)) = result else {
+                        return false;
+                    };
+                    Self::handle_join_result(record, result, false);
                 }
                 () = timeout.as_mut() => {
-                    let task_count = tasks.len();
+                    let task_count = batch.len();
                     warn!(
                         task_count,
                         timeout_ms = FACTORY_CLEANUP_SHUTDOWN_TIMEOUT.as_millis() as u64,
                         "timed out waiting for factory cleanup tasks; aborting"
                     );
-                    for record in records.values() {
+                    for record in batch.records() {
                         warn!(
                             kind = record.kind.as_str(),
                             label = %record.label,
                             "aborting factory cleanup task; runner gc may need to clean leftovers"
                         );
                     }
-                    tasks.abort_all();
-                    while !tasks.is_empty() {
-                        let result = tasks.join_next_with_id().await;
-                        Self::handle_join_result(records, result, true);
+                    batch.abort_all();
+                    while !batch.is_empty() {
+                        let Some((record, result)) = batch.next_finished().await else {
+                            break;
+                        };
+                        Self::handle_join_result(record, result, true);
                     }
-                    records.clear();
                     return true;
                 }
             }
@@ -455,33 +555,34 @@ impl FactoryCleanupGroup {
 
     async fn abort_remaining_after_shutdown_timeout(&self) {
         loop {
-            let (mut tasks, mut records) = {
+            let mut batch = {
                 let mut state = self.lock_state();
                 state.accepting = false;
                 state.closed = true;
-                Self::reap_completed_locked(&mut state, false);
+                Self::reap_completed_locked(&mut state);
                 if state.tasks.is_empty() {
                     return;
                 }
-                (
-                    std::mem::replace(&mut state.tasks, JoinSet::new()),
-                    std::mem::take(&mut state.records),
-                )
+                FactoryCleanupBatch {
+                    group: self,
+                    tasks: std::mem::take(&mut state.tasks),
+                }
             };
 
-            for record in records.values() {
+            for record in batch.records() {
                 warn!(
                     kind = record.kind.as_str(),
                     label = %record.label,
                     "aborting late factory cleanup task after shutdown timeout"
                 );
             }
-            tasks.abort_all();
-            while !tasks.is_empty() {
-                let result = tasks.join_next_with_id().await;
-                Self::handle_join_result(&mut records, result, true);
+            batch.abort_all();
+            while !batch.is_empty() {
+                let Some((record, result)) = batch.next_finished().await else {
+                    break;
+                };
+                Self::handle_join_result(record, result, true);
             }
-            records.clear();
         }
     }
 
@@ -514,20 +615,17 @@ impl FactoryCleanupGroup {
         FactoryCleanupTaskFinished { kind, label }
     }
 
-    fn reap_completed_locked(state: &mut FactoryCleanupGroupState, after_abort: bool) {
-        while let Some(result) = state.tasks.try_join_next_with_id() {
-            Self::handle_join_result(&mut state.records, Some(result), after_abort);
-        }
+    fn reap_completed_locked(state: &mut FactoryCleanupGroupState) {
+        state.tasks.retain(|task| !task.is_finished());
     }
 
     fn handle_join_result(
-        records: &mut HashMap<TaskId, FactoryCleanupTaskRecord>,
-        result: Option<Result<(TaskId, FactoryCleanupTaskFinished), JoinError>>,
+        record: FactoryCleanupTaskRecord,
+        result: Result<FactoryCleanupTaskFinished, JoinError>,
         after_abort: bool,
     ) {
         match result {
-            Some(Ok((task_id, finished))) => {
-                records.remove(&task_id);
+            Ok(finished) => {
                 if after_abort {
                     info!(
                         kind = finished.kind.as_str(),
@@ -536,11 +634,9 @@ impl FactoryCleanupGroup {
                     );
                 }
             }
-            Some(Err(err)) => {
-                let record = records.remove(&err.id());
-                let (kind, label) = record
-                    .map(|record| (record.kind.as_str(), record.label))
-                    .unwrap_or(("unknown", err.id().to_string()));
+            Err(err) => {
+                let kind = record.kind.as_str();
+                let label = record.label;
                 if err.is_cancelled() && after_abort {
                     info!(
                         kind,
@@ -556,7 +652,6 @@ impl FactoryCleanupGroup {
                     );
                 }
             }
-            None => {}
         }
     }
 }
@@ -565,7 +660,7 @@ impl Drop for FactoryCleanupGroup {
     fn drop(&mut self) {
         match self.state.try_lock() {
             Ok(mut state) => {
-                Self::reap_completed_locked(&mut state, false);
+                Self::reap_completed_locked(&mut state);
                 if state.tasks.is_empty() {
                     return;
                 }
@@ -573,20 +668,24 @@ impl Drop for FactoryCleanupGroup {
                     task_count = state.tasks.len(),
                     "factory cleanup group dropped with in-flight tasks; aborting without await"
                 );
-                state.tasks.abort_all();
+                for task in state.tasks.iter() {
+                    task.abort();
+                }
             }
             Err(TryLockError::WouldBlock) => {
                 warn!("factory cleanup group dropped while locked; cleanup tasks may keep running");
             }
             Err(TryLockError::Poisoned(poisoned)) => {
                 let mut state = poisoned.into_inner();
-                Self::reap_completed_locked(&mut state, false);
+                Self::reap_completed_locked(&mut state);
                 if !state.tasks.is_empty() {
                     warn!(
                         task_count = state.tasks.len(),
                         "factory cleanup group dropped with poisoned state and in-flight tasks; aborting without await"
                     );
-                    state.tasks.abort_all();
+                    for task in state.tasks.iter() {
+                        task.abort();
+                    }
                 }
             }
         }
@@ -2038,6 +2137,45 @@ mod tests {
 
         release_tx.send(()).unwrap();
         shutdown_task.await.unwrap();
+
+        assert!(completed.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn factory_cleanup_group_shutdown_cancel_reinserts_running_task() {
+        let group = Arc::new(FactoryCleanupGroup::new());
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let completed = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+        let completed_clone = Arc::clone(&completed);
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
+            let _ = started_tx.send(());
+            let _ = release_rx.await;
+            completed_clone.store(true, Ordering::SeqCst);
+        });
+        drop(waiter);
+
+        started_rx.await.unwrap();
+        let shutdown_group = Arc::clone(&group);
+        let shutdown_task = tokio::spawn(async move {
+            shutdown_group.shutdown().await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!shutdown_task.is_finished());
+
+        shutdown_task.abort();
+        assert!(shutdown_task.await.unwrap_err().is_cancelled());
+
+        let retry_group = Arc::clone(&group);
+        let retry_shutdown = tokio::spawn(async move {
+            retry_group.shutdown().await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!retry_shutdown.is_finished());
+
+        assert!(release_tx.send(()).is_ok());
+        retry_shutdown.await.unwrap();
 
         assert!(completed.load(Ordering::SeqCst));
     }
