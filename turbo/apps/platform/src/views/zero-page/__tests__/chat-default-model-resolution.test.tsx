@@ -509,6 +509,71 @@ describe("chat composer — default model resolution", () => {
     });
   });
 
+  it("filters visual attachments from submit when inheriting a text-only default model", async () => {
+    const user = userEvent.setup();
+    let capturedAttachFiles: unknown = "not-called";
+    mockOrgProviders({
+      defaultProviderId: ZAI_PROVIDER_ID,
+      defaultSelectedModel: "glm-5.1",
+    });
+    mockAgent({ modelProviderId: null, selectedModel: null });
+    server.use(
+      ...mockUploadSuccess({
+        id: "screenshot-upload",
+        filename: "screenshot.png",
+        contentType: "image/png",
+        size: 12,
+        url: "https://example.com/screenshot.png",
+      }),
+    );
+    server.use(
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        capturedAttachFiles = body.attachFiles;
+        return respond(201, {
+          runId: "run-1",
+          threadId: THREAD_ID,
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+    await expectComposerShowsModel("GLM-5.1");
+
+    await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expectComposerShowsModel("Claude Sonnet 4.6");
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["image"], "screenshot.png", { type: "image/png" }),
+    );
+    await expect(
+      screen.findByLabelText("Open image preview for screenshot.png"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByLabelText("Use agent default model"));
+    await expectComposerShowsModel("GLM-5.1");
+
+    const textarea = screen.getByPlaceholderText(
+      PLACEHOLDER,
+    ) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Please review");
+
+    await waitFor(() => {
+      expect(capturedAttachFiles).toBeUndefined();
+    });
+  });
+
   // ---------------------------------------------------------------------------
   // Scenario 3 — thread override outranks both agent and org defaults
   // ---------------------------------------------------------------------------

@@ -9,6 +9,10 @@ import {
   type ChatThreadListItem,
   type ModelSelectionRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  getDefaultModel,
+  type ModelProviderResponse,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
@@ -26,7 +30,7 @@ import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source
 import { createPendingChatThread } from "./pending-chat-thread.ts";
 import {
   prepareUserMessageFromDraft$,
-  shouldExcludeVisualAttachments,
+  shouldExcludeVisualAttachmentsForModel,
 } from "./resolve-draft-attachments.ts";
 import {
   allPendingChatThreads$,
@@ -38,6 +42,8 @@ import {
   type PendingChatThread,
 } from "./optimistic-chat-thread-state.ts";
 import { toVoid } from "../utils.ts";
+import { agentById } from "../agent.ts";
+import { orgModelProviders$ } from "../external/org-model-providers.ts";
 
 export type { OptimisticChatPane };
 export { optimisticChatThread$ };
@@ -345,13 +351,36 @@ const sendNewThreadMessage$ = command(
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
     const draft = get(talkDraft$);
+    let effectiveSelectedModel = modelSelection?.selectedModel;
+    if (!effectiveSelectedModel) {
+      const agent = await get(agentById(agentId));
+      signal.throwIfAborted();
+      if (agent?.modelProviderId && agent.selectedModel) {
+        effectiveSelectedModel = agent.selectedModel;
+      }
+    }
+    if (!effectiveSelectedModel) {
+      const { modelProviders } = await get(orgModelProviders$);
+      signal.throwIfAborted();
+      const defaultProvider = (modelProviders as ModelProviderResponse[]).find(
+        (provider) => {
+          return provider.isDefault;
+        },
+      );
+      const defaultModel = defaultProvider
+        ? getDefaultModel(defaultProvider.type)
+        : undefined;
+      effectiveSelectedModel =
+        defaultProvider?.selectedModel ?? defaultModel ?? undefined;
+    }
     const prepared = await set(
       prepareUserMessageFromDraft$,
       draft,
       prompt,
       {
-        excludeVisualAttachments:
-          shouldExcludeVisualAttachments(modelSelection),
+        excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+          effectiveSelectedModel,
+        ),
       },
       signal,
     );

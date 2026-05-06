@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import type {
   AttachFile,
-  ModelSelectionRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
@@ -71,12 +70,10 @@ export function isVisualAttachment({
   return VISUAL_ATTACHMENT_EXTENSION_RE.test(filename ?? "");
 }
 
-export function shouldExcludeVisualAttachments(
-  modelSelection: ModelSelectionRequest | null,
+export function shouldExcludeVisualAttachmentsForModel(
+  selectedModel: string | null | undefined,
 ): boolean {
-  return (
-    getModelImageInputSupport(modelSelection?.selectedModel) === "unsupported"
-  );
+  return getModelImageInputSupport(selectedModel) === "unsupported";
 }
 
 export function collectSuccessfulAttachmentInfos(
