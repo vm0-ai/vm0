@@ -3,6 +3,7 @@ import { POST as createRunRoute } from "../../../app/api/agent/runs/route";
 import { GET as getRunByIdRoute } from "../../../app/api/agent/runs/[id]/route";
 import { POST as checkpointWebhook } from "../../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../../app/api/webhooks/agent/complete/route";
+import type { VolumeVersionsSnapshot } from "../../lib/infra/checkpoint/types";
 import { createTestRequest } from "./core";
 
 // Re-exports: DB-direct seeders
@@ -110,7 +111,7 @@ export async function createTestCheckpoint(
   userId: string,
   runId: string,
   options?: {
-    volumeVersionsSnapshot?: { versions: Record<string, string> };
+    volumeVersionsSnapshot?: VolumeVersionsSnapshot;
   },
 ): Promise<{
   checkpointId: string;

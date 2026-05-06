@@ -13,6 +13,7 @@ import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
 import type { VolumeVersionsSnapshot } from "../../checkpoint/types";
 import { decodeToContextArtifacts } from "../../checkpoint/decode-artifact-snapshots";
+import { additionalVolumesFromSnapshot } from "../../checkpoint/additional-volumes";
 
 const log = logger("run:resolve-session");
 const RECOVERABLE_FAILED_RUN_STATUSES = new Set([
@@ -137,6 +138,9 @@ export async function resolveSession(
   const checkpointArtifacts = failedRecoverableCheckpoint
     ? lastRun?.artifactSnapshots
     : null;
+  const checkpointAdditionalVolumes = failedRecoverableCheckpoint
+    ? additionalVolumesFromSnapshot(checkpointVolumeVersions)
+    : undefined;
   const artifacts =
     failedRecoverableCheckpoint && checkpointArtifacts != null
       ? decodeToContextArtifacts(checkpointArtifacts)
@@ -155,6 +159,7 @@ export async function resolveSession(
     artifacts,
     vars: lastRunVars,
     volumeVersions: checkpointVolumeVersions?.versions,
+    additionalVolumes: checkpointAdditionalVolumes,
     previousRunId: conversation.runId,
     sessionFramework: conversation.cliAgentType,
   };

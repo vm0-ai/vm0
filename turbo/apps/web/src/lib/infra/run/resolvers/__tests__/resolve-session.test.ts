@@ -82,12 +82,14 @@ describe("resolveSession — artifacts passthrough", () => {
   });
 
   it("uses checkpoint artifacts when continuing a recoverable failed session", async () => {
+    const additionalVolumeMountPath =
+      "/home/user/.claude/projects/-home-user-workspace/memory";
     const { runId } = await createTestRun(composeId, "failed recovery run", {
       additionalVolumes: [
         {
           name: "memory",
           version: "mem-base",
-          mountPath: "/home/user/.claude/projects/-home-user-workspace/memory",
+          mountPath: additionalVolumeMountPath,
         },
       ],
     });
@@ -97,6 +99,13 @@ describe("resolveSession — artifacts passthrough", () => {
       {
         volumeVersionsSnapshot: {
           versions: { workspace: "vol-failed", memory: "mem-failed" },
+          additionalVolumes: [
+            {
+              name: "memory",
+              versionId: "mem-failed",
+              mountPath: additionalVolumeMountPath,
+            },
+          ],
         },
       },
     );
@@ -118,7 +127,13 @@ describe("resolveSession — artifacts passthrough", () => {
       workspace: "vol-failed",
       memory: "mem-failed",
     });
-    expect(resolution.additionalVolumes).toBeUndefined();
+    expect(resolution.additionalVolumes).toEqual([
+      {
+        name: "memory",
+        version: "mem-failed",
+        mountPath: additionalVolumeMountPath,
+      },
+    ]);
   });
 
   it("does not use checkpoint artifacts while the linked run is still running", async () => {

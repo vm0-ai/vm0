@@ -16,7 +16,7 @@ use guest_agent::telemetry::{Telemetry, UploadMode};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -177,7 +177,7 @@ async fn execute(
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
-    let (mut exit_code, error_message) =
+    let (exit_code, error_message) =
         match cli::execute_cli(masker, heartbeat_handle, http.clone()).await {
             Ok(cli_result) => {
                 last_event_sequence = cli_result.last_event_sequence;
@@ -217,6 +217,25 @@ async fn execute(
         },
     );
 
+    complete_execution(
+        cli_exit_code,
+        exit_code,
+        cli_elapsed,
+        last_event_sequence,
+        telemetry,
+        &http,
+    )
+    .await
+}
+
+async fn complete_execution(
+    cli_exit_code: i32,
+    mut exit_code: i32,
+    cli_elapsed: Duration,
+    last_event_sequence: Option<u32>,
+    telemetry: &Telemetry,
+    http: &HttpClient,
+) -> i32 {
     // Check if any events failed to send (before logging execution result)
     if std::path::Path::new(paths::event_error_flag()).exists() {
         log_error!(LOG_TAG, "Some events failed to send, marking run as failed");
@@ -242,7 +261,7 @@ async fn execute(
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
         let (cp_result, _) = tokio::join!(
-            checkpoint::create_checkpoint(&http),
+            checkpoint::create_checkpoint(http),
             telemetry.flush(UploadMode::Live),
         );
         match cp_result {
@@ -269,7 +288,7 @@ async fn execute(
                 // returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
                 complete::report_success(
-                    &http,
+                    http,
                     env::sandbox_id(),
                     env::sandbox_reuse_result(),
                     last_event_sequence,
@@ -304,7 +323,7 @@ async fn execute(
 
         if env::has_api() {
             log_info!(LOG_TAG, "Attempting best-effort recovery checkpoint");
-            match checkpoint::create_recovery_checkpoint(&http).await {
+            match checkpoint::create_recovery_checkpoint(http).await {
                 Ok(()) => log_info!(LOG_TAG, "Recovery checkpoint created"),
                 Err(e) => log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}"),
             }
@@ -332,4 +351,99 @@ async fn final_telemetry(telemetry: &Telemetry) {
         telemetry_ok,
         None,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::prelude::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn complete_execution_creates_recovery_checkpoint_after_cli_failure() {
+        let server = MockServer::start();
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+        }
+
+        let cleanup_paths = [
+            paths::session_id_file().to_string(),
+            paths::session_history_path_file().to_string(),
+            paths::checkpoint_error_file().to_string(),
+            paths::event_error_flag().to_string(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history.jsonl");
+        let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
+        std::fs::write(&history_path, &history).unwrap();
+        std::fs::write(paths::session_id_file(), "recovery-session-from-main").unwrap();
+        std::fs::write(
+            paths::session_history_path_file(),
+            history_path.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        let prepare_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history")
+                .json_body_includes(r#"{"runId":"main-recovery-checkpoint"}"#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({
+                    "presignedUrl": server.url("/test/main-recovery-history-upload"),
+                    "existing": false
+                }));
+        });
+        let upload_mock = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/test/main-recovery-history-upload")
+                .body(history.as_str());
+            then.status(200);
+        });
+        let checkpoint_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints")
+                .json_body_includes(r#"{"cliAgentSessionId":"recovery-session-from-main"}"#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({"checkpointId": "checkpoint-from-main"}));
+        });
+        let telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http.clone());
+        let exit_code = complete_execution(1, 1, Duration::ZERO, None, &telemetry, &http).await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        assert!(
+            !std::path::Path::new(paths::checkpoint_error_file()).exists(),
+            "recovery checkpoint failure must not write the success-path checkpoint error file"
+        );
+        prepare_mock.assert_calls_async(1).await;
+        upload_mock.assert_calls_async(1).await;
+        checkpoint_mock.assert_calls_async(1).await;
+        telemetry_mock.assert_calls_async(1).await;
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }
