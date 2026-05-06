@@ -46,7 +46,6 @@ import {
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
-  toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
   runScheduleNow$,
   type OrgScheduleEntry,
@@ -59,7 +58,7 @@ import {
   closeCreateScheduleDialog$,
   creatingOrgSchedule$,
   pageTogglingIds$,
-  setPageTogglingIds$,
+  togglePageScheduleEnabled$,
   pageRunningIds$,
   setPageRunningIds$,
   pagePendingDelete$,
@@ -534,7 +533,6 @@ export function ZeroSchedulePage() {
   const loaded = useGet(allOrgSchedulesLoaded$);
   const isInitialLoading = !loaded;
 
-  const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
@@ -545,7 +543,7 @@ export function ZeroSchedulePage() {
   const openCreateDialog = useSet(openCreateScheduleDialog$);
   const closeCreateDialog = useSet(closeCreateScheduleDialog$);
   const togglingIds = useGet(pageTogglingIds$);
-  const setTogglingIds = useSet(setPageTogglingIds$);
+  const togglePageScheduleEnabled = useSet(togglePageScheduleEnabled$);
   const runningIds = useGet(pageRunningIds$);
   const setRunningIds = useSet(setPageRunningIds$);
   const setPendingDelete = useSet(setPagePendingDelete$);
@@ -576,26 +574,12 @@ export function ZeroSchedulePage() {
     if (entry.name === undefined) {
       return;
     }
-    const id = entry.id;
     const name = entry.name;
-    setTogglingIds((prev) => {
-      return new Set([...prev, id]);
-    });
     detach(
-      toggleEnabled(
-        { name, enabled, agentId: entry.agentId },
+      togglePageScheduleEnabled(
+        { id: entry.id, name, enabled, agentId: entry.agentId },
         pageSignal,
-        // TODO: for yuma@vm0.ai
-        // It looks like we are maintaining some temporary states within the View,
-        // which should be refactored into a CCState pattern.
-        // oxlint-disable-next-line promise/prefer-await-to-then
-      ).finally(() => {
-        setTogglingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-      }),
+      ),
       Reason.DomCallback,
     );
   };

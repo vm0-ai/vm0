@@ -1,5 +1,6 @@
 import { command, computed, state, type StateArg } from "ccstate";
 import type { ScheduleEntry } from "../../views/zero-page/zero-schedule-card.tsx";
+import { withCleanup } from "../utils.ts";
 import { fetchSlackChannels$ } from "./slack-channels.ts";
 import { userPreferences$ } from "./settings/user-preferences.ts";
 import {
@@ -85,8 +86,51 @@ export const openEditScheduleDialog$ = command(
   },
 );
 
-export const { get$: togglingIds$, set$: setTogglingIds$ } = cell<Set<string>>(
-  new Set(),
+const internalTogglingIds$ = state<Set<string>>(new Set());
+export const togglingIds$ = computed((get) => {
+  return get(internalTogglingIds$);
+});
+
+function addPendingId(id: string) {
+  return (prev: Set<string>) => {
+    return new Set([...prev, id]);
+  };
+}
+
+function removePendingId(id: string) {
+  return (prev: Set<string>) => {
+    const next = new Set(prev);
+    next.delete(id);
+    return next;
+  };
+}
+
+export const toggleScheduleCardEnabled$ = command(
+  async (
+    { set },
+    params: {
+      id: string;
+      name: string;
+      enabled: boolean;
+      onToggleEnabled: (params: {
+        name: string;
+        enabled: boolean;
+      }) => Promise<void>;
+    },
+    signal: AbortSignal,
+  ) => {
+    signal.throwIfAborted();
+    set(internalTogglingIds$, addPendingId(params.id));
+    await withCleanup(
+      params.onToggleEnabled({
+        name: params.name,
+        enabled: params.enabled,
+      }),
+      () => {
+        set(internalTogglingIds$, removePendingId(params.id));
+      },
+    );
+  },
 );
 
 export const { get$: runningIds$, set$: setRunningIds$ } = cell<Set<string>>(
