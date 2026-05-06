@@ -205,6 +205,9 @@ function buildScheduleBody(
     ...(params.selectedModel !== undefined && {
       selectedModel: params.selectedModel,
     }),
+    ...(params.preferPersonalProvider !== undefined && {
+      preferPersonalProvider: params.preferPersonalProvider,
+    }),
   };
 
   if (params.freq === "every_n_minutes") {
@@ -262,6 +265,7 @@ export interface ZeroScheduleSaveParams {
   editName?: string;
   modelProviderId?: string | null;
   selectedModel?: string | null;
+  preferPersonalProvider?: boolean;
 }
 
 export const saveZeroSchedule$ = command(
@@ -370,6 +374,7 @@ export interface OrgScheduleEntry {
   lastRunAt: string | null;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -402,6 +407,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
         lastRunAt: s.lastRunAt,
         modelProviderId: s.modelProviderId,
         selectedModel: s.selectedModel,
+        preferPersonalProvider: s.preferPersonalProvider,
       };
     });
 });

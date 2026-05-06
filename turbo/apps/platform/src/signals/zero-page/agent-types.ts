@@ -10,6 +10,7 @@ export interface AgentDetail {
   permissionPolicies: FirewallPolicies | null;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 }
 
 export interface AgentInstructions {

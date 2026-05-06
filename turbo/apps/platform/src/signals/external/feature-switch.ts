@@ -125,3 +125,7 @@ export const idbMessageEnabled$ = computed((get) => {
 export const pwaOfflineCacheEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.PwaOfflineCache] ?? false;
 });
+
+export const personalModelProviderEnabled$ = computed((get) => {
+  return get(featureSwitch$)[FeatureSwitchKey.PersonalModelProvider] ?? false;
+});

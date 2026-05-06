@@ -19,6 +19,7 @@ import {
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -81,8 +82,18 @@ function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
   );
 }
 
-async function openProfileTab() {
-  detachedSetupPage({ context, path: "/agents/my-agent" });
+async function openProfileTab(
+  options: {
+    featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  } = {},
+) {
+  detachedSetupPage({
+    context,
+    path: "/agents/my-agent",
+    ...(options.featureSwitches && {
+      featureSwitches: options.featureSwitches,
+    }),
+  });
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "My Agent" }),
@@ -416,6 +427,57 @@ describe("zero settings tab - interaction", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe("/agents");
+    });
+  });
+});
+
+describe("zero settings tab — personal provider checkbox", () => {
+  it("hides the checkbox when feature switch is off", async () => {
+    mockAPIs();
+    await openProfileTab();
+
+    expect(
+      screen.queryByLabelText(/use personal provider/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the checkbox when feature switch is on", async () => {
+    mockAPIs();
+    await openProfileTab({
+      featureSwitches: { [FeatureSwitchKey.PersonalModelProvider]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(/use personal provider/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("persists the toggle on save (PATCH includes preferPersonalProvider: true)", async () => {
+    mockAPIs();
+    let captured: ZeroAgentMetadataRequest | undefined;
+    server.use(
+      mockApi(zeroAgentsByIdContract.updateMetadata, ({ body, respond }) => {
+        captured = body as ZeroAgentMetadataRequest;
+        return respond(200, agentDetail({ preferPersonalProvider: true }));
+      }),
+    );
+    await openProfileTab({
+      featureSwitches: { [FeatureSwitchKey.PersonalModelProvider]: true },
+    });
+
+    const checkbox = await screen.findByLabelText(/use personal provider/i);
+    click(checkbox);
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    click(screen.getByText(/^Save$/i));
+
+    await waitFor(() => {
+      expect(captured?.preferPersonalProvider).toBeTruthy();
     });
   });
 });

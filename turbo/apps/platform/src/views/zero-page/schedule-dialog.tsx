@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import {
   Button,
+  Checkbox,
   Input,
   Select,
   SelectContent,
@@ -34,6 +35,7 @@ import {
   dialogAgentModelDefault$,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { personalModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -124,6 +126,7 @@ export interface ScheduleFormValues {
   dayOfMonth: string;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 }
 
 interface ScheduleFormDialogProps {
@@ -502,6 +505,7 @@ function buildDefaults(
     dayOfMonth: "1",
     modelProviderId: null,
     selectedModel: null,
+    preferPersonalProvider: false,
   };
   return { ...defaults, ...initialValues };
 }
@@ -528,6 +532,7 @@ function checkDirty(
     current.dayOfMonth !== init.dayOfMonth ||
     current.modelProviderId !== init.modelProviderId ||
     current.selectedModel !== init.selectedModel ||
+    current.preferPersonalProvider !== init.preferPersonalProvider ||
     (opts.hasAgents && current.agentId !== init.agentId)
   );
 }
@@ -565,6 +570,8 @@ function ScheduleFormDialogInner({
 
   const agentModelDefault = useLastResolved(dialogAgentModelDefault$) ?? null;
 
+  const personalProviderEnabled = useGet(personalModelProviderEnabled$);
+
   const current: ScheduleFormValues = {
     prompt: form.prompt,
     description: form.description,
@@ -579,6 +586,7 @@ function ScheduleFormDialogInner({
     dayOfMonth: form.dayOfMonth,
     modelProviderId: form.modelProviderId,
     selectedModel: form.selectedModel,
+    preferPersonalProvider: form.preferPersonalProvider,
   };
 
   const isDirty = checkDirty(current, init, mode, {
@@ -775,6 +783,27 @@ function ScheduleFormDialogInner({
                 agentDefault={agentModelDefault}
                 inheritLabel="agent"
               />
+            </div>
+          )}
+
+          {personalProviderEnabled && (
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="schedule-prefer-personal"
+                checked={form.preferPersonalProvider}
+                onCheckedChange={(v) => {
+                  updateForm({ preferPersonalProvider: v === true });
+                }}
+                aria-label="Use personal provider"
+                className="mt-0.5"
+              />
+              <label
+                htmlFor="schedule-prefer-personal"
+                className="text-sm text-muted-foreground leading-snug"
+              >
+                Use the caller&apos;s personal provider when available, fall
+                back to the selected one above.
+              </label>
             </div>
           )}
         </div>

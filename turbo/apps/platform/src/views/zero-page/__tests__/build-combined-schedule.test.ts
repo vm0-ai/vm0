@@ -20,6 +20,7 @@ function makeEntry(
     lastRunAt: null,
     modelProviderId: null,
     selectedModel: null,
+    preferPersonalProvider: false,
     ...overrides,
   };
 }

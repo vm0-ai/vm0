@@ -16,6 +16,7 @@ interface AgentSettingsUpdate {
   avatarUrl?: string | null;
   modelProviderId?: string | null;
   selectedModel?: string | null;
+  preferPersonalProvider?: boolean;
 }
 
 export const updateAgentSettings$ = command(

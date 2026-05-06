@@ -22,6 +22,7 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   cn,
   Dialog,
   DialogContent,
@@ -102,6 +103,7 @@ import {
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { personalModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -267,6 +269,7 @@ function buildSettingsSnapshot(
     dayOfMonth: parsed.dayOfMonth ?? "1",
     modelProviderId: entry.modelProviderId,
     selectedModel: entry.selectedModel,
+    preferPersonalProvider: entry.preferPersonalProvider,
   };
 }
 
@@ -284,7 +287,8 @@ function isSettingsChanged(
     a.agentId !== b.agentId ||
     a.description !== b.description ||
     a.modelProviderId !== b.modelProviderId ||
-    a.selectedModel !== b.selectedModel
+    a.selectedModel !== b.selectedModel ||
+    a.preferPersonalProvider !== b.preferPersonalProvider
   );
 }
 
@@ -321,6 +325,8 @@ function ScheduleSettingsForm({
 
   const agentModelDefault = useLastResolved(scheduleAgentModelDefault$) ?? null;
 
+  const personalProviderEnabled = useGet(personalModelProviderEnabled$);
+
   // Reset form when entry changes (component is keyed by entry.id)
   useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, initial);
 
@@ -337,6 +343,7 @@ function ScheduleSettingsForm({
     dayOfMonth: form.dayOfMonth,
     modelProviderId: form.modelProviderId,
     selectedModel: form.selectedModel,
+    preferPersonalProvider: form.preferPersonalProvider,
   };
   const isDirty = savedState ? isSettingsChanged(current, savedState) : false;
 
@@ -355,6 +362,7 @@ function ScheduleSettingsForm({
       description: savedState.description,
       modelProviderId: savedState.modelProviderId,
       selectedModel: savedState.selectedModel,
+      preferPersonalProvider: savedState.preferPersonalProvider,
     });
   };
 
@@ -375,6 +383,7 @@ function ScheduleSettingsForm({
       agentId: form.agentId,
       modelProviderId: form.modelProviderId,
       selectedModel: form.selectedModel,
+      preferPersonalProvider: form.preferPersonalProvider,
       ...(form.freq === "every_week" ? { dayOfWeek: form.dayOfWeek } : {}),
       ...(form.freq === "every_month" ? { dayOfMonth: form.dayOfMonth } : {}),
     });
@@ -507,6 +516,21 @@ function ScheduleSettingsForm({
                   inheritLabel="agent"
                 />
               </div>
+            </InlineSettingsRow>
+          )}
+          {personalProviderEnabled && (
+            <InlineSettingsRow
+              label="Personal provider"
+              description="Use the caller's personal provider when available, fall back to the selected one above."
+              alignControls="center"
+            >
+              <Checkbox
+                checked={form.preferPersonalProvider}
+                onCheckedChange={(v) => {
+                  updateForm({ preferPersonalProvider: v === true });
+                }}
+                aria-label="Use personal provider"
+              />
             </InlineSettingsRow>
           )}
         </CardContent>
