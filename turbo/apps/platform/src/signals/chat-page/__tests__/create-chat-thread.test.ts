@@ -294,4 +294,130 @@ describe("fetchNextPage$ cursor", () => {
     // and returns empty, so the real server message never reaches the client.
     expect(capturedSinceId).toBe("server-msg-2");
   });
+
+  it("loops until reachedEnd when a single page is not enough", async () => {
+    const threadId = "thread-drain-loop";
+
+    const baselineMessages: PagedChatMessage[] = [
+      {
+        id: "base-1",
+        role: "user",
+        content: "baseline",
+        createdAt: "2026-05-01T00:00:00Z",
+      },
+    ];
+
+    // 3 pages worth: page1 (50), page2 (50), page3 (20) → total 120
+    const page1 = Array.from({ length: 50 }, (_, i) => ({
+      id: `p1-${i}`,
+      role: "user" as const,
+      content: `page1 msg ${i}`,
+      createdAt: "2026-05-01T00:00:01Z",
+    }));
+    const page2 = Array.from({ length: 50 }, (_, i) => ({
+      id: `p2-${i}`,
+      role: "user" as const,
+      content: `page2 msg ${i}`,
+      createdAt: "2026-05-01T00:00:02Z",
+    }));
+    const page3 = Array.from({ length: 20 }, (_, i) => ({
+      id: `p3-${i}`,
+      role: "user" as const,
+      content: `page3 msg ${i}`,
+      createdAt: "2026-05-01T00:00:03Z",
+    }));
+
+    let callCount = 0;
+
+    const mockDataSource: ChatThreadDataSource = {
+      getThread$: computed(() => {
+        return Promise.resolve({
+          id: threadId,
+          title: null,
+          agentId: "agent-1",
+          latestSessionId: null,
+          lastReadMessageId: null,
+          latestSessionProviderType: null,
+          activeRunIds: [],
+          activeRuns: [],
+          isLegacySession: false,
+          draftContent: null,
+          draftAttachments: null,
+          modelProviderId: null,
+          selectedModel: null,
+        });
+      }),
+      reloadThread$: command(() => {}),
+      initialPage$: computed(() => {
+        return Promise.resolve({
+          messages: baselineMessages,
+          hasHistoryBefore: false,
+        });
+      }),
+      patchDraft$: command(
+        (_ctx, _args: PatchDraftArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+      listMessagesAfter$: command((_ctx, args) => {
+        callCount++;
+        const pages = [page1, page2, page3];
+        const idx = callCount - 1;
+        if (idx < pages.length) {
+          const chunk = pages[idx]!;
+          return Promise.resolve({
+            messages: chunk,
+            reachedEnd: chunk.length < 50,
+          });
+        }
+        return Promise.resolve({ messages: [], reachedEnd: true });
+      }),
+      listMessagesBefore$: command(() => {
+        return Promise.resolve({
+          messages: [],
+          hasMore: false,
+        });
+      }),
+      cancelRuns$: command(
+        (_ctx, _args: CancelRunsArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+      markRead$: command(() => {
+        return Promise.resolve(null);
+      }),
+      subscribeRealtime$: command(
+        (_ctx, _args: SubscribeRealtimeArgs, _signal: AbortSignal) => {
+          return Promise.resolve();
+        },
+      ),
+    };
+
+    const { draft } = context.store.set(ensureDraft$, threadId);
+    const thread = createChatThreadSignals(threadId, draft, mockDataSource);
+
+    const done = await context.store.set(
+      thread.fetchNextPage$,
+      context.signal,
+    );
+
+    // With the drain-loop fix, all 3 pages are fetched before returning.
+    // The 3rd page has < 50 messages, so reachedEnd fires on it (not on
+    // the 4th empty call).
+    expect(callCount).toBe(3);
+    expect(done).toBe(true);
+
+    // Verify all messages appear in the grouped output
+    const groups = await context.store.get(thread.groupedChatMessages$);
+    const allContent = groups.flatMap((g) =>
+      g.messages.map((m) => m.content),
+    );
+    expect(allContent).toContain("baseline");
+    expect(allContent).toContain("page1 msg 0");
+    expect(allContent).toContain("page1 msg 49");
+    expect(allContent).toContain("page2 msg 0");
+    expect(allContent).toContain("page2 msg 49");
+    expect(allContent).toContain("page3 msg 0");
+    expect(allContent).toContain("page3 msg 19");
+  });
 });

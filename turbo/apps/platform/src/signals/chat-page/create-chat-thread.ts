@@ -699,17 +699,27 @@ function createPagedMessages(
     if (!sinceId) {
       return true;
     }
-    const result = await set(
-      dataSource.listMessagesAfter$,
-      { threadId, sinceId },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (result.reachedEnd) {
-      return true;
+    // Drain all pending pages so a single trigger fully catches the client
+    // up.  Without this loop, one Ably event or visibilitychange fetches at
+    // most 50 messages then stops; a burst larger than one page leaves the
+    // client permanently behind if the thread goes quiet afterward.
+    const MAX_PAGES = 10;
+    for (let i = 0; i < MAX_PAGES; i++) {
+      const result = await set(
+        dataSource.listMessagesAfter$,
+        { threadId, sinceId },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (result.messages.length > 0) {
+        set(appendDeltaMessages$, result.messages);
+        sinceId = result.messages[result.messages.length - 1].id;
+        set(nextCursorId$, sinceId);
+      }
+      if (result.reachedEnd) {
+        return true;
+      }
     }
-    set(appendDeltaMessages$, result.messages);
-    set(nextCursorId$, result.messages[result.messages.length - 1].id);
     return false;
   });
 

@@ -69,10 +69,10 @@ const listMessagesAfter$ = command(
           return { id: m.id, runId: m.runId, status: m.status };
         }),
     });
-    if (result.body.messages.length === 0) {
-      return { messages: [], reachedEnd: true };
-    }
-    return { messages: result.body.messages, reachedEnd: false };
+    return {
+      messages: result.body.messages,
+      reachedEnd: result.body.messages.length < 50,
+    };
   },
 );
 
