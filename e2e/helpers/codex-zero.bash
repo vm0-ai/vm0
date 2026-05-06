@@ -60,14 +60,16 @@ enable_codex_beta() {
         >/dev/null
 }
 
-# Clear all of the current test user's feature-switch overrides (best-effort
-# cleanup). Using DELETE rather than POST-flip-to-false avoids leaking the
-# override to subsequent serial-layer tests sharing E2E_SERIAL_EMAIL if the
-# request 5xxs.
+# Do not clear feature-switch overrides in teardown. Runner E2E files execute
+# in parallel and share the same authenticated runner user; DELETE
+# /api/zero/feature-switches removes every override for that shared user, which
+# can race another file between enable_codex_beta and its gated API call.
+#
+# Leaving codexBeta enabled is intentional for the shared E2E runner user.
+# Tests that need feature-off behavior must use a dedicated token/user and
+# explicitly force the switch off for that isolated identity.
 disable_codex_beta() {
-    _codex_zero_curl "/api/zero/feature-switches" \
-        -X DELETE \
-        >/dev/null 2>&1 || true
+    return 0
 }
 
 # Poll /api/zero/chat-threads/:id/messages until the newest assistant row

@@ -134,24 +134,20 @@ enable_codex_oauth_provider() {
 # Force the codexOauthProvider feature switch off for the current test user.
 # Clearing overrides is not enough when the static registry enables staff orgs.
 force_disable_codex_oauth_provider() {
-    _set_codex_oauth_provider false "$@"
-}
-
-# Best-effort cleanup of feature-switch overrides — DELETE clears all
-# overrides for the user (test_user_id resolved server-side).
-disable_codex_oauth_provider() {
     local token="${1:-}"
     if [ -z "$token" ]; then
-        token=$(_codex_oauth_token)
+        token=$(codex_oauth_feature_off_token)
     fi
-    if [ -z "$token" ]; then
-        return 0
-    fi
-    local curl_args=(-fsS -X DELETE -H "Authorization: Bearer $token")
-    if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
-        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
-    fi
-    curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/feature-switches" >/dev/null 2>&1 || true
+    _set_codex_oauth_provider false "$token"
+}
+
+# No-op cleanup for the shared runner user. Runner E2E files run in parallel;
+# deleting feature-switch overrides here would clear every switch for the
+# shared authenticated user, including codexBeta or codexOauthProvider that
+# another file may have enabled moments earlier. Feature-off probes should use
+# force_disable_codex_oauth_provider with an isolated token.
+disable_codex_oauth_provider() {
+    return 0
 }
 
 # Common POST helper for /api/cli/auth/test-codex-oauth. Takes a JSON body
