@@ -155,4 +155,90 @@ describe("/api/cli/auth/test-codex-oauth", () => {
     expect(state!.needsReconnect).toBe(true);
     expect(state!.lastRefreshErrorCode).toBe("refresh_token_expired");
   });
+
+  describe("authJson variant", () => {
+    function base64UrlEncode(input: string): string {
+      return Buffer.from(input, "utf-8")
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    }
+
+    function makeJwt(payload: Record<string, unknown>): string {
+      const header = base64UrlEncode(
+        JSON.stringify({ alg: "RS256", typ: "JWT" }),
+      );
+      const body = base64UrlEncode(JSON.stringify(payload));
+      return `${header}.${body}.fake-signature`;
+    }
+
+    function makeAuthJson(): string {
+      const accessExp = Math.floor(Date.now() / 1000) + 7200;
+      const idToken = makeJwt({
+        "https://api.openai.com/auth": {
+          chatgpt_account_id: "ws_acct_id_token",
+          chatgpt_plan_type: "plus",
+          organization: { title: "Acme" },
+        },
+        exp: accessExp,
+      });
+      return JSON.stringify({
+        OPENAI_API_KEY: null,
+        tokens: {
+          access_token: makeJwt({ exp: accessExp }),
+          refresh_token: "rt_synthetic_authjson_seed",
+          account_id: "ws_acct_plain",
+          id_token: idToken,
+        },
+      });
+    }
+
+    it("seeds codex-oauth-token via auth_json paste path", async () => {
+      const response = await POST(makeRequest({ authJson: makeAuthJson() }));
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.orgId).toBe(TEST_ORG_ID);
+
+      const state = await findTestModelProviderTokenState(
+        TEST_ORG_ID,
+        ORG_SENTINEL_USER_ID,
+        "codex-oauth-token",
+      );
+      expect(state).not.toBeNull();
+      expect(state!.tokenExpiresAt).toBeInstanceOf(Date);
+      expect(state!.tokenExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+      expect(state!.workspaceName).toBe("Acme");
+      expect(state!.planType).toBe("plus");
+      expect(state!.needsReconnect).toBe(false);
+      expect(state!.lastRefreshErrorCode).toBeNull();
+
+      // Account id sourced from id_token claim, not tokens.account_id
+      const accountId = await findTestConnectorSecret(
+        TEST_ORG_ID,
+        "CHATGPT_ACCOUNT_ID",
+        "model-provider",
+      );
+      expect(accountId).toBe("ws_acct_id_token");
+
+      // Refresh token persisted; raw blob NOT persisted
+      const refresh = await findTestConnectorSecret(
+        TEST_ORG_ID,
+        "CHATGPT_REFRESH_TOKEN",
+        "model-provider",
+      );
+      expect(refresh).toBe("rt_synthetic_authjson_seed");
+      const rawBlob = await findTestConnectorSecret(
+        TEST_ORG_ID,
+        "CODEX_AUTH_JSON",
+        "model-provider",
+      );
+      expect(rawBlob).toBeUndefined();
+    });
+
+    it("rejects malformed authJson with 400", async () => {
+      const response = await POST(makeRequest({ authJson: "{ not json" }));
+      expect(response.status).toBe(400);
+    });
+  });
 });

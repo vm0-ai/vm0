@@ -5,6 +5,11 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { initServices } from "../../../../../src/lib/init-services";
 import { upsertOrgMultiAuthModelProvider } from "../../../../../src/lib/zero/model-provider/model-provider-service";
 import {
+  parseCodexAuthJson,
+  isCodexAuthJsonShapeError,
+  isCodexAuthJsonFreePlanError,
+} from "../../../../../src/lib/zero/model-provider/codex-auth-json-parser";
+import {
   resolveTestUserId,
   resolveTestUserOrg,
   DEFAULT_TEST_EMAIL,
@@ -12,7 +17,7 @@ import {
 import { isTestEndpointAllowed } from "../../../../../src/lib/auth/test-endpoint-guard";
 import { ORG_SENTINEL_USER_ID } from "../../../../../src/lib/zero/org/org-sentinel";
 
-const bodySchema = z.object({
+const legacyBodySchema = z.object({
   /** Real-shaped (but synthetic) tokens. The audit grep asserts these
    *  strings never appear in any sandbox env / file / log. Use high-entropy
    *  values to avoid grep false-positives. */
@@ -31,18 +36,37 @@ const bodySchema = z.object({
   lastRefreshErrorCode: z.string().nullable().optional(),
 });
 
+/**
+ * The auth_json variant exercises the production parser path so e2e tests
+ * cover the same code as the public POST /api/zero/model-providers route.
+ * Use this variant when verifying paste-flow changes; use the legacy variant
+ * when seeding a synthetic state directly (e.g. pre-stale provider for
+ * stale-recovery tests).
+ */
+const authJsonBodySchema = z.object({
+  authJson: z.string().min(1),
+});
+
+const bodySchema = z.union([authJsonBodySchema, legacyBodySchema]);
+
 const DEFAULT_EXPIRES_IN_SECS = 600;
 
 /**
  * POST /api/cli/auth/test-codex-oauth?email=<email>
  *
- * Test-only endpoint for E2E tests of the ChatGPT-OAuth Codex flow.
+ * Test-only endpoint for E2E tests of the codex-oauth-token paste flow.
  * Seeds a `codex-oauth-token` model_providers row + the four secrets
  * (CHATGPT_ACCESS_TOKEN, CHATGPT_REFRESH_TOKEN, CHATGPT_ACCOUNT_ID,
  * CHATGPT_ID_TOKEN) under the org-sentinel user, bypassing the browser
  * OAuth dance.
  *
- * Body: see bodySchema above.
+ * Body accepts one of two shapes:
+ *  - `{ authJson }` — exercises the production parser (matches the user-facing
+ *    POST /api/zero/model-providers paste path).
+ *  - legacy fields — direct seed of synthetic state, useful for stale-recovery
+ *    probes (sets `needsReconnect`, `lastRefreshErrorCode`, negative
+ *    `expiresIn`).
+ *
  * Query: ?email=<email> (default: DEFAULT_TEST_EMAIL).
  *
  * Gated by isTestEndpointAllowed — returns 404 in production.
@@ -81,17 +105,70 @@ export async function POST(request: Request) {
     );
   }
 
+  if ("authJson" in body) {
+    return seedFromAuthJson(org.orgId, body.authJson);
+  }
+  return seedFromLegacyFields(org.orgId, body);
+}
+
+async function seedFromAuthJson(
+  orgId: string,
+  authJson: string,
+): Promise<NextResponse> {
+  let parsed;
+  try {
+    parsed = parseCodexAuthJson(authJson);
+  } catch (err) {
+    if (isCodexAuthJsonFreePlanError(err)) {
+      return NextResponse.json(
+        { error: "Free plan rejected by parser" },
+        { status: 400 },
+      );
+    }
+    if (isCodexAuthJsonShapeError(err)) {
+      return NextResponse.json(
+        { error: `auth.json shape invalid: ${err.message}` },
+        { status: 400 },
+      );
+    }
+    throw err;
+  }
+
   await upsertOrgMultiAuthModelProvider(
-    org.orgId,
+    orgId,
     "codex-oauth-token",
     "oauth",
     {
-      CHATGPT_ACCESS_TOKEN: body.accessToken,
-      CHATGPT_REFRESH_TOKEN: body.refreshToken,
-      CHATGPT_ACCOUNT_ID: body.accountId,
-      CHATGPT_ID_TOKEN: body.idToken,
+      CHATGPT_ACCESS_TOKEN: parsed.accessToken,
+      CHATGPT_REFRESH_TOKEN: parsed.refreshToken,
+      CHATGPT_ACCOUNT_ID: parsed.accountId,
+      CHATGPT_ID_TOKEN: parsed.idToken,
+    },
+    undefined,
+    {
+      tokenExpiresAt: parsed.tokenExpiresAt,
+      workspaceName: parsed.workspaceName,
+      planType: parsed.planType,
     },
   );
+
+  return NextResponse.json({
+    ok: true,
+    orgId,
+    tokenExpiresAt: parsed.tokenExpiresAt.toISOString(),
+  });
+}
+
+async function seedFromLegacyFields(
+  orgId: string,
+  body: z.infer<typeof legacyBodySchema>,
+): Promise<NextResponse> {
+  await upsertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth", {
+    CHATGPT_ACCESS_TOKEN: body.accessToken,
+    CHATGPT_REFRESH_TOKEN: body.refreshToken,
+    CHATGPT_ACCOUNT_ID: body.accountId,
+    CHATGPT_ID_TOKEN: body.idToken,
+  });
 
   // Set token state directly — `upsertOrgMultiAuthModelProvider` doesn't
   // accept these fields today (Wave 3 / #11932 widens the signature).
@@ -108,7 +185,7 @@ export async function POST(request: Request) {
     })
     .where(
       and(
-        eq(modelProviders.orgId, org.orgId),
+        eq(modelProviders.orgId, orgId),
         eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
         eq(modelProviders.type, "codex-oauth-token"),
       ),
@@ -116,7 +193,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    orgId: org.orgId,
+    orgId,
     tokenExpiresAt: tokenExpiresAt.toISOString(),
   });
 }
