@@ -28,8 +28,8 @@ export async function generateMetadata({
 
   const url = `${BASE_URL}/${locale}/use-cases/${slug}`;
 
-  const ogImage = useCase?.screenshots?.[0] ?? "/og-image.png";
-
+  // OG and Twitter images are auto-populated by the colocated
+  // `opengraph-image.tsx` route — Next.js wires it into both metadata fields.
   return {
     title: `${title} — VM0 Use Case`,
     description,
@@ -39,20 +39,11 @@ export async function generateMetadata({
       description,
       url,
       type: "article",
-      images: [
-        {
-          url: ogImage,
-          width: 1200,
-          height: 630,
-          alt: title,
-        },
-      ],
     },
     twitter: {
       card: "summary_large_image",
       title: `${title} — VM0 Use Case`,
       description,
-      images: [ogImage],
       creator: "@vm0_ai",
       site: "@vm0_ai",
     },
