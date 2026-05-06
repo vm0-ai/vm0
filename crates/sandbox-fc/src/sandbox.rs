@@ -12,7 +12,7 @@ use sandbox::{
     SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
     SpawnHandle,
 };
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, trace, warn};
@@ -38,6 +38,9 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Timeout for Firecracker API socket readiness after process spawn.
 const API_READY_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Short grace period for Firecracker stdout/stderr log readers after child exit.
+const PROCESS_LOG_READER_DRAIN_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Bash command run inside `unshare --mount` for snapshot restore.
 /// Positional args are documented at the spawn site.
@@ -254,6 +257,131 @@ impl ProcessMonitorHandle {
     async fn wait(self) {
         let _ = self.task.await;
     }
+}
+
+#[derive(Clone, Copy)]
+enum ProcessLogStream {
+    Stdout,
+    Stderr,
+}
+
+impl ProcessLogStream {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
+        }
+    }
+
+    fn log(self, id: &str, line: &str) {
+        match self {
+            Self::Stdout => info!(id = %id, "{line}"),
+            Self::Stderr => warn!(id = %id, "stderr: {line}"),
+        }
+    }
+}
+
+struct ProcessLogReaders {
+    stdout: Option<tokio::task::JoinHandle<()>>,
+    stderr: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl ProcessLogReaders {
+    fn from_child(id: &str, child: &mut tokio::process::Child) -> Self {
+        Self {
+            stdout: child
+                .stdout
+                .take()
+                .map(|stdout| spawn_process_log_reader(id, ProcessLogStream::Stdout, stdout)),
+            stderr: child
+                .stderr
+                .take()
+                .map(|stderr| spawn_process_log_reader(id, ProcessLogStream::Stderr, stderr)),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_for_test(
+        stdout: Option<tokio::task::JoinHandle<()>>,
+        stderr: Option<tokio::task::JoinHandle<()>>,
+    ) -> Self {
+        Self { stdout, stderr }
+    }
+
+    async fn drain_or_abort(mut self) {
+        let stdout =
+            drain_or_abort_process_log_reader(ProcessLogStream::Stdout, self.stdout.take());
+        let stderr =
+            drain_or_abort_process_log_reader(ProcessLogStream::Stderr, self.stderr.take());
+        let _ = tokio::join!(stdout, stderr);
+    }
+}
+
+fn spawn_process_log_reader<R>(
+    id: &str,
+    stream: ProcessLogStream,
+    reader: R,
+) -> tokio::task::JoinHandle<()>
+where
+    R: AsyncRead + Unpin + Send + 'static,
+{
+    let id = id.to_owned();
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(reader).lines();
+        while let Ok(Some(line)) = lines.next_line().await {
+            if !line.is_empty() {
+                stream.log(&id, &line);
+            }
+        }
+    })
+}
+
+async fn drain_or_abort_process_log_reader(
+    stream: ProcessLogStream,
+    handle: Option<tokio::task::JoinHandle<()>>,
+) {
+    let Some(mut handle) = handle else {
+        return;
+    };
+
+    match tokio::time::timeout(PROCESS_LOG_READER_DRAIN_TIMEOUT, &mut handle).await {
+        Ok(result) => log_process_log_reader_join(stream, result, false),
+        Err(_) => {
+            info!(
+                stream = stream.name(),
+                timeout_ms = PROCESS_LOG_READER_DRAIN_TIMEOUT.as_millis() as u64,
+                "process log reader did not drain before timeout; aborting"
+            );
+            handle.abort();
+            log_process_log_reader_join(stream, handle.await, true);
+        }
+    }
+}
+
+fn log_process_log_reader_join(
+    stream: ProcessLogStream,
+    result: Result<(), tokio::task::JoinError>,
+    after_abort: bool,
+) {
+    if let Err(e) = result {
+        if after_abort && e.is_cancelled() {
+            trace!(stream = stream.name(), "process log reader aborted");
+        } else {
+            warn!(
+                stream = stream.name(),
+                error = %e,
+                "process log reader task exited unexpectedly"
+            );
+        }
+    }
+}
+
+struct ProcessMonitorContext {
+    state: Arc<AtomicU8>,
+    state_publish_lock: Arc<Mutex<()>>,
+    state_tx: watch::Sender<SandboxState>,
+    guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
+    runtime_cancel: CancellationToken,
 }
 
 pub struct FirecrackerSandbox {
@@ -865,31 +993,24 @@ fn monitor_process(
     guest: Arc<tokio::sync::Mutex<Option<Arc<VsockHost>>>>,
     runtime_cancel: CancellationToken,
 ) -> ProcessMonitorHandle {
+    let readers = ProcessLogReaders::from_child(id, &mut child);
+    let context = ProcessMonitorContext {
+        state,
+        state_publish_lock,
+        state_tx,
+        guest,
+        runtime_cancel,
+    };
+    monitor_process_with_log_readers(id, child, context, readers)
+}
+
+fn monitor_process_with_log_readers(
+    id: &str,
+    mut child: tokio::process::Child,
+    context: ProcessMonitorContext,
+    readers: ProcessLogReaders,
+) -> ProcessMonitorHandle {
     let process_group_pid = child.id();
-
-    if let Some(stdout) = child.stdout.take() {
-        let id = id.to_owned();
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    info!(id = %id, "{line}");
-                }
-            }
-        });
-    }
-    if let Some(stderr) = child.stderr.take() {
-        let id = id.to_owned();
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if !line.is_empty() {
-                    warn!(id = %id, "stderr: {line}");
-                }
-            }
-        });
-    }
-
     let id = id.to_owned();
     let (kill_tx, mut kill_rx) = mpsc::unbounded_channel();
     let task = tokio::spawn(async move {
@@ -906,18 +1027,18 @@ fn monitor_process(
             Ok(status) => trace!(id = %id, %status, "process monitor observed exit"),
             Err(error) => warn!(id = %id, %error, "process monitor failed to wait for child"),
         }
-        runtime_cancel.cancel();
+        context.runtime_cancel.cancel();
 
         let prev = {
-            let _guard = state_publish_guard(&state_publish_lock);
-            match state.compare_exchange(
+            let _guard = state_publish_guard(&context.state_publish_lock);
+            match context.state.compare_exchange(
                 SandboxState::Running as u8,
                 SandboxState::Crashed as u8,
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
                 Ok(v) => {
-                    publish_watch_state(&state_tx, SandboxState::Crashed);
+                    publish_watch_state(&context.state_tx, SandboxState::Crashed);
                     SandboxState::from_u8(v)
                 }
                 Err(v) => {
@@ -926,8 +1047,10 @@ fn monitor_process(
                         prev,
                         SandboxState::Created | SandboxState::Stopping | SandboxState::Stopped
                     ) {
-                        state.store(SandboxState::Stopped as u8, Ordering::Release);
-                        publish_watch_state(&state_tx, SandboxState::Stopped);
+                        context
+                            .state
+                            .store(SandboxState::Stopped as u8, Ordering::Release);
+                        publish_watch_state(&context.state_tx, SandboxState::Stopped);
                     }
                     prev
                 }
@@ -943,11 +1066,12 @@ fn monitor_process(
                     Ok(status) => warn!(id = %id, %status, "process exited unexpectedly"),
                     Err(error) => warn!(id = %id, %error, "process wait failed unexpectedly"),
                 }
-                guest.lock().await.take();
+                context.guest.lock().await.take();
             }
             SandboxState::Created | SandboxState::Stopping | SandboxState::Stopped => {}
             SandboxState::Crashed => {}
         }
+        readers.drain_or_abort().await;
     });
 
     ProcessMonitorHandle { kill_tx, task }
@@ -1540,6 +1664,25 @@ mod tests {
             .unwrap()
     }
 
+    fn monitored_cat_process_without_log_pipes() -> tokio::process::Child {
+        tokio::process::Command::new("cat")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap()
+    }
+
+    fn stdout_stderr_writing_process() -> tokio::process::Child {
+        tokio::process::Command::new("bash")
+            .args(["-c", "printf 'stdout-line\\n'; printf 'stderr-line\\n' >&2"])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap()
+    }
+
     fn stdout_closing_process() -> tokio::process::Child {
         tokio::process::Command::new("bash")
             .args(["-c", "exec 1>&-; sleep 60"])
@@ -1565,6 +1708,31 @@ mod tests {
             .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap()
+    }
+
+    struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for DropNotify {
+        fn drop(&mut self) {
+            if let Some(tx) = self.0.take() {
+                let _ = tx.send(());
+            }
+        }
+    }
+
+    fn pending_log_reader_for_test() -> (
+        tokio::task::JoinHandle<()>,
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    ) {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+        let handle = tokio::spawn(async move {
+            let _notify = DropNotify(Some(dropped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        (handle, started_rx, dropped_rx)
     }
 
     fn pid_is_running(pid: u32) -> bool {
@@ -1788,6 +1956,120 @@ mod tests {
 
         handle.wait().await;
         control.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn process_monitor_drains_log_readers_after_exit() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Created as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Created);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let child = stdout_stderr_writing_process();
+
+        let handle = monitor_process(
+            "test-sandbox",
+            child,
+            Arc::clone(&state),
+            Arc::clone(&state_publish_lock),
+            state_tx,
+            guest,
+            CancellationToken::new(),
+        );
+
+        tokio::time::timeout(Duration::from_secs(1), handle.wait())
+            .await
+            .expect("process monitor should drain completed log readers");
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Stopped
+        );
+    }
+
+    #[tokio::test]
+    async fn process_monitor_aborts_stuck_log_reader_after_exit() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Created as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Created);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let mut child = monitored_cat_process_without_log_pipes();
+        let stdin = child.stdin.take();
+        let (stdout_reader, stdout_started_rx, stdout_dropped_rx) = pending_log_reader_for_test();
+        let (stderr_reader, stderr_started_rx, stderr_dropped_rx) = pending_log_reader_for_test();
+        let readers = ProcessLogReaders::new_for_test(Some(stdout_reader), Some(stderr_reader));
+
+        tokio::time::timeout(Duration::from_secs(1), stdout_started_rx)
+            .await
+            .expect("pending stdout reader should start")
+            .expect("pending stdout reader started sender should stay alive");
+        tokio::time::timeout(Duration::from_secs(1), stderr_started_rx)
+            .await
+            .expect("pending stderr reader should start")
+            .expect("pending stderr reader started sender should stay alive");
+        let context = ProcessMonitorContext {
+            state: Arc::clone(&state),
+            state_publish_lock: Arc::clone(&state_publish_lock),
+            state_tx,
+            guest,
+            runtime_cancel: CancellationToken::new(),
+        };
+        let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
+
+        drop(stdin);
+
+        tokio::time::timeout(Duration::from_secs(1), handle.wait())
+            .await
+            .expect("process monitor should not hang on stuck log reader");
+        tokio::time::timeout(Duration::from_secs(1), stdout_dropped_rx)
+            .await
+            .expect("stuck stdout log reader should be aborted")
+            .expect("stuck stdout log reader drop notification should be sent");
+        tokio::time::timeout(Duration::from_secs(1), stderr_dropped_rx)
+            .await
+            .expect("stuck stderr log reader should be aborted")
+            .expect("stuck stderr log reader drop notification should be sent");
+    }
+
+    #[tokio::test]
+    async fn process_monitor_wait_cancel_keeps_log_reader_cleanup_owned() {
+        let state = Arc::new(AtomicU8::new(SandboxState::Running as u8));
+        let state_publish_lock = Arc::new(Mutex::new(()));
+        let (state_tx, _state_rx) = watch::channel(SandboxState::Running);
+        let guest = Arc::new(tokio::sync::Mutex::new(None::<Arc<VsockHost>>));
+        let mut child = monitored_cat_process_without_log_pipes();
+        let stdin = child.stdin.take();
+        let (reader, started_rx, dropped_rx) = pending_log_reader_for_test();
+        let readers = ProcessLogReaders::new_for_test(Some(reader), None);
+
+        tokio::time::timeout(Duration::from_secs(1), started_rx)
+            .await
+            .expect("pending reader should start")
+            .expect("pending reader started sender should stay alive");
+        let context = ProcessMonitorContext {
+            state: Arc::clone(&state),
+            state_publish_lock: Arc::clone(&state_publish_lock),
+            state_tx,
+            guest,
+            runtime_cancel: CancellationToken::new(),
+        };
+        let handle = monitor_process_with_log_readers("test-sandbox", child, context, readers);
+
+        let waiter = tokio::spawn(async move {
+            handle.wait().await;
+        });
+        tokio::task::yield_now().await;
+        waiter.abort();
+        let _ = waiter.await;
+
+        drop(stdin);
+
+        tokio::time::timeout(Duration::from_secs(1), dropped_rx)
+            .await
+            .expect("detached monitor should still cleanup owned log reader")
+            .expect("pending reader drop notification should be sent");
+        assert_eq!(
+            SandboxState::from_u8(state.load(Ordering::Acquire)),
+            SandboxState::Crashed
+        );
     }
 
     /// The lifecycle stream stores the latest state, so late subscribers still
