@@ -1,4 +1,4 @@
-import { computed, type Computed } from "ccstate";
+import { command, computed, type Computed } from "ccstate";
 import {
   type ChatSearchMessage,
   type ChatSearchResult,
@@ -6,6 +6,7 @@ import {
   type ChatThreadDetail,
   type ChatThreadListItem,
   type PagedChatMessage,
+  type PendingMessage,
   type PersistedAttachment,
   type ResolvedAttachFile,
   persistedAttachmentSchema,
@@ -37,8 +38,9 @@ import {
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { db$ } from "../external/db";
+import { db$, writeDb$ } from "../external/db";
 import { listS3Objects } from "../external/s3";
+import { nowDate } from "../external/time";
 
 const REPORT_ERROR_STREAK_THRESHOLD = 2;
 
@@ -115,12 +117,20 @@ type ChatThreadRow = {
   readonly agentComposeId: string;
   readonly draftContent: string | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
+  readonly pendingMessage: PendingMessage | null;
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
   readonly lastReadMessageId: string | null;
   readonly renamedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+};
+
+type PendingMessageColumns = {
+  readonly pendingMessageContent: string | null;
+  readonly pendingMessageAttachments: readonly PersistedAttachment[] | null;
+  readonly pendingMessageCreatedAt: Date | null;
+  readonly pendingMessageUpdatedAt: Date | null;
 };
 
 const messageColumns = {
@@ -222,6 +232,7 @@ function ownedChatThread(
         .array()
         .nullable()
         .parse(thread.draftAttachments ?? null),
+      pendingMessage: toPendingMessage(thread),
       modelProviderId: thread.modelProviderId ?? null,
       selectedModel: thread.selectedModel ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
@@ -231,6 +242,237 @@ function ownedChatThread(
     };
   });
 }
+
+function parsePersistedAttachments(
+  attachments: readonly PersistedAttachment[] | null,
+): readonly PersistedAttachment[] | null {
+  return persistedAttachmentSchema
+    .array()
+    .nullable()
+    .parse(attachments ?? null);
+}
+
+function toPendingMessage(row: PendingMessageColumns): PendingMessage | null {
+  if (!row.pendingMessageCreatedAt || !row.pendingMessageUpdatedAt) {
+    return null;
+  }
+  const attachments = parsePersistedAttachments(row.pendingMessageAttachments);
+
+  return {
+    content: row.pendingMessageContent ?? null,
+    attachments: attachments ? [...attachments] : null,
+    createdAt: row.pendingMessageCreatedAt.toISOString(),
+    updatedAt: row.pendingMessageUpdatedAt.toISOString(),
+  };
+}
+
+function appendPendingText(
+  currentContent: string | null,
+  nextContent: string | null,
+): string | null {
+  if (nextContent === null) {
+    return currentContent;
+  }
+  if (currentContent === null || currentContent === "") {
+    return nextContent;
+  }
+  return `${currentContent}\n\n${nextContent}`;
+}
+
+export const appendZeroChatThreadPendingMessage$ = command(
+  async (
+    { set },
+    args: {
+      readonly threadId: string;
+      readonly userId: string;
+      readonly content: string | null;
+      readonly attachments: readonly PersistedAttachment[] | null;
+    },
+    signal: AbortSignal,
+  ): Promise<PendingMessage | null> => {
+    const db = set(writeDb$);
+    const result = await db.transaction(async (tx) => {
+      const [thread] = await tx
+        .select({
+          pendingMessageContent: chatThreads.pendingMessageContent,
+          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
+          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
+          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
+        })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+
+      if (!thread) {
+        return null;
+      }
+
+      const currentAttachments =
+        parsePersistedAttachments(thread.pendingMessageAttachments) ?? [];
+      const nextAttachments = [
+        ...currentAttachments,
+        ...(args.attachments ?? []),
+      ];
+      const now = nowDate();
+      const [updated] = await tx
+        .update(chatThreads)
+        .set({
+          draftContent: null,
+          draftAttachments: null,
+          pendingMessageContent: appendPendingText(
+            thread.pendingMessageContent ?? null,
+            args.content,
+          ),
+          pendingMessageAttachments:
+            nextAttachments.length > 0 ? nextAttachments : null,
+          pendingMessageCreatedAt: thread.pendingMessageCreatedAt ?? now,
+          pendingMessageUpdatedAt: now,
+        })
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        )
+        .returning({
+          pendingMessageContent: chatThreads.pendingMessageContent,
+          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
+          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
+          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
+        });
+
+      return updated ? toPendingMessage(updated) : null;
+    });
+    signal.throwIfAborted();
+    return result;
+  },
+);
+
+export const deleteZeroChatThreadPendingMessage$ = command(
+  async (
+    { set },
+    args: { readonly threadId: string; readonly userId: string },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const db = set(writeDb$);
+    const found = await db.transaction(async (tx) => {
+      const [thread] = await tx
+        .select({ id: chatThreads.id })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+
+      if (!thread) {
+        return false;
+      }
+
+      await tx
+        .update(chatThreads)
+        .set({
+          pendingMessageContent: null,
+          pendingMessageAttachments: null,
+          pendingMessageCreatedAt: null,
+          pendingMessageUpdatedAt: null,
+        })
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        );
+
+      return true;
+    });
+    signal.throwIfAborted();
+    return found;
+  },
+);
+
+export const recallZeroChatThreadPendingMessage$ = command(
+  async (
+    { set },
+    args: { readonly threadId: string; readonly userId: string },
+    signal: AbortSignal,
+  ): Promise<
+    | {
+        readonly ok: true;
+        readonly draftContent: string | null;
+        readonly draftAttachments: readonly PersistedAttachment[] | null;
+      }
+    | {
+        readonly ok: false;
+        readonly reason: "thread-not-found" | "pending-not-found";
+      }
+  > => {
+    const db = set(writeDb$);
+    const result = await db.transaction(async (tx) => {
+      const [thread] = await tx
+        .select({
+          pendingMessageContent: chatThreads.pendingMessageContent,
+          pendingMessageAttachments: chatThreads.pendingMessageAttachments,
+          pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
+          pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
+        })
+        .from(chatThreads)
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+
+      if (!thread) {
+        return { ok: false as const, reason: "thread-not-found" as const };
+      }
+
+      const pendingMessage = toPendingMessage(thread);
+      if (!pendingMessage) {
+        return { ok: false as const, reason: "pending-not-found" as const };
+      }
+
+      await tx
+        .update(chatThreads)
+        .set({
+          draftContent: pendingMessage.content,
+          draftAttachments: pendingMessage.attachments
+            ? [...pendingMessage.attachments]
+            : null,
+          pendingMessageContent: null,
+          pendingMessageAttachments: null,
+          pendingMessageCreatedAt: null,
+          pendingMessageUpdatedAt: null,
+        })
+        .where(
+          and(
+            eq(chatThreads.id, args.threadId),
+            eq(chatThreads.userId, args.userId),
+          ),
+        );
+
+      return {
+        ok: true as const,
+        draftContent: pendingMessage.content,
+        draftAttachments: pendingMessage.attachments,
+      };
+    });
+    signal.throwIfAborted();
+    return result;
+  },
+);
 
 function resolveAttachFileUrls(
   userId: string,
@@ -529,6 +771,7 @@ export function zeroChatThreadDetail(args: {
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
         : null,
+      pendingMessage: thread.pendingMessage,
       modelProviderId: thread.modelProviderId,
       selectedModel: thread.selectedModel,
       renamedAt: thread.renamedAt?.toISOString() ?? null,

@@ -2381,6 +2381,13 @@
       "when": 1778052448890,
       "tag": "0339_goofy_frank_castle",
       "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1778057269010,
+      "tag": "0340_boring_micromacro",
+      "breakpoints": true
     }
   ]
 }

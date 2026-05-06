@@ -50,6 +50,20 @@ export const chatThreads = pgTable(
      */
     draftAttachments: jsonb("draft_attachments").$type<PersistedAttachment[]>(),
     /**
+     * Submitted next-turn content while the current thread run is still active.
+     * Multiple sends coalesce into this single pending message until claimed or
+     * recalled back into the draft.
+     */
+    pendingMessageContent: text("pending_message_content"),
+    /**
+     * Attachment metadata submitted with the pending next-turn message.
+     */
+    pendingMessageAttachments: jsonb("pending_message_attachments").$type<
+      PersistedAttachment[]
+    >(),
+    pendingMessageCreatedAt: timestamp("pending_message_created_at"),
+    pendingMessageUpdatedAt: timestamp("pending_message_updated_at"),
+    /**
      * Slack-style watermark: the last timestamp up to which the user has read
      * messages in this thread. Forward-only — never rewound.
      * NULL means the thread has never been explicitly marked read.
