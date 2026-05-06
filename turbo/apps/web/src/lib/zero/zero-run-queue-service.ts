@@ -594,8 +594,10 @@ export async function dispatchQueuedZeroRun(
   // drainOrgQueue() which marks the run as failed.
   await checkModelProviderConfigured(
     params.orgId,
+    params.userId,
     params.modelProvider,
     composeContent,
+    params.preferPersonalProvider,
   );
 
   const composeAgents = composeContent?.agents
@@ -608,6 +610,7 @@ export async function dispatchQueuedZeroRun(
     modelProvider: params.modelProvider,
     modelProviderId: params.modelProviderId,
     composeFramework,
+    preferPersonalProvider: params.preferPersonalProvider,
   });
 
   // Validate compose requirements for new runs only

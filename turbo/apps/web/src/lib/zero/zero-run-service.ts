@@ -97,6 +97,14 @@ export interface ZeroAgentForRun {
   customSkills: string[];
   modelProviderId: string | null;
   selectedModel: string | null;
+  /**
+   * Per-Epic #11868: when true, runs that resolve through this agent prefer
+   * the caller's personal-tier model providers before falling back to the
+   * org default (gated additionally by the `personalModelProvider` feature
+   * switch). Off by default; honored only when the schedule (if any) does
+   * not override it.
+   */
+  preferPersonalProvider: boolean;
 }
 
 /**
@@ -120,6 +128,7 @@ export async function fetchZeroAgentForRun(
       customSkills: zeroAgents.customSkills,
       modelProviderId: zeroAgents.modelProviderId,
       selectedModel: zeroAgents.selectedModel,
+      preferPersonalProvider: zeroAgents.preferPersonalProvider,
     })
     .from(zeroAgents)
     .where(eq(zeroAgents.id, agentId))
@@ -151,6 +160,15 @@ export interface CreateZeroRunParams {
   modelProviderId?: string;
   /** Per-agent or per-schedule selected model override. */
   selectedModelOverride?: string;
+  /**
+   * Personal-tier preference (Epic #11868). When defined, overrides the
+   * agent's stored `preferPersonalProvider` — schedule-driven runs pass
+   * the schedule's flag here so schedule overrides agent (mirrors the
+   * existing modelProviderId/selectedModel override semantics). Honored
+   * only when the `personalModelProvider` feature switch is on for the
+   * caller; otherwise treated as false.
+   */
+  preferPersonalProvider?: boolean;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   scheduleId?: string;
   triggerAgentId?: string;
@@ -263,15 +281,21 @@ function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
 function resolveEffectiveModel(
   params: Pick<
     CreateZeroRunParams,
-    "modelProviderId" | "selectedModelOverride"
+    "modelProviderId" | "selectedModelOverride" | "preferPersonalProvider"
   >,
   row?: ZeroAgentForRun | null,
-): { modelProviderId?: string; selectedModelOverride?: string } {
+): {
+  modelProviderId?: string;
+  selectedModelOverride?: string;
+  preferPersonalProvider: boolean;
+} {
   return {
     modelProviderId:
       params.modelProviderId ?? row?.modelProviderId ?? undefined,
     selectedModelOverride:
       params.selectedModelOverride ?? row?.selectedModel ?? undefined,
+    preferPersonalProvider:
+      params.preferPersonalProvider ?? row?.preferPersonalProvider ?? false,
   };
 }
 
@@ -660,6 +684,7 @@ async function createZeroRunRecord(
     modelProvider: params.modelProvider,
     modelProviderId: runParams.modelProviderId,
     composeFramework,
+    preferPersonalProvider: runParams.preferPersonalProvider,
   });
 
   if (!params.sessionId) {
@@ -677,8 +702,10 @@ async function createZeroRunRecord(
   const round3ModelProvider = timed(async () => {
     return checkModelProviderConfigured(
       resolved.orgId,
+      params.userId,
       params.modelProvider,
       resolved.composeContent,
+      runParams.preferPersonalProvider,
     );
   });
   const round3Capture = timed(async () => {
