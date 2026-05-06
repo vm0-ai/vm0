@@ -359,7 +359,7 @@ describe("fetchNextPage$ cursor", () => {
           return Promise.resolve();
         },
       ),
-      listMessagesAfter$: command((_ctx, args) => {
+      listMessagesAfter$: command((_ctx, _args) => {
         callCount++;
         const pages = [page1, page2, page3];
         const idx = callCount - 1;
@@ -396,22 +396,17 @@ describe("fetchNextPage$ cursor", () => {
     const { draft } = context.store.set(ensureDraft$, threadId);
     const thread = createChatThreadSignals(threadId, draft, mockDataSource);
 
-    const done = await context.store.set(
-      thread.fetchNextPage$,
-      context.signal,
-    );
+    const done = await context.store.set(thread.fetchNextPage$, context.signal);
 
     // With the drain-loop fix, all 3 pages are fetched before returning.
     // The 3rd page has < 50 messages, so reachedEnd fires on it (not on
     // the 4th empty call).
     expect(callCount).toBe(3);
-    expect(done).toBe(true);
+    expect(done).toBeTruthy();
 
     // Verify all messages appear in the grouped output
     const groups = await context.store.get(thread.groupedChatMessages$);
-    const allContent = groups.flatMap((g) =>
-      g.messages.map((m) => m.content),
-    );
+    const allContent = groups.flatMap((g) => g.messages.map((m) => m.content));
     expect(allContent).toContain("baseline");
     expect(allContent).toContain("page1 msg 0");
     expect(allContent).toContain("page1 msg 49");
