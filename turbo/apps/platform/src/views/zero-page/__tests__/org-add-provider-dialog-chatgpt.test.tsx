@@ -21,15 +21,17 @@ import {
   vi,
   type Mock,
 } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { setOrgAddProviderDialogOpen$ } from "../../../signals/zero-page/settings/org-model-providers.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
-import { resetMockOrgModelProviders } from "../../../mocks/handlers/api-org-model-providers.ts";
-import { ProviderRowFooter } from "../components/org-manage/org-providers-tab.tsx";
+import {
+  resetMockOrgModelProviders,
+  setMockOrgModelProviders,
+} from "../../../mocks/handlers/api-org-model-providers.ts";
 
 const context = testContext();
 
@@ -38,6 +40,36 @@ async function openProvidersPage() {
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
+}
+
+/**
+ * Build a chatgpt-oauth-token provider row with optional workspaceName /
+ * planType fields. These fields are part of the model-provider response
+ * contract (declared optional so other provider types can omit them); the
+ * chatgpt-oauth-token callback delivered in #11909 populates them.
+ */
+function makeChatgptProvider(
+  extras: { workspaceName?: string; planType?: string } = {},
+): ModelProviderResponse {
+  return {
+    id: "00000000-0000-4000-a000-000000000010",
+    type: "chatgpt-oauth-token",
+    framework: "codex",
+    secretName: "CHATGPT_ACCESS_TOKEN",
+    authMethod: "oauth",
+    secretNames: [
+      "CHATGPT_ACCESS_TOKEN",
+      "CHATGPT_REFRESH_TOKEN",
+      "CHATGPT_ACCOUNT_ID",
+      "CHATGPT_ID_TOKEN",
+    ],
+    isDefault: true,
+    selectedModel: null,
+    createdAt: "2026-05-06T00:00:00Z",
+    updatedAt: "2026-05-06T00:00:00Z",
+    workspaceName: extras.workspaceName,
+    planType: extras.planType,
+  };
 }
 
 describe("connect ChatGPT card — feature switch gating", () => {
@@ -114,82 +146,89 @@ describe("connect ChatGPT card — click handler", () => {
   });
 });
 
-describe("providerRowFooter — workspace + plan display", () => {
-  function makeChatgptProvider(
-    extras: { workspaceName?: string; planType?: string } = {},
-  ): ModelProviderResponse {
-    const base: ModelProviderResponse = {
-      id: "00000000-0000-4000-a000-000000000010",
-      type: "chatgpt-oauth-token",
-      framework: "codex",
-      secretName: "CHATGPT_ACCESS_TOKEN",
-      authMethod: "oauth",
-      secretNames: [
-        "CHATGPT_ACCESS_TOKEN",
-        "CHATGPT_REFRESH_TOKEN",
-        "CHATGPT_ACCOUNT_ID",
-        "CHATGPT_ID_TOKEN",
-      ],
-      isDefault: true,
-      selectedModel: null,
-      createdAt: "2026-05-06T00:00:00Z",
-      updatedAt: "2026-05-06T00:00:00Z",
-    };
-    // Forward-compatible extras delivered by #11909 — the platform reads them
-    // defensively, so attaching them here on top of the contract type works
-    // for the test today and will be a no-op cast once the contract widens.
-    return { ...base, ...extras } as ModelProviderResponse;
-  }
+describe("provider row footer — workspace + plan display", () => {
+  beforeEach(() => {
+    setMockFeatureSwitches({});
+    resetMockOrgModelProviders();
+  });
 
-  it("renders workspace name and plan pill when extras are present", () => {
-    render(
-      <ProviderRowFooter
-        provider={makeChatgptProvider({
-          workspaceName: "Acme Corp Workspace",
-          planType: "plus",
-        })}
-      />,
-    );
+  it("renders workspace name and plan pill when extras are present", async () => {
+    setMockOrgModelProviders([
+      makeChatgptProvider({
+        workspaceName: "Acme Corp Workspace",
+        planType: "plus",
+      }),
+    ]);
 
-    expect(screen.getByText("Acme Corp Workspace")).toBeInTheDocument();
+    await openProvidersPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Acme Corp Workspace")).toBeInTheDocument();
+    });
     expect(screen.getByText("Plus")).toBeInTheDocument();
   });
 
-  it("renders only the workspace name when planType is absent", () => {
-    render(
-      <ProviderRowFooter
-        provider={makeChatgptProvider({ workspaceName: "Acme Corp" })}
-      />,
-    );
+  it("renders only the workspace name when planType is absent", async () => {
+    setMockOrgModelProviders([
+      makeChatgptProvider({ workspaceName: "Acme Corp" }),
+    ]);
 
-    expect(screen.getByText("Acme Corp")).toBeInTheDocument();
+    await openProvidersPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Acme Corp")).toBeInTheDocument();
+    });
     expect(
       screen.queryByText(/^(Plus|Pro|Business|Edu|Enterprise)$/),
     ).toBeNull();
   });
 
-  it("falls back to 'Configured' label when extras are absent", () => {
-    render(<ProviderRowFooter provider={makeChatgptProvider()} />);
+  it("renders only the workspace name when planType is an unknown string", async () => {
+    // Drift guard: server may ship a value outside the known plan set
+    // (e.g. "team"). Render the workspace name without a plan pill rather
+    // than capitalizing an unrecognized value.
+    setMockOrgModelProviders([
+      makeChatgptProvider({ workspaceName: "Acme Corp", planType: "team" }),
+    ]);
 
-    expect(screen.getByText("Configured")).toBeInTheDocument();
+    await openProvidersPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Acme Corp")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Team")).toBeNull();
   });
 
-  it("falls back to 'Configured' label for non-chatgpt provider types", () => {
-    const anthropic: ModelProviderResponse = {
-      id: "00000000-0000-4000-a000-000000000020",
-      type: "anthropic-api-key",
-      framework: "claude-code",
-      secretName: "ANTHROPIC_API_KEY",
-      authMethod: null,
-      secretNames: null,
-      isDefault: false,
-      selectedModel: null,
-      createdAt: "2026-05-06T00:00:00Z",
-      updatedAt: "2026-05-06T00:00:00Z",
-    };
+  it("falls back to 'Configured' label when extras are absent", async () => {
+    setMockOrgModelProviders([makeChatgptProvider()]);
 
-    render(<ProviderRowFooter provider={anthropic} />);
+    await openProvidersPage();
 
-    expect(screen.getByText("Configured")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Configured")).toBeInTheDocument();
+    });
+  });
+
+  it("falls back to 'Configured' label for non-chatgpt provider types", async () => {
+    setMockOrgModelProviders([
+      {
+        id: "00000000-0000-4000-a000-000000000020",
+        type: "anthropic-api-key",
+        framework: "claude-code",
+        secretName: "ANTHROPIC_API_KEY",
+        authMethod: null,
+        secretNames: null,
+        isDefault: false,
+        selectedModel: null,
+        createdAt: "2026-05-06T00:00:00Z",
+        updatedAt: "2026-05-06T00:00:00Z",
+      },
+    ]);
+
+    await openProvidersPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Configured")).toBeInTheDocument();
+    });
   });
 });

@@ -137,40 +137,45 @@ function DefaultProviderSection() {
 }
 
 /**
- * Optional fields that the chatgpt-oauth-token callback populates on a
- * provider row (delivered in #11909). The platform reads them defensively
- * so this PR ships before the API contract widens.
+ * Plan strings the chatgpt-oauth-token callback emits today. Values outside
+ * this set still come through as a `string` on the contract — we render the
+ * workspace name without a plan pill rather than capitalizing an
+ * unrecognized value. Mirrors the ChatGPT subscription tiers documented in
+ * provider-ui-config.ts.
  */
-type ChatgptProviderExtras = {
-  workspaceName?: string;
-  planType?: "plus" | "pro" | "business" | "edu" | "enterprise";
-};
+function isKnownChatgptPlan(plan: string): boolean {
+  return (
+    plan === "plus" ||
+    plan === "pro" ||
+    plan === "business" ||
+    plan === "edu" ||
+    plan === "enterprise"
+  );
+}
 
 function capitalizePlan(plan: string): string {
   return plan.charAt(0).toUpperCase() + plan.slice(1);
 }
 
-export function ProviderRowFooter({
-  provider,
-}: {
-  provider: ModelProviderResponse;
-}) {
-  if (provider.type === "chatgpt-oauth-token") {
-    const extras = provider as ModelProviderResponse &
-      Partial<ChatgptProviderExtras>;
-    if (extras.workspaceName) {
-      return (
-        <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-          <span className="truncate">{extras.workspaceName}</span>
-          {extras.planType && (
+function ProviderRowFooter({ provider }: { provider: ModelProviderResponse }) {
+  if (provider.type === "chatgpt-oauth-token" && provider.workspaceName) {
+    const showPlanPill =
+      provider.planType !== null &&
+      provider.planType !== undefined &&
+      isKnownChatgptPlan(provider.planType);
+    return (
+      <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+        <span className="truncate">{provider.workspaceName}</span>
+        {showPlanPill &&
+          provider.planType !== null &&
+          provider.planType !== undefined && (
             <span className="ml-1 shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-foreground">
-              {capitalizePlan(extras.planType)}
+              {capitalizePlan(provider.planType)}
             </span>
           )}
-        </span>
-      );
-    }
+      </span>
+    );
   }
   return (
     <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
