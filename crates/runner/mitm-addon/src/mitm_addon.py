@@ -289,8 +289,7 @@ def _report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
     """Avoid duplicate usage webhook enqueue if response/error both fire."""
     if flow.metadata.get(_MODEL_PROVIDER_USAGE_REPORTED, False):
         return
-    usage.report_model_provider_usage(flow, run_id)
-    if flow.metadata.get("model_provider_usage"):
+    if usage.report_model_provider_usage(flow, run_id):
         flow.metadata[_MODEL_PROVIDER_USAGE_REPORTED] = True
 
 

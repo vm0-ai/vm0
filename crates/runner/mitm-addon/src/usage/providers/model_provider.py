@@ -19,16 +19,19 @@ from ..webhook import _enqueue_webhook
 MODEL_USAGE_KIND = "model"
 
 
-def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> None:
-    """Enqueue extracted token usage for model-provider responses if available."""
+def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
+    """Enqueue extracted token usage for model-provider responses if available.
+
+    Returns whether a usage webhook was enqueued.
+    """
     firewall_name = flow.metadata.get("firewall_name", "")
     if not (firewall_name.startswith("model-provider:") and run_id):
-        return
+        return False
     if not flow.metadata.get("firewall_billable", False):
-        return
+        return False
     usage = flow.metadata.get("model_provider_usage")
     if not usage or not isinstance(usage, dict):
-        return
+        return False
     message_id = _string_or_none(usage.get("message_id")) or flow.id
     provider = (
         _string_or_none(flow.metadata.get("model_usage_provider"))
@@ -37,7 +40,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> None:
     )
     events = _build_usage_events(run_id, message_id, provider, usage)
     if not events:
-        return
+        return False
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
     api_url = get_api_url()
     proxy_log_path = flow.metadata.get("vm_proxy_log_path", "")
@@ -48,7 +51,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> None:
             "Cannot report usage event: missing sandbox_token or api_url",
             type="usage_event",
         )
-        return
+        return False
     url = f"{api_url}/api/webhooks/agent/usage-event"
     _enqueue_webhook(
         url,
@@ -57,6 +60,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> None:
         proxy_log_path,
         "usage_event",
     )
+    return True
 
 
 def _build_usage_events(run_id: str, message_id: str, provider: str, usage: dict) -> list[dict]:
