@@ -38,7 +38,7 @@ async fn run() -> i32 {
     if env::working_dir().is_empty() {
         log_error!(LOG_TAG, "Fatal: VM0_WORKING_DIR is required but not set");
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let telemetry = match HttpClient::new() {
+        let telemetry = match HttpClient::for_current_env() {
             Ok(http) => Some(Telemetry::spawn(masker, http)),
             Err(e) => {
                 log_error!(LOG_TAG, "Final telemetry unavailable: {e}");
@@ -55,7 +55,7 @@ async fn run() -> i32 {
         return 1;
     }
 
-    let http = match HttpClient::new() {
+    let http = match HttpClient::for_current_env() {
         Ok(http) => http,
         Err(e) => {
             log_error!(LOG_TAG, "Fatal: {e}");

@@ -23,12 +23,14 @@ const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 
 /// Shared guest-agent HTTP client.
 ///
-/// Build this during initialization and pass cheap clones to background tasks.
-/// That keeps webhook/S3 timeout configuration consistent across all HTTP
-/// calls and makes client-construction failures explicit at startup.
+/// API-enabled runs build this during initialization and pass cheap clones to
+/// background tasks. That keeps webhook/S3 timeout configuration consistent
+/// across all HTTP calls and makes client-construction failures explicit at
+/// startup. Local/test runs without `VM0_API_TOKEN` use a disabled client so
+/// they do not fail on HTTP stack setup they will never use.
 #[derive(Clone)]
 pub struct HttpClient {
-    inner: Client,
+    inner: Option<Client>,
 }
 
 impl HttpClient {
@@ -41,7 +43,23 @@ impl HttpClient {
                 AgentError::Http(format!("failed to build guest-agent HTTP client: {e}"))
             })?;
 
-        Ok(Self { inner })
+        Ok(Self { inner: Some(inner) })
+    }
+
+    pub fn for_current_env() -> Result<Self, AgentError> {
+        if env::has_api() {
+            Self::new()
+        } else {
+            Ok(Self { inner: None })
+        }
+    }
+
+    fn inner(&self) -> Result<&Client, AgentError> {
+        self.inner.as_ref().ok_or_else(|| {
+            AgentError::Http(
+                "guest-agent HTTP client is disabled because VM0_API_TOKEN is unset".into(),
+            )
+        })
     }
 }
 
@@ -100,13 +118,13 @@ impl HttpClient {
         body: &impl Serialize,
         max_retries: u32,
     ) -> Result<Option<Value>, AgentError> {
+        let client = self.inner()?;
         let resp = send_with_retry(
             "POST",
             max_retries,
             format!("POST failed after {max_retries} attempts to {url}"),
             || {
-                let mut req = self
-                    .inner
+                let mut req = client
                     .post(url)
                     .header("Authorization", format!("Bearer {}", env::api_token()))
                     .json(body);
@@ -171,6 +189,7 @@ impl HttpClient {
         content_type: &str,
     ) -> Result<(), AgentError> {
         let max_retries = constants::HTTP_MAX_RETRIES;
+        let client = self.inner()?;
 
         send_with_retry(
             "PUT presigned",
@@ -178,8 +197,7 @@ impl HttpClient {
             format!("PUT presigned failed after {max_retries} attempts"),
             move || {
                 let data = data.clone();
-                std::future::ready(Ok(self
-                    .inner
+                std::future::ready(Ok(client
                     .put(url)
                     .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
                     .header("Content-Type", content_type)
@@ -315,6 +333,7 @@ impl HttpClient {
         let max_retries = constants::HTTP_MAX_RETRIES;
         let source_file = Arc::new(tokio::fs::File::open(path).await?);
         let file_len = source_file.metadata().await?.len();
+        let client = self.inner()?;
 
         send_with_retry(
             "PUT presigned",
@@ -327,8 +346,7 @@ impl HttpClient {
                     file.seek(std::io::SeekFrom::Start(0)).await?;
                     let body = reqwest::Body::wrap(SizedBody::new(file, file_len));
 
-                    Ok(self
-                        .inner
+                    Ok(client
                         .put(url)
                         .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
                         .header("Content-Type", content_type)
@@ -374,6 +392,19 @@ mod tests {
             Ok(data) => Some(data),
             Err(_) => panic!("expected data frame"),
         }
+    }
+
+    #[tokio::test]
+    async fn disabled_client_fails_before_request_build() {
+        let client = HttpClient { inner: None };
+        let result = client
+            .post_json("http://127.0.0.1:1/test", &serde_json::json!({}), 1)
+            .await;
+
+        let Err(AgentError::Http(message)) = result else {
+            panic!("expected disabled HTTP client error");
+        };
+        assert!(message.contains("HTTP client is disabled"));
     }
 
     #[tokio::test]
