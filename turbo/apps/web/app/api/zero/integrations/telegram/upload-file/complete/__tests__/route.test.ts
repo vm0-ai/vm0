@@ -64,11 +64,12 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
   it("sends the uploaded file URL through the requested Telegram bot", async () => {
     const { token, runId } = await zeroTokenWithRun();
     const botId = await createTestTelegramInstallation({
-      telegramBotId: "tg-bot-upload",
+      telegramBotId: uniqueId("tg-bot-upload"),
       orgId: user.orgId,
       ownerUserId: user.userId,
     });
     const uploadId = randomUUID();
+    const telegramFileId = uniqueId("tg-doc-file");
     const s3Key = `uploads/${user.userId}/${uploadId}/report.pdf`;
     const fileUrl = `http://localhost:3000/f/${encodeURIComponent(user.userId)}/${uploadId}/report.pdf`;
 
@@ -88,7 +89,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
               message_id: 321,
               chat: { id: -1001234567890 },
               document: {
-                file_id: "tg-doc-file-id",
+                file_id: telegramFileId,
                 file_unique_id: "tg-doc-unique",
                 file_name: "report.pdf",
                 mime_type: "application/pdf",
@@ -124,19 +125,19 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
     expect(await response.json()).toMatchObject({
       messageId: 321,
       chatId: "-1001234567890",
-      fileId: "tg-doc-file-id",
+      fileId: telegramFileId,
       filename: "report.pdf",
       mimetype: "application/pdf",
       size: 1234,
       url: fileUrl,
     });
 
-    const rows = await findTestRunUploadedFiles("telegram", "tg-doc-file-id");
+    const rows = await findTestRunUploadedFiles("telegram", telegramFileId);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       runId,
       source: "telegram",
-      externalId: "tg-doc-file-id",
+      externalId: telegramFileId,
       userId: user.userId,
       orgId: user.orgId,
       filename: "report.pdf",
@@ -152,7 +153,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
         messageThreadId: 42,
         telegramMessage: {
           id: 321,
-          fileId: "tg-doc-file-id",
+          fileId: telegramFileId,
         },
       },
     });
@@ -181,7 +182,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
   it("returns 400 when Telegram rejects the sendDocument call", async () => {
     const { token } = await zeroTokenWithRun();
     const botId = await createTestTelegramInstallation({
-      telegramBotId: "tg-bot-reject",
+      telegramBotId: uniqueId("tg-bot-reject"),
       orgId: user.orgId,
       ownerUserId: user.userId,
     });

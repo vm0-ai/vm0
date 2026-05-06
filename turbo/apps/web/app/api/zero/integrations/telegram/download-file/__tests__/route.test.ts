@@ -8,6 +8,7 @@ import {
 import { createTestTelegramInstallation } from "../../../../../../../src/__tests__/db-test-seeders/telegram";
 import {
   testContext,
+  uniqueId,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
@@ -109,7 +110,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
 
   it("streams Telegram file bytes with content-type header", async () => {
     const botId = await createTestTelegramInstallation({
-      telegramBotId: "tg-bot-ok",
+      telegramBotId: uniqueId("tg-bot-ok"),
       orgId: user.orgId,
       ownerUserId: user.userId,
     });
@@ -160,7 +161,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
 
   it("returns 413 when Telegram reports a file over the proxy limit", async () => {
     const botId = await createTestTelegramInstallation({
-      telegramBotId: "tg-bot-big",
+      telegramBotId: uniqueId("tg-bot-big"),
       orgId: user.orgId,
       ownerUserId: user.userId,
     });
@@ -189,7 +190,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
 
   it("returns 413 when download content-length exceeds the proxy limit", async () => {
     const botId = await createTestTelegramInstallation({
-      telegramBotId: "tg-bot-huge-response",
+      telegramBotId: uniqueId("tg-bot-huge-response"),
       orgId: user.orgId,
       ownerUserId: user.userId,
     });

@@ -4,6 +4,7 @@ import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-inte
 import {
   testContext,
   uniqueId,
+  uniqueNumericId,
 } from "../../../../../src/__tests__/test-helpers";
 import {
   createTestCompose,
@@ -287,7 +288,7 @@ describe("POST /api/telegram/webhook/[telegramBotId]", () => {
       const user = await context.setupUser();
       const { composeId } = await createTestCompose(uniqueId("agent"));
       await setDefaultAgentByComposeId(user.orgId, composeId);
-      const telegramUserId = 456777;
+      const telegramUserId = Number(uniqueNumericId());
       const officialLink = await insertTestOfficialTelegramUserLink({
         telegramUserId: String(telegramUserId),
         telegramUsername: "official_user",

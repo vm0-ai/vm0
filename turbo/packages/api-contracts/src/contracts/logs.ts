@@ -74,7 +74,8 @@ const logEntrySchema = z.object({
 });
 
 /**
- * Available filter values returned by the list endpoint
+ * Available filter values returned by the list endpoint.
+ * agents contains canonical Zero agent IDs.
  */
 const logsFiltersSchema = z.object({
   statuses: z.array(logStatusSchema),
@@ -136,7 +137,7 @@ export const logsListContract = c.router({
     headers: authHeadersSchema,
     query: listQuerySchema.extend({
       search: z.string().optional(),
-      agent: z.string().optional(),
+      agent: z.string().uuid().optional(), // canonical Zero agent ID
       name: z.string().optional(),
       since: z.coerce.number().optional(),
 

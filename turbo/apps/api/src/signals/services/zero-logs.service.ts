@@ -26,6 +26,7 @@ import {
   eq,
   gte,
   ilike,
+  inArray,
   isNotNull,
   lt,
   or,
@@ -113,11 +114,11 @@ export function zeroLogsList(
       }
     }
 
-    // Agent name filter: name takes precedence over agent, which takes precedence over search
+    // name is the explicit compose-name filter; agent is the canonical Zero agent ID.
     if (params.name) {
       conditions.push(eq(agentComposes.name, params.name));
     } else if (params.agent) {
-      conditions.push(eq(agentComposes.name, params.agent));
+      conditions.push(eq(zeroAgents.id, params.agent));
     } else if (params.search) {
       conditions.push(ilike(agentComposes.name, `%${params.search}%`));
     }
@@ -229,7 +230,7 @@ async function getLogsTotalCount(
   if (params.name) {
     conditions.push(eq(agentComposes.name, params.name));
   } else if (params.agent) {
-    conditions.push(eq(agentComposes.name, params.agent));
+    conditions.push(eq(zeroAgents.id, params.agent));
   } else if (params.search) {
     conditions.push(ilike(agentComposes.name, `%${params.search}%`));
   }
@@ -259,6 +260,7 @@ async function getLogsTotalCount(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(and(...conditions));
 
   return result?.count ?? 0;
@@ -285,7 +287,7 @@ async function getAvailableFilters(
       .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(and(...baseConditions)),
     db
-      .selectDistinct({ name: agentComposes.name })
+      .selectDistinct({ id: zeroAgents.id })
       .from(agentRuns)
       .leftJoin(
         agentComposeVersions,
@@ -295,7 +297,8 @@ async function getAvailableFilters(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .where(and(...baseConditions, isNotNull(agentComposes.name))),
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .where(and(...baseConditions, isNotNull(zeroAgents.id))),
   ]);
 
   const statuses = statusRows
@@ -334,10 +337,10 @@ async function getAvailableFilters(
 
   const agents = agentRows
     .map((r) => {
-      return r.name;
+      return r.id;
     })
-    .filter((name): name is string => {
-      return name !== null;
+    .filter((id): id is string => {
+      return id !== null;
     });
 
   return { statuses, sources, agents };
@@ -493,7 +496,7 @@ async function getUserRunIds(
   userId: string,
   orgId: string,
   since: Date,
-  agentName?: string,
+  agentId?: string,
 ): Promise<string[]> {
   const conditions = [
     eq(agentRuns.userId, userId),
@@ -501,7 +504,7 @@ async function getUserRunIds(
     gte(agentRuns.createdAt, since),
   ];
 
-  if (agentName) {
+  if (agentId) {
     const rows = await db
       .select({ runId: agentRuns.id })
       .from(agentRuns)
@@ -513,7 +516,8 @@ async function getUserRunIds(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .where(and(...conditions, eq(agentComposes.name, agentName)));
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .where(and(...conditions, eq(zeroAgents.id, agentId)));
 
     return rows.map((r) => {
       return r.runId;
@@ -554,7 +558,8 @@ async function getAgentNames(
   const rows = await db
     .select({
       runId: agentRuns.id,
-      composeName: agentComposes.name,
+      composeId: agentComposes.id,
+      displayName: zeroAgents.displayName,
     })
     .from(agentRuns)
     .leftJoin(
@@ -565,10 +570,17 @@ async function getAgentNames(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
-    .where(and(eq(agentRuns.userId, userId), eq(agentRuns.orgId, orgId)));
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+    .where(
+      and(
+        inArray(agentRuns.id, runIds),
+        eq(agentRuns.userId, userId),
+        eq(agentRuns.orgId, orgId),
+      ),
+    );
 
   for (const row of rows) {
-    result.set(row.runId, row.composeName || "unknown");
+    result.set(row.runId, row.displayName ?? row.composeId ?? "unknown");
   }
 
   return result;
@@ -660,7 +672,7 @@ ${runIdFilter}
       }
     }
 
-    // Resolve agent names
+    // Resolve agent labels for the existing response field.
     const matchedRunIds = [
       ...new Set(
         matches.map((e) => {

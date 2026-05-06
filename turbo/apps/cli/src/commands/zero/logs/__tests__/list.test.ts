@@ -13,10 +13,12 @@ import { server } from "../../../../mocks/server";
 import { listCommand } from "../list";
 import chalk from "chalk";
 
+const AGENT_ID = "11111111-1111-4111-8111-111111111111";
+
 const mockLogEntry = {
   id: "abc12345-1234-1234-1234-123456789abc",
   sessionId: null,
-  agentId: "my-agent",
+  agentId: AGENT_ID,
   displayName: "My Agent",
   framework: "claude",
   triggerSource: "cli",
@@ -105,9 +107,9 @@ describe("zero logs list command", () => {
       }),
     );
 
-    await listCommand.parseAsync(["node", "cli", "--agent", "my-agent"]);
+    await listCommand.parseAsync(["node", "cli", "--agent", AGENT_ID]);
 
-    expect(capturedUrl?.searchParams.get("agent")).toBe("my-agent");
+    expect(capturedUrl?.searchParams.get("agent")).toBe(AGENT_ID);
   });
 
   it("should pass status filter to API", async () => {
@@ -200,6 +202,6 @@ describe("zero logs list command", () => {
     await listCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("my-agent");
+    expect(logCalls).toContain(AGENT_ID);
   });
 });

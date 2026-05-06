@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { HttpResponse, http as mswHttp } from "msw";
 import { POST } from "../route";
-import { testContext } from "../../../../../src/__tests__/test-helpers";
+import {
+  testContext,
+  uniqueNumericId,
+} from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
@@ -91,8 +94,9 @@ describe("POST /api/telegram/setup-status", () => {
 
   it("returns BotFather domain and privacy setup status", async () => {
     await context.setupUser();
+    const botId = uniqueNumericId();
     const getMeHandler = telegramGetMe({
-      botId: "123456",
+      botId,
       username: "setup_bot",
       privacyDisabled: true,
     });
@@ -108,7 +112,7 @@ describe("POST /api/telegram/setup-status", () => {
 
     expect(response.status).toBe(200);
     expect(body).toEqual({
-      id: "123456",
+      id: botId,
       username: "setup_bot",
       domainConfigured: true,
       privacyDisabled: true,
@@ -118,7 +122,7 @@ describe("POST /api/telegram/setup-status", () => {
 
   it("returns 409 when the bot is already installed", async () => {
     const user = await context.setupUser();
-    const botId = "123456";
+    const botId = uniqueNumericId();
     await createTestTelegramInstallation({
       telegramBotId: botId,
       orgId: user.orgId,

@@ -12,6 +12,8 @@ import { server } from "../../../../mocks/server";
 import { zeroSearchCommand } from "../index";
 import { searchCommand } from "../../logs/search";
 
+const AGENT_ID = "11111111-1111-4111-8111-111111111111";
+
 function stubResponse() {
   return HttpResponse.json({
     results: [
@@ -78,7 +80,7 @@ describe("zero search --source logs parity with zero logs search", () => {
       "--source",
       "logs",
       "--agent",
-      "my-agent",
+      AGENT_ID,
       "--limit",
       "5",
       "-C",
@@ -92,7 +94,7 @@ describe("zero search --source logs parity with zero logs search", () => {
       "cli",
       "OOM",
       "--agent",
-      "my-agent",
+      AGENT_ID,
       "--limit",
       "5",
       "-C",
@@ -119,7 +121,7 @@ describe("zero search --source logs parity with zero logs search", () => {
       "--source",
       "logs",
       "--agent",
-      "zero",
+      AGENT_ID,
       "--run",
       "abc12345-1234-1234-1234-123456789abc",
       "--since",
@@ -135,7 +137,7 @@ describe("zero search --source logs parity with zero logs search", () => {
     expect(captured).toHaveLength(1);
     const url = captured[0]!;
     expect(url.searchParams.get("keyword")).toBe("error");
-    expect(url.searchParams.get("agent")).toBe("zero");
+    expect(url.searchParams.get("agent")).toBe(AGENT_ID);
     expect(url.searchParams.get("runId")).toBe(
       "abc12345-1234-1234-1234-123456789abc",
     );

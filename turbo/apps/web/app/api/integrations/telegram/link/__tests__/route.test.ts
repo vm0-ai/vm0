@@ -6,6 +6,7 @@ import { DELETE, GET, POST } from "../route";
 import {
   testContext,
   uniqueId,
+  uniqueNumericId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
@@ -452,7 +453,7 @@ describe("/api/integrations/telegram/link", () => {
     it("links the official bot account via telegramAuth", async () => {
       setupOfficialTelegramEnv();
       const user = await context.setupUser();
-      const telegramUserId = 99301;
+      const telegramUserId = Number(uniqueNumericId());
       const telegramAuth = makeTelegramAuth(
         telegramUserId,
         "official_tg",
@@ -487,7 +488,7 @@ describe("/api/integrations/telegram/link", () => {
       setupOfficialTelegramEnv();
       await context.setupUser();
       const otherOrgId = uniqueId("org");
-      const telegramUserId = 99302;
+      const telegramUserId = Number(uniqueNumericId());
       await insertTestOfficialTelegramUserLink({
         telegramUserId: String(telegramUserId),
         vm0UserId: uniqueId("other-user"),
