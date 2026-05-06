@@ -6,7 +6,15 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { IconPlus, IconSearch, IconX, IconTrash } from "@tabler/icons-react";
+import {
+  IconCalendarClock,
+  IconMessageCircle,
+  IconPencil,
+  IconPlus,
+  IconSearch,
+  IconTrash,
+  IconX,
+} from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Button,
@@ -350,6 +358,50 @@ function formatThreadDateLabel(iso: string, now: Date): string {
   return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
 }
 
+// Three-state icon for the chat list avatar slot. Precedence:
+//   draft (unsent composer content) → pencil
+//   running (active non-terminal run, typically a scheduled task) → calendar/clock
+//   otherwise → chat bubble
+// Style is consistent across all states: 40px gray-100 circle, gray-700 stroke.
+function ThreadKindIcon({ session }: { session: ChatThreadListItem }) {
+  const kind = session.hasDraft
+    ? "draft"
+    : session.running
+      ? "schedule"
+      : "chat";
+  const Icon =
+    kind === "draft"
+      ? IconPencil
+      : kind === "schedule"
+        ? IconCalendarClock
+        : IconMessageCircle;
+  const label =
+    kind === "draft"
+      ? "Draft"
+      : kind === "schedule"
+        ? "Scheduled"
+        : "Chat";
+  return (
+    <span
+      aria-label={label}
+      data-thread-kind={kind}
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[hsl(var(--gray-200))] ring-1 ring-border text-foreground/80"
+    >
+      <Icon size={18} stroke={1.6} />
+    </span>
+  );
+}
+
+function threadSecondaryLine(session: ChatThreadListItem): string {
+  if (session.hasDraft) {
+    return "Draft";
+  }
+  if (session.running) {
+    return "Running…";
+  }
+  return "";
+}
+
 function ChatListItem({
   session,
   isSelected,
@@ -432,7 +484,7 @@ function ChatListItem({
           onSelect(session.id);
         }}
         className={cn(
-          "flex items-center px-2 py-3 text-left transition-transform no-underline bg-background border-b border-border/40 last:border-b-0",
+          "flex items-center gap-3 px-2 py-3 text-left transition-transform no-underline bg-background border-b border-border/40 last:border-b-0",
           isOpen ? "-translate-x-20" : "translate-x-0",
           isSelected
             ? "text-accent-foreground"
@@ -447,19 +499,27 @@ function ChatListItem({
           className="flex w-3 shrink-0 items-center justify-center"
         >
           {isUnread && (
-            <span className="h-[7px] w-[7px] rounded-full bg-primary" />
+            <span className="h-[7px] w-[7px] rounded-full bg-blue-500" />
           )}
         </span>
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate text-[15px] leading-snug pr-3",
-            isUnread ? "font-semibold" : "font-medium",
+        <ThreadKindIcon session={session} />
+        <span className="min-w-0 flex-1 flex flex-col gap-0.5">
+          <span
+            className={cn(
+              "truncate text-[15px] leading-snug",
+              isUnread ? "font-semibold" : "font-medium",
+            )}
+          >
+            {session.title ?? "New chat"}
+          </span>
+          {threadSecondaryLine(session) && (
+            <span className="truncate text-xs text-muted-foreground">
+              {threadSecondaryLine(session)}
+            </span>
           )}
-        >
-          {session.title ?? "New chat"}
         </span>
         {dateLabel && (
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          <span className="shrink-0 self-start mt-0.5 text-xs text-muted-foreground tabular-nums">
             {dateLabel}
           </span>
         )}
