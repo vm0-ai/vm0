@@ -21,6 +21,10 @@ function modelProviderResponse(row: {
   readonly selectedModel: string | null;
   readonly authMethod: string | null;
   readonly secretName: string | null;
+  readonly workspaceName: string | null;
+  readonly planType: string | null;
+  readonly needsReconnect: boolean;
+  readonly lastRefreshErrorCode: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }): ModelProviderResponse | null {
@@ -41,6 +45,10 @@ function modelProviderResponse(row: {
       : null,
     isDefault: row.isDefault,
     selectedModel: row.selectedModel,
+    workspaceName: row.workspaceName,
+    planType: row.planType,
+    needsReconnect: row.needsReconnect,
+    lastRefreshErrorCode: row.lastRefreshErrorCode,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -58,6 +66,10 @@ export function zeroModelProviders(
         selectedModel: modelProviders.selectedModel,
         authMethod: modelProviders.authMethod,
         secretName: secrets.name,
+        workspaceName: modelProviders.workspaceName,
+        planType: modelProviders.planType,
+        needsReconnect: modelProviders.needsReconnect,
+        lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
         createdAt: modelProviders.createdAt,
         updatedAt: modelProviders.updatedAt,
       })

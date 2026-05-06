@@ -67,6 +67,8 @@ function mockProviderResponse(
     secretNames: null,
     isDefault: true,
     selectedModel: null,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z",
     ...overrides,

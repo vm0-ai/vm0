@@ -44,6 +44,7 @@ export {
   clearOrgMembersCacheEntry,
   findTestModelProviderTokenState,
   setTestModelProviderTokenExpiresAt,
+  setTestModelProviderNeedsReconnect,
   ORG_SENTINEL_USER_ID,
 } from "./org";
 export {

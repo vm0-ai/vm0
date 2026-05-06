@@ -1005,6 +1005,14 @@ export const modelProviderResponseSchema = z.object({
   // platform UI does not have to bypass schema validation to read them.
   workspaceName: z.string().nullable().optional(),
   planType: z.string().nullable().optional(),
+  // OAuth refresh state. `needsReconnect` flips to true when the firewall's
+  // refresh attempt fails (#11921 writes this on the model_providers row).
+  // `lastRefreshErrorCode` carries the typed code from `ChatgptRefreshError`
+  // (e.g. `refresh_token_expired`) so the UI can render an actionable
+  // re-connect message. Both fields are always emitted for OAuth-typed
+  // providers; non-OAuth types default to false / null.
+  needsReconnect: z.boolean(),
+  lastRefreshErrorCode: z.string().nullable(),
 });
 
 export type ModelProviderResponse = z.infer<typeof modelProviderResponseSchema>;

@@ -434,4 +434,49 @@ describe("Org-level model provider routes", () => {
       expect(providers[0]?.isDefault).toBe(true);
     });
   });
+
+  describe("GET — surfaces OAuth refresh state on every provider (#11932)", () => {
+    let user: UserContext;
+
+    beforeEach(async () => {
+      vi.clearAllMocks();
+      mockIsFeatureEnabled.mockReturnValue(true);
+      context.setupMocks();
+      user = await context.setupUser();
+    });
+
+    it("emits needsReconnect=false + lastRefreshErrorCode=null for healthy providers", async () => {
+      await createProvider("anthropic-api-key", "sk-ant-test");
+      const providers = await listProviders();
+      expect(providers).toHaveLength(1);
+      const p = providers[0] as Record<string, unknown>;
+      expect(p.needsReconnect).toBe(false);
+      expect(p.lastRefreshErrorCode).toBeNull();
+    });
+
+    it("emits needsReconnect=true + lastRefreshErrorCode after firewall refresh failure", async () => {
+      const { setTestModelProviderNeedsReconnect, ORG_SENTINEL_USER_ID } =
+        await import("../../../../../src/__tests__/api-test-helpers");
+      await createMultiAuthProvider("chatgpt-oauth-token", "oauth", {
+        CHATGPT_ACCESS_TOKEN: "at",
+        CHATGPT_REFRESH_TOKEN: "rt",
+        CHATGPT_ACCOUNT_ID: "acct",
+        CHATGPT_ID_TOKEN: "idt",
+      });
+      await setTestModelProviderNeedsReconnect(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "chatgpt-oauth-token",
+        true,
+        "refresh_token_expired",
+      );
+
+      const providers = await listProviders();
+      const stale = providers.find((p) => {
+        return p.type === "chatgpt-oauth-token";
+      }) as Record<string, unknown>;
+      expect(stale.needsReconnect).toBe(true);
+      expect(stale.lastRefreshErrorCode).toBe("refresh_token_expired");
+    });
+  });
 });

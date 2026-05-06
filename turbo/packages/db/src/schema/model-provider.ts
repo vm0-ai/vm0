@@ -47,6 +47,12 @@ export const modelProviders = pgTable(
     // Captures ChatgptRefreshError.code (or equivalent) on refresh failure;
     // null on success or non-OAuth providers. Wave 3 stale-UX renders this.
     lastRefreshErrorCode: varchar("last_refresh_error_code", { length: 64 }),
+    // ChatGPT-only metadata captured at OAuth connect time. Other provider
+    // types leave these null. Plan type is unconstrained varchar so OpenAI
+    // adding a new tier doesn't break inserts; UI's isKnownChatgptPlan
+    // handles unknown values gracefully.
+    workspaceName: varchar("workspace_name", { length: 255 }),
+    planType: varchar("plan_type", { length: 32 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

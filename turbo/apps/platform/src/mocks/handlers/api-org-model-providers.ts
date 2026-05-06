@@ -49,6 +49,8 @@ export const apiOrgModelProvidersHandlers = [
       isDefault:
         mockOrgModelProviders.length === 0 || existing?.isDefault || false,
       selectedModel: body.selectedModel ?? null,
+      needsReconnect: existing?.needsReconnect ?? false,
+      lastRefreshErrorCode: existing?.lastRefreshErrorCode ?? null,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };

@@ -133,6 +133,38 @@ export const providerDeleted = makeApiError(
   "The model provider used by this thread has been deleted. Start a new chat thread to continue.",
 );
 
+/**
+ * Thrown by the model-provider resolver when a provider's OAuth refresh has
+ * failed and the user must re-connect before a sandbox can dispatch. Carries
+ * `providerType` and `refreshErrorCode` so callers can render the correct
+ * re-connect CTA without re-querying the DB.
+ */
+interface StaleProviderError extends ApiErrorBase {
+  readonly name: "StaleProviderError";
+  readonly code: "STALE_PROVIDER";
+  readonly providerType: string;
+  readonly refreshErrorCode: string | null;
+}
+
+export function staleProvider(
+  providerType: string,
+  refreshErrorCode: string | null,
+  message?: string,
+): StaleProviderError {
+  const err = new Error(
+    message ??
+      `Model provider "${providerType}" needs to be re-connected before it can be used.`,
+  );
+  Object.assign(err, {
+    name: "StaleProviderError",
+    code: "STALE_PROVIDER",
+    statusCode: 422,
+    providerType,
+    refreshErrorCode,
+  });
+  return err as StaleProviderError;
+}
+
 // ============================================================================
 // Type Guards
 // ============================================================================
@@ -175,6 +207,12 @@ export function isNoModelProvider(
   e: unknown,
 ): e is ReturnType<typeof noModelProvider> {
   return e instanceof Error && e.name === "NoModelProviderError";
+}
+
+export function isStaleProvider(
+  e: unknown,
+): e is ReturnType<typeof staleProvider> {
+  return e instanceof Error && e.name === "StaleProviderError";
 }
 
 export function isProviderDeleted(
