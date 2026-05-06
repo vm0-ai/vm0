@@ -31,6 +31,7 @@ describe("zero CLI program", () => {
       "whoami",
       "developer-support",
       "computer-use",
+      "official",
       "web",
     ];
     for (const name of expectedCommands) {
@@ -54,7 +55,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 19 commands", () => {
-    expect(commandNames).toHaveLength(19);
+  it("should have exactly 20 commands", () => {
+    expect(commandNames).toHaveLength(20);
   });
 });

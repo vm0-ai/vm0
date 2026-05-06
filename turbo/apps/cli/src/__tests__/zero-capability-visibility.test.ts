@@ -25,6 +25,7 @@ function buildCommands(): Command[] {
     new Command("telegram"),
     new Command("variable"),
     new Command("whoami"),
+    new Command("official"),
     new Command("web"),
   ];
 }
@@ -146,6 +147,7 @@ describe("registerZeroCommands", () => {
       "slack",
       "telegram",
       "variable",
+      "official",
     ]);
   });
 
@@ -242,6 +244,19 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("telegram");
+  });
+
+  it("should show official when file:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("official");
+    expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
   it("should hide telegram when file read and telegram write capabilities are missing", () => {

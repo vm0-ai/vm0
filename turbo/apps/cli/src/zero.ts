@@ -21,6 +21,7 @@ import { zeroLogsCommand } from "./commands/zero/logs";
 import { zeroSearchCommand } from "./commands/zero/search";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
+import { zeroOfficialCommand } from "./commands/zero/official";
 import { zeroWebCommand } from "./commands/zero/web";
 import {
   decodeZeroTokenPayload,
@@ -52,6 +53,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   whoami: null,
   "developer-support": null,
   "computer-use": "computer-use:write",
+  official: "file:write",
   web: null,
 };
 
@@ -74,6 +76,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSkillCommand,
   zeroDeveloperSupportCommand,
   zeroComputerUseCommand,
+  zeroOfficialCommand,
   zeroWebCommand,
 ];
 
@@ -137,6 +140,7 @@ Examples:
   Set up a schedule?     zero schedule setup --help
   Update yourself?       zero agent --help
   Manage custom skills?  zero skill --help
+  Generate voice?        zero official generate voice --help
   Check your identity?   zero whoami`,
   );
 

@@ -12,10 +12,27 @@ import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
-const GENERATION_TYPE_ORDER: readonly ConnectorGenerationType[] = [
+type OfficialGenerationType = "voice";
+type DoctorGenerationType = ConnectorGenerationType | OfficialGenerationType;
+
+interface BuiltInGenerationOption {
+  description: string;
+}
+
+const BUILT_IN_GENERATION_OPTIONS: Partial<
+  Record<DoctorGenerationType, BuiltInGenerationOption>
+> = {
+  voice: {
+    description:
+      "If the user did not explicitly request a specific connector or provider, you can use the official generation capability. Run `zero official generate voice -h` for options.",
+  },
+};
+
+const GENERATION_TYPE_ORDER: readonly DoctorGenerationType[] = [
   "image",
   "video",
   "audio",
+  "voice",
   "text",
   "code",
   "document",
@@ -23,7 +40,7 @@ const GENERATION_TYPE_ORDER: readonly ConnectorGenerationType[] = [
   "website",
 ];
 
-const GENERATION_TYPE_LABELS: Record<ConnectorGenerationType, string> = {
+const GENERATION_TYPE_LABELS: Record<DoctorGenerationType, string> = {
   audio: "Audio",
   code: "Code",
   document: "Document",
@@ -31,6 +48,7 @@ const GENERATION_TYPE_LABELS: Record<ConnectorGenerationType, string> = {
   presentation: "Presentation",
   text: "Text",
   video: "Video",
+  voice: "Voice",
   website: "Website",
 };
 
@@ -59,7 +77,17 @@ interface GenerationCandidate {
   actionUrl?: string;
 }
 
-function getAvailableGenerationTypes(): ConnectorGenerationType[] {
+function getConnectorGenerationType(
+  generationType: DoctorGenerationType,
+): ConnectorGenerationType {
+  if (generationType === "voice") {
+    return "audio";
+  }
+
+  return generationType;
+}
+
+function getAvailableGenerationTypes(): DoctorGenerationType[] {
   const available = new Set<ConnectorGenerationType>();
   for (const config of Object.values(CONNECTOR_TYPES)) {
     for (const generationType of config.generation ?? []) {
@@ -68,14 +96,17 @@ function getAvailableGenerationTypes(): ConnectorGenerationType[] {
   }
 
   return GENERATION_TYPE_ORDER.filter((type) => {
-    return available.has(type);
+    return (
+      type in BUILT_IN_GENERATION_OPTIONS ||
+      available.has(getConnectorGenerationType(type))
+    );
   });
 }
 
-function parseGenerationType(value: string): ConnectorGenerationType {
+function parseGenerationType(value: string): DoctorGenerationType {
   const availableTypes = getAvailableGenerationTypes();
-  if (availableTypes.includes(value as ConnectorGenerationType)) {
-    return value as ConnectorGenerationType;
+  if (availableTypes.includes(value as DoctorGenerationType)) {
+    return value as DoctorGenerationType;
   }
 
   throw new Error(`Unknown generation type: ${value}`, {
@@ -238,8 +269,17 @@ function renderActions(candidates: GenerationCandidate[]): void {
   }
 }
 
+function renderBuiltInOption(generationType: DoctorGenerationType): void {
+  const option = BUILT_IN_GENERATION_OPTIONS[generationType];
+  if (!option) return;
+
+  console.log("");
+  console.log("Fallback option:");
+  console.log(`  ${option.description}`);
+}
+
 function renderText(params: {
-  generationType: ConnectorGenerationType;
+  generationType: DoctorGenerationType;
   agentId: string | undefined;
   ready: GenerationCandidate[];
   other: GenerationCandidate[];
@@ -268,6 +308,8 @@ function renderText(params: {
     console.log(`No ready ${generationType} generation connectors found.`);
   }
 
+  renderBuiltInOption(generationType);
+
   if (showAll && other.length > 0) {
     console.log("");
     console.log(`Other ${generationType} generation connectors`);
@@ -292,6 +334,8 @@ export const generateCommand = new Command()
   .action(
     withErrorHandler(async (type: string, options: GenerateOptions) => {
       const generationType = parseGenerationType(type);
+      const connectorGenerationType =
+        getConnectorGenerationType(generationType);
       const agentId = process.env.ZERO_AGENT_ID;
       const [connectorList, enabledTypes, platformOrigin] = await Promise.all([
         listZeroConnectors(),
@@ -305,7 +349,7 @@ export const generateCommand = new Command()
       );
       const configuredTypes = new Set(connectorList.configuredTypes);
       const authorizedTypes = enabledTypes ? new Set(enabledTypes) : null;
-      const candidates = getGenerationConnectors(generationType).map(
+      const candidates = getGenerationConnectors(connectorGenerationType).map(
         ([connectorType, config]) => {
           return toCandidate({
             type: connectorType,
@@ -330,10 +374,13 @@ export const generateCommand = new Command()
           JSON.stringify(
             {
               generationType,
+              connectorGenerationType,
               availableTypes: getAvailableGenerationTypes(),
               agentId: agentId ?? null,
               choices: ready,
               otherCandidates: other,
+              builtInOption:
+                BUILT_IN_GENERATION_OPTIONS[generationType] ?? null,
             },
             null,
             2,

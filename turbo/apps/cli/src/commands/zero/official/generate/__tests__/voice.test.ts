@@ -1,5 +1,5 @@
 /**
- * Tests for zero web voice command
+ * Tests for zero official generate voice command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -10,8 +10,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import chalk from "chalk";
-import { server } from "../../../../mocks/server";
-import { voiceCommand } from "../voice";
+import { server } from "../../../../../mocks/server";
+import { zeroOfficialCommand } from "../../index";
 
 const SPEECH_URL = "http://localhost:3000/api/zero/voice-io/speech";
 const VOICE_RESULT = {
@@ -26,7 +26,7 @@ const VOICE_RESULT = {
   voice: "cedar",
 };
 
-describe("zero web voice command", () => {
+describe("zero official generate voice command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -61,9 +61,11 @@ describe("zero web voice command", () => {
       }),
     );
 
-    await voiceCommand.parseAsync([
+    await zeroOfficialCommand.parseAsync([
       "node",
       "cli",
+      "generate",
+      "voice",
       "--text",
       "Hello from vm0",
       "--voice",
@@ -77,7 +79,6 @@ describe("zero web voice command", () => {
     expect(stdout).toContain(`File: ${VOICE_RESULT.filename}`);
     expect(stdout).toContain("Duration: 3s");
     expect(stdout).toContain("Credits charged: 1");
-    expect(stdout).not.toContain("zero web upload-file");
   });
 
   it("should print JSON metadata when --json is provided", async () => {
@@ -87,9 +88,11 @@ describe("zero web voice command", () => {
       }),
     );
 
-    await voiceCommand.parseAsync([
+    await zeroOfficialCommand.parseAsync([
       "node",
       "cli",
+      "generate",
+      "voice",
       "--text",
       "JSON please",
       "--json",
@@ -126,7 +129,14 @@ describe("zero web voice command", () => {
     );
 
     await expect(async () => {
-      await voiceCommand.parseAsync(["node", "cli", "--text", "hello"]);
+      await zeroOfficialCommand.parseAsync([
+        "node",
+        "cli",
+        "generate",
+        "voice",
+        "--text",
+        "hello",
+      ]);
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(

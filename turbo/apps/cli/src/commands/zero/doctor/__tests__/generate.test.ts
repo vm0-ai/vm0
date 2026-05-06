@@ -25,10 +25,23 @@ function connector(
 }
 
 function stubConnectors(connectors: Array<Record<string, unknown>>) {
+  return stubConnectorsWithConfiguredTypes(connectors, [
+    "fal",
+    "luma",
+    "openai",
+    "replicate",
+    "runway",
+  ]);
+}
+
+function stubConnectorsWithConfiguredTypes(
+  connectors: Array<Record<string, unknown>>,
+  configuredTypes: string[],
+) {
   return http.get("http://localhost:3000/api/zero/connectors", () => {
     return HttpResponse.json({
       connectors,
-      configuredTypes: ["fal", "luma", "openai", "replicate", "runway"],
+      configuredTypes,
       connectorProvidedSecretNames: [],
     });
   });
@@ -160,6 +173,47 @@ describe("zero doctor generate command", () => {
         }),
       ]),
     );
+  });
+
+  it("suggests the official voice command when no voice connector is ready", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes(
+        [],
+        ["elevenlabs", "hume", "minimax", "openai"],
+      ),
+      stubUserConnectors([]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "voice"]);
+
+    const text = output();
+    expect(text).toContain("Voice generation choices for current agent");
+    expect(text).toContain("No ready voice generation connectors found.");
+    expect(text).toContain("Fallback option:");
+    expect(text).toContain(
+      "If the user did not explicitly request a specific connector or provider, you can use the official generation capability.",
+    );
+    expect(text).toContain("zero official generate voice -h");
+    expect(text).not.toContain('zero official generate voice --text "Hello"');
+  });
+
+  it("also shows the official voice fallback when a voice connector is ready", async () => {
+    server.use(
+      stubConnectorsWithConfiguredTypes(
+        [connector("openai", "openai-user")],
+        ["elevenlabs", "hume", "minimax", "openai"],
+      ),
+      stubUserConnectors(["openai"]),
+    );
+
+    await generateCommand.parseAsync(["node", "cli", "voice"]);
+
+    const text = output();
+    expect(text).toContain("Voice generation choices for current agent");
+    expect(text).toContain("OpenAI");
+    expect(text).toContain("@openai-user");
+    expect(text).toContain("Fallback option:");
+    expect(text).toContain("zero official generate voice");
   });
 
   it("rejects unknown generation types with available type guidance", async () => {
