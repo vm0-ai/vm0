@@ -2033,6 +2033,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn snapshot_publish_commit_failure_keeps_cleanup_state_for_partial_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "commit-cleanup").await;
+        let mut publish_attempt = SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow);
+
+        let err = publish_attempt
+            .commit_success(&output)
+            .await
+            .expect_err("commit should fail without snapshot and memory artifacts");
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            publish_attempt.has_cleanup_work(),
+            "failed commit must keep publish state so cleanup can finish"
+        );
+        assert!(
+            tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "failed marker publication may leave partial stable cow"
+        );
+        assert!(
+            tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "failed marker publication may leave partial stable bitmap"
+        );
+
+        assert!(publish_attempt.cleanup_after_cancellation().await);
+        assert!(
+            !publish_attempt.has_cleanup_work(),
+            "cleanup should resolve retained publish state"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "cleanup must not write marker for failed commit"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(
+            !provider.is_complete(output.dir()).await.unwrap(),
+            "partial stable output must remain incomplete"
+        );
+    }
+
+    #[tokio::test]
     async fn snapshot_publish_cleanup_kept_cow_does_not_publish_stable_output() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().join("output"));
@@ -2094,6 +2141,37 @@ mod tests {
                 .unwrap(),
             "failed cleanup must not publish marker"
         );
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_cleanup_keep_cow_error_does_not_publish() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let mut publish_attempt =
+            SnapshotPublishAttempt::new_with_keep_future_for_test(async move {
+                Err(nbd_cow::error::NbdCowError::Io(std::io::Error::other(
+                    "keep cow failed",
+                )))
+            });
+
+        assert!(
+            !publish_attempt.cleanup_after_cancellation().await,
+            "keep-COW failure should report cleanup failure"
+        );
+        assert!(
+            !publish_attempt.has_cleanup_work(),
+            "failed keep-COW finalizer has already resolved the NBD lease path"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "failed keep-COW cleanup must not write marker"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(!provider.is_complete(output.dir()).await.unwrap());
     }
 
     #[tokio::test]
