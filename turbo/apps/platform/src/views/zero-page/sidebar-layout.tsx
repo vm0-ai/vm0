@@ -238,11 +238,11 @@ function ChatListHeaderSearchLink() {
       aria-label="Search chats"
       data-testid="mobile-chat-list-search-toggle"
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground no-underline",
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground no-underline",
         TOPBAR_GLASS,
       )}
     >
-      <IconSearch size={16} stroke={1.6} />
+      <IconSearch size={18} stroke={1.6} />
     </Link>
   );
 }
@@ -260,14 +260,14 @@ function ConnectorsHeaderSearchToggle() {
       aria-label="Search connectors"
       data-testid="mobile-connectors-search-toggle"
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
         TOPBAR_GLASS,
         open
           ? "text-foreground bg-card"
           : "text-muted-foreground hover:text-foreground",
       )}
     >
-      <IconSearch size={16} stroke={1.6} />
+      <IconSearch size={18} stroke={1.6} />
     </button>
   );
 }
@@ -284,14 +284,14 @@ function HeaderAccountAvatar() {
       aria-label="Open account"
       data-testid="mobile-header-account"
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full overflow-hidden no-underline",
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden no-underline",
         TOPBAR_GLASS,
       )}
     >
       {imageUrl ? (
         <img src={imageUrl} alt="" className="h-full w-full object-cover" />
       ) : (
-        <span className="flex h-full w-full items-center justify-center bg-[hsl(var(--gray-200))] text-xs font-semibold text-[hsl(var(--primary-700))]">
+        <span className="flex h-full w-full items-center justify-center bg-[hsl(var(--gray-200))] text-sm font-semibold text-[hsl(var(--primary-700))]">
           {initial}
         </span>
       )}
@@ -318,11 +318,11 @@ function HeaderIconButton({
       aria-label={label}
       data-testid={testId}
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground disabled:opacity-50",
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground disabled:opacity-50",
         TOPBAR_GLASS,
       )}
     >
-      <IconPlus size={18} stroke={1.8} />
+      <IconPlus size={20} stroke={1.8} />
     </button>
   );
 }
@@ -467,11 +467,11 @@ function BackButton({
       aria-label={label}
       data-testid={testId}
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground no-underline",
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground no-underline",
         TOPBAR_GLASS,
       )}
     >
-      <IconArrowLeft size={18} stroke={1.8} />
+      <IconArrowLeft size={20} stroke={1.8} />
     </Link>
   );
 }

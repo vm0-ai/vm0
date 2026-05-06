@@ -186,7 +186,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
               <h2 className="text-lg font-semibold text-foreground">
                 Agent not found
               </h2>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-[15px] sm:text-sm text-muted-foreground">
                 The agent &quot;{agentId}&quot; doesn&apos;t exist or you
                 don&apos;t have access to it.
               </p>
@@ -210,7 +210,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
         <div className="mx-auto max-w-[900px]">
           <Card className="zero-card">
             <CardContent className="px-6 py-6 text-center space-y-3">
-              <p className="text-sm text-destructive">{error}</p>
+              <p className="text-[15px] sm:text-sm text-destructive">{error}</p>
               <Link
                 pathname="/agents/:agentId"
                 options={{ pathParams: { agentId: agentId } }}
@@ -512,7 +512,7 @@ function JobPermissionsTab({
               alt="No connectors"
               className="h-20 w-20 object-contain opacity-80"
             />
-            <p className="text-sm text-muted-foreground text-center">
+            <p className="text-[15px] sm:text-sm text-muted-foreground text-center">
               No connected services yet. Head to the{" "}
               <Link
                 pathname="/connectors"
@@ -531,7 +531,7 @@ function JobPermissionsTab({
             <div className="relative border-b border-border/50">
               <div
                 className={cn(
-                  "px-5 pt-4 pb-3 pr-12 text-sm text-muted-foreground transition-opacity duration-150",
+                  "px-5 pt-4 pb-3 pr-12 text-[15px] sm:text-sm text-muted-foreground transition-opacity duration-150",
                   searchActive && "opacity-0 select-none",
                 )}
                 aria-hidden={searchActive}
@@ -562,7 +562,7 @@ function JobPermissionsTab({
                         setSearchActive(false);
                       }
                     }}
-                    className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                    className="flex-1 bg-transparent text-base sm:text-sm text-foreground placeholder:text-muted-foreground outline-none"
                   />
                   <button
                     type="button"
@@ -610,7 +610,7 @@ function JobPermissionsTab({
                 );
               })
             ) : (
-              <p className="px-5 py-4 text-sm text-muted-foreground">
+              <p className="px-5 py-4 text-[15px] sm:text-sm text-muted-foreground">
                 No results for &ldquo;{search}&rdquo;
               </p>
             )}

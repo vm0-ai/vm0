@@ -45,10 +45,12 @@ export function OrgAvatar({
 }: {
   name: string;
   imageUrl?: string | null;
-  size?: "sm" | "lg";
+  size?: "sm" | "md" | "lg";
 }) {
-  const dim = size === "lg" ? "h-10 w-10" : "h-6 w-6";
-  const textSize = size === "lg" ? "text-base" : "text-[11px]";
+  const dim =
+    size === "lg" ? "h-10 w-10" : size === "md" ? "h-8 w-8" : "h-6 w-6";
+  const textSize =
+    size === "lg" ? "text-base" : size === "md" ? "text-sm" : "text-[11px]";
   const initial = name.charAt(0).toUpperCase();
 
   if (imageUrl) {

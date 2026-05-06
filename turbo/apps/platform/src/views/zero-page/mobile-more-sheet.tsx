@@ -4,6 +4,7 @@ import {
   IconChevronRight,
   IconLayoutGrid,
   IconSparkles,
+  IconUserCircle,
 } from "@tabler/icons-react";
 import {
   Sheet,
@@ -67,7 +68,7 @@ export function MobileMoreSheet() {
   const setOpen = useSet(setMobileMoreSheetOpen$);
   const navigate = useSet(detachedNavigateTo$);
 
-  const goTo = (pathname: "/insights" | "/works") => {
+  const goTo = (pathname: "/insights" | "/works" | "/account") => {
     setOpen(false);
     navigate(pathname);
   };
@@ -86,7 +87,7 @@ export function MobileMoreSheet() {
         <SheetHeader className="sr-only">
           <SheetTitle>More</SheetTitle>
           <SheetDescription>
-            Insights and where Zero works.
+            Insights, where Zero works, and account settings.
           </SheetDescription>
         </SheetHeader>
         <div className="flex justify-center pt-2.5">
@@ -112,6 +113,15 @@ export function MobileMoreSheet() {
             testId="mobile-more-works"
             onSelect={() => {
               goTo("/works");
+            }}
+          />
+          <SectionLink
+            icon={IconUserCircle}
+            label="Account"
+            hint="Profile, theme, preferences"
+            testId="mobile-more-account"
+            onSelect={() => {
+              goTo("/account");
             }}
           />
         </div>
