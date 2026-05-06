@@ -733,6 +733,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ppid_chain_finds_target_at_max_depth_boundary() {
+        let chain = [
+            (100, Some(101)),
+            (101, Some(102)),
+            (102, Some(103)),
+            (103, Some(104)),
+            (104, Some(105)),
+            (105, Some(106)),
+            (106, Some(107)),
+            (107, Some(108)),
+            (108, Some(109)),
+            (109, Some(110)),
+            (110, Some(111)),
+            (111, Some(112)),
+            (112, Some(113)),
+            (113, Some(114)),
+            (114, Some(115)),
+            (115, Some(116)),
+        ];
+        let walk = walk_test_ppid_chain(100, &[116], &chain).await;
+
+        assert_eq!(walk, PpidChainWalk::FoundTarget);
+        assert_eq!(process_has_ancestor_from_walk(walk), Some(true));
+        assert!(!is_orphan_from_walk(walk));
+    }
+
+    #[tokio::test]
     async fn ppid_chain_reaches_pid_one_boundary() {
         let walk = walk_test_ppid_chain(10, &[99], &[(10, Some(9)), (9, Some(1))]).await;
 
@@ -804,7 +831,9 @@ mod tests {
         assert_eq!(pid_one_walk, PpidChainWalk::FoundTarget);
         assert_eq!(pid_zero_walk, PpidChainWalk::FoundTarget);
         assert_eq!(process_has_ancestor_from_walk(pid_one_walk), Some(true));
+        assert_eq!(process_has_ancestor_from_walk(pid_zero_walk), Some(true));
         assert!(!is_orphan_from_walk(pid_one_walk));
+        assert!(!is_orphan_from_walk(pid_zero_walk));
     }
 
     // -- Mitmdump parser tests --
