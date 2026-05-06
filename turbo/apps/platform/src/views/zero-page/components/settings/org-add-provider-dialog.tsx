@@ -74,7 +74,7 @@ export function OrgAddProviderDialog({
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
   const features = useLastResolved(featureSwitch$);
   const codexBetaEnabled = features?.[FeatureSwitchKey.CodexBeta] ?? false;
-  const chatgptOauthEnabled =
+  const codexOauthEnabled =
     features?.[FeatureSwitchKey.CodexOauthProvider] ?? false;
   const openAdd = useSet(orgOpenAddDialog$);
   const configuredSet = new Set(
@@ -101,7 +101,7 @@ export function OrgAddProviderDialog({
     if (type === "openai-api-key" && !codexBetaEnabled) {
       return false;
     }
-    if (type === "codex-oauth-token" && !chatgptOauthEnabled) {
+    if (type === "codex-oauth-token" && !codexOauthEnabled) {
       return false;
     }
     return true;
