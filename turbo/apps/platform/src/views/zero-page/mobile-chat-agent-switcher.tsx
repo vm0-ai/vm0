@@ -31,7 +31,7 @@ export function MobileChatAgentSwitcher() {
 
   return (
     <div
-      className="md:hidden -mx-4 px-4 pb-3 pt-1 flex gap-4 overflow-x-auto snap-x"
+      className="md:hidden -mx-4 px-4 py-1 flex gap-4 overflow-x-auto snap-x"
       data-testid="mobile-chat-agent-switcher"
       aria-label="Pinned teammates"
     >
