@@ -109,12 +109,24 @@ function MoreTab({ active }: { active: boolean }) {
   );
 }
 
+const TAB_VISIBLE_ON: ReadonlySet<RouteKey> = new Set([
+  "home",
+  "chatList",
+  "agents",
+  "schedules",
+  "connectors",
+]);
+
 export function MobileBottomTabBar() {
   const features = useLastResolved(featureSwitch$);
   const enabled = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
   const activeId = useGet(activeRoute$);
 
   if (!enabled) {
+    return null;
+  }
+
+  if (activeId === null || !TAB_VISIBLE_ON.has(activeId)) {
     return null;
   }
 
