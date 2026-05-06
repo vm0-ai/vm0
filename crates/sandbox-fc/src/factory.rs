@@ -558,9 +558,9 @@ impl FactoryCleanupGroup {
             let mut batch = {
                 let mut state = self.lock_state();
                 state.accepting = false;
-                state.closed = true;
                 Self::reap_completed_locked(&mut state);
                 if state.tasks.is_empty() {
+                    state.closed = true;
                     return;
                 }
                 FactoryCleanupBatch {
