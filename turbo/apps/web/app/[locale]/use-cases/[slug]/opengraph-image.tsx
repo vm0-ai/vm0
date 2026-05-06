@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import type { ConnectorRef } from "../data";
 import { getUseCaseBySlug } from "../data";
 import enMessages from "../../../../messages/en.json";
 import deMessages from "../../../../messages/de.json";
@@ -10,6 +11,14 @@ import esMessages from "../../../../messages/es.json";
 export const alt = "VM0 Use Case";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
+
+const BG_COLOR = "#F3F5F8";
+const TEXT_COLOR = "#1A1A1F";
+const MUTED_COLOR = "#5C5C66";
+const TILE_BG = "#FFFFFF";
+const TILE_BORDER = "#E2E5EA";
+
+const ZERO_AVATAR_PATH = "assets/zero-avatar.png";
 
 type UseCaseContent = { title?: string; description?: string };
 type MessagesShape = {
@@ -23,48 +32,21 @@ const ALL_MESSAGES: Record<string, MessagesShape> = {
   es: esMessages as MessagesShape,
 };
 
-type StatsLabels = { steps: string; integrations: string; nextActions: string };
-
-const EN_LABELS: StatsLabels = {
-  steps: "steps",
-  integrations: "integrations",
-  nextActions: "next actions",
-};
-
-const STATS_LABELS: Record<string, StatsLabels> = {
-  en: EN_LABELS,
-  de: {
-    steps: "Schritte",
-    integrations: "Integrationen",
-    nextActions: "Folgeaktionen",
-  },
-  ja: {
-    steps: "ステップ",
-    integrations: "連携",
-    nextActions: "次のアクション",
-  },
-  es: {
-    steps: "pasos",
-    integrations: "integraciones",
-    nextActions: "próximas acciones",
-  },
-};
-
-const EN_USE_CASE_LABEL = "Use case";
-const USE_CASE_LABELS: Record<string, string> = {
-  en: EN_USE_CASE_LABEL,
-  de: "Anwendungsfall",
-  ja: "ユースケース",
-  es: "Caso de uso",
-};
-
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 const fontCache = new Map<string, ArrayBuffer>();
 
-function readPublicSvgDataUri(relPath: string): string {
+function readPublicAsBase64(relPath: string, mime: string): string {
   const cleaned = relPath.replace(/^\//, "");
   const buf = readFileSync(path.join(PUBLIC_DIR, cleaned));
-  return `data:image/svg+xml;base64,${buf.toString("base64")}`;
+  return `data:${mime};base64,${buf.toString("base64")}`;
+}
+
+function readSvgDataUri(relPath: string): string {
+  return readPublicAsBase64(relPath, "image/svg+xml");
+}
+
+function readPngDataUri(relPath: string): string {
+  return readPublicAsBase64(relPath, "image/png");
 }
 
 async function loadGoogleFont(
@@ -100,21 +82,6 @@ function fontFamilyForLocale(locale: string): string {
   return locale === "ja" ? "Noto Sans JP" : "Noto Sans";
 }
 
-function hexToRgba(hex: string, alpha: number): string {
-  const cleaned = hex.replace(/^#/, "");
-  let full: string;
-  if (cleaned.length === 3) {
-    full = "";
-    for (const c of cleaned) full += c + c;
-  } else {
-    full = cleaned;
-  }
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 function resolveContent(locale: string, slug: string): UseCaseContent {
   const primary = ALL_MESSAGES[locale]?.useCases?.content?.[slug];
   if (primary) return primary;
@@ -132,9 +99,9 @@ interface ConnectorTile {
   label: string;
 }
 
-function toConnectorTile(c: { icon: string; label: string }): ConnectorTile {
+function toConnectorTile(c: ConnectorRef): ConnectorTile {
   return {
-    uri: readPublicSvgDataUri(c.icon),
+    uri: readSvgDataUri(c.icon),
     label: c.label,
   };
 }
@@ -150,11 +117,26 @@ function renderConnectorTile(c: ConnectorTile) {
         width: 56,
         height: 56,
         borderRadius: 14,
-        backgroundColor: "#ffffff",
+        backgroundColor: TILE_BG,
+        border: `1px solid ${TILE_BORDER}`,
       }}
     >
       <img src={c.uri} width={32} height={32} alt="" />
     </div>
+  );
+}
+
+function renderZeroAvatar() {
+  const dim = 280;
+  const uri = readPngDataUri(ZERO_AVATAR_PATH);
+  return (
+    <img
+      src={uri}
+      width={dim}
+      height={dim}
+      style={{ flexShrink: 0 }}
+      alt=""
+    />
   );
 }
 
@@ -168,13 +150,9 @@ export default async function OpengraphImage({ params }: Params) {
 
   const content = resolveContent(locale, slug);
   const title = content.title ?? "VM0 Use Case";
-  const description = truncate(content.description ?? "", 160);
+  const description = truncate(content.description ?? "", 140);
 
-  const accent = useCase?.color ?? "#ED4E01";
   const connectors = (useCase?.connectors ?? []).slice(0, 5);
-  const stepCount = useCase?.stepCount ?? 0;
-  const integrationCount = useCase?.integrationCount ?? 0;
-  const nextActionCount = useCase?.nextActionCount ?? 0;
 
   const family = fontFamilyForLocale(locale);
   const [regular, bold] = await Promise.all([
@@ -182,13 +160,11 @@ export default async function OpengraphImage({ params }: Params) {
     loadGoogleFont(family, 700),
   ]);
 
-  const logoUri = readPublicSvgDataUri("assets/vm0-logo.svg");
+  const logoUri = readSvgDataUri("assets/vm0-logo-dark.svg");
   const connectorTiles = connectors.map(toConnectorTile);
 
-  const useCaseLabel = USE_CASE_LABELS[locale] ?? EN_USE_CASE_LABEL;
-  const labels = STATS_LABELS[locale] ?? EN_LABELS;
-  const titleFontSize = title.length > 80 ? 52 : 60;
-  const showNextActions = nextActionCount > 0;
+  const baseTitleFontSize = locale === "ja" ? 44 : 58;
+  const titleFontSize = title.length > 80 ? baseTitleFontSize - 6 : baseTitleFontSize;
 
   return new ImageResponse(
     (
@@ -198,107 +174,68 @@ export default async function OpengraphImage({ params }: Params) {
           height: "100%",
           display: "flex",
           flexDirection: "column",
-          backgroundColor: "#0b0b0d",
-          backgroundImage: `radial-gradient(circle at 0% 0%, ${hexToRgba(accent, 0.32)} 0%, ${hexToRgba(accent, 0.05)} 45%, #0b0b0d 75%)`,
-          color: "#fafafa",
-          padding: "64px 80px",
+          backgroundColor: BG_COLOR,
+          color: TEXT_COLOR,
+          padding: "60px 72px",
           fontFamily: family,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <img src={logoUri} width={120} height={36} alt="" />
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              fontSize: 22,
-              fontWeight: 500,
-              letterSpacing: 2,
-              color: accent,
-              textTransform: "uppercase",
-            }}
-          >
-            {useCaseLabel}
-          </div>
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <img src={logoUri} width={130} height={39} alt="" />
         </div>
 
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
             flex: 1,
-            justifyContent: "center",
-            gap: 28,
-            paddingTop: 24,
+            alignItems: "center",
+            gap: 56,
+            paddingTop: 16,
           }}
         >
           <div
             style={{
               display: "flex",
-              fontSize: titleFontSize,
-              fontWeight: 700,
-              lineHeight: 1.15,
-              letterSpacing: -1,
-              maxWidth: 1040,
+              flexDirection: "column",
+              flex: 1,
+              gap: 24,
             }}
           >
-            {title}
+            <div
+              style={{
+                display: "-webkit-box",
+                fontSize: titleFontSize,
+                fontWeight: 700,
+                lineHeight: 1.15,
+                letterSpacing: -1,
+                color: TEXT_COLOR,
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {title}
+            </div>
+            <div
+              style={{
+                display: "-webkit-box",
+                fontSize: 24,
+                fontWeight: 400,
+                lineHeight: 1.45,
+                color: MUTED_COLOR,
+                WebkitLineClamp: 3,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+            >
+              {description}
+            </div>
           </div>
-          <div
-            style={{
-              display: "flex",
-              fontSize: 26,
-              fontWeight: 400,
-              lineHeight: 1.4,
-              color: "#a8a8ad",
-              maxWidth: 1040,
-            }}
-          >
-            {description}
-          </div>
+          {renderZeroAvatar()}
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {connectorTiles.map(renderConnectorTile)}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 20,
-              fontSize: 22,
-              color: "#cfcfd4",
-            }}
-          >
-            <div style={{ display: "flex" }}>
-              {stepCount} {labels.steps}
-            </div>
-            <div style={{ display: "flex", color: "#54545a" }}>·</div>
-            <div style={{ display: "flex" }}>
-              {integrationCount} {labels.integrations}
-            </div>
-            {showNextActions ? (
-              <div style={{ display: "flex", color: "#54545a" }}>·</div>
-            ) : null}
-            {showNextActions ? (
-              <div style={{ display: "flex" }}>
-                {nextActionCount} {labels.nextActions}
-              </div>
-            ) : null}
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {connectorTiles.map(renderConnectorTile)}
         </div>
       </div>
     ),
