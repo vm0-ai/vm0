@@ -3,6 +3,8 @@
 //! This test lives in its own binary because `guest_agent::env` caches
 //! environment values in process-wide `LazyLock`s.
 
+mod common;
+
 use guest_agent::error::AgentError;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
@@ -29,18 +31,16 @@ impl Drop for SystemLogOverrideGuard {
 #[tokio::test]
 async fn no_api_mode_drains_background_webhook_users_without_network_client()
 -> Result<(), Box<dyn std::error::Error>> {
+    let mock = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
-    let run_id = format!("no-api-mode-{}", std::process::id());
     unsafe {
-        std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
-        std::env::set_var("VM0_API_TOKEN", "");
-        std::env::set_var("VM0_RUN_ID", &run_id);
-        std::env::set_var("VM0_WORKING_DIR", tmp.path());
-        std::env::set_var("VM0_PROMPT", "no api mode");
-        std::env::set_var("HOME", tmp.path());
+        common::setup_env(&mock, tmp.path(), "@exit-after-result", 3, 1)?;
     }
 
     let http = HttpClient::for_current_env()?;
+    let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
+    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
+    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
 
     let disabled = http
         .post_json("http://127.0.0.1:1/should-not-send", &json!({}), 1)
@@ -90,6 +90,23 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "no-API complete path must return before touching the disabled HTTP client: {complete_log}"
     );
 
+    let cli_result = tokio::time::timeout(
+        Duration::from_secs(5),
+        guest_agent::cli::execute_cli(&masker, common::spawn_dummy_heartbeat(), http.clone()),
+    )
+    .await
+    .expect("no-API execute_cli should return promptly with disabled HTTP client")?;
+    assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
+    assert_eq!(
+        cli_result.last_event_sequence, None,
+        "no-API execute_cli must not enqueue webhook events"
+    );
+    assert!(
+        !std::path::Path::new(guest_agent::paths::event_error_flag()).exists(),
+        "no-API execute_cli must not write event error flag"
+    );
+
+    let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
     let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
     let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
     Ok(())
