@@ -171,9 +171,9 @@ describe("connector/providers/codex-oauth", () => {
     });
 
     it("buildAuthUrl throws (refresh-only handler)", () => {
-      expect(() => codexOauthHandler.buildAuthUrl("c", "r", "s")).toThrow(
-        /refresh-only/,
-      );
+      expect(() => {
+        return codexOauthHandler.buildAuthUrl("c", "r", "s");
+      }).toThrow(/refresh-only/);
     });
 
     it("exchangeCode throws (refresh-only handler)", async () => {
