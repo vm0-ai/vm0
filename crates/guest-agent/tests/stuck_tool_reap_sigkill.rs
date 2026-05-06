@@ -25,7 +25,11 @@ async fn stuck_tool_reap_escalates_to_sigkill_when_sigterm_ignored()
     // + slack.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(&masker, heartbeat),
+        guest_agent::cli::execute_cli(
+            &masker,
+            heartbeat,
+            guest_agent::http::HttpClient::new().unwrap(),
+        ),
     )
     .await
     .expect("execute_cli did not return within 15s - forced SIGKILL escalation likely broken");

@@ -677,7 +677,7 @@ describe("POST /api/zero/chat/messages", () => {
     });
 
     // One `org_metadata` SELECT per POST: the `resolveOrg` tier+credits read.
-    // The credits-admission path (checkOrgCreditsForRun) only touches
+    // The credits-admission path (checkOrgCreditsForRunAdmission) only touches
     // org_metadata on the vm0 branch; BYOK and default-non-vm0 paths
     // short-circuit before the balance check (#10951).
     describe("deduplicates per-request reads", () => {
@@ -727,8 +727,8 @@ describe("POST /api/zero/chat/messages", () => {
 
           expect(response.status).toBe(201);
           expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
-          // modelProvider="anthropic" triggers checkOrgCreditsForRun's BYOK
-          // fast-exit — no org_metadata read from credits admission. Round 2
+          // The modelSelection resolves to a BYOK provider, so credit admission
+          // fast-exits — no org_metadata read from credits admission. Round 2
           // uses resolveOrg's preloaded tier (the eliminated dup from #10594).
           expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(1);
         } finally {

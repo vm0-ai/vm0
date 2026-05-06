@@ -170,9 +170,16 @@ describe("zero chat thread page display - attachment document preview", () => {
 });
 
 describe("zero chat thread page display - body link document preview", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "location",
+      new URL("https://app.vm0.ai/chats/thread-test-1"),
+    );
+  });
+
   it("renders markdown body links inline for platform file urls", async () => {
     const docUrl =
-      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/notes.md";
+      "https://api.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/notes.md";
     server.use(
       http.get(docUrl, () => {
         return HttpResponse.text("# Linked PRD\n\nPreview body");
@@ -232,6 +239,117 @@ describe("zero chat thread page display - body link document preview", () => {
     expect(
       screen.queryByTestId("attachment-preview-markdown"),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps external /f links as plain links and does not render preview cards", async () => {
+    const docUrl =
+      "https://example.com/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/notes.md";
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[notes](${docUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      expect(screen.getByText("notes").closest("a")).toHaveAttribute(
+        "href",
+        docUrl,
+      );
+    });
+
+    expect(
+      screen.queryByTestId("attachment-preview-markdown"),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(["vm0.ai", "vm6.ai", "vm7.ai"])(
+    "renders %s file host links as thumbnail preview blocks",
+    async (host) => {
+      const fileUrl = `https://www.${host}/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/test_files.zip`;
+
+      mockChatLifecycle({
+        chatMessages: [
+          {
+            role: "assistant",
+            content: `[test_files.zip](${fileUrl})`,
+            createdAt: "2026-03-10T00:00:00Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+      const preview = await screen.findByTestId("attachment-preview-file");
+      expect(
+        within(preview).getByTestId("attachment-preview-file-icon"),
+      ).toBeInTheDocument();
+      expect(within(preview).getByText("ZIP")).toBeInTheDocument();
+    },
+  );
+
+  it("renders matching tunnel host file links as thumbnail preview blocks", async () => {
+    vi.stubGlobal(
+      "location",
+      new URL("https://tunnel-yuma-vm0-app.vm7.ai/chats/thread-test-1"),
+    );
+    const fileUrl =
+      "https://tunnel-yuma-vm0-www.vm7.ai/f/user_3BennfUepyJwP3OaiYD0rK8CZKs/bce0a522-aed9-4d72-a86c-3164177fb44c/test_files.zip";
+
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[test_files.zip](${fileUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const preview = await screen.findByTestId("attachment-preview-file");
+    expect(
+      within(preview).getByTestId("attachment-preview-file-icon"),
+    ).toBeInTheDocument();
+    expect(within(preview).getByText("ZIP")).toBeInTheDocument();
+    expect(screen.getByLabelText("Download test_files.zip")).toHaveAttribute(
+      "href",
+      `${fileUrl}?download=1`,
+    );
+  });
+
+  it("keeps platform file links inside markdown tables as table links", async () => {
+    const docUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/budget.xlsx";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: [
+            "| File | Link |",
+            "| --- | --- |",
+            `| Budget | [budget.xlsx](${docUrl}) |`,
+          ].join("\n"),
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("budget.xlsx").closest("a")).toHaveAttribute(
+      "href",
+      docUrl,
+    );
+    expect(screen.queryByTestId("attachment-preview-file")).toBeNull();
   });
 
   it("renders html body links as preview cards for platform file urls", async () => {
@@ -566,6 +684,124 @@ describe("zero chat thread page display - body link document preview", () => {
     });
   });
 
+  it.each([
+    {
+      filename: "config.xml",
+      content: "<settings><enabled>true</enabled></settings>",
+      expectedText: "settings",
+    },
+    {
+      filename: "deploy.yaml",
+      content: "enabled: true\nregion: us-east-1",
+      expectedText: "region: us-east-1",
+    },
+    {
+      filename: "table.tsv",
+      content: "name\tvalue\nalpha\t1",
+      expectedText: "alpha",
+    },
+  ])(
+    "renders $filename body links as text previews for platform file urls",
+    async ({ filename, content, expectedText }) => {
+      const fileUrl = `https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/${filename}`;
+      server.use(
+        http.get(fileUrl, () => {
+          return HttpResponse.text(content);
+        }),
+      );
+
+      mockChatLifecycle({
+        chatMessages: [
+          {
+            role: "assistant",
+            content: `[file](${fileUrl})`,
+            createdAt: "2026-03-10T00:00:00Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+      await waitFor(() => {
+        const textPreview = screen.getByTestId("attachment-preview-text");
+        expect(textPreview).toBeInTheDocument();
+        expect(
+          within(textPreview).getByText((content) => {
+            return content.includes(expectedText);
+          }),
+        ).toBeInTheDocument();
+      });
+    },
+  );
+
+  it("renders non-inline platform file links as thumbnail preview blocks", async () => {
+    const docUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/budget.xlsx";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "assistant",
+          content: `[budget](${docUrl})`,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      const preview = screen.getByTestId("attachment-preview-file");
+      expect(preview).toBeInTheDocument();
+      expect(
+        within(preview).getByTestId("attachment-preview-file-icon"),
+      ).toBeInTheDocument();
+      expect(within(preview).getByText("XLSX")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
+        "href",
+        `${docUrl}?download=1`,
+      );
+    });
+  });
+
+  it("renders structured non-inline attached files as thumbnail preview blocks", async () => {
+    const fileUrl =
+      "https://www.vm0.ai/f/user_123/3a474c61-ffe4-4e56-b9e7-0185b3dba9f7/budget.xlsx";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Please review",
+          createdAt: "2026-03-10T00:00:00Z",
+          attachFiles: [
+            {
+              id: "file-budget",
+              filename: "budget.xlsx",
+              contentType:
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              size: 2048,
+              url: fileUrl,
+            },
+          ],
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
+
+    await waitFor(() => {
+      const preview = screen.getByTestId("attachment-preview-file");
+      expect(preview).toBeInTheDocument();
+      expect(
+        within(preview).getByTestId("attachment-preview-file-icon"),
+      ).toBeInTheDocument();
+      expect(within(preview).getByText("XLSX")).toBeInTheDocument();
+      expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
+        "href",
+        `${fileUrl}?download=1`,
+      );
+    });
+  });
+
   it("preserves assistant soft line breaks without forcing hard breaks", async () => {
     mockChatLifecycle({
       chatMessages: [
@@ -817,6 +1053,19 @@ describe("zero chat thread page display - artifacts drawer", () => {
           headers: { "Content-Type": "text/csv" },
         });
       }),
+      http.get("https://example.com/deck.pptx", () => {
+        return new HttpResponse(
+          new Blob(["ppt"], {
+            type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          }),
+          {
+            headers: {
+              "Content-Type":
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            },
+          },
+        );
+      }),
       mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
         artifactsRequests += 1;
         return respond(200, {
@@ -838,6 +1087,15 @@ describe("zero chat thread page display - artifacts drawer", () => {
                   contentType: "text/csv",
                   size: 2048,
                   url: "https://example.com/data.csv",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+                {
+                  id: "file-3",
+                  filename: "deck.pptx",
+                  contentType:
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                  size: 3072,
+                  url: "https://example.com/deck.pptx",
                   createdAt: "2026-03-10T00:00:00Z",
                 },
               ],
@@ -895,6 +1153,9 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(zipText).toContain("data.csv");
     expect(screen.getAllByText("chart.png").length).toBeGreaterThan(0);
     expect(screen.getByText("data.csv")).toBeInTheDocument();
+    const deckButton = screen.getByLabelText("Select deck.pptx");
+    expect(deckButton).toBeInTheDocument();
+    expect(within(deckButton).getByText("PPTX")).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Preview chart.png"));
 
@@ -909,7 +1170,202 @@ describe("zero chat thread page display - artifacts drawer", () => {
     expect(screen.getByText("Artifacts")).toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Select data.csv"));
-    expect(screen.getByTitle("Preview data.csv")).toBeInTheDocument();
+    await waitFor(() => {
+      const table = screen.getByRole("table");
+      expect(within(table).getByText("label")).toBeInTheDocument();
+      expect(within(table).getByText("value")).toBeInTheDocument();
+      expect(within(table).getByText("alpha")).toBeInTheDocument();
+      expect(within(table).getByText("1")).toBeInTheDocument();
+    });
+  });
+
+  it("renders markdown artifacts through the text loader instead of an iframe", async () => {
+    const user = userEvent.setup();
+    let requestedUrl = "";
+    let requestedRange = "";
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create markdown",
+          runId: "run-markdown-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      http.get("https://example.com/readme.md", ({ request }) => {
+        requestedUrl = request.url;
+        requestedRange = request.headers.get("Range") ?? "";
+        return HttpResponse.text("# 发布说明\n\n这里是中文内容");
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-markdown-artifact",
+              files: [
+                {
+                  id: "file-md",
+                  filename: "readme.md",
+                  contentType: "text/markdown",
+                  size: 1024,
+                  url: "https://example.com/readme.md",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("发布说明")).toBeInTheDocument();
+      expect(screen.getByText("这里是中文内容")).toBeInTheDocument();
+    });
+    expect(new URL(requestedUrl).searchParams.get("raw")).toBe("1");
+    expect(requestedRange).toBe("bytes=0-65535");
+    expect(
+      document.querySelector('iframe[title="Preview readme.md"]'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Open preview for readme.md"));
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(within(lightbox).getByText("发布说明")).toBeInTheDocument();
+  });
+
+  it("renders xml artifacts through the text loader instead of an iframe", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create XML",
+          runId: "run-xml-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      http.get("https://example.com/config.xml", () => {
+        return HttpResponse.text("<config><enabled>true</enabled></config>");
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-xml-artifact",
+              files: [
+                {
+                  id: "file-xml",
+                  filename: "config.xml",
+                  contentType: "application/xml",
+                  size: 512,
+                  url: "https://example.com/config.xml",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/<config>/)).toBeInTheDocument();
+    });
+    expect(
+      document.querySelector('iframe[title="Preview config.xml"]'),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Open preview for config.xml"));
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(within(lightbox).getByText(/<config>/)).toBeInTheDocument();
+  });
+
+  it("renders html artifacts as document iframe previews", async () => {
+    const user = userEvent.setup();
+    mockChatLifecycle({
+      chatMessages: [
+        {
+          role: "user",
+          content: "Create HTML",
+          runId: "run-html-artifact",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+    server.use(
+      http.get("https://example.com/report.html", () => {
+        return HttpResponse.html("<html><body>report preview</body></html>");
+      }),
+      mockApi(chatThreadArtifactsContract.list, ({ respond }) => {
+        return respond(200, {
+          runs: [
+            {
+              runId: "run-html-artifact",
+              files: [
+                {
+                  id: "file-html",
+                  filename: "report.html",
+                  contentType: "text/html",
+                  size: 1024,
+                  url: "https://example.com/report.html",
+                  createdAt: "2026-03-10T00:00:00Z",
+                },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-test-1",
+    });
+
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Open artifacts");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        document.querySelector('iframe[title="Preview report.html"]'),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("Open preview for report.html"));
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    expect(within(lightbox).getByTitle("report.html preview")).toHaveAttribute(
+      "src",
+      "https://example.com/report.html",
+    );
   });
 
   it("refreshes uploaded files from the artifacts Ably signal while the drawer is open", async () => {

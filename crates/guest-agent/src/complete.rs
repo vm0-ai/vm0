@@ -19,6 +19,7 @@
 //! not treat either field as authoritative for security decisions.
 
 use crate::env;
+use crate::http::HttpClient;
 use crate::urls;
 use guest_common::{log_info, log_warn};
 use serde::Serialize;
@@ -57,6 +58,7 @@ fn as_optional(value: &str) -> Option<&str> {
 /// Fire-and-forget. Returns `()` and never propagates errors — the runner's
 /// fallback call covers any failure here.
 pub async fn report_success(
+    http: &HttpClient,
     sandbox_id: &str,
     sandbox_reuse_result: &str,
     last_event_sequence: Option<u32>,
@@ -75,7 +77,7 @@ pub async fn report_success(
 
     // 1 attempt — the runner's fallback is the safety net. Retrying from the
     // guest just delays VM exit without improving the outcome.
-    match crate::http::post_json(urls::complete_url(), &payload, 1).await {
+    match http.post_json(urls::complete_url(), &payload, 1).await {
         Ok(_) => log_info!(LOG_TAG, "Complete webhook acknowledged"),
         Err(e) => log_warn!(LOG_TAG, "Complete webhook failed (runner will retry): {e}"),
     }

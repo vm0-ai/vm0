@@ -115,7 +115,7 @@ export async function getNetworkLogs(
 
 export async function searchLogs(options: {
   keyword: string;
-  agent?: string;
+  agentId?: string;
   runId?: string;
   since?: number;
   limit?: number;
@@ -128,7 +128,7 @@ export async function searchLogs(options: {
   const result = await client.searchLogs({
     query: {
       keyword: options.keyword,
-      agent: options.agent,
+      agentId: options.agentId,
       runId: options.runId,
       since: options.since,
       limit: options.limit,

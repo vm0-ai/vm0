@@ -15,6 +15,10 @@ import {
   getUserProfilePhotos,
   type TelegramUserProfilePhoto,
 } from "../../../../../../src/lib/zero/telegram/client";
+import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../../../../../../src/lib/zero/telegram/official";
 
 const log = logger("api:telegram:integration-bot-avatar");
 
@@ -83,7 +87,19 @@ function telegramProfileUserId(botId: string): string | number {
 async function loadBotToken(params: {
   botId: string;
   orgId?: string;
-}): Promise<string | null> {
+}): Promise<{ token: string; profileUserId: string | number } | null> {
+  if (isOfficialTelegramBotId(params.botId)) {
+    const config = getOfficialTelegramBotConfig();
+    if (!config.botToken || !config.botId) {
+      return null;
+    }
+
+    return {
+      token: config.botToken,
+      profileUserId: telegramProfileUserId(config.botId),
+    };
+  }
+
   const where = params.orgId
     ? and(
         eq(telegramInstallations.telegramBotId, params.botId),
@@ -103,16 +119,19 @@ async function loadBotToken(params: {
     return null;
   }
 
-  return decryptSecretValue(
-    installation.encryptedBotToken,
-    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-  );
+  return {
+    token: decryptSecretValue(
+      installation.encryptedBotToken,
+      globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+    ),
+    profileUserId: telegramProfileUserId(params.botId),
+  };
 }
 
 async function resolveBotTokenForRequest(
   request: Request,
   botId: string,
-): Promise<string | NextResponse> {
+): Promise<{ token: string; profileUserId: string | number } | NextResponse> {
   const requestUrl = new URL(request.url);
   const hasValidSignature = verifyTelegramBotAvatarUrlSignature({
     botId,
@@ -150,19 +169,15 @@ export async function GET(
   initServices();
 
   const { botId } = await params;
-  const botTokenResult = await resolveBotTokenForRequest(request, botId);
-  if (botTokenResult instanceof NextResponse) {
-    return botTokenResult;
+  const botConfigResult = await resolveBotTokenForRequest(request, botId);
+  if (botConfigResult instanceof NextResponse) {
+    return botConfigResult;
   }
-  const botToken = botTokenResult;
+  const { token: botToken, profileUserId } = botConfigResult;
 
   try {
     const client = createTelegramClient(botToken);
-    const profilePhotos = await getUserProfilePhotos(
-      client,
-      telegramProfileUserId(botId),
-      1,
-    );
+    const profilePhotos = await getUserProfilePhotos(client, profileUserId, 1);
     const photo = selectLargestProfilePhoto(profilePhotos.photos[0] ?? []);
     if (!photo) {
       return fallbackAvatarResponse();

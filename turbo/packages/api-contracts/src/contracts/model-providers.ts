@@ -119,6 +119,70 @@ export function normalizeVm0ModelId(model: string): string {
   return VM0_MODEL_ALIAS_LOOKUP[model] ?? model;
 }
 
+export type ModelImageInputSupport = "supported" | "unsupported" | "unknown";
+
+const IMAGE_INPUT_SUPPORTED_MODELS = new Set([
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "claude-haiku-4-5",
+  "anthropic/claude-opus-4.7",
+  "anthropic/claude-opus-4.6",
+  "anthropic/claude-opus-4.5",
+  "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-sonnet-4.5",
+  "anthropic/claude-haiku-4.5",
+  "kimi-k2.6",
+  "kimi-k2.5",
+  "moonshotai/kimi-k2.6",
+  "moonshotai/kimi-k2.5",
+]);
+
+const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
+  "glm-5.1",
+  "glm-5",
+  "glm-4.7",
+  "glm-4.5-air",
+  "z-ai/glm-5.1",
+  "zai/glm-5-turbo",
+  "deepseek-v4-pro",
+  "deepseek-v4-flash",
+  "deepseek/deepseek-v4-pro",
+  "deepseek/deepseek-v4-flash",
+  "MiniMax-M2.7",
+  "MiniMax-M2.1",
+  "minimax/minimax-m2.7",
+  "minimax/minimax-m2.5",
+]);
+
+export function getModelImageInputSupport(
+  model: string | null | undefined,
+): ModelImageInputSupport {
+  if (!model) {
+    return "unknown";
+  }
+  const normalized = normalizeVm0ModelId(model);
+  if (
+    IMAGE_INPUT_SUPPORTED_MODELS.has(normalized) ||
+    IMAGE_INPUT_SUPPORTED_MODELS.has(model)
+  ) {
+    return "supported";
+  }
+  if (
+    IMAGE_INPUT_UNSUPPORTED_MODELS.has(normalized) ||
+    IMAGE_INPUT_UNSUPPORTED_MODELS.has(model)
+  ) {
+    return "unsupported";
+  }
+  return "unknown";
+}
+
+export function modelSupportsImageInput(
+  model: string | null | undefined,
+): boolean {
+  return getModelImageInputSupport(model) === "supported";
+}
+
 /**
  * Return the VM0 managed models visible to the caller, filtered by feature
  * switches. Models without a featureFlag are always visible; models with a
@@ -1005,6 +1069,14 @@ export const modelProviderResponseSchema = z.object({
   // platform UI does not have to bypass schema validation to read them.
   workspaceName: z.string().nullable().optional(),
   planType: z.string().nullable().optional(),
+  // OAuth refresh state. `needsReconnect` flips to true when the firewall's
+  // refresh attempt fails (#11921 writes this on the model_providers row).
+  // `lastRefreshErrorCode` carries the typed code from `ChatgptRefreshError`
+  // (e.g. `refresh_token_expired`) so the UI can render an actionable
+  // re-connect message. Both fields are always emitted for OAuth-typed
+  // providers; non-OAuth types default to false / null.
+  needsReconnect: z.boolean(),
+  lastRefreshErrorCode: z.string().nullable(),
 });
 
 export type ModelProviderResponse = z.infer<typeof modelProviderResponseSchema>;

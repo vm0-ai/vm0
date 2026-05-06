@@ -19,7 +19,7 @@ import { setAblyLoop$ } from "../realtime.ts";
 // Filters — URL-derived
 // ---------------------------------------------------------------------------
 
-/** Agent filter derived from URL `?agent=` query param. */
+/** Agent ID filter derived from URL `?agent=` query param. */
 export const zeroActivityAgentFilter$ = computed((get) => {
   return get(searchParams$).get("agent") ?? "all";
 });
@@ -35,11 +35,11 @@ export const zeroActivitySourceFilter$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Org agents — fetch all composes for name → displayName mapping
+// Org agents — fetch all composes for id → displayName mapping
 // ---------------------------------------------------------------------------
 
 interface AgentOption {
-  name: string;
+  id: string;
   displayName: string;
 }
 
@@ -56,7 +56,7 @@ const fetchOrgAgents$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const agents: AgentOption[] = result.body.composes.map(
     (c: ComposeListItem) => {
       return {
-        name: c.id,
+        id: c.id,
         displayName: c.displayName ?? c.id,
       };
     },
@@ -68,20 +68,20 @@ const fetchOrgAgents$ = command(async ({ get, set }, _signal: AbortSignal) => {
 // List — cursor pagination with URL-synced limit/cursor/filters
 // ---------------------------------------------------------------------------
 
-/** Agent name from onboarding (cached so pagination factory can read it). */
-const internalAgentName$ = state<string | null>(null);
+/** Agent ID from onboarding (cached so pagination factory can read it). */
+const internalAgentId$ = state<string | null>(null);
 
-export const initZeroActivityAgentName$ = command(
+export const initZeroActivityAgentId$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const status = await get(zeroOnboardingStatus$);
-    set(internalAgentName$, status.defaultAgentId);
+    set(internalAgentId$, status.defaultAgentId);
   },
 );
 
-/** Initialize activity page: load agent name, org agents, and seed cursor history. */
+/** Initialize activity page: load agent ID, org agents, and seed cursor history. */
 export const initZeroActivity$ = command(
   async ({ set }, signal: AbortSignal) => {
-    await set(initZeroActivityAgentName$, signal);
+    await set(initZeroActivityAgentId$, signal);
     await set(fetchOrgAgents$, signal);
     set(seedZeroActivityCursorHistory$);
   },
@@ -109,7 +109,7 @@ export const {
     // Filter by specific agent when selected, otherwise fetch all
     const agentFilter = get(zeroActivityAgentFilter$);
     if (agentFilter !== "all") {
-      params.set("name", agentFilter);
+      params.set("agentId", agentFilter);
     }
 
     if (cursor) {
@@ -155,18 +155,18 @@ export const zeroActivityAvailableSources$ = computed(async (get) => {
   return response.filters.sources;
 });
 
-/** Available agent names from the server (only agents that have activity). */
+/** Available agent IDs from the server (only agents that have activity). */
 export const zeroActivityAvailableAgents$ = computed(async (get) => {
   const response = await get(zeroActivityData$);
   const orgAgents = get(orgAgents$);
-  // Map agent names to display names using org agents data
-  return response.filters.agents.map((name) => {
+  // Map agent IDs to display names using org agents data
+  return response.filters.agents.map((id: string) => {
     const agent = orgAgents.find((a) => {
-      return a.name === name;
+      return a.id === id;
     });
     return {
-      name,
-      displayName: agent?.displayName ?? name,
+      name: id,
+      displayName: agent?.displayName ?? id,
     };
   });
 });

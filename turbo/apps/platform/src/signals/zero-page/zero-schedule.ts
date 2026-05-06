@@ -23,8 +23,10 @@ import {
   type CronTimeOption,
 } from "./cron.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
-import { throwIfAbort } from "../utils.ts";
+import { markDetachedErrorHandled, throwIfAbort } from "../utils.ts";
 import { defaultAgentId$ } from "../agent.ts";
+
+const SCHEDULE_TIME_PAST_MESSAGE = "Scheduled time must be in the future";
 
 // ---------------------------------------------------------------------------
 // State
@@ -205,6 +207,9 @@ function buildScheduleBody(
     ...(params.selectedModel !== undefined && {
       selectedModel: params.selectedModel,
     }),
+    ...(params.preferPersonalProvider !== undefined && {
+      preferPersonalProvider: params.preferPersonalProvider,
+    }),
   };
 
   if (params.freq === "every_n_minutes") {
@@ -213,7 +218,7 @@ function buildScheduleBody(
 
   if (params.freq === "once") {
     if (isAtTimePast(params.date, String(params.hour), String(params.minute))) {
-      throw new Error("Scheduled time must be in the future");
+      throw new Error(SCHEDULE_TIME_PAST_MESSAGE);
     }
     const atTime = buildAtTime(
       params.date,
@@ -262,6 +267,7 @@ export interface ZeroScheduleSaveParams {
   editName?: string;
   modelProviderId?: string | null;
   selectedModel?: string | null;
+  preferPersonalProvider?: boolean;
 }
 
 export const saveZeroSchedule$ = command(
@@ -370,6 +376,7 @@ export interface OrgScheduleEntry {
   lastRunAt: string | null;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 }
 
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
@@ -402,6 +409,7 @@ export const allOrgScheduleEntries$ = computed((get) => {
         lastRunAt: s.lastRunAt,
         modelProviderId: s.modelProviderId,
         selectedModel: s.selectedModel,
+        preferPersonalProvider: s.preferPersonalProvider,
       };
     });
 });
@@ -440,6 +448,9 @@ export const saveOrgSchedule$ = command(
       if (!(error instanceof ApiError)) {
         const message = error instanceof Error ? error.message : "Save failed";
         toast.error(message);
+        if (message === SCHEDULE_TIME_PAST_MESSAGE) {
+          throw markDetachedErrorHandled(error);
+        }
       }
       throw error;
     }

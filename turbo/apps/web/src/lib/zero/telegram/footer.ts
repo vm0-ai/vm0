@@ -10,6 +10,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroAgentSchedules } from "@vm0/db/schema/zero-agent-schedule";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { isOfficialTelegramBotId } from "./official";
 import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
 import { escapeHtml } from "./format";
 
@@ -65,6 +66,8 @@ async function resolveTelegramRespondedByLabel(
   installationId: string,
   composeId: string,
 ): Promise<string | undefined> {
+  if (isOfficialTelegramBotId(installationId)) return undefined;
+
   const [installation] = await globalThis.services.db
     .select({ defaultComposeId: telegramInstallations.defaultComposeId })
     .from(telegramInstallations)

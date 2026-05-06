@@ -12,6 +12,10 @@ import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  chatThreadPendingMessageAppendContract,
+  chatThreadPendingMessageRecallContract,
+  type PendingMessage,
+  type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
@@ -170,6 +174,12 @@ interface MockLifecycleControl {
   completeRun: (content?: string) => void;
   failRun: (error: string) => void;
   cancelRun: () => void;
+  /**
+   * Drop the queued pending message — simulates the server consuming the
+   * queue when the previous run finishes. The next chatThreadByIdContract.get
+   * will respond with `pendingMessage: null`.
+   */
+  clearPendingMessage: () => void;
 }
 
 export function mockChatLifecycle(options?: {
@@ -205,6 +215,17 @@ export function mockChatLifecycle(options?: {
     }[];
   }[];
   threadTitle?: string | null;
+  pendingMessage?: PendingMessage | null;
+  onPendingMessageAppend?: (body: {
+    content?: string;
+    attachments?: PersistedAttachment[];
+  }) => void;
+  onPendingMessageRecall?: () => void;
+  /**
+   * Promise the recall handler awaits before responding. Lets a test observe
+   * the in-flight loading state before letting the request complete.
+   */
+  recallGate?: Promise<void>;
   onRunCreate?: () => void;
 }): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -220,6 +241,7 @@ export function mockChatLifecycle(options?: {
   let runPrompt: string | null = null;
   let runAssociated = false;
   let threadTitle: string | null = options?.threadTitle ?? null;
+  let pendingMessage: PendingMessage | null = options?.pendingMessage ?? null;
   // Version counter: bumped whenever the run reaches a terminal state so
   // subsequent polls discover a "new" assistant message row (simulating the
   // real server inserting event-backed rows on run completion).
@@ -353,8 +375,55 @@ export function mockChatLifecycle(options?: {
         updatedAt: "2026-03-10T00:00:00Z",
         draftContent: null,
         draftAttachments: null,
+        pendingMessage,
       });
     }),
+    mockApi(
+      chatThreadPendingMessageAppendContract.append,
+      ({ body, respond }) => {
+        options?.onPendingMessageAppend?.(body);
+        const now = new Date().toISOString();
+        const nextContent =
+          body.content === undefined
+            ? (pendingMessage?.content ?? null)
+            : pendingMessage?.content
+              ? `${pendingMessage.content}\n${body.content}`
+              : body.content;
+        const nextAttachments = [
+          ...(pendingMessage?.attachments ?? []),
+          ...(body.attachments ?? []),
+        ];
+        pendingMessage = {
+          content: nextContent,
+          attachments: nextAttachments.length > 0 ? nextAttachments : null,
+          createdAt: pendingMessage?.createdAt ?? now,
+          updatedAt: now,
+        };
+        return respond(200, { pendingMessage });
+      },
+    ),
+    mockApi(
+      chatThreadPendingMessageRecallContract.recall,
+      async ({ respond }) => {
+        if (options?.recallGate) {
+          await options.recallGate;
+        }
+        if (!pendingMessage) {
+          return respond(404, {
+            error: { message: "Pending message not found", code: "NOT_FOUND" },
+          });
+        }
+        const draftContent = pendingMessage.content;
+        const draftAttachments = pendingMessage.attachments;
+        pendingMessage = null;
+        options?.onPendingMessageRecall?.();
+        return respond(200, {
+          draftContent,
+          draftAttachments,
+          pendingMessage: null,
+        });
+      },
+    ),
     mockApi(chatThreadsContract.list, ({ respond }) => {
       return respond(200, { threads: threadList });
     }),
@@ -481,6 +550,9 @@ export function mockChatLifecycle(options?: {
       assistantVersion++;
       updateChatRun(threadId);
       createChatMessage(threadId);
+    },
+    clearPendingMessage: () => {
+      pendingMessage = null;
     },
   };
 }

@@ -46,11 +46,77 @@ export function OrgProvidersTab() {
   return (
     <div className="flex flex-col gap-8">
       {isAdmin && <DefaultProviderSection />}
+      <StaleBannerSection />
       <ProviderListSection isAdmin={isAdmin} />
       <OrgDeleteProviderDialog />
       <OrgProviderDialog />
     </div>
   );
+}
+
+/**
+ * Render the re-connect banner above the provider list when any
+ * chatgpt-oauth-token provider has flipped to needsReconnect=true (the
+ * firewall refresh pipeline writes this on refresh failure, see #11921).
+ * The banner is the primary CTA; the per-row footer also shows a destructive
+ * pill so users see the failed row at a glance.
+ */
+function StaleBannerSection() {
+  const providersLoadable = useLoadable(orgConfiguredProviders$);
+  const providers =
+    providersLoadable.state === "hasData" ? providersLoadable.data : [];
+  return <StaleProviderBanner providers={providers} />;
+}
+
+function StaleProviderBanner({
+  providers,
+}: {
+  providers: ModelProviderResponse[];
+}) {
+  const stale = providers.find((p) => {
+    return p.type === "chatgpt-oauth-token" && p.needsReconnect;
+  });
+  if (!stale) {
+    return null;
+  }
+  return (
+    <section
+      className="flex items-center gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4"
+      role="alert"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">
+          ChatGPT session needs reconnection
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {staleMessage(stale.lastRefreshErrorCode)}
+        </p>
+      </div>
+      <a
+        href="/api/zero/chatgpt/oauth/connect"
+        className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+      >
+        Re-connect ChatGPT
+      </a>
+    </section>
+  );
+}
+
+function staleMessage(code: string | null): string {
+  switch (code) {
+    case "refresh_token_expired": {
+      return "Your ChatGPT session expired. Re-connect to continue.";
+    }
+    case "refresh_token_reused": {
+      return "Your ChatGPT session was used elsewhere. Re-connect.";
+    }
+    case "refresh_token_invalidated": {
+      return "Your ChatGPT session was revoked. Re-connect.";
+    }
+    default: {
+      return "ChatGPT refresh failed. Re-connect to retry.";
+    }
+  }
 }
 
 function DefaultProviderSection() {
@@ -158,6 +224,16 @@ function capitalizePlan(plan: string): string {
 }
 
 function ProviderRowFooter({ provider }: { provider: ModelProviderResponse }) {
+  if (provider.type === "chatgpt-oauth-token" && provider.needsReconnect) {
+    return (
+      <span className="flex items-center gap-2 text-xs truncate">
+        <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
+        <span className="truncate text-destructive">
+          {staleMessage(provider.lastRefreshErrorCode)}
+        </span>
+      </span>
+    );
+  }
   if (provider.type === "chatgpt-oauth-token" && provider.workspaceName) {
     const showPlanPill =
       provider.planType !== null &&

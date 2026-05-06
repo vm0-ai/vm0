@@ -9,6 +9,10 @@ import {
   createTelegramClient,
   sendChatAction,
 } from "../../../../../src/lib/zero/telegram/client";
+import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../../../../../src/lib/zero/telegram/official";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -71,6 +75,17 @@ async function refreshTelegramTypingForRun(runId: string): Promise<number> {
   let refreshed = 0;
 
   for (const target of targets.values()) {
+    if (isOfficialTelegramBotId(target.installationId)) {
+      const botToken = getOfficialTelegramBotConfig().botToken;
+      if (!botToken) {
+        continue;
+      }
+      const client = createTelegramClient(botToken);
+      await sendChatAction(client, target.chatId, "typing");
+      refreshed++;
+      continue;
+    }
+
     const [installation] = await globalThis.services.db
       .select({
         encryptedBotToken: telegramInstallations.encryptedBotToken,

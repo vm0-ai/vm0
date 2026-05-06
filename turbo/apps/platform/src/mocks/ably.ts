@@ -43,6 +43,8 @@ let connectedListener: ConnectionEventListener | null = null;
 let failedListener: ConnectionEventListener | null = null;
 let hasConnected = false;
 let failedStateChange: FailedStateChange | null = null;
+let connectionClosed = false;
+let nextSubscribeError: Error | null = null;
 
 /**
  * Fire all callbacks subscribed to `topic`. Call this from test helpers
@@ -85,6 +87,8 @@ export function resetAblySubscriptions(): void {
   failedListener = null;
   hasConnected = false;
   failedStateChange = null;
+  connectionClosed = false;
+  nextSubscribeError = null;
   connectedListeners.clear();
 }
 
@@ -107,6 +111,20 @@ export function triggerAblyReconnect(): void {
 }
 
 const connectedListeners = new Set<ConnectionListener>();
+
+/**
+ * Simulate Ably closing after the app has already captured a channel. A
+ * subsequent channel.subscribe rejects with the same message produced by the
+ * real SDK when close races an in-flight attach.
+ */
+export function triggerAblyConnectionClosed(): void {
+  connectionClosed = true;
+  subscriptions.clear();
+}
+
+export function rejectNextAblySubscribe(message: string): void {
+  nextSubscribeError = new Error(message);
+}
 
 function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
   const deferred = Promise.withResolvers<AuthCallbackToken>();
@@ -131,6 +149,14 @@ const fakeChannel = {
   // before the subscribe await in consumer code has returned.
   async subscribe(topic: string, callback: Callback): Promise<void> {
     await Promise.resolve();
+    if (connectionClosed) {
+      throw new Error("Connection closed");
+    }
+    if (nextSubscribeError) {
+      const error = nextSubscribeError;
+      nextSubscribeError = null;
+      throw error;
+    }
     let cbs = subscriptions.get(topic);
     if (!cbs) {
       cbs = new Set();
@@ -182,6 +208,7 @@ export class Realtime {
   };
 
   constructor(config?: { authCallback?: AuthCallback }) {
+    connectionClosed = false;
     if (config?.authCallback) {
       capturedAuthCallback = config.authCallback;
       invokeAuthCallback(config.authCallback)
@@ -221,7 +248,7 @@ export class Realtime {
   }
 
   close() {
-    // no-op
+    triggerAblyConnectionClosed();
   }
 }
 

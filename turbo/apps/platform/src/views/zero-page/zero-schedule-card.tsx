@@ -318,6 +318,7 @@ export function ZeroScheduleCard({
           dayOfMonth: "1",
           modelProviderId: null,
           selectedModel: null,
+          preferPersonalProvider: false,
         },
         signal,
       ),

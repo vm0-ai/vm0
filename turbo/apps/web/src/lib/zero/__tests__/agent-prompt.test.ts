@@ -14,12 +14,16 @@ describe("buildAgentPrompt", () => {
       "The user cannot see files on your local filesystem",
     );
     expect(prompt).toContain("zero web upload-file");
-    expect(prompt).toContain('zero web voice --text "Hello"');
-    expect(prompt).toContain("shareable `/f/` URL");
+    expect(prompt).not.toContain("zero official generate voice");
+    expect(prompt).not.toContain("zero web voice");
     expect(prompt).toContain("zero slack upload-file");
     expect(prompt).toContain("zero telegram message");
     expect(prompt).toContain("zero telegram bot list");
     expect(prompt).toContain("explicitly choose the bot with `--bot-id`");
+    expect(prompt).toContain(
+      "When the user asks to generate anything (for example, image, video, audio, or website)",
+    );
+    expect(prompt).toContain("run `zero doctor generate -h`");
     expect(prompt).toContain(
       "Do not present a local path as something the user can open",
     );

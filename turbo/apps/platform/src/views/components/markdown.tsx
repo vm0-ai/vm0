@@ -11,6 +11,10 @@ import {
   setImageLoadStatus$,
 } from "../../signals/view-component-state.ts";
 
+type MarkdownNodeProp = { node?: unknown };
+type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
+type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
+
 type RewriteArgs = Parameters<
   NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
 >;
@@ -205,9 +209,18 @@ function isSafeMediaUrl(href: string): boolean {
   return /^https?:\/\//i.test(href);
 }
 
-function PlainLink({ href, children, ...rest }: ComponentPropsWithoutRef<"a">) {
+function omitMarkdownNodeProp<Props extends object>(
+  props: Props,
+): Omit<Props, "node"> {
+  const cleanProps = { ...props };
+  delete (cleanProps as Partial<MarkdownNodeProp>).node;
+  return cleanProps;
+}
+
+function PlainLink({ href, children, ...rest }: MarkdownAnchorProps) {
+  const linkProps = omitMarkdownNodeProp(rest);
   return (
-    <a {...rest} href={href} target="_blank" rel="noopener noreferrer">
+    <a {...linkProps} href={href} target="_blank" rel="noopener noreferrer">
       {children}
     </a>
   );
@@ -272,7 +285,7 @@ function MediaLink({
   children,
   onImageClick,
   ...rest
-}: ComponentPropsWithoutRef<"a"> & {
+}: MarkdownAnchorProps & {
   onImageClick?: (url: string) => void;
 }) {
   if (!href || !isSafeMediaUrl(href)) {
@@ -306,7 +319,7 @@ function MediaLink({
 }
 
 function MarkdownLinkRenderer(
-  props: { children?: ReactNode } & ComponentPropsWithoutRef<"a"> & {
+  props: { children?: ReactNode } & MarkdownAnchorProps & {
       mediaPreview: boolean;
       onImageClick: ((url: string) => void) | undefined;
     },
@@ -323,17 +336,18 @@ function MarkdownLinkRenderer(
 }
 
 function MarkdownImageRenderer(
-  props: ComponentPropsWithoutRef<"img"> & {
+  props: MarkdownImageProps & {
     mediaPreview: boolean;
     onImageClick: ((url: string) => void) | undefined;
   },
 ) {
   const { mediaPreview, onImageClick, src, alt, ...rest } = props;
+  const imageProps = omitMarkdownNodeProp(rest);
   const hasSafeSrc = typeof src === "string" && isSafeMediaUrl(src);
   if (mediaPreview && hasSafeSrc) {
     return <MediaImage src={src} alt={alt ?? ""} onImageClick={onImageClick} />;
   }
-  return <img {...rest} src={src} alt={alt} />;
+  return <img {...imageProps} src={src} alt={alt} />;
 }
 
 export function Markdown({
@@ -348,7 +362,7 @@ export function Markdown({
 }) {
   const theme = useGet(theme$);
   const renderLink = (
-    props: { children?: ReactNode } & ComponentPropsWithoutRef<"a">,
+    props: { children?: ReactNode } & MarkdownAnchorProps,
   ) => {
     return (
       <MarkdownLinkRenderer
@@ -358,7 +372,7 @@ export function Markdown({
       />
     );
   };
-  const renderImage = (props: ComponentPropsWithoutRef<"img">) => {
+  const renderImage = (props: MarkdownImageProps) => {
     return (
       <MarkdownImageRenderer
         {...props}

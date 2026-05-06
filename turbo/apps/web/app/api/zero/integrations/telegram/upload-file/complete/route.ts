@@ -21,6 +21,10 @@ import {
   isTelegramApiError,
   sendDocument,
 } from "../../../../../../../src/lib/zero/telegram/client";
+import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../../../../../../../src/lib/zero/telegram/official";
 import type {
   TelegramUploadCompleteBody,
   TelegramUploadCompleteResponse,
@@ -67,6 +71,10 @@ async function resolveTelegramBotToken(
   orgId: string,
   botId: string,
 ): Promise<string | null> {
+  if (isOfficialTelegramBotId(botId)) {
+    return getOfficialTelegramBotConfig().botToken;
+  }
+
   const [row] = await globalThis.services.db
     .select({
       encryptedBotToken: telegramInstallations.encryptedBotToken,

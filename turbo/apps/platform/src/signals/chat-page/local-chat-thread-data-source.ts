@@ -1,11 +1,40 @@
 import { command, computed } from "ccstate";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  PagedChatMessage,
+  PendingMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatThread } from "../agent-chat.ts";
-import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
+import type {
+  AppendPendingMessageArgs,
+  ChatThreadDataSource,
+  RecallPendingMessageResult,
+} from "./chat-thread-data-source.ts";
 
 const localPatchDraft$ = command((): Promise<void> => {
   return Promise.resolve();
 });
+
+const localAppendPendingMessage$ = command(
+  (
+    _visitor,
+    args: AppendPendingMessageArgs,
+    _signal: AbortSignal,
+  ): Promise<PendingMessage> => {
+    const now = new Date().toISOString();
+    return Promise.resolve({
+      content: args.content ?? null,
+      attachments: args.attachments ?? null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+);
+
+const localRecallPendingMessage$ = command(
+  (): Promise<RecallPendingMessageResult> => {
+    return Promise.resolve({ draftContent: null, draftAttachments: null });
+  },
+);
 
 const localListMessagesAfter$ = command(() => {
   return Promise.resolve({
@@ -56,6 +85,8 @@ export function createLocalChatThreadDataSource(input: {
     reloadThread$: localReloadThread$,
     initialPage$,
     patchDraft$: localPatchDraft$,
+    appendPendingMessage$: localAppendPendingMessage$,
+    recallPendingMessage$: localRecallPendingMessage$,
     listMessagesAfter$: localListMessagesAfter$,
     listMessagesBefore$: localListMessagesBefore$,
     cancelRuns$,

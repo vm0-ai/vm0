@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.100.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.0...runner-rs-v0.100.1) (2026-05-06)
+
+
+### Refactoring
+
+* **runner:** share bounded sse usage scanner ([#11961](https://github.com/vm0-ai/vm0/issues/11961)) ([cfbd94d](https://github.com/vm0-ai/vm0/commit/cfbd94dc757b340dd5aa04f94e8b6e980c10eb40))
+
+## [0.100.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.14...runner-rs-v0.100.0) (2026-05-06)
+
+
+### Features
+
+* **runner:** add OpenAI Responses usage billing ([#11950](https://github.com/vm0-ai/vm0/issues/11950)) ([467cdc8](https://github.com/vm0-ai/vm0/commit/467cdc8fc88897c16b0b21365c70a1786e5fda3e))
+
+## [0.99.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.13...runner-rs-v0.99.14) (2026-05-06)
+
 ## [0.99.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.12...runner-rs-v0.99.13) (2026-05-06)
 
 

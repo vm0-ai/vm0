@@ -19,12 +19,10 @@ import {
   classifyChatAttachment,
   EMPTY_TEXT$,
 } from "../../signals/chat-page/parse-body-blocks.ts";
-import docPdfIcon from "./assets/doc-pdf.svg";
-import docDocIcon from "./assets/doc-doc.svg";
-import docCsvIcon from "./assets/doc-csv.svg";
-import docTxtIcon from "./assets/doc-txt.svg";
-import docJsonIcon from "./assets/doc-json.svg";
-import docHtmlIcon from "./assets/doc-html.svg";
+import {
+  FilePreviewIcon,
+  getFilePreviewAccentClass,
+} from "./zero-file-preview-icon.tsx";
 
 interface ChatAttachmentDescriptor {
   filename: string;
@@ -32,25 +30,31 @@ interface ChatAttachmentDescriptor {
   contentType?: string;
 }
 
-function getPreviewIconSrc(
-  kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html",
-): string {
-  if (kind === "pdf") {
-    return docPdfIcon;
-  }
-  if (kind === "csv") {
-    return docCsvIcon;
+type DocumentPreviewKind =
+  | "markdown"
+  | "text"
+  | "json"
+  | "csv"
+  | "pdf"
+  | "html";
+
+function contentTypeForDocumentPreviewKind(kind: DocumentPreviewKind): string {
+  if (kind === "markdown") {
+    return "text/markdown";
   }
   if (kind === "text") {
-    return docTxtIcon;
+    return "text/plain";
   }
   if (kind === "json") {
-    return docJsonIcon;
+    return "application/json";
   }
-  if (kind === "html") {
-    return docHtmlIcon;
+  if (kind === "csv") {
+    return "text/csv";
   }
-  return docDocIcon;
+  if (kind === "pdf") {
+    return "application/pdf";
+  }
+  return "text/html";
 }
 
 function normalizePlatformFileUrl(url: string): string {
@@ -102,7 +106,6 @@ function TextPreview({ filename, url, kind, text$ }: TextPreviewProps) {
   const collapsedKey = `attachment-preview:${kind}:${filename}:${url}`;
   const text = useLastResolved(text$ ?? EMPTY_TEXT$);
   const collapsed = textPreviewCollapsedByKey[collapsedKey] ?? false;
-  const iconSrc = getPreviewIconSrc(kind);
 
   let content: ReactNode = (
     <div className="mt-3 flex items-center justify-center rounded-lg bg-muted/30 p-3 text-muted-foreground">
@@ -144,11 +147,10 @@ function TextPreview({ filename, url, kind, text$ }: TextPreviewProps) {
         aria-label={`${collapsed ? "Expand" : "Collapse"} ${kind} preview for ${filename}`}
       >
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted/60">
-          <img
-            alt=""
-            aria-hidden="true"
-            src={iconSrc}
-            className="h-7 w-7 object-contain opacity-90"
+          <FilePreviewIcon
+            filename={filename}
+            contentType={contentTypeForDocumentPreviewKind(kind)}
+            testId={`attachment-preview-${kind}-icon`}
           />
         </div>
         <div className="min-w-0 flex-1 pr-16">
@@ -179,7 +181,6 @@ function DocumentThumbnailPreview({
   kind: "markdown" | "csv" | "pdf" | "html";
 }) {
   const openDocumentLightbox = useSet(openDocumentLightbox$);
-  const iconSrc = getPreviewIconSrc(kind);
   const accentClass =
     kind === "markdown"
       ? "from-emerald-500/15 via-lime-500/10 to-background"
@@ -206,11 +207,10 @@ function DocumentThumbnailPreview({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
         <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
         <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
-          <img
-            alt=""
-            aria-hidden="true"
-            src={iconSrc}
-            className="h-10 w-10 object-contain opacity-95"
+          <FilePreviewIcon
+            filename={filename}
+            contentType={contentTypeForDocumentPreviewKind(kind)}
+            testId={`attachment-preview-${kind}-icon`}
           />
         </div>
         <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
@@ -224,6 +224,52 @@ function DocumentThumbnailPreview({
         </div>
       </div>
     </button>
+  );
+}
+
+function FileThumbnailPreview({
+  filename,
+  url,
+  contentType,
+}: {
+  filename: string;
+  url: string;
+  contentType?: string;
+}) {
+  const accentClass = getFilePreviewAccentClass(filename, contentType);
+
+  return (
+    <a
+      href={toDownloadUrl(url)}
+      download={filename}
+      title={filename}
+      data-testid="attachment-preview-file"
+      aria-label={`Download ${filename}`}
+      className="group/doc-preview inline-flex w-fit self-start align-top text-left"
+    >
+      <div
+        className={`relative flex aspect-[4/3] w-[144px] items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br sm:w-[168px] ${accentClass}`}
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.45),transparent_55%)] dark:bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.08),transparent_55%)]" />
+        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/10 to-transparent" />
+        <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-foreground/10 bg-background/90 shadow-sm transition-transform duration-200 group-hover/doc-preview:scale-105">
+          <FilePreviewIcon
+            filename={filename}
+            contentType={contentType}
+            testId="attachment-preview-file-icon"
+          />
+        </div>
+        <div className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+          <IconDownload size={10} />
+          Download
+        </div>
+        <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/55 via-black/15 to-transparent px-2.5 py-2.5 text-white opacity-0 transition-opacity duration-200 group-hover/doc-preview:opacity-100">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-medium">{filename}</div>
+          </div>
+        </div>
+      </div>
+    </a>
   );
 }
 
@@ -332,6 +378,15 @@ export function AttachmentPreview({
     case "audio": {
       return (
         <AudioPreview filename={attachment.filename} url={attachment.url} />
+      );
+    }
+    case "file": {
+      return (
+        <FileThumbnailPreview
+          filename={attachment.filename}
+          url={attachment.url}
+          contentType={attachment.contentType}
+        />
       );
     }
     default: {

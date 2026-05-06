@@ -9,6 +9,8 @@ import {
   getFrameworkForType,
   getVm0VisibleModels,
   normalizeVm0ModelId,
+  getModelImageInputSupport,
+  modelSupportsImageInput,
   getSelectableProviderTypes,
   getAuthMethodsForType,
   getSecretsForAuthMethod,
@@ -184,6 +186,34 @@ describe("normalizeVm0ModelId", () => {
 
   it("keeps unknown model ids unchanged", () => {
     expect(normalizeVm0ModelId("custom/model")).toBe("custom/model");
+  });
+});
+
+describe("model image input support", () => {
+  it.each([
+    "claude-sonnet-4-6",
+    "claude-opus-4-7",
+    "kimi-k2.6",
+    "kimi-k2.5",
+    "moonshotai/kimi-k2.5",
+  ])("marks %s as image-input capable", (model) => {
+    expect(modelSupportsImageInput(model)).toBe(true);
+    expect(getModelImageInputSupport(model)).toBe("supported");
+  });
+
+  it.each([
+    "glm-5.1",
+    "deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
+    "MiniMax-M2.7",
+  ])("marks %s as not image-input capable", (model) => {
+    expect(modelSupportsImageInput(model)).toBe(false);
+    expect(getModelImageInputSupport(model)).toBe("unsupported");
+  });
+
+  it("treats unknown model ids as unknown rather than unsupported", () => {
+    expect(modelSupportsImageInput("custom/model")).toBe(false);
+    expect(getModelImageInputSupport("custom/model")).toBe("unknown");
   });
 });
 

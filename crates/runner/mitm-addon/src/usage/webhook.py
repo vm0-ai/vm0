@@ -161,3 +161,6 @@ def _enqueue_webhook(
             url=url,
         )
         _post_webhook_with_retry(url, sandbox_token, copied, proxy_log_path, log_type)
+    except Exception:
+        _decrement_reports()
+        raise

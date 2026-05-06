@@ -156,7 +156,7 @@ export const searchCommand = new Command()
   .option("-A, --after-context <n>", "Show n events after each match")
   .option("-B, --before-context <n>", "Show n events before each match")
   .option("-C, --context <n>", "Show n events before and after each match")
-  .option("--agent <name>", "Filter by agent name")
+  .option("--agent <id>", "Filter by agent ID")
   .option("--run <id>", "Filter by specific run ID")
   .option("--since <time>", "Search logs since (default: 7d)")
   .option("--limit <n>", "Maximum number of matches (default: 20)")
@@ -170,7 +170,7 @@ export const searchCommand = new Command()
 
       const response = await searchLogs({
         keyword,
-        agent: options.agent,
+        agentId: options.agent,
         runId: options.run,
         since,
         limit,

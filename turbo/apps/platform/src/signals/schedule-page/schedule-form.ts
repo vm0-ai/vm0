@@ -20,6 +20,7 @@ export interface ScheduleFormData {
   prompt: string;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 }
 
 export function createDefaultFormData(): ScheduleFormData {
@@ -37,6 +38,7 @@ export function createDefaultFormData(): ScheduleFormData {
     prompt: "",
     modelProviderId: null,
     selectedModel: null,
+    preferPersonalProvider: false,
   };
 }
 

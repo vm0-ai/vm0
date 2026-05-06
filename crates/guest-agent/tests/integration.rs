@@ -33,6 +33,12 @@ static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
 /// Serialize all tests — they share one mock server and process-wide env vars.
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
+macro_rules! http_client {
+    () => {
+        guest_agent::http::HttpClient::new().unwrap()
+    };
+}
+
 struct SystemLogOverrideGuard;
 
 impl SystemLogOverrideGuard {
@@ -45,6 +51,27 @@ impl SystemLogOverrideGuard {
 impl Drop for SystemLogOverrideGuard {
     fn drop(&mut self) {
         guest_common::log::clear_system_log_file();
+    }
+}
+
+fn cleanup_session_checkpoint_files() {
+    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
+    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
+    let _ = std::fs::remove_file(guest_agent::paths::checkpoint_error_file());
+}
+
+struct SessionCheckpointFilesGuard;
+
+impl SessionCheckpointFilesGuard {
+    fn new() -> Self {
+        cleanup_session_checkpoint_files();
+        Self
+    }
+}
+
+impl Drop for SessionCheckpointFilesGuard {
+    fn drop(&mut self) {
+        cleanup_session_checkpoint_files();
     }
 }
 
@@ -65,12 +92,38 @@ async fn post_json_success_json_response() {
     });
 
     let url = format!("{}/test/success", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({"key": "val"}), 1).await;
+    let result = http_client!()
+        .post_json(&url, &json!({"key": "val"}), 1)
+        .await;
 
     mock.assert_calls_async(1).await;
     let val = result.unwrap().unwrap();
     assert_eq!(val["status"], "ok");
     mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn for_current_env_uses_enabled_client_when_api_token_is_set()
+-> Result<(), Box<dyn std::error::Error>> {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/test/for-current-env")
+            .header("Authorization", "Bearer test-token-abc123");
+        then.status(200).json_body(json!({"status": "ok"}));
+    });
+
+    let url = format!("{}/test/for-current-env", server.base_url());
+    let result = guest_agent::http::HttpClient::for_current_env()?
+        .post_json(&url, &json!({}), 1)
+        .await?;
+
+    mock.assert_calls_async(1).await;
+    assert_eq!(result.unwrap()["status"], "ok");
+    mock.delete_async().await;
+    Ok(())
 }
 
 #[tokio::test]
@@ -84,7 +137,9 @@ async fn post_json_success_empty_response() {
     });
 
     let url = format!("{}/test/empty", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({"key": "val"}), 1).await;
+    let result = http_client!()
+        .post_json(&url, &json!({"key": "val"}), 1)
+        .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.unwrap().is_none());
@@ -110,8 +165,7 @@ async fn post_json_retry_then_succeed() {
     });
 
     let url = format!("{}/test/retry-succeed", server.base_url());
-    let handle =
-        tokio::spawn(async move { guest_agent::http::post_json(&url, &json!({}), 3).await });
+    let handle = tokio::spawn(async move { http_client!().post_json(&url, &json!({}), 3).await });
 
     // Wait until the failure mock has been hit twice, then remove it so
     // the third attempt falls through to the success mock.
@@ -141,7 +195,7 @@ async fn post_json_retry_exhausted() {
     });
 
     let url = format!("{}/test/exhaust", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({}), 3).await;
+    let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     mock.assert_calls_async(3).await;
     assert!(result.is_err());
@@ -163,7 +217,7 @@ async fn post_json_4xx_returns_immediately_no_retry() {
     });
 
     let url = format!("{}/test/post-400", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({}), 3).await;
+    let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     // Should fail immediately — only 1 call, no retries.
     mock.assert_calls_async(1).await;
@@ -182,7 +236,7 @@ async fn post_json_429_retries() {
     });
 
     let url = format!("{}/test/post-429", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({}), 3).await;
+    let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     // 429 is retriable — should exhaust all retries.
     mock.assert_calls_async(3).await;
@@ -207,7 +261,7 @@ async fn post_json_sends_bearer_token() {
     });
 
     let url = format!("{}/test/auth", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({}), 1).await;
+    let result = http_client!().post_json(&url, &json!({}), 1).await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
@@ -227,7 +281,7 @@ async fn post_json_sends_vercel_bypass_header() {
     });
 
     let url = format!("{}/test/bypass", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({}), 1).await;
+    let result = http_client!().post_json(&url, &json!({}), 1).await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
@@ -252,7 +306,9 @@ async fn put_presigned_success() {
 
     let url = format!("{}/test/put-success", server.base_url());
     let data = Bytes::from_static(b"test data");
-    let result = guest_agent::http::put_presigned(&url, data, "application/octet-stream").await;
+    let result = http_client!()
+        .put_presigned(&url, data, "application/octet-stream")
+        .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
@@ -277,7 +333,9 @@ async fn put_presigned_retry_then_succeed() {
     let url = format!("{}/test/put-retry", server.base_url());
     let data = Bytes::from_static(b"retry data");
     let handle = tokio::spawn(async move {
-        guest_agent::http::put_presigned(&url, data, "application/octet-stream").await
+        http_client!()
+            .put_presigned(&url, data, "application/octet-stream")
+            .await
     });
 
     loop {
@@ -310,7 +368,9 @@ async fn put_presigned_4xx_returns_immediately_no_retry() {
 
     let url = format!("{}/test/put-403", server.base_url());
     let data = Bytes::from_static(b"forbidden data");
-    let result = guest_agent::http::put_presigned(&url, data, "application/octet-stream").await;
+    let result = http_client!()
+        .put_presigned(&url, data, "application/octet-stream")
+        .await;
 
     // Should fail immediately — only 1 call, no retries.
     mock.assert_calls_async(1).await;
@@ -330,7 +390,9 @@ async fn put_presigned_429_retries() {
 
     let url = format!("{}/test/put-429", server.base_url());
     let data = Bytes::from_static(b"rate limited data");
-    let result = guest_agent::http::put_presigned(&url, data, "application/octet-stream").await;
+    let result = http_client!()
+        .put_presigned(&url, data, "application/octet-stream")
+        .await;
 
     // 429 is retriable — should exhaust all retries.
     mock.assert_calls_async(3).await;
@@ -360,7 +422,9 @@ async fn put_presigned_file_success() {
     });
 
     let url = format!("{}/test/put-file-success", server.base_url());
-    let result = guest_agent::http::put_presigned_file(&url, &file_path, "application/gzip").await;
+    let result = http_client!()
+        .put_presigned_file(&url, &file_path, "application/gzip")
+        .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
@@ -385,7 +449,9 @@ async fn put_presigned_file_sets_content_length() {
     });
 
     let url = format!("{}/test/put-file-content-length", server.base_url());
-    let result = guest_agent::http::put_presigned_file(&url, &file_path, "application/gzip").await;
+    let result = http_client!()
+        .put_presigned_file(&url, &file_path, "application/gzip")
+        .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
@@ -413,7 +479,9 @@ async fn put_presigned_file_retry_then_succeed() {
     let url = format!("{}/test/put-file-retry", server.base_url());
     let path = file_path.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+        http_client!()
+            .put_presigned_file(&url, &path, "application/gzip")
+            .await
     });
 
     loop {
@@ -453,7 +521,9 @@ async fn put_presigned_file_retry_fails_if_source_shrinks() {
     let url = format!("{}/test/put-file-retry-shrunk", server.base_url());
     let path = file_path.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+        http_client!()
+            .put_presigned_file(&url, &path, "application/gzip")
+            .await
     });
 
     loop {
@@ -495,7 +565,9 @@ async fn put_presigned_file_retry_uses_original_length_if_source_grows() {
     let url = format!("{}/test/put-file-retry-grown", server.base_url());
     let path = file_path.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+        http_client!()
+            .put_presigned_file(&url, &path, "application/gzip")
+            .await
     });
 
     loop {
@@ -539,7 +611,9 @@ async fn put_presigned_file_retry_uses_original_handle_if_path_is_replaced() {
     let url = format!("{}/test/put-file-retry-replaced", server.base_url());
     let path = file_path.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::http::put_presigned_file(&url, &path, "application/gzip").await
+        http_client!()
+            .put_presigned_file(&url, &path, "application/gzip")
+            .await
     });
 
     loop {
@@ -576,7 +650,9 @@ async fn put_presigned_file_large_multi_chunk() {
     });
 
     let url = format!("{}/test/put-file-large", server.base_url());
-    let result = guest_agent::http::put_presigned_file(&url, &file_path, "application/gzip").await;
+    let result = http_client!()
+        .put_presigned_file(&url, &file_path, "application/gzip")
+        .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_ok());
@@ -598,7 +674,9 @@ async fn put_presigned_file_4xx_no_retry() {
     });
 
     let url = format!("{}/test/put-file-403", server.base_url());
-    let result = guest_agent::http::put_presigned_file(&url, &file_path, "application/gzip").await;
+    let result = http_client!()
+        .put_presigned_file(&url, &file_path, "application/gzip")
+        .await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_err());
@@ -621,8 +699,9 @@ async fn heartbeat_first_success() {
 
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
-    let handle =
-        tokio::spawn(async move { guest_agent::heartbeat::heartbeat_loop(shutdown_clone).await });
+    let handle = tokio::spawn(async move {
+        guest_agent::heartbeat::heartbeat_loop(http_client!(), shutdown_clone).await
+    });
 
     // Wait for the first heartbeat to land, then shut down.
     loop {
@@ -649,7 +728,7 @@ async fn heartbeat_first_failure_fatal() {
     });
 
     let shutdown = CancellationToken::new();
-    let result = guest_agent::heartbeat::heartbeat_loop(shutdown).await;
+    let result = guest_agent::heartbeat::heartbeat_loop(http_client!(), shutdown).await;
 
     assert!(result.is_err());
     mock.assert_calls_async(3).await;
@@ -673,7 +752,12 @@ async fn heartbeat_consecutive_failures_fatal() {
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::heartbeat::heartbeat_loop_with_interval(shutdown_clone, TEST_INTERVAL).await
+        guest_agent::heartbeat::heartbeat_loop_with_interval(
+            http_client!(),
+            shutdown_clone,
+            TEST_INTERVAL,
+        )
+        .await
     });
 
     // Wait for first successful heartbeat.
@@ -734,7 +818,12 @@ async fn heartbeat_recovery_resets_counter() {
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
     let handle = tokio::spawn(async move {
-        guest_agent::heartbeat::heartbeat_loop_with_interval(shutdown_clone, TEST_INTERVAL).await
+        guest_agent::heartbeat::heartbeat_loop_with_interval(
+            http_client!(),
+            shutdown_clone,
+            TEST_INTERVAL,
+        )
+        .await
     });
 
     // Wait for first successful heartbeat.
@@ -815,7 +904,7 @@ async fn send_event_correct_payload() {
 
     let masker = SecretMasker::from_raw("");
     let mut event = json!({"type": "test", "data": "hello"});
-    let result = guest_agent::events::send_event(&mut event, 42, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 42, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -838,7 +927,7 @@ async fn send_event_masks_secrets() {
     let masker = SecretMasker::from_raw(&encoded_secret);
 
     let mut event = json!({"type": "test", "data": "contains super-secret-value here"});
-    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -875,7 +964,7 @@ async fn send_event_extracts_claude_session_id() {
         "subtype": "init",
         "session_id": "ses-abc-123"
     });
-    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -916,7 +1005,7 @@ async fn send_event_skips_session_id_for_non_init() {
 
     let masker = SecretMasker::from_raw("");
     let mut event = json!({"type": "assistant", "data": "hello"});
-    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -927,6 +1016,169 @@ async fn send_event_skips_session_id_for_non_init() {
     );
 
     mock.delete_async().await;
+}
+
+// =========================================================================
+// Group 6b: Recovery checkpoint
+// =========================================================================
+
+#[tokio::test]
+async fn recovery_checkpoint_uploads_valid_session_history() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let dir = tempfile::tempdir().unwrap();
+    let history_path = dir.path().join("history.jsonl");
+    let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
+    std::fs::write(&history_path, &history).unwrap();
+    std::fs::write(guest_agent::paths::session_id_file(), "recovery-session").unwrap();
+    std::fs::write(
+        guest_agent::paths::session_history_path_file(),
+        history_path.to_string_lossy().as_ref(),
+    )
+    .unwrap();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history")
+            .json_body_includes(r#"{"runId":"test-run-001"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({
+                "presignedUrl": server.url("/test/recovery-history-upload"),
+                "existing": false
+            }));
+    });
+    let upload_mock = server.mock(|when, then| {
+        when.method(PUT)
+            .path("/test/recovery-history-upload")
+            .header("Content-Type", "application/octet-stream")
+            .body(history.as_str());
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentSessionId":"recovery-session"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-recovery"}));
+    });
+
+    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+
+    assert!(result.is_ok());
+    prepare_mock.assert_calls_async(1).await;
+    upload_mock.assert_calls_async(1).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    prepare_mock.delete_async().await;
+    upload_mock.delete_async().await;
+    checkpoint_mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let dir = tempfile::tempdir().unwrap();
+    let history_path = dir.path().join("partial.jsonl");
+    std::fs::write(
+        &history_path,
+        r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant""#,
+    )
+    .unwrap();
+    std::fs::write(guest_agent::paths::session_id_file(), "partial-session").unwrap();
+    std::fs::write(
+        guest_agent::paths::session_history_path_file(),
+        history_path.to_string_lossy().as_ref(),
+    )
+    .unwrap();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+
+    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+
+    assert!(result.is_err());
+    assert!(
+        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        "recovery checkpoint must not write the success-path checkpoint error file"
+    );
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
+    prepare_mock.delete_async().await;
+    checkpoint_mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn recovery_checkpoint_skips_when_session_id_is_missing() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let _files_guard = SessionCheckpointFilesGuard::new();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+
+    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+
+    assert!(result.is_err());
+    assert!(
+        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        "recovery checkpoint must not write the success-path checkpoint error file"
+    );
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
+    prepare_mock.delete_async().await;
+    checkpoint_mock.delete_async().await;
+}
+
+#[tokio::test]
+async fn recovery_checkpoint_skips_when_history_marker_is_missing() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    std::fs::write(guest_agent::paths::session_id_file(), "missing-history").unwrap();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(200);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.status(200);
+    });
+
+    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+
+    assert!(result.is_err());
+    assert!(
+        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        "recovery checkpoint must not write the success-path checkpoint error file"
+    );
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(0).await;
+    prepare_mock.delete_async().await;
+    checkpoint_mock.delete_async().await;
 }
 
 // =========================================================================
@@ -945,7 +1197,9 @@ async fn put_presigned_retry_exhausted() {
 
     let url = format!("{}/test/put-exhaust", server.base_url());
     let data = Bytes::from_static(b"exhaust data");
-    let result = guest_agent::http::put_presigned(&url, data, "application/octet-stream").await;
+    let result = http_client!()
+        .put_presigned(&url, data, "application/octet-stream")
+        .await;
 
     mock.assert_calls_async(3).await;
     assert!(result.is_err());
@@ -965,7 +1219,7 @@ async fn post_json_malformed_json_response() {
     });
 
     let url = format!("{}/test/malformed", server.base_url());
-    let result = guest_agent::http::post_json(&url, &json!({}), 3).await;
+    let result = http_client!().post_json(&url, &json!({}), 3).await;
 
     mock.assert_calls_async(1).await;
     assert!(result.is_err());
@@ -987,7 +1241,7 @@ async fn send_event_failure_writes_error_flag() {
 
     let masker = SecretMasker::from_raw("");
     let mut event = json!({"type": "test"});
-    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
 
     assert!(result.is_err());
     assert!(
@@ -1041,7 +1295,7 @@ async fn flush_is_incremental_between_calls() {
     });
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
 
     // Pre-checkpoint record → first flush captures it.
     guest_common::telemetry::record_sandbox_op("first_op", Duration::from_millis(10), true, None);
@@ -1093,7 +1347,7 @@ async fn final_flush_uploads_log_emitted_immediately_before_it() {
 
     let system_log_guard = SystemLogOverrideGuard::set(system_log);
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
 
     guest_common::log_warn!("sandbox:guest-agent", "{marker}");
     telemetry
@@ -1143,7 +1397,7 @@ async fn concurrent_flushes_do_not_regress_pos_file() {
     });
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
 
     // Record one op, then fire several concurrent flushes. Pre-refactor a
     // tick + final could both read the same pos and race on save_position;
@@ -1198,7 +1452,7 @@ async fn flush_propagates_error_then_loop_recovers() {
     let _ = std::fs::remove_file(pos_file);
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker);
+    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
 
     // Force upload_telemetry to fire HTTP by writing a delta.
     guest_common::telemetry::record_sandbox_op(
@@ -1280,6 +1534,7 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
     });
 
     guest_agent::complete::report_success(
+        &http_client!(),
         guest_agent::env::sandbox_id(),
         guest_agent::env::sandbox_reuse_result(),
         Some(7),
@@ -1310,7 +1565,7 @@ async fn complete_report_success_omits_metadata_when_env_absent() {
         then.status(200).json_body(json!({"success": true}));
     });
 
-    guest_agent::complete::report_success("", "", None).await;
+    guest_agent::complete::report_success(&http_client!(), "", "", None).await;
 
     mock.assert_calls_async(1).await;
     mock.delete_async().await;
@@ -1329,6 +1584,7 @@ async fn complete_report_success_swallows_server_error() {
     // 1 attempt — no retry, no panic. Fire-and-forget semantics mean the
     // runner fallback is the correctness guarantee.
     guest_agent::complete::report_success(
+        &http_client!(),
         guest_agent::env::sandbox_id(),
         guest_agent::env::sandbox_reuse_result(),
         None,
@@ -1357,6 +1613,7 @@ async fn complete_report_success_swallows_4xx_auth_error() {
     });
 
     guest_agent::complete::report_success(
+        &http_client!(),
         guest_agent::env::sandbox_id(),
         guest_agent::env::sandbox_reuse_result(),
         None,

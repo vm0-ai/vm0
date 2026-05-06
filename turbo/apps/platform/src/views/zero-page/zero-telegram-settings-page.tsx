@@ -18,10 +18,11 @@ import {
   IconRefresh,
   IconRobot,
 } from "@tabler/icons-react";
-import type {
-  TelegramBot,
-  TelegramBotStatus,
-  TelegramSetupStatus,
+import {
+  type TelegramBot,
+  type TelegramBotStatus,
+  type TelegramSetupStatus,
+  OFFICIAL_TELEGRAM_BOT_ID,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Button } from "@vm0/ui/components/ui/button";
@@ -116,6 +117,10 @@ interface DefaultAgentLabel {
 const TELEGRAM_COMMAND_CLASS =
   "cursor-pointer rounded border border-border bg-background px-1 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-accent active:bg-accent/80";
 const BOT_FATHER_HANDLE = "@BotFather";
+
+function isOfficialTelegramBot(bot: TelegramBot): boolean {
+  return bot.kind === "official" || bot.id === OFFICIAL_TELEGRAM_BOT_ID;
+}
 
 function agentLabel(
   agent: TeamComposeItem | { id: string; name: string },
@@ -1288,19 +1293,23 @@ function TelegramBotAgentSelect({
   const setSavingBotId = useSet(setTelegramSavingBotId$);
   const pageSignal = useGet(pageSignal$);
   const [, updateBotAgent] = useLoadableSet(updateTelegramBotAgent$);
+  const isOfficial = isOfficialTelegramBot(bot);
+  const selectedValue = bot.agent?.id ?? "";
 
   return (
     <Select
-      value={bot.agent?.id ?? ""}
+      value={selectedValue}
       disabled={disabled || options.length === 0}
       onValueChange={onDomEventFn(async (nextAgentId) => {
-        if (nextAgentId === bot.agent?.id) {
+        if (nextAgentId === selectedValue) {
           return;
         }
         setSavingBotId(bot.id);
         await bestEffort(
           updateBotAgent(
-            { botId: bot.id, defaultAgentId: nextAgentId },
+            isOfficial
+              ? { botId: bot.id, selectedAgentId: nextAgentId }
+              : { botId: bot.id, defaultAgentId: nextAgentId },
             pageSignal,
           ),
         );
@@ -1326,6 +1335,157 @@ function TelegramBotAgentSelect({
   );
 }
 
+function TelegramReinstallAction({
+  bot,
+  canManage,
+  disabled,
+  reinstalling,
+}: {
+  bot: TelegramBot;
+  canManage: boolean;
+  disabled: boolean;
+  reinstalling: boolean;
+}) {
+  const setReinstallDialogBotId = useSet(setTelegramReinstallDialogBotId$);
+  const isOfficial = isOfficialTelegramBot(bot);
+  const tokenInvalid = !isOfficial && bot.tokenStatus === "invalid";
+
+  if (isOfficial || !canManage || !tokenInvalid) {
+    return null;
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={disabled || reinstalling}
+      className="h-9 justify-center gap-2"
+      onClick={() => {
+        setReinstallDialogBotId(bot.id);
+      }}
+    >
+      {reinstalling ? (
+        <IconLoader2 size={15} className="animate-spin" />
+      ) : (
+        <IconRefresh size={15} />
+      )}
+      {reinstalling ? "Reinstalling..." : "Reinstall"}
+    </Button>
+  );
+}
+
+function TelegramConnectAction({
+  bot,
+  disabled,
+}: {
+  bot: TelegramBot;
+  disabled: boolean;
+}) {
+  if (bot.isConnected) {
+    return null;
+  }
+
+  if (disabled) {
+    return (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled
+        className="h-9 justify-center"
+      >
+        Connect
+      </Button>
+    );
+  }
+
+  return (
+    <Button asChild variant="outline" size="sm" className="h-9 justify-center">
+      <Link
+        pathname={ROUTES.telegramConnect}
+        options={{
+          searchParams: new URLSearchParams({ bot: bot.id }),
+        }}
+      >
+        Connect
+      </Link>
+    </Button>
+  );
+}
+
+function TelegramMoreActions({
+  bot,
+  botLabel,
+  canManage,
+  disabled,
+  unlinking,
+  uninstalling,
+}: {
+  bot: TelegramBot;
+  botLabel: string;
+  canManage: boolean;
+  disabled: boolean;
+  unlinking: boolean;
+  uninstalling: boolean;
+}) {
+  const setUnlinkingBotId = useSet(setTelegramUnlinkingBotId$);
+  const setUninstallDialogBotId = useSet(setTelegramUninstallDialogBotId$);
+  const pageSignal = useGet(pageSignal$);
+  const [, disconnectAccount] = useLoadableSet(disconnectTelegramAccount$);
+  const isOfficial = isOfficialTelegramBot(bot);
+  const canUninstall = !isOfficial && canManage && !bot.isConnected;
+
+  if (!bot.isConnected && !canUninstall) {
+    return null;
+  }
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          className="shrink-0 rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          aria-label={`More options for ${botLabel}`}
+        >
+          <IconDotsVertical size={16} stroke={1.5} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
+        {bot.isConnected ? (
+          <button
+            type="button"
+            aria-label={`Disconnect ${botLabel}`}
+            disabled={unlinking}
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            onClick={onDomEventFn(async () => {
+              setUnlinkingBotId(bot.id);
+              await bestEffort(disconnectAccount(bot.id, pageSignal));
+              setUnlinkingBotId(null);
+            })}
+          >
+            {unlinking ? "Disconnecting..." : "Disconnect"}
+          </button>
+        ) : null}
+        {canUninstall ? (
+          <button
+            type="button"
+            aria-label={`Uninstall ${botLabel}`}
+            disabled={uninstalling}
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            onClick={() => {
+              setUninstallDialogBotId(bot.id);
+            }}
+          >
+            {uninstalling ? "Uninstalling..." : "Uninstall"}
+          </button>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function TelegramBotActions({
   bot,
   canManage,
@@ -1341,112 +1501,31 @@ function TelegramBotActions({
   uninstalling: boolean;
   reinstalling: boolean;
 }) {
-  const setUnlinkingBotId = useSet(setTelegramUnlinkingBotId$);
-  const setUninstallDialogBotId = useSet(setTelegramUninstallDialogBotId$);
-  const setReinstallDialogBotId = useSet(setTelegramReinstallDialogBotId$);
-  const pageSignal = useGet(pageSignal$);
-  const [, disconnectAccount] = useLoadableSet(disconnectTelegramAccount$);
   const botLabel = bot.username ? `@${bot.username}` : "Telegram bot";
-  const showMore = bot.isConnected || (canManage && !bot.isConnected);
-  const tokenInvalid = bot.tokenStatus === "invalid";
+  const isOfficial = isOfficialTelegramBot(bot);
+  const tokenInvalid = !isOfficial && bot.tokenStatus === "invalid";
+  const connectDisabled =
+    disabled ||
+    tokenInvalid ||
+    (isOfficial && bot.official?.configured === false);
 
   return (
     <div className="flex items-center justify-end gap-1.5">
-      {canManage && tokenInvalid ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled || reinstalling}
-          className="h-9 justify-center gap-2"
-          onClick={() => {
-            setReinstallDialogBotId(bot.id);
-          }}
-        >
-          {reinstalling ? (
-            <IconLoader2 size={15} className="animate-spin" />
-          ) : (
-            <IconRefresh size={15} />
-          )}
-          {reinstalling ? "Reinstalling..." : "Reinstall"}
-        </Button>
-      ) : null}
-      {!bot.isConnected ? (
-        disabled || tokenInvalid ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled
-            className="h-9 justify-center"
-          >
-            Connect
-          </Button>
-        ) : (
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="h-9 justify-center"
-          >
-            <Link
-              pathname={ROUTES.telegramConnect}
-              options={{
-                searchParams: new URLSearchParams({ bot: bot.id }),
-              }}
-            >
-              Connect
-            </Link>
-          </Button>
-        )
-      ) : null}
-      {showMore ? (
-        <Popover>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              disabled={disabled}
-              className="shrink-0 rounded p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-              aria-label={`More options for ${botLabel}`}
-            >
-              <IconDotsVertical size={16} stroke={1.5} />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="end"
-            className="flex w-40 flex-col gap-0.5 p-2"
-          >
-            {bot.isConnected ? (
-              <button
-                type="button"
-                aria-label={`Disconnect ${botLabel}`}
-                disabled={unlinking}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-                onClick={onDomEventFn(async () => {
-                  setUnlinkingBotId(bot.id);
-                  await bestEffort(disconnectAccount(bot.id, pageSignal));
-                  setUnlinkingBotId(null);
-                })}
-              >
-                {unlinking ? "Disconnecting..." : "Disconnect"}
-              </button>
-            ) : null}
-            {canManage && !bot.isConnected ? (
-              <button
-                type="button"
-                aria-label={`Uninstall ${botLabel}`}
-                disabled={uninstalling}
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-                onClick={() => {
-                  setUninstallDialogBotId(bot.id);
-                }}
-              >
-                {uninstalling ? "Uninstalling..." : "Uninstall"}
-              </button>
-            ) : null}
-          </PopoverContent>
-        </Popover>
-      ) : null}
+      <TelegramReinstallAction
+        bot={bot}
+        canManage={canManage}
+        disabled={disabled}
+        reinstalling={reinstalling}
+      />
+      <TelegramConnectAction bot={bot} disabled={connectDisabled} />
+      <TelegramMoreActions
+        bot={bot}
+        botLabel={botLabel}
+        canManage={canManage}
+        disabled={disabled}
+        unlinking={unlinking}
+        uninstalling={uninstalling}
+      />
     </div>
   );
 }
@@ -1477,6 +1556,14 @@ function TelegramBotRow({
     disabled || saving || unlinking || uninstalling || reinstalling;
   const options = buildBotAgentOptions(bot, agents, defaultAgent);
   const avatarUrl = resolveTelegramBotAvatarUrl(bot.avatarUrl, apiBase ?? "");
+  const isOfficial = isOfficialTelegramBot(bot);
+  const botTitle = isOfficial
+    ? bot.username
+      ? `@${bot.username}`
+      : "Zero official bot"
+    : bot.username
+      ? `@${bot.username}`
+      : "Telegram bot";
 
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
@@ -1485,13 +1572,22 @@ function TelegramBotRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-0 truncate text-sm font-medium text-foreground">
-              {bot.username ? `@${bot.username}` : "Telegram bot"}
+              {botTitle}
             </div>
             <TelegramStatusBadge bot={bot} />
           </div>
-          {bot.tokenStatus === "invalid" ? (
+          {isOfficial ? (
+            <div className="mt-1 text-sm text-muted-foreground">
+              Official bot provided by VM0.
+            </div>
+          ) : bot.tokenStatus === "invalid" ? (
             <div className="mt-1 text-sm text-muted-foreground">
               Reinstall the bot with a fresh token from BotFather.
+            </div>
+          ) : null}
+          {isOfficial && bot.official?.configured === false ? (
+            <div className="mt-1 text-sm text-muted-foreground">
+              Official bot configuration is missing.
             </div>
           ) : null}
         </div>
@@ -1722,13 +1818,14 @@ function TelegramBotList({
   return (
     <div className="zero-card overflow-hidden">
       {bots.map((bot, index) => {
+        const isOfficial = isOfficialTelegramBot(bot);
         return (
           <div key={bot.id}>
             <TelegramBotRow
               bot={bot}
               agents={agents}
               defaultAgent={defaultAgent}
-              canManage={bot.isOwner || isAdmin}
+              canManage={isOfficial || bot.isOwner || isAdmin}
               disabled={agentsLoading}
             />
             {index < bots.length - 1 ? (

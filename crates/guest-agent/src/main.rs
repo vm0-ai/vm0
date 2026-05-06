@@ -7,15 +7,16 @@ use guest_agent::complete;
 use guest_agent::env;
 use guest_agent::error;
 use guest_agent::heartbeat;
+use guest_agent::http::HttpClient;
 use guest_agent::masker;
 use guest_agent::metrics;
 use guest_agent::paths;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info};
+use guest_common::{log_error, log_info, log_warn};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -28,7 +29,8 @@ async fn main() {
 }
 
 /// Top-level orchestrator. Returns exit code directly (never panics/errors out).
-/// Final telemetry upload is guaranteed to run on every code path.
+/// Final telemetry upload is attempted on all paths where the HTTP client can
+/// be initialized; when no API token is configured, that upload is a no-op.
 async fn run() -> i32 {
     // Record API-to-agent E2E time (as early as possible)
     guest_agent::timing::record_e2e_from_api("api_to_agent_start");
@@ -37,14 +39,31 @@ async fn run() -> i32 {
     if env::working_dir().is_empty() {
         log_error!(LOG_TAG, "Fatal: VM0_WORKING_DIR is required but not set");
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let telemetry = Telemetry::spawn(masker);
+        let telemetry = match HttpClient::for_current_env() {
+            Ok(http) => Some(Telemetry::spawn(masker, http)),
+            Err(e) => {
+                log_error!(LOG_TAG, "Final telemetry unavailable: {e}");
+                None
+            }
+        };
         log_info!(LOG_TAG, "▷ Cleanup");
-        final_telemetry(&telemetry).await;
-        telemetry.shutdown().await;
+        if let Some(telemetry) = telemetry {
+            final_telemetry(&telemetry).await;
+            telemetry.shutdown().await;
+        }
         log_info!(LOG_TAG, "Background processes stopped");
         log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
         return 1;
     }
+
+    let http = match HttpClient::for_current_env() {
+        Ok(http) => http,
+        Err(e) => {
+            log_error!(LOG_TAG, "Fatal: {e}");
+            log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
+            return 1;
+        }
+    };
 
     // Lifecycle: Header
     log_info!(LOG_TAG, "▶ VM0 Sandbox {}", env::run_id());
@@ -61,7 +80,8 @@ async fn run() -> i32 {
     let t = Instant::now();
     let heartbeat_handle = tokio::spawn({
         let shutdown = shutdown.clone();
-        async move { heartbeat::heartbeat_loop(shutdown).await }
+        let http = http.clone();
+        async move { heartbeat::heartbeat_loop(http, shutdown).await }
     });
     log_info!(LOG_TAG, "Heartbeat started");
     record_sandbox_op("heartbeat_start", t.elapsed(), true, None);
@@ -75,15 +95,15 @@ async fn run() -> i32 {
     record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);
 
     let t = Instant::now();
-    let telemetry = Telemetry::spawn(masker.clone());
+    let telemetry = Telemetry::spawn(masker.clone(), http.clone());
     log_info!(LOG_TAG, "Telemetry upload started");
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
 
-    // Execute main logic (init + CLI + checkpoint + final telemetry).
-    // `execute` owns the final telemetry upload — on the success path it's run
-    // in parallel with `checkpoint` so the ~1s upload doesn't serialize behind
-    // the ~4s snapshot work.
-    let exit_code = execute(&masker, start, heartbeat_handle, &telemetry).await;
+    // Execute main logic (init + CLI + checkpoint + cleanup telemetry).
+    // On the success path, `execute` overlaps the pre-checkpoint telemetry
+    // flush with checkpoint creation; the final flush still runs after
+    // `/complete` so the acknowledgement log line is uploaded.
+    let exit_code = execute(&masker, start, heartbeat_handle, &telemetry, http).await;
 
     // Stop all background processes. Telemetry uses its own command
     // channel; `shutdown` only covers heartbeat/metrics.
@@ -101,13 +121,15 @@ async fn run() -> i32 {
     exit_code
 }
 
-/// Main execution logic: working dir, CLI, checkpoint, and final telemetry
-/// upload (parallel with checkpoint on the success path; serial otherwise).
+/// Main execution logic: working dir, CLI, checkpoint, and cleanup telemetry.
+/// The success path overlaps the pre-checkpoint telemetry flush with
+/// checkpoint creation, then runs the final flush after `/complete`.
 async fn execute(
     masker: &masker::SecretMasker,
     start: Instant,
     heartbeat_handle: tokio::task::JoinHandle<Result<(), error::AgentError>>,
     telemetry: &Telemetry,
+    http: HttpClient,
 ) -> i32 {
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
@@ -155,32 +177,33 @@ async fn execute(
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
-    let (mut exit_code, error_message) = match cli::execute_cli(masker, heartbeat_handle).await {
-        Ok(cli_result) => {
-            last_event_sequence = cli_result.last_event_sequence;
-            let code = cli_result.exit_code;
-            if code != 0 {
-                let msg = if cli_result.stderr_lines.is_empty() {
-                    format!("Agent exited with code {code}")
+    let (exit_code, error_message) =
+        match cli::execute_cli(masker, heartbeat_handle, http.clone()).await {
+            Ok(cli_result) => {
+                last_event_sequence = cli_result.last_event_sequence;
+                let code = cli_result.exit_code;
+                if code != 0 {
+                    let msg = if cli_result.stderr_lines.is_empty() {
+                        format!("Agent exited with code {code}")
+                    } else {
+                        log_info!(
+                            LOG_TAG,
+                            "Captured {} stderr lines",
+                            cli_result.stderr_lines.len()
+                        );
+                        cli_result.stderr_lines.join(" ")
+                    };
+                    (code, msg)
                 } else {
-                    log_info!(
-                        LOG_TAG,
-                        "Captured {} stderr lines",
-                        cli_result.stderr_lines.len()
-                    );
-                    cli_result.stderr_lines.join(" ")
-                };
-                (code, msg)
-            } else {
-                (0, String::new())
+                    (0, String::new())
+                }
             }
-        }
-        Err(e) => {
-            let msg = e.to_string();
-            log_error!(LOG_TAG, "CLI execution failed: {msg}");
-            (1, msg)
-        }
-    };
+            Err(e) => {
+                let msg = e.to_string();
+                log_error!(LOG_TAG, "CLI execution failed: {msg}");
+                (1, msg)
+            }
+        };
     let cli_exit_code = exit_code;
     let cli_elapsed = cli_start.elapsed();
     record_sandbox_op(
@@ -194,6 +217,25 @@ async fn execute(
         },
     );
 
+    complete_execution(
+        cli_exit_code,
+        exit_code,
+        cli_elapsed,
+        last_event_sequence,
+        telemetry,
+        &http,
+    )
+    .await
+}
+
+async fn complete_execution(
+    cli_exit_code: i32,
+    mut exit_code: i32,
+    cli_elapsed: Duration,
+    last_event_sequence: Option<u32>,
+    telemetry: &Telemetry,
+    http: &HttpClient,
+) -> i32 {
     // Check if any events failed to send (before logging execution result)
     if std::path::Path::new(paths::event_error_flag()).exists() {
         log_error!(LOG_TAG, "Some events failed to send, marking run as failed");
@@ -219,7 +261,7 @@ async fn execute(
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
         let (cp_result, _) = tokio::join!(
-            checkpoint::create_checkpoint(),
+            checkpoint::create_checkpoint(http),
             telemetry.flush(UploadMode::Live),
         );
         match cp_result {
@@ -246,6 +288,7 @@ async fn execute(
                 // returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
                 complete::report_success(
+                    http,
                     env::sandbox_id(),
                     env::sandbox_reuse_result(),
                     last_event_sequence,
@@ -277,6 +320,15 @@ async fn execute(
         } else if cli_exit_code != 0 {
             log_info!(LOG_TAG, "claude-code failed with exit code {cli_exit_code}");
         }
+
+        if env::has_api() {
+            log_info!(LOG_TAG, "Attempting best-effort recovery checkpoint");
+            match checkpoint::create_recovery_checkpoint(http).await {
+                Ok(()) => log_info!(LOG_TAG, "Recovery checkpoint created"),
+                Err(e) => log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}"),
+            }
+        }
+
         log_info!(LOG_TAG, "▷ Cleanup");
         final_telemetry(telemetry).await;
     }
@@ -299,4 +351,99 @@ async fn final_telemetry(telemetry: &Telemetry) {
         telemetry_ok,
         None,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use httpmock::prelude::*;
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn complete_execution_creates_recovery_checkpoint_after_cli_failure() {
+        let server = MockServer::start();
+        unsafe {
+            std::env::set_var("VM0_API_URL", server.base_url());
+            std::env::set_var("VM0_API_TOKEN", "test-token");
+            std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
+            std::env::set_var("VM0_WORKING_DIR", "/tmp/main-recovery-checkpoint");
+        }
+
+        let cleanup_paths = [
+            paths::session_id_file().to_string(),
+            paths::session_history_path_file().to_string(),
+            paths::checkpoint_error_file().to_string(),
+            paths::event_error_flag().to_string(),
+            paths::sandbox_ops_file().to_string(),
+            paths::telemetry_system_log_pos_file().to_string(),
+            paths::telemetry_metrics_pos_file().to_string(),
+            paths::telemetry_sandbox_ops_pos_file().to_string(),
+        ];
+        for path in &cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history.jsonl");
+        let history = r#"{"type":"system"}"#.to_string() + "\n" + r#"{"type":"assistant"}"# + "\n";
+        std::fs::write(&history_path, &history).unwrap();
+        std::fs::write(paths::session_id_file(), "recovery-session-from-main").unwrap();
+        std::fs::write(
+            paths::session_history_path_file(),
+            history_path.to_string_lossy().as_ref(),
+        )
+        .unwrap();
+
+        let prepare_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints/prepare-history")
+                .json_body_includes(r#"{"runId":"main-recovery-checkpoint"}"#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({
+                    "presignedUrl": server.url("/test/main-recovery-history-upload"),
+                    "existing": false
+                }));
+        });
+        let upload_mock = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/test/main-recovery-history-upload")
+                .body(history.as_str());
+            then.status(200);
+        });
+        let checkpoint_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path("/api/webhooks/agent/checkpoints")
+                .json_body_includes(r#"{"cliAgentSessionId":"recovery-session-from-main"}"#);
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({"checkpointId": "checkpoint-from-main"}));
+        });
+        let telemetry_mock = server.mock(|when, then| {
+            when.method(POST).path("/api/webhooks/agent/telemetry");
+            then.status(200)
+                .header("Content-Type", "application/json")
+                .json_body(json!({}));
+        });
+
+        let masker = Arc::new(masker::SecretMasker::from_env());
+        let http = HttpClient::new().unwrap();
+        let telemetry = Telemetry::spawn(masker, http.clone());
+        let exit_code = complete_execution(1, 1, Duration::ZERO, None, &telemetry, &http).await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        assert!(
+            !std::path::Path::new(paths::checkpoint_error_file()).exists(),
+            "recovery checkpoint failure must not write the success-path checkpoint error file"
+        );
+        prepare_mock.assert_calls_async(1).await;
+        upload_mock.assert_calls_async(1).await;
+        checkpoint_mock.assert_calls_async(1).await;
+        telemetry_mock.assert_calls_async(1).await;
+
+        for path in cleanup_paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
 }

@@ -53,9 +53,9 @@ interface AgentComposeContent {
 }
 
 interface LogsQuery {
+  agentId?: string;
   name?: string;
   org?: string;
-  agent?: string;
   search?: string;
   since?: number;
   status?: LogStatus;
@@ -66,16 +66,17 @@ interface LogsQuery {
 }
 
 /**
- * Build agent name filter conditions from query params.
- * name takes precedence over legacy agent param, which takes precedence over search.
+ * Build agent filter conditions from query params.
+ * agentId is the canonical Zero agent ID.
+ * Explicit name filtering remains separate from fuzzy search.
  */
 function buildAgentFilterConditions(query: LogsQuery): SQL[] {
   const conditions: SQL[] = [];
 
-  if (query.name) {
+  if (query.agentId) {
+    conditions.push(eq(zeroAgents.id, query.agentId));
+  } else if (query.name) {
     conditions.push(eq(agentComposes.name, query.name));
-  } else if (query.agent) {
-    conditions.push(eq(agentComposes.name, query.agent));
   } else if (query.search) {
     conditions.push(ilike(agentComposes.name, `%${query.search}%`));
   }
@@ -139,6 +140,7 @@ async function getTotalCount(
       agentComposes,
       eq(agentComposeVersions.composeId, agentComposes.id),
     )
+    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
     .where(and(...conditions));
 
   return result?.count ?? 0;
@@ -156,7 +158,7 @@ function extractFramework(composeContent: unknown): string | null {
 }
 
 /**
- * Get distinct statuses, trigger sources, and agent names for filter dropdowns.
+ * Get distinct statuses, trigger sources, and agent IDs for filter dropdowns.
  */
 async function getAvailableFilters(
   userId: string,
@@ -183,7 +185,7 @@ async function getAvailableFilters(
       .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(and(...baseConditions)),
     db
-      .selectDistinct({ name: agentComposes.name })
+      .selectDistinct({ agentId: zeroAgents.id })
       .from(agentRuns)
       .leftJoin(
         agentComposeVersions,
@@ -193,7 +195,8 @@ async function getAvailableFilters(
         agentComposes,
         eq(agentComposeVersions.composeId, agentComposes.id),
       )
-      .where(and(...baseConditions, isNotNull(agentComposes.name))),
+      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
+      .where(and(...baseConditions, isNotNull(zeroAgents.id))),
   ]);
 
   const statuses = statusRows
@@ -220,10 +223,10 @@ async function getAvailableFilters(
 
   const agents = agentRows
     .map((r) => {
-      return r.name;
+      return r.agentId;
     })
-    .filter((name): name is string => {
-      return name !== null;
+    .filter((agentId): agentId is string => {
+      return agentId !== null;
     });
 
   return { statuses, sources, agents };
@@ -300,7 +303,7 @@ const router = tsr.router(logsListContract, {
         completedAt: agentRuns.completedAt,
         triggerSource: zeroRuns.triggerSource,
         scheduleId: zeroRuns.scheduleId,
-        composeId: agentComposes.id,
+        agentId: zeroAgents.id,
         composeName: agentComposes.name,
         orgId: agentComposes.orgId,
         sessionId: conversations.cliAgentSessionId,
@@ -352,7 +355,7 @@ const router = tsr.router(logsListContract, {
           return {
             id: run.id,
             sessionId: run.sessionId ?? null,
-            agentId: run.composeId ?? null,
+            agentId: run.agentId ?? null,
             displayName: run.displayName ?? null,
             framework: extractFramework(run.composeContent),
             triggerSource: (run.triggerSource ?? "cli") as TriggerSource,

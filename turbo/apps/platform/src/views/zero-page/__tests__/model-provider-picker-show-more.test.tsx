@@ -40,6 +40,8 @@ function setupVm0Provider(selectedModel: string): void {
       secretNames: null,
       isDefault: true,
       selectedModel,
+      needsReconnect: false,
+      lastRefreshErrorCode: null,
       createdAt: "2024-01-01T00:00:00Z",
       updatedAt: "2024-01-01T00:00:00Z",
     },

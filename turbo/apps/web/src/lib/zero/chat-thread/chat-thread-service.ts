@@ -217,6 +217,7 @@ export async function getChatThread(
   agentComposeId: string;
   draftContent: string | null;
   draftAttachments: PersistedAttachment[] | null;
+  pendingMessage: ChatThreadPendingMessage | null;
   modelProviderId: string | null;
   selectedModel: string | null;
   lastReadMessageId: string | null;
@@ -243,6 +244,7 @@ export async function getChatThread(
       .array()
       .nullable()
       .parse(thread.draftAttachments ?? null),
+    pendingMessage: toChatThreadPendingMessage(thread),
     modelProviderId: thread.modelProviderId ?? null,
     selectedModel: thread.selectedModel ?? null,
     lastReadMessageId: thread.lastReadMessageId ?? null,
@@ -264,6 +266,44 @@ function hasDraftValue(
     (draftContent !== null && draftContent !== "") ||
     (draftAttachments !== null && draftAttachments.length > 0)
   );
+}
+
+type ChatThreadPendingMessage = {
+  content: string | null;
+  attachments: PersistedAttachment[] | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type PendingMessageColumns = {
+  pendingMessageContent: string | null;
+  pendingMessageAttachments: PersistedAttachment[] | null;
+  pendingMessageCreatedAt: Date | null;
+  pendingMessageUpdatedAt: Date | null;
+};
+
+function parsePersistedAttachments(
+  attachments: PersistedAttachment[] | null,
+): PersistedAttachment[] | null {
+  return persistedAttachmentSchema
+    .array()
+    .nullable()
+    .parse(attachments ?? null);
+}
+
+function toChatThreadPendingMessage(
+  row: PendingMessageColumns,
+): ChatThreadPendingMessage | null {
+  if (!row.pendingMessageCreatedAt || !row.pendingMessageUpdatedAt) {
+    return null;
+  }
+
+  return {
+    content: row.pendingMessageContent ?? null,
+    attachments: parsePersistedAttachments(row.pendingMessageAttachments),
+    createdAt: row.pendingMessageCreatedAt,
+    updatedAt: row.pendingMessageUpdatedAt,
+  };
 }
 
 /**

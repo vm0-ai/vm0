@@ -22,7 +22,12 @@ import { createAuthedTsRestClient } from "./api-client-base.ts";
  */
 export type ZeroClientFactory = <T extends AppRouter>(
   contract: T,
+  options?: ZeroClientOptions,
 ) => InitClientReturn<T, InitClientArgs>;
+
+export interface ZeroClientOptions {
+  readonly apiBase?: "auto" | "api";
+}
 
 function rebaseApiPath(path: string, apiBase: string): string {
   const url = new URL(path, resolveApiBase(false));
@@ -48,14 +53,17 @@ function rebaseApiPath(path: string, apiBase: string): string {
  * ```
  */
 export const zeroClient$ = computed((get) => {
-  return <T extends AppRouter>(contract: T) => {
+  return <T extends AppRouter>(contract: T, options?: ZeroClientOptions) => {
     return createAuthedTsRestClient(contract, {
       baseUrl: resolveApiBase(false),
       getClerk: () => {
         return get(clerk$);
       },
       resolvePath: async (path) => {
-        const apiBase = await get(apiBase$);
+        const apiBase =
+          options?.apiBase === "api"
+            ? resolveApiBase(true)
+            : await get(apiBase$);
         return rebaseApiPath(path, apiBase);
       },
     });

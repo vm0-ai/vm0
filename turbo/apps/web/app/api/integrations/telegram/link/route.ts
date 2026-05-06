@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
+import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import {
   ensureOrgAndArtifact,
@@ -27,11 +30,25 @@ import { verifyConnectSignature } from "../../../../../src/lib/zero/telegram/con
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { checkTelegramDomain } from "../../../../../src/lib/zero/telegram/check-domain";
 import { publishTelegramUserChangedSafely } from "../../../../../src/lib/zero/telegram/realtime";
+import {
+  OFFICIAL_TELEGRAM_BOT_ID,
+  getOfficialTelegramBotConfig,
+} from "../../../../../src/lib/zero/telegram/official";
+import {
+  ensureOfficialOrgAndArtifact,
+  linkOfficialTelegramUserToVm0User,
+  type LinkOfficialTelegramUserResult,
+} from "../../../../../src/lib/zero/telegram/official-user";
+import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 
 const log = logger("api:telegram:link");
 
 type LinkTelegramUserConflictReason = Extract<
   LinkTelegramUserResult,
+  { ok: false }
+>["reason"];
+type LinkOfficialTelegramUserConflictReason = Extract<
+  LinkOfficialTelegramUserResult,
   { ok: false }
 >["reason"];
 
@@ -82,6 +99,37 @@ function linkConflictResponse(reason: LinkTelegramUserConflictReason) {
   );
 }
 
+function officialLinkConflictResponse(
+  reason: LinkOfficialTelegramUserConflictReason,
+) {
+  const message =
+    reason === "telegram-user-linked"
+      ? "This Telegram account is already connected to another VM0 organization through the official Zero bot. Disconnect it before connecting a different account."
+      : reason === "vm0-org-linked"
+        ? "Your VM0 account is already connected to another Telegram account for the official Zero bot in this organization. Disconnect it before connecting a different Telegram account."
+        : "This official Telegram account link already exists. Disconnect it first and try again.";
+
+  return NextResponse.json(
+    { error: { message, code: "CONFLICT" } },
+    { status: 409 },
+  );
+}
+
+async function isOfficialTelegramEnabled(params: {
+  orgId: string;
+  userId: string;
+}): Promise<boolean> {
+  const overrides = await loadFeatureSwitchOverrides(
+    params.orgId,
+    params.userId,
+  );
+  return isFeatureEnabled(FeatureSwitchKey.OfficialTelegramBot, {
+    userId: params.userId,
+    orgId: params.orgId,
+    overrides,
+  });
+}
+
 async function linkUserOrConflict(params: {
   installationId: string;
   telegramUserId: string;
@@ -96,6 +144,22 @@ async function linkUserOrConflict(params: {
   }
 
   await ensureOrgAndArtifact(params.vm0UserId, params.orgId);
+  return undefined;
+}
+
+async function linkOfficialUserOrConflict(params: {
+  telegramUserId: string;
+  telegramUsername?: string | null;
+  telegramDisplayName?: string | null;
+  vm0UserId: string;
+  orgId: string;
+}): Promise<NextResponse | undefined> {
+  const result = await linkOfficialTelegramUserToVm0User(params);
+  if (!result.ok) {
+    return officialLinkConflictResponse(result.reason);
+  }
+
+  await ensureOfficialOrgAndArtifact(params.vm0UserId, params.orgId);
   return undefined;
 }
 
@@ -123,6 +187,41 @@ export async function DELETE(request: Request) {
   const botId = url.searchParams.get("botId");
 
   const db = globalThis.services.db;
+
+  if (botId === OFFICIAL_TELEGRAM_BOT_ID) {
+    if (
+      !(await isOfficialTelegramEnabled({
+        orgId: org.orgId,
+        userId,
+      }))
+    ) {
+      return NextResponse.json(
+        { error: { message: "Telegram bot not found", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
+    }
+
+    const deleted = await db
+      .delete(telegramOfficialUserLinks)
+      .where(
+        and(
+          eq(telegramOfficialUserLinks.vm0UserId, userId),
+          eq(telegramOfficialUserLinks.orgId, org.orgId),
+        ),
+      )
+      .returning({ id: telegramOfficialUserLinks.id });
+
+    if (deleted.length === 0) {
+      return NextResponse.json(
+        { error: { message: "No linked Telegram account", code: "NOT_FOUND" } },
+        { status: 404 },
+      );
+    }
+
+    await publishTelegramUserChangedSafely(userId);
+
+    return new NextResponse(null, { status: 204 });
+  }
 
   // Single-statement delete scoped to the user's active org via a sub-select
   // over telegram_installations. Atomic — no race window between SELECT and
@@ -169,6 +268,8 @@ const linkBodySchema = z.object({
   connectSignature: connectSignatureSchema.optional(),
 });
 
+type LinkBody = z.infer<typeof linkBodySchema>;
+
 /**
  * GET /api/integrations/telegram/link
  *
@@ -191,6 +292,53 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const botId = url.searchParams.get("botId");
   const telegramLoginOrigin = resolveTelegramLoginOrigin(request);
+
+  if (botId === OFFICIAL_TELEGRAM_BOT_ID) {
+    if (
+      !(await isOfficialTelegramEnabled({
+        orgId: org.orgId,
+        userId,
+      }))
+    ) {
+      return NextResponse.json({ linked: false });
+    }
+
+    const [officialLink] = await globalThis.services.db
+      .select({
+        telegramUserId: telegramOfficialUserLinks.telegramUserId,
+      })
+      .from(telegramOfficialUserLinks)
+      .where(
+        and(
+          eq(telegramOfficialUserLinks.vm0UserId, userId),
+          eq(telegramOfficialUserLinks.orgId, org.orgId),
+        ),
+      )
+      .limit(1);
+
+    const config = getOfficialTelegramBotConfig();
+    if (officialLink) {
+      return NextResponse.json({
+        linked: true,
+        telegramUserId: officialLink.telegramUserId,
+        botUsername: config.botUsername ?? "Zero",
+      });
+    }
+
+    const domainConfigured = config.botId
+      ? await checkTelegramDomain(config.botId, telegramLoginOrigin)
+      : false;
+
+    return NextResponse.json({
+      linked: false,
+      installation: {
+        id: OFFICIAL_TELEGRAM_BOT_ID,
+        botUsername: config.botUsername ?? "Zero",
+        ...(config.botId ? { loginBotId: config.botId } : {}),
+        domainConfigured,
+      },
+    });
+  }
 
   // Find user's Telegram link in the active org. When a botId is provided,
   // scope the status to that bot so links for other bots don't short-circuit
@@ -252,6 +400,7 @@ export async function GET(request: Request) {
         installation: {
           id: installation.telegramBotId,
           botUsername: installation.botUsername,
+          loginBotId: installation.telegramBotId,
           domainConfigured,
         },
       });
@@ -297,6 +446,143 @@ export async function POST(request: Request) {
   }
   const body = parseResult.data;
 
+  if (body.telegramBotId === OFFICIAL_TELEGRAM_BOT_ID) {
+    return handleOfficialLinkPost(body, userId, org.orgId);
+  }
+
+  return handleCustomLinkPost(body, userId, org.orgId);
+}
+
+async function handleOfficialLinkPost(
+  body: LinkBody,
+  userId: string,
+  orgId: string,
+): Promise<NextResponse> {
+  if (
+    !(await isOfficialTelegramEnabled({
+      orgId,
+      userId,
+    }))
+  ) {
+    return NextResponse.json(
+      { error: { message: "Installation not found", code: "NOT_FOUND" } },
+      { status: 404 },
+    );
+  }
+
+  const config = getOfficialTelegramBotConfig();
+  if (!config.botToken) {
+    return NextResponse.json(
+      {
+        error: {
+          message: "Official Telegram bot is not configured",
+          code: "NOT_FOUND",
+        },
+      },
+      { status: 404 },
+    );
+  }
+
+  if (body.telegramAuth) {
+    return linkOfficialWithTelegramAuth(body, userId, orgId, config.botToken);
+  }
+
+  if (body.connectSignature) {
+    return linkOfficialWithConnectSignature(
+      body,
+      userId,
+      orgId,
+      config.botToken,
+    );
+  }
+
+  return missingAuthMethodResponse();
+}
+
+async function linkOfficialWithTelegramAuth(
+  body: LinkBody,
+  userId: string,
+  orgId: string,
+  botToken: string,
+): Promise<NextResponse> {
+  if (!body.telegramAuth) return missingAuthMethodResponse();
+
+  if (!verifyTelegramLogin(body.telegramAuth, botToken)) {
+    return invalidTelegramAuthResponse();
+  }
+
+  const telegramUserId = String(body.telegramAuth.id);
+  const conflictResponse = await linkOfficialUserOrConflict({
+    telegramUserId,
+    telegramUsername: body.telegramAuth.username,
+    telegramDisplayName: formatTelegramUserDisplayName(body.telegramAuth),
+    vm0UserId: userId,
+    orgId,
+  });
+  if (conflictResponse) return conflictResponse;
+
+  return NextResponse.json({
+    botUsername: getOfficialTelegramBotConfig().botUsername ?? "Zero",
+    telegramUserId,
+  });
+}
+
+async function linkOfficialWithConnectSignature(
+  body: LinkBody,
+  userId: string,
+  orgId: string,
+  botToken: string,
+): Promise<NextResponse> {
+  const connectSignature = body.connectSignature;
+  if (!connectSignature) return missingAuthMethodResponse();
+
+  if (
+    !verifyConnectSignature(
+      OFFICIAL_TELEGRAM_BOT_ID,
+      connectSignature.telegramUserId,
+      connectSignature.timestamp,
+      connectSignature.signature,
+      botToken,
+      connectSignature.telegramUsername,
+      connectSignature.telegramDisplayName,
+    )
+  ) {
+    return invalidConnectSignatureResponse();
+  }
+
+  const telegramUserId = connectSignature.telegramUserId;
+  const conflictResponse = await linkOfficialUserOrConflict({
+    telegramUserId,
+    telegramUsername: connectSignature.telegramUsername,
+    telegramDisplayName: connectSignature.telegramDisplayName,
+    vm0UserId: userId,
+    orgId,
+  });
+  if (conflictResponse) return conflictResponse;
+
+  const config = getOfficialTelegramBotConfig();
+  const client = createTelegramClient(botToken);
+  sendMessage(
+    client,
+    telegramUserId,
+    formatTelegramCommandSuccess(
+      "Account linked.\nSend me a message to start chatting with Zero.",
+    ),
+  ).catch((err) => {
+    log.warn("Failed to send official connect success message", { err });
+  });
+
+  return NextResponse.json({
+    botUsername: config.botUsername ?? "Zero",
+    telegramUserId,
+  });
+}
+
+async function handleCustomLinkPost(
+  body: LinkBody,
+  userId: string,
+  orgId: string,
+): Promise<NextResponse> {
   const { SECRETS_ENCRYPTION_KEY } = env();
 
   // Look up installation
@@ -317,108 +603,142 @@ export async function POST(request: Request) {
       { status: 404 },
     );
   }
-  if (installation.orgId !== org.orgId) {
+  if (installation.orgId !== orgId) {
     return orgMismatchResponse();
   }
 
+  const botToken = decryptSecretValue(
+    installation.encryptedBotToken,
+    SECRETS_ENCRYPTION_KEY,
+  );
+
   // If telegramAuth is provided, verify and create a direct link
   if (body.telegramAuth) {
-    const botToken = decryptSecretValue(
-      installation.encryptedBotToken,
-      SECRETS_ENCRYPTION_KEY,
-    );
-
-    if (!verifyTelegramLogin(body.telegramAuth, botToken)) {
-      return NextResponse.json(
-        {
-          error: {
-            message: "Invalid Telegram authorization",
-            code: "BAD_REQUEST",
-          },
-        },
-        { status: 400 },
-      );
-    }
-
-    const telegramUserId = String(body.telegramAuth.id);
-
-    const conflictResponse = await linkUserOrConflict({
-      installationId: installation.telegramBotId,
-      telegramUserId,
-      telegramUsername: body.telegramAuth.username,
-      telegramDisplayName: formatTelegramUserDisplayName(body.telegramAuth),
-      vm0UserId: userId,
-      orgId: org.orgId,
-    });
-    if (conflictResponse) return conflictResponse;
-
-    return NextResponse.json({
+    return linkCustomWithTelegramAuth(body, userId, orgId, botToken, {
+      telegramBotId: installation.telegramBotId,
       botUsername: installation.botUsername,
-      telegramUserId,
     });
   }
 
   // Connect via signed params from /connect command
   if (body.connectSignature) {
-    const botToken = decryptSecretValue(
-      installation.encryptedBotToken,
-      SECRETS_ENCRYPTION_KEY,
-    );
-
-    if (
-      !verifyConnectSignature(
-        body.telegramBotId,
-        body.connectSignature.telegramUserId,
-        body.connectSignature.timestamp,
-        body.connectSignature.signature,
-        botToken,
-        body.connectSignature.telegramUsername,
-        body.connectSignature.telegramDisplayName,
-      )
-    ) {
-      return NextResponse.json(
-        {
-          error: {
-            message:
-              "Invalid or expired connect link. Please use /connect again in Telegram.",
-            code: "BAD_REQUEST",
-          },
-        },
-        { status: 400 },
-      );
-    }
-
-    const telegramUserId = body.connectSignature.telegramUserId;
-
-    const conflictResponse = await linkUserOrConflict({
-      installationId: installation.telegramBotId,
-      telegramUserId,
-      telegramUsername: body.connectSignature.telegramUsername,
-      telegramDisplayName: body.connectSignature.telegramDisplayName,
-      vm0UserId: userId,
-      orgId: org.orgId,
-    });
-    if (conflictResponse) return conflictResponse;
-
-    // Send success message to user in Telegram (non-blocking)
-    const client = createTelegramClient(botToken);
-    sendMessage(
-      client,
-      telegramUserId,
-      formatTelegramCommandSuccess(
-        "Account linked.\nSend me a message to start chatting with your agent.",
-      ),
-    ).catch((err) => {
-      log.warn("Failed to send connect success message", { err });
-    });
-
-    return NextResponse.json({
+    return linkCustomWithConnectSignature(body, userId, orgId, botToken, {
+      telegramBotId: installation.telegramBotId,
       botUsername: installation.botUsername,
-      telegramUserId,
     });
   }
 
-  // No auth method provided
+  return missingAuthMethodResponse();
+}
+
+async function linkCustomWithTelegramAuth(
+  body: LinkBody,
+  userId: string,
+  orgId: string,
+  botToken: string,
+  installation: { telegramBotId: string; botUsername: string | null },
+): Promise<NextResponse> {
+  if (!body.telegramAuth) return missingAuthMethodResponse();
+
+  if (!verifyTelegramLogin(body.telegramAuth, botToken)) {
+    return invalidTelegramAuthResponse();
+  }
+
+  const telegramUserId = String(body.telegramAuth.id);
+  const conflictResponse = await linkUserOrConflict({
+    installationId: installation.telegramBotId,
+    telegramUserId,
+    telegramUsername: body.telegramAuth.username,
+    telegramDisplayName: formatTelegramUserDisplayName(body.telegramAuth),
+    vm0UserId: userId,
+    orgId,
+  });
+  if (conflictResponse) return conflictResponse;
+
+  return NextResponse.json({
+    botUsername: installation.botUsername ?? "Telegram bot",
+    telegramUserId,
+  });
+}
+
+async function linkCustomWithConnectSignature(
+  body: LinkBody,
+  userId: string,
+  orgId: string,
+  botToken: string,
+  installation: { telegramBotId: string; botUsername: string | null },
+): Promise<NextResponse> {
+  const connectSignature = body.connectSignature;
+  if (!connectSignature) return missingAuthMethodResponse();
+
+  if (
+    !verifyConnectSignature(
+      body.telegramBotId,
+      connectSignature.telegramUserId,
+      connectSignature.timestamp,
+      connectSignature.signature,
+      botToken,
+      connectSignature.telegramUsername,
+      connectSignature.telegramDisplayName,
+    )
+  ) {
+    return invalidConnectSignatureResponse();
+  }
+
+  const telegramUserId = connectSignature.telegramUserId;
+  const conflictResponse = await linkUserOrConflict({
+    installationId: installation.telegramBotId,
+    telegramUserId,
+    telegramUsername: connectSignature.telegramUsername,
+    telegramDisplayName: connectSignature.telegramDisplayName,
+    vm0UserId: userId,
+    orgId,
+  });
+  if (conflictResponse) return conflictResponse;
+
+  const client = createTelegramClient(botToken);
+  sendMessage(
+    client,
+    telegramUserId,
+    formatTelegramCommandSuccess(
+      "Account linked.\nSend me a message to start chatting with your agent.",
+    ),
+  ).catch((err) => {
+    log.warn("Failed to send connect success message", { err });
+  });
+
+  return NextResponse.json({
+    botUsername: installation.botUsername ?? "Telegram bot",
+    telegramUserId,
+  });
+}
+
+function invalidTelegramAuthResponse() {
+  return NextResponse.json(
+    {
+      error: {
+        message: "Invalid Telegram authorization",
+        code: "BAD_REQUEST",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+function invalidConnectSignatureResponse() {
+  return NextResponse.json(
+    {
+      error: {
+        message:
+          "Invalid or expired connect link. Please use /connect again in Telegram.",
+        code: "BAD_REQUEST",
+      },
+    },
+    { status: 400 },
+  );
+}
+
+function missingAuthMethodResponse() {
   return NextResponse.json(
     {
       error: {

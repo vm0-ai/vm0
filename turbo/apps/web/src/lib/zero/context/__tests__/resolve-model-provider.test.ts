@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { resolveModelProviderSecrets } from "../resolve-model-provider";
-import { isNoModelProvider } from "@vm0/api-services/errors";
+import { isNoModelProvider, isStaleProvider } from "@vm0/api-services/errors";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestOrg,
@@ -10,6 +10,8 @@ import {
   insertUserDefaultModelProvider,
   insertUserNonDefaultModelProvider,
   enablePersonalModelProviderForUser,
+  setTestModelProviderNeedsReconnect,
+  ORG_SENTINEL_USER_ID,
 } from "../../../../__tests__/api-test-helpers";
 import { getTestModelProviderIdByType } from "../../../../__tests__/db-test-assertions/org";
 import { mockClerk } from "../../../../__tests__/clerk-mock";
@@ -570,5 +572,72 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     );
 
     expect(result.secretConnectorMap).toBeUndefined();
+  });
+});
+
+describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("throws staleProvider when matching provider has needsReconnect=true", async () => {
+    const userId = uniqueId("stale-chatgpt");
+    const orgId = await setupOrg(userId);
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+    );
+    for (const [name, value] of [
+      ["CHATGPT_ACCESS_TOKEN", "at"],
+      ["CHATGPT_REFRESH_TOKEN", "rt"],
+      ["CHATGPT_ACCOUNT_ID", "acct"],
+      ["CHATGPT_ID_TOKEN", "idt"],
+    ] as const) {
+      await insertTestOrgModelProviderSecret({ orgId, name, value });
+    }
+    await setTestModelProviderNeedsReconnect(
+      orgId,
+      ORG_SENTINEL_USER_ID,
+      "chatgpt-oauth-token",
+      true,
+      "refresh_token_expired",
+    );
+
+    await expect(
+      resolveModelProviderSecrets(orgId, userId, "codex", false),
+    ).rejects.toSatisfy((err: unknown) => {
+      if (!isStaleProvider(err)) return false;
+      return (
+        err.providerType === "chatgpt-oauth-token" &&
+        err.refreshErrorCode === "refresh_token_expired"
+      );
+    });
+  });
+
+  it("does not throw when needsReconnect=false (healthy provider)", async () => {
+    const userId = uniqueId("healthy-chatgpt");
+    const orgId = await setupOrg(userId);
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+    );
+    for (const [name, value] of [
+      ["CHATGPT_ACCESS_TOKEN", "at"],
+      ["CHATGPT_REFRESH_TOKEN", "rt"],
+      ["CHATGPT_ACCOUNT_ID", "acct"],
+      ["CHATGPT_ID_TOKEN", "idt"],
+    ] as const) {
+      await insertTestOrgModelProviderSecret({ orgId, name, value });
+    }
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "codex",
+      false,
+    );
+    expect(result.resolvedModelProvider).toBe("chatgpt-oauth-token");
   });
 });

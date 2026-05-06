@@ -3,7 +3,6 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import { createPortal } from "react-dom";
 import {
   IconDownload,
-  IconFile,
   IconFileMusic,
   IconPhoto,
   IconVideo,
@@ -42,67 +41,37 @@ import {
   openImageLightbox$,
   lightboxDialogRef$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import docPdfIcon from "./assets/doc-pdf.svg";
-import docDocIcon from "./assets/doc-doc.svg";
-import docCsvIcon from "./assets/doc-csv.svg";
-import docTxtIcon from "./assets/doc-txt.svg";
-import docJsonIcon from "./assets/doc-json.svg";
-import docHtmlIcon from "./assets/doc-html.svg";
+import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 
 const log = logger("zero-attachment-chips");
 
-/**
- * Return the icon path for a known file extension, or null for unknown types.
- */
-function getFileTypeIcon(filename: string): string | null {
-  const ext = filename.split(".").pop()?.toLowerCase();
-  switch (ext) {
-    case "pdf": {
-      return docPdfIcon;
-    }
-    case "doc":
-    case "docx":
-    case "odt":
-    case "rtf":
-    case "md": {
-      return docDocIcon;
-    }
-    case "txt": {
-      return docTxtIcon;
-    }
-    case "json": {
-      return docJsonIcon;
-    }
-    case "html": {
-      return docHtmlIcon;
-    }
-    case "csv": {
-      return docCsvIcon;
-    }
-    case "xls":
-    case "xlsx":
-    case "ods": {
-      return docCsvIcon;
-    }
-    case "ppt":
-    case "pptx":
-    case "odp": {
-      return docDocIcon;
-    }
-    default: {
-      return null;
-    }
-  }
-}
+type DocumentAttachmentPreviewKind =
+  | "markdown"
+  | "text"
+  | "json"
+  | "csv"
+  | "html"
+  | "pdf";
 
-function getPreviewIconSrc(preview: {
-  kind: "markdown" | "text" | "json" | "csv" | "html" | "pdf";
-  filename: string;
-}): string | null {
-  if (preview.kind === "csv") {
-    return docCsvIcon;
+function contentTypeForDocumentAttachmentPreviewKind(
+  kind: DocumentAttachmentPreviewKind,
+): string {
+  if (kind === "csv") {
+    return "text/csv";
   }
-  return getFileTypeIcon(preview.filename);
+  if (kind === "markdown") {
+    return "text/markdown";
+  }
+  if (kind === "text") {
+    return "text/plain";
+  }
+  if (kind === "json") {
+    return "application/json";
+  }
+  if (kind === "html") {
+    return "text/html";
+  }
+  return "application/pdf";
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +118,7 @@ function triggerDirectDownload(url: string, filename: string): void {
   a.remove();
 }
 
-function TextPreviewLoader({
+export function TextPreviewLoader({
   url,
   children,
 }: {
@@ -190,7 +159,7 @@ function formatPlainPreviewText(
   return text;
 }
 
-function parseCsvRows(text: string): string[][] {
+export function parseCsvRows(text: string): string[][] {
   return text
     .split(/\r?\n/)
     .map((line) => {
@@ -204,6 +173,51 @@ function parseCsvRows(text: string): string[][] {
         return cell.trim();
       });
     });
+}
+
+export function CsvPreviewTable({ rows }: { rows: string[][] }) {
+  const [header, ...body] = rows;
+
+  return (
+    <div className="overflow-auto rounded-lg border border-foreground/10">
+      <table className="min-w-full divide-y divide-foreground/10 text-sm">
+        <thead className="bg-muted/40">
+          <tr>
+            {header.map((cell) => {
+              return (
+                <th
+                  key={`header-${cell}`}
+                  className="whitespace-nowrap px-3 py-2 text-left font-medium text-foreground"
+                >
+                  {cell}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-foreground/10 bg-background">
+          {body.map((row) => {
+            const rowKey = `row-${row.join("\u0001")}`;
+            return (
+              <tr key={rowKey}>
+                {header.map((column, cellIndex) => {
+                  const value = row[cellIndex] ?? "";
+                  return (
+                    <td
+                      key={`${rowKey}-${column}-${value}`}
+                      className="whitespace-nowrap px-3 py-2 text-foreground"
+                    >
+                      {value}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function triggerBlobDownload(blob: Blob, filename: string): void {
@@ -463,8 +477,6 @@ export function AttachmentLightbox() {
     return <ImageLightbox url={preview.url} />;
   }
 
-  const iconSrc = getPreviewIconSrc(preview);
-
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
       closeLightbox();
@@ -511,20 +523,13 @@ export function AttachmentLightbox() {
       <div className="w-[min(92vw,1100px)] rounded-2xl bg-background shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="flex items-center gap-3 border-b border-foreground/10 px-4 py-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
-            {iconSrc ? (
-              <img
-                alt=""
-                aria-hidden="true"
-                src={iconSrc}
-                className="h-7 w-7 object-contain opacity-90"
-              />
-            ) : (
-              <IconFile
-                size={22}
-                stroke={1.8}
-                className="text-muted-foreground"
-              />
-            )}
+            <FilePreviewIcon
+              filename={preview.filename}
+              contentType={contentTypeForDocumentAttachmentPreviewKind(
+                preview.kind,
+              )}
+              testId="attachment-lightbox-file-icon"
+            />
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-foreground">
@@ -677,48 +682,9 @@ function CsvLightboxBody({
           );
         }
 
-        const [header, ...body] = rows;
-
         return (
           <div className="h-[min(78vh,900px)] overflow-auto p-6">
-            <div className="overflow-auto rounded-lg border border-foreground/10">
-              <table className="min-w-full divide-y divide-foreground/10 text-sm">
-                <thead className="bg-muted/40">
-                  <tr>
-                    {header.map((cell) => {
-                      return (
-                        <th
-                          key={`header-${cell}`}
-                          className="whitespace-nowrap px-3 py-2 text-left font-medium text-foreground"
-                        >
-                          {cell}
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-foreground/10 bg-background">
-                  {body.map((row) => {
-                    const rowKey = `row-${row.join("\u0001")}`;
-                    return (
-                      <tr key={rowKey}>
-                        {header.map((column, cellIndex) => {
-                          const value = row[cellIndex] ?? "";
-                          return (
-                            <td
-                              key={`${rowKey}-${column}-${value}`}
-                              className="whitespace-nowrap px-3 py-2 text-foreground"
-                            >
-                              {value}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <CsvPreviewTable rows={rows} />
           </div>
         );
       }}
@@ -737,7 +703,6 @@ export function FileAttachmentChip({
   filename: string;
   url: string;
 }) {
-  const iconSrc = getFileTypeIcon(filename);
   return (
     <a
       href={getAttachmentDownloadUrl(url)}
@@ -745,16 +710,11 @@ export function FileAttachmentChip({
       title={filename}
       className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
     >
-      {iconSrc ? (
-        <img
-          alt=""
-          className="h-9 w-9 object-contain opacity-80"
-          aria-hidden="true"
-          src={iconSrc}
-        />
-      ) : (
-        <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
-      )}
+      <FilePreviewIcon
+        filename={filename}
+        className="h-9 w-9"
+        testId="attachment-chip-file-icon"
+      />
     </a>
   );
 }
@@ -768,7 +728,6 @@ export function PreviewableFileAttachmentChip({
   url: string;
   kind: "markdown" | "text" | "json" | "csv" | "pdf" | "html";
 }) {
-  const iconSrc = getFileTypeIcon(filename);
   const openDocumentLightbox = useSet(openDocumentLightbox$);
 
   return (
@@ -781,16 +740,12 @@ export function PreviewableFileAttachmentChip({
       aria-label={`Open ${kind} preview for ${filename}`}
       className="inline-flex items-center justify-center rounded-lg hover:bg-foreground/10 transition-colors p-0.5"
     >
-      {iconSrc ? (
-        <img
-          alt=""
-          className="h-9 w-9 object-contain opacity-80"
-          aria-hidden="true"
-          src={iconSrc}
-        />
-      ) : (
-        <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
-      )}
+      <FilePreviewIcon
+        filename={filename}
+        contentType={contentTypeForDocumentAttachmentPreviewKind(kind)}
+        className="h-9 w-9"
+        testId="attachment-chip-file-icon"
+      />
     </button>
   );
 }
@@ -899,8 +854,6 @@ function AttachmentChip({
   const isImage = attachment.contentType.startsWith("image/");
   const isVideo = attachment.contentType.startsWith("video/");
   const isAudio = attachment.contentType.startsWith("audio/");
-  const iconSrc =
-    isImage || isVideo || isAudio ? null : getFileTypeIcon(attachment.filename);
   return (
     <>
       <div
@@ -921,15 +874,13 @@ function AttachmentChip({
             stroke={1.5}
             className="text-muted-foreground"
           />
-        ) : iconSrc ? (
-          <img
-            alt=""
-            className="h-9 w-9 object-contain opacity-80"
-            aria-hidden="true"
-            src={iconSrc}
-          />
         ) : (
-          <IconFile size={28} stroke={1.5} className="text-muted-foreground" />
+          <FilePreviewIcon
+            filename={attachment.filename}
+            contentType={attachment.contentType}
+            className="h-9 w-9"
+            testId="composer-attachment-file-icon"
+          />
         )}
         {uploading && (
           <span className="absolute -top-1 -left-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-background">

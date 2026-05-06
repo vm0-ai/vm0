@@ -65,6 +65,25 @@ const persistedAttachmentSchema = z.object({
   size: z.number(),
 });
 
+const pendingMessageSchema = z.object({
+  content: z.string().nullable(),
+  attachments: z.array(persistedAttachmentSchema).nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const appendPendingMessageBodySchema = z
+  .object({
+    content: z.string().min(1).optional(),
+    attachments: z.array(persistedAttachmentSchema).min(1).optional(),
+  })
+  .refine(
+    (body) => {
+      return body.content !== undefined || body.attachments !== undefined;
+    },
+    { message: "content or attachments is required" },
+  );
+
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -171,6 +190,7 @@ const chatThreadDetailSchema = z.object({
   updatedAt: z.string(),
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
+  pendingMessage: pendingMessageSchema.nullable().optional(),
   /**
    * Per-thread model override. Both fields set together or both null.
    * When set, the send route uses this combination (overriding the agent
@@ -376,6 +396,59 @@ export const chatThreadRenameContract = c.router({
   },
 });
 
+export const chatThreadPendingMessageAppendContract = c.router({
+  append: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/pending-message/append",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: appendPendingMessageBodySchema,
+    responses: {
+      200: z.object({ pendingMessage: pendingMessageSchema }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Append submitted content to a chat thread pending message",
+  },
+});
+
+export const chatThreadPendingMessageDeleteContract = c.router({
+  delete: {
+    method: "DELETE",
+    path: "/api/zero/chat-threads/:id/pending-message",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: c.noBody(),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Discard a chat thread pending message",
+  },
+});
+
+export const chatThreadPendingMessageRecallContract = c.router({
+  recall: {
+    method: "POST",
+    path: "/api/zero/chat-threads/:id/pending-message/recall",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: c.noBody(),
+    responses: {
+      200: z.object({
+        draftContent: z.string().nullable(),
+        draftAttachments: z.array(persistedAttachmentSchema).nullable(),
+        pendingMessage: z.null(),
+      }),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Recall a chat thread pending message back into the draft",
+  },
+});
+
 /**
  * Chat messages contract (/api/zero/chat/messages)
  * Unified endpoint: create thread (if needed) + run + association in one call.
@@ -459,7 +532,7 @@ const chatSearchResultSchema = z.object({
  * There is intentionally no cursor/offset: `limit` is capped at 50 (see the
  * query schema below) and chat-message search is a lookup tool, not a bulk
  * export. Callers that hit `hasMore=true` should narrow the query (add
- * `agent`, `since`, or a more specific `keyword`) rather than paginate. If
+ * `agentId`, `since`, or a more specific `keyword`) rather than paginate. If
  * genuine pagination is ever needed, introduce `nextCursor` here — the
  * contract has no external consumers yet, so adding it later is safe.
  */
@@ -480,7 +553,7 @@ export const chatSearchContract = c.router({
     headers: authHeadersSchema,
     query: z.object({
       keyword: z.string().min(1),
-      agent: z.string().optional(),
+      agentId: z.string().uuid().optional(),
       since: z.coerce.number().optional(),
       limit: z.coerce.number().min(1).max(50).default(20),
       before: z.coerce.number().min(0).max(10).default(0),
@@ -589,6 +662,12 @@ export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
+export type ChatThreadPendingMessageAppendContract =
+  typeof chatThreadPendingMessageAppendContract;
+export type ChatThreadPendingMessageDeleteContract =
+  typeof chatThreadPendingMessageDeleteContract;
+export type ChatThreadPendingMessageRecallContract =
+  typeof chatThreadPendingMessageRecallContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 export type ChatThreadMessagesContract = typeof chatThreadMessagesContract;
 export type ChatThreadArtifactsContract = typeof chatThreadArtifactsContract;
@@ -604,6 +683,7 @@ export {
   pagedChatMessageSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
+  pendingMessageSchema,
   attachFileSchema,
   resolvedAttachFileSchema,
   chatThreadArtifactFileSchema,
@@ -618,6 +698,7 @@ export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
+export type PendingMessage = z.infer<typeof pendingMessageSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
 export type ResolvedAttachFile = z.infer<typeof resolvedAttachFileSchema>;
 export type ChatThreadArtifactFile = z.infer<

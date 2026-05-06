@@ -10,7 +10,9 @@ import {
 } from "ccstate-react";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
+  IconArrowBackUp,
   IconArrowUp,
+  IconFile,
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
@@ -49,6 +51,7 @@ import {
 import { sendMode$ } from "../../signals/send-mode.ts";
 import { toggleSidebarOff$ } from "../../signals/zero-page/zero-nav.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
 import {
   zeroChatAttachments$ as singletonAttachments$,
@@ -61,16 +64,22 @@ import {
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
-import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  PendingMessage,
+  PersistedAttachment,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
-import type {
-  ModelProviderResponse,
-  ModelProviderType,
+import {
+  getDefaultModel,
+  getModelImageInputSupport,
+  type ModelProviderResponse,
+  type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -87,6 +96,7 @@ import {
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
+import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
@@ -146,7 +156,14 @@ interface ZeroChatComposerProps {
   input: string;
   onInputChange: (value: string) => void;
   onSend: (message: string) => void;
+  onQueue?: (message: string) => void;
   sending?: boolean;
+  queueWhileSending?: boolean;
+  pendingMessage?: PendingMessage | null;
+  /** Recall the queued pending message back into the draft. */
+  onRecallPendingMessage?: () => void;
+  /** True while the recall request is in flight — shows a spinner and disables the button. */
+  recallPendingMessageLoading?: boolean;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
   displayName: string;
@@ -182,6 +199,15 @@ interface ZeroChatComposerProps {
    */
   modelPicker?: {
     providers: ModelProviderResponse[];
+    /**
+     * Per-provider tier annotation (Wave 3 of Epic #11868). When provided,
+     * the picker groups items into "Personal" and "Workspace" sections
+     * with personal first and renders distinct default badges. Composer
+     * call sites pass the merged map from `composerModelProviders$`;
+     * settings / schedule editors omit it for byte-for-byte unchanged
+     * behavior.
+     */
+    tiers?: Map<string, "personal" | "org">;
     value: ModelProviderSelection | null;
     onChange: (value: ModelProviderSelection | null) => void;
     /**
@@ -195,6 +221,8 @@ interface ZeroChatComposerProps {
     agentDefault?: ModelProviderSelection | null;
   };
 }
+
+type ComposerModelPicker = NonNullable<ZeroChatComposerProps["modelPicker"]>;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -215,6 +243,112 @@ function resolveConnectorLabel(
   connectorMap: Map<ConnectorType, { label: string }>,
 ): string {
   return connectorMap.get(type as ConnectorType)?.label ?? type;
+}
+
+interface ResolvedComposerModel {
+  modelProviderId: string;
+  selectedModel: string;
+}
+
+function resolveProviderSelection(
+  provider: ModelProviderResponse | undefined,
+): ResolvedComposerModel | null {
+  if (!provider) {
+    return null;
+  }
+  const selectedModel =
+    provider.selectedModel ?? getDefaultModel(provider.type);
+  if (!selectedModel) {
+    return null;
+  }
+  return {
+    modelProviderId: provider.id,
+    selectedModel,
+  };
+}
+
+function resolveComposerModelForSelection(
+  modelPicker: ComposerModelPicker | undefined,
+  selection: ModelProviderSelection | null,
+): ResolvedComposerModel | null {
+  if (!modelPicker) {
+    return null;
+  }
+  if (selection) {
+    return selection;
+  }
+  if (modelPicker.agentDefault) {
+    return modelPicker.agentDefault;
+  }
+  const defaultProvider = modelPicker.providers.find((provider) => {
+    return provider.isDefault;
+  });
+  return resolveProviderSelection(defaultProvider);
+}
+
+interface VisualAttachmentUnsupportedState {
+  currentModelName: string;
+}
+
+interface VisualAttachmentCandidate {
+  contentType: string;
+  filename: string;
+}
+
+function getVisualAttachmentUnsupportedState(
+  modelPicker: ComposerModelPicker | undefined,
+  selection: ModelProviderSelection | null = modelPicker?.value ?? null,
+): VisualAttachmentUnsupportedState | null {
+  const currentModel = resolveComposerModelForSelection(modelPicker, selection);
+  if (
+    getModelImageInputSupport(currentModel?.selectedModel) !== "unsupported" ||
+    !currentModel
+  ) {
+    return null;
+  }
+  return {
+    currentModelName: getModelDisplayName(currentModel.selectedModel),
+  };
+}
+
+function isVisualAttachmentFile(file: File): boolean {
+  return isVisualAttachment({
+    contentType: file.type,
+    filename: file.name,
+  });
+}
+
+function showVisualAttachmentUnsupportedToast(
+  state: VisualAttachmentUnsupportedState,
+): void {
+  toast.error(
+    `${state.currentModelName} cannot recognize images or videos. Switch to a vision-capable model to attach them.`,
+    { id: "visual-attachment-unsupported" },
+  );
+}
+
+function resolveVisibleAttachments<T extends VisualAttachmentCandidate>(
+  attachments: T[],
+  visualAttachmentUnsupported: VisualAttachmentUnsupportedState | null,
+): T[] {
+  if (!visualAttachmentUnsupported) {
+    return attachments;
+  }
+  return attachments.filter((attachment) => {
+    return !isVisualAttachment(attachment);
+  });
+}
+
+function resolveComposerCanSend({
+  draftCanSend,
+  input,
+  visibleAttachmentCount,
+}: {
+  draftCanSend: boolean;
+  input: string;
+  visibleAttachmentCount: number;
+}): boolean {
+  return draftCanSend && (input.trim() !== "" || visibleAttachmentCount > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -706,6 +840,102 @@ function toPersistedAttachments(
     });
 }
 
+function hasPendingMessageContent(
+  pendingMessage: PendingMessage | null,
+): pendingMessage is PendingMessage {
+  return (
+    pendingMessage !== null &&
+    ((pendingMessage.content?.trim() ?? "") !== "" ||
+      (pendingMessage.attachments?.length ?? 0) > 0)
+  );
+}
+
+function PendingMessagePreview({
+  pendingMessage,
+  onRecall,
+  recallLoading,
+}: {
+  pendingMessage: PendingMessage;
+  onRecall?: () => void;
+  recallLoading?: boolean;
+}) {
+  const content = pendingMessage.content?.trim() ?? "";
+  const attachments = pendingMessage.attachments ?? [];
+  return (
+    <div
+      className="border-b border-border/50 bg-muted/30 px-4 py-3"
+      aria-label="Queued message"
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+          Queued
+        </div>
+        {onRecall && (
+          <button
+            type="button"
+            onClick={onRecall}
+            disabled={recallLoading}
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            aria-label="Recall queued message"
+          >
+            {recallLoading ? (
+              <IconLoader2 size={13} stroke={1.75} className="animate-spin" />
+            ) : (
+              <IconArrowBackUp size={13} stroke={1.75} />
+            )}
+            Recall
+          </button>
+        )}
+      </div>
+      {content && (
+        <div className="max-h-[100px] overflow-y-auto text-sm leading-5 text-foreground [overflow-wrap:anywhere]">
+          <Markdown source={content.replace(/\n/g, "  \n")} />
+        </div>
+      )}
+      {attachments.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {attachments.map((attachment) => {
+            return (
+              <span
+                key={attachment.id}
+                className="inline-flex max-w-[14rem] items-center gap-1 rounded-md bg-background/80 px-2 py-1 text-xs text-muted-foreground zero-border"
+                title={attachment.filename}
+              >
+                <IconFile size={13} stroke={1.5} className="shrink-0" />
+                <span className="truncate">{attachment.filename}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+type KeyboardSendAction = "none" | "send" | "queue";
+
+function resolveKeyboardSendAction({
+  canSend,
+  sending,
+  queueWhileSending,
+  hasQueueHandler,
+}: {
+  canSend: boolean;
+  sending: boolean | undefined;
+  queueWhileSending: boolean;
+  hasQueueHandler: boolean;
+}): KeyboardSendAction {
+  if (!canSend || (sending && (!queueWhileSending || !hasQueueHandler))) {
+    return "none";
+  }
+  return sending ? "queue" : "send";
+}
+
+function composerTextareaMinHeight(hasPendingMessage: boolean): string {
+  return hasPendingMessage ? "min-h-[116px]" : "min-h-[96px]";
+}
+
 // ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
@@ -714,7 +944,12 @@ export function ZeroChatComposer({
   input,
   onInputChange,
   onSend,
+  onQueue,
   sending,
+  queueWhileSending = false,
+  pendingMessage = null,
+  onRecallPendingMessage,
+  recallPendingMessageLoading,
   onCancel,
   displayName,
   className,
@@ -739,7 +974,7 @@ export function ZeroChatComposer({
     setComposerFileInputProp$,
   );
   const {
-    canSend,
+    canSend: draftCanSend,
     attachments,
     uploadAttachment,
     restoreAttachments,
@@ -752,6 +987,17 @@ export function ZeroChatComposer({
 
   const ensurePushSubscription = useSet(ensurePushSubscription$);
   const rootSignal = useGet(rootSignal$);
+  const visualAttachmentUnsupported =
+    getVisualAttachmentUnsupportedState(modelPicker);
+  const visibleAttachments = resolveVisibleAttachments(
+    attachments,
+    visualAttachmentUnsupported,
+  );
+  const canSend = resolveComposerCanSend({
+    draftCanSend,
+    input,
+    visibleAttachmentCount: visibleAttachments.length,
+  });
 
   // File upload handlers (paste / drag-drop)
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -761,6 +1007,17 @@ export function ZeroChatComposer({
         chatPayload.attachments,
       );
       if (persistedAttachments.length > 0) {
+        const allowedAttachments = visualAttachmentUnsupported
+          ? persistedAttachments.filter((attachment) => {
+              return !isVisualAttachment({
+                contentType: attachment.contentType,
+                filename: attachment.filename,
+              });
+            })
+          : persistedAttachments;
+        if (allowedAttachments.length < persistedAttachments.length) {
+          showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported!);
+        }
         e.preventDefault();
         const nextInput = insertPastedText(
           e.currentTarget,
@@ -770,7 +1027,9 @@ export function ZeroChatComposer({
         if (nextInput !== input) {
           onInputChange(nextInput);
         }
-        restoreAttachments(persistedAttachments);
+        if (allowedAttachments.length > 0) {
+          restoreAttachments(allowedAttachments);
+        }
         onDraftChange?.();
         return;
       }
@@ -800,6 +1059,12 @@ export function ZeroChatComposer({
       if (!file) {
         continue;
       }
+      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+        e.preventDefault();
+        applyPlainText();
+        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+        continue;
+      }
       if (file.size > MAX_FILE_SIZE) {
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
@@ -818,14 +1083,22 @@ export function ZeroChatComposer({
     if (!files) {
       return;
     }
+    let uploaded = false;
     for (const file of files) {
+      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+        continue;
+      }
       if (file.size > MAX_FILE_SIZE) {
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      uploaded = true;
     }
-    onDraftChange?.();
+    if (uploaded) {
+      onDraftChange?.();
+    }
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -928,6 +1201,24 @@ export function ZeroChatComposer({
     onSend(input.trim());
   };
 
+  const handleKeyboardSend = () => {
+    const handlers: Record<KeyboardSendAction, (() => void) | undefined> = {
+      none: undefined,
+      send: handleSend,
+      queue: () => {
+        onQueue?.(input.trim());
+      },
+    };
+    handlers[
+      resolveKeyboardSendAction({
+        canSend,
+        sending,
+        queueWhileSending,
+        hasQueueHandler: onQueue !== undefined,
+      })
+    ]?.();
+  };
+
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
@@ -938,7 +1229,7 @@ export function ZeroChatComposer({
       return;
     }
     const send = () => {
-      handleSend();
+      handleKeyboardSend();
     };
     processShortcut(
       {
@@ -968,15 +1259,42 @@ export function ZeroChatComposer({
     if (!files) {
       return;
     }
+    let uploaded = false;
     for (const file of files) {
+      if (visualAttachmentUnsupported && isVisualAttachmentFile(file)) {
+        showVisualAttachmentUnsupportedToast(visualAttachmentUnsupported);
+        continue;
+      }
       if (file.size > MAX_FILE_SIZE) {
         toast.error(`${file.name} exceeds the 1 GB limit`);
         continue;
       }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+      uploaded = true;
     }
-    onDraftChange?.();
+    if (uploaded) {
+      onDraftChange?.();
+    }
     e.target.value = "";
+  };
+  const hasPendingMessage = hasPendingMessageContent(pendingMessage);
+
+  const handleModelPickerChange = (
+    selection: ModelProviderSelection | null,
+  ) => {
+    const nextUnsupported = getVisualAttachmentUnsupportedState(
+      modelPicker,
+      selection,
+    );
+    if (
+      nextUnsupported &&
+      attachments.some((attachment) => {
+        return isVisualAttachment(attachment);
+      })
+    ) {
+      showVisualAttachmentUnsupportedToast(nextUnsupported);
+    }
+    modelPicker?.onChange(selection);
   };
 
   return (
@@ -985,7 +1303,7 @@ export function ZeroChatComposer({
         ref={setFileInputEl}
         type="file"
         className="hidden"
-        accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.md,.json,.html,.htm,.doc,.docx,.odt,.rtf,.xls,.xlsx,.ods,.ppt,.pptx,.odp"
+        accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
         multiple
         onChange={handleFileChange}
       />
@@ -1001,9 +1319,16 @@ export function ZeroChatComposer({
       >
         <CardContent className="p-0">
           <div className="flex flex-col">
-            {attachments.length > 0 && (
+            {hasPendingMessage && (
+              <PendingMessagePreview
+                pendingMessage={pendingMessage}
+                onRecall={onRecallPendingMessage}
+                recallLoading={recallPendingMessageLoading}
+              />
+            )}
+            {visibleAttachments.length > 0 && (
               <AttachmentChips
-                attachments={attachments}
+                attachments={visibleAttachments}
                 onRemove={(attachment) => {
                   removeAttachment(attachment);
                   onDraftChange?.();
@@ -1017,7 +1342,10 @@ export function ZeroChatComposer({
                 }
                 setInputRef?.(el);
               }}
-              className="w-full resize-none bg-transparent px-4 pt-4 pb-0 text-base text-foreground placeholder:text-muted-foreground/40 border-0 min-h-[96px] focus:outline-none focus:ring-0"
+              className={cn(
+                "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-base text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0",
+                composerTextareaMinHeight(hasPendingMessage),
+              )}
               rows={3}
               placeholder={
                 sending
@@ -1074,8 +1402,9 @@ export function ZeroChatComposer({
                     {modelPicker && (
                       <ModelProviderPicker
                         providers={modelPicker.providers}
+                        tiers={modelPicker.tiers}
                         value={modelPicker.value}
-                        onChange={modelPicker.onChange}
+                        onChange={handleModelPickerChange}
                         placeholder="Default"
                         triggerClassName={cn(
                           "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",

@@ -45,6 +45,10 @@
         "app/**/default.tsx",
         "app/**/route.ts",
         "app/**/route.tsx",
+        "app/**/opengraph-image.tsx",
+        "app/**/twitter-image.tsx",
+        "app/**/icon.tsx",
+        "app/**/apple-icon.tsx",
         "app/robots.ts",
         "app/sitemap.ts"
       ],

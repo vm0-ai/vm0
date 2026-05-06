@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -8,6 +9,7 @@ import {
 import { createTestTelegramInstallation } from "../../../../../../../src/__tests__/db-test-seeders/telegram";
 import {
   testContext,
+  uniqueNumericId,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
@@ -52,20 +54,32 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     expect(response.status).toBe(401);
   });
 
-  it("lists Telegram bots in the active org", async () => {
+  const officialBotExpectation = expect.objectContaining({
+    id: OFFICIAL_TELEGRAM_BOT_ID,
+    kind: "official",
+    isOwner: false,
+    official: expect.objectContaining({
+      linkedTelegramUserId: null,
+    }),
+  });
+
+  it("lists the official bot and custom Telegram bots in the active org", async () => {
+    const ownerBotId = uniqueNumericId();
+    const orgBotId = uniqueNumericId();
+    const otherOrgBotId = uniqueNumericId();
     const botId = await createTestTelegramInstallation({
-      telegramBotId: "123456789",
+      telegramBotId: ownerBotId,
       ownerUserId: user.userId,
       vm0UserId: user.userId,
       orgId: user.orgId,
     });
     await createTestTelegramInstallation({
-      telegramBotId: "987654321",
+      telegramBotId: orgBotId,
       ownerUserId: "other-owner",
       orgId: user.orgId,
     });
     await createTestTelegramInstallation({
-      telegramBotId: "555555555",
+      telegramBotId: otherOrgBotId,
       ownerUserId: user.userId,
     });
 
@@ -74,7 +88,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
         return HttpResponse.json({
           ok: true,
           result: {
-            id: 123456789,
+            id: Number(ownerBotId),
             is_bot: true,
             first_name: "Bot",
             username: "alerts_bot",
@@ -87,19 +101,20 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.bots).toHaveLength(2);
+    expect(data.bots).toHaveLength(3);
     expect(data.bots).toEqual(
       expect.arrayContaining([
+        officialBotExpectation,
         expect.objectContaining({
           id: botId,
-          username: "bot_123456789",
+          username: `bot_${ownerBotId}`,
           isOwner: true,
           isConnected: true,
           tokenStatus: "valid",
           agent: expect.objectContaining({ id: expect.any(String) }),
         }),
         expect.objectContaining({
-          id: "987654321",
+          id: orgBotId,
           isOwner: false,
           isConnected: false,
         }),
@@ -107,15 +122,16 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     );
     expect(
       data.bots.some((bot: { id: string }) => {
-        return bot.id === "555555555";
+        return bot.id === otherOrgBotId;
       }),
     ).toBe(false);
   });
 
-  it("returns an empty list when the active org has no Telegram bots", async () => {
+  it("returns the official bot when the active org has no custom Telegram bots", async () => {
     const response = await GET((await authedRequest()) as never);
+    const data = await response.json();
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ bots: [] });
+    expect(data.bots).toEqual([officialBotExpectation]);
   });
 });

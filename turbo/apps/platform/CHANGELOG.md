@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.328.0](https://github.com/vm0-ai/vm0/compare/app-v0.327.0...app-v0.328.0) (2026-05-06)
+
+
+### Features
+
+* add telegram connect analytics events ([#11957](https://github.com/vm0-ai/vm0/issues/11957)) ([399eba2](https://github.com/vm0-ai/vm0/commit/399eba26f055cf3755f0316e00813aa3950fea74))
+* **platform:** add personal model providers tab in preferences ([#11955](https://github.com/vm0-ai/vm0/issues/11955)) ([19f9756](https://github.com/vm0-ai/vm0/commit/19f9756ffac37107df1d56ece903b86128f30491))
+* **platform:** add prefer_personal_provider checkbox to agent and schedule settings ([#11973](https://github.com/vm0-ai/vm0/issues/11973)) ([f53556f](https://github.com/vm0-ai/vm0/commit/f53556f2c463487f0fcdf024c09d766768c3d84e)), closes [#11926](https://github.com/vm0-ai/vm0/issues/11926)
+* **platform:** merge personal providers into chat composer model picker ([#11968](https://github.com/vm0-ai/vm0/issues/11968)) ([f57b164](https://github.com/vm0-ai/vm0/commit/f57b164ddcf147c5e3a5b87c88adf66701bb9ade))
+* warn when selected model cannot recognize images ([#11951](https://github.com/vm0-ai/vm0/issues/11951)) ([b85b79a](https://github.com/vm0-ai/vm0/commit/b85b79a0b0d4b276c553f0952c568dadefced6ec))
+
+
+### Bug Fixes
+
+* **chat:** correct composer and load history state on thread open ([#11958](https://github.com/vm0-ai/vm0/issues/11958)) ([19149a7](https://github.com/vm0-ai/vm0/commit/19149a7e75e5707eb9b8942b1848bc55007c452d))
+* render artifact text previews consistently ([#11967](https://github.com/vm0-ai/vm0/issues/11967)) ([22b099b](https://github.com/vm0-ai/vm0/commit/22b099bda8fa3b3879e87922ae95c5610ed1b1f3))
+
+## [0.327.0](https://github.com/vm0-ai/vm0/compare/app-v0.326.0...app-v0.327.0) (2026-05-06)
+
+
+### Features
+
+* support common web upload file types ([#11947](https://github.com/vm0-ai/vm0/issues/11947)) ([de2643a](https://github.com/vm0-ai/vm0/commit/de2643a3140b698109a8a535ea2f59699bcc80a3))
+* **zero:** wire chatgpt-oauth metadata + stale-provider ux ([#11945](https://github.com/vm0-ai/vm0/issues/11945)) ([00da00d](https://github.com/vm0-ai/vm0/commit/00da00dee821515aaba65627f0b9128175797d13))
+
+## [0.326.0](https://github.com/vm0-ai/vm0/compare/app-v0.325.1...app-v0.326.0) (2026-05-06)
+
+
+### Features
+
+* add official Telegram Zero bot ([#11928](https://github.com/vm0-ai/vm0/issues/11928)) ([8d1e622](https://github.com/vm0-ai/vm0/commit/8d1e622408117626bd307fea5cc1a7fd07bdb01f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.258.0
+
+## [0.325.1](https://github.com/vm0-ai/vm0/compare/app-v0.325.0...app-v0.325.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* drain all pending pages in fetchNextPage$ to close realtime catch-up gap ([#11920](https://github.com/vm0-ai/vm0/issues/11920)) ([5218414](https://github.com/vm0-ai/vm0/commit/5218414a8ae2ee2f1497cb3eb598ba96fd62b63d))
+
 ## [0.325.0](https://github.com/vm0-ai/vm0/compare/app-v0.324.2...app-v0.325.0) (2026-05-06)
 
 

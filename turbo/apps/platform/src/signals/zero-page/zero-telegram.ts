@@ -427,7 +427,9 @@ export const reinstallTelegramBot$ = command(
 export const updateTelegramBotAgent$ = command(
   async (
     { get, set },
-    input: { botId: string; defaultAgentId: string },
+    input:
+      | { botId: string; defaultAgentId: string }
+      | { botId: string; selectedAgentId: string | null },
     signal: AbortSignal,
   ): Promise<TelegramBotStatus> => {
     const toastId = toast.loading("Updating default agent...");
@@ -439,7 +441,10 @@ export const updateTelegramBotAgent$ = command(
       client.updateBot({
         headers: {},
         params: { botId: input.botId },
-        body: { defaultAgentId: input.defaultAgentId },
+        body:
+          "selectedAgentId" in input
+            ? { selectedAgentId: input.selectedAgentId }
+            : { defaultAgentId: input.defaultAgentId },
         fetchOptions: { signal },
       }),
       [200],

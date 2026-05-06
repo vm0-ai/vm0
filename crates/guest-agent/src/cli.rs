@@ -4,6 +4,7 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::events;
+use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
@@ -360,6 +361,7 @@ pub struct CliExecutionResult {
 pub async fn execute_cli(
     masker: &SecretMasker,
     mut heartbeat_handle: tokio::task::JoinHandle<Result<(), AgentError>>,
+    http: HttpClient,
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting claude-code execution...");
 
@@ -373,7 +375,10 @@ pub async fn execute_cli(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .process_group(0);
+        .process_group(0)
+        // If a future setup step fails after spawn, dropping `Child` must not
+        // leave a CLI process running in the VM.
+        .kill_on_drop(true);
 
     match env::Framework::from_env() {
         env::Framework::ClaudeCode => {
@@ -399,6 +404,10 @@ pub async fn execute_cli(
         }
     }
 
+    // Open the run log before spawning the CLI. If the run-id-scoped path is
+    // invalid or unavailable, fail without starting a child process.
+    let mut log_file = tokio::fs::File::create(paths::agent_log_file()).await?;
+
     let mut child = cmd.spawn()?;
 
     let stdout = child
@@ -419,9 +428,6 @@ pub async fn execute_cli(
         }
         lines
     });
-
-    // Open agent log file
-    let mut log_file = tokio::fs::File::create(paths::agent_log_file()).await?;
 
     // Stream stdout JSONL, racing against heartbeat and process exit.
     //
@@ -478,10 +484,11 @@ pub async fn execute_cli(
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
+    let event_http = http.clone();
     let event_sender = tokio::spawn(async move {
         let mut acked_prefix = AckedEventPrefix::default();
         while let Some(event) = event_rx.recv().await {
-            match events::post_event(&event.payload).await {
+            match events::post_event(&event_http, &event.payload).await {
                 Ok(()) => {
                     acked_prefix.record_success(event.sequence);
                 }

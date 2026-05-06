@@ -3,6 +3,7 @@ import type {
   AttachFile,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import type {
   DraftSignals,
   ZeroChatAttachment,
@@ -43,6 +44,38 @@ interface ResolvedDraftAttachment {
   info: AttachmentFileInfo;
 }
 
+interface VisualAttachmentDescriptor {
+  contentType?: string | null;
+  filename?: string | null;
+}
+
+interface PrepareUserMessageOptions {
+  excludeVisualAttachments?: boolean;
+}
+
+const VISUAL_ATTACHMENT_EXTENSION_RE =
+  /\.(?:png|jpe?g|gif|webp|avif|heic|heif|bmp|svg|mp4|m4v|mov|webm|avi|mkv)$/i;
+
+export function isVisualAttachment({
+  contentType,
+  filename,
+}: VisualAttachmentDescriptor): boolean {
+  const normalizedContentType = contentType?.toLowerCase() ?? "";
+  if (
+    normalizedContentType.startsWith("image/") ||
+    normalizedContentType.startsWith("video/")
+  ) {
+    return true;
+  }
+  return VISUAL_ATTACHMENT_EXTENSION_RE.test(filename ?? "");
+}
+
+export function shouldExcludeVisualAttachmentsForModel(
+  selectedModel: string | null | undefined,
+): boolean {
+  return getModelImageInputSupport(selectedModel) === "unsupported";
+}
+
 export function collectSuccessfulAttachmentInfos(
   attachments: readonly ZeroChatAttachment[],
   results: readonly PromiseSettledResult<AttachmentFileInfo | null>[],
@@ -75,9 +108,15 @@ export const prepareUserMessageFromDraft$ = command(
     { get },
     draft: DraftSignals,
     prompt: string,
+    options: PrepareUserMessageOptions,
     signal: AbortSignal,
   ): Promise<PreparedUserMessage | null> => {
-    const allAttachments = get(draft.attachments$);
+    const draftAttachments = get(draft.attachments$);
+    const allAttachments = options.excludeVisualAttachments
+      ? draftAttachments.filter((attachment) => {
+          return !isVisualAttachment(attachment);
+        })
+      : draftAttachments;
     const allInfos = await Promise.allSettled(
       allAttachments.map((a) => {
         return get(a.fileInfo$);

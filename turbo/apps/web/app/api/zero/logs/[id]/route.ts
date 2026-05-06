@@ -77,8 +77,8 @@ function notFoundResponse() {
  */
 function buildLogDetailBody(result: {
   run: typeof agentRuns.$inferSelect;
-  compose: typeof agentComposes.$inferSelect | null;
   composeVersion: typeof agentComposeVersions.$inferSelect | null;
+  agentId: string | null;
   agentDisplayName: string | null;
   triggerSource: string | null;
   scheduleId: string | null;
@@ -88,8 +88,8 @@ function buildLogDetailBody(result: {
 }) {
   const {
     run,
-    compose,
     composeVersion,
+    agentId,
     agentDisplayName,
     triggerSource,
     scheduleId,
@@ -103,7 +103,7 @@ function buildLogDetailBody(result: {
   return {
     id: run.id,
     sessionId: runResult?.agentSessionId ?? null,
-    agentId: compose?.id ?? null,
+    agentId,
     displayName: agentDisplayName ?? null,
     framework: extractFrameworkFromCompose(composeContent),
     modelProvider: modelProvider ?? null,
@@ -154,8 +154,8 @@ const router = tsr.router(logsByIdContract, {
     const [result] = await globalThis.services.db
       .select({
         run: agentRuns,
-        compose: agentComposes,
         composeVersion: agentComposeVersions,
+        agentId: zeroAgents.id,
         agentDisplayName: zeroAgents.displayName,
         triggerSource: zeroRuns.triggerSource,
         scheduleId: zeroRuns.scheduleId,

@@ -122,11 +122,9 @@ export async function GET(request: Request) {
     return clearCookies(redirectError(appUrl, "exchange_failed"));
   }
 
-  // TODO(#11908): once tokenExpiresAt column ships, add:
-  //   tokenExpiresAt: new Date(Date.now() + result.expiresIn * 1000),
-  // Until then, refresh pipeline treats null as 'never refreshes' — safe
-  // because chatgptOauthProvider feature switch is OFF in production
-  // (no user-reachable path).
+  // Persist the 4 secrets PLUS OAuth metadata. Passing the metadata also
+  // clears any pre-existing needsReconnect/lastRefreshErrorCode atomically
+  // (re-OAuth IS the recovery path for stale providers).
   await upsertOrgMultiAuthModelProvider(
     state.orgId,
     "chatgpt-oauth-token",
@@ -136,6 +134,12 @@ export async function GET(request: Request) {
       CHATGPT_REFRESH_TOKEN: result.refreshToken,
       CHATGPT_ACCOUNT_ID: result.accountId,
       CHATGPT_ID_TOKEN: result.idToken,
+    },
+    undefined,
+    {
+      tokenExpiresAt: new Date(Date.now() + result.expiresIn * 1000),
+      workspaceName: result.workspaceName,
+      planType: result.planType,
     },
   );
 

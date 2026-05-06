@@ -34,9 +34,9 @@ import {
   authorizeCompose,
   validateComposeRequirements,
   checkModelProviderConfigured,
-  resolveProviderTypeForAdmission,
+  resolveRunAdmissionContext,
+  checkOrgCreditsForRunAdmission,
 } from "./zero-run-policy";
-import { checkOrgCredits } from "./credit/check-org-credits";
 import {
   enqueueRun,
   drainOrgQueue,
@@ -678,7 +678,7 @@ async function createZeroRunRecord(
     ? Object.values(resolved.composeContent.agents)
     : [];
   const composeFramework = composeAgents[0]?.framework ?? "claude-code";
-  const admissionProviderType = await resolveProviderTypeForAdmission({
+  const admissionContext = await resolveRunAdmissionContext({
     orgId: resolved.orgId,
     userId: params.userId,
     modelProvider: params.modelProvider,
@@ -690,14 +690,12 @@ async function createZeroRunRecord(
   if (!params.sessionId) {
     await validateComposeRequirements(
       resolved.composeContent,
-      admissionProviderType,
+      admissionContext.providerType,
     );
   }
 
   const round3Credits = timed(async () => {
-    if (admissionProviderType === "vm0") {
-      return checkOrgCredits(resolved.orgId, params.userId);
-    }
+    return checkOrgCreditsForRunAdmission(admissionContext);
   });
   const round3ModelProvider = timed(async () => {
     return checkModelProviderConfigured(

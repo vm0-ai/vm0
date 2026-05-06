@@ -25,6 +25,7 @@ import {
   setMockSchedules,
   createMockScheduleResponse,
 } from "../../../mocks/handlers/api-schedules.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -63,9 +64,19 @@ function mockCreateModeAPIs() {
   setMockSchedules([mockScheduleForList()]);
 }
 
-async function openCreateDialog() {
+async function openCreateDialog(
+  options: {
+    featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
+  } = {},
+) {
   mockCreateModeAPIs();
-  detachedSetupPage({ context, path: "/schedules" });
+  detachedSetupPage({
+    context,
+    path: "/schedules",
+    ...(options.featureSwitches && {
+      featureSwitches: options.featureSwitches,
+    }),
+  });
   await waitFor(() => {
     expect(screen.getByText(/Add schedule/i)).not.toBeDisabled();
   });
@@ -518,5 +529,47 @@ describe("schedule dialog - ESC with unsaved changes (SCHED-D-067)", () => {
       ).not.toBeInTheDocument();
     });
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("schedule dialog — personal provider checkbox", () => {
+  it("hides the checkbox when feature switch is off", async () => {
+    await openCreateDialog();
+    expect(
+      screen.queryByLabelText(/use personal provider/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the checkbox when feature switch is on", async () => {
+    await openCreateDialog({
+      featureSwitches: { [FeatureSwitchKey.PersonalModelProvider]: true },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(/use personal provider/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("includes preferPersonalProvider in the deploy body when checked", async () => {
+    let capturedBody: Record<string, unknown> | undefined;
+    server.use(
+      mockApi(zeroSchedulesMainContract.deploy, ({ body, respond }) => {
+        capturedBody = body as Record<string, unknown>;
+        return respond(201, mockDeployResponse());
+      }),
+    );
+
+    await openCreateDialog({
+      featureSwitches: { [FeatureSwitchKey.PersonalModelProvider]: true },
+    });
+
+    await fill(screen.getByLabelText("Prompt"), "Daily standup summary");
+    click(await screen.findByLabelText(/use personal provider/i));
+    click(screen.getByText(/^Create$/i));
+
+    await waitFor(() => {
+      expect(capturedBody?.preferPersonalProvider).toBeTruthy();
+    });
   });
 });

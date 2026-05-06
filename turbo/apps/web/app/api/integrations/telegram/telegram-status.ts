@@ -11,6 +11,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
+import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import type { AgentComposeYaml } from "../../../../src/lib/infra/agent-compose/types";
 import { decryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
@@ -23,6 +24,12 @@ import {
   getMe,
   isTelegramApiError,
 } from "../../../../src/lib/zero/telegram/client";
+import {
+  OFFICIAL_TELEGRAM_BOT_ID,
+  getOfficialTelegramBotConfig,
+} from "../../../../src/lib/zero/telegram/official";
+import { getTelegramUserAgentPreference } from "../../../../src/lib/zero/telegram/official-user";
+import { resolveDefaultAgentId } from "../../../../src/lib/zero/resolve-default-agent";
 import { listVariables } from "../../../../src/lib/zero/variable/variable-service";
 
 export type TelegramInstallation = typeof telegramInstallations.$inferSelect;
@@ -40,6 +47,10 @@ type TelegramCompose = {
 async function getDefaultCompose(
   installation: TelegramInstallation,
 ): Promise<TelegramCompose | null> {
+  return getCompose(installation.defaultComposeId);
+}
+
+async function getCompose(composeId: string): Promise<TelegramCompose | null> {
   const [compose] = await globalThis.services.db
     .select({
       id: agentComposes.id,
@@ -47,7 +58,24 @@ async function getDefaultCompose(
       headVersionId: agentComposes.headVersionId,
     })
     .from(agentComposes)
-    .where(eq(agentComposes.id, installation.defaultComposeId))
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+
+  return compose ?? null;
+}
+
+async function getOrgCompose(
+  composeId: string,
+  orgId: string,
+): Promise<TelegramCompose | null> {
+  const [compose] = await globalThis.services.db
+    .select({
+      id: agentComposes.id,
+      name: agentComposes.name,
+      headVersionId: agentComposes.headVersionId,
+    })
+    .from(agentComposes)
+    .where(and(eq(agentComposes.id, composeId), eq(agentComposes.orgId, orgId)))
     .limit(1);
 
   return compose ?? null;
@@ -71,6 +99,59 @@ async function getTelegramUserLink(telegramBotId: string, userId: string) {
     .limit(1);
 
   return userLink ?? null;
+}
+
+async function getOfficialUserLink(orgId: string, userId: string) {
+  const [userLink] = await globalThis.services.db
+    .select({
+      id: telegramOfficialUserLinks.id,
+      telegramUserId: telegramOfficialUserLinks.telegramUserId,
+      vm0UserId: telegramOfficialUserLinks.vm0UserId,
+      orgId: telegramOfficialUserLinks.orgId,
+    })
+    .from(telegramOfficialUserLinks)
+    .where(
+      and(
+        eq(telegramOfficialUserLinks.vm0UserId, userId),
+        eq(telegramOfficialUserLinks.orgId, orgId),
+      ),
+    )
+    .limit(1);
+
+  return userLink ?? null;
+}
+
+async function resolveOfficialCompose(params: {
+  orgId: string;
+  userId: string;
+}): Promise<{
+  compose: TelegramCompose | null;
+  usesDefaultAgent: boolean;
+}> {
+  const selectedComposeId = await getTelegramUserAgentPreference(
+    params.userId,
+    params.orgId,
+  );
+
+  if (selectedComposeId) {
+    const selectedCompose = await getOrgCompose(
+      selectedComposeId,
+      params.orgId,
+    );
+    if (selectedCompose) {
+      return { compose: selectedCompose, usesDefaultAgent: false };
+    }
+  }
+
+  const defaultComposeId = await resolveDefaultAgentId(params.orgId);
+  if (!defaultComposeId) {
+    return { compose: null, usesDefaultAgent: true };
+  }
+
+  return {
+    compose: await getOrgCompose(defaultComposeId, params.orgId),
+    usesDefaultAgent: true,
+  };
 }
 
 async function getEnvironmentStatus(
@@ -193,6 +274,38 @@ export async function buildTelegramBot(
     isOwner: installation.ownerUserId === userId,
     isConnected: !!userLink,
     tokenStatus,
+  };
+}
+
+export async function buildOfficialTelegramBot(params: {
+  orgId: string;
+  userId: string;
+}): Promise<TelegramBot> {
+  const config = getOfficialTelegramBotConfig();
+  const [officialCompose, userLink] = await Promise.all([
+    resolveOfficialCompose(params),
+    getOfficialUserLink(params.orgId, params.userId),
+  ]);
+
+  return {
+    id: OFFICIAL_TELEGRAM_BOT_ID,
+    kind: "official",
+    username: config.botUsername,
+    avatarUrl:
+      config.botToken && config.botId
+        ? buildTelegramBotAvatarUrl(OFFICIAL_TELEGRAM_BOT_ID)
+        : null,
+    agent: officialCompose.compose
+      ? { id: officialCompose.compose.id, name: officialCompose.compose.name }
+      : null,
+    isOwner: false,
+    isConnected: !!userLink,
+    tokenStatus: config.botToken ? "valid" : "unknown",
+    official: {
+      configured: config.configured,
+      usesDefaultAgent: officialCompose.usesDefaultAgent,
+      linkedTelegramUserId: userLink?.telegramUserId ?? null,
+    },
   };
 }
 

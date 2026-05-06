@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
   Input,
+  Switch,
   cn,
 } from "@vm0/ui";
 import { IconTrash } from "@tabler/icons-react";
@@ -51,8 +52,11 @@ import {
   deleteAgent$,
   settingsModelSelection$,
   setSettingsModelSelection$,
+  settingsPreferPersonalProvider$,
+  setSettingsPreferPersonalProvider$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { personalModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -65,6 +69,7 @@ interface ZeroSettingsTabProps {
   avatarUrl: string | null;
   modelProviderId?: string | null;
   selectedModel?: string | null;
+  preferPersonalProvider?: boolean;
   updateSettings$: Command<
     Promise<void>,
     [
@@ -75,6 +80,7 @@ interface ZeroSettingsTabProps {
         avatarUrl?: string | null;
         modelProviderId?: string | null;
         selectedModel?: string | null;
+        preferPersonalProvider?: boolean;
       },
       AbortSignal,
     ]
@@ -93,6 +99,7 @@ export function ZeroSettingsTab({
   avatarUrl: initialAvatarUrl,
   modelProviderId: initialModelProviderId,
   selectedModel: initialSelectedModel,
+  preferPersonalProvider: initialPreferPersonalProvider = false,
   updateSettings$,
   inputId = "zero-agent-name",
   isDefaultAgent = false,
@@ -112,6 +119,7 @@ export function ZeroSettingsTab({
     tone: initialSound,
     avatarUrl: initialAvatarUrl,
     modelSelection: initialModelSelection,
+    preferPersonalProvider: initialPreferPersonalProvider,
   });
 
   const agentName = useGet(settingsAgentName$);
@@ -124,6 +132,9 @@ export function ZeroSettingsTab({
   const setAvatarUrl = useSet(setSettingsAvatarUrl$);
   const modelSelection = useGet(settingsModelSelection$);
   const setModelSelection = useSet(setSettingsModelSelection$);
+  const preferPersonalProvider = useGet(settingsPreferPersonalProvider$);
+  const setPreferPersonalProvider = useSet(setSettingsPreferPersonalProvider$);
+  const personalProviderEnabled = useGet(personalModelProviderEnabled$);
   const isSettingsDirty = useGet(settingsDirty$);
   const resetForm = useSet(resetSettingsForm$);
   const markSaved = useSet(markSettingsSaved$);
@@ -154,6 +165,7 @@ export function ZeroSettingsTab({
             avatarUrl,
             modelProviderId: modelSelection?.modelProviderId ?? null,
             selectedModel: modelSelection?.selectedModel ?? null,
+            preferPersonalProvider,
           },
           pageSignal,
         );
@@ -210,6 +222,7 @@ export function ZeroSettingsTab({
                           modelProviderId:
                             modelSelection?.modelProviderId ?? null,
                           selectedModel: modelSelection?.selectedModel ?? null,
+                          preferPersonalProvider,
                         },
                         pageSignal,
                       ).then(() => {
@@ -328,6 +341,19 @@ export function ZeroSettingsTab({
                   providers={orgProviders.modelProviders}
                   value={modelSelection}
                   onChange={setModelSelection}
+                />
+              </InlineSettingsRow>
+            )}
+            {personalProviderEnabled && (
+              <InlineSettingsRow
+                label="Personal provider"
+                description="Use the caller's personal provider when available, fall back to the selected one above."
+                alignControls="center"
+              >
+                <Switch
+                  checked={preferPersonalProvider}
+                  onCheckedChange={setPreferPersonalProvider}
+                  aria-label="Use personal provider"
                 />
               </InlineSettingsRow>
             )}

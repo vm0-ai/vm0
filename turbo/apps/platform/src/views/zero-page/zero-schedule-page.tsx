@@ -81,6 +81,7 @@ export type CombinedEntry = ScheduleEntry & {
   lastRunAt: string | null;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 };
 
 export function buildCombinedSchedule(
@@ -102,6 +103,7 @@ export function buildCombinedSchedule(
       lastRunAt: e.lastRunAt,
       modelProviderId: e.modelProviderId,
       selectedModel: e.selectedModel,
+      preferPersonalProvider: e.preferPersonalProvider,
     };
   });
 }

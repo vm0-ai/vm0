@@ -66,6 +66,8 @@ describe("chat composer — model picker display vs. send body", () => {
         secretNames: null,
         isDefault: true,
         selectedModel: DEFAULT_MODEL,
+        needsReconnect: false,
+        lastRefreshErrorCode: null,
         createdAt: "2024-01-01T00:00:00Z",
         updatedAt: "2024-01-01T00:00:00Z",
       },

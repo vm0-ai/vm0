@@ -23,6 +23,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   chatMessagesContract,
   chatThreadByIdContract,
@@ -38,6 +39,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createMockApi } from "../../../mocks/msw-contract.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockUploadSuccess } from "../../../mocks/upload-helpers.ts";
 import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
@@ -47,6 +49,7 @@ import {
   setMockOnboardingStatus,
   resetMockOnboardingStatus,
 } from "../../../mocks/handlers/api-onboarding.ts";
+import { PLACEHOLDER, sendMessageInUI } from "./chat-test-helpers.ts";
 
 const context = testContext();
 const mockApi = createMockApi(context);
@@ -114,6 +117,8 @@ function buildProvider(
     secretNames: null,
     isDefault: false,
     selectedModel: null,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
     createdAt: "2024-01-01T00:00:00Z",
     updatedAt: "2024-01-01T00:00:00Z",
     ...overrides,
@@ -340,6 +345,235 @@ describe("chat composer — default model resolution", () => {
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Claude Sonnet 4.6");
+  });
+
+  it("blocks visual attachments on a text-only model but allows other files", async () => {
+    const user = userEvent.setup();
+    mockOrgProviders({
+      defaultProviderId: ZAI_PROVIDER_ID,
+      defaultSelectedModel: "glm-5.1",
+    });
+    mockAgent({ modelProviderId: null, selectedModel: null });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+    server.use(
+      ...mockUploadSuccess({
+        id: "notes-upload",
+        filename: "notes.txt",
+        contentType: "text/plain",
+        size: 12,
+        url: "https://example.com/notes.txt",
+      }),
+    );
+
+    await expectComposerShowsModel("GLM-5.1");
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const attachButton = screen.getByLabelText("Attach");
+    expect(attachButton).not.toBeDisabled();
+
+    await user.upload(
+      fileInput,
+      new File(["image"], "screenshot.png", { type: "image/png" }),
+    );
+    await expect(
+      screen.findAllByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).resolves.not.toHaveLength(0);
+
+    await user.upload(
+      fileInput,
+      new File(["plain text"], "notes.txt", { type: "text/plain" }),
+    );
+    await expect(
+      screen.findByLabelText("Remove notes.txt"),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("filters existing visual attachments while a text-only model is selected", async () => {
+    const user = userEvent.setup();
+    mockOrgProviders({
+      defaultProviderId: ANTHROPIC_PROVIDER_ID,
+      defaultSelectedModel: "claude-sonnet-4-6",
+    });
+    mockAgent({ modelProviderId: null, selectedModel: null });
+    server.use(
+      ...mockUploadSuccess({
+        id: "screenshot-upload",
+        filename: "screenshot.png",
+        contentType: "image/png",
+        size: 12,
+        url: "https://example.com/screenshot.png",
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+    await expectComposerShowsModel("Claude Sonnet 4.6");
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["image"], "screenshot.png", { type: "image/png" }),
+    );
+    await expect(
+      screen.findByLabelText("Open image preview for screenshot.png"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+
+    await expectComposerShowsModel("GLM-5.1");
+    await expect(
+      screen.findAllByText(/GLM-5\.1 cannot recognize images or videos/i),
+    ).resolves.not.toHaveLength(0);
+    await waitFor(() => {
+      expect(
+        screen.queryByLabelText("Open image preview for screenshot.png"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Remove screenshot.png"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
+    });
+
+    await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+
+    await expectComposerShowsModel("Claude Sonnet 4.6");
+    await expect(
+      screen.findByLabelText("Open image preview for screenshot.png"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Send")).not.toBeDisabled();
+  });
+
+  it("filters visual attachments from submit on a text-only model", async () => {
+    const user = userEvent.setup();
+    let capturedAttachFiles: unknown = "not-called";
+    mockOrgProviders({
+      defaultProviderId: ANTHROPIC_PROVIDER_ID,
+      defaultSelectedModel: "claude-sonnet-4-6",
+    });
+    mockAgent({ modelProviderId: null, selectedModel: null });
+    mockThread({ modelProviderId: null, selectedModel: null });
+    server.use(
+      ...mockUploadSuccess({
+        id: "screenshot-upload",
+        filename: "screenshot.png",
+        contentType: "image/png",
+        size: 12,
+        url: "https://example.com/screenshot.png",
+      }),
+    );
+    server.use(
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        capturedAttachFiles = body.attachFiles;
+        return respond(201, {
+          runId: "run-1",
+          threadId: THREAD_ID,
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    await expectComposerShowsModel("Claude Sonnet 4.6");
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["image"], "screenshot.png", { type: "image/png" }),
+    );
+    await expect(
+      screen.findByLabelText("Open image preview for screenshot.png"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+    await expectComposerShowsModel("GLM-5.1");
+
+    const textarea = screen.getByPlaceholderText(
+      PLACEHOLDER,
+    ) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Please review");
+
+    await waitFor(() => {
+      expect(capturedAttachFiles).toBeUndefined();
+    });
+  });
+
+  it("filters visual attachments from submit when inheriting a text-only default model", async () => {
+    const user = userEvent.setup();
+    let capturedAttachFiles: unknown = "not-called";
+    mockOrgProviders({
+      defaultProviderId: ZAI_PROVIDER_ID,
+      defaultSelectedModel: "glm-5.1",
+    });
+    mockAgent({ modelProviderId: null, selectedModel: null });
+    server.use(
+      ...mockUploadSuccess({
+        id: "screenshot-upload",
+        filename: "screenshot.png",
+        contentType: "image/png",
+        size: 12,
+        url: "https://example.com/screenshot.png",
+      }),
+    );
+    server.use(
+      mockApi(chatMessagesContract.send, ({ body, respond }) => {
+        capturedAttachFiles = body.attachFiles;
+        return respond(201, {
+          runId: "run-1",
+          threadId: THREAD_ID,
+          status: "pending",
+          createdAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+    await expectComposerShowsModel("GLM-5.1");
+
+    await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+    );
+    await expectComposerShowsModel("Claude Sonnet 4.6");
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await user.upload(
+      fileInput,
+      new File(["image"], "screenshot.png", { type: "image/png" }),
+    );
+    await expect(
+      screen.findByLabelText("Open image preview for screenshot.png"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
+    );
+    await user.click(await screen.findByLabelText("Use agent default model"));
+    await expectComposerShowsModel("GLM-5.1");
+
+    const textarea = screen.getByPlaceholderText(
+      PLACEHOLDER,
+    ) as HTMLTextAreaElement;
+    await sendMessageInUI(user, textarea, "Please review");
+
+    await waitFor(() => {
+      expect(capturedAttachFiles).toBeUndefined();
+    });
   });
 
   // ---------------------------------------------------------------------------

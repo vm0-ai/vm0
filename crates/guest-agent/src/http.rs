@@ -13,7 +13,7 @@ use serde_json::Value;
 use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncSeekExt, ReadBuf};
@@ -21,13 +21,47 @@ use tokio::io::{AsyncRead, AsyncSeekExt, ReadBuf};
 const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 
-static HTTP_CLIENT: LazyLock<Client> = LazyLock::new(|| {
-    Client::builder()
-        .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))
-        .timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
-        .build()
-        .unwrap_or_else(|_| Client::new())
-});
+/// Shared guest-agent HTTP client.
+///
+/// API-enabled runs build this during initialization and pass cheap clones to
+/// background tasks. That keeps webhook/S3 timeout configuration consistent
+/// across all HTTP calls and makes client-construction failures explicit at
+/// startup. Local/test runs without `VM0_API_TOKEN` use a disabled client so
+/// they do not fail on HTTP stack setup they will never use.
+#[derive(Clone)]
+pub struct HttpClient {
+    inner: Option<Client>,
+}
+
+impl HttpClient {
+    pub fn new() -> Result<Self, AgentError> {
+        let inner = Client::builder()
+            .connect_timeout(Duration::from_secs(constants::HTTP_CONNECT_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(constants::HTTP_TIMEOUT_SECS))
+            .build()
+            .map_err(|e| {
+                AgentError::Http(format!("failed to build guest-agent HTTP client: {e}"))
+            })?;
+
+        Ok(Self { inner: Some(inner) })
+    }
+
+    pub fn for_current_env() -> Result<Self, AgentError> {
+        if env::has_api() {
+            Self::new()
+        } else {
+            Ok(Self { inner: None })
+        }
+    }
+
+    fn inner(&self) -> Result<&Client, AgentError> {
+        self.inner.as_ref().ok_or_else(|| {
+            AgentError::Http(
+                "guest-agent HTTP client is disabled because VM0_API_TOKEN is unset".into(),
+            )
+        })
+    }
+}
 
 async fn send_with_retry<BuildRequest, BuildRequestFuture, BuildClientError, ClientErrorFuture>(
     label: &str,
@@ -72,105 +106,116 @@ where
     Err(AgentError::Http(final_error))
 }
 
-/// POST JSON to a webhook endpoint with Bearer auth, Vercel bypass, and retry.
-///
-/// Returns the parsed JSON response on success, or `None` if the response body
-/// is empty. Returns `Err` immediately on non-retriable 4xx errors (except 429),
-/// or after all retries are exhausted for 5xx / 429 / network errors.
-pub async fn post_json(
-    url: &str,
-    body: &impl Serialize,
-    max_retries: u32,
-) -> Result<Option<Value>, AgentError> {
-    let resp = send_with_retry(
-        "POST",
-        max_retries,
-        format!("POST failed after {max_retries} attempts to {url}"),
-        || {
-            let mut req = HTTP_CLIENT
-                .post(url)
-                .header("Authorization", format!("Bearer {}", env::api_token()))
-                .json(body);
+impl HttpClient {
+    /// POST JSON to a webhook endpoint with Bearer auth, Vercel bypass, and retry.
+    ///
+    /// Returns the parsed JSON response on success, or `None` if the response body
+    /// is empty. Returns `Err` immediately on non-retriable 4xx errors (except 429),
+    /// or after all retries are exhausted for 5xx / 429 / network errors.
+    pub async fn post_json(
+        &self,
+        url: &str,
+        body: &impl Serialize,
+        max_retries: u32,
+    ) -> Result<Option<Value>, AgentError> {
+        let client = self.inner()?;
+        let resp = send_with_retry(
+            "POST",
+            max_retries,
+            format!("POST failed after {max_retries} attempts to {url}"),
+            || {
+                let mut req = client
+                    .post(url)
+                    .header("Authorization", format!("Bearer {}", env::api_token()))
+                    .json(body);
 
-            let bypass = env::vercel_bypass();
-            if !bypass.is_empty() {
-                req = req.header("x-vercel-protection-bypass", bypass);
-            }
+                let bypass = env::vercel_bypass();
+                if !bypass.is_empty() {
+                    req = req.header("x-vercel-protection-bypass", bypass);
+                }
 
-            std::future::ready(Ok(req))
-        },
-        |resp, attempt, max_retries| {
-            let url = url.to_owned();
-            async move {
-                let status = resp.status();
-                let error_msg = resp
-                    .text()
-                    .await
-                    .ok()
-                    .and_then(|body| serde_json::from_str::<Value>(&body).ok())
-                    .and_then(|v| v.get("error")?.get("message")?.as_str().map(String::from));
+                std::future::ready(Ok(req))
+            },
+            |resp, attempt, max_retries| {
+                let url = url.to_owned();
+                async move {
+                    let status = resp.status();
+                    let error_msg = resp
+                        .text()
+                        .await
+                        .ok()
+                        .and_then(|body| serde_json::from_str::<Value>(&body).ok())
+                        .and_then(|v| v.get("error")?.get("message")?.as_str().map(String::from));
 
-                match error_msg {
-                    Some(msg) => {
-                        log_warn!(LOG_TAG, "HTTP POST failed: HTTP {status} — {msg}",);
-                        AgentError::Http(format!("POST {url}: {msg}"))
-                    }
-                    None => {
-                        log_warn!(
-                            LOG_TAG,
-                            "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
-                        );
-                        AgentError::Http(format!("POST {url}: HTTP {status}"))
+                    match error_msg {
+                        Some(msg) => {
+                            log_warn!(LOG_TAG, "HTTP POST failed: HTTP {status} — {msg}",);
+                            AgentError::Http(format!("POST {url}: {msg}"))
+                        }
+                        None => {
+                            log_warn!(
+                                LOG_TAG,
+                                "HTTP POST failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                            );
+                            AgentError::Http(format!("POST {url}: HTTP {status}"))
+                        }
                     }
                 }
-            }
-        },
-    )
-    .await?;
+            },
+        )
+        .await?;
 
-    let text = resp
-        .text()
-        .await
-        .map_err(|e| AgentError::Http(e.to_string()))?;
-    if text.is_empty() {
-        return Ok(None);
+        let text = resp
+            .text()
+            .await
+            .map_err(|e| AgentError::Http(e.to_string()))?;
+        if text.is_empty() {
+            return Ok(None);
+        }
+        let val: Value =
+            serde_json::from_str(&text).map_err(|e| AgentError::Http(e.to_string()))?;
+        Ok(Some(val))
     }
-    let val: Value = serde_json::from_str(&text).map_err(|e| AgentError::Http(e.to_string()))?;
-    Ok(Some(val))
-}
 
-/// PUT raw bytes to a presigned S3 URL with retry.
-///
-/// No auth headers — the URL itself carries the authorization.
-/// Uses a per-request timeout override for longer uploads.
-/// Accepts `Bytes` for O(1) clone on retry.
-pub async fn put_presigned(url: &str, data: Bytes, content_type: &str) -> Result<(), AgentError> {
-    let max_retries = constants::HTTP_MAX_RETRIES;
+    /// PUT raw bytes to a presigned S3 URL with retry.
+    ///
+    /// No auth headers — the URL itself carries the authorization.
+    /// Uses a per-request timeout override for longer uploads.
+    /// Accepts `Bytes` for O(1) clone on retry.
+    pub async fn put_presigned(
+        &self,
+        url: &str,
+        data: Bytes,
+        content_type: &str,
+    ) -> Result<(), AgentError> {
+        let max_retries = constants::HTTP_MAX_RETRIES;
+        let client = self.inner()?;
 
-    send_with_retry(
-        "PUT presigned",
-        max_retries,
-        format!("PUT presigned failed after {max_retries} attempts"),
-        move || {
-            let data = data.clone();
-            std::future::ready(Ok(HTTP_CLIENT
-                .put(url)
-                .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
-                .header("Content-Type", content_type)
-                .body(data)))
-        },
-        |resp, attempt, max_retries| async move {
-            let status = resp.status();
-            log_warn!(
-                LOG_TAG,
-                "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
-            );
-            AgentError::Http(format!("PUT presigned: HTTP {status}"))
-        },
-    )
-    .await?;
+        send_with_retry(
+            "PUT presigned",
+            max_retries,
+            format!("PUT presigned failed after {max_retries} attempts"),
+            move || {
+                let data = data.clone();
+                std::future::ready(Ok(client
+                    .put(url)
+                    .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
+                    .header("Content-Type", content_type)
+                    .body(data)))
+            },
+            |resp, attempt, max_retries| async move {
+                let status = resp.status();
+                log_warn!(
+                    LOG_TAG,
+                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                );
+                AgentError::Http(format!("PUT presigned: HTTP {status}"))
+            },
+        )
+        .await?;
 
-    Ok(())
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -271,52 +316,56 @@ impl http_body::Body for SizedBody {
     }
 }
 
-/// PUT a file to a presigned S3 URL by streaming from disk.
-///
-/// Unlike [`put_presigned`], this avoids loading the entire file into memory.
-/// A `SizedBody` streams bounded chunks and reports the file size via
-/// `size_hint`, so hyper sets `Content-Length` automatically.
-/// On each retry the original file handle is cloned, producing a fresh body
-/// with stable file identity and length.
-pub async fn put_presigned_file(
-    url: &str,
-    path: &Path,
-    content_type: &str,
-) -> Result<(), AgentError> {
-    let max_retries = constants::HTTP_MAX_RETRIES;
-    let source_file = Arc::new(tokio::fs::File::open(path).await?);
-    let file_len = source_file.metadata().await?.len();
+impl HttpClient {
+    /// PUT a file to a presigned S3 URL by streaming from disk.
+    ///
+    /// Unlike [`Self::put_presigned`], this avoids loading the entire file into
+    /// memory. A `SizedBody` streams bounded chunks and reports the file size via
+    /// `size_hint`, so hyper sets `Content-Length` automatically. On each retry the
+    /// original file handle is cloned, producing a fresh body with stable file
+    /// identity and length.
+    pub async fn put_presigned_file(
+        &self,
+        url: &str,
+        path: &Path,
+        content_type: &str,
+    ) -> Result<(), AgentError> {
+        let max_retries = constants::HTTP_MAX_RETRIES;
+        let client = self.inner()?;
+        let source_file = Arc::new(tokio::fs::File::open(path).await?);
+        let file_len = source_file.metadata().await?.len();
 
-    send_with_retry(
-        "PUT presigned",
-        max_retries,
-        format!("PUT presigned failed after {max_retries} attempts"),
-        move || {
-            let source_file = Arc::clone(&source_file);
-            async move {
-                let mut file = source_file.try_clone().await?;
-                file.seek(std::io::SeekFrom::Start(0)).await?;
-                let body = reqwest::Body::wrap(SizedBody::new(file, file_len));
+        send_with_retry(
+            "PUT presigned",
+            max_retries,
+            format!("PUT presigned failed after {max_retries} attempts"),
+            move || {
+                let source_file = Arc::clone(&source_file);
+                async move {
+                    let mut file = source_file.try_clone().await?;
+                    file.seek(std::io::SeekFrom::Start(0)).await?;
+                    let body = reqwest::Body::wrap(SizedBody::new(file, file_len));
 
-                Ok(HTTP_CLIENT
-                    .put(url)
-                    .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
-                    .header("Content-Type", content_type)
-                    .body(body))
-            }
-        },
-        |resp, attempt, max_retries| async move {
-            let status = resp.status();
-            log_warn!(
-                LOG_TAG,
-                "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
-            );
-            AgentError::Http(format!("PUT presigned: HTTP {status}"))
-        },
-    )
-    .await?;
+                    Ok(client
+                        .put(url)
+                        .timeout(Duration::from_secs(constants::HTTP_UPLOAD_TIMEOUT_SECS))
+                        .header("Content-Type", content_type)
+                        .body(body))
+                }
+            },
+            |resp, attempt, max_retries| async move {
+                let status = resp.status();
+                log_warn!(
+                    LOG_TAG,
+                    "HTTP PUT presigned failed (attempt {attempt}/{max_retries}): HTTP {status}",
+                );
+                AgentError::Http(format!("PUT presigned: HTTP {status}"))
+            },
+        )
+        .await?;
 
-    Ok(())
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -343,6 +392,53 @@ mod tests {
             Ok(data) => Some(data),
             Err(_) => panic!("expected data frame"),
         }
+    }
+
+    #[tokio::test]
+    async fn disabled_client_fails_before_request_build() {
+        let client = HttpClient { inner: None };
+        let result = client
+            .post_json("http://127.0.0.1:1/test", &serde_json::json!({}), 1)
+            .await;
+
+        let Err(AgentError::Http(message)) = result else {
+            panic!("expected disabled HTTP client error");
+        };
+        assert!(message.contains("HTTP client is disabled"));
+    }
+
+    #[tokio::test]
+    async fn disabled_client_raw_upload_fails_before_request_build() {
+        let client = HttpClient { inner: None };
+        let result = client
+            .put_presigned(
+                "http://127.0.0.1:1/upload",
+                Bytes::from_static(b"manifest"),
+                "application/json",
+            )
+            .await;
+
+        let Err(AgentError::Http(message)) = result else {
+            panic!("expected disabled HTTP client error");
+        };
+        assert!(message.contains("HTTP client is disabled"));
+    }
+
+    #[tokio::test]
+    async fn disabled_client_stream_upload_fails_before_file_open() {
+        let client = HttpClient { inner: None };
+        let result = client
+            .put_presigned_file(
+                "http://127.0.0.1:1/upload",
+                Path::new("/definitely/missing/source.bin"),
+                "application/octet-stream",
+            )
+            .await;
+
+        let Err(AgentError::Http(message)) = result else {
+            panic!("expected disabled HTTP client error");
+        };
+        assert!(message.contains("HTTP client is disabled"));
     }
 
     #[tokio::test]

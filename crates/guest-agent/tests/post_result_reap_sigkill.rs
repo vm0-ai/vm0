@@ -29,7 +29,11 @@ async fn post_result_reap_escalates_to_sigkill_when_sigterm_ignored()
     // stdout drain (5s) + slack = 15s.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(&masker, heartbeat),
+        guest_agent::cli::execute_cli(
+            &masker,
+            heartbeat,
+            guest_agent::http::HttpClient::new().unwrap(),
+        ),
     )
     .await
     .expect("execute_cli did not return within 15s — sigkill escalation likely broken");

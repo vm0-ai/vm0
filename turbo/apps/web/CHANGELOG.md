@@ -1,5 +1,43 @@
 # Changelog
 
+## [12.334.1](https://github.com/vm0-ai/vm0/compare/web-v12.334.0...web-v12.334.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* align zero log agent filters with zero agent ids ([#11964](https://github.com/vm0-ai/vm0/issues/11964)) ([49c5d70](https://github.com/vm0-ai/vm0/commit/49c5d70063fea5ee6852ed3bed41d1bd9b5f0f7d))
+* mention doctor generate in agent tools ([#11970](https://github.com/vm0-ai/vm0/issues/11970)) ([e30f45c](https://github.com/vm0-ai/vm0/commit/e30f45ce147eecb8b7adc3f39e8cfd9b65caa9ee))
+
+## [12.334.0](https://github.com/vm0-ai/vm0/compare/web-v12.333.0...web-v12.334.0) (2026-05-06)
+
+
+### Features
+
+* **runner:** add OpenAI Responses usage billing ([#11950](https://github.com/vm0-ai/vm0/issues/11950)) ([467cdc8](https://github.com/vm0-ai/vm0/commit/467cdc8fc88897c16b0b21365c70a1786e5fda3e))
+* support common web upload file types ([#11947](https://github.com/vm0-ai/vm0/issues/11947)) ([de2643a](https://github.com/vm0-ai/vm0/commit/de2643a3140b698109a8a535ea2f59699bcc80a3))
+* **zero:** wire chatgpt-oauth metadata + stale-provider ux ([#11945](https://github.com/vm0-ai/vm0/issues/11945)) ([00da00d](https://github.com/vm0-ai/vm0/commit/00da00dee821515aaba65627f0b9128175797d13))
+
+## [12.333.0](https://github.com/vm0-ai/vm0/compare/web-v12.332.1...web-v12.333.0) (2026-05-06)
+
+
+### Features
+
+* add official Telegram Zero bot ([#11928](https://github.com/vm0-ai/vm0/issues/11928)) ([8d1e622](https://github.com/vm0-ai/vm0/commit/8d1e622408117626bd307fea5cc1a7fd07bdb01f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.258.0
+
+## [12.332.1](https://github.com/vm0-ai/vm0/compare/web-v12.332.0...web-v12.332.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* correct Infisical connector secret name to INFISICAL_TOKEN ([#11940](https://github.com/vm0-ai/vm0/issues/11940)) ([427694f](https://github.com/vm0-ai/vm0/commit/427694f27da01b51561f0456cbf99c8291b2c655))
+
 ## [12.332.0](https://github.com/vm0-ai/vm0/compare/web-v12.331.2...web-v12.332.0) (2026-05-06)
 
 

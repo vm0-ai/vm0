@@ -4,12 +4,15 @@ import {
   createTestUserModelProvider,
   createTestUserMultiAuthModelProvider,
   createTestOrgModelProvider,
+  findTestModelProviderTokenState,
+  setTestModelProviderNeedsReconnect,
 } from "../../../../__tests__/api-test-helpers";
 import { ORG_SENTINEL_USER_ID } from "../../org/org-sentinel";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Internal-only resolver helpers (getUserDefaultModelProvider, getUserAnyDefaultModelProvider, getUserModelProviderByType) have no HTTP entry point — they are consumed by the Wave 3 resolver. Cross-tier defense (org-tier vm0 unaffected by user-tier additions) likewise has no user-facing route. Privacy + vm0 user-tier assertions migrated to route-level tests in Wave 2 (#11898).
 import {
   // Org-tier (existing) — used for cross-tier defense tests
   upsertOrgNoSecretModelProvider,
+  upsertOrgMultiAuthModelProvider,
   // User-tier (added in #11874)
   listUserModelProviders,
   upsertUserModelProvider,
@@ -325,5 +328,141 @@ describe("model-provider-service — user-tier", () => {
       expect(updated.selectedModel).toBe("gpt-5.5");
       expect(updated.type).toBe("openai-api-key");
     });
+  });
+});
+
+describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("persists tokenExpiresAt + workspaceName + planType when metadata is provided", async () => {
+    const { orgId } = await context.setupUser();
+    const expiresAt = new Date("2026-12-31T00:00:00Z");
+
+    await upsertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+      {
+        CHATGPT_ACCESS_TOKEN: "at",
+        CHATGPT_REFRESH_TOKEN: "rt",
+        CHATGPT_ACCOUNT_ID: "acct",
+        CHATGPT_ID_TOKEN: "idt",
+      },
+      undefined,
+      {
+        tokenExpiresAt: expiresAt,
+        workspaceName: "Acme Inc",
+        planType: "business",
+      },
+    );
+
+    const state = await findTestModelProviderTokenState(
+      orgId,
+      ORG_SENTINEL_USER_ID,
+      "chatgpt-oauth-token",
+    );
+    expect(state).not.toBeNull();
+    expect(state!.tokenExpiresAt).toEqual(expiresAt);
+    expect(state!.workspaceName).toBe("Acme Inc");
+    expect(state!.planType).toBe("business");
+    expect(state!.needsReconnect).toBe(false);
+    expect(state!.lastRefreshErrorCode).toBeNull();
+  });
+
+  it("clears needsReconnect + lastRefreshErrorCode atomically when re-upserted with metadata", async () => {
+    // Seed: provider exists and is stale (firewall webhook flipped it)
+    const { orgId } = await context.setupUser();
+    await upsertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+      {
+        CHATGPT_ACCESS_TOKEN: "old-at",
+        CHATGPT_REFRESH_TOKEN: "old-rt",
+        CHATGPT_ACCOUNT_ID: "acct",
+        CHATGPT_ID_TOKEN: "old-idt",
+      },
+    );
+    await setTestModelProviderNeedsReconnect(
+      orgId,
+      ORG_SENTINEL_USER_ID,
+      "chatgpt-oauth-token",
+      true,
+      "refresh_token_expired",
+    );
+
+    // Re-OAuth: callback re-upserts with metadata
+    await upsertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+      {
+        CHATGPT_ACCESS_TOKEN: "new-at",
+        CHATGPT_REFRESH_TOKEN: "new-rt",
+        CHATGPT_ACCOUNT_ID: "acct",
+        CHATGPT_ID_TOKEN: "new-idt",
+      },
+      undefined,
+      {
+        tokenExpiresAt: new Date(Date.now() + 86400_000),
+        workspaceName: "Acme Inc",
+        planType: "plus",
+      },
+    );
+
+    const state = await findTestModelProviderTokenState(
+      orgId,
+      ORG_SENTINEL_USER_ID,
+      "chatgpt-oauth-token",
+    );
+    expect(state!.needsReconnect).toBe(false);
+    expect(state!.lastRefreshErrorCode).toBeNull();
+    expect(state!.workspaceName).toBe("Acme Inc");
+    expect(state!.planType).toBe("plus");
+  });
+
+  it("does NOT clobber metadata when re-upserted WITHOUT metadata (selectedModel-only update)", async () => {
+    const { orgId } = await context.setupUser();
+    await upsertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+      {
+        CHATGPT_ACCESS_TOKEN: "at",
+        CHATGPT_REFRESH_TOKEN: "rt",
+        CHATGPT_ACCOUNT_ID: "acct",
+        CHATGPT_ID_TOKEN: "idt",
+      },
+      "gpt-5.5",
+      {
+        tokenExpiresAt: new Date("2026-12-31T00:00:00Z"),
+        workspaceName: "Acme Inc",
+        planType: "plus",
+      },
+    );
+
+    // Update without metadata (e.g. selectedModel change from settings UI)
+    await upsertOrgMultiAuthModelProvider(
+      orgId,
+      "chatgpt-oauth-token",
+      "oauth",
+      {
+        CHATGPT_ACCESS_TOKEN: "at",
+        CHATGPT_REFRESH_TOKEN: "rt",
+        CHATGPT_ACCOUNT_ID: "acct",
+        CHATGPT_ID_TOKEN: "idt",
+      },
+      "gpt-5.4",
+    );
+
+    const state = await findTestModelProviderTokenState(
+      orgId,
+      ORG_SENTINEL_USER_ID,
+      "chatgpt-oauth-token",
+    );
+    expect(state!.workspaceName).toBe("Acme Inc");
+    expect(state!.planType).toBe("plus");
   });
 });

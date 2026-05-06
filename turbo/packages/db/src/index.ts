@@ -29,7 +29,9 @@ import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
 import * as githubIssueSessionSchema from "./schema/github-issue-session";
 import * as telegramInstallationSchema from "./schema/telegram-installation";
+import * as telegramOfficialUserLinkSchema from "./schema/telegram-official-user-link";
 import * as telegramUserLinkSchema from "./schema/telegram-user-link";
+import * as telegramUserAgentPreferenceSchema from "./schema/telegram-user-agent-preference";
 import * as telegramThreadSessionSchema from "./schema/telegram-thread-session";
 import * as telegramMessageSchema from "./schema/telegram-message";
 import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
@@ -98,7 +100,9 @@ export const schema = {
   ...githubUserLinkSchema,
   ...githubIssueSessionSchema,
   ...telegramInstallationSchema,
+  ...telegramOfficialUserLinkSchema,
   ...telegramUserLinkSchema,
+  ...telegramUserAgentPreferenceSchema,
   ...telegramThreadSessionSchema,
   ...telegramMessageSchema,
   ...orgSchema,

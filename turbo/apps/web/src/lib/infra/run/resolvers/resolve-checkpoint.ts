@@ -10,6 +10,7 @@ import type {
   VolumeVersionsSnapshot,
 } from "../../checkpoint/types";
 import { decodeToContextArtifacts } from "../../checkpoint/decode-artifact-snapshots";
+import { additionalVolumesFromSnapshot } from "../../checkpoint/additional-volumes";
 import type { AgentComposeYaml } from "../../agent-compose/types";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";
@@ -52,16 +53,9 @@ export async function resolveCheckpoint(
   const rawArtifacts: unknown = checkpoint.artifactSnapshots;
   const checkpointVolumeVersions =
     checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
-
-  // Extract additional volumes from enriched snapshot (pinned versions from checkpoint)
-  const checkpointAdditionalVolumes =
-    checkpointVolumeVersions?.additionalVolumes?.map((vol) => {
-      return {
-        name: vol.name,
-        version: vol.versionId,
-        mountPath: vol.mountPath,
-      };
-    });
+  const checkpointAdditionalVolumes = additionalVolumesFromSnapshot(
+    checkpointVolumeVersions,
+  );
 
   // Get version ID from snapshot
   const agentComposeVersionId = agentComposeSnapshot.agentComposeVersionId;

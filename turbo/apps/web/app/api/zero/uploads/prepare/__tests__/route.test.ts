@@ -204,6 +204,65 @@ describe("POST /api/zero/uploads/prepare", () => {
       }
     });
 
+    it("accepts additional common document and archive uploads", async () => {
+      const cases = [
+        { filename: "archive.zip", contentType: "application/zip" },
+        {
+          filename: "backup.7z",
+          contentType: "application/x-7z-compressed",
+        },
+        { filename: "bundle.tar", contentType: "application/x-tar" },
+        { filename: "bundle.tgz", contentType: "application/gzip" },
+        { filename: "design.psd", contentType: "image/vnd.adobe.photoshop" },
+        { filename: "vector.ai", contentType: "application/postscript" },
+        { filename: "photo.heic", contentType: "image/heic" },
+        { filename: "scan.tiff", contentType: "image/tiff" },
+        {
+          filename: "document.pages",
+          contentType: "application/vnd.apple.pages",
+        },
+        {
+          filename: "sheet.numbers",
+          contentType: "application/vnd.apple.numbers",
+        },
+        {
+          filename: "slides.key",
+          contentType: "application/vnd.apple.keynote",
+        },
+        {
+          filename: "macro.xlsm",
+          contentType: "application/vnd.ms-excel.sheet.macroenabled.12",
+        },
+        {
+          filename: "template.potx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.presentationml.template",
+        },
+        { filename: "data.xml", contentType: "application/xml" },
+        { filename: "config.yaml", contentType: "application/yaml" },
+        { filename: "table.tsv", contentType: "text/tab-separated-values" },
+        {
+          filename: "events.parquet",
+          contentType: "application/vnd.apache.parquet",
+        },
+        { filename: "local.sqlite", contentType: "application/vnd.sqlite3" },
+        { filename: "book.epub", contentType: "application/epub+zip" },
+      ] as const;
+
+      for (const { filename, contentType } of cases) {
+        const response = await POST(
+          createPrepareRequest({
+            filename,
+            contentType,
+            size: 4096,
+          }),
+        );
+        expect(response.status).toBe(200);
+        const body = await response.json();
+        expect(body).toMatchObject({ filename, contentType });
+      }
+    });
+
     it("sanitizes filenames when building the S3 key", async () => {
       const response = await POST(
         createPrepareRequest({

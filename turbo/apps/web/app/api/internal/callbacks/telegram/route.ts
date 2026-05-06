@@ -19,6 +19,10 @@ import {
   buildTelegramErrorResponse,
 } from "../../../../../src/lib/zero/telegram/format";
 import { resolveTelegramAgentReplyFooterText } from "../../../../../src/lib/zero/telegram/footer";
+import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../../../../../src/lib/zero/telegram/official";
 import { extractRunOutput } from "../../../../../src/lib/infra/run/extract-run-output";
 import {
   saveTelegramThreadSession,
@@ -114,6 +118,62 @@ async function resolveAgentInfo(agentId: string) {
   };
 }
 
+async function deleteThinkingMessageIfPresent(params: {
+  client: ReturnType<typeof createTelegramClient>;
+  chatId: string;
+  thinkingMessageId: string | null;
+}): Promise<void> {
+  if (!params.thinkingMessageId) return;
+
+  try {
+    await deleteMessage(
+      params.client,
+      params.chatId,
+      Number(params.thinkingMessageId),
+    );
+  } catch (err) {
+    log.debug("Failed to delete legacy thinking placeholder", {
+      thinkingMessageId: params.thinkingMessageId,
+      error: err,
+    });
+  }
+}
+
+function buildCompletionOutput(params: {
+  status: "completed" | "failed";
+  runOutput: { result: string | null };
+  error: string | undefined;
+  logsUrl: string | undefined;
+  footerText: string | undefined;
+}): {
+  htmlOutput: string;
+  responseText: string | undefined;
+} {
+  if (params.status === "completed") {
+    const responseText =
+      buildOutputText(params.runOutput) ?? "Task completed successfully.";
+    return {
+      responseText,
+      htmlOutput: buildTelegramResponse(
+        responseText,
+        params.logsUrl,
+        params.footerText,
+      ),
+    };
+  }
+
+  const errorDetail =
+    params.error ?? "The agent encountered an error during execution.";
+  return {
+    responseText: undefined,
+    htmlOutput: buildTelegramErrorResponse(
+      errorDetail,
+      params.logsUrl,
+      params.footerText,
+    ),
+  };
+}
+
 async function handleCompletion(ctx: CompletionContext): Promise<void> {
   const { client, runId, status, error, payload } = ctx;
   const {
@@ -129,19 +189,13 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
   } = payload;
 
   const agent = await resolveAgentInfo(agentId);
+  const isOfficial = isOfficialTelegramBotId(installationId);
 
-  // Delete legacy thinking placeholder messages from runs created before
-  // Telegram switched to typing-only feedback.
-  if (thinkingMessageId) {
-    try {
-      await deleteMessage(client, chatId, Number(thinkingMessageId));
-    } catch (err) {
-      log.debug("Failed to delete legacy thinking placeholder", {
-        thinkingMessageId,
-        error: err,
-      });
-    }
-  }
+  await deleteThinkingMessageIfPresent({
+    client,
+    chatId,
+    thinkingMessageId: thinkingMessageId ?? null,
+  });
 
   // Send typing indicator while building response
   await sendChatAction(client, chatId, "typing");
@@ -186,16 +240,13 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
         agentId,
       })
     : undefined;
-  let htmlOutput: string;
-  let responseText: string | undefined;
-  if (status === "completed") {
-    responseText = buildOutputText(runOutput) ?? "Task completed successfully.";
-    htmlOutput = buildTelegramResponse(responseText, logsUrl, footerText);
-  } else {
-    const errorDetail =
-      error ?? "The agent encountered an error during execution.";
-    htmlOutput = buildTelegramErrorResponse(errorDetail, logsUrl, footerText);
-  }
+  const { htmlOutput, responseText } = buildCompletionOutput({
+    status,
+    runOutput,
+    error,
+    logsUrl,
+    footerText,
+  });
   const chunks = splitMessage(htmlOutput);
 
   // In DMs, don't reply-to (no quote noise); in groups, reply for threading
@@ -214,11 +265,17 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
 
   // Store bot's response in telegram_messages for context
   if (botReplyMessageId !== undefined) {
-    await storeTelegramMessage(installationId, chatId, {
-      message_id: botReplyMessageId,
-      from: { id: 0, is_bot: true },
-      text: responseText,
-    });
+    await storeTelegramMessage(
+      isOfficial && run
+        ? { kind: "official", orgId: run.orgId, userLinkId }
+        : installationId,
+      chatId,
+      {
+        message_id: botReplyMessageId,
+        from: { id: 0, is_bot: true },
+        text: responseText,
+      },
+    );
   }
 
   // Save thread session mapping
@@ -231,6 +288,7 @@ async function handleCompletion(ctx: CompletionContext): Promise<void> {
 
     await saveTelegramThreadSession({
       userLinkId,
+      userLinkKind: isOfficial ? "official" : "custom",
       chatId,
       rootMessageId: newRootMessageId,
       previousRootMessageId: payloadRootMessageId ?? undefined,
@@ -262,28 +320,41 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   });
 
   const { SECRETS_ENCRYPTION_KEY } = env();
+  let botToken: string | null;
 
-  // Get Telegram installation for bot token
-  const [installation] = await globalThis.services.db
-    .select({
-      telegramBotId: telegramInstallations.telegramBotId,
-      encryptedBotToken: telegramInstallations.encryptedBotToken,
-    })
-    .from(telegramInstallations)
-    .where(eq(telegramInstallations.telegramBotId, payload.installationId))
-    .limit(1);
+  if (isOfficialTelegramBotId(payload.installationId)) {
+    botToken = getOfficialTelegramBotConfig().botToken;
+  } else {
+    // Get Telegram installation for bot token
+    const [installation] = await globalThis.services.db
+      .select({
+        telegramBotId: telegramInstallations.telegramBotId,
+        encryptedBotToken: telegramInstallations.encryptedBotToken,
+      })
+      .from(telegramInstallations)
+      .where(eq(telegramInstallations.telegramBotId, payload.installationId))
+      .limit(1);
 
-  if (!installation) {
-    log.warn("Telegram installation not found", {
+    if (!installation) {
+      log.warn("Telegram installation not found", {
+        installationId: payload.installationId,
+      });
+      return NextResponse.json({ success: true });
+    }
+
+    botToken = decryptSecretValue(
+      installation.encryptedBotToken,
+      SECRETS_ENCRYPTION_KEY,
+    );
+  }
+
+  if (!botToken) {
+    log.warn("Telegram bot token not configured", {
       installationId: payload.installationId,
     });
     return NextResponse.json({ success: true });
   }
 
-  const botToken = decryptSecretValue(
-    installation.encryptedBotToken,
-    SECRETS_ENCRYPTION_KEY,
-  );
   const client = createTelegramClient(botToken);
 
   // Handle progress notifications: refresh the typing indicator

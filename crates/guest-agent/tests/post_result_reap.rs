@@ -25,7 +25,11 @@ async fn post_result_reap_sigterm_kills_hung_cli() -> Result<(), Box<dyn std::er
     // reap. Locally runs in ~1s.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(&masker, heartbeat),
+        guest_agent::cli::execute_cli(
+            &masker,
+            heartbeat,
+            guest_agent::http::HttpClient::new().unwrap(),
+        ),
     )
     .await
     .expect("execute_cli did not return within 15s — reap likely broken");

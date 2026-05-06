@@ -12,6 +12,10 @@ import {
   createTelegramClient,
   getFile,
 } from "../../../../../../src/lib/zero/telegram/client";
+import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../../../../../../src/lib/zero/telegram/official";
 import { inferMimetype } from "../../../../../../src/lib/shared/mimetype";
 import { logger } from "../../../../../../src/lib/shared/logger";
 
@@ -47,6 +51,15 @@ async function resolveTelegramFileMetadata(
   botId: string,
   fileId: string,
 ): Promise<TelegramFileMetadata | NextResponse> {
+  if (isOfficialTelegramBotId(botId)) {
+    const botToken = getOfficialTelegramBotConfig().botToken;
+    if (!botToken) {
+      return errorResponse(404, "Telegram bot not found", "NOT_FOUND");
+    }
+
+    return resolveTelegramFileMetadataWithToken(botToken, fileId);
+  }
+
   const [row] = await globalThis.services.db
     .select({
       encryptedBotToken: telegramInstallations.encryptedBotToken,
@@ -68,6 +81,13 @@ async function resolveTelegramFileMetadata(
     row.encryptedBotToken,
     globalThis.services.env.SECRETS_ENCRYPTION_KEY,
   );
+  return resolveTelegramFileMetadataWithToken(botToken, fileId);
+}
+
+async function resolveTelegramFileMetadataWithToken(
+  botToken: string,
+  fileId: string,
+): Promise<TelegramFileMetadata | NextResponse> {
   const client = createTelegramClient(botToken);
   const file = await getFile(client, fileId);
 

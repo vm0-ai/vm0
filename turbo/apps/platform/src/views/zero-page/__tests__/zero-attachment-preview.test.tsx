@@ -7,7 +7,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { computed } from "ccstate";
 import { server } from "../../../mocks/server.ts";
@@ -56,6 +62,17 @@ describe("attachment preview component", () => {
     });
     expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
   });
+
+  it.each(["config.xml", "settings.yaml", "table.tsv"])(
+    "should render text preview for %s files",
+    (filename) => {
+      renderPreview({
+        filename,
+        url: `https://example.com/${filename}`,
+      });
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    },
+  );
 
   it("should render json preview for .json files", () => {
     renderPreview({
@@ -126,12 +143,21 @@ describe("attachment preview component", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("should render null for unknown file types (.zip)", () => {
-    const { container } = renderPreview({
-      filename: "archive.zip",
-      url: "https://example.com/archive.zip",
+  it("should render a thumbnail preview block for non-inline upload file types", () => {
+    renderPreview({
+      filename: "budget.xlsx",
+      url: "https://example.com/budget.xlsx",
     });
-    expect(container).toBeEmptyDOMElement();
+    const preview = screen.getByTestId("attachment-preview-file");
+    expect(preview).toBeInTheDocument();
+    expect(
+      within(preview).getByTestId("attachment-preview-file-icon"),
+    ).toBeInTheDocument();
+    expect(within(preview).getByText("XLSX")).toBeInTheDocument();
+    expect(screen.getByLabelText("Download budget.xlsx")).toHaveAttribute(
+      "href",
+      "https://example.com/budget.xlsx?download=1",
+    );
   });
 
   // Content-type fallback (filename has no extension)
@@ -183,6 +209,22 @@ describe("attachment preview component", () => {
     });
     expect(screen.getByTestId("attachment-preview-html")).toBeInTheDocument();
   });
+
+  it.each([
+    ["application/xml", "xml-file"],
+    ["application/yaml", "yaml-file"],
+    ["text/tab-separated-values", "tsv-file"],
+  ])(
+    "should classify by content-type %s as text preview",
+    (contentType, filename) => {
+      renderPreview({
+        filename,
+        url: `https://example.com/${filename}`,
+        contentType,
+      });
+      expect(screen.getByTestId("attachment-preview-text")).toBeInTheDocument();
+    },
+  );
 
   it("should classify by content-type audio/mpeg when filename has no extension", () => {
     renderPreview({

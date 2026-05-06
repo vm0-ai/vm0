@@ -50,6 +50,16 @@ export const setSettingsModelSelection$ = command(
   },
 );
 
+const internalPreferPersonalProvider$ = state(false);
+export const settingsPreferPersonalProvider$ = computed((get) => {
+  return get(internalPreferPersonalProvider$);
+});
+export const setSettingsPreferPersonalProvider$ = command(
+  ({ set }, value: boolean) => {
+    set(internalPreferPersonalProvider$, value);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Saved settings state (for dirty detection)
 // ---------------------------------------------------------------------------
@@ -60,6 +70,7 @@ interface SavedSettings {
   tone: Tone;
   avatarUrl: string | null;
   modelSelection: ModelProviderSelection | null;
+  preferPersonalProvider: boolean;
 }
 
 const internalSavedSettings$ = state<SavedSettings>({
@@ -68,6 +79,7 @@ const internalSavedSettings$ = state<SavedSettings>({
   tone: "professional",
   avatarUrl: null,
   modelSelection: null,
+  preferPersonalProvider: false,
 });
 
 export const settingsDirty$ = computed((get) => {
@@ -82,7 +94,8 @@ export const settingsDirty$ = computed((get) => {
     get(internalDesc$) !== saved.description ||
     get(internalTone$) !== saved.tone ||
     get(internalAvatarUrl$) !== saved.avatarUrl ||
-    modelChanged
+    modelChanged ||
+    get(internalPreferPersonalProvider$) !== saved.preferPersonalProvider
   );
 });
 
@@ -96,6 +109,7 @@ interface FormSource {
   tone: Tone;
   avatarUrl: string | null;
   modelSelection: ModelProviderSelection | null;
+  preferPersonalProvider: boolean;
 }
 
 const internalFormSource$ = state<FormSource | null>(null);
@@ -114,7 +128,9 @@ export const initSettingsForm$ = command(({ get, set }, opts: FormSource) => {
     current.avatarUrl === opts.avatarUrl &&
     current.modelSelection?.modelProviderId ===
       opts.modelSelection?.modelProviderId &&
-    current.modelSelection?.selectedModel === opts.modelSelection?.selectedModel
+    current.modelSelection?.selectedModel ===
+      opts.modelSelection?.selectedModel &&
+    current.preferPersonalProvider === opts.preferPersonalProvider
   ) {
     return;
   }
@@ -124,12 +140,14 @@ export const initSettingsForm$ = command(({ get, set }, opts: FormSource) => {
   set(internalTone$, opts.tone);
   set(internalAvatarUrl$, opts.avatarUrl);
   set(internalModelSelection$, opts.modelSelection);
+  set(internalPreferPersonalProvider$, opts.preferPersonalProvider);
   set(internalSavedSettings$, {
     name: opts.name,
     description: opts.description,
     tone: opts.tone,
     avatarUrl: opts.avatarUrl,
     modelSelection: opts.modelSelection,
+    preferPersonalProvider: opts.preferPersonalProvider,
   });
 });
 
@@ -144,6 +162,7 @@ export const resetSettingsForm$ = command(({ get, set }) => {
   set(internalTone$, saved.tone);
   set(internalAvatarUrl$, saved.avatarUrl);
   set(internalModelSelection$, saved.modelSelection);
+  set(internalPreferPersonalProvider$, saved.preferPersonalProvider);
 });
 
 // ---------------------------------------------------------------------------
@@ -157,6 +176,7 @@ export const markSettingsSaved$ = command(({ get, set }) => {
     tone: get(internalTone$),
     avatarUrl: get(internalAvatarUrl$),
     modelSelection: get(internalModelSelection$),
+    preferPersonalProvider: get(internalPreferPersonalProvider$),
   });
 });
 

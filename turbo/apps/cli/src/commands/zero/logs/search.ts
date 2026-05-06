@@ -17,10 +17,17 @@ export interface LogsSearchCliOptions {
   afterContext?: string;
   beforeContext?: string;
   context?: string;
-  agent?: string;
+  agentId?: string;
   run?: string;
   since?: string;
   limit?: string;
+}
+
+interface LogsSearchCommandOptions extends Omit<
+  LogsSearchCliOptions,
+  "agentId"
+> {
+  agent?: string;
 }
 
 function renderEvent(event: RunEvent, renderer: EventRenderer): void {
@@ -149,7 +156,7 @@ export async function runLogsSearch(
 
   const response = await searchZeroLogs({
     keyword,
-    agent: options.agent,
+    agentId: options.agentId,
     runId: options.run,
     since,
     limit,
@@ -177,7 +184,7 @@ export const searchCommand = new Command()
   .option("-A, --after-context <n>", "Show n events after each match")
   .option("-B, --before-context <n>", "Show n events before each match")
   .option("-C, --context <n>", "Show n events before and after each match")
-  .option("--agent <name>", "Filter by agent name")
+  .option("--agent <id>", "Filter by Zero agent ID")
   .option("--run <id>", "Filter by specific run ID")
   .option("--since <time>", "Search logs since (default: 7d)")
   .option("--limit <n>", "Maximum number of matches (default: 20)")
@@ -186,11 +193,14 @@ export const searchCommand = new Command()
     `
 Examples:
   zero logs search "error"
-  zero logs search "timeout" --agent my-agent -C 2
+  zero logs search "timeout" --agent 123e4567-e89b-12d3-a456-426614174000 -C 2
   zero logs search "failed" --since 30d --limit 50`,
   )
   .action(
-    withErrorHandler(async (keyword: string, options: LogsSearchCliOptions) => {
-      await runLogsSearch(keyword, options);
-    }),
+    withErrorHandler(
+      async (keyword: string, options: LogsSearchCommandOptions) => {
+        const { agent, ...searchOptions } = options;
+        await runLogsSearch(keyword, { ...searchOptions, agentId: agent });
+      },
+    ),
   );

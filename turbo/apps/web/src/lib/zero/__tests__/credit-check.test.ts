@@ -11,12 +11,14 @@ import {
   markRunningRunsAsCompleted,
   setOrgCredits,
   insertOrgDefaultModelProvider,
+  insertOrgNonDefaultModelProvider,
   insertOrgMembersEntry,
   insertTestZeroRun,
   deleteOrgRow,
   insertCreditExpiresRecord,
 } from "../../../__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
+import { getTestModelProviderIdByType } from "../../../__tests__/db-test-assertions/org";
 import { reloadEnv } from "../../../env";
 import type { CreateRunParams } from "../../infra/run/run-service";
 // eslint-disable-next-line web/no-direct-db-in-tests -- Service-level exception: no API route
@@ -25,7 +27,10 @@ import {
   enqueueRun,
   dispatchQueuedZeroRun,
 } from "../zero-run-queue-service";
-import { checkOrgCreditsForRun } from "../zero-run-policy";
+import {
+  checkOrgCreditsForRunAdmission,
+  resolveRunAdmissionContext,
+} from "../zero-run-policy";
 import { checkOrgCredits } from "../credit/check-org-credits";
 import { isInsufficientCredits } from "@vm0/api-services/errors";
 import { seedTestRun } from "../../../__tests__/db-test-seeders/runs";
@@ -87,6 +92,37 @@ describe("credit check (infra queue path)", () => {
       // Queue entry should be deleted
       const queueEntry = await findTestQueueEntry(queued.runId);
       expect(queueEntry).toBeUndefined();
+    });
+
+    it("should fail queued modelProviderId VM0 run when credits deplete before dispatch", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+
+      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+      await insertOrgNonDefaultModelProvider(user.orgId, "vm0");
+      const vm0ProviderId = await getTestModelProviderIdByType(
+        user.orgId,
+        "vm0",
+      );
+
+      await seedTestRun(user.userId, composeId, { prompt: "Running" });
+      const queued = await enqueueRun(
+        queueBaseParams({
+          prompt: "Queued VM0 by provider id",
+          modelProviderId: vm0ProviderId,
+          selectedModelOverride: "claude-opus-4-7",
+        }),
+      );
+      await insertTestZeroRun(queued.runId);
+
+      await setOrgCredits(user.orgId, 0);
+      await markRunningRunsAsCompleted(user.userId);
+
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("failed");
+      expect(run!.error).toContain("Insufficient credits");
     });
 
     it("should dequeue non-VM0 run when credits depleted", async () => {
@@ -396,7 +432,7 @@ describe("checkOrgCredits (general vm0 credit gate)", () => {
   });
 });
 
-describe("checkOrgCreditsForRun (provider-aware LLM wrapper)", () => {
+describe("checkOrgCreditsForRunAdmission (resolved provider LLM wrapper)", () => {
   let user: UserContext;
 
   beforeEach(async () => {
@@ -412,22 +448,31 @@ describe("checkOrgCreditsForRun (provider-aware LLM wrapper)", () => {
       return;
     }
     throw new Error(
-      "expected checkOrgCreditsForRun to throw insufficientCredits",
+      "expected checkOrgCreditsForRunAdmission to throw insufficientCredits",
     );
   }
 
-  it("returns OK when modelProvider is non-vm0 (fast exit, no DB call)", async () => {
+  it("returns OK when resolved provider is non-vm0", async () => {
     await setOrgCredits(user.orgId, 0);
     await expect(
-      checkOrgCreditsForRun(user.orgId, user.userId, "anthropic"),
+      checkOrgCreditsForRunAdmission({
+        orgId: user.orgId,
+        userId: user.userId,
+        providerType: "anthropic-api-key",
+      }),
     ).resolves.toBeUndefined();
   });
 
   it("returns OK when default provider is vm0 and credits are available", async () => {
     await insertOrgDefaultModelProvider(user.orgId, "vm0");
     await setOrgCredits(user.orgId, 10000);
+    const admission = await resolveRunAdmissionContext({
+      orgId: user.orgId,
+      userId: user.userId,
+      composeFramework: "claude-code",
+    });
     await expect(
-      checkOrgCreditsForRun(user.orgId, user.userId, undefined),
+      checkOrgCreditsForRunAdmission(admission),
     ).resolves.toBeUndefined();
   });
 
@@ -441,7 +486,11 @@ describe("checkOrgCreditsForRun (provider-aware LLM wrapper)", () => {
     });
 
     await expectInsufficientCredits(() => {
-      return checkOrgCreditsForRun(user.orgId, user.userId, undefined);
+      return checkOrgCreditsForRunAdmission({
+        orgId: user.orgId,
+        userId: user.userId,
+        providerType: "vm0",
+      });
     });
   });
 
@@ -457,22 +506,35 @@ describe("checkOrgCreditsForRun (provider-aware LLM wrapper)", () => {
     });
 
     await expectInsufficientCredits(() => {
-      return checkOrgCreditsForRun(user.orgId, user.userId, undefined);
+      return checkOrgCreditsForRunAdmission({
+        orgId: user.orgId,
+        userId: user.userId,
+        providerType: "vm0",
+      });
     });
   });
 
   it("returns OK when default provider is non-vm0 even when credits are depleted", async () => {
-    await insertOrgDefaultModelProvider(user.orgId, "anthropic");
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
     await setOrgCredits(user.orgId, 0);
+    const admission = await resolveRunAdmissionContext({
+      orgId: user.orgId,
+      userId: user.userId,
+      composeFramework: "claude-code",
+    });
     await expect(
-      checkOrgCreditsForRun(user.orgId, user.userId, undefined),
+      checkOrgCreditsForRunAdmission(admission),
     ).resolves.toBeUndefined();
   });
 
-  it("throws when explicit modelProvider is vm0 and org_metadata row is missing", async () => {
+  it("throws when resolved provider is vm0 and org_metadata row is missing", async () => {
     await deleteOrgRow(user.orgId);
     await expectInsufficientCredits(() => {
-      return checkOrgCreditsForRun(user.orgId, user.userId, "vm0");
+      return checkOrgCreditsForRunAdmission({
+        orgId: user.orgId,
+        userId: user.userId,
+        providerType: "vm0",
+      });
     });
   });
 });

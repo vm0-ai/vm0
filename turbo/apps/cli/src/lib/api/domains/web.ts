@@ -18,6 +18,12 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".webp": "image/webp",
   ".avif": "image/avif",
   ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".tif": "image/tiff",
+  ".tiff": "image/tiff",
+  ".psd": "image/vnd.adobe.photoshop",
   ".mp4": "video/mp4",
   ".webm": "video/webm",
   ".mov": "video/quicktime",
@@ -38,18 +44,55 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   ".html": "text/html",
   ".htm": "text/html",
   ".json": "application/json",
+  ".xml": "application/xml",
+  ".yaml": "application/yaml",
+  ".yml": "application/yaml",
+  ".tsv": "text/tab-separated-values",
   ".doc": "application/msword",
   ".docx":
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".docm": "application/vnd.ms-word.document.macroenabled.12",
+  ".dotm": "application/vnd.ms-word.template.macroenabled.12",
+  ".dotx":
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
   ".odt": "application/vnd.oasis.opendocument.text",
   ".rtf": "application/rtf",
   ".xls": "application/vnd.ms-excel",
   ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".xlsb": "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+  ".xlsm": "application/vnd.ms-excel.sheet.macroenabled.12",
+  ".xltm": "application/vnd.ms-excel.template.macroenabled.12",
+  ".xltx":
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
   ".ods": "application/vnd.oasis.opendocument.spreadsheet",
   ".ppt": "application/vnd.ms-powerpoint",
   ".pptx":
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".potm": "application/vnd.ms-powerpoint.template.macroenabled.12",
+  ".potx":
+    "application/vnd.openxmlformats-officedocument.presentationml.template",
   ".odp": "application/vnd.oasis.opendocument.presentation",
+  ".ppsx":
+    "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+  ".ppsm": "application/vnd.ms-powerpoint.slideshow.macroenabled.12",
+  ".pptm": "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+  ".zip": "application/zip",
+  ".rar": "application/vnd.rar",
+  ".7z": "application/x-7z-compressed",
+  ".tar": "application/x-tar",
+  ".gz": "application/gzip",
+  ".tgz": "application/gzip",
+  ".bz2": "application/x-bzip2",
+  ".xz": "application/x-xz",
+  ".pages": "application/vnd.apple.pages",
+  ".numbers": "application/vnd.apple.numbers",
+  ".key": "application/vnd.apple.keynote",
+  ".parquet": "application/vnd.apache.parquet",
+  ".sqlite": "application/vnd.sqlite3",
+  ".sqlite3": "application/vnd.sqlite3",
+  ".db": "application/vnd.sqlite3",
+  ".epub": "application/epub+zip",
+  ".ai": "application/postscript",
 };
 
 function inferContentType(localPath: string): string {
@@ -258,7 +301,7 @@ export async function uploadWebFile(
   const bytes = readFileSync(localPath);
   const putRes = await fetch(prepared.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": contentType },
+    headers: { "Content-Type": prepared.contentType },
     body: new Uint8Array(bytes),
   });
 

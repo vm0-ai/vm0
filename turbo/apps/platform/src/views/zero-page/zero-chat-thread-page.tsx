@@ -26,7 +26,6 @@ import {
   IconArrowBarToUp,
   IconBrandGoogleDrive,
   IconDownload,
-  IconEye,
   IconFile,
   IconLink,
   IconLoader2,
@@ -55,14 +54,6 @@ import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
-import docAudioIcon from "./assets/doc-audio.svg";
-import docCsvIcon from "./assets/doc-csv.svg";
-import docDocIcon from "./assets/doc-doc.svg";
-import docHtmlIcon from "./assets/doc-html.svg";
-import docJsonIcon from "./assets/doc-json.svg";
-import docPdfIcon from "./assets/doc-pdf.svg";
-import docTxtIcon from "./assets/doc-txt.svg";
-import docVideoIcon from "./assets/doc-video.svg";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { playTts$, stopTts$ } from "../../signals/voice-io/voice-io-tts.ts";
@@ -71,14 +62,22 @@ import {
   toggleAutoRead$,
 } from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason, onDomEventFn } from "../../signals/utils.ts";
+import {
+  detach,
+  jsonParseOr,
+  Reason,
+  onDomEventFn,
+} from "../../signals/utils.ts";
 import { zeroClient$ } from "../../signals/api-client.ts";
 import {
   AttachmentLightbox,
+  CsvPreviewTable,
   downloadAttachmentUrl,
   FileAttachmentChip,
   getAttachmentRawUrl,
+  parseCsvRows,
   PreviewableFileAttachmentChip,
+  TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
 import {
   classifyChatAttachment,
@@ -88,8 +87,10 @@ import {
   type BodyRenderBlock,
 } from "../../signals/chat-page/parse-body-blocks.ts";
 import { AttachmentPreview } from "./zero-attachment-preview.tsx";
+import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
+  openDocumentLightbox$ as openAttachmentDocumentLightbox$,
   openImageLightbox$ as openAttachmentImageLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
@@ -118,7 +119,7 @@ import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thre
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
-import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
+import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -391,32 +392,31 @@ function artifactItemKey(item: ChatArtifactItem): string {
   return `${item.runId}:${item.file.id}:${item.file.url}`;
 }
 
-function getFileExtension(filename: string): string {
-  const ext = filename.split(".").pop();
-  return ext && ext !== filename ? ext.toUpperCase() : "FILE";
-}
-
 function getArtifactPreviewKind(
   file: ChatThreadArtifactFile,
 ): ArtifactPreviewKind {
-  const contentType = file.contentType.toLowerCase();
-  const filename = file.filename.toLowerCase();
+  const kind = classifyChatAttachment({
+    filename: file.filename,
+    url: file.url,
+    contentType: file.contentType,
+  });
 
-  if (contentType.startsWith("image/") || isImageFilename(filename)) {
+  if (kind === "image") {
     return "image";
   }
-  if (contentType.startsWith("video/") || isVideoFilename(filename)) {
+  if (kind === "video") {
     return "video";
   }
-  if (contentType.startsWith("audio/") || isAudioFilename(filename)) {
+  if (kind === "audio") {
     return "audio";
   }
   if (
-    contentType === "application/pdf" ||
-    contentType === "application/json" ||
-    contentType === "text/csv" ||
-    (contentType.startsWith("text/") && contentType !== "text/html") ||
-    /\.(pdf|txt|md|csv|json|log)$/i.test(filename)
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv" ||
+    kind === "pdf" ||
+    kind === "html"
   ) {
     return "document";
   }
@@ -433,64 +433,21 @@ function flattenArtifactRuns(
   });
 }
 
-function getArtifactFileIconSrc(file: ChatThreadArtifactFile): string | null {
-  const kind = classifyChatAttachment({
-    filename: file.filename,
-    url: file.url,
-    contentType: file.contentType,
-  });
-
-  if (kind === "pdf") {
-    return docPdfIcon;
-  }
-  if (kind === "html") {
-    return docHtmlIcon;
-  }
-  if (kind === "csv") {
-    return docCsvIcon;
-  }
-  if (kind === "json") {
-    return docJsonIcon;
-  }
-  if (kind === "text") {
-    return docTxtIcon;
-  }
-  if (kind === "markdown") {
-    return docDocIcon;
-  }
-  if (kind === "video") {
-    return docVideoIcon;
-  }
-  if (kind === "audio") {
-    return docAudioIcon;
-  }
-  return null;
-}
-
 function ArtifactFileIcon({
   file,
-  className,
+  size = "sm",
 }: {
   file: ChatThreadArtifactFile;
-  className?: string;
+  size?: "sm" | "md";
 }) {
-  const iconSrc = getArtifactFileIconSrc(file);
-  if (iconSrc) {
-    return (
-      <img
-        alt=""
-        aria-hidden="true"
-        src={iconSrc}
-        className={cn("h-5 w-5 object-contain opacity-90", className)}
-      />
-    );
-  }
-
-  const previewKind = getArtifactPreviewKind(file);
-  if (previewKind === "image") {
-    return <IconPhoto size={18} stroke={1.5} />;
-  }
-  return <IconFile size={18} stroke={1.5} />;
+  return (
+    <FilePreviewIcon
+      filename={file.filename}
+      contentType={file.contentType}
+      size={size}
+      testId="artifact-file-icon"
+    />
+  );
 }
 
 function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
@@ -506,6 +463,174 @@ function ArtifactPreviewBadge({ file }: { file: ChatThreadArtifactFile }) {
   }
 
   return <ArtifactFileIcon file={file} />;
+}
+
+type ArtifactTextPreviewKind = "markdown" | "text" | "json" | "csv";
+type ArtifactDocumentPreviewKind = ArtifactTextPreviewKind | "pdf" | "html";
+
+function getArtifactTextPreviewKind(
+  file: ChatThreadArtifactFile,
+): ArtifactTextPreviewKind | null {
+  const kind = classifyChatAttachment({
+    filename: file.filename,
+    url: file.url,
+    contentType: file.contentType,
+  });
+
+  if (
+    kind === "markdown" ||
+    kind === "text" ||
+    kind === "json" ||
+    kind === "csv"
+  ) {
+    return kind;
+  }
+
+  if (/\.log$/i.test(file.filename)) {
+    return "text";
+  }
+
+  return null;
+}
+
+function formatArtifactTextPreview(
+  kind: Exclude<ArtifactTextPreviewKind, "markdown">,
+  text: string,
+): string {
+  if (kind === "json") {
+    const parsed = jsonParseOr<unknown>(text, null);
+    return parsed === null ? text : JSON.stringify(parsed, null, 2);
+  }
+  return text;
+}
+
+function getArtifactDocumentPreviewKind(
+  file: ChatThreadArtifactFile,
+): ArtifactDocumentPreviewKind | null {
+  const textKind = getArtifactTextPreviewKind(file);
+  if (textKind) {
+    return textKind;
+  }
+
+  const contentType = file.contentType.toLowerCase();
+  const filename = file.filename.toLowerCase();
+  if (contentType === "application/pdf" || filename.endsWith(".pdf")) {
+    return "pdf";
+  }
+  if (
+    contentType === "text/html" ||
+    filename.endsWith(".html") ||
+    filename.endsWith(".htm")
+  ) {
+    return "html";
+  }
+
+  return null;
+}
+
+function ArtifactTextDocumentPreviewFrame({
+  file,
+  kind,
+}: {
+  file: ChatThreadArtifactFile;
+  kind: ArtifactTextPreviewKind;
+}) {
+  const pageSignal = useGet(pageSignal$);
+
+  return (
+    <TextPreviewLoader url={file.url} signal={pageSignal}>
+      {({ status, text }) => {
+        if (status === "loading") {
+          return (
+            <div className="flex h-full w-full items-center justify-center bg-muted/40 text-muted-foreground">
+              <IconLoader2 size={18} className="animate-spin" />
+            </div>
+          );
+        }
+
+        if (status === "error") {
+          return (
+            <div className="flex h-full w-full items-center justify-center bg-muted/40 px-6 text-center text-sm text-muted-foreground">
+              {kind === "markdown"
+                ? "Markdown"
+                : kind === "json"
+                  ? "JSON"
+                  : kind === "csv"
+                    ? "CSV"
+                    : "Text"}{" "}
+              preview unavailable.
+            </div>
+          );
+        }
+
+        if (kind === "csv") {
+          const rows = parseCsvRows(text);
+          if (rows.length === 0) {
+            return (
+              <div className="flex h-full w-full items-center justify-center bg-muted/40 px-6 text-center text-sm text-muted-foreground">
+                CSV preview unavailable.
+              </div>
+            );
+          }
+
+          return (
+            <div className="h-full w-full overflow-auto bg-background p-4">
+              <CsvPreviewTable rows={rows} />
+            </div>
+          );
+        }
+
+        if (kind !== "markdown") {
+          const display = formatArtifactTextPreview(kind, text);
+          return (
+            <div className="h-full w-full overflow-auto bg-background p-4">
+              <pre className="whitespace-pre-wrap break-words text-xs text-foreground">
+                {display.length > 16_000
+                  ? `${display.slice(0, 16_000)}\n\n…`
+                  : display}
+              </pre>
+            </div>
+          );
+        }
+
+        return (
+          <div className="h-full w-full overflow-auto bg-background p-4 text-sm">
+            <Markdown source={text} />
+          </div>
+        );
+      }}
+    </TextPreviewLoader>
+  );
+}
+
+function ArtifactPreviewOpenOverlay({
+  children,
+  filename,
+  onOpen,
+}: {
+  children: ReactNode;
+  filename: string;
+  onOpen: () => void;
+}) {
+  return (
+    <div className="group/artifact-preview relative h-full w-full">
+      {children}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/artifact-preview:bg-black/30 group-hover/artifact-preview:opacity-100 group-focus-within/artifact-preview:bg-black/30 group-focus-within/artifact-preview:opacity-100">
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={`Open preview for ${filename}`}
+          className="pointer-events-auto flex h-16 w-16 items-center justify-center rounded-lg text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          <IconFile
+            size={24}
+            stroke={1.8}
+            className="drop-shadow transition-opacity"
+          />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 async function copyArtifactLinkToClipboard(
@@ -945,7 +1070,6 @@ type ChatImagePreviewButtonProps = {
   buttonClassName: string;
   imageClassName: string;
   onPreview: () => void;
-  overlayIcon?: "eye" | "photo";
   placeholderClassName: string;
   url: string;
 };
@@ -956,7 +1080,6 @@ function ChatImagePreviewButton({
   buttonClassName,
   imageClassName,
   onPreview,
-  overlayIcon = "photo",
   placeholderClassName,
   url,
 }: ChatImagePreviewButtonProps) {
@@ -1012,16 +1135,10 @@ function ChatImagePreviewButton({
         )}
       />
       <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-all duration-150 group-hover/image-preview:bg-black/30 group-hover/image-preview:opacity-100">
-        {overlayIcon === "eye" ? (
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/50 text-white shadow-lg">
-            <IconEye size={18} stroke={1.8} />
-          </span>
-        ) : (
-          <IconPhoto
-            size={18}
-            className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
-          />
-        )}
+        <IconPhoto
+          size={18}
+          className="text-white opacity-0 drop-shadow transition-opacity group-hover/image-preview:opacity-100"
+        />
       </span>
     </button>
   );
@@ -1029,6 +1146,7 @@ function ChatImagePreviewButton({
 
 function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
+  const openDocumentLightbox = useSet(openAttachmentDocumentLightbox$);
   const previewKind = getArtifactPreviewKind(file);
 
   if (previewKind === "image") {
@@ -1041,7 +1159,6 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
         onPreview={() => {
           openImageLightbox(file.url);
         }}
-        overlayIcon="eye"
         placeholderClassName="h-full w-full"
         url={file.url}
       />
@@ -1074,25 +1191,55 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
   }
 
   if (previewKind === "document") {
+    const documentPreviewKind = getArtifactDocumentPreviewKind(file);
+    if (!documentPreviewKind) {
+      return (
+        <div className="flex h-full w-full items-center justify-center bg-muted/40">
+          <ArtifactFileIcon file={file} size="md" />
+        </div>
+      );
+    }
+
+    const openPreview = () => {
+      openDocumentLightbox({
+        kind: documentPreviewKind,
+        url: file.url,
+        filename: file.filename,
+      });
+    };
+
+    if (documentPreviewKind !== "pdf" && documentPreviewKind !== "html") {
+      return (
+        <ArtifactPreviewOpenOverlay
+          filename={file.filename}
+          onOpen={openPreview}
+        >
+          <ArtifactTextDocumentPreviewFrame
+            file={file}
+            kind={documentPreviewKind}
+          />
+        </ArtifactPreviewOpenOverlay>
+      );
+    }
+
     return (
-      <iframe
-        src={file.url}
-        title={`Preview ${file.filename}`}
-        className="h-full w-full bg-background"
-      />
+      <ArtifactPreviewOpenOverlay filename={file.filename} onOpen={openPreview}>
+        <iframe
+          src={file.url}
+          title={`Preview ${file.filename}`}
+          className="h-full w-full bg-background"
+        />
+      </ArtifactPreviewOpenOverlay>
     );
   }
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-muted/40 p-8 text-center">
       <span className="flex h-16 w-16 items-center justify-center rounded-lg border border-border/70 bg-background text-muted-foreground shadow-sm">
-        <ArtifactFileIcon file={file} className="h-10 w-10" />
+        <ArtifactFileIcon file={file} size="md" />
       </span>
       <div className="min-w-0">
-        <p className="text-xs font-medium uppercase text-muted-foreground">
-          {getFileExtension(file.filename)}
-        </p>
-        <p className="mt-1 max-w-[260px] truncate text-[15px] text-foreground">
+        <p className="max-w-[260px] truncate text-[15px] text-foreground">
           {file.filename}
         </p>
       </div>
@@ -1130,8 +1277,6 @@ function ArtifactPreviewPanel({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
             <span>{formatBytes(file.size)}</span>
-            <span aria-hidden>·</span>
-            <span>{getFileExtension(file.filename)}</span>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -1170,12 +1315,7 @@ function ArtifactThumbnail({
       {previewKind === "image" ? (
         <ArtifactThumbnailImage url={file.url} />
       ) : (
-        <span className="flex flex-col items-center gap-0.5 text-muted-foreground">
-          <ArtifactFileIcon file={file} />
-          <span className="max-w-14 truncate text-[10px] font-medium">
-            {getFileExtension(file.filename)}
-          </span>
-        </span>
+        <ArtifactFileIcon file={file} />
       )}
     </div>
   );
@@ -1260,8 +1400,6 @@ function ArtifactFileRow({
           </span>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
             <span>{formatBytes(file.size)}</span>
-            <span aria-hidden>·</span>
-            <span>{getFileExtension(file.filename)}</span>
             <span aria-hidden>·</span>
             <span>{formatArtifactTime(file.createdAt)}</span>
           </div>
@@ -1680,6 +1818,40 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 // Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
+function canQueuePendingMessage({
+  queueMessageEnabled,
+  activeRunCount,
+  allFinishedResolved,
+  allFinished,
+  queueLoading,
+}: {
+  queueMessageEnabled: boolean;
+  activeRunCount: number;
+  allFinishedResolved: boolean;
+  allFinished: boolean;
+  queueLoading: boolean;
+}): boolean {
+  return (
+    queueMessageEnabled &&
+    activeRunCount > 0 &&
+    allFinishedResolved &&
+    !allFinished &&
+    !queueLoading
+  );
+}
+
+function shouldAutoFocusComposer({
+  autoFocus,
+  hasMessages,
+}: {
+  autoFocus: boolean;
+  hasMessages: boolean;
+}): boolean {
+  return (
+    autoFocus && !hasMessages && !window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
 function ChatThreadComposer({
   thread,
   autoFocus: autoFocusProp = true,
@@ -1694,9 +1866,13 @@ function ChatThreadComposer({
   });
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinished =
-    allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
+  const allFinishedResolved = allFinishedLoadable.state === "hasData";
+  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
+  const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
+  const [recallLoadable, recallPendingMessage] = useLoadableSet(
+    thread.recallPendingMessage$,
+  );
   const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
@@ -1712,7 +1888,7 @@ function ChatThreadComposer({
   // internally flips to a user-override once `setModelSelection$` is called,
   // so unsaved edits survive subsequent threadData$ reloads.
   const threadData = useLastResolved(thread.threadData$);
-  const orgProviders = useLastResolved(orgModelProviders$);
+  const composerProviders = useLastResolved(composerModelProviders$);
   const modelSelection = useLastResolved(thread.modelSelection$) ?? null;
   const setModelSelection = useSet(thread.setModelSelection$);
   const agentModelDefault = useLastResolved(thread.agentModelDefault$) ?? null;
@@ -1721,6 +1897,16 @@ function ChatThreadComposer({
   // render the whole action cluster as a skeleton so we don't flash stale
   // picker state or a wrong send/stop button.
   const skeletonVisible = useGet(thread.skeletonVisible$);
+  const features = useLastResolved(featureSwitch$);
+  const queueMessageEnabled =
+    features?.[FeatureSwitchKey.QueueMessage] ?? false;
+  const queueWhileSending = canQueuePendingMessage({
+    queueMessageEnabled,
+    activeRunCount: threadData?.activeRunIds.length ?? 0,
+    allFinishedResolved: allFinishedLoadable.state === "hasData",
+    allFinished,
+    queueLoading: queueLoadable.state === "loading",
+  });
 
   const handleInputChange = (text: string) => {
     setInput(text);
@@ -1738,6 +1924,15 @@ function ChatThreadComposer({
     detach(send(text, modelSelection, rootSignal), Reason.DomCallback);
   };
 
+  const handleQueue = (text: string) => {
+    setInput("");
+    detach(queueMessage(text, rootSignal), Reason.DomCallback);
+  };
+
+  const handleRecallPendingMessage = () => {
+    detach(recallPendingMessage(rootSignal), Reason.DomCallback);
+  };
+
   return (
     <footer
       data-chat-composer
@@ -1752,16 +1947,24 @@ function ChatThreadComposer({
             input={input}
             onInputChange={handleInputChange}
             onSend={handleSend}
+            onQueue={handleQueue}
             sending={sending}
-            onCancel={() => {
-              detach(cancelRun(pageSignal), Reason.DomCallback);
-            }}
-            displayName={displayName}
-            autoFocus={
-              autoFocusProp &&
-              !hasMessages &&
-              !window.matchMedia("(pointer: coarse)").matches
+            queueWhileSending={queueWhileSending}
+            pendingMessage={threadData?.pendingMessage ?? null}
+            onRecallPendingMessage={handleRecallPendingMessage}
+            recallPendingMessageLoading={recallLoadable.state === "loading"}
+            onCancel={
+              allFinishedResolved
+                ? () => {
+                    detach(cancelRun(pageSignal), Reason.DomCallback);
+                  }
+                : undefined
             }
+            displayName={displayName}
+            autoFocus={shouldAutoFocusComposer({
+              autoFocus: autoFocusProp,
+              hasMessages,
+            })}
             onDraftChange={handleDraftChange}
             draft={thread.draft}
             composerFileInput$={thread.composerFileInput$}
@@ -1769,9 +1972,10 @@ function ChatThreadComposer({
             setInputRef={setInputRef}
             actionsLoading={skeletonVisible}
             modelPicker={
-              orgProviders && orgProviders.modelProviders.length > 0
+              composerProviders && composerProviders.providers.length > 0
                 ? {
-                    providers: orgProviders.modelProviders,
+                    providers: composerProviders.providers,
+                    tiers: composerProviders.tiers,
                     value: modelSelection,
                     onChange: setModelSelection,
                     sessionProviderType:
@@ -2031,15 +2235,17 @@ function BodyContentBlocks({
 }
 
 function isImageFilename(filename: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg)$/i.test(filename);
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif|heic|heif|tiff?|psd)$/i.test(
+    filename,
+  );
 }
 
 function isVideoFilename(filename: string): boolean {
-  return /\.(mp4|webm|mov)$/i.test(filename);
+  return /\.(mp4|webm|mov|ogv)$/i.test(filename);
 }
 
 function isAudioFilename(filename: string): boolean {
-  return /\.(mp3|wav|m4a|aac|ogg|oga|opus|flac|mpga)$/i.test(filename);
+  return /\.(mp3|wav|wave|m4a|aac|ogg|oga|opus|flac|mpga)$/i.test(filename);
 }
 
 function AssistantErrorContent({ error }: { error: string }) {
@@ -2254,18 +2460,77 @@ function inferAttachmentContentType(filename: string, kind: string): string {
     gif: "image/gif",
     webp: "image/webp",
     svg: "image/svg+xml",
+    bmp: "image/bmp",
+    avif: "image/avif",
+    heic: "image/heic",
+    heif: "image/heif",
+    tif: "image/tiff",
+    tiff: "image/tiff",
+    psd: "image/vnd.adobe.photoshop",
     mp4: "video/mp4",
     webm: "video/webm",
     mov: "video/quicktime",
     mp3: "audio/mpeg",
     mpga: "audio/mpeg",
     wav: "audio/wav",
+    wave: "audio/wave",
     m4a: "audio/mp4",
     aac: "audio/aac",
     ogg: "audio/ogg",
     oga: "audio/ogg",
     opus: "audio/opus",
     flac: "audio/flac",
+    pdf: "application/pdf",
+    txt: "text/plain",
+    log: "text/plain",
+    csv: "text/csv",
+    md: "text/markdown",
+    html: "text/html",
+    htm: "text/html",
+    json: "application/json",
+    xml: "application/xml",
+    yaml: "application/yaml",
+    yml: "application/yaml",
+    tsv: "text/tab-separated-values",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    docm: "application/vnd.ms-word.document.macroenabled.12",
+    dotm: "application/vnd.ms-word.template.macroenabled.12",
+    dotx: "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+    odt: "application/vnd.oasis.opendocument.text",
+    rtf: "application/rtf",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xlsb: "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+    xlsm: "application/vnd.ms-excel.sheet.macroenabled.12",
+    xltm: "application/vnd.ms-excel.template.macroenabled.12",
+    xltx: "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    potm: "application/vnd.ms-powerpoint.template.macroenabled.12",
+    potx: "application/vnd.openxmlformats-officedocument.presentationml.template",
+    odp: "application/vnd.oasis.opendocument.presentation",
+    ppsx: "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
+    ppsm: "application/vnd.ms-powerpoint.slideshow.macroenabled.12",
+    pptm: "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+    zip: "application/zip",
+    rar: "application/vnd.rar",
+    "7z": "application/x-7z-compressed",
+    tar: "application/x-tar",
+    gz: "application/gzip",
+    tgz: "application/gzip",
+    bz2: "application/x-bzip2",
+    xz: "application/x-xz",
+    pages: "application/vnd.apple.pages",
+    numbers: "application/vnd.apple.numbers",
+    key: "application/vnd.apple.keynote",
+    parquet: "application/vnd.apache.parquet",
+    sqlite: "application/vnd.sqlite3",
+    sqlite3: "application/vnd.sqlite3",
+    db: "application/vnd.sqlite3",
+    epub: "application/epub+zip",
+    ai: "application/postscript",
   };
   const lower = filename.toLowerCase();
   const extension = lower.includes(".") ? lower.split(".").pop() : undefined;
@@ -2384,12 +2649,23 @@ function UserMessageAttachments({
         }
         if (
           a.kind === "markdown" ||
-          a.kind === "text" ||
-          a.kind === "json" ||
           a.kind === "csv" ||
           a.kind === "pdf" ||
-          a.kind === "html"
+          a.kind === "html" ||
+          a.kind === "file"
         ) {
+          return (
+            <AttachmentPreview
+              key={a.url}
+              attachment={{
+                filename: a.filename,
+                url: a.url,
+                contentType: a.contentType,
+              }}
+            />
+          );
+        }
+        if (a.kind === "text" || a.kind === "json") {
           return (
             <PreviewableFileAttachmentChip
               key={a.url}

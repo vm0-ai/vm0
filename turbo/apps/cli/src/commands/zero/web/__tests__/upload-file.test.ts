@@ -119,7 +119,7 @@ describe("zero web upload-file command", () => {
       });
     });
 
-    it("should respect --content-type override", async () => {
+    it("should use prepared content type for PUT after override normalization", async () => {
       const filePath = join(tmpDir, "data.bin");
       writeFileSync(filePath, Buffer.from("col1,col2\n1,2"));
 
@@ -128,7 +128,7 @@ describe("zero web upload-file command", () => {
       server.use(
         http.post(PREPARE_URL, async ({ request }) => {
           const body = (await request.json()) as { contentType: string };
-          expect(body.contentType).toBe("text/csv");
+          expect(body.contentType).toBe("Text/CSV; charset=utf-8");
 
           return HttpResponse.json(
             {
@@ -163,7 +163,7 @@ describe("zero web upload-file command", () => {
         "-f",
         filePath,
         "--content-type",
-        "text/csv",
+        "Text/CSV; charset=utf-8",
       ]);
 
       expect(putReceivedContentType).toBe("text/csv");
@@ -357,6 +357,120 @@ describe("zero web upload-file command", () => {
       for (const { filename } of cases) {
         const filePath = join(tmpDir, filename);
         writeFileSync(filePath, Buffer.from("office"));
+
+        await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
+      }
+
+      expect(preparedBodies).toEqual(cases);
+    });
+
+    it("should infer additional common content types from extensions", async () => {
+      const cases = [
+        { filename: "archive.zip", contentType: "application/zip" },
+        {
+          filename: "backup.7z",
+          contentType: "application/x-7z-compressed",
+        },
+        { filename: "bundle.tar", contentType: "application/x-tar" },
+        { filename: "bundle.tar.gz", contentType: "application/gzip" },
+        {
+          filename: "document.pages",
+          contentType: "application/vnd.apple.pages",
+        },
+        {
+          filename: "sheet.numbers",
+          contentType: "application/vnd.apple.numbers",
+        },
+        {
+          filename: "slides.key",
+          contentType: "application/vnd.apple.keynote",
+        },
+        { filename: "photo.heic", contentType: "image/heic" },
+        { filename: "scan.tiff", contentType: "image/tiff" },
+        {
+          filename: "macro.xlsm",
+          contentType: "application/vnd.ms-excel.sheet.macroenabled.12",
+        },
+        {
+          filename: "template.potx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.presentationml.template",
+        },
+        { filename: "data.xml", contentType: "application/xml" },
+        { filename: "config.yaml", contentType: "application/yaml" },
+        { filename: "table.tsv", contentType: "text/tab-separated-values" },
+        {
+          filename: "events.parquet",
+          contentType: "application/vnd.apache.parquet",
+        },
+        { filename: "local.sqlite", contentType: "application/vnd.sqlite3" },
+        { filename: "book.epub", contentType: "application/epub+zip" },
+        { filename: "design.psd", contentType: "image/vnd.adobe.photoshop" },
+        { filename: "vector.ai", contentType: "application/postscript" },
+      ] as const;
+      const preparedById = new Map<
+        string,
+        { filename: string; contentType: string; size: number }
+      >();
+      const preparedBodies: Array<{ filename: string; contentType: string }> =
+        [];
+
+      server.use(
+        http.post(PREPARE_URL, async ({ request }) => {
+          const body = (await request.json()) as {
+            filename: string;
+            contentType: string;
+            size: number;
+          };
+          const id = `${body.filename}-uuid`;
+          preparedBodies.push({
+            filename: body.filename,
+            contentType: body.contentType,
+          });
+          preparedById.set(id, {
+            filename: body.filename,
+            contentType: body.contentType,
+            size: body.size,
+          });
+
+          return HttpResponse.json(
+            {
+              id,
+              filename: body.filename,
+              contentType: body.contentType,
+              size: body.size,
+              uploadUrl: PUT_URL,
+              url: `https://presigned.example.com/${body.filename}`,
+            },
+            { status: 200 },
+          );
+        }),
+        http.put(PUT_URL, () => {
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.post(COMPLETE_URL, async ({ request }) => {
+          const body = (await request.json()) as {
+            id: string;
+            contentType: string;
+          };
+          const prepared = preparedById.get(body.id);
+          if (!prepared) {
+            throw new Error(`missing prepared upload for ${body.id}`);
+          }
+          expect(body.contentType).toBe(prepared.contentType);
+          return HttpResponse.json({
+            id: body.id,
+            filename: prepared.filename,
+            contentType: prepared.contentType,
+            size: prepared.size,
+            url: `https://presigned.example.com/${prepared.filename}`,
+          });
+        }),
+      );
+
+      for (const { filename } of cases) {
+        const filePath = join(tmpDir, filename);
+        writeFileSync(filePath, Buffer.from("common"));
 
         await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
       }

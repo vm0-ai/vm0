@@ -21,12 +21,9 @@ test = [
 line-length = 100
 target-version = "py310"
 extend-exclude = [
-    # Vendored third-party code (see src/ijson/VENDOR.md for provenance).
-    # We don't own it and won't modify it, so our house rules don't apply.
-    "src/ijson",
-    # setuptools copies src/ here during `pip install`.  ruff 0.15's default
-    # exclude list drops ``build`` (keeps only ``_build`` / ``dist``), so the
-    # mirrored src/ijson/ under build/lib/ijson/ would otherwise be linted.
+    # setuptools copies src/ here during `pip install`. Ruff 0.15's default
+    # exclude list drops ``build`` (keeps only ``_build`` / ``dist``), so avoid
+    # linting generated package copies under build/lib/.
     "build",
 ]
 

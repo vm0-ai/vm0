@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { randomUUID } from "crypto";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -40,13 +41,19 @@ function createAxiomAgentEvent(
 }
 
 describe("GET /api/logs/search", () => {
+  let testComposeId: string;
   let testRunId: string;
+  let testAgentId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     await context.setupUser();
 
-    const { composeId } = await createTestCompose(`test-search-${Date.now()}`);
+    const { composeId } = await createTestCompose(
+      `test-search-${randomUUID().slice(0, 8)}`,
+    );
+    testComposeId = composeId;
+    testAgentId = composeId;
 
     const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;
@@ -110,6 +117,7 @@ describe("GET /api/logs/search", () => {
     const data = await response.json();
     expect(data.results).toHaveLength(1);
     expect(data.results[0].runId).toBe(testRunId);
+    expect(data.results[0].agentName).toBe(testComposeId);
     expect(data.results[0].matchedEvent.sequenceNumber).toBe(3);
     expect(data.results[0].contextBefore).toEqual([]);
     expect(data.results[0].contextAfter).toEqual([]);
@@ -206,9 +214,29 @@ describe("GET /api/logs/search", () => {
     expect(aplQuery).toContain('search "*deploy failed*"');
   });
 
-  it("should filter by agent name via database lookup", async () => {
+  it("should filter by agentId via database lookup", async () => {
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      createAxiomAgentEvent(testRunId, 1, "Agent scoped event"),
+    ]);
+
     const request = createTestRequest(
-      "http://localhost:3000/api/logs/search?keyword=test&agent=nonexistent-agent",
+      `http://localhost:3000/api/logs/search?keyword=event&agentId=${testAgentId}`,
+    );
+
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0].runId).toBe(testRunId);
+
+    const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0]![0] as string;
+    expect(aplQuery).toContain(`runId == "${testRunId}"`);
+  });
+
+  it("should return empty results when agentId has no runs", async () => {
+    const request = createTestRequest(
+      `http://localhost:3000/api/logs/search?keyword=test&agentId=${randomUUID()}`,
     );
 
     const response = await GET(request);

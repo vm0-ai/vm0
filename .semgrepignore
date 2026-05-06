@@ -8,9 +8,3 @@ docker/toolchain/Dockerfile
 # Firewall configs — placeholder tokens intentionally mimic real formats for proxy replacement
 turbo/packages/firewalls-generator/src/
 turbo/packages/connectors/src/firewalls/*.generated.ts
-
-# Vendored third-party packages — byte-identical to upstream (see VENDOR.md
-# alongside each). The non-literal imports and globals() usage that semgrep
-# flags are upstream's choice; we don't get to edit them and re-applying
-# rules here only pressures us to desync from the pinned source.
-crates/runner/mitm-addon/src/ijson/

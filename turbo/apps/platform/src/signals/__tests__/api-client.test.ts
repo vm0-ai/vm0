@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -210,5 +210,38 @@ describe("zeroClient$ 401 redirect", () => {
     expect(result.status).toBe(401);
     expect(authHeaders).toStrictEqual(["Bearer same-token"]);
     expect(mockedClerk.redirectToSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("can force the api backend base for a client", async () => {
+    vi.stubGlobal(
+      "location",
+      new URL("https://platform.vm0.ai/chats/thread-1"),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-1",
+      withoutRender: true,
+    });
+
+    const requestHosts: string[] = [];
+    server.use(
+      mockApi(zeroOrgContract.get, ({ request, respond }) => {
+        requestHosts.push(new URL(request.url).host);
+        return respond(200, {
+          id: "org_1",
+          name: "Org",
+          slug: "org-1",
+          role: "admin",
+        });
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract, { apiBase: "api" });
+    const result = await client.get();
+
+    expect(result.status).toBe(200);
+    expect(requestHosts).toStrictEqual(["api.vm0.ai"]);
   });
 });

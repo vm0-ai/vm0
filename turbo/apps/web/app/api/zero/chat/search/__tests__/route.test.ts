@@ -316,7 +316,7 @@ describe("GET /api/zero/chat/search", () => {
       );
     });
 
-    it("narrows results by --agent name filter", async () => {
+    it("narrows results by agentId filter", async () => {
       const caller = await context.setupUser();
       const nameA = uniqueId("agent-a");
       const nameB = uniqueId("agent-b");
@@ -355,10 +355,9 @@ describe("GET /api/zero/chat/search", () => {
       mockClerk({ userId: null });
 
       const response = await GET(
-        createTestRequest(
-          `${URL_BASE}?keyword=narwhal&agent=${encodeURIComponent(nameA)}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        ),
+        createTestRequest(`${URL_BASE}?keyword=narwhal&agentId=${composeA}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       );
 
       expect(response.status).toBe(200);

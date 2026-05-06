@@ -13,7 +13,8 @@ export type BodyPreviewKind =
   | "json"
   | "csv"
   | "pdf"
-  | "html";
+  | "html"
+  | "file";
 
 export type BodyRenderBlock =
   | {
@@ -32,17 +33,7 @@ export type BodyRenderBlock =
       };
     };
 
-type ChatAttachmentKind =
-  | "image"
-  | "video"
-  | "audio"
-  | "markdown"
-  | "text"
-  | "json"
-  | "csv"
-  | "pdf"
-  | "html"
-  | "file";
+type ChatAttachmentKind = BodyPreviewKind;
 
 interface ChatAttachmentDescriptor {
   filename: string;
@@ -60,6 +51,8 @@ type ExtractedPreviewUrl = {
 // ---------------------------------------------------------------------------
 
 const TEXT_PREVIEW_MAX_BYTES = 65_536;
+const PLATFORM_FILE_PATH_PATTERN = /^\/f\/[^/]+\/[^/]+\/[^/]+$/;
+const PLATFORM_FILE_HOST_SUFFIXES = ["vm0.ai", "vm6.ai", "vm7.ai"] as const;
 
 // ---------------------------------------------------------------------------
 // classifyChatAttachment helpers
@@ -73,12 +66,66 @@ function normalizeType(contentType?: string): string {
   return (contentType ?? "").split(";")[0]?.trim().toLowerCase();
 }
 
-export function classifyChatAttachment(
-  attachment: ChatAttachmentDescriptor,
-): ChatAttachmentKind {
-  const type = normalizeType(attachment.contentType);
-  const ext = fileExt(attachment.filename);
+const CHAT_KIND_BY_CONTENT_TYPE: Readonly<Record<string, BodyPreviewKind>> = {
+  "text/markdown": "markdown",
+  "text/x-markdown": "markdown",
+  "text/plain": "text",
+  "text/tab-separated-values": "text",
+  "text/xml": "text",
+  "text/yaml": "text",
+  "text/x-yaml": "text",
+  "application/xml": "text",
+  "application/yaml": "text",
+  "application/x-yaml": "text",
+  "application/json": "json",
+  "text/csv": "csv",
+  "application/pdf": "pdf",
+  "text/html": "html",
+} as const;
 
+const CHAT_KIND_BY_EXTENSION: Readonly<Record<string, BodyPreviewKind>> = {
+  md: "markdown",
+  txt: "text",
+  log: "text",
+  xml: "text",
+  yaml: "text",
+  yml: "text",
+  tsv: "text",
+  json: "json",
+  csv: "csv",
+  pdf: "pdf",
+  html: "html",
+  htm: "html",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  webp: "image",
+  svg: "image",
+  bmp: "image",
+  avif: "image",
+  heic: "image",
+  heif: "image",
+  tif: "image",
+  tiff: "image",
+  psd: "image",
+  mp4: "video",
+  webm: "video",
+  mov: "video",
+  ogv: "video",
+  mp3: "audio",
+  wav: "audio",
+  wave: "audio",
+  m4a: "audio",
+  aac: "audio",
+  ogg: "audio",
+  oga: "audio",
+  opus: "audio",
+  flac: "audio",
+  mpga: "audio",
+} as const;
+
+function mediaKindFromContentType(type: string): BodyPreviewKind | null {
   if (type.startsWith("image/")) {
     return "image";
   }
@@ -88,43 +135,23 @@ export function classifyChatAttachment(
   if (type.startsWith("audio/")) {
     return "audio";
   }
+  return null;
+}
 
-  if (type === "text/markdown" || ext === "md") {
-    return "markdown";
-  }
-  if (type === "text/plain" || ext === "txt") {
-    return "text";
-  }
-  if (type === "application/json" || ext === "json") {
-    return "json";
-  }
-  if (type === "text/csv" || ext === "csv") {
-    return "csv";
-  }
-  if (type === "application/pdf" || ext === "pdf") {
-    return "pdf";
-  }
-  if (type === "text/html" || ext === "html" || ext === "htm") {
-    return "html";
+export function classifyChatAttachment(
+  attachment: ChatAttachmentDescriptor,
+): ChatAttachmentKind {
+  const type = normalizeType(attachment.contentType);
+  const ext = fileExt(attachment.filename);
+  const mediaKind = mediaKindFromContentType(type);
+
+  if (mediaKind) {
+    return mediaKind;
   }
 
-  if (
-    ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif"].includes(ext)
-  ) {
-    return "image";
-  }
-  if (["mp4", "webm", "mov", "ogv"].includes(ext)) {
-    return "video";
-  }
-  if (
-    ["mp3", "wav", "m4a", "aac", "ogg", "oga", "opus", "flac", "mpga"].includes(
-      ext,
-    )
-  ) {
-    return "audio";
-  }
-
-  return "file";
+  return (
+    CHAT_KIND_BY_CONTENT_TYPE[type] ?? CHAT_KIND_BY_EXTENSION[ext] ?? "file"
+  );
 }
 
 function filenameFromUrl(url: string): string {
@@ -146,7 +173,8 @@ function isBodyPreviewKind(kind: string): kind is BodyPreviewKind {
     kind === "json" ||
     kind === "csv" ||
     kind === "pdf" ||
-    kind === "html"
+    kind === "html" ||
+    kind === "file"
   );
 }
 
@@ -175,6 +203,9 @@ export function contentTypeForBodyPreviewKind(kind: BodyPreviewKind): string {
   if (kind === "audio") {
     return "audio/*";
   }
+  if (kind === "file") {
+    return "application/octet-stream";
+  }
   return "video/*";
 }
 
@@ -182,13 +213,74 @@ export function contentTypeForBodyPreviewKind(kind: BodyPreviewKind): string {
 // URL / line parsing
 // ---------------------------------------------------------------------------
 
+type PlatformHostTarget = "api" | "www" | "app" | "platform";
+
+function browserHost(): string | null {
+  if (typeof location === "undefined" || !location.host) {
+    return null;
+  }
+  return location.host;
+}
+
+function rewritePlatformHostname(
+  hostname: string,
+  target: PlatformHostTarget,
+): string {
+  return hostname.replace(/(^|-)(platform|app|www|api)\./, `$1${target}.`);
+}
+
+function addPlatformFileHostVariants(hosts: Set<string>, host: string | null) {
+  if (!host) {
+    return;
+  }
+
+  hosts.add(host);
+
+  const hostUrl = `https://${host}`;
+  if (!URL.canParse(hostUrl)) {
+    return;
+  }
+
+  const parsed = new URL(hostUrl);
+  for (const target of ["api", "www", "app", "platform"] as const) {
+    parsed.hostname = rewritePlatformHostname(parsed.hostname, target);
+    hosts.add(parsed.host);
+  }
+}
+
+function platformFileHosts(): Set<string> {
+  const hosts = new Set<string>();
+  addPlatformFileHostVariants(hosts, browserHost());
+  return hosts;
+}
+
+function isPlatformFileHostname(hostname: string): boolean {
+  return PLATFORM_FILE_HOST_SUFFIXES.some((suffix) => {
+    return hostname === suffix || hostname.endsWith(`.${suffix}`);
+  });
+}
+
+function hasExplicitUrlOrigin(url: string): boolean {
+  return /^[a-z][a-z\d+\-.]*:\/\//i.test(url);
+}
+
 function isPlatformFileUrl(url: string): boolean {
-  const baseUrl = "https://vm0.local";
+  const host = browserHost();
+  const baseUrl = host ? `https://${host}` : "https://vm0.local";
   if (!URL.canParse(url, baseUrl)) {
     return false;
   }
   const parsed = new URL(url, baseUrl);
-  return /^\/f\/[^/]+\/[^/]+\/[^/]+$/.test(parsed.pathname);
+  if (!PLATFORM_FILE_PATH_PATTERN.test(parsed.pathname)) {
+    return false;
+  }
+  if (!hasExplicitUrlOrigin(url)) {
+    return true;
+  }
+  return (
+    platformFileHosts().has(parsed.host) ||
+    isPlatformFileHostname(parsed.hostname)
+  );
 }
 
 function stripMarkdownLineDecorations(value: string): string {
@@ -276,6 +368,87 @@ function extractPreviewUrlFromLine(line: string): ExtractedPreviewUrl | null {
   return null;
 }
 
+function splitMarkdownTableRow(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) {
+    return null;
+  }
+
+  const cells: string[] = [];
+  let current = "";
+  let escaped = false;
+  for (const char of trimmed) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (char === "|") {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current.trim());
+
+  if (cells[0] === "") {
+    cells.shift();
+  }
+  if (cells.at(-1) === "") {
+    cells.pop();
+  }
+
+  return cells.length >= 2 ? cells : null;
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const cells = splitMarkdownTableRow(line);
+  return (
+    cells !== null &&
+    cells.every((cell) => {
+      return /^:?-{3,}:?$/.test(cell.replace(/\s+/g, ""));
+    })
+  );
+}
+
+function isMarkdownTableContentRow(line: string): boolean {
+  const cells = splitMarkdownTableRow(line);
+  return (
+    cells !== null &&
+    cells.some((cell) => {
+      return cell.length > 0;
+    })
+  );
+}
+
+function markdownTableRowIndexes(lines: string[]): Set<number> {
+  const indexes = new Set<number>();
+  for (let index = 0; index < lines.length - 1; index += 1) {
+    if (
+      isMarkdownTableContentRow(lines[index]!) &&
+      isMarkdownTableSeparator(lines[index + 1]!)
+    ) {
+      indexes.add(index);
+      indexes.add(index + 1);
+
+      for (
+        let rowIndex = index + 2;
+        rowIndex < lines.length && isMarkdownTableContentRow(lines[rowIndex]!);
+        rowIndex += 1
+      ) {
+        indexes.add(rowIndex);
+      }
+    }
+  }
+  return indexes;
+}
+
 // ---------------------------------------------------------------------------
 // Block parsing (pure — no computeds)
 // ---------------------------------------------------------------------------
@@ -286,6 +459,7 @@ export function parseBodyRenderBlocks(content: string): {
 } {
   const blocks: BodyRenderBlock[] = [];
   const lines = content.split("\n");
+  const tableRowIndexes = markdownTableRowIndexes(lines);
   const keptLines: string[] = [];
   const markdownBuffer: string[] = [];
   let blockSequence = 0;
@@ -310,7 +484,7 @@ export function parseBodyRenderBlocks(content: string): {
     markdownBuffer.length = 0;
   };
 
-  for (const line of lines) {
+  for (const [lineIndex, line] of lines.entries()) {
     const trimmedLine = line.trim();
     const fenceMatch = trimmedLine.match(/^(`{3,}|~{3,})/);
     if (fenceMatch) {
@@ -331,6 +505,12 @@ export function parseBodyRenderBlocks(content: string): {
     }
 
     if (openFence) {
+      markdownBuffer.push(line);
+      keptLines.push(line);
+      continue;
+    }
+
+    if (tableRowIndexes.has(lineIndex)) {
       markdownBuffer.push(line);
       keptLines.push(line);
       continue;

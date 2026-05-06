@@ -114,6 +114,8 @@ export async function findTestModelProviderTokenState(
   tokenExpiresAt: Date | null;
   needsReconnect: boolean;
   lastRefreshErrorCode: string | null;
+  workspaceName: string | null;
+  planType: string | null;
 } | null> {
   initServices();
   const [row] = await globalThis.services.db
@@ -121,6 +123,8 @@ export async function findTestModelProviderTokenState(
       tokenExpiresAt: modelProviders.tokenExpiresAt,
       needsReconnect: modelProviders.needsReconnect,
       lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+      workspaceName: modelProviders.workspaceName,
+      planType: modelProviders.planType,
     })
     .from(modelProviders)
     .where(
@@ -149,6 +153,35 @@ export async function setTestModelProviderTokenExpiresAt(
   await globalThis.services.db
     .update(modelProviders)
     .set({ tokenExpiresAt })
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        eq(modelProviders.userId, userId),
+        eq(modelProviders.type, type),
+      ),
+    );
+}
+
+/**
+ * Set the OAuth refresh-state columns on a model_providers row directly.
+ * Used by Wave 3 stale-UX tests to seed a "needs reconnect" state without
+ * triggering the firewall webhook flow.
+ *
+ * @why-db-direct The webhook handler is the only production path that flips
+ * `needsReconnect`; tests that exercise downstream consumers (banner, runner
+ * guard, API surface) need to seed this state directly.
+ */
+export async function setTestModelProviderNeedsReconnect(
+  orgId: string,
+  userId: string,
+  type: string,
+  needsReconnect: boolean,
+  lastRefreshErrorCode: string | null = null,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(modelProviders)
+    .set({ needsReconnect, lastRefreshErrorCode })
     .where(
       and(
         eq(modelProviders.orgId, orgId),

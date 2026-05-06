@@ -204,6 +204,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
     enabled: false,
   },
+  [FeatureSwitchKey.OfficialTelegramBot]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show and enable the shared official Zero Telegram bot integration",
+    enabled: true,
+  },
   [FeatureSwitchKey.ChatManualHistory]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -214,6 +220,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Show an icon button in assistant message group actions that scrolls back to the start of that message group.",
+    enabled: false,
+  },
+  [FeatureSwitchKey.QueueMessage]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Allow keyboard sends during an active chat thread run to append the draft to that thread's pending message queue.",
     enabled: false,
   },
   [FeatureSwitchKey.ChatThreadPin]: {

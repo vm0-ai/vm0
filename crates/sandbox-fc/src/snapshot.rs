@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
+use std::future::Future;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -10,7 +12,7 @@ use tokio::task::JoinHandle;
 use tracing::info;
 
 use nbd_cow::pool::DevicePoolHandle;
-use nbd_cow::{DestroyRetryPolicy, PooledNbdCowDevice};
+use nbd_cow::{DestroyRetryPolicy, KeptCow, PooledNbdCowDevice};
 use sandbox::{SnapshotCreateConfig, SnapshotOutput, SnapshotProvider};
 
 use crate::api::{ApiClient, ApiError};
@@ -241,9 +243,26 @@ async fn cleanup_snapshot_attempt_dir_for_cow(cow_file: &Path) -> bool {
     }
 }
 
-async fn sync_snapshot_output_dir(output: &SnapshotOutputPaths) -> Result<(), SnapshotError> {
-    let dir = tokio::fs::File::open(output.dir()).await?;
-    dir.sync_all().await?;
+fn cleanup_snapshot_attempt_dir_for_cow_sync(cow_file: &Path) -> bool {
+    let Some(dir) = cow_file.parent() else {
+        return true;
+    };
+    match std::fs::remove_dir(dir) {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                dir = %dir.display(),
+                "failed to cleanup snapshot attempt dir"
+            );
+            false
+        }
+    }
+}
+
+fn sync_snapshot_output_dir(output: &SnapshotOutputPaths) -> Result<(), SnapshotError> {
+    std::fs::File::open(output.dir())?.sync_all()?;
     Ok(())
 }
 
@@ -443,25 +462,219 @@ async fn drain_or_abort_forwarder(
     }
 }
 
-async fn finalize_snapshot_cow_output(
-    cow_device: PooledNbdCowDevice,
+type KeepCowFinalizer =
+    Pin<Box<dyn Future<Output = nbd_cow::error::Result<KeptCow>> + Send + 'static>>;
+
+enum SnapshotPublishState {
+    HoldingDevice(PooledNbdCowDevice),
+    KeepingCow(KeepCowFinalizer),
+    KeptCow(KeptCow),
+    Committed,
+    Empty,
+}
+
+struct SnapshotPublishAttempt {
+    state: SnapshotPublishState,
+}
+
+impl SnapshotPublishAttempt {
+    fn new(cow_device: PooledNbdCowDevice) -> Self {
+        Self {
+            state: SnapshotPublishState::HoldingDevice(cow_device),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_with_kept_cow_for_test(kept_cow: KeptCow) -> Self {
+        Self {
+            state: SnapshotPublishState::KeptCow(kept_cow),
+        }
+    }
+
+    #[cfg(test)]
+    fn new_with_keep_future_for_test(
+        future: impl Future<Output = nbd_cow::error::Result<KeptCow>> + Send + 'static,
+    ) -> Self {
+        Self {
+            state: SnapshotPublishState::KeepingCow(Box::pin(future)),
+        }
+    }
+
+    fn has_cleanup_work(&self) -> bool {
+        !matches!(
+            self.state,
+            SnapshotPublishState::Committed | SnapshotPublishState::Empty
+        )
+    }
+
+    fn start_keep_cow(&mut self) -> Result<(), SnapshotError> {
+        let state = std::mem::replace(&mut self.state, SnapshotPublishState::Empty);
+        match state {
+            SnapshotPublishState::HoldingDevice(cow_device) => {
+                self.state = SnapshotPublishState::KeepingCow(Box::pin(
+                    cow_device.destroy_keep_cow_with_retries(cow_destroy_retry_policy()),
+                ));
+                Ok(())
+            }
+            SnapshotPublishState::KeepingCow(finalizer) => {
+                self.state = SnapshotPublishState::KeepingCow(finalizer);
+                Ok(())
+            }
+            SnapshotPublishState::KeptCow(kept_cow) => {
+                self.state = SnapshotPublishState::KeptCow(kept_cow);
+                Ok(())
+            }
+            SnapshotPublishState::Committed => {
+                self.state = SnapshotPublishState::Committed;
+                Ok(())
+            }
+            SnapshotPublishState::Empty => Err(SnapshotError::Teardown(
+                "snapshot publish attempt missing COW ownership".into(),
+            )),
+        }
+    }
+
+    async fn resolve_keep_cow(&mut self) -> Result<(), SnapshotError> {
+        self.start_keep_cow()?;
+        let result = match &mut self.state {
+            SnapshotPublishState::KeepingCow(finalizer) => finalizer.as_mut().await,
+            SnapshotPublishState::KeptCow(_) | SnapshotPublishState::Committed => return Ok(()),
+            SnapshotPublishState::HoldingDevice(_) | SnapshotPublishState::Empty => {
+                return Err(SnapshotError::Teardown(
+                    "snapshot publish attempt did not start keep-COW finalizer".into(),
+                ));
+            }
+        };
+
+        match result {
+            Ok(kept_cow) => {
+                self.state = SnapshotPublishState::KeptCow(kept_cow);
+                Ok(())
+            }
+            Err(e) => {
+                self.state = SnapshotPublishState::Empty;
+                Err(SnapshotError::Teardown(format!(
+                    "destroy_keep_cow exhausted retries; device abandoned, snapshot aborted (last error: {e})"
+                )))
+            }
+        }
+    }
+
+    async fn commit_success(&mut self, output: &SnapshotOutputPaths) -> Result<(), SnapshotError> {
+        self.resolve_keep_cow().await?;
+
+        let state = std::mem::replace(&mut self.state, SnapshotPublishState::Empty);
+        match state {
+            SnapshotPublishState::KeptCow(kept_cow) => {
+                match commit_snapshot_cow_output(&kept_cow, output) {
+                    Ok(()) => {
+                        self.state = SnapshotPublishState::Committed;
+                        Ok(())
+                    }
+                    Err(e) => {
+                        self.state = SnapshotPublishState::KeptCow(kept_cow);
+                        Err(e)
+                    }
+                }
+            }
+            SnapshotPublishState::Committed => {
+                self.state = SnapshotPublishState::Committed;
+                Ok(())
+            }
+            other => {
+                self.state = other;
+                Err(SnapshotError::Teardown(
+                    "snapshot publish attempt reached commit without kept COW".into(),
+                ))
+            }
+        }
+    }
+
+    async fn cleanup_after_cancellation(&mut self) -> bool {
+        if !self.has_cleanup_work() {
+            return true;
+        }
+
+        if matches!(self.state, SnapshotPublishState::HoldingDevice(_)) {
+            let SnapshotPublishState::HoldingDevice(cow_device) =
+                std::mem::replace(&mut self.state, SnapshotPublishState::Empty)
+            else {
+                return true;
+            };
+            return destroy_snapshot_cow_and_cleanup_attempt_dir(cow_device)
+                .await
+                .map_or_else(
+                    |e| {
+                        tracing::warn!(
+                            error = %e,
+                            "failed to destroy COW device during snapshot publish cleanup"
+                        );
+                        false
+                    },
+                    |()| true,
+                );
+        }
+
+        if let Err(e) = self.resolve_keep_cow().await {
+            tracing::warn!(
+                error = %e,
+                "failed to resolve keep-COW finalizer during snapshot publish cleanup"
+            );
+            return false;
+        }
+
+        self.cleanup_resolved_kept_cow().await
+    }
+
+    async fn cleanup_resolved_kept_cow(&mut self) -> bool {
+        let state = std::mem::replace(&mut self.state, SnapshotPublishState::Empty);
+        match state {
+            SnapshotPublishState::KeptCow(kept_cow) => {
+                let cleaned = cleanup_kept_cow_after_publish_cancellation(&kept_cow).await;
+                if !cleaned {
+                    self.state = SnapshotPublishState::KeptCow(kept_cow);
+                }
+                cleaned
+            }
+            SnapshotPublishState::Committed | SnapshotPublishState::Empty => true,
+            other => {
+                self.state = other;
+                false
+            }
+        }
+    }
+}
+
+async fn cleanup_kept_cow_after_publish_cancellation(kept_cow: &KeptCow) -> bool {
+    let mut cleaned = true;
+    for path in [&kept_cow.bitmap_file, &kept_cow.cow_file] {
+        match tokio::fs::remove_file(path).await {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    path = %path.display(),
+                    "failed to cleanup kept COW artifact after snapshot publish cancellation"
+                );
+                cleaned = false;
+            }
+        }
+    }
+    cleanup_snapshot_attempt_dir_for_cow(&kept_cow.cow_file).await && cleaned
+}
+
+fn commit_snapshot_cow_output(
+    kept_cow: &KeptCow,
     output: &SnapshotOutputPaths,
 ) -> Result<(), SnapshotError> {
-    let kept_cow = cow_device
-        .destroy_keep_cow_with_retries(cow_destroy_retry_policy())
-        .await
-        .map_err(|e| {
-            SnapshotError::Teardown(format!(
-                "destroy_keep_cow exhausted retries; device abandoned, snapshot aborted (last error: {e})"
-            ))
-        })?;
     // destroy_keep_cow succeeded, so save_bitmap succeeded — the bitmap
     // sidecar is on disk. Rename is unconditional: if the sidecar is
     // missing we want to fail loudly, not silently produce a
     // bitmap-less snapshot.
-    tokio::fs::rename(&kept_cow.bitmap_file, &output.cow_bitmap()).await?;
-    tokio::fs::rename(&kept_cow.cow_file, &output.cow()).await?;
-    cleanup_snapshot_attempt_dir_for_cow(&kept_cow.cow_file).await;
+    std::fs::rename(&kept_cow.bitmap_file, output.cow_bitmap())?;
+    std::fs::rename(&kept_cow.cow_file, output.cow())?;
+    cleanup_snapshot_attempt_dir_for_cow_sync(&kept_cow.cow_file);
     // Persist the output directory so all four artifact dir entries
     // (snapshot.bin and memory.bin written by Firecracker via the API,
     // cow.img and cow.img.bitmap just renamed in) are durable. Without
@@ -472,7 +685,7 @@ async fn finalize_snapshot_cow_output(
     // missing or rolled back — worst case, cow.img present but
     // cow.img.bitmap absent, which silently corrupts restore reads
     // (same failure class as #9794, one layer up).
-    sync_snapshot_output_dir(output).await?;
+    sync_snapshot_output_dir(output)?;
 
     // Commit point: the marker is written only after all artifacts are present
     // and the output directory has been synced. Marker publication uses a
@@ -511,6 +724,7 @@ struct SnapshotAttempt {
     netns_pool: Option<NetnsPool>,
     device_pool: Option<DevicePoolHandle>,
     cow_device: Option<PooledNbdCowDevice>,
+    publish_attempt: Option<SnapshotPublishAttempt>,
     network: Option<NetnsLease>,
     child: Option<tokio::process::Child>,
     stdout_handle: Option<JoinHandle<()>>,
@@ -536,6 +750,7 @@ impl SnapshotAttempt {
             netns_pool: Some(netns_pool),
             device_pool: Some(device_pool),
             cow_device: Some(cow_device),
+            publish_attempt: None,
             network: None,
             child: None,
             stdout_handle: None,
@@ -559,6 +774,7 @@ impl SnapshotAttempt {
             netns_pool: Some(NetnsPool::inactive_for_test()),
             device_pool: None,
             cow_device: None,
+            publish_attempt: None,
             network: None,
             child: None,
             stdout_handle: None,
@@ -591,6 +807,16 @@ impl SnapshotAttempt {
     #[cfg(test)]
     fn track_stderr_handle_for_test(&mut self, handle: JoinHandle<()>) {
         self.stderr_handle = Some(handle);
+    }
+
+    #[cfg(test)]
+    fn track_device_pool_for_test(&mut self, device_pool: DevicePoolHandle) {
+        self.device_pool = Some(device_pool);
+    }
+
+    #[cfg(test)]
+    fn track_publish_attempt_for_test(&mut self, publish_attempt: SnapshotPublishAttempt) {
+        self.publish_attempt = Some(publish_attempt);
     }
 
     #[cfg(test)]
@@ -789,6 +1015,7 @@ impl SnapshotAttempt {
     }
 
     async fn cleanup_device_pool(&mut self) {
+        self.cleanup_publish_attempt().await;
         if let Some(device_pool) = self.device_pool.as_ref() {
             device_pool.cleanup().await;
         }
@@ -831,13 +1058,31 @@ impl SnapshotAttempt {
         let cow_device = self.cow_device.take().ok_or_else(|| {
             SnapshotError::Teardown("snapshot attempt missing COW device before finalize".into())
         })?;
-        finalize_snapshot_cow_output(cow_device, &self.output).await
+        self.publish_attempt = Some(SnapshotPublishAttempt::new(cow_device));
+        let publish_attempt = self.publish_attempt.as_mut().ok_or_else(|| {
+            SnapshotError::Teardown("snapshot publish attempt missing before finalize".into())
+        })?;
+        publish_attempt.commit_success(&self.output).await?;
+        self.publish_attempt.take();
+        Ok(())
     }
 
     async fn cleanup_failure(&mut self) {
         if let Some(cow_device) = self.cow_device.take() {
             destroy_snapshot_cow_after_workflow_error(cow_device).await;
         }
+        self.cleanup_publish_attempt().await;
+    }
+
+    async fn cleanup_publish_attempt(&mut self) -> bool {
+        let Some(publish_attempt) = self.publish_attempt.as_mut() else {
+            return true;
+        };
+        let cleaned = publish_attempt.cleanup_after_cancellation().await;
+        if cleaned || !publish_attempt.has_cleanup_work() {
+            self.publish_attempt.take();
+        }
+        cleaned
     }
 
     fn drop_forwarder_handles(&mut self) {
@@ -849,6 +1094,10 @@ impl SnapshotAttempt {
         self.device_pool.is_some()
             || self.netns_pool.is_some()
             || self.cow_device.is_some()
+            || self
+                .publish_attempt
+                .as_ref()
+                .is_some_and(SnapshotPublishAttempt::has_cleanup_work)
             || self.network.is_some()
             || self.child.is_some()
             || self.stdout_handle.is_some()
@@ -864,12 +1113,15 @@ impl SnapshotAttempt {
             netns_pool: self.netns_pool.take(),
             device_pool: self.device_pool.take(),
             cow_device: self.cow_device.take(),
+            publish_attempt: self.publish_attempt.take(),
             network: self.network.take(),
             child: self.child.take(),
             stdout_handle: self.stdout_handle.take(),
             stderr_handle: self.stderr_handle.take(),
             #[cfg(test)]
             cleanup_complete_tx: self.cleanup_complete_tx.take(),
+            #[cfg(test)]
+            cleanup_events: Vec::new(),
         })
     }
 }
@@ -879,21 +1131,27 @@ struct SnapshotCleanupReport {
     stdout_forwarder_finished: bool,
     stderr_forwarder_finished: bool,
     network_released: bool,
+    publish_cleaned: bool,
     cow_destroyed: bool,
     device_pool_cleaned: bool,
     netns_pool_cleaned: bool,
+    #[cfg(test)]
+    cleanup_events: Vec<&'static str>,
 }
 
 struct SnapshotCleanupFinalizer {
     netns_pool: Option<NetnsPool>,
     device_pool: Option<DevicePoolHandle>,
     cow_device: Option<PooledNbdCowDevice>,
+    publish_attempt: Option<SnapshotPublishAttempt>,
     network: Option<NetnsLease>,
     child: Option<tokio::process::Child>,
     stdout_handle: Option<JoinHandle<()>>,
     stderr_handle: Option<JoinHandle<()>>,
     #[cfg(test)]
     cleanup_complete_tx: Option<tokio::sync::oneshot::Sender<SnapshotCleanupReport>>,
+    #[cfg(test)]
+    cleanup_events: Vec<&'static str>,
 }
 
 impl SnapshotCleanupFinalizer {
@@ -919,6 +1177,7 @@ impl SnapshotCleanupFinalizer {
         .await;
 
         let network_released = self.release_network().await;
+        let publish_cleaned = self.cleanup_publish_attempt().await;
         let cow_destroyed = self.destroy_cow().await;
         let device_pool_cleaned = self.cleanup_device_pool().await;
         let netns_pool_cleaned = self.cleanup_netns_pool().await;
@@ -928,9 +1187,12 @@ impl SnapshotCleanupFinalizer {
             stdout_forwarder_finished,
             stderr_forwarder_finished,
             network_released,
+            publish_cleaned,
             cow_destroyed,
             device_pool_cleaned,
             netns_pool_cleaned,
+            #[cfg(test)]
+            cleanup_events: self.cleanup_events.clone(),
         };
 
         tracing::info!(
@@ -938,6 +1200,7 @@ impl SnapshotCleanupFinalizer {
             stdout_forwarder_finished = report.stdout_forwarder_finished,
             stderr_forwarder_finished = report.stderr_forwarder_finished,
             network_released = report.network_released,
+            publish_cleaned = report.publish_cleaned,
             cow_destroyed = report.cow_destroyed,
             device_pool_cleaned = report.device_pool_cleaned,
             netns_pool_cleaned = report.netns_pool_cleaned,
@@ -969,6 +1232,19 @@ impl SnapshotCleanupFinalizer {
         self.network.is_none()
     }
 
+    async fn cleanup_publish_attempt(&mut self) -> bool {
+        let Some(publish_attempt) = self.publish_attempt.as_mut() else {
+            return true;
+        };
+        #[cfg(test)]
+        self.cleanup_events.push("publish");
+        let cleaned = publish_attempt.cleanup_after_cancellation().await;
+        if cleaned || !publish_attempt.has_cleanup_work() {
+            self.publish_attempt.take();
+        }
+        cleaned
+    }
+
     async fn destroy_cow(&mut self) -> bool {
         let Some(cow_device) = self.cow_device.take() else {
             return true;
@@ -996,6 +1272,8 @@ impl SnapshotCleanupFinalizer {
         let Some(device_pool) = self.device_pool.as_ref() else {
             return true;
         };
+        #[cfg(test)]
+        self.cleanup_events.push("device_pool");
         device_pool.cleanup().await;
         self.device_pool.take();
         true
@@ -1017,6 +1295,10 @@ impl SnapshotCleanupFinalizer {
         self.device_pool.is_some()
             || self.netns_pool.is_some()
             || self.cow_device.is_some()
+            || self
+                .publish_attempt
+                .as_ref()
+                .is_some_and(SnapshotPublishAttempt::has_cleanup_work)
             || self.network.is_some()
             || self.child.is_some()
             || self.stdout_handle.is_some()
@@ -1034,6 +1316,10 @@ impl Drop for SnapshotCleanupFinalizer {
             has_device_pool = self.device_pool.is_some(),
             has_netns_pool = self.netns_pool.is_some(),
             has_cow_device = self.cow_device.is_some(),
+            has_publish_attempt = self
+                .publish_attempt
+                .as_ref()
+                .is_some_and(SnapshotPublishAttempt::has_cleanup_work),
             has_network = self.network.is_some(),
             has_child = self.child.is_some(),
             has_stdout_forwarder = self.stdout_handle.is_some(),
@@ -1051,6 +1337,10 @@ impl Drop for SnapshotAttempt {
         let has_device_pool = finalizer.device_pool.is_some();
         let has_netns_pool = finalizer.netns_pool.is_some();
         let has_cow_device = finalizer.cow_device.is_some();
+        let has_publish_attempt = finalizer
+            .publish_attempt
+            .as_ref()
+            .is_some_and(SnapshotPublishAttempt::has_cleanup_work);
         let has_network = finalizer.network.is_some();
         let has_child = finalizer.child.is_some();
         let has_stdout_forwarder = finalizer.stdout_handle.is_some();
@@ -1070,6 +1360,7 @@ impl Drop for SnapshotAttempt {
                     has_device_pool,
                     has_netns_pool,
                     has_cow_device,
+                    has_publish_attempt,
                     has_network,
                     has_child,
                     has_stdout_forwarder,
@@ -1085,6 +1376,7 @@ impl Drop for SnapshotAttempt {
                 has_device_pool,
                 has_netns_pool,
                 has_cow_device,
+                has_publish_attempt,
                 has_network,
                 has_child,
                 has_stdout_forwarder,
@@ -1647,6 +1939,315 @@ mod tests {
         assert!(
             !provider.is_complete(output.dir()).await.unwrap(),
             "valid marker must not hide a missing snapshot artifact"
+        );
+    }
+
+    async fn write_required_snapshot_artifacts(output: &SnapshotOutputPaths) {
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        for artifact in [output.snapshot(), output.memory()] {
+            tokio::fs::write(&artifact, b"snapshot artifact")
+                .await
+                .unwrap_or_else(|e| panic!("write {}: {e}", artifact.display()));
+        }
+    }
+
+    async fn write_kept_cow_for_test(work: &Path, token: &str) -> KeptCow {
+        let cow_file = snapshot_attempt_cow_file(work, token);
+        let bitmap_file = cow_file.with_file_name("cow.img.bitmap");
+        let attempt_dir = cow_file.parent().expect("attempt dir");
+        tokio::fs::create_dir_all(attempt_dir)
+            .await
+            .expect("create attempt dir");
+        tokio::fs::write(&cow_file, b"cow")
+            .await
+            .expect("write cow");
+        tokio::fs::write(&bitmap_file, b"bitmap")
+            .await
+            .expect("write bitmap");
+        KeptCow {
+            cow_file,
+            bitmap_file,
+        }
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_commit_moves_cow_and_writes_complete_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "publish-ok").await;
+        let attempt_dir = kept_cow
+            .cow_file
+            .parent()
+            .expect("attempt dir")
+            .to_path_buf();
+
+        commit_snapshot_cow_output(&kept_cow, &output).expect("commit snapshot cow output");
+
+        assert!(
+            tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "stable cow should be published"
+        );
+        assert!(
+            tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "stable bitmap should be published"
+        );
+        assert!(
+            !tokio::fs::try_exists(attempt_dir).await.unwrap(),
+            "empty attempt dir should be removed after publish"
+        );
+        let marker = tokio::fs::read(output.complete_marker())
+            .await
+            .expect("read marker");
+        assert_eq!(marker, SNAPSHOT_COMPLETE_MARKER_CONTENT);
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_commit_failure_does_not_leave_complete_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "missing-core-artifacts").await;
+
+        let err = commit_snapshot_cow_output(&kept_cow, &output).expect_err("commit should fail");
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "failed publish must not leave complete marker"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(
+            !provider.is_complete(output.dir()).await.unwrap(),
+            "partial stable output without marker must remain incomplete"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_commit_failure_keeps_cleanup_state_for_partial_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "commit-cleanup").await;
+        let mut publish_attempt = SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow);
+
+        let err = publish_attempt
+            .commit_success(&output)
+            .await
+            .expect_err("commit should fail without snapshot and memory artifacts");
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            publish_attempt.has_cleanup_work(),
+            "failed commit must keep publish state so cleanup can finish"
+        );
+        assert!(
+            tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "failed marker publication may leave partial stable cow"
+        );
+        assert!(
+            tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "failed marker publication may leave partial stable bitmap"
+        );
+
+        assert!(publish_attempt.cleanup_after_cancellation().await);
+        assert!(
+            !publish_attempt.has_cleanup_work(),
+            "cleanup should resolve retained publish state"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "cleanup must not write marker for failed commit"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(
+            !provider.is_complete(output.dir()).await.unwrap(),
+            "partial stable output must remain incomplete"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_cleanup_kept_cow_does_not_publish_stable_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "cleanup-kept").await;
+        let mut publish_attempt = SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow);
+
+        assert!(publish_attempt.cleanup_after_cancellation().await);
+
+        assert!(
+            !tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "cancellation cleanup must not publish stable cow"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "cancellation cleanup must not publish stable bitmap"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "cancellation cleanup must not write complete marker"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(!provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_cleanup_keeps_retry_state_when_temp_cleanup_fails() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let cow_file = snapshot_attempt_cow_file(&output.work_dir(), "cleanup-retry");
+        let attempt_dir = cow_file.parent().expect("attempt dir");
+        tokio::fs::create_dir_all(&cow_file)
+            .await
+            .expect("create cow path as directory");
+        let bitmap_file = attempt_dir.join("cow.img.bitmap");
+        tokio::fs::write(&bitmap_file, b"bitmap")
+            .await
+            .expect("write bitmap");
+        let mut publish_attempt = SnapshotPublishAttempt::new_with_kept_cow_for_test(KeptCow {
+            cow_file,
+            bitmap_file,
+        });
+
+        assert!(
+            !publish_attempt.cleanup_after_cancellation().await,
+            "cleanup should report failure when a temp artifact cannot be removed"
+        );
+        assert!(
+            publish_attempt.has_cleanup_work(),
+            "failed temp cleanup must retain publish state for a later retry"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "failed cleanup must not publish marker"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_cleanup_keep_cow_error_does_not_publish() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let mut publish_attempt =
+            SnapshotPublishAttempt::new_with_keep_future_for_test(async move {
+                Err(nbd_cow::error::NbdCowError::Io(std::io::Error::other(
+                    "keep cow failed",
+                )))
+            });
+
+        assert!(
+            !publish_attempt.cleanup_after_cancellation().await,
+            "keep-COW failure should report cleanup failure"
+        );
+        assert!(
+            !publish_attempt.has_cleanup_work(),
+            "failed keep-COW finalizer has already resolved the NBD lease path"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "failed keep-COW cleanup must not write marker"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(!provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn snapshot_publish_cleanup_waits_for_keep_cow_without_committing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "pending-keep").await;
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (kept_tx, kept_rx) = tokio::sync::oneshot::channel();
+        let mut publish_attempt =
+            SnapshotPublishAttempt::new_with_keep_future_for_test(async move {
+                let _ = started_tx.send(());
+                kept_rx.await.map_err(|_| {
+                    nbd_cow::error::NbdCowError::Io(std::io::Error::other("test sender dropped"))
+                })
+            });
+
+        let cleanup_task =
+            tokio::spawn(async move { publish_attempt.cleanup_after_cancellation().await });
+        started_rx
+            .await
+            .expect("keep-COW finalizer should be polled");
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "pending publish cleanup must not write marker before keep-COW resolves"
+        );
+
+        kept_tx.send(kept_cow).expect("send kept cow");
+        assert!(
+            cleanup_task.await.expect("cleanup task should join"),
+            "cleanup should succeed after keep-COW resolves"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "cleanup must not publish stable cow after keep-COW resolves"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "cleanup must not publish stable bitmap after keep-COW resolves"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "cleanup must not write complete marker after keep-COW resolves"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_cleanup_finalizer_resolves_publish_before_device_pool_cleanup() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+        let kept_cow =
+            write_kept_cow_for_test(&attempt.output.work_dir(), "publish-before-device-pool").await;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        attempt.track_publish_attempt_for_test(SnapshotPublishAttempt::new_with_kept_cow_for_test(
+            kept_cow,
+        ));
+        attempt.track_device_pool_for_test(DevicePoolHandle::new(
+            nbd_cow::pool::DevicePoolConfig::default(),
+        ));
+        attempt.notify_cleanup_complete_for_test(tx);
+
+        drop(attempt);
+        let report = wait_for_snapshot_cleanup(rx).await;
+
+        assert!(report.publish_cleaned);
+        assert!(report.device_pool_cleaned);
+        assert_eq!(
+            report.cleanup_events,
+            vec!["publish", "device_pool"],
+            "publish cleanup must finish before device pool cleanup"
         );
     }
 

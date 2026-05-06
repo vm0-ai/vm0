@@ -827,6 +827,7 @@ function AgentTabContent({
   ownerId,
   modelProviderId,
   selectedModel,
+  preferPersonalProvider,
 }: {
   activeTab: string;
   agentId: string;
@@ -838,6 +839,7 @@ function AgentTabContent({
   ownerId: string;
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider: boolean;
 }) {
   const deleteAgent = useSet(deleteAgent$);
   const nav = useSet(detachedNavigateTo$);
@@ -864,13 +866,14 @@ function AgentTabContent({
     case "profile": {
       return (
         <ZeroSettingsTab
-          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${modelProviderId ?? ""}\0${selectedModel ?? ""}`}
+          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}\0${modelProviderId ?? ""}\0${selectedModel ?? ""}\0${preferPersonalProvider ? "1" : "0"}`}
           displayName={displayName}
           description={description}
           sound={resolvedSound}
           avatarUrl={avatarUrl}
           modelProviderId={modelProviderId}
           selectedModel={selectedModel}
+          preferPersonalProvider={preferPersonalProvider}
           updateSettings$={updateAgentSettings$}
           inputId="job-agent-name"
           isDefaultAgent={isDefaultAgent}
@@ -892,17 +895,31 @@ function useAgentFields() {
   const detail = useLastResolved(agentDetail$);
   // Both signals fetch from zeroAgentsByIdContract; pick whichever resolved first
   const source = agent ?? detail;
-  const agentId = source?.agentId ?? "";
+  if (!source) {
+    return {
+      detail: detail ?? null,
+      agentId: "",
+      displayName: "Agent",
+      description: "",
+      avatarUrl: null,
+      resolvedSound: resolveSound("professional"),
+      ownerId: "",
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
+    };
+  }
   return {
     detail: detail ?? null,
-    agentId,
-    displayName: source?.displayName ?? (agentId || "Agent"),
-    description: source?.description ?? "",
-    avatarUrl: source?.avatarUrl ?? null,
-    resolvedSound: resolveSound(source?.sound ?? "professional"),
-    ownerId: source?.ownerId ?? "",
-    modelProviderId: source?.modelProviderId ?? null,
-    selectedModel: source?.selectedModel ?? null,
+    agentId: source.agentId,
+    displayName: source.displayName ?? (source.agentId || "Agent"),
+    description: source.description ?? "",
+    avatarUrl: source.avatarUrl,
+    resolvedSound: resolveSound(source.sound ?? "professional"),
+    ownerId: source.ownerId,
+    modelProviderId: source.modelProviderId,
+    selectedModel: source.selectedModel,
+    preferPersonalProvider: source.preferPersonalProvider,
   };
 }
 
@@ -975,6 +992,7 @@ export function ZeroJobDetailPage() {
           ownerId={fields.ownerId}
           modelProviderId={fields.modelProviderId}
           selectedModel={fields.selectedModel}
+          preferPersonalProvider={fields.preferPersonalProvider}
         />
       </main>
     </div>

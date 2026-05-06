@@ -17,9 +17,25 @@ class PromiseTracker {
   collected = new Set<Promise<unknown>>();
   reasons = new Map<Promise<unknown>, Reason>();
   descriptions = new Map<Promise<unknown>, string>();
+  handledErrors = new WeakSet<object>();
 }
 
 const tracker = new PromiseTracker();
+
+export function markDetachedErrorHandled(error: unknown): unknown {
+  if ((typeof error === "object" || typeof error === "function") && error) {
+    tracker.handledErrors.add(error);
+  }
+  return error;
+}
+
+function isHandledDetachedError(error: unknown): boolean {
+  return (
+    (typeof error === "object" || typeof error === "function") &&
+    error !== null &&
+    tracker.handledErrors.has(error)
+  );
+}
 
 export function detach<T>(
   promise: T | Promise<T>,
@@ -38,7 +54,7 @@ export function detach<T>(
     silencePromise = Promise.resolve(promise).then(
       () => {},
       (error: unknown) => {
-        if (!isAbortError(error)) {
+        if (!isAbortError(error) && !isHandledDetachedError(error)) {
           L.error(`Detached promise rejected [${reason}]`, error);
         }
       },

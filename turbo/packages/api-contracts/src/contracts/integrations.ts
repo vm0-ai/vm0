@@ -119,11 +119,19 @@ const telegramBotTokenStatusSchema = z.enum(["valid", "invalid", "unknown"]);
 
 const telegramBotListItemSchema = z.object({
   id: z.string(),
+  kind: z.enum(["custom", "official"]).optional(),
   username: z.string().nullable(),
   agent: z.object({ id: z.string(), name: z.string() }).nullable(),
   isOwner: z.boolean(),
   isConnected: z.boolean(),
   tokenStatus: telegramBotTokenStatusSchema,
+  official: z
+    .object({
+      configured: z.boolean(),
+      usesDefaultAgent: z.boolean(),
+      linkedTelegramUserId: z.string().nullable(),
+    })
+    .optional(),
 });
 
 const listTelegramBotsResponseSchema = z.object({

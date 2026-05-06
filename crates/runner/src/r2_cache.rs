@@ -122,7 +122,9 @@
 
 use std::path::{Path, PathBuf};
 
-use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region, SharedCredentialsProvider};
+use aws_sdk_s3::config::{
+    BehaviorVersion, Credentials, Region, ResponseChecksumValidation, SharedCredentialsProvider,
+};
 use aws_sdk_s3::error::SdkError;
 use aws_sdk_s3::operation::head_object::HeadObjectError;
 use aws_sdk_s3::primitives::ByteStream;
@@ -247,6 +249,11 @@ impl R2ImageCache {
             .region(Region::new("auto"))
             .endpoint_url(endpoint)
             .credentials_provider(SharedCredentialsProvider::new(creds))
+            // The SDK default enables GetObject checksum validation when supported.
+            // R2/S3 multipart objects may return part-level checksums that the Rust
+            // SDK cannot validate, which only produces noisy warnings. We do not
+            // explicitly request checksum validation on R2 cache downloads.
+            .response_checksum_validation(ResponseChecksumValidation::WhenRequired)
             .build();
         let client = aws_sdk_s3::Client::from_conf(config);
 

@@ -12,6 +12,8 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { searchCommand } from "../search";
 
+const AGENT_ID = "11111111-1111-4111-8111-111111111111";
+
 function makeEvent(
   sequenceNumber: number,
   text: string,
@@ -129,7 +131,7 @@ describe("zero logs search command", () => {
     expect(capturedUrl?.searchParams.get("after")).toBe("5");
   });
 
-  it("should pass agent and run filters", async () => {
+  it("should pass agentId and run filters", async () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
@@ -143,12 +145,12 @@ describe("zero logs search command", () => {
       "cli",
       "deploy",
       "--agent",
-      "zero",
+      AGENT_ID,
       "--run",
       "abc12345-1234-1234-1234-123456789abc",
     ]);
 
-    expect(capturedUrl?.searchParams.get("agent")).toBe("zero");
+    expect(capturedUrl?.searchParams.get("agentId")).toBe(AGENT_ID);
     expect(capturedUrl?.searchParams.get("runId")).toBe(
       "abc12345-1234-1234-1234-123456789abc",
     );

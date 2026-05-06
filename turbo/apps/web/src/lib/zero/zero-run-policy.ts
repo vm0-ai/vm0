@@ -160,7 +160,7 @@ export async function validateComposeRequirements(
  * Returns null only when the user has no personal tier (or it's gated off)
  * AND the org has no `isDefault: true` provider at all.
  */
-export async function resolveProviderTypeForAdmission(params: {
+async function resolveProviderTypeForAdmission(params: {
   orgId: string;
   userId: string;
   modelProvider?: string | null;
@@ -199,43 +199,43 @@ export async function resolveProviderTypeForAdmission(params: {
   return def?.type ?? null;
 }
 
+interface RunAdmissionContext {
+  orgId: string;
+  userId: string;
+  providerType: ModelProviderType | null;
+}
+
+export async function resolveRunAdmissionContext(params: {
+  orgId: string;
+  userId: string;
+  modelProvider?: string | null;
+  modelProviderId?: string | null;
+  composeFramework: string;
+  preferPersonalProvider?: boolean;
+}): Promise<RunAdmissionContext> {
+  return {
+    orgId: params.orgId,
+    userId: params.userId,
+    providerType: await resolveProviderTypeForAdmission(params),
+  };
+}
+
 /**
- * LLM-run credit admission. Resolves vm0 vs. BYOK from `modelProvider`
- * (or the org default when nullish) and delegates to `checkOrgCredits`
- * for the vm0 case. Returns silently for BYOK — the user pays the
- * provider, so no vm0 balance is touched.
+ * Credit admission for an already-resolved run context.
  *
- * Accepts an optional `db` so callers inside a transaction (e.g.
- * `drainOrgQueue` under `pg_advisory_xact_lock`) keep the read within
- * the same boundary. Non-LLM callers use `checkOrgCredits` directly.
+ * vm0-managed providers spend vm0 credits and must pass the org/member credit
+ * gate. BYOK and personal providers are paid outside vm0, so they skip this
+ * check. Callers must resolve the provider from the current run context first;
+ * raw `modelProvider` strings are not sufficient because UI calls can carry
+ * only `modelProviderId`.
  */
-export async function checkOrgCreditsForRun(
-  orgId: string,
-  userId: string,
-  modelProvider: string | null | undefined,
+export async function checkOrgCreditsForRunAdmission(
+  context: RunAdmissionContext,
   db: Database = globalThis.services.db,
 ): Promise<void> {
-  // Fast exit for explicit BYOK — no DB touch.
-  if (modelProvider && modelProvider !== "vm0") {
-    return;
-  }
+  if (context.providerType !== "vm0") return;
 
-  let isVm0 = modelProvider === "vm0";
-  if (!isVm0) {
-    // vm0 is the only credit-triggering provider, and it lives under
-    // claude-code, so the "is the org's default vm0?" check is intrinsically
-    // claude-code-scoped regardless of the run's framework.
-    const defaultProviderType = await getOrgDefaultModelProviderType(
-      orgId,
-      "claude-code",
-      db,
-    );
-    isVm0 = defaultProviderType === "vm0";
-  }
-
-  if (!isVm0) return;
-
-  await checkOrgCredits(orgId, userId, db);
+  await checkOrgCredits(context.orgId, context.userId, db);
 }
 
 /**

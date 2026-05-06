@@ -31,6 +31,10 @@ import {
   apiOrgModelProvidersHandlers,
   resetMockOrgModelProviders,
 } from "./api-org-model-providers.ts";
+import {
+  apiPersonalModelProvidersHandlers,
+  resetMockPersonalModelProviders,
+} from "./api-personal-model-providers.ts";
 import { apiSecretsHandlers, resetMockSecrets } from "./api-secrets.ts";
 import { apiVariablesHandlers, resetMockVariables } from "./api-variables.ts";
 import { exampleHandlers } from "./example.ts";
@@ -84,6 +88,7 @@ export const handlers = [
   ...apiUsageHandlers,
   ...apiUsageInsightHandlers,
   ...apiOrgModelProvidersHandlers,
+  ...apiPersonalModelProvidersHandlers,
   ...apiSecretsHandlers,
   ...apiVariablesHandlers,
   ...exampleHandlers,
@@ -115,6 +120,7 @@ export function resetAllMockHandlers(): void {
   resetMockTelegramIntegration();
   resetMockUserPreferences();
   resetMockOrgModelProviders();
+  resetMockPersonalModelProviders();
   resetMockBilling();
   resetMockSlackConnect();
   resetAblySubscriptions();

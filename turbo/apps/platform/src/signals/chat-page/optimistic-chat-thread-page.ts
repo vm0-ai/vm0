@@ -1,13 +1,17 @@
 import { command, computed } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { clerk$ } from "../auth.ts";
-import { writeThreadAgentId$ } from "../external/idb-thread-agent-store.ts";
+import { patchThreadMeta$ } from "../external/idb-thread-meta-store.ts";
 import {
   chatMessagesContract,
   chatThreadsContract,
   type ChatThreadListItem,
   type ModelSelectionRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  getDefaultModel,
+  type ModelProviderResponse,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
@@ -23,7 +27,10 @@ import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";
-import { prepareUserMessageFromDraft$ } from "./resolve-draft-attachments.ts";
+import {
+  prepareUserMessageFromDraft$,
+  shouldExcludeVisualAttachmentsForModel,
+} from "./resolve-draft-attachments.ts";
 import {
   allPendingChatThreads$,
   clearMatchingOptimisticChatThread$,
@@ -34,6 +41,8 @@ import {
   type PendingChatThread,
 } from "./optimistic-chat-thread-state.ts";
 import { toVoid } from "../utils.ts";
+import { agentById } from "../agent.ts";
+import { orgModelProviders$ } from "../external/org-model-providers.ts";
 
 export type { OptimisticChatPane };
 export { optimisticChatThread$ };
@@ -60,7 +69,7 @@ const writeThreadAgentToCache$ = command(
     if (!userId || !orgId) {
       return;
     }
-    await writeThreadAgentId$(userId, orgId, threadId, agentId, signal);
+    await patchThreadMeta$(userId, orgId, threadId, { agentId }, signal);
   },
 );
 
@@ -338,10 +347,37 @@ const sendNewThreadMessage$ = command(
     signal: AbortSignal,
   ): Promise<SendNewThreadMessagePending | null> => {
     const draft = get(talkDraft$);
+    let effectiveSelectedModel = modelSelection?.selectedModel;
+    if (!effectiveSelectedModel) {
+      const agent = await get(agentById(agentId));
+      signal.throwIfAborted();
+      if (agent?.modelProviderId && agent.selectedModel) {
+        effectiveSelectedModel = agent.selectedModel;
+      }
+    }
+    if (!effectiveSelectedModel) {
+      const { modelProviders } = await get(orgModelProviders$);
+      signal.throwIfAborted();
+      const defaultProvider = (modelProviders as ModelProviderResponse[]).find(
+        (provider) => {
+          return provider.isDefault;
+        },
+      );
+      const defaultModel = defaultProvider
+        ? getDefaultModel(defaultProvider.type)
+        : undefined;
+      effectiveSelectedModel =
+        defaultProvider?.selectedModel ?? defaultModel ?? undefined;
+    }
     const prepared = await set(
       prepareUserMessageFromDraft$,
       draft,
       prompt,
+      {
+        excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+          effectiveSelectedModel,
+        ),
+      },
       signal,
     );
 

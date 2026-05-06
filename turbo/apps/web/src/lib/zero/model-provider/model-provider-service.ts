@@ -36,6 +36,16 @@ interface ModelProviderInfo {
   secretNames?: string[] | null;
   isDefault: boolean;
   selectedModel: string | null;
+  // OAuth refresh state (mirrors `connectors`); set by the firewall refresh
+  // pipeline for OAuth-typed providers like chatgpt-oauth-token. Other
+  // provider types leave these at the default values.
+  tokenExpiresAt: Date | null;
+  needsReconnect: boolean;
+  lastRefreshErrorCode: string | null;
+  // ChatGPT-only metadata captured at OAuth connect time. null on every
+  // other provider type. Surfaced so the UI can render workspace + plan.
+  workspaceName: string | null;
+  planType: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -55,6 +65,11 @@ function selectProviderRow(): {
   selectedModel: typeof modelProviders.selectedModel;
   authMethod: typeof modelProviders.authMethod;
   secretName: typeof secrets.name;
+  tokenExpiresAt: typeof modelProviders.tokenExpiresAt;
+  needsReconnect: typeof modelProviders.needsReconnect;
+  lastRefreshErrorCode: typeof modelProviders.lastRefreshErrorCode;
+  workspaceName: typeof modelProviders.workspaceName;
+  planType: typeof modelProviders.planType;
   createdAt: typeof modelProviders.createdAt;
   updatedAt: typeof modelProviders.updatedAt;
 } {
@@ -66,6 +81,11 @@ function selectProviderRow(): {
     selectedModel: modelProviders.selectedModel,
     authMethod: modelProviders.authMethod,
     secretName: secrets.name,
+    tokenExpiresAt: modelProviders.tokenExpiresAt,
+    needsReconnect: modelProviders.needsReconnect,
+    lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
+    workspaceName: modelProviders.workspaceName,
+    planType: modelProviders.planType,
     createdAt: modelProviders.createdAt,
     updatedAt: modelProviders.updatedAt,
   };
@@ -100,6 +120,11 @@ function toModelProviderInfo(params: {
   secretNames?: string[] | null;
   isDefault: boolean;
   selectedModel: string | null;
+  tokenExpiresAt?: Date | null;
+  needsReconnect?: boolean;
+  lastRefreshErrorCode?: string | null;
+  workspaceName?: string | null;
+  planType?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): ModelProviderInfo {
@@ -121,6 +146,11 @@ function toModelProviderInfo(params: {
     secretNames,
     isDefault: params.isDefault,
     selectedModel: params.selectedModel,
+    tokenExpiresAt: params.tokenExpiresAt ?? null,
+    needsReconnect: params.needsReconnect ?? false,
+    lastRefreshErrorCode: params.lastRefreshErrorCode ?? null,
+    workspaceName: params.workspaceName ?? null,
+    planType: params.planType ?? null,
     createdAt: params.createdAt,
     updatedAt: params.updatedAt,
   };
@@ -207,6 +237,11 @@ async function listModelProviders(
       authMethod: row.authMethod,
       isDefault: row.isDefault,
       selectedModel: row.selectedModel,
+      tokenExpiresAt: row.tokenExpiresAt,
+      needsReconnect: row.needsReconnect,
+      lastRefreshErrorCode: row.lastRefreshErrorCode,
+      workspaceName: row.workspaceName,
+      planType: row.planType,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });
@@ -332,6 +367,11 @@ async function upsertModelProvider(
       secretName,
       isDefault: provider!.isDefault,
       selectedModel: provider!.selectedModel,
+      tokenExpiresAt: provider!.tokenExpiresAt,
+      needsReconnect: provider!.needsReconnect,
+      lastRefreshErrorCode: provider!.lastRefreshErrorCode,
+      workspaceName: provider!.workspaceName,
+      planType: provider!.planType,
       createdAt: provider!.createdAt,
       updatedAt: provider!.updatedAt,
     }),
@@ -407,10 +447,87 @@ async function cleanupOldAuthMethodSecrets(
 }
 
 /**
+ * Build the SET clause for the multi-auth upsert's onConflictDoUpdate.
+ * Extracted to keep `upsertMultiAuthModelProvider` under the per-function
+ * complexity ceiling — every conditional metadata spread inside the inline
+ * .set() pushed it past the 20-branch limit.
+ *
+ * - When `metadata` is undefined (selectedModel-only update path), only
+ *   `authMethod`/`selectedModel`/`updatedAt` change. Existing OAuth metadata
+ *   is preserved.
+ * - When `metadata` is present (re-OAuth path), the metadata fields update
+ *   AND the stale flags clear atomically. Re-connect IS the recovery path.
+ */
+interface MultiAuthMetadata {
+  tokenExpiresAt?: Date | null;
+  workspaceName?: string | null;
+  planType?: string | null;
+}
+
+type MultiAuthInsertValues = typeof modelProviders.$inferInsert;
+
+/**
+ * Build the .values() shape for a multi-auth INSERT. Extracted alongside
+ * `buildMultiAuthConflictSet` so the parent function keeps complexity under
+ * the per-function ceiling — the four `?? null` chains for OAuth metadata
+ * each count as a branch.
+ */
+function buildMultiAuthInsertValues(args: {
+  type: ModelProviderType;
+  userId: string;
+  authMethod: string;
+  selectedModel: string | undefined;
+  orgId: string;
+  metadata: MultiAuthMetadata | undefined;
+}): MultiAuthInsertValues {
+  return {
+    type: args.type,
+    userId: args.userId,
+    authMethod: args.authMethod,
+    isDefault: false,
+    selectedModel: args.selectedModel ?? null,
+    orgId: args.orgId,
+    tokenExpiresAt: args.metadata?.tokenExpiresAt ?? null,
+    workspaceName: args.metadata?.workspaceName ?? null,
+    planType: args.metadata?.planType ?? null,
+  };
+}
+
+function buildMultiAuthConflictSet(
+  authMethod: string,
+  selectedModel: string | undefined,
+  metadata?: MultiAuthMetadata,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    authMethod,
+    selectedModel: selectedModel ?? null,
+    updatedAt: new Date(),
+  };
+  if (!metadata) return base;
+  if (metadata.tokenExpiresAt !== undefined) {
+    base.tokenExpiresAt = metadata.tokenExpiresAt;
+  }
+  if (metadata.workspaceName !== undefined) {
+    base.workspaceName = metadata.workspaceName;
+  }
+  if (metadata.planType !== undefined) {
+    base.planType = metadata.planType;
+  }
+  base.needsReconnect = false;
+  base.lastRefreshErrorCode = null;
+  return base;
+}
+
+/**
  * Create or update a multi-auth model provider (like aws-bedrock)
  * @param authMethod The auth method to use (e.g., "api-key", "access-keys")
  * @param secretValues Map of secret names to their values
  * @param selectedModel Optional selected model
+ * @param metadata Optional OAuth/connect-time metadata. When passed, the row's
+ *   `tokenExpiresAt`/`workspaceName`/`planType` are written, AND the stale
+ *   flags (`needsReconnect` + `lastRefreshErrorCode`) are cleared atomically
+ *   in the same transaction. Re-OAuth IS the recovery path; without this the
+ *   user would stay stuck-stale even after a successful re-connect.
  */
 async function upsertMultiAuthModelProvider(
   orgId: string,
@@ -419,6 +536,11 @@ async function upsertMultiAuthModelProvider(
   authMethod: string,
   secretValues: Record<string, string>,
   selectedModel?: string,
+  metadata?: {
+    tokenExpiresAt?: Date | null;
+    workspaceName?: string | null;
+    planType?: string | null;
+  },
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
   // Verify this is a multi-auth provider
   if (!hasAuthMethods(type)) {
@@ -503,28 +625,32 @@ async function upsertMultiAuthModelProvider(
     );
   }
 
-  // Atomic model provider upsert — handles concurrent requests safely
+  // Atomic model provider upsert — handles concurrent requests safely.
+  // When `metadata` is present, also write OAuth metadata and clear stale
+  // flags (re-connect == recovery) in the same transaction.
+  const insertValues = buildMultiAuthInsertValues({
+    type,
+    userId,
+    authMethod,
+    selectedModel,
+    orgId,
+    metadata,
+  });
+  const conflictSet = buildMultiAuthConflictSet(
+    authMethod,
+    selectedModel,
+    metadata,
+  );
   const [provider] = await globalThis.services.db
     .insert(modelProviders)
-    .values({
-      type,
-      userId,
-      authMethod,
-      isDefault: false,
-      selectedModel: selectedModel ?? null,
-      orgId,
-    })
+    .values(insertValues)
     .onConflictDoUpdate({
       target: [
         modelProviders.orgId,
         modelProviders.userId,
         modelProviders.type,
       ],
-      set: {
-        authMethod,
-        selectedModel: selectedModel ?? null,
-        updatedAt: new Date(),
-      },
+      set: conflictSet,
     })
     .returning();
 
@@ -560,6 +686,11 @@ async function upsertMultiAuthModelProvider(
       secretNames,
       isDefault: provider!.isDefault,
       selectedModel: provider!.selectedModel,
+      tokenExpiresAt: provider!.tokenExpiresAt,
+      needsReconnect: provider!.needsReconnect,
+      lastRefreshErrorCode: provider!.lastRefreshErrorCode,
+      workspaceName: provider!.workspaceName,
+      planType: provider!.planType,
       createdAt: provider!.createdAt,
       updatedAt: provider!.updatedAt,
     }),
@@ -650,6 +781,11 @@ async function upsertNoSecretModelProvider(
       type,
       isDefault: provider!.isDefault,
       selectedModel: provider!.selectedModel,
+      tokenExpiresAt: provider!.tokenExpiresAt,
+      needsReconnect: provider!.needsReconnect,
+      lastRefreshErrorCode: provider!.lastRefreshErrorCode,
+      workspaceName: provider!.workspaceName,
+      planType: provider!.planType,
       createdAt: provider!.createdAt,
       updatedAt: provider!.updatedAt,
     }),
@@ -786,6 +922,11 @@ async function setModelProviderDefault(
       authMethod: target.authMethod,
       isDefault: true,
       selectedModel: target.selectedModel,
+      tokenExpiresAt: target.tokenExpiresAt,
+      needsReconnect: target.needsReconnect,
+      lastRefreshErrorCode: target.lastRefreshErrorCode,
+      workspaceName: target.workspaceName,
+      planType: target.planType,
       createdAt: target.createdAt,
       updatedAt: target.updatedAt,
     });
@@ -822,6 +963,11 @@ async function setModelProviderDefault(
     authMethod: target.authMethod,
     isDefault: true,
     selectedModel: target.selectedModel,
+    tokenExpiresAt: target.tokenExpiresAt,
+    needsReconnect: target.needsReconnect,
+    lastRefreshErrorCode: target.lastRefreshErrorCode,
+    workspaceName: target.workspaceName,
+    planType: target.planType,
     createdAt: target.createdAt,
     updatedAt: new Date(),
   });
@@ -879,6 +1025,11 @@ async function updateModelProviderModel(
     authMethod: provider.authMethod,
     isDefault: provider.isDefault,
     selectedModel: selectedModel ?? null,
+    tokenExpiresAt: provider.tokenExpiresAt,
+    needsReconnect: provider.needsReconnect,
+    lastRefreshErrorCode: provider.lastRefreshErrorCode,
+    workspaceName: provider.workspaceName,
+    planType: provider.planType,
     createdAt: provider.createdAt,
     updatedAt: new Date(),
   });
@@ -922,6 +1073,11 @@ async function getDefaultModelProvider(
     authMethod: defaultProvider.authMethod,
     isDefault: defaultProvider.isDefault,
     selectedModel: defaultProvider.selectedModel,
+    tokenExpiresAt: defaultProvider.tokenExpiresAt,
+    needsReconnect: defaultProvider.needsReconnect,
+    lastRefreshErrorCode: defaultProvider.lastRefreshErrorCode,
+    workspaceName: defaultProvider.workspaceName,
+    planType: defaultProvider.planType,
     createdAt: defaultProvider.createdAt,
     updatedAt: defaultProvider.updatedAt,
   });
@@ -961,6 +1117,11 @@ async function getAnyDefaultModelProvider(
     authMethod: defaultProvider.authMethod,
     isDefault: defaultProvider.isDefault,
     selectedModel: defaultProvider.selectedModel,
+    tokenExpiresAt: defaultProvider.tokenExpiresAt,
+    needsReconnect: defaultProvider.needsReconnect,
+    lastRefreshErrorCode: defaultProvider.lastRefreshErrorCode,
+    workspaceName: defaultProvider.workspaceName,
+    planType: defaultProvider.planType,
     createdAt: defaultProvider.createdAt,
     updatedAt: defaultProvider.updatedAt,
   });
@@ -1004,6 +1165,10 @@ export function upsertOrgModelProvider(
 /**
  * Create or update an org-level multi-auth model provider (e.g., aws-bedrock).
  * Uses ORG_SENTINEL_USER_ID for org-scoped storage.
+ *
+ * `metadata` carries OAuth/connect-time fields (tokenExpiresAt, workspaceName,
+ * planType). Passing it both writes those columns AND clears stale flags —
+ * see `upsertMultiAuthModelProvider` doc for details.
  */
 export function upsertOrgMultiAuthModelProvider(
   orgId: string,
@@ -1011,6 +1176,11 @@ export function upsertOrgMultiAuthModelProvider(
   authMethod: string,
   secretValues: Record<string, string>,
   selectedModel?: string,
+  metadata?: {
+    tokenExpiresAt?: Date | null;
+    workspaceName?: string | null;
+    planType?: string | null;
+  },
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
   return upsertMultiAuthModelProvider(
     orgId,
@@ -1019,6 +1189,7 @@ export function upsertOrgMultiAuthModelProvider(
     authMethod,
     secretValues,
     selectedModel,
+    metadata,
   );
 }
 
@@ -1208,6 +1379,11 @@ export async function getOrgModelProviderByType(
     authMethod: row.authMethod,
     isDefault: row.isDefault,
     selectedModel: row.selectedModel,
+    tokenExpiresAt: row.tokenExpiresAt,
+    needsReconnect: row.needsReconnect,
+    lastRefreshErrorCode: row.lastRefreshErrorCode,
+    workspaceName: row.workspaceName,
+    planType: row.planType,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -1255,6 +1431,11 @@ export async function getModelProviderById(
     authMethod: row.authMethod,
     isDefault: row.isDefault,
     selectedModel: row.selectedModel,
+    tokenExpiresAt: row.tokenExpiresAt,
+    needsReconnect: row.needsReconnect,
+    lastRefreshErrorCode: row.lastRefreshErrorCode,
+    workspaceName: row.workspaceName,
+    planType: row.planType,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -1294,6 +1475,10 @@ export function upsertUserModelProvider(
 
 /**
  * Create or update a user-level multi-auth model provider (e.g., aws-bedrock).
+ *
+ * `metadata` carries OAuth/connect-time fields (tokenExpiresAt, workspaceName,
+ * planType) for OAuth-typed providers. See `upsertMultiAuthModelProvider` for
+ * the recovery semantics (passing metadata clears stale flags atomically).
  */
 export function upsertUserMultiAuthModelProvider(
   orgId: string,
@@ -1302,6 +1487,11 @@ export function upsertUserMultiAuthModelProvider(
   authMethod: string,
   secretValues: Record<string, string>,
   selectedModel?: string,
+  metadata?: {
+    tokenExpiresAt?: Date | null;
+    workspaceName?: string | null;
+    planType?: string | null;
+  },
 ): Promise<{ provider: ModelProviderInfo; created: boolean }> {
   return upsertMultiAuthModelProvider(
     orgId,
@@ -1310,6 +1500,7 @@ export function upsertUserMultiAuthModelProvider(
     authMethod,
     secretValues,
     selectedModel,
+    metadata,
   );
 }
 
@@ -1417,6 +1608,11 @@ export async function getUserModelProviderByType(
     authMethod: row.authMethod,
     isDefault: row.isDefault,
     selectedModel: row.selectedModel,
+    tokenExpiresAt: row.tokenExpiresAt,
+    needsReconnect: row.needsReconnect,
+    lastRefreshErrorCode: row.lastRefreshErrorCode,
+    workspaceName: row.workspaceName,
+    planType: row.planType,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });

@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HttpResponse, http } from "msw";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -14,8 +15,10 @@ import {
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../../src/mocks/server";
 import { buildTelegramBotAvatarUrl } from "../../../../../../../src/lib/zero/telegram/avatar-url";
+import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
+const OFFICIAL_BOT_TOKEN = "777000:official-avatar-token";
 
 function avatarUrl(botId: string): string {
   return `http://localhost:3000/api/integrations/telegram/${botId}/avatar`;
@@ -25,16 +28,34 @@ function routeParams(botId: string) {
   return { params: Promise.resolve({ botId }) };
 }
 
-function mockTelegramAvatarDownload(botId: string, fileBytes: Buffer) {
+function setupOfficialTelegramEnv() {
+  vi.stubEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
+  reloadEnv();
+}
+
+function mockTelegramAvatarDownload(
+  botId: string,
+  fileBytes: Buffer,
+  options: {
+    token?: string;
+    expectedProfileUserId?: string | number;
+  } = {},
+) {
+  const token = options.token ?? "test-bot-token";
+  const expectedProfileUserId = options.expectedProfileUserId ?? Number(botId);
+
   server.use(
     http.post(
-      "https://api.telegram.org/bottest-bot-token/getUserProfilePhotos",
+      `https://api.telegram.org/bot${token}/getUserProfilePhotos`,
       async ({ request }) => {
         const body = (await request.json()) as {
           user_id?: string | number;
           limit?: number;
         };
-        expect(body).toMatchObject({ user_id: Number(botId), limit: 1 });
+        expect(body).toMatchObject({
+          user_id: expectedProfileUserId,
+          limit: 1,
+        });
         return HttpResponse.json({
           ok: true,
           result: {
@@ -61,7 +82,7 @@ function mockTelegramAvatarDownload(botId: string, fileBytes: Buffer) {
       },
     ),
     http.post(
-      "https://api.telegram.org/bottest-bot-token/getFile",
+      `https://api.telegram.org/bot${token}/getFile`,
       async ({ request }) => {
         const body = (await request.json()) as { file_id?: string };
         expect(body.file_id).toBe("large-avatar");
@@ -77,7 +98,7 @@ function mockTelegramAvatarDownload(botId: string, fileBytes: Buffer) {
       },
     ),
     http.get(
-      "https://api.telegram.org/file/bottest-bot-token/photos/avatar.jpg",
+      `https://api.telegram.org/file/bot${token}/photos/avatar.jpg`,
       () => {
         return new HttpResponse(fileBytes, {
           status: 200,
@@ -163,6 +184,26 @@ describe("GET /api/integrations/telegram/[botId]/avatar", () => {
     );
 
     expect(response.status).toBe(200);
+    const receivedBytes = Buffer.from(await response.arrayBuffer());
+    expect(receivedBytes.equals(fileBytes)).toBe(true);
+  });
+
+  it("streams the official Telegram bot profile photo from the configured token", async () => {
+    setupOfficialTelegramEnv();
+    mockClerk({ userId: null });
+    const fileBytes = Buffer.from("official telegram avatar bytes");
+    mockTelegramAvatarDownload(OFFICIAL_TELEGRAM_BOT_ID, fileBytes, {
+      token: OFFICIAL_BOT_TOKEN,
+      expectedProfileUserId: 777000,
+    });
+
+    const response = await GET(
+      createTestRequest(buildTelegramBotAvatarUrl(OFFICIAL_TELEGRAM_BOT_ID)),
+      routeParams(OFFICIAL_TELEGRAM_BOT_ID),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/jpeg");
     const receivedBytes = Buffer.from(await response.arrayBuffer());
     expect(receivedBytes.equals(fileBytes)).toBe(true);
   });

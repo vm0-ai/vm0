@@ -12,7 +12,11 @@ import {
   getVm0ApiModel,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { badRequest, noModelProvider } from "@vm0/api-services/errors";
+import {
+  badRequest,
+  noModelProvider,
+  staleProvider,
+} from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import {
@@ -502,6 +506,18 @@ export async function resolveModelProviderSecrets(
   // selectedModelOverride (from agent/schedule config) takes precedence over provider's stored model
   const selectedModel =
     selectedModelOverride ?? matchingProvider?.selectedModel ?? undefined;
+
+  // Stale-provider gate: an OAuth-typed provider whose refresh failed
+  // (needsReconnect flipped by the firewall webhook in #11921) MUST NOT
+  // dispatch a sandbox — the user would see a confusing 401 mid-run.
+  // Failing fast here covers chat dispatch + CLI runs + scheduled runs from
+  // the single resolver choke point.
+  if (matchingProvider?.needsReconnect) {
+    throw staleProvider(
+      matchingProvider.type,
+      matchingProvider.lastRefreshErrorCode,
+    );
+  }
 
   // Handle VM0 managed provider (meta-provider resolution)
   if (providerType === "vm0") {

@@ -4,6 +4,7 @@ import {
   type TelegramLinkStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { accept } from "../../lib/accept.ts";
+import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { apiBaseForNavigation$ } from "../fetch.ts";
@@ -92,13 +93,23 @@ export const connectTelegramAccount$ = command(
     const client = get(zeroClient$)(zeroIntegrationsTelegramContract);
     const linkCredential = params.connectSignature
       ? { connectSignature: params.connectSignature }
-      : {
-          telegramAuth: await requestTelegramAuth(
-            params.telegramBotId,
-            await get(apiBaseForNavigation$),
+      : await (async () => {
+          const linkStatus = await get(telegramConnectLinkStatus$);
+          signal.throwIfAborted();
+          const telegramLoginBotId =
+            linkStatus?.linked === false
+              ? linkStatus.installation?.loginBotId
+              : undefined;
+          const apiBase = await get(apiBaseForNavigation$);
+          signal.throwIfAborted();
+          const telegramAuth = await requestTelegramAuth(
+            telegramLoginBotId ?? params.telegramBotId,
+            apiBase,
             signal,
-          ),
-        };
+          );
+          signal.throwIfAborted();
+          return { telegramAuth };
+        })();
 
     const result = await accept(
       client.link({
@@ -112,6 +123,14 @@ export const connectTelegramAccount$ = command(
       [200],
     );
     signal.throwIfAborted();
+
+    capturePlausibleEvent("telegram_connect", {
+      props: {
+        method: params.connectSignature
+          ? "connect_signature"
+          : "telegram_login",
+      },
+    });
 
     return result.body;
   },

@@ -4,6 +4,8 @@ import { initServices } from "../../lib/init-services";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import type { TelegramMessageEntity } from "@vm0/db/schema/telegram-message";
+import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -209,6 +211,54 @@ export async function insertTestTelegramUserLink(params: {
     })
     .returning({ id: telegramUserLinks.id });
   return row!;
+}
+
+/**
+ * Insert a test official Telegram user link.
+ * @why-db-direct Creates official shared-bot user link record; no lower-level test API exists
+ */
+export async function insertTestOfficialTelegramUserLink(params: {
+  telegramUserId: string;
+  telegramUsername?: string | null;
+  telegramDisplayName?: string | null;
+  vm0UserId: string;
+  orgId: string;
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(telegramOfficialUserLinks)
+    .values({
+      telegramUserId: params.telegramUserId,
+      telegramUsername: params.telegramUsername ?? null,
+      telegramDisplayName: params.telegramDisplayName ?? null,
+      vm0UserId: params.vm0UserId,
+      orgId: params.orgId,
+    })
+    .returning({ id: telegramOfficialUserLinks.id });
+  return row!;
+}
+
+/**
+ * Seed a per-user official Telegram agent preference.
+ * @why-db-direct Creates preference state for official Telegram routing tests
+ */
+export async function seedTestTelegramUserAgentPreference(params: {
+  vm0UserId: string;
+  orgId: string;
+  selectedComposeId: string | null;
+}): Promise<void> {
+  await globalThis.services.db
+    .insert(telegramUserAgentPreferences)
+    .values(params)
+    .onConflictDoUpdate({
+      target: [
+        telegramUserAgentPreferences.vm0UserId,
+        telegramUserAgentPreferences.orgId,
+      ],
+      set: {
+        selectedComposeId: params.selectedComposeId,
+        updatedAt: new Date(),
+      },
+    });
 }
 
 /**

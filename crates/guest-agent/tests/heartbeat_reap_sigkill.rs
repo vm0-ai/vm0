@@ -40,7 +40,11 @@ async fn heartbeat_failure_reap_escalates_to_sigkill_when_sigterm_ignored()
     // + sigkill grace (1s, unignorable) + stdout drain (5s) + slack.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(&masker, heartbeat),
+        guest_agent::cli::execute_cli(
+            &masker,
+            heartbeat,
+            guest_agent::http::HttpClient::new().unwrap(),
+        ),
     )
     .await
     .expect("execute_cli did not return within 15s - heartbeat reap escalation likely broken");

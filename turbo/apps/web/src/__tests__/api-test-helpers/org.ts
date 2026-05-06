@@ -27,6 +27,7 @@ export {
   getOrgCredits,
   findTestModelProviderTokenState,
   setTestModelProviderTokenExpiresAt,
+  setTestModelProviderNeedsReconnect,
 } from "../db-test-assertions/org";
 
 // Re-exports: test-helpers infrastructure

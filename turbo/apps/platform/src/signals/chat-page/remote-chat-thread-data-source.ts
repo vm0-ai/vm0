@@ -3,6 +3,8 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
+  chatThreadPendingMessageAppendContract,
+  chatThreadPendingMessageRecallContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { accept } from "../../lib/accept.ts";
@@ -14,10 +16,13 @@ import type {
   CancelRunsArgs,
   ChatThreadDataSource,
   InitialPage,
+  AppendPendingMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
   PatchDraftArgs,
+  RecallPendingMessageArgs,
+  RecallPendingMessageResult,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
 
@@ -38,6 +43,56 @@ const patchDraft$ = command(
       }),
       [204],
     );
+  },
+);
+
+const appendPendingMessage$ = command(
+  async (
+    { get },
+    { threadId, content, attachments }: AppendPendingMessageArgs,
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatThreadPendingMessageAppendContract, {
+      apiBase: "api",
+    });
+    const body = {
+      ...(content !== undefined ? { content } : {}),
+      ...(attachments !== undefined ? { attachments } : {}),
+    };
+    const result = await accept(
+      client.append({
+        params: { id: threadId },
+        body,
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return result.body.pendingMessage;
+  },
+);
+
+const recallPendingMessage$ = command(
+  async (
+    { get },
+    { threadId }: RecallPendingMessageArgs,
+    signal: AbortSignal,
+  ): Promise<RecallPendingMessageResult> => {
+    const client = get(zeroClient$)(chatThreadPendingMessageRecallContract, {
+      apiBase: "api",
+    });
+    const result = await accept(
+      client.recall({
+        params: { id: threadId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    return {
+      draftContent: result.body.draftContent,
+      draftAttachments: result.body.draftAttachments,
+    };
   },
 );
 
@@ -197,6 +252,7 @@ export function createRemoteChatThreadDataSource(
       isLegacySession: false,
       draftContent: body.draftContent ?? null,
       draftAttachments: body.draftAttachments ?? null,
+      pendingMessage: body.pendingMessage ?? null,
       modelProviderId: body.modelProviderId ?? null,
       selectedModel: body.selectedModel ?? null,
     };
@@ -233,6 +289,8 @@ export function createRemoteChatThreadDataSource(
     reloadThread$,
     initialPage$,
     patchDraft$,
+    appendPendingMessage$,
+    recallPendingMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
     cancelRuns$,

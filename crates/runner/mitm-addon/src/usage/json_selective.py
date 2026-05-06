@@ -1,9 +1,7 @@
 """Bounded selective JSON extraction.
 
-This module intentionally does not wrap vendored ijson: its pure-Python
-lexer materializes full string lexemes before emitting events.  The scanner
-below keeps only selected scalars and object keys needed to resolve selected
-paths, while skipping unselected values by JSON syntax.
+The scanner keeps only selected scalars and object keys needed to resolve
+selected paths, while skipping unselected values by JSON syntax.
 """
 
 import json

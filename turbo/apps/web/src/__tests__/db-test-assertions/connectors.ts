@@ -18,7 +18,7 @@ import { decryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 export async function findTestConnectorSecret(
   orgId: string,
   secretName: string,
-  type: "connector" | "user" = "connector",
+  type: "connector" | "user" | "model-provider" = "connector",
 ): Promise<string | undefined> {
   initServices();
   const [storedSecret] = await globalThis.services.db

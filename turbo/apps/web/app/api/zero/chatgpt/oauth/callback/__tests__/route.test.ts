@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { GET } from "../route";
 import { GET as listModelProvidersRoute } from "../../../../model-providers/route";
-import { createTestRequest } from "../../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  findTestModelProviderTokenState,
+  ORG_SENTINEL_USER_ID,
+  setTestModelProviderNeedsReconnect,
+} from "../../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../../src/mocks/server";
 import { http } from "../../../../../../../src/__tests__/msw";
@@ -153,6 +158,101 @@ describe("GET /api/zero/chatgpt/oauth/callback", () => {
     expect(providers).toHaveLength(1);
     expect(providers[0]?.type).toBe("chatgpt-oauth-token");
     expect(providers[0]?.authMethod).toBe("oauth");
+  });
+
+  it("persists tokenExpiresAt + workspaceName + planType from the OAuth result (#11932)", async () => {
+    const before = Date.now();
+    server.use(
+      http.post(TOKEN_URL, () => {
+        return HttpResponse.json({
+          id_token: makeIdToken({
+            workspaceName: "Acme Inc",
+            planType: "business",
+          }),
+          access_token: "at_xxx",
+          refresh_token: "rt_xxx",
+          expires_in: 3600,
+        });
+      }).handler,
+    );
+
+    const request = makeCallbackRequest({
+      code: "auth-code-meta",
+      state: stateValue,
+      stateCookie: stateValue,
+      pkceCookie: "verifier-meta",
+    });
+    await GET(request);
+
+    const state = await findTestModelProviderTokenState(
+      user.orgId,
+      ORG_SENTINEL_USER_ID,
+      "chatgpt-oauth-token",
+    );
+    expect(state).not.toBeNull();
+    expect(state!.workspaceName).toBe("Acme Inc");
+    expect(state!.planType).toBe("business");
+    // tokenExpiresAt should be ~now + 3600s; allow generous slack for test latency
+    const expiresMs = state!.tokenExpiresAt!.getTime();
+    expect(expiresMs).toBeGreaterThanOrEqual(before + 3500_000);
+    expect(expiresMs).toBeLessThanOrEqual(Date.now() + 3700_000);
+  });
+
+  it("re-OAuth clears needsReconnect + lastRefreshErrorCode atomically (#11932)", async () => {
+    // Seed an existing stale provider
+    server.use(
+      http.post(TOKEN_URL, () => {
+        return HttpResponse.json({
+          id_token: makeIdToken(),
+          access_token: "old_at",
+          refresh_token: "old_rt",
+          expires_in: 3600,
+        });
+      }).handler,
+    );
+    await GET(
+      makeCallbackRequest({
+        code: "first",
+        state: stateValue,
+        stateCookie: stateValue,
+        pkceCookie: "v1",
+      }),
+    );
+    await setTestModelProviderNeedsReconnect(
+      user.orgId,
+      ORG_SENTINEL_USER_ID,
+      "chatgpt-oauth-token",
+      true,
+      "refresh_token_expired",
+    );
+
+    // Second OAuth — recovery path
+    server.use(
+      http.post(TOKEN_URL, () => {
+        return HttpResponse.json({
+          id_token: makeIdToken(),
+          access_token: "new_at",
+          refresh_token: "new_rt",
+          expires_in: 3600,
+        });
+      }).handler,
+    );
+    await GET(
+      makeCallbackRequest({
+        code: "second",
+        state: stateValue,
+        stateCookie: stateValue,
+        pkceCookie: "v2",
+      }),
+    );
+
+    const state = await findTestModelProviderTokenState(
+      user.orgId,
+      ORG_SENTINEL_USER_ID,
+      "chatgpt-oauth-token",
+    );
+    expect(state!.needsReconnect).toBe(false);
+    expect(state!.lastRefreshErrorCode).toBeNull();
   });
 
   it("persists all four secrets including serverOnly fields", async () => {

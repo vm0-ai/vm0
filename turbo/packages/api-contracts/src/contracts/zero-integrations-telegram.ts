@@ -4,6 +4,8 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const OFFICIAL_TELEGRAM_BOT_ID = "official" as const;
+
 const telegramEnvironmentSchema = z.object({
   requiredSecrets: z.array(z.string()),
   requiredVars: z.array(z.string()),
@@ -15,12 +17,20 @@ const telegramTokenStatusSchema = z.enum(["valid", "invalid", "unknown"]);
 
 const telegramBotSchema = z.object({
   id: z.string(),
+  kind: z.enum(["custom", "official"]).optional(),
   username: z.string().nullable(),
   avatarUrl: z.string().nullable(),
   agent: z.object({ id: z.string(), name: z.string() }).nullable(),
   isOwner: z.boolean(),
   isConnected: z.boolean(),
   tokenStatus: telegramTokenStatusSchema,
+  official: z
+    .object({
+      configured: z.boolean(),
+      usesDefaultAgent: z.boolean(),
+      linkedTelegramUserId: z.string().nullable(),
+    })
+    .optional(),
 });
 
 const telegramBotStatusSchema = telegramBotSchema.extend({
@@ -33,7 +43,8 @@ const telegramListResponseSchema = z.object({
 });
 
 const telegramUpdateBodySchema = z.object({
-  defaultAgentId: z.string().trim().min(1),
+  defaultAgentId: z.string().trim().min(1).optional(),
+  selectedAgentId: z.string().trim().min(1).nullable().optional(),
 });
 
 const telegramLinkStatusResponseSchema = z.discriminatedUnion("linked", [
@@ -48,6 +59,7 @@ const telegramLinkStatusResponseSchema = z.discriminatedUnion("linked", [
       .object({
         id: z.string(),
         botUsername: z.string(),
+        loginBotId: z.string().optional(),
         domainConfigured: z.boolean().optional(),
       })
       .optional(),
