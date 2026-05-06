@@ -14,14 +14,14 @@
 #          in depth, per Epic risk row 2).
 #
 # All three use synthetic provider state seeded via /api/cli/auth/test-
-# chatgpt-oauth (no real OpenAI account required). Codex CLI is allowed to
+# codex-oauth (no real OpenAI account required). Codex CLI is allowed to
 # run in mock mode — t54-1's happy-path assertion checks that the
 # guest-agent's ChatGPT-mode bootstrap succeeds; the model-response side
 # would require a real upstream and is deferred to a nightly job.
 
 load '../../helpers/setup'
 load '../../helpers/audit-sandbox'
-load '../../helpers/chatgpt-oauth-setup'
+load '../../helpers/codex-oauth-setup'
 
 # Codex bootstrap (auth.json fabrication, secrets resolution, mitm setup)
 # runs once per sandbox; cold path can exceed default 120s.
@@ -59,13 +59,13 @@ setup_file() {
     $VM0_CLI artifact push >/dev/null
     cd - >/dev/null
 
-    # Enable feature switch (chatgptOauthProvider is staff-only off by default).
-    enable_chatgpt_oauth_provider
+    # Enable feature switch (codexOauthProvider is staff-only off by default).
+    enable_codex_oauth_provider
 
     # Seed codex-oauth-token model_provider with high-entropy synthetic tokens.
     # The seed endpoint sets tokenExpiresAt 10min in the future so the token
     # isn't refreshed mid-test.
-    seed_chatgpt_oauth \
+    seed_codex_oauth \
         "$CHATGPT_AUDIT_FORBIDDEN_ACCESS_TOKEN" \
         "$CHATGPT_AUDIT_FORBIDDEN_REFRESH_TOKEN" \
         "$CHATGPT_AUDIT_FORBIDDEN_ACCOUNT_ID" \
@@ -76,7 +76,7 @@ setup_file() {
     # codex framework. The placeholder value is never used at runtime — the
     # codex-oauth-token firewall injects real auth headers at egress —
     # but the validator requires the env key to be present (or the provider
-    # to be a single-secret provider whose secretName matches; chatgpt-oauth-
+    # to be a single-secret provider whose secretName matches; codex-oauth-
     # token is multi-auth so getSecretNameForType returns undefined).
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
@@ -94,7 +94,7 @@ EOF
 }
 
 teardown_file() {
-    disable_chatgpt_oauth_provider
+    disable_codex_oauth_provider
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
@@ -104,7 +104,7 @@ teardown_file() {
 # guest-agent's ChatGPT-mode bootstrap succeeds and the agent run completes.
 # Real-codex-against-real-ChatGPT happy path is deferred to a nightly job
 # (per plan phase Q1 decision: A2 — synthetic + MSW for CI).
-@test "t54-1: codex agent run completes with chatgpt-oauth provider" {
+@test "t54-1: codex agent run completes with codex-oauth provider" {
     run $VM0_CLI run "$AGENT_NAME" \
         -- "Reply with exactly RESULT=579"
 

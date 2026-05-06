@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Bats helper for seeding codex-oauth-token model_provider state via the
-# /api/cli/auth/test-chatgpt-oauth endpoint. Used by E2E tests of the
+# /api/cli/auth/test-codex-oauth endpoint. Used by E2E tests of the
 # ChatGPT-OAuth Codex flow (issue #11941, Epic #11872).
 
 # Encode an email for URL query: "+ → %2B", "@ → %40".
-_chatgpt_encode_email() {
+_codex_encode_email() {
     if [ -z "${E2E_RUNNER_EMAIL:-}" ]; then
         echo "E2E_RUNNER_EMAIL not set" >&2
         return 1
@@ -15,12 +15,12 @@ _chatgpt_encode_email() {
 # Seed a codex-oauth-token model provider for E2E tests.
 #
 # Usage:
-#   seed_chatgpt_oauth <access_token> <refresh_token> <account_id> <id_token> [expires_in] [needs_reconnect] [last_refresh_error_code]
+#   seed_codex_oauth <access_token> <refresh_token> <account_id> <id_token> [expires_in] [needs_reconnect] [last_refresh_error_code]
 #
 # expires_in: seconds from now until token expiry (default 600; negative pre-expires).
 # needs_reconnect: "true" or "false" (default "false").
 # last_refresh_error_code: optional refresh-error code for stale-state simulation.
-seed_chatgpt_oauth() {
+seed_codex_oauth() {
     local access_token="$1"
     local refresh_token="$2"
     local account_id="$3"
@@ -52,7 +52,7 @@ seed_chatgpt_oauth() {
     fi
 
     local encoded_email
-    encoded_email=$(_chatgpt_encode_email) || return 1
+    encoded_email=$(_codex_encode_email) || return 1
 
     local curl_args=(-s -w "\n%{http_code}" -X POST -H "Content-Type: application/json")
     if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
@@ -61,12 +61,12 @@ seed_chatgpt_oauth() {
     curl_args+=(-d "$body")
 
     local resp http_code resp_body
-    resp=$(curl "${curl_args[@]}" "${VM0_API_URL}/api/cli/auth/test-chatgpt-oauth?email=${encoded_email}")
+    resp=$(curl "${curl_args[@]}" "${VM0_API_URL}/api/cli/auth/test-codex-oauth?email=${encoded_email}")
     http_code=$(echo "$resp" | tail -n1)
     resp_body=$(echo "$resp" | head -n-1)
 
     if [ "$http_code" != "200" ]; then
-        echo "test-chatgpt-oauth seed failed: HTTP $http_code" >&2
+        echo "test-codex-oauth seed failed: HTTP $http_code" >&2
         echo "Response: $resp_body" >&2
         return 1
     fi
@@ -78,7 +78,7 @@ seed_chatgpt_oauth() {
 # 1880, 1952). Fall back to that file the same way _codex_zero_token in
 # helpers/codex-zero.bash does, so this helper works in both env-var-
 # driven local runs and config-file-driven CI runs.
-_chatgpt_oauth_token() {
+_codex_oauth_token() {
     if [ -n "${VM0_TEST_TOKEN:-}" ]; then
         printf '%s' "$VM0_TEST_TOKEN"
     elif [ -n "${ZERO_TOKEN:-}" ]; then
@@ -90,60 +90,31 @@ _chatgpt_oauth_token() {
     fi
 }
 
-# Prefer the serial E2E token for the feature-off probe so runner chunks do
-# not race each other by mutating the shared runner user's feature switches.
-chatgpt_oauth_feature_off_token() {
-    local config="${CHATGPT_OAUTH_FEATURE_OFF_TOKEN_CONFIG:-/tmp/e2e-token-serial.json}"
-    if [ -f "$config" ]; then
-        jq -r '.token // empty' "$config"
-        return
-    fi
-    _chatgpt_oauth_token
-}
-
-# Set the chatgptOauthProvider feature switch override for the current test user.
-_set_chatgpt_oauth_provider() {
-    local enabled="$1"
-    local token="${2:-}"
+# Enable the codexOauthProvider feature switch for the current test user.
+# Required so isCodexOauthEligible(orgId, userId) returns true and the
+# OAuth connect/callback routes don't 404. The switch is staff-only by
+# default, so production users see no surface.
+enable_codex_oauth_provider() {
+    local token
+    token=$(_codex_oauth_token)
     if [ -z "$token" ]; then
-        token=$(_chatgpt_oauth_token)
-    fi
-    if [ -z "$token" ]; then
-        echo "_set_chatgpt_oauth_provider: no auth token (env or ~/.vm0/config.json)" >&2
+        echo "enable_codex_oauth_provider: no auth token (env or ~/.vm0/config.json)" >&2
         return 1
     fi
-    local body
-    body=$(jq -n --argjson enabled "$enabled" '{switches:{chatgptOauthProvider:$enabled}}')
     local curl_args=(-fsS -X POST -H "Content-Type: application/json"
         -H "Authorization: Bearer $token"
-        -d "$body")
+        -d '{"switches":{"codexOauthProvider":true}}')
     if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
         curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
     curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/feature-switches" >/dev/null
 }
 
-# Enable the chatgptOauthProvider feature switch for the current test user.
-# Required so isChatgptOauthEligible(orgId, userId) returns true and the
-# OAuth connect/callback routes don't 404. The switch is staff-only by
-# default, so production users see no surface.
-enable_chatgpt_oauth_provider() {
-    _set_chatgpt_oauth_provider true "$@"
-}
-
-# Force the chatgptOauthProvider feature switch off for the current test user.
-# Clearing overrides is not enough when the static registry enables staff orgs.
-force_disable_chatgpt_oauth_provider() {
-    _set_chatgpt_oauth_provider false "$@"
-}
-
 # Best-effort cleanup of feature-switch overrides — DELETE clears all
 # overrides for the user (test_user_id resolved server-side).
-disable_chatgpt_oauth_provider() {
-    local token="${1:-}"
-    if [ -z "$token" ]; then
-        token=$(_chatgpt_oauth_token)
-    fi
+disable_codex_oauth_provider() {
+    local token
+    token=$(_codex_oauth_token)
     if [ -z "$token" ]; then
         return 0
     fi
@@ -159,9 +130,9 @@ disable_chatgpt_oauth_provider() {
 #
 # Returns 0 if the model-providers API surface includes `needsReconnect`
 # in its response (Wave 3's API widening). Returns 1 otherwise.
-chatgpt_oauth_stale_supported() {
+codex_oauth_stale_supported() {
     local token
-    token=$(_chatgpt_oauth_token)
+    token=$(_codex_oauth_token)
     if [ -z "$token" ]; then
         return 1
     fi

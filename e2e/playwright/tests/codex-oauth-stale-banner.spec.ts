@@ -17,7 +17,7 @@ import { deriveAppUrl } from "../playwright.config";
  *   - Link href: must contain "/api/zero/chatgpt/oauth/connect"
  * Coordinate via PR-comment cross-link before merging #11932.
  */
-test("chatgpt-oauth stale provider renders banner with re-connect CTA", async ({
+test("codex-oauth stale provider renders banner with re-connect CTA", async ({
   page,
   request,
 }) => {
@@ -65,7 +65,7 @@ test("chatgpt-oauth stale provider renders banner with re-connect CTA", async ({
   }
   const encodedEmail = email.replace(/\+/g, "%2B").replace(/@/g, "%40");
   const seedResp = await request.post(
-    `${apiUrl}/api/cli/auth/test-chatgpt-oauth?email=${encodedEmail}`,
+    `${apiUrl}/api/cli/auth/test-codex-oauth?email=${encodedEmail}`,
     {
       headers: seedHeaders,
       data: {

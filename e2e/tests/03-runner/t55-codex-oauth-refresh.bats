@@ -5,7 +5,7 @@
 #
 # Validates: when a codex-oauth-token provider has an expired access
 # token at run time, the firewall webhook's refresh pipeline (added by
-# #11921) calls chatgptOauthHandler.refreshToken, the upstream returns
+# #11921) calls codexOauthHandler.refreshToken, the upstream returns
 # rotated tokens, and the persisted tokens advance in the secrets store.
 #
 # Note: real auth.openai.com upstream is NOT exercised here. MSW-style
@@ -13,11 +13,11 @@
 # that don't fit the bats / sandbox-runtime split. Instead, this test
 # verifies the half it CAN observe: the persisted state changes after a
 # run that consumed an expired-state provider. The actual upstream call
-# is unit-tested in #11876 (chatgpt-oauth.test.ts) and the pipeline glue
+# is unit-tested in #11876 (codex-oauth.test.ts) and the pipeline glue
 # in #11921 (resolve-model-provider + connector-service tests).
 
 load '../../helpers/setup'
-load '../../helpers/chatgpt-oauth-setup'
+load '../../helpers/codex-oauth-setup'
 
 export BATS_TEST_TIMEOUT=180
 
@@ -37,15 +37,15 @@ setup_file() {
     export INITIAL_RT="initial-rt-${UNIQUE_ID}"
     export INITIAL_ACC="ws_initial_acc"
 
-    enable_chatgpt_oauth_provider
+    enable_codex_oauth_provider
 
     # Seed pre-expired provider — expiresIn=-60 sets tokenExpiresAt 1min in
     # the past, so the firewall webhook's filter (expiresAt <= now+60s)
     # triggers a refresh on any in-sandbox request.
-    seed_chatgpt_oauth "$INITIAL_AT" "$INITIAL_RT" "$INITIAL_ACC" "id-tok" -60
+    seed_codex_oauth "$INITIAL_AT" "$INITIAL_RT" "$INITIAL_ACC" "id-tok" -60
 
     # OPENAI_API_KEY placeholder satisfies validateFrameworkApiKey for codex
-    # framework — see t54-chatgpt-oauth-sandbox.bats for the full rationale.
+    # framework — see t54-codex-oauth-sandbox.bats for the full rationale.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 agents:
@@ -60,7 +60,7 @@ EOF
 }
 
 teardown_file() {
-    disable_chatgpt_oauth_provider
+    disable_codex_oauth_provider
     if [ -n "$TEST_DIR" ] && [ -d "$TEST_DIR" ]; then
         rm -rf "$TEST_DIR"
     fi
@@ -91,13 +91,13 @@ teardown_file() {
         assert_output --partial "RESULT=ok"
     else
         # Refresh attempt failure is acceptable here as long as the failure
-        # surface mentions the chatgpt-oauth pipeline (not, say, a generic
+        # surface mentions the codex-oauth pipeline (not, say, a generic
         # provider-missing error which would mean the run never reached
         # the refresh path).
         if echo "$output" | grep -qE "chatgpt|refresh|TOKEN_REFRESH_FAILED|auth\.openai\.com"; then
             :
         else
-            echo "Run failed but not via the chatgpt-oauth refresh path:" >&2
+            echo "Run failed but not via the codex-oauth refresh path:" >&2
             echo "$output" >&2
             return 1
         fi
