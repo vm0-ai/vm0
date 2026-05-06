@@ -1,3 +1,22 @@
+//! Provider-neutral sandbox traits and shared types.
+//!
+//! This crate defines the API used by runners and higher-level orchestration
+//! code to create, control, snapshot, and tear down isolated execution
+//! environments. It does not start a sandbox by itself; concrete providers
+//! implement these traits in separate crates.
+//!
+//! The main extension points are:
+//!
+//! - [`SandboxRuntime`], which owns provider-wide resources and creates
+//!   [`SandboxFactory`] instances.
+//! - [`SandboxFactory`], which creates and destroys [`Sandbox`] instances.
+//! - [`Sandbox`], which represents a running isolated environment.
+//! - [`SandboxControl`], which exposes host-side control operations.
+//! - [`SnapshotProvider`], which creates provider-specific snapshots.
+//!
+//! Configuration, result, and error types are shared here so provider crates
+//! can expose a consistent lifecycle and failure model.
+
 mod config;
 mod control;
 mod error;
