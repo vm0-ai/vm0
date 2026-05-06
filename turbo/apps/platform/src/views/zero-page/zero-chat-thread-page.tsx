@@ -1694,8 +1694,8 @@ function ChatThreadComposer({
   });
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLastLoadable(thread.allFinished$);
-  const allFinished =
-    allFinishedLoadable.state === "hasData" ? allFinishedLoadable.data : false;
+  const allFinishedResolved = allFinishedLoadable.state === "hasData";
+  const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
@@ -1753,9 +1753,13 @@ function ChatThreadComposer({
             onInputChange={handleInputChange}
             onSend={handleSend}
             sending={sending}
-            onCancel={() => {
-              detach(cancelRun(pageSignal), Reason.DomCallback);
-            }}
+            onCancel={
+              allFinishedResolved
+                ? () => {
+                    detach(cancelRun(pageSignal), Reason.DomCallback);
+                  }
+                : undefined
+            }
             displayName={displayName}
             autoFocus={
               autoFocusProp &&
