@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.0...runner-rs-v0.100.1) (2026-05-06)
+
+
+### Refactoring
+
+* **runner:** share bounded sse usage scanner ([#11961](https://github.com/vm0-ai/vm0/issues/11961)) ([cfbd94d](https://github.com/vm0-ai/vm0/commit/cfbd94dc757b340dd5aa04f94e8b6e980c10eb40))
+
 ## [0.100.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.99.14...runner-rs-v0.100.0) (2026-05-06)
 
 

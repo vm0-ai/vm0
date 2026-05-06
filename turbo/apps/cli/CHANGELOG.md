@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.142.1](https://github.com/vm0-ai/vm0/compare/cli-v9.142.0...cli-v9.142.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* align zero log agent filters with zero agent ids ([#11964](https://github.com/vm0-ai/vm0/issues/11964)) ([49c5d70](https://github.com/vm0-ai/vm0/commit/49c5d70063fea5ee6852ed3bed41d1bd9b5f0f7d))
+* **cli:** guide disconnected authorized connectors ([#11963](https://github.com/vm0-ai/vm0/issues/11963)) ([b97334a](https://github.com/vm0-ai/vm0/commit/b97334a7453a9620ce04d1d92aca0b4b63ee3131))
+
 ## [9.142.0](https://github.com/vm0-ai/vm0/compare/cli-v9.141.1...cli-v9.142.0) (2026-05-06)
 
 

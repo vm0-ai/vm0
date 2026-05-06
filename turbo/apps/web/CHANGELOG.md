@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.334.1](https://github.com/vm0-ai/vm0/compare/web-v12.334.0...web-v12.334.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* align zero log agent filters with zero agent ids ([#11964](https://github.com/vm0-ai/vm0/issues/11964)) ([49c5d70](https://github.com/vm0-ai/vm0/commit/49c5d70063fea5ee6852ed3bed41d1bd9b5f0f7d))
+* mention doctor generate in agent tools ([#11970](https://github.com/vm0-ai/vm0/issues/11970)) ([e30f45c](https://github.com/vm0-ai/vm0/commit/e30f45ce147eecb8b7adc3f39e8cfd9b65caa9ee))
+
 ## [12.334.0](https://github.com/vm0-ai/vm0/compare/web-v12.333.0...web-v12.334.0) (2026-05-06)
 
 

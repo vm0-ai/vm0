@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.328.0](https://github.com/vm0-ai/vm0/compare/app-v0.327.0...app-v0.328.0) (2026-05-06)
+
+
+### Features
+
+* add telegram connect analytics events ([#11957](https://github.com/vm0-ai/vm0/issues/11957)) ([399eba2](https://github.com/vm0-ai/vm0/commit/399eba26f055cf3755f0316e00813aa3950fea74))
+* **platform:** add personal model providers tab in preferences ([#11955](https://github.com/vm0-ai/vm0/issues/11955)) ([19f9756](https://github.com/vm0-ai/vm0/commit/19f9756ffac37107df1d56ece903b86128f30491))
+* **platform:** add prefer_personal_provider checkbox to agent and schedule settings ([#11973](https://github.com/vm0-ai/vm0/issues/11973)) ([f53556f](https://github.com/vm0-ai/vm0/commit/f53556f2c463487f0fcdf024c09d766768c3d84e)), closes [#11926](https://github.com/vm0-ai/vm0/issues/11926)
+* **platform:** merge personal providers into chat composer model picker ([#11968](https://github.com/vm0-ai/vm0/issues/11968)) ([f57b164](https://github.com/vm0-ai/vm0/commit/f57b164ddcf147c5e3a5b87c88adf66701bb9ade))
+* warn when selected model cannot recognize images ([#11951](https://github.com/vm0-ai/vm0/issues/11951)) ([b85b79a](https://github.com/vm0-ai/vm0/commit/b85b79a0b0d4b276c553f0952c568dadefced6ec))
+
+
+### Bug Fixes
+
+* **chat:** correct composer and load history state on thread open ([#11958](https://github.com/vm0-ai/vm0/issues/11958)) ([19149a7](https://github.com/vm0-ai/vm0/commit/19149a7e75e5707eb9b8942b1848bc55007c452d))
+* render artifact text previews consistently ([#11967](https://github.com/vm0-ai/vm0/issues/11967)) ([22b099b](https://github.com/vm0-ai/vm0/commit/22b099bda8fa3b3879e87922ae95c5610ed1b1f3))
+
 ## [0.327.0](https://github.com/vm0-ai/vm0/compare/app-v0.326.0...app-v0.327.0) (2026-05-06)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.16](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.15...sandbox-fc-v0.27.16) (2026-05-06)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** make snapshot publish cancellation-safe ([#11965](https://github.com/vm0-ai/vm0/issues/11965)) ([5dba364](https://github.com/vm0-ai/vm0/commit/5dba364d38a5492e522549ab381415bcb03487a7))
+
 ## [0.27.15](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.14...sandbox-fc-v0.27.15) (2026-05-06)
 
 
