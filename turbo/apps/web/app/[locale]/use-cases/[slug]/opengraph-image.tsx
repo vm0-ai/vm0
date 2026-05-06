@@ -130,13 +130,7 @@ function renderZeroAvatar() {
   const dim = 280;
   const uri = readPngDataUri(ZERO_AVATAR_PATH);
   return (
-    <img
-      src={uri}
-      width={dim}
-      height={dim}
-      style={{ flexShrink: 0 }}
-      alt=""
-    />
+    <img src={uri} width={dim} height={dim} style={{ flexShrink: 0 }} alt="" />
   );
 }
 
@@ -164,81 +158,80 @@ export default async function OpengraphImage({ params }: Params) {
   const connectorTiles = connectors.map(toConnectorTile);
 
   const baseTitleFontSize = locale === "ja" ? 44 : 58;
-  const titleFontSize = title.length > 80 ? baseTitleFontSize - 6 : baseTitleFontSize;
+  const titleFontSize =
+    title.length > 80 ? baseTitleFontSize - 6 : baseTitleFontSize;
 
   return new ImageResponse(
-    (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        backgroundColor: BG_COLOR,
+        color: TEXT_COLOR,
+        padding: "60px 72px",
+        fontFamily: family,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <img src={logoUri} width={130} height={39} alt="" />
+      </div>
+
       <div
         style={{
-          width: "100%",
-          height: "100%",
           display: "flex",
-          flexDirection: "column",
-          backgroundColor: BG_COLOR,
-          color: TEXT_COLOR,
-          padding: "60px 72px",
-          fontFamily: family,
+          flex: 1,
+          alignItems: "center",
+          gap: 56,
+          paddingTop: 16,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center" }}>
-          <img src={logoUri} width={130} height={39} alt="" />
-        </div>
-
         <div
           style={{
             display: "flex",
+            flexDirection: "column",
             flex: 1,
-            alignItems: "center",
-            gap: 56,
-            paddingTop: 16,
+            gap: 24,
           }}
         >
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
-              flex: 1,
-              gap: 24,
+              display: "-webkit-box",
+              fontSize: titleFontSize,
+              fontWeight: 700,
+              lineHeight: 1.15,
+              letterSpacing: -1,
+              color: TEXT_COLOR,
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
             }}
           >
-            <div
-              style={{
-                display: "-webkit-box",
-                fontSize: titleFontSize,
-                fontWeight: 700,
-                lineHeight: 1.15,
-                letterSpacing: -1,
-                color: TEXT_COLOR,
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {title}
-            </div>
-            <div
-              style={{
-                display: "-webkit-box",
-                fontSize: 24,
-                fontWeight: 400,
-                lineHeight: 1.45,
-                color: MUTED_COLOR,
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-              }}
-            >
-              {description}
-            </div>
+            {title}
           </div>
-          {renderZeroAvatar()}
+          <div
+            style={{
+              display: "-webkit-box",
+              fontSize: 24,
+              fontWeight: 400,
+              lineHeight: 1.45,
+              color: MUTED_COLOR,
+              WebkitLineClamp: 3,
+              WebkitBoxOrient: "vertical",
+              overflow: "hidden",
+            }}
+          >
+            {description}
+          </div>
         </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {connectorTiles.map(renderConnectorTile)}
-        </div>
+        {renderZeroAvatar()}
       </div>
-    ),
+
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {connectorTiles.map(renderConnectorTile)}
+      </div>
+    </div>,
     {
       ...size,
       fonts: [
