@@ -54,9 +54,9 @@ describe("Schedule model resolution", () => {
       // Create model provider for the agent's model
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const provider = await createTestOrgModelProvider(
-        "google-gemini-api-key",
-        "test-gemini-key",
-        "gemini-2.5-pro",
+        "openai-api-key",
+        "test-openai-key",
+        "gpt-4o",
       );
 
       mockClerk({ userId, orgId, orgRole: "org:admin" });
@@ -72,7 +72,7 @@ describe("Schedule model resolution", () => {
             prompt: "Test schedule with explicit model override",
             cronExpression: "0 0 * * *",
             modelProviderId: provider.id,
-            selectedModel: "gemini-2.5-pro",
+            selectedModel: "gpt-4o",
           }),
         }),
       );
@@ -80,7 +80,7 @@ describe("Schedule model resolution", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.schedule.modelProviderId).toBe(provider.id);
-      expect(data.schedule.selectedModel).toBe("gemini-2.5-pro");
+      expect(data.schedule.selectedModel).toBe("gpt-4o");
     });
 
     it("returns 400 when modelProviderId references a provider not in the org", async () => {
@@ -123,22 +123,18 @@ describe("Schedule model resolution", () => {
         "claude-sonnet-4-6",
       );
 
-      // Create a gemini provider that will be the agent's custom model
+      // Create an openai provider that will be the agent's custom model
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const agentProvider = await createTestOrgModelProvider(
-        "google-gemini-api-key",
-        "test-gemini-key",
-        "gemini-2.5-pro",
+        "openai-api-key",
+        "test-openai-key",
+        "gpt-4o",
       );
 
       // Create agent with a specific model (different from org default)
       mockClerk({ userId, orgId, orgRole: "org:admin" });
       const { agentId } = await createTestCompose(uniqueId("agent"));
-      await setTestZeroAgentModelProvider(
-        agentId,
-        agentProvider.id,
-        "gemini-2.5-pro",
-      );
+      await setTestZeroAgentModelProvider(agentId, agentProvider.id, "gpt-4o");
 
       // Create schedule with "agent default" (null model fields)
       mockClerk({ userId, orgId, orgRole: "org:admin" });
