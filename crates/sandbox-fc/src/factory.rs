@@ -2142,10 +2142,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn factory_cleanup_group_shutdown_cancel_reinserts_running_task() {
+    async fn factory_cleanup_group_shutdown_cancel_reinserts_running_and_late_tasks() {
         let group = Arc::new(FactoryCleanupGroup::new());
         let (release_tx, release_rx) = tokio::sync::oneshot::channel();
         let completed = Arc::new(AtomicBool::new(false));
+        let late_completed = Arc::new(AtomicBool::new(false));
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
 
         let completed_clone = Arc::clone(&completed);
@@ -2167,6 +2168,12 @@ mod tests {
         shutdown_task.abort();
         assert!(shutdown_task.await.unwrap_err().is_cancelled());
 
+        let late_completed_clone = Arc::clone(&late_completed);
+        let late_waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "late", async move {
+            late_completed_clone.store(true, Ordering::SeqCst);
+        });
+        drop(late_waiter);
+
         let retry_group = Arc::clone(&group);
         let retry_shutdown = tokio::spawn(async move {
             retry_group.shutdown().await;
@@ -2178,6 +2185,7 @@ mod tests {
         retry_shutdown.await.unwrap();
 
         assert!(completed.load(Ordering::SeqCst));
+        assert!(late_completed.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
@@ -2228,6 +2236,37 @@ mod tests {
         cleanup.wait_propagating_panic().await;
 
         assert!(ran.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn factory_cleanup_group_start_accepting_reopens_after_shutdown() {
+        let group = Arc::new(FactoryCleanupGroup::new());
+        group.shutdown().await;
+        group.start_accepting();
+
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let completed = Arc::new(AtomicBool::new(false));
+        let completed_clone = Arc::clone(&completed);
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "restart", async move {
+            let _ = started_tx.send(());
+            let _ = release_rx.await;
+            completed_clone.store(true, Ordering::SeqCst);
+        });
+        drop(waiter);
+
+        started_rx.await.unwrap();
+        let shutdown_group = Arc::clone(&group);
+        let shutdown_task = tokio::spawn(async move {
+            shutdown_group.shutdown().await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!shutdown_task.is_finished());
+
+        release_tx.send(()).unwrap();
+        shutdown_task.await.unwrap();
+
+        assert!(completed.load(Ordering::SeqCst));
     }
 
     #[tokio::test(start_paused = true)]
