@@ -418,14 +418,35 @@ export const MODEL_PROVIDER_TYPES = {
   },
   "codex-oauth-token": {
     framework: "codex" as const,
-    label: "ChatGPT (Sign in)",
+    label: "ChatGPT (Codex)",
     helpText:
-      "Sign in with ChatGPT (Plus / Pro / Business / Edu / Enterprise). " +
-      "Workspace selection happens on auth.openai.com.",
+      "Run `codex login` on your machine, then paste the resulting " +
+      "~/.codex/auth.json contents to authorize ChatGPT (Plus / Pro / " +
+      "Business / Edu / Enterprise) for Codex.",
     authMethods: {
-      oauth: {
-        label: "Sign in with ChatGPT",
+      // Paste-based auth: client posts CODEX_AUTH_JSON, server parses it via
+      // codex-auth-json-parser.ts and persists the four derived CHATGPT_*
+      // fields. The raw blob is NEVER stored. The wire-shape secret
+      // (CODEX_AUTH_JSON) is declared optional+serverOnly so the contract
+      // accepts it on POST without persisting; the four CHATGPT_* fields are
+      // the canonical stored secrets and the firewall layer reads from those.
+      auth_json: {
+        label: "Codex auth.json",
+        helpText:
+          "Run `codex login` locally, then paste the contents of ~/.codex/auth.json below.",
         secrets: {
+          CODEX_AUTH_JSON: {
+            label: "auth.json contents",
+            required: false,
+            serverOnly: true,
+            placeholder: '{"OPENAI_API_KEY":null,"tokens":{...}}',
+            helpText: "Paste the entire contents of ~/.codex/auth.json",
+          },
+          // CHATGPT_ACCESS_TOKEN and CHATGPT_ACCOUNT_ID reach the sandbox env
+          // as placeholder values (substituted by the firewall token-replacement
+          // layer at egress) — keeping them non-serverOnly preserves the
+          // placeholder injection path. CHATGPT_REFRESH_TOKEN and
+          // CHATGPT_ID_TOKEN stay serverOnly per the #7365 invariant.
           CHATGPT_ACCESS_TOKEN: {
             label: "CHATGPT_ACCESS_TOKEN",
             required: true,
@@ -446,30 +467,8 @@ export const MODEL_PROVIDER_TYPES = {
           },
         },
       },
-      // Paste-based auth: user runs `codex login` locally, then pastes the
-      // resulting ~/.codex/auth.json. The server-side parser (codex-auth-json-
-      // parser.ts) extracts the four CHATGPT_* fields from the raw blob and
-      // persists them via the `oauth` authMethod path; the raw CODEX_AUTH_JSON
-      // blob itself is NEVER stored. The auth_json secret declaration here
-      // exists for the wire-shape and UI rendering (see #11980); storage stays
-      // canonical until #11979 collapses oauth + auth_json onto the four
-      // CHATGPT_* fields.
-      auth_json: {
-        label: "Codex auth.json",
-        helpText:
-          "Run `codex login` locally, then paste the contents of ~/.codex/auth.json below.",
-        secrets: {
-          CODEX_AUTH_JSON: {
-            label: "auth.json contents",
-            required: true,
-            serverOnly: true,
-            placeholder: '{"OPENAI_API_KEY":null,"tokens":{...}}',
-            helpText: "Paste the entire contents of ~/.codex/auth.json",
-          },
-        },
-      },
     } as Record<string, AuthMethodConfig>,
-    defaultAuthMethod: "oauth",
+    defaultAuthMethod: "auth_json",
     environmentMapping: {
       CHATGPT_ACCESS_TOKEN: "$secrets.CHATGPT_ACCESS_TOKEN",
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",

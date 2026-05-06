@@ -180,7 +180,11 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     // the result.secrets map before it flows into the runner job context.
     const userId = uniqueId("codex-oauth-leak");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "codex-oauth-token",
+      "auth_json",
+    );
     for (const [name, value] of [
       ["CHATGPT_ACCESS_TOKEN", "real-access"],
       ["CHATGPT_REFRESH_TOKEN", "real-refresh-server-only"],
@@ -503,7 +507,11 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
   it("emits CHATGPT_ACCESS_TOKEN → 'codex-oauth' for codex-oauth-token", async () => {
     const userId = uniqueId("scm-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "codex-oauth-token",
+      "auth_json",
+    );
     for (const [name, value] of [
       ["CHATGPT_ACCESS_TOKEN", "at-1"],
       ["CHATGPT_REFRESH_TOKEN", "rt-1"],
@@ -543,7 +551,11 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
   it("does not emit secretConnectorMap when codex-oauth-token is missing required secrets", async () => {
     const userId = uniqueId("scm-chatgpt-incomplete");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "codex-oauth-token",
+      "auth_json",
+    );
     // Only seed access token; refresh/account/id missing → resolver returns
     // the no-secrets fallback path; no secretConnectorMap.
     await insertTestOrgModelProviderSecret({
@@ -571,7 +583,11 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
   it("throws staleProvider when matching provider has needsReconnect=true", async () => {
     const userId = uniqueId("stale-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "codex-oauth-token",
+      "auth_json",
+    );
     for (const [name, value] of [
       ["CHATGPT_ACCESS_TOKEN", "at"],
       ["CHATGPT_REFRESH_TOKEN", "rt"],
@@ -602,7 +618,11 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
   it("does not throw when needsReconnect=false (healthy provider)", async () => {
     const userId = uniqueId("healthy-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
+    await insertOrgMultiAuthModelProvider(
+      orgId,
+      "codex-oauth-token",
+      "auth_json",
+    );
     for (const [name, value] of [
       ["CHATGPT_ACCESS_TOKEN", "at"],
       ["CHATGPT_REFRESH_TOKEN", "rt"],

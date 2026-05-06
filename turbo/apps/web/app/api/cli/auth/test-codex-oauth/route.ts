@@ -137,7 +137,7 @@ async function seedFromAuthJson(
   await upsertOrgMultiAuthModelProvider(
     orgId,
     "codex-oauth-token",
-    "oauth",
+    "auth_json",
     {
       CHATGPT_ACCESS_TOKEN: parsed.accessToken,
       CHATGPT_REFRESH_TOKEN: parsed.refreshToken,
@@ -163,12 +163,17 @@ async function seedFromLegacyFields(
   orgId: string,
   body: z.infer<typeof legacyBodySchema>,
 ): Promise<NextResponse> {
-  await upsertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth", {
-    CHATGPT_ACCESS_TOKEN: body.accessToken,
-    CHATGPT_REFRESH_TOKEN: body.refreshToken,
-    CHATGPT_ACCOUNT_ID: body.accountId,
-    CHATGPT_ID_TOKEN: body.idToken,
-  });
+  await upsertOrgMultiAuthModelProvider(
+    orgId,
+    "codex-oauth-token",
+    "auth_json",
+    {
+      CHATGPT_ACCESS_TOKEN: body.accessToken,
+      CHATGPT_REFRESH_TOKEN: body.refreshToken,
+      CHATGPT_ACCOUNT_ID: body.accountId,
+      CHATGPT_ID_TOKEN: body.idToken,
+    },
+  );
 
   // Set token state directly — `upsertOrgMultiAuthModelProvider` doesn't
   // accept these fields today (Wave 3 / #11932 widens the signature).

@@ -4,7 +4,6 @@ import {
   getEnvironmentMapping,
   getDefaultModel,
   hasAuthMethods,
-  getSecretNamesForAuthMethod,
   getSecretsForAuthMethod,
   MODEL_PROVIDER_TYPES,
   getVm0ConcreteProviderType,
@@ -272,8 +271,8 @@ async function resolveMultiAuthProviderSecrets(
     return undefined;
   }
 
-  const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
-  if (!secretNames || secretNames.length === 0) {
+  const secretsConfig = getSecretsForAuthMethod(providerType, authMethod);
+  if (!secretsConfig || Object.keys(secretsConfig).length === 0) {
     log.debug(`No secret names found for ${providerType}/${authMethod}`);
     return undefined;
   }
@@ -286,11 +285,11 @@ async function resolveMultiAuthProviderSecrets(
   const secretsMap: Record<string, string> = {};
   let hasAllRequired = true;
 
-  for (const name of secretNames) {
+  for (const [name, config] of Object.entries(secretsConfig)) {
     const value = allSecretValues[name];
     if (value) {
       secretsMap[name] = value;
-    } else {
+    } else if (config.required) {
       log.debug(`Missing secret ${name} for ${providerType}/${authMethod}`);
       hasAllRequired = false;
     }

@@ -20,7 +20,6 @@ import {
   upsertOrgMultiAuthModelProvider,
   upsertOrgNoSecretModelProvider,
 } from "../../../../src/lib/zero/model-provider/model-provider-service";
-import { isCodexOauthEligible } from "../../../../src/lib/zero/model-provider/codex-oauth-eligibility";
 import {
   parseCodexAuthJson,
   isCodexAuthJsonShapeError,
@@ -71,10 +70,7 @@ async function handleCodexAuthJsonPaste(args: {
     const { provider, created } = await upsertOrgMultiAuthModelProvider(
       args.orgId,
       "codex-oauth-token",
-      // Storage stays on the canonical `oauth` authMethod with the four
-      // derived CHATGPT_* secrets — that's what the firewall layer reads.
-      // Wave 3 (#11979) collapses oauth + auth_json onto the four fields.
-      "oauth",
+      "auth_json",
       {
         CHATGPT_ACCESS_TOKEN: parsed.accessToken,
         CHATGPT_REFRESH_TOKEN: parsed.refreshToken,
@@ -210,7 +206,15 @@ const router = tsr.router(zeroModelProvidersMainContract, {
     }
 
     if (type === "codex-oauth-token" && authMethod === "auth_json") {
-      const eligible = await isCodexOauthEligible(org.orgId, authCtx.userId);
+      const overrides = await loadFeatureSwitchOverrides(
+        org.orgId,
+        authCtx.userId,
+      );
+      const eligible = isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, {
+        orgId: org.orgId,
+        userId: authCtx.userId,
+        overrides,
+      });
       if (!eligible) {
         return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
       }

@@ -343,7 +343,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     await upsertOrgMultiAuthModelProvider(
       orgId,
       "codex-oauth-token",
-      "oauth",
+      "auth_json",
       {
         CHATGPT_ACCESS_TOKEN: "at",
         CHATGPT_REFRESH_TOKEN: "rt",
@@ -374,12 +374,17 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
   it("clears needsReconnect + lastRefreshErrorCode atomically when re-upserted with metadata", async () => {
     // Seed: provider exists and is stale (firewall webhook flipped it)
     const { orgId } = await context.setupUser();
-    await upsertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth", {
-      CHATGPT_ACCESS_TOKEN: "old-at",
-      CHATGPT_REFRESH_TOKEN: "old-rt",
-      CHATGPT_ACCOUNT_ID: "acct",
-      CHATGPT_ID_TOKEN: "old-idt",
-    });
+    await upsertOrgMultiAuthModelProvider(
+      orgId,
+      "codex-oauth-token",
+      "auth_json",
+      {
+        CHATGPT_ACCESS_TOKEN: "old-at",
+        CHATGPT_REFRESH_TOKEN: "old-rt",
+        CHATGPT_ACCOUNT_ID: "acct",
+        CHATGPT_ID_TOKEN: "old-idt",
+      },
+    );
     await setTestModelProviderNeedsReconnect(
       orgId,
       ORG_SENTINEL_USER_ID,
@@ -392,7 +397,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     await upsertOrgMultiAuthModelProvider(
       orgId,
       "codex-oauth-token",
-      "oauth",
+      "auth_json",
       {
         CHATGPT_ACCESS_TOKEN: "new-at",
         CHATGPT_REFRESH_TOKEN: "new-rt",
@@ -423,7 +428,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     await upsertOrgMultiAuthModelProvider(
       orgId,
       "codex-oauth-token",
-      "oauth",
+      "auth_json",
       {
         CHATGPT_ACCESS_TOKEN: "at",
         CHATGPT_REFRESH_TOKEN: "rt",
@@ -442,7 +447,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     await upsertOrgMultiAuthModelProvider(
       orgId,
       "codex-oauth-token",
-      "oauth",
+      "auth_json",
       {
         CHATGPT_ACCESS_TOKEN: "at",
         CHATGPT_REFRESH_TOKEN: "rt",

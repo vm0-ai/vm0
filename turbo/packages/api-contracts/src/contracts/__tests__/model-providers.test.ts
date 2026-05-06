@@ -16,6 +16,7 @@ import {
   getSecretsForAuthMethod,
   VM0_MODEL_TO_PROVIDER,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
+  MODEL_PROVIDER_TYPES,
   modelProviderTypeSchema,
   modelProviderFrameworkSchema,
   type ModelProviderType,
@@ -292,34 +293,42 @@ describe("codex-oauth-token codex provider", () => {
     expect(getSelectableProviderTypes()).toContain("codex-oauth-token");
   });
 
-  it("uses multi-auth shape with oauth and auth_json methods", () => {
+  it("uses single auth_json multi-auth shape with the four CHATGPT_* fields", () => {
     const methods = getAuthMethodsForType("codex-oauth-token");
     expect(methods).toBeDefined();
-    expect(Object.keys(methods!).sort()).toEqual(["auth_json", "oauth"]);
-    const oauthSecrets = methods!.oauth!.secrets;
-    expect(Object.keys(oauthSecrets).sort()).toEqual([
+    expect(Object.keys(methods!)).toEqual(["auth_json"]);
+    const authJsonSecrets = methods!.auth_json!.secrets;
+    expect(Object.keys(authJsonSecrets).sort()).toEqual([
       "CHATGPT_ACCESS_TOKEN",
       "CHATGPT_ACCOUNT_ID",
       "CHATGPT_ID_TOKEN",
       "CHATGPT_REFRESH_TOKEN",
+      "CODEX_AUTH_JSON",
     ]);
-    const authJsonSecrets = methods!.auth_json!.secrets;
-    expect(Object.keys(authJsonSecrets)).toEqual(["CODEX_AUTH_JSON"]);
   });
 
-  it("marks refresh and id tokens as serverOnly", () => {
-    const secrets = getSecretsForAuthMethod("codex-oauth-token", "oauth")!;
+  it("defaultAuthMethod is auth_json", () => {
+    const config = MODEL_PROVIDER_TYPES["codex-oauth-token"];
+    expect(
+      "defaultAuthMethod" in config ? config.defaultAuthMethod : undefined,
+    ).toBe("auth_json");
+  });
+
+  it("marks refresh and id tokens as serverOnly under auth_json", () => {
+    const secrets = getSecretsForAuthMethod("codex-oauth-token", "auth_json")!;
     expect(secrets.CHATGPT_REFRESH_TOKEN!.serverOnly).toBe(true);
     expect(secrets.CHATGPT_ID_TOKEN!.serverOnly).toBe(true);
     // Access token + account ID are NOT server-only — they reach the sandbox
+    // as placeholder values, substituted by the firewall token-replacement
+    // layer at egress.
     expect(secrets.CHATGPT_ACCESS_TOKEN!.serverOnly).not.toBe(true);
     expect(secrets.CHATGPT_ACCOUNT_ID!.serverOnly).not.toBe(true);
   });
 
-  it("auth_json secret CODEX_AUTH_JSON is serverOnly (raw blob never leaves server)", () => {
+  it("CODEX_AUTH_JSON wire-shape secret is optional and serverOnly (raw blob never persisted nor reaches sandbox)", () => {
     const secrets = getSecretsForAuthMethod("codex-oauth-token", "auth_json")!;
     expect(secrets.CODEX_AUTH_JSON!.serverOnly).toBe(true);
-    expect(secrets.CODEX_AUTH_JSON!.required).toBe(true);
+    expect(secrets.CODEX_AUTH_JSON!.required).toBe(false);
   });
 
   it("environmentMapping does NOT reference refresh or id tokens", () => {

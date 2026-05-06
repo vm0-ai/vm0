@@ -10,6 +10,8 @@ import {
   findTestModelProviderTokenState,
   ORG_SENTINEL_USER_ID,
 } from "../../../../../src/__tests__/api-test-helpers";
+import { insertOrgMultiAuthModelProvider } from "../../../../../src/__tests__/db-test-seeders/org";
+import { insertTestOrgModelProviderSecret } from "../../../../../src/__tests__/db-test-seeders/secrets";
 import {
   testContext,
   type UserContext,
@@ -463,12 +465,26 @@ describe("Org-level model provider routes", () => {
     });
 
     it("emits needsReconnect=true + lastRefreshErrorCode after firewall refresh failure", async () => {
-      await createMultiAuthProvider("codex-oauth-token", "oauth", {
-        CHATGPT_ACCESS_TOKEN: "at",
-        CHATGPT_REFRESH_TOKEN: "rt",
-        CHATGPT_ACCOUNT_ID: "acct",
-        CHATGPT_ID_TOKEN: "idt",
-      });
+      // Seed directly via DB helpers — the upsert route's auth_json branch is
+      // a paste-flow special case that expects CODEX_AUTH_JSON, not the four
+      // pre-derived CHATGPT_* secrets this test feeds.
+      await insertOrgMultiAuthModelProvider(
+        user.orgId,
+        "codex-oauth-token",
+        "auth_json",
+      );
+      for (const [name, value] of [
+        ["CHATGPT_ACCESS_TOKEN", "at"],
+        ["CHATGPT_REFRESH_TOKEN", "rt"],
+        ["CHATGPT_ACCOUNT_ID", "acct"],
+        ["CHATGPT_ID_TOKEN", "idt"],
+      ] as const) {
+        await insertTestOrgModelProviderSecret({
+          orgId: user.orgId,
+          name,
+          value,
+        });
+      }
       await setTestModelProviderNeedsReconnect(
         user.orgId,
         ORG_SENTINEL_USER_ID,
@@ -570,7 +586,7 @@ describe("Org-level model provider routes", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.provider.type).toBe("codex-oauth-token");
-      expect(data.provider.authMethod).toBe("oauth");
+      expect(data.provider.authMethod).toBe("auth_json");
       expect(data.provider.workspaceName).toBe("Acme Corp");
       expect(data.provider.planType).toBe("plus");
       expect(data.provider.needsReconnect).toBe(false);
