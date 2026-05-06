@@ -18,7 +18,7 @@ import { SEED_SKILLS, buildSeedSkillValues } from "../src/lib/zero/seed-skills";
  * Prices are per 1M tokens, stored as integer credits per 1M tokens.
  *
  * API keys are read from environment variables per vendor:
- *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY)
+ *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
  */
 
 /** 1 USD = 1000 credits */
@@ -101,6 +101,34 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
     ["tokens.output", usd(0.28), 1_000_000],
     ["tokens.cache_read", usd(0.028), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
+  ]),
+  // OpenAI API pricing retrieved 2026-05-06 from:
+  // https://openai.com/api/pricing/
+  // https://developers.openai.com/api/docs/pricing
+  ...usageGroup("model", "gpt-5.5", [
+    ["tokens.input", usd(5), 1_000_000],
+    ["tokens.cache_read", usd(0.5), 1_000_000],
+    ["tokens.output", usd(30), 1_000_000],
+  ]),
+  ...usageGroup("model", "gpt-5.4", [
+    ["tokens.input", usd(2.5), 1_000_000],
+    ["tokens.cache_read", usd(0.25), 1_000_000],
+    ["tokens.output", usd(15), 1_000_000],
+  ]),
+  ...usageGroup("model", "gpt-5.4-mini", [
+    ["tokens.input", usd(0.75), 1_000_000],
+    ["tokens.cache_read", usd(0.075), 1_000_000],
+    ["tokens.output", usd(4.5), 1_000_000],
+  ]),
+  ...usageGroup("model", "gpt-5.3-codex", [
+    ["tokens.input", usd(1.75), 1_000_000],
+    ["tokens.cache_read", usd(0.175), 1_000_000],
+    ["tokens.output", usd(14), 1_000_000],
+  ]),
+  ...usageGroup("model", "gpt-5.2", [
+    ["tokens.input", usd(1.75), 1_000_000],
+    ["tokens.cache_read", usd(0.175), 1_000_000],
+    ["tokens.output", usd(14), 1_000_000],
   ]),
 
   // X connector — https://docs.x.com/x-api/getting-started/pricing

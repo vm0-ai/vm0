@@ -19,6 +19,10 @@ _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
 _X_JSON_RESPONSE_FINISH = "x_json_response_finish"
 
 
+def _is_openai_responses_provider(firewall_name: str) -> bool:
+    return firewall_name == "model-provider:openai-api-key"
+
+
 def configure_response_stream(flow: http.HTTPFlow) -> None:
     """
     Enable response streaming with body buffering.
@@ -79,14 +83,20 @@ def configure_response_stream(flow: http.HTTPFlow) -> None:
         is_x_stream = usage.x.is_stream_path(stream_path)
 
     if is_billable_model_provider:
-        content_type = flow.response.headers.get("content-type", "")
+        content_type = flow.response.headers.get("content-type", "").lower()
         if "text/event-stream" in content_type:
-            parser_fn, usage_dict = usage.create_sse_usage_extractor()
+            if _is_openai_responses_provider(firewall_name):
+                parser_fn, usage_dict = usage.create_openai_responses_sse_usage_extractor()
+            else:
+                parser_fn, usage_dict = usage.create_anthropic_messages_sse_usage_extractor()
             sse_parser = parser_fn
             flow.metadata["model_provider_usage"] = usage_dict
             sse_decompressor = body_utils.create_stream_decompressor(flow.response.headers)
         else:
-            extractor = usage.create_model_json_usage_extractor()
+            if _is_openai_responses_provider(firewall_name):
+                extractor = usage.create_openai_responses_json_usage_extractor()
+            else:
+                extractor = usage.create_anthropic_messages_json_usage_extractor()
             model_json_parser = extractor.feed
             flow.metadata[_MODEL_JSON_USAGE_FINISH] = extractor.finish
             model_json_decompressor = body_utils.create_stream_decompressor(flow.response.headers)

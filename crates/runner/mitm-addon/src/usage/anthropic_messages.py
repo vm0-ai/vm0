@@ -1,4 +1,4 @@
-"""Anthropic usage parsing primitives.
+"""Anthropic Messages API usage parsing primitives.
 
 Pure parsers shared by both the SSE streaming path and the non-streaming
 JSON fallback.
@@ -51,11 +51,11 @@ def _is_usage_quantity(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
+def create_anthropic_messages_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
     """Create an incremental SSE parser that extracts usage from Anthropic API streams.
 
-    All model providers in this system use the Anthropic Messages API streaming
-    format.  Usage data appears in two SSE events:
+    Anthropic-shaped model providers use the Anthropic Messages API streaming
+    format. Usage data appears in two SSE events:
 
     - ``message_start`` — ``message.usage`` contains input token counts and
       ``message.model`` identifies the model.
@@ -151,7 +151,7 @@ def create_sse_usage_extractor() -> tuple[Callable[[bytes], None], dict]:
     return parse_chunk, usage
 
 
-class ModelJsonUsageExtractor:
+class AnthropicMessagesJsonUsageExtractor:
     """Incrementally extract model usage from non-streaming JSON responses."""
 
     def __init__(self) -> None:
@@ -180,11 +180,11 @@ class ModelJsonUsageExtractor:
         return usage, None
 
 
-def create_model_json_usage_extractor() -> ModelJsonUsageExtractor:
-    return ModelJsonUsageExtractor()
+def create_anthropic_messages_json_usage_extractor() -> AnthropicMessagesJsonUsageExtractor:
+    return AnthropicMessagesJsonUsageExtractor()
 
 
-def extract_usage_from_json(body: bytes, headers) -> dict | None:
+def extract_anthropic_messages_usage_from_json(body: bytes, headers) -> dict | None:
     """Extract usage from a non-streaming Anthropic API JSON response.
 
     Falls back to decompressing the body if *headers* indicate compression.
@@ -194,7 +194,7 @@ def extract_usage_from_json(body: bytes, headers) -> dict | None:
         body = body_utils.decompress_body(
             body, headers, max_output=body_utils.LARGE_RESPONSE_DECOMPRESS_LIMIT
         )
-    extractor = create_model_json_usage_extractor()
+    extractor = create_anthropic_messages_json_usage_extractor()
     extractor.feed(body)
     usage, _error = extractor.finish()
     return usage

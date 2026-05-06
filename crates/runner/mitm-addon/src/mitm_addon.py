@@ -404,10 +404,16 @@ def response(flow: http.HTTPFlow) -> None:
         if firewall_name.startswith("model-provider:") and flow.metadata.get(
             "firewall_billable", False
         ):
-            json_usage = usage.extract_usage_from_json(
-                bytes(stream_buf),
-                flow.response.headers if flow.response else None,
-            )
+            if firewall_name == "model-provider:openai-api-key":
+                json_usage = usage.extract_openai_responses_usage_from_json(
+                    bytes(stream_buf),
+                    flow.response.headers if flow.response else None,
+                )
+            else:
+                json_usage = usage.extract_anthropic_messages_usage_from_json(
+                    bytes(stream_buf),
+                    flow.response.headers if flow.response else None,
+                )
             if json_usage:
                 flow.metadata["model_provider_usage"] = json_usage
     usage.report_model_provider_usage(flow, run_id)

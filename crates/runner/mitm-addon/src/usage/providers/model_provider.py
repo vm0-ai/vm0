@@ -1,8 +1,8 @@
 """Model-provider billing entry point.
 
-Extracts Anthropic token counts already accumulated by the addon-side
-SSE / JSON extractor (stored in ``flow.metadata["model_provider_usage"]``) and
-forwards them to the platform ``/api/webhooks/agent/usage-event`` endpoint.
+Forwards token counts already normalized by an addon-side provider extractor
+(stored in ``flow.metadata["model_provider_usage"]``) to the platform
+``/api/webhooks/agent/usage-event`` endpoint.
 """
 
 import uuid

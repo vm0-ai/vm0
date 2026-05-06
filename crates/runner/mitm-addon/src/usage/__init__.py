@@ -3,7 +3,7 @@
 Two paths:
 
 - Model-provider responses (SSE streams and non-streaming JSON): extract
-  Anthropic token counts and report them to the platform webhook through
+  model token counts and report them to the platform webhook through
   a background thread pool — see :mod:`usage.providers.model_provider`.
 - Billable connector responses (flagged by the web layer via
   ``billableFirewalls`` → ``flow.metadata["firewall_billable"]``): compute
@@ -19,20 +19,28 @@ patches can't reach.
 """
 
 from . import webhook
+from .anthropic_messages import (
+    create_anthropic_messages_json_usage_extractor,
+    create_anthropic_messages_sse_usage_extractor,
+    extract_anthropic_messages_usage_from_json,
+)
 from .counters import decrement_flows, increment_flows, set_pending_path
-from .extract import (
-    create_model_json_usage_extractor,
-    create_sse_usage_extractor,
-    extract_usage_from_json,
+from .openai_responses import (
+    create_openai_responses_json_usage_extractor,
+    create_openai_responses_sse_usage_extractor,
+    extract_openai_responses_usage_from_json,
 )
 from .providers.connectors import report_connector_usage, x
 from .providers.model_provider import report_model_provider_usage
 
 __all__ = [
-    "create_model_json_usage_extractor",
-    "create_sse_usage_extractor",
+    "create_anthropic_messages_json_usage_extractor",
+    "create_anthropic_messages_sse_usage_extractor",
+    "create_openai_responses_json_usage_extractor",
+    "create_openai_responses_sse_usage_extractor",
     "decrement_flows",
-    "extract_usage_from_json",
+    "extract_anthropic_messages_usage_from_json",
+    "extract_openai_responses_usage_from_json",
     "increment_flows",
     "report_connector_usage",
     "report_model_provider_usage",
