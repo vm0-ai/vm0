@@ -84,12 +84,9 @@ describe("chat thread realtime catch-up", () => {
 
     // Without the drain-loop fix, only one 50-message page is fetched and
     // the last burst message never appears. With the fix, all pages drain.
-    await waitFor(
-      () => {
-        expect(screen.getByText("Burst 119")).toBeInTheDocument();
-      },
-      {},
-    );
+    await waitFor(() => {
+      expect(screen.getByText("Burst 119")).toBeInTheDocument();
+    }, {});
 
     // 120 messages → 3 pages (50 + 50 + 20). The last page has < 50 messages
     // so reachedEnd fires and the loop stops without a 4th call.
