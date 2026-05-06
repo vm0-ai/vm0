@@ -1496,7 +1496,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
     });
   });
 
-  describe("Token refresh — chatgpt-oauth-token model provider (#11908)", () => {
+  describe("Token refresh — codex-oauth-token model provider (#11908)", () => {
     const CHATGPT_TOKEN_URL = "https://auth.openai.com/oauth/token";
 
     async function setupChatgptProvider(opts: {
@@ -1514,13 +1514,13 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
 
       await insertOrgMultiAuthModelProvider(
         user.orgId,
-        "chatgpt-oauth-token",
+        "codex-oauth-token",
         "oauth",
       );
       await setTestModelProviderTokenExpiresAt(
         user.orgId,
         ORG_SENTINEL_USER_ID,
-        "chatgpt-oauth-token",
+        "codex-oauth-token",
         opts.tokenExpiresAt,
       );
 
@@ -1597,7 +1597,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const row = await findTestModelProviderTokenState(
         user.orgId,
         ORG_SENTINEL_USER_ID,
-        "chatgpt-oauth-token",
+        "codex-oauth-token",
       );
       expect(row).not.toBeNull();
       expect(row!.tokenExpiresAt).toBeInstanceOf(Date);
@@ -1658,7 +1658,7 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
       const row = await findTestModelProviderTokenState(
         user.orgId,
         ORG_SENTINEL_USER_ID,
-        "chatgpt-oauth-token",
+        "codex-oauth-token",
       );
       expect(row).not.toBeNull();
       expect(row!.needsReconnect).toBe(true);

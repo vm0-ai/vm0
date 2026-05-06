@@ -286,7 +286,7 @@ async function resolveSecretsAndEnvironment(
 
   // Filter secretConnectorMap: remove keys overridden by higher-priority sources.
   // Then merge in model-provider-derived entries (CHATGPT_ACCESS_TOKEN → "chatgpt-oauth"
-  // for chatgpt-oauth-token providers). Model-provider entries are added AFTER the
+  // for codex-oauth-token providers). Model-provider entries are added AFTER the
   // filter because they share names with `modelProviderResult.secrets` — those secrets
   // ARE the source of the OAuth refresh, not an override target.
   const filteredOauthMap = filterSecretConnectorMap(

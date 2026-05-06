@@ -342,7 +342,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
 
     await upsertOrgMultiAuthModelProvider(
       orgId,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
       "oauth",
       {
         CHATGPT_ACCESS_TOKEN: "at",
@@ -361,7 +361,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     const state = await findTestModelProviderTokenState(
       orgId,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
     );
     expect(state).not.toBeNull();
     expect(state!.tokenExpiresAt).toEqual(expiresAt);
@@ -374,21 +374,16 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
   it("clears needsReconnect + lastRefreshErrorCode atomically when re-upserted with metadata", async () => {
     // Seed: provider exists and is stale (firewall webhook flipped it)
     const { orgId } = await context.setupUser();
-    await upsertOrgMultiAuthModelProvider(
-      orgId,
-      "chatgpt-oauth-token",
-      "oauth",
-      {
-        CHATGPT_ACCESS_TOKEN: "old-at",
-        CHATGPT_REFRESH_TOKEN: "old-rt",
-        CHATGPT_ACCOUNT_ID: "acct",
-        CHATGPT_ID_TOKEN: "old-idt",
-      },
-    );
+    await upsertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth", {
+      CHATGPT_ACCESS_TOKEN: "old-at",
+      CHATGPT_REFRESH_TOKEN: "old-rt",
+      CHATGPT_ACCOUNT_ID: "acct",
+      CHATGPT_ID_TOKEN: "old-idt",
+    });
     await setTestModelProviderNeedsReconnect(
       orgId,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
       true,
       "refresh_token_expired",
     );
@@ -396,7 +391,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     // Re-OAuth: callback re-upserts with metadata
     await upsertOrgMultiAuthModelProvider(
       orgId,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
       "oauth",
       {
         CHATGPT_ACCESS_TOKEN: "new-at",
@@ -415,7 +410,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     const state = await findTestModelProviderTokenState(
       orgId,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
     );
     expect(state!.needsReconnect).toBe(false);
     expect(state!.lastRefreshErrorCode).toBeNull();
@@ -427,7 +422,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     const { orgId } = await context.setupUser();
     await upsertOrgMultiAuthModelProvider(
       orgId,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
       "oauth",
       {
         CHATGPT_ACCESS_TOKEN: "at",
@@ -446,7 +441,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     // Update without metadata (e.g. selectedModel change from settings UI)
     await upsertOrgMultiAuthModelProvider(
       orgId,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
       "oauth",
       {
         CHATGPT_ACCESS_TOKEN: "at",
@@ -460,7 +455,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
     const state = await findTestModelProviderTokenState(
       orgId,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
     );
     expect(state!.workspaceName).toBe("Acme Inc");
     expect(state!.planType).toBe("plus");

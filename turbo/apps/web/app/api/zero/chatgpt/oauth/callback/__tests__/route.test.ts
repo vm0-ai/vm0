@@ -156,7 +156,7 @@ describe("GET /api/zero/chatgpt/oauth/callback", () => {
 
     const providers = await listOrgProviders();
     expect(providers).toHaveLength(1);
-    expect(providers[0]?.type).toBe("chatgpt-oauth-token");
+    expect(providers[0]?.type).toBe("codex-oauth-token");
     expect(providers[0]?.authMethod).toBe("oauth");
   });
 
@@ -187,7 +187,7 @@ describe("GET /api/zero/chatgpt/oauth/callback", () => {
     const state = await findTestModelProviderTokenState(
       user.orgId,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
     );
     expect(state).not.toBeNull();
     expect(state!.workspaceName).toBe("Acme Inc");
@@ -221,7 +221,7 @@ describe("GET /api/zero/chatgpt/oauth/callback", () => {
     await setTestModelProviderNeedsReconnect(
       user.orgId,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
       true,
       "refresh_token_expired",
     );
@@ -249,7 +249,7 @@ describe("GET /api/zero/chatgpt/oauth/callback", () => {
     const state = await findTestModelProviderTokenState(
       user.orgId,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
     );
     expect(state!.needsReconnect).toBe(false);
     expect(state!.lastRefreshErrorCode).toBeNull();

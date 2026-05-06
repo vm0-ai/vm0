@@ -127,7 +127,7 @@ export async function GET(request: Request) {
   // (re-OAuth IS the recovery path for stale providers).
   await upsertOrgMultiAuthModelProvider(
     state.orgId,
-    "chatgpt-oauth-token",
+    "codex-oauth-token",
     "oauth",
     {
       CHATGPT_ACCESS_TOKEN: result.accessToken,

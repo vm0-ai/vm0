@@ -37,7 +37,7 @@ interface ModelProviderInfo {
   isDefault: boolean;
   selectedModel: string | null;
   // OAuth refresh state (mirrors `connectors`); set by the firewall refresh
-  // pipeline for OAuth-typed providers like chatgpt-oauth-token. Other
+  // pipeline for OAuth-typed providers like codex-oauth-token. Other
   // provider types leave these at the default values.
   tokenExpiresAt: Date | null;
   needsReconnect: boolean;

@@ -52,7 +52,7 @@ function getOverrides(
         "Leverage Claude Code's exceptional intelligence to build and run agents.",
     };
   }
-  if (type === "chatgpt-oauth-token") {
+  if (type === "codex-oauth-token") {
     return {
       description:
         "Sign in with your ChatGPT subscription (Plus / Pro / Business / Edu / Enterprise). Workspace selection happens on auth.openai.com.",

@@ -56,7 +56,7 @@ export function OrgProvidersTab() {
 
 /**
  * Render the re-connect banner above the provider list when any
- * chatgpt-oauth-token provider has flipped to needsReconnect=true (the
+ * codex-oauth-token provider has flipped to needsReconnect=true (the
  * firewall refresh pipeline writes this on refresh failure, see #11921).
  * The banner is the primary CTA; the per-row footer also shows a destructive
  * pill so users see the failed row at a glance.
@@ -74,7 +74,7 @@ function StaleProviderBanner({
   providers: ModelProviderResponse[];
 }) {
   const stale = providers.find((p) => {
-    return p.type === "chatgpt-oauth-token" && p.needsReconnect;
+    return p.type === "codex-oauth-token" && p.needsReconnect;
   });
   if (!stale) {
     return null;
@@ -203,7 +203,7 @@ function DefaultProviderSection() {
 }
 
 /**
- * Plan strings the chatgpt-oauth-token callback emits today. Values outside
+ * Plan strings the codex-oauth-token callback emits today. Values outside
  * this set still come through as a `string` on the contract — we render the
  * workspace name without a plan pill rather than capitalizing an
  * unrecognized value. Mirrors the ChatGPT subscription tiers documented in
@@ -224,7 +224,7 @@ function capitalizePlan(plan: string): string {
 }
 
 function ProviderRowFooter({ provider }: { provider: ModelProviderResponse }) {
-  if (provider.type === "chatgpt-oauth-token" && provider.needsReconnect) {
+  if (provider.type === "codex-oauth-token" && provider.needsReconnect) {
     return (
       <span className="flex items-center gap-2 text-xs truncate">
         <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
@@ -234,7 +234,7 @@ function ProviderRowFooter({ provider }: { provider: ModelProviderResponse }) {
       </span>
     );
   }
-  if (provider.type === "chatgpt-oauth-token" && provider.workspaceName) {
+  if (provider.type === "codex-oauth-token" && provider.workspaceName) {
     const showPlanPill =
       provider.planType !== null &&
       provider.planType !== undefined &&

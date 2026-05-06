@@ -178,7 +178,7 @@ interface ModelProviderSecretResult {
 
 /**
  * Build the secretConnectorMap entries for a model-provider type whose
- * tokens are OAuth-refreshable (e.g. chatgpt-oauth-token).
+ * tokens are OAuth-refreshable (e.g. codex-oauth-token).
  *
  * Returns undefined when the provider has no bridged handler or its handler
  * lacks `refreshToken` — for non-OAuth providers the firewall has nothing

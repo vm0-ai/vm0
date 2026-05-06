@@ -3,7 +3,7 @@
 # E2E test for the ChatGPT-OAuth refresh rotation flow.
 # Issue #11941, parent Epic #11872, Epic SC #6.
 #
-# Validates: when a chatgpt-oauth-token provider has an expired access
+# Validates: when a codex-oauth-token provider has an expired access
 # token at run time, the firewall webhook's refresh pipeline (added by
 # #11921) calls chatgptOauthHandler.refreshToken, the upstream returns
 # rotated tokens, and the persisted tokens advance in the secrets store.
@@ -53,7 +53,7 @@ agents:
     description: "ChatGPT OAuth refresh rotation test"
     framework: codex
     environment:
-      OPENAI_API_KEY: "ignored-when-using-chatgpt-oauth-token-provider"
+      OPENAI_API_KEY: "ignored-when-using-codex-oauth-token-provider"
     working_dir: /home/user/workspace
 EOF
     $VM0_CLI compose "$TEST_DIR/vm0.yaml" >/dev/null

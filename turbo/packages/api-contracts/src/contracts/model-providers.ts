@@ -416,7 +416,7 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "gpt-5.5",
   },
-  "chatgpt-oauth-token": {
+  "codex-oauth-token": {
     framework: "codex" as const,
     label: "ChatGPT (Sign in)",
     helpText:
@@ -624,8 +624,8 @@ export function getSelectableProviderTypes(): ModelProviderType[] {
 const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 
 function getFirewallBaseUrl(type: ModelProviderType): string {
-  // chatgpt-oauth-token targets ChatGPT's backend, not the public OpenAI API.
-  if (type === "chatgpt-oauth-token") {
+  // codex-oauth-token targets ChatGPT's backend, not the public OpenAI API.
+  if (type === "codex-oauth-token") {
     return "https://chatgpt.com/backend-api/codex";
   }
   // Other codex providers use OpenAI's Responses API — the only inference
@@ -648,7 +648,7 @@ function getFirewallBaseUrl(type: ModelProviderType): string {
  * any possibility of mismatch between auth header templates and placeholders.
  */
 // Helper accepts only single-secret providers — multi-auth firewall configs
-// (e.g., chatgpt-oauth-token) declare their entries inline because they need
+// (e.g., codex-oauth-token) declare their entries inline because they need
 // multiple headers and/or multiple API entries.
 type LegacySingleSecretProvider = {
   [K in FirewallSupportedProvider]: (typeof MODEL_PROVIDER_TYPES)[K] extends {
@@ -772,8 +772,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   // here only needs to be a stable, non-empty string the firewall can match
   // and substitute. Account-id placeholder still equals #11877's literal
   // since the architectural relationship across the two surfaces matters.
-  "chatgpt-oauth-token": {
-    name: "model-provider:chatgpt-oauth-token",
+  "codex-oauth-token": {
+    name: "model-provider:codex-oauth-token",
     apis: [
       {
         base: "https://chatgpt.com/backend-api/codex",
@@ -831,7 +831,7 @@ export const modelProviderTypeSchema = z.enum([
   "zai-api-key",
   "vercel-ai-gateway",
   "openai-api-key",
-  "chatgpt-oauth-token",
+  "codex-oauth-token",
   "azure-foundry",
   "aws-bedrock",
   "vm0",
@@ -1062,7 +1062,7 @@ export const modelProviderResponseSchema = z.object({
   selectedModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  // ChatGPT-only metadata populated by the chatgpt-oauth-token callback.
+  // ChatGPT-only metadata populated by the codex-oauth-token callback.
   // Other provider types omit these. Mirrors the server-side connector
   // shape in apps/web/src/lib/zero/connector/providers/chatgpt-oauth.ts.
   // The corresponding server route lands in #11909; declared here so the

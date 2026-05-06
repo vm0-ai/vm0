@@ -283,17 +283,17 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
   );
 });
 
-describe("chatgpt-oauth-token codex provider", () => {
+describe("codex-oauth-token codex provider", () => {
   it("declares codex framework", () => {
-    expect(getFrameworkForType("chatgpt-oauth-token")).toBe("codex");
+    expect(getFrameworkForType("codex-oauth-token")).toBe("codex");
   });
 
   it("appears in selectable provider types", () => {
-    expect(getSelectableProviderTypes()).toContain("chatgpt-oauth-token");
+    expect(getSelectableProviderTypes()).toContain("codex-oauth-token");
   });
 
   it("uses multi-auth shape with oauth method and four secrets", () => {
-    const methods = getAuthMethodsForType("chatgpt-oauth-token");
+    const methods = getAuthMethodsForType("codex-oauth-token");
     expect(methods).toBeDefined();
     expect(Object.keys(methods!)).toEqual(["oauth"]);
     const secrets = methods!.oauth!.secrets;
@@ -306,7 +306,7 @@ describe("chatgpt-oauth-token codex provider", () => {
   });
 
   it("marks refresh and id tokens as serverOnly", () => {
-    const secrets = getSecretsForAuthMethod("chatgpt-oauth-token", "oauth")!;
+    const secrets = getSecretsForAuthMethod("codex-oauth-token", "oauth")!;
     expect(secrets.CHATGPT_REFRESH_TOKEN!.serverOnly).toBe(true);
     expect(secrets.CHATGPT_ID_TOKEN!.serverOnly).toBe(true);
     // Access token + account ID are NOT server-only — they reach the sandbox
@@ -315,42 +315,42 @@ describe("chatgpt-oauth-token codex provider", () => {
   });
 
   it("environmentMapping does NOT reference refresh or id tokens", () => {
-    const mapping = getEnvironmentMapping("chatgpt-oauth-token")!;
+    const mapping = getEnvironmentMapping("codex-oauth-token")!;
     const values = Object.values(mapping).join(" ");
     expect(values).not.toContain("CHATGPT_REFRESH_TOKEN");
     expect(values).not.toContain("CHATGPT_ID_TOKEN");
   });
 
   it("environmentMapping injects access token, account id, and model", () => {
-    const mapping = getEnvironmentMapping("chatgpt-oauth-token")!;
+    const mapping = getEnvironmentMapping("codex-oauth-token")!;
     expect(mapping.CHATGPT_ACCESS_TOKEN).toBe("$secrets.CHATGPT_ACCESS_TOKEN");
     expect(mapping.CHATGPT_ACCOUNT_ID).toBe("$secrets.CHATGPT_ACCOUNT_ID");
     expect(mapping.OPENAI_MODEL).toBe("$model");
   });
 
   it("offers gpt-5.x models with gpt-5.5 default", () => {
-    expect(getModels("chatgpt-oauth-token")).toContain("gpt-5.5");
-    expect(getModels("chatgpt-oauth-token")).toContain("gpt-5.3-codex");
-    expect(getDefaultModel("chatgpt-oauth-token")).toBe("gpt-5.5");
+    expect(getModels("codex-oauth-token")).toContain("gpt-5.5");
+    expect(getModels("codex-oauth-token")).toContain("gpt-5.3-codex");
+    expect(getDefaultModel("codex-oauth-token")).toBe("gpt-5.5");
   });
 
   it("supports model selection", () => {
-    expect(hasModelSelection("chatgpt-oauth-token")).toBe(true);
+    expect(hasModelSelection("codex-oauth-token")).toBe(true);
   });
 
   it("getProviderBaseUrl returns null (codex provider, no ANTHROPIC_BASE_URL)", () => {
-    expect(getProviderBaseUrl("chatgpt-oauth-token")).toBeNull();
+    expect(getProviderBaseUrl("codex-oauth-token")).toBeNull();
   });
 
   it("firewall entry has both ChatGPT and auth.openai.com APIs", () => {
-    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.apis).toHaveLength(2);
     expect(config.apis[0]!.base).toBe("https://chatgpt.com/backend-api/codex");
     expect(config.apis[1]!.base).toBe("https://auth.openai.com");
   });
 
   it("firewall injects Authorization and ChatGPT-Account-ID headers", () => {
-    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.apis[0]!.auth.headers).toEqual({
       Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
       "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
@@ -358,7 +358,7 @@ describe("chatgpt-oauth-token codex provider", () => {
   });
 
   it("firewall denies auth.openai.com via defaultPolicies + permission rule", () => {
-    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.defaultPolicies?.deny).toContain("denied");
     expect(config.defaultPolicies?.unknownPolicy).toBe("deny");
     expect(config.apis[1]!.permissions).toEqual([
@@ -372,7 +372,7 @@ describe("chatgpt-oauth-token codex provider", () => {
     // firewall only needs a stable, non-empty marker to match-and-substitute
     // at egress. A JWT-shaped placeholder triggers Semgrep's
     // detected-jwt-token rule even though the contents are obvious dummies.
-    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     const token = config.placeholders!.CHATGPT_ACCESS_TOKEN!;
     expect(token.length).toBeGreaterThan(20);
     // Not a 3-segment JWT — a single dotless string is fine.
@@ -384,16 +384,16 @@ describe("chatgpt-oauth-token codex provider", () => {
     // is the single string that crosses both surfaces (firewall placeholder
     // map AND the auth.json the guest-agent fabricates). Keeping them in
     // lockstep means future readers can grep one literal and find both.
-    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.placeholders!.CHATGPT_ACCOUNT_ID).toBe(
       "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
     );
   });
 
-  it("modelProviderTypeSchema accepts chatgpt-oauth-token", () => {
-    expect(
-      modelProviderTypeSchema.safeParse("chatgpt-oauth-token").success,
-    ).toBe(true);
+  it("modelProviderTypeSchema accepts codex-oauth-token", () => {
+    expect(modelProviderTypeSchema.safeParse("codex-oauth-token").success).toBe(
+      true,
+    );
   });
 });
 
@@ -411,7 +411,7 @@ describe("getFirewallBaseUrl regression — existing providers unchanged", () =>
     ["zai-api-key", "https://api.z.ai/api/anthropic/v1/messages"],
     ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
     ["openai-api-key", "https://api.openai.com/v1/responses"],
-    ["chatgpt-oauth-token", "https://chatgpt.com/backend-api/codex"],
+    ["codex-oauth-token", "https://chatgpt.com/backend-api/codex"],
   ] as const)("%s firewall base URL is %s", (type, expected) => {
     expect(MODEL_PROVIDER_FIREWALL_CONFIGS[type]!.apis[0]!.base).toBe(expected);
   });

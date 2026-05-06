@@ -62,7 +62,7 @@ setup_file() {
     # Enable feature switch (chatgptOauthProvider is staff-only off by default).
     enable_chatgpt_oauth_provider
 
-    # Seed chatgpt-oauth-token model_provider with high-entropy synthetic tokens.
+    # Seed codex-oauth-token model_provider with high-entropy synthetic tokens.
     # The seed endpoint sets tokenExpiresAt 10min in the future so the token
     # isn't refreshed mid-test.
     seed_chatgpt_oauth \
@@ -74,7 +74,7 @@ setup_file() {
     # Compose codex-framework agent that mounts the audit artifact.
     # OPENAI_API_KEY env declaration satisfies validateFrameworkApiKey for the
     # codex framework. The placeholder value is never used at runtime — the
-    # chatgpt-oauth-token firewall injects real auth headers at egress —
+    # codex-oauth-token firewall injects real auth headers at egress —
     # but the validator requires the env key to be present (or the provider
     # to be a single-secret provider whose secretName matches; chatgpt-oauth-
     # token is multi-auth so getSecretNameForType returns undefined).
@@ -85,7 +85,7 @@ agents:
     description: "ChatGPT OAuth sandbox audit agent"
     framework: codex
     environment:
-      OPENAI_API_KEY: "ignored-when-using-chatgpt-oauth-token-provider"
+      OPENAI_API_KEY: "ignored-when-using-codex-oauth-token-provider"
     artifacts:
       - ${AUDIT_ARTIFACT_NAME}:/artifacts
     working_dir: /home/user/workspace
@@ -160,7 +160,7 @@ teardown_file() {
 
 # Test 7 — auth.openai.com denied from sandbox. The firewall config in
 # turbo/packages/api-contracts/src/contracts/model-providers.ts:725-728
-# adds an explicit deny on auth.openai.com for the chatgpt-oauth-token
+# adds an explicit deny on auth.openai.com for the codex-oauth-token
 # model provider. This is defense-in-depth: the guest-agent already
 # overrides CODEX_REFRESH_TOKEN_URL_OVERRIDE to localhost:1, but if codex
 # ever ignores the override, this firewall rule still prevents egress.

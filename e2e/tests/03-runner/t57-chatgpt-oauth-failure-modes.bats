@@ -83,7 +83,7 @@ agents:
     description: "ChatGPT OAuth stale-rejection test"
     framework: codex
     environment:
-      OPENAI_API_KEY: "ignored-when-using-chatgpt-oauth-token-provider"
+      OPENAI_API_KEY: "ignored-when-using-codex-oauth-token-provider"
     working_dir: /home/user/workspace
 EOF
     $VM0_CLI compose "$test_dir/vm0.yaml" >/dev/null

@@ -6,7 +6,7 @@
  * - Card visible when feature switch is on (DoD: gate-on)
  * - Click on the card redirects to /api/zero/chatgpt/oauth/connect (DoD: redirect)
  * - Existing-provider row renders workspace name + plan pill when fields
- *   present on chatgpt-oauth-token provider (DoD: post-OAuth display)
+ *   present on codex-oauth-token provider (DoD: post-OAuth display)
  *
  * Wave 2 sub-issue of Epic #11872 (issue #11907). Server-side OAuth route
  * delivered in #11909; this test mocks the redirect target.
@@ -43,17 +43,17 @@ async function openProvidersPage() {
 }
 
 /**
- * Build a chatgpt-oauth-token provider row with optional workspaceName /
+ * Build a codex-oauth-token provider row with optional workspaceName /
  * planType fields. These fields are part of the model-provider response
  * contract (declared optional so other provider types can omit them); the
- * chatgpt-oauth-token callback delivered in #11909 populates them.
+ * codex-oauth-token callback delivered in #11909 populates them.
  */
 function makeChatgptProvider(
   extras: { workspaceName?: string; planType?: string } = {},
 ): ModelProviderResponse {
   return {
     id: "00000000-0000-4000-a000-000000000010",
-    type: "chatgpt-oauth-token",
+    type: "codex-oauth-token",
     framework: "codex",
     secretName: "CHATGPT_ACCESS_TOKEN",
     authMethod: "oauth",
@@ -89,7 +89,7 @@ describe("connect ChatGPT card — feature switch gating", () => {
     });
 
     expect(
-      screen.queryByTestId("org-provider-card-chatgpt-oauth-token"),
+      screen.queryByTestId("org-provider-card-codex-oauth-token"),
     ).not.toBeInTheDocument();
   });
 
@@ -103,7 +103,7 @@ describe("connect ChatGPT card — feature switch gating", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("org-provider-card-chatgpt-oauth-token"),
+        screen.getByTestId("org-provider-card-codex-oauth-token"),
       ).toBeInTheDocument();
     });
   });
@@ -140,7 +140,7 @@ describe("connect ChatGPT card — click handler", () => {
     context.store.set(setOrgAddProviderDialogOpen$, true);
 
     const card = await screen.findByTestId(
-      "org-provider-card-chatgpt-oauth-token",
+      "org-provider-card-codex-oauth-token",
     );
     click(card);
 

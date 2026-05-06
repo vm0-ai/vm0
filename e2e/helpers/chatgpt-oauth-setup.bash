@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bats helper for seeding chatgpt-oauth-token model_provider state via the
+# Bats helper for seeding codex-oauth-token model_provider state via the
 # /api/cli/auth/test-chatgpt-oauth endpoint. Used by E2E tests of the
 # ChatGPT-OAuth Codex flow (issue #11941, Epic #11872).
 
@@ -12,7 +12,7 @@ _chatgpt_encode_email() {
     printf '%s' "$E2E_RUNNER_EMAIL" | sed 's/+/%2B/g; s/@/%40/g'
 }
 
-# Seed a chatgpt-oauth-token model provider for E2E tests.
+# Seed a codex-oauth-token model provider for E2E tests.
 #
 # Usage:
 #   seed_chatgpt_oauth <access_token> <refresh_token> <account_id> <id_token> [expires_in] [needs_reconnect] [last_refresh_error_code]

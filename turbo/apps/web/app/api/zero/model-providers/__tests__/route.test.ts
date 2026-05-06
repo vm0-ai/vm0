@@ -461,7 +461,7 @@ describe("Org-level model provider routes", () => {
     });
 
     it("emits needsReconnect=true + lastRefreshErrorCode after firewall refresh failure", async () => {
-      await createMultiAuthProvider("chatgpt-oauth-token", "oauth", {
+      await createMultiAuthProvider("codex-oauth-token", "oauth", {
         CHATGPT_ACCESS_TOKEN: "at",
         CHATGPT_REFRESH_TOKEN: "rt",
         CHATGPT_ACCOUNT_ID: "acct",
@@ -470,14 +470,14 @@ describe("Org-level model provider routes", () => {
       await setTestModelProviderNeedsReconnect(
         user.orgId,
         ORG_SENTINEL_USER_ID,
-        "chatgpt-oauth-token",
+        "codex-oauth-token",
         true,
         "refresh_token_expired",
       );
 
       const providers = await listProviders();
       const stale = providers.find((p) => {
-        return p.type === "chatgpt-oauth-token";
+        return p.type === "codex-oauth-token";
       });
       expect(stale).toBeDefined();
       expect(stale?.needsReconnect).toBe(true);

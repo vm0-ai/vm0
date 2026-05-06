@@ -37,7 +37,7 @@ const DEFAULT_EXPIRES_IN_SECS = 600;
  * POST /api/cli/auth/test-chatgpt-oauth?email=<email>
  *
  * Test-only endpoint for E2E tests of the ChatGPT-OAuth Codex flow.
- * Seeds a `chatgpt-oauth-token` model_providers row + the four secrets
+ * Seeds a `codex-oauth-token` model_providers row + the four secrets
  * (CHATGPT_ACCESS_TOKEN, CHATGPT_REFRESH_TOKEN, CHATGPT_ACCOUNT_ID,
  * CHATGPT_ID_TOKEN) under the org-sentinel user, bypassing the browser
  * OAuth dance.
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
 
   await upsertOrgMultiAuthModelProvider(
     org.orgId,
-    "chatgpt-oauth-token",
+    "codex-oauth-token",
     "oauth",
     {
       CHATGPT_ACCESS_TOKEN: body.accessToken,
@@ -110,7 +110,7 @@ export async function POST(request: Request) {
       and(
         eq(modelProviders.orgId, org.orgId),
         eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.type, "chatgpt-oauth-token"),
+        eq(modelProviders.type, "codex-oauth-token"),
       ),
     );
 

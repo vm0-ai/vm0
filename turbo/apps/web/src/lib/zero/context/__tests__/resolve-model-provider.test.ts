@@ -172,19 +172,15 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
     expect(result.selectedModel).toBe("gpt-5.4-mini");
   });
 
-  it("filters serverOnly secrets out of the runner-bound map for chatgpt-oauth-token (#11878)", async () => {
+  it("filters serverOnly secrets out of the runner-bound map for codex-oauth-token (#11878)", async () => {
     // Epic constraint #7365: refresh tokens and id tokens MUST stay
     // server-side; they cannot leak into the sandbox via ExecutionContext.
-    // The chatgpt-oauth-token registry marks CHATGPT_REFRESH_TOKEN and
+    // The codex-oauth-token registry marks CHATGPT_REFRESH_TOKEN and
     // CHATGPT_ID_TOKEN as serverOnly; the resolver filter drops them from
     // the result.secrets map before it flows into the runner job context.
     const userId = uniqueId("chatgpt-oauth-leak");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
-      orgId,
-      "chatgpt-oauth-token",
-      "oauth",
-    );
+    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
     for (const [name, value] of [
       ["CHATGPT_ACCESS_TOKEN", "real-access"],
       ["CHATGPT_REFRESH_TOKEN", "real-refresh-server-only"],
@@ -201,7 +197,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
       false,
     );
 
-    expect(result.resolvedModelProvider).toBe("chatgpt-oauth-token");
+    expect(result.resolvedModelProvider).toBe("codex-oauth-token");
     expect(result.framework).toBe("codex");
     expect(result.secrets).toBeDefined();
     expect(Object.keys(result.secrets!).sort()).toEqual([
@@ -504,14 +500,10 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     context.setupMocks();
   });
 
-  it("emits CHATGPT_ACCESS_TOKEN → 'chatgpt-oauth' for chatgpt-oauth-token", async () => {
+  it("emits CHATGPT_ACCESS_TOKEN → 'chatgpt-oauth' for codex-oauth-token", async () => {
     const userId = uniqueId("scm-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
-      orgId,
-      "chatgpt-oauth-token",
-      "oauth",
-    );
+    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
     for (const [name, value] of [
       ["CHATGPT_ACCESS_TOKEN", "at-1"],
       ["CHATGPT_REFRESH_TOKEN", "rt-1"],
@@ -548,14 +540,10 @@ describe("resolveModelProviderSecrets — secretConnectorMap emission (#11908)",
     expect(result.secretConnectorMap).toBeUndefined();
   });
 
-  it("does not emit secretConnectorMap when chatgpt-oauth-token is missing required secrets", async () => {
+  it("does not emit secretConnectorMap when codex-oauth-token is missing required secrets", async () => {
     const userId = uniqueId("scm-chatgpt-incomplete");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
-      orgId,
-      "chatgpt-oauth-token",
-      "oauth",
-    );
+    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
     // Only seed access token; refresh/account/id missing → resolver returns
     // the no-secrets fallback path; no secretConnectorMap.
     await insertTestOrgModelProviderSecret({
@@ -583,11 +571,7 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
   it("throws staleProvider when matching provider has needsReconnect=true", async () => {
     const userId = uniqueId("stale-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
-      orgId,
-      "chatgpt-oauth-token",
-      "oauth",
-    );
+    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
     for (const [name, value] of [
       ["CHATGPT_ACCESS_TOKEN", "at"],
       ["CHATGPT_REFRESH_TOKEN", "rt"],
@@ -599,7 +583,7 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
     await setTestModelProviderNeedsReconnect(
       orgId,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
       true,
       "refresh_token_expired",
     );
@@ -609,7 +593,7 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
     ).rejects.toSatisfy((err: unknown) => {
       if (!isStaleProvider(err)) return false;
       return (
-        err.providerType === "chatgpt-oauth-token" &&
+        err.providerType === "codex-oauth-token" &&
         err.refreshErrorCode === "refresh_token_expired"
       );
     });
@@ -618,11 +602,7 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
   it("does not throw when needsReconnect=false (healthy provider)", async () => {
     const userId = uniqueId("healthy-chatgpt");
     const orgId = await setupOrg(userId);
-    await insertOrgMultiAuthModelProvider(
-      orgId,
-      "chatgpt-oauth-token",
-      "oauth",
-    );
+    await insertOrgMultiAuthModelProvider(orgId, "codex-oauth-token", "oauth");
     for (const [name, value] of [
       ["CHATGPT_ACCESS_TOKEN", "at"],
       ["CHATGPT_REFRESH_TOKEN", "rt"],
@@ -638,6 +618,6 @@ describe("resolveModelProviderSecrets — stale-provider gate (#11932)", () => {
       "codex",
       false,
     );
-    expect(result.resolvedModelProvider).toBe("chatgpt-oauth-token");
+    expect(result.resolvedModelProvider).toBe("codex-oauth-token");
   });
 });

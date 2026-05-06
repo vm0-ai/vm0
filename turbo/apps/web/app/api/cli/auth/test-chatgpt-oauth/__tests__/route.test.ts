@@ -87,7 +87,7 @@ describe("/api/cli/auth/test-chatgpt-oauth", () => {
     expect(response.status).toBe(400);
   });
 
-  it("seeds chatgpt-oauth-token provider with secrets and tokenExpiresAt", async () => {
+  it("seeds codex-oauth-token provider with secrets and tokenExpiresAt", async () => {
     const response = await POST(makeRequest(VALID_BODY));
     expect(response.status).toBe(200);
     const data = await response.json();
@@ -98,7 +98,7 @@ describe("/api/cli/auth/test-chatgpt-oauth", () => {
     const state = await findTestModelProviderTokenState(
       TEST_ORG_ID,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
     );
     expect(state).not.toBeNull();
     expect(state!.tokenExpiresAt).toBeInstanceOf(Date);
@@ -129,7 +129,7 @@ describe("/api/cli/auth/test-chatgpt-oauth", () => {
     const state = await findTestModelProviderTokenState(
       TEST_ORG_ID,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
     );
     expect(state).not.toBeNull();
     expect(state!.tokenExpiresAt).toBeInstanceOf(Date);
@@ -149,7 +149,7 @@ describe("/api/cli/auth/test-chatgpt-oauth", () => {
     const state = await findTestModelProviderTokenState(
       TEST_ORG_ID,
       ORG_SENTINEL_USER_ID,
-      "chatgpt-oauth-token",
+      "codex-oauth-token",
     );
     expect(state).not.toBeNull();
     expect(state!.needsReconnect).toBe(true);
