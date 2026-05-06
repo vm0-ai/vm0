@@ -14,6 +14,10 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import {
+  chatThreadByIdContract,
+  chatThreadMessagesContract,
+} from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, click } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -24,6 +28,8 @@ import {
 import { setMockOrg } from "../../../mocks/handlers/api-org.ts";
 import { setMockOrgMembers } from "../../../mocks/handlers/api-org-members.ts";
 import { setMockTeam } from "../../../mocks/handlers/api-agents.ts";
+import { mockApi } from "../../../mocks/msw-contract.ts";
+import { server } from "../../../mocks/server.ts";
 
 const context = testContext();
 
@@ -45,6 +51,29 @@ function mockBaseAPIs() {
       updatedAt: "2024-01-01T00:00:00Z",
     },
   ]);
+}
+
+function mockChatThread(threadId: string) {
+  server.use(
+    mockApi(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        id: threadId,
+        title: null,
+        agentId: DEFAULT_AGENT_ID,
+        chatMessages: [],
+        latestSessionId: null,
+        lastReadMessageId: null,
+        activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
+        createdAt: "2026-04-25T00:00:00Z",
+        updatedAt: "2026-04-25T00:00:00Z",
+      });
+    }),
+    mockApi(chatThreadMessagesContract.list, ({ respond }) => {
+      return respond(200, { messages: [], hasHistoryBefore: false });
+    }),
+  );
 }
 
 describe("sidebar layout - breadcrumb section text (SIDEBAR-D-045)", () => {
@@ -254,7 +283,7 @@ describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () 
 });
 
 describe("mobile bottom tab bar - renders five tabs (MOBILE-TAB-001)", () => {
-  it("renders Chats, Teammates, Schedules, Connectors, and More tabs when MobileNativeV1 is on", async () => {
+  it("renders Home, Teammates, Schedules, Connectors, and More tabs when MobileNativeV1 is on", async () => {
     mockBaseAPIs();
     detachedSetupPage({
       context,
@@ -266,7 +295,7 @@ describe("mobile bottom tab bar - renders five tabs (MOBILE-TAB-001)", () => {
       expect(screen.getByTestId("mobile-bottom-tab-bar")).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("mobile-tab-chats")).toBeInTheDocument();
+    expect(screen.getByTestId("mobile-tab-home")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-teammates")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-schedules")).toBeInTheDocument();
     expect(screen.getByTestId("mobile-tab-connectors")).toBeInTheDocument();
@@ -328,11 +357,11 @@ describe("mobile top bar - hamburger hidden when redesign on (MOBILE-TOP-001)", 
 });
 
 describe("mobile top bar - workspace drawer trigger shown when redesign on (MOBILE-TOP-002)", () => {
-  it("renders the workspace drawer trigger in place of the hamburger", async () => {
+  it("renders the workspace drawer trigger on the chat list page", async () => {
     mockBaseAPIs();
     detachedSetupPage({
       context,
-      path: "/agents",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
       org: {
         activeOrg: { id: "org_test", name: "vm0-ai" },
@@ -361,12 +390,32 @@ describe("mobile top bar - workspace drawer trigger hidden when redesign off (MO
   });
 });
 
+describe("mobile top bar - workspace pill hidden on non-chat pages (MOBILE-TOP-008)", () => {
+  it("does not render the workspace pill on /agents when the redesign is on", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/agents",
+      featureSwitches: mobileNativeOn(),
+      org: {
+        activeOrg: { id: "org_test", name: "vm0-ai" },
+        memberships: [{ id: "org_test" }],
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-bottom-tab-bar")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("mobile-org-switcher")).not.toBeInTheDocument();
+  });
+});
+
 describe("mobile workspace drawer - opens on trigger click (MOBILE-DRAWER-001)", () => {
   it("opens the side drawer when the workspace trigger is tapped", async () => {
     mockBaseAPIs();
     detachedSetupPage({
       context,
-      path: "/agents",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
       org: {
         activeOrg: { id: "org_test", name: "vm0-ai" },
@@ -396,7 +445,7 @@ describe("mobile workspace drawer - shows workspace name (MOBILE-DRAWER-002)", (
     mockBaseAPIs();
     detachedSetupPage({
       context,
-      path: "/agents",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
       org: {
         activeOrg: { id: "org_test", name: "vm0-ai" },
@@ -427,7 +476,7 @@ describe("mobile top bar - breadcrumb hidden on index pages when redesign on (MO
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("mobile-org-switcher")).toBeInTheDocument();
+      expect(screen.getByTestId("mobile-bottom-tab-bar")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("mobile-breadcrumb")).not.toBeInTheDocument();
   });
@@ -475,7 +524,7 @@ describe("mobile bottom tab bar - active tab highlighted (MOBILE-TAB-002)", () =
         "page",
       );
     });
-    expect(screen.getByTestId("mobile-tab-chats")).not.toHaveAttribute(
+    expect(screen.getByTestId("mobile-tab-home")).not.toHaveAttribute(
       "aria-current",
     );
   });
@@ -535,7 +584,7 @@ describe("mobile workspace drawer - account link navigates to /account (MOBILE-D
     mockBaseAPIs();
     detachedSetupPage({
       context,
-      path: "/agents",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
       org: {
         activeOrg: { id: "org_test", name: "vm0-ai" },
@@ -631,7 +680,7 @@ describe("mobile workspace drawer - no close X button (MOBILE-DRAWER-004)", () =
     mockBaseAPIs();
     detachedSetupPage({
       context,
-      path: "/agents",
+      path: "/chats",
       featureSwitches: mobileNativeOn(),
     });
 
@@ -646,5 +695,64 @@ describe("mobile workspace drawer - no close X button (MOBILE-DRAWER-004)", () =
     expect(
       drawer.querySelector('button[aria-label="Close"]'),
     ).toBeNull();
+  });
+});
+
+describe("mobile top bar - centered title shows 'Home' on chat list (MOBILE-TOP-009)", () => {
+  it("renders 'Home' centered when on /chats with the redesign on", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({
+      context,
+      path: "/chats",
+      featureSwitches: mobileNativeOn(),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("mobile-top-bar-title")).toHaveTextContent(
+        "Home",
+      );
+    });
+  });
+});
+
+describe("mobile top bar - back-to-chat-list shown on a thread (MOBILE-TOP-010)", () => {
+  it("renders the back arrow on /chats/:threadId in place of the workspace pill", async () => {
+    mockBaseAPIs();
+    const threadId = "thread-back-arrow";
+    mockChatThread(threadId);
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: mobileNativeOn(),
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("mobile-back-to-chat-list"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("mobile-org-switcher")).not.toBeInTheDocument();
+  });
+});
+
+describe("mobile top bar - back-to-chat-list navigates to /chats (MOBILE-TOP-011)", () => {
+  it("clicking the back arrow returns to the chat list", async () => {
+    mockBaseAPIs();
+    const threadId = "thread-back-nav";
+    mockChatThread(threadId);
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: mobileNativeOn(),
+    });
+
+    const back = await waitFor(() => {
+      return screen.getByTestId("mobile-back-to-chat-list");
+    });
+    click(back);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/chats");
+    });
   });
 });

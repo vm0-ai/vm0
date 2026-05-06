@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import {
-  IconMessageCircle,
+  IconHome,
   IconUsers,
   IconCalendar,
   IconPlug,
@@ -18,7 +18,7 @@ import { setMobileMoreSheetOpen$ } from "../../signals/zero-page/zero-nav.ts";
 type TabIcon = (props: { size?: number; stroke?: number }) => ReactNode;
 
 interface MobileTab {
-  readonly id: "chats" | "teammates" | "schedules" | "connectors";
+  readonly id: "home" | "teammates" | "schedules" | "connectors";
   readonly activeKeys: readonly RouteKey[];
   readonly pathname: "/" | "/agents" | "/schedules" | "/connectors";
   readonly label: string;
@@ -27,7 +27,7 @@ interface MobileTab {
 
 const MOBILE_TABS: readonly MobileTab[] = [
   {
-    id: "chats",
+    id: "home",
     activeKeys: [
       "home",
       "agentChat",
@@ -37,8 +37,8 @@ const MOBILE_TABS: readonly MobileTab[] = [
       "chatList",
     ],
     pathname: "/",
-    label: "Chats",
-    icon: IconMessageCircle as TabIcon,
+    label: "Home",
+    icon: IconHome as TabIcon,
   },
   {
     id: "teammates",
