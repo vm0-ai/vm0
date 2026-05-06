@@ -375,7 +375,10 @@ pub async fn execute_cli(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .process_group(0);
+        .process_group(0)
+        // If setup fails after spawn (for example agent-log file creation),
+        // dropping `Child` must not leave a CLI process running in the VM.
+        .kill_on_drop(true);
 
     match env::Framework::from_env() {
         env::Framework::ClaudeCode => {
