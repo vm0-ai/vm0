@@ -844,6 +844,171 @@ export async function insertTestUsageDaily(params: {
   });
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForBlockedAgentRunsQuery(params: {
+  lockingBackendPid: number;
+  hasOperationSettled: () => boolean;
+  getOperationError: () => unknown;
+}): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (params.hasOperationSettled()) {
+      const operationError = params.getOperationError();
+      if (operationError) {
+        throw operationError;
+      }
+      throw new Error(
+        "operation completed before waiting on the held agent_runs lock",
+      );
+    }
+
+    const [row] = await globalThis.services.db
+      .select({
+        blocked: sql<boolean>`EXISTS (
+          SELECT 1
+          FROM pg_locks l
+          JOIN pg_stat_activity a ON a.pid = l.pid
+          WHERE NOT l.granted
+            AND a.datname = current_database()
+            AND ${params.lockingBackendPid} = ANY(pg_blocking_pids(a.pid))
+            AND a.query ILIKE '%agent_runs%'
+        )`,
+      })
+      .from(agentRuns)
+      .limit(1);
+
+    if (row?.blocked) {
+      return;
+    }
+
+    await sleep(10);
+  }
+
+  throw new Error("operation did not wait for held agent_runs lock");
+}
+
+/**
+ * Seed a checkpoint inside an uncommitted transaction, start an operation, and
+ * only commit after the operation is blocked on the same `agent_runs` row.
+ *
+ * @why-db-direct This creates a precise concurrency shape for webhook tests:
+ * the checkpoint exists but is still invisible until the tested operation
+ * waits on the run row lock. There is no API-only way to hold that transaction
+ * boundary open while invoking the route under test.
+ */
+export async function seedInFlightCheckpointWhileAgentRunLocked<T>(params: {
+  runId: string;
+  cliAgentSessionId: string;
+  cliAgentSessionHistoryHash: string;
+  artifactSnapshots: ContextArtifact[];
+  startWhileLocked: () => Promise<T>;
+}): Promise<{
+  checkpointId: string;
+  conversationId: string;
+  result: T;
+}> {
+  initServices();
+
+  let checkpointId: string | undefined;
+  let conversationId: string | undefined;
+  let operationError: unknown;
+  let operationSettled = false;
+  let operationPromise: Promise<T> | undefined;
+
+  try {
+    await globalThis.services.db.transaction(async (tx) => {
+      const [run] = await tx
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, params.runId))
+        .for("update")
+        .limit(1);
+
+      if (!run?.agentComposeVersionId) {
+        throw new Error("test run is missing agentComposeVersionId");
+      }
+      const [lockingBackend] = await tx
+        .select({ pid: sql<number>`pg_backend_pid()` })
+        .from(agentRuns)
+        .where(eq(agentRuns.id, params.runId))
+        .limit(1);
+      if (!lockingBackend) {
+        throw new Error("failed to read locking transaction backend pid");
+      }
+
+      const [conversation] = await tx
+        .insert(conversations)
+        .values({
+          runId: params.runId,
+          cliAgentType: "claude-code",
+          cliAgentSessionId: params.cliAgentSessionId,
+          cliAgentSessionHistoryHash: params.cliAgentSessionHistoryHash,
+        })
+        .returning({ id: conversations.id });
+
+      if (!conversation) {
+        throw new Error("failed to seed in-flight conversation");
+      }
+
+      const [checkpoint] = await tx
+        .insert(checkpoints)
+        .values({
+          runId: params.runId,
+          conversationId: conversation.id,
+          agentComposeSnapshot: {
+            agentComposeVersionId: run.agentComposeVersionId,
+          },
+          artifactSnapshots: params.artifactSnapshots,
+          volumeVersionsSnapshot: null,
+        })
+        .returning({ id: checkpoints.id });
+
+      if (!checkpoint) {
+        throw new Error("failed to seed in-flight checkpoint");
+      }
+
+      await tx
+        .update(agentSessions)
+        .set({
+          conversationId: conversation.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(agentSessions.id, run.sessionId));
+
+      checkpointId = checkpoint.id;
+      conversationId = conversation.id;
+      operationPromise = Promise.resolve()
+        .then(params.startWhileLocked)
+        .catch((error: unknown) => {
+          operationError = error;
+          throw error;
+        })
+        .finally(() => {
+          operationSettled = true;
+        });
+      void operationPromise.catch(() => {});
+
+      await waitForBlockedAgentRunsQuery({
+        lockingBackendPid: lockingBackend.pid,
+        hasOperationSettled: () => operationSettled,
+        getOperationError: () => operationError,
+      });
+    });
+  } catch (error) {
+    await operationPromise?.catch(() => {});
+    throw error;
+  }
+
+  if (!operationPromise || !checkpointId || !conversationId) {
+    throw new Error("failed to seed in-flight checkpoint");
+  }
+
+  const result = await operationPromise;
+  return { checkpointId, conversationId, result };
+}
+
 /**
  * Seed a checkpoint row directly with the given `artifact_snapshots`.
  *

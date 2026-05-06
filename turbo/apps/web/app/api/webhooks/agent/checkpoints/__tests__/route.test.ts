@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
-import { blobs } from "@vm0/db/schema/blob";
-import { conversations } from "@vm0/db/schema/conversation";
-import { eq } from "drizzle-orm";
 import {
   createTestRequest,
   createTestCompose,
@@ -13,6 +10,8 @@ import {
   getTestAgentSessionWithConversation,
   setTestRunResult,
   setTestRunStatus,
+  getTestBlobRefCount,
+  getTestConversationHistoryHash,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
@@ -27,26 +26,6 @@ import type { VolumeVersionsSnapshot } from "../../../../../../src/lib/infra/che
 
 function sha256(content: string): string {
   return createHash("sha256").update(content).digest("hex");
-}
-
-async function getBlobRefCount(hash: string): Promise<number | undefined> {
-  const [row] = await globalThis.services.db
-    .select({ refCount: blobs.refCount })
-    .from(blobs)
-    .where(eq(blobs.hash, hash))
-    .limit(1);
-  return row?.refCount;
-}
-
-async function getConversationHistoryHash(
-  runId: string,
-): Promise<string | null | undefined> {
-  const [row] = await globalThis.services.db
-    .select({ hash: conversations.cliAgentSessionHistoryHash })
-    .from(conversations)
-    .where(eq(conversations.runId, runId))
-    .limit(1);
-  return row?.hash;
 }
 
 const context = testContext();
@@ -569,8 +548,8 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       expect(run?.result).toMatchObject({
         artifact: { "test-artifact": "version-first" },
       });
-      expect(await getBlobRefCount(firstHistoryHash)).toBe(1);
-      expect(await getBlobRefCount(staleHistoryHash)).toBeUndefined();
+      expect(await getTestBlobRefCount(firstHistoryHash)).toBe(1);
+      expect(await getTestBlobRefCount(staleHistoryHash)).toBeUndefined();
     });
 
     it("should keep checkpoint and result consistent for concurrent terminal checkpoints", async () => {
@@ -822,7 +801,7 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       ]);
       expect(response1.status).toBe(200);
       expect(response2.status).toBe(200);
-      expect(await getBlobRefCount(historyHash)).toBe(1);
+      expect(await getTestBlobRefCount(historyHash)).toBe(1);
     });
 
     it("should move session history blob reference when upsert replaces hash", async () => {
@@ -850,16 +829,16 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
 
       const firstResponse = await POST(makeRequest(firstHistoryHash));
       expect(firstResponse.status).toBe(200);
-      expect(await getBlobRefCount(firstHistoryHash)).toBe(1);
+      expect(await getTestBlobRefCount(firstHistoryHash)).toBe(1);
 
       const secondResponse = await POST(makeRequest(secondHistoryHash));
       expect(secondResponse.status).toBe(200);
 
-      expect(await getConversationHistoryHash(testRunId)).toBe(
+      expect(await getTestConversationHistoryHash(testRunId)).toBe(
         secondHistoryHash,
       );
-      expect(await getBlobRefCount(firstHistoryHash)).toBe(0);
-      expect(await getBlobRefCount(secondHistoryHash)).toBe(1);
+      expect(await getTestBlobRefCount(firstHistoryHash)).toBe(0);
+      expect(await getTestBlobRefCount(secondHistoryHash)).toBe(1);
     });
   });
 

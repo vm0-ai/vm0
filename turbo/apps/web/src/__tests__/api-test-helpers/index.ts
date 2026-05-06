@@ -94,6 +94,8 @@ export {
   findTestCallbacksByRunId,
   findMostRecentRunForUser,
   findTestSandboxTelemetry,
+  getTestBlobRefCount,
+  getTestConversationHistoryHash,
   createTestRun,
   getTestRun,
   createTestCheckpoint,

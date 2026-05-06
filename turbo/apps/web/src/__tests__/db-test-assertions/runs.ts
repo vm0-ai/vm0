@@ -6,6 +6,8 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
+import { blobs } from "@vm0/db/schema/blob";
+import { conversations } from "@vm0/db/schema/conversation";
 
 /**
  * Find agent runs matching a given userId and prompt.
@@ -161,4 +163,34 @@ export async function findTestCheckpoint(
     .where(eq(checkpoints.runId, runId))
     .limit(1);
   return row;
+}
+
+/**
+ * Read a blob ref_count for checkpoint/session-history reference tests.
+ */
+export async function getTestBlobRefCount(
+  hash: string,
+): Promise<number | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ refCount: blobs.refCount })
+    .from(blobs)
+    .where(eq(blobs.hash, hash))
+    .limit(1);
+  return row?.refCount;
+}
+
+/**
+ * Read the persisted session-history blob hash for a run conversation.
+ */
+export async function getTestConversationHistoryHash(
+  runId: string,
+): Promise<string | null | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ hash: conversations.cliAgentSessionHistoryHash })
+    .from(conversations)
+    .where(eq(conversations.runId, runId))
+    .limit(1);
+  return row?.hash;
 }

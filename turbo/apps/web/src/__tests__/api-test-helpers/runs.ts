@@ -35,6 +35,8 @@ export {
   findTestCallbacksByRunId,
   findMostRecentRunForUser,
   findTestSandboxTelemetry,
+  getTestBlobRefCount,
+  getTestConversationHistoryHash,
 } from "../db-test-assertions/runs";
 
 export async function createTestRun(
