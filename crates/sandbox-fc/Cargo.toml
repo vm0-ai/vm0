@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 async-trait.workspace = true
 base64.workspace = true
+futures-util.workspace = true
 nbd-cow.workspace = true
 libc.workspace = true
 nix = { workspace = true, features = ["user", "inotify", "fs", "signal"] }
