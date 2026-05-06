@@ -29,6 +29,7 @@ import {
 } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { mobileConnectorsSearchOpen$ } from "../../signals/zero-page/zero-sidebar-state.ts";
+import { isMobileViewport$ } from "../../signals/zero-page/mobile-viewport.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { Vm0ManagedBadge } from "./components/settings/vm0-managed-badge.tsx";
@@ -649,9 +650,10 @@ function MobileConnectorsSearchBar() {
   const features = useLastResolved(featureSwitch$);
   const mobileNativeOn =
     features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const isMobile = useGet(isMobileViewport$);
   const search = useGet(connectorsSearch$);
   const setSearch = useSet(setConnectorsSearch$);
-  if (!mobileNativeOn || !open) {
+  if (!mobileNativeOn || !isMobile || !open) {
     return null;
   }
   return (
@@ -830,14 +832,15 @@ export function ZeroConnectorsPage() {
             )}
 
           <div className="min-w-0 flex w-full max-w-[900px] flex-col gap-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => {
                   return setActiveTab(v === "custom" ? "custom" : "builtin");
                 }}
+                className="flex-1 md:flex-none"
               >
-                <TabsList>
+                <TabsList className="w-full md:w-auto grid grid-cols-2 md:flex">
                   <TabsTrigger value="builtin">Built-in</TabsTrigger>
                   <TabsTrigger value="custom">Custom</TabsTrigger>
                 </TabsList>

@@ -12,7 +12,6 @@ import {
   SheetDescription,
 } from "@vm0/ui";
 import {
-  IconChevronDown,
   IconSettings,
   IconPlus,
   IconMail,
@@ -274,11 +273,6 @@ export function MobileWorkspaceDrawer() {
           <span className="min-w-0 truncate text-sm font-semibold">
             {orgName}
           </span>
-          <IconChevronDown
-            size={14}
-            stroke={1.8}
-            className="shrink-0 text-muted-foreground"
-          />
         </button>
       </SheetTrigger>
       <SheetContent

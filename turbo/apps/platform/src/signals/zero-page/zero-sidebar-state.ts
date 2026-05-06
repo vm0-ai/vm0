@@ -59,6 +59,21 @@ export const setChatListQuery$ = command(({ set }, query: string) => {
 });
 
 // ---------------------------------------------------------------------------
+// Mobile chat list: which row (if any) is swiped open to reveal its delete
+// handle. Only one row is open at a time — opening another, tapping the
+// row, or tapping the delete closes it.
+// ---------------------------------------------------------------------------
+const internalSwipeOpenThreadId$ = state<string | null>(null);
+export const swipeOpenThreadId$ = computed((get) => {
+  return get(internalSwipeOpenThreadId$);
+});
+export const setSwipeOpenThreadId$ = command(
+  ({ set }, id: string | null) => {
+    set(internalSwipeOpenThreadId$, id);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Mobile connectors search bar visibility — the page header search input is
 // hidden on mobile and toggled from the top-bar search icon instead.
 // ---------------------------------------------------------------------------

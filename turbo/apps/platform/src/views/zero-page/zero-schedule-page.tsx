@@ -5,6 +5,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { isMobileViewport$ } from "../../signals/zero-page/mobile-viewport.ts";
 import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
   Tabs,
@@ -553,9 +554,11 @@ export function ZeroSchedulePage() {
   const features = useLastResolved(featureSwitch$);
   const mobileNativeOn =
     features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const isMobile = useGet(isMobileViewport$);
+  const mobileRedesign = mobileNativeOn && isMobile;
   // Mobile-native: top bar owns "+ Add schedule"; force list view (calendar
   // is desktop-only) and hide the page header so the surface is the list.
-  const effectiveListTab = mobileNativeOn ? "list" : activeListTab;
+  const effectiveListTab = mobileRedesign ? "list" : activeListTab;
 
   const saving = useGet(creatingOrgSchedule$);
   const createSchedule = useSet(createOrgScheduleFromForm$);
@@ -614,7 +617,7 @@ export function ZeroSchedulePage() {
     <div className="flex flex-1 flex-col min-h-0">
       <header
         className={`shrink-0 bg-transparent px-4 sm:px-6 md:pt-10 md:pb-3 ${
-          mobileNativeOn ? "hidden md:block" : "pt-3 pb-0"
+          mobileRedesign ? "hidden md:block" : "pt-3 pb-0"
         }`}
       >
         <div className="mx-auto max-w-[900px] flex flex-wrap items-end justify-between gap-4">
@@ -671,7 +674,7 @@ export function ZeroSchedulePage() {
 
       <main
         className={`flex-1 overflow-auto px-4 sm:px-6 pb-8 ${
-          mobileNativeOn ? "pt-4 md:pt-3" : "pt-3"
+          mobileRedesign ? "pt-4 md:pt-3" : "pt-3"
         }`}
       >
         <div className="mx-auto max-w-[900px]">

@@ -3,6 +3,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { isMobileViewport$ } from "../../signals/zero-page/mobile-viewport.ts";
 import {
   IconLayoutGrid,
   IconList,
@@ -70,10 +71,11 @@ export function AgentsPage() {
   const features = useLastResolved(featureSwitch$);
   const mobileNativeOn =
     features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
-  // On mobile-native the top bar owns "+ New agent" and the grid/list toggle
-  // doesn't make sense at this width; force list and hide the page header
-  // cluster so the rendered surface is just the agent list.
-  const effectiveViewMode = mobileNativeOn ? "list" : viewMode;
+  const isMobile = useGet(isMobileViewport$);
+  // The mobile-native chrome is mobile-only — on desktop the user keeps
+  // their grid/list preference even when the feature switch is on.
+  const mobileRedesign = mobileNativeOn && isMobile;
+  const effectiveViewMode = mobileRedesign ? "list" : viewMode;
 
   const agentsLoadable = useLoadable(sortedAgents$);
   const agentCount =
@@ -95,7 +97,7 @@ export function AgentsPage() {
     <div className="flex flex-1 flex-col min-h-0">
       <header
         className={`shrink-0 bg-transparent px-4 sm:px-6 md:pt-10 md:pb-3 ${
-          mobileNativeOn ? "hidden md:block" : "pt-3 pb-0"
+          mobileRedesign ? "hidden md:block" : "pt-3 pb-0"
         }`}
       >
         <div className="mx-auto max-w-[900px] flex flex-wrap items-end justify-between gap-4">
@@ -166,7 +168,7 @@ export function AgentsPage() {
 
       <main
         className={`flex-1 overflow-auto px-4 sm:px-6 pb-8 ${
-          mobileNativeOn ? "pt-4 md:pt-3" : "pt-3"
+          mobileRedesign ? "pt-4 md:pt-3" : "pt-3"
         }`}
       >
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">

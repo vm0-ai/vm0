@@ -34,17 +34,17 @@ import {
   currentChatThreadId$,
   currentChatAgentId$,
 } from "../../signals/agent-chat.ts";
-import {
-  AvatarFromUrl,
-  useChatThreadsTitleLabels,
-} from "./zero-sidebar-shared.tsx";
+import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   chatListQuery$,
   setChatListQuery$,
+  swipeOpenThreadId$,
+  setSwipeOpenThreadId$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { isMobileViewport$ } from "../../signals/zero-page/mobile-viewport.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -80,12 +80,17 @@ export function ZeroChatListPage() {
   const features = useLastResolved(featureSwitch$);
   const mobileNativeOn =
     features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const isMobile = useGet(isMobileViewport$);
+  // The mobile redesign chrome is mobile-only — the chat list page on
+  // desktop keeps the always-visible search bar and the regular new-chat
+  // button. Resizing back to a desktop width restores the original UI.
+  const mobileRedesign = mobileNativeOn && isMobile;
 
   // Mobile-native delegates search to the dedicated /search page, so the
   // term filter only applies on desktop / non-redesign mobile.
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions =
-    !mobileNativeOn && trimmedTerm
+    !mobileRedesign && trimmedTerm
       ? recentSessions.filter((s) => {
           return (s.title ?? "").toLowerCase().includes(trimmedTerm);
         })
@@ -110,7 +115,7 @@ export function ZeroChatListPage() {
 
         {/* Always-visible search bar — desktop / non-redesign mobile only.
             Mobile-native sends the search icon to the dedicated /search page. */}
-        {!mobileNativeOn && (
+        {!mobileRedesign && (
           <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 h-10">
             <IconSearch
               size={16}
@@ -145,7 +150,7 @@ export function ZeroChatListPage() {
 
       {/* New chat button — full-width on desktop, hidden on mobile-native
           (replaced by the FAB below) */}
-      {!mobileNativeOn && (
+      {!mobileRedesign && (
         <div className="shrink-0 px-4 py-2">
           <button
             type="button"
@@ -165,7 +170,7 @@ export function ZeroChatListPage() {
       <div
         className={cn(
           "flex-1 overflow-auto px-4",
-          mobileNativeOn ? "pt-2 pb-24" : "pb-4",
+          mobileRedesign ? "pt-2 pb-24" : "pb-4",
         )}
       >
         <ChatList
@@ -175,13 +180,14 @@ export function ZeroChatListPage() {
           searchTerm={searchTerm}
           selectedRecentId={selectedRecentId}
           onRecentSelect={onRecentSelect}
+          isMobile={mobileRedesign}
         />
       </div>
 
       {/* Floating action button — mobile-native only; sits above the bottom
           tab bar so the New chat entry stays accessible without occupying
           a full-width row. */}
-      {mobileNativeOn && (
+      {mobileRedesign && (
         <button
           type="button"
           onClick={() => {
@@ -206,6 +212,7 @@ function ChatList({
   searchTerm,
   selectedRecentId,
   onRecentSelect,
+  isMobile,
 }: {
   loading: boolean;
   error: string | null;
@@ -213,9 +220,12 @@ function ChatList({
   searchTerm: string;
   selectedRecentId: string | null;
   onRecentSelect: (id: string) => void;
+  isMobile: boolean;
 }) {
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
+  const swipeOpenId = useGet(swipeOpenThreadId$);
+  const setSwipeOpenId = useSet(setSwipeOpenThreadId$);
   const setDelete = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
 
@@ -265,6 +275,9 @@ function ChatList({
               key={session.id}
               session={session}
               isSelected={selectedRecentId === session.id}
+              isOpen={swipeOpenId === session.id}
+              isMobile={isMobile}
+              onOpen={setSwipeOpenId}
               onSelect={onRecentSelect}
               onDelete={() => {
                 return setPendingDeleteThreadId(session.id);
@@ -340,11 +353,17 @@ function formatThreadDateLabel(iso: string, now: Date): string {
 function ChatListItem({
   session,
   isSelected,
+  isOpen,
+  isMobile,
+  onOpen,
   onSelect,
   onDelete,
 }: {
   session: ChatThreadListItem;
   isSelected: boolean;
+  isOpen: boolean;
+  isMobile: boolean;
+  onOpen: (id: string | null) => void;
   onSelect: (id: string) => void;
   onDelete: () => void;
 }) {
@@ -353,8 +372,50 @@ function ChatListItem({
     new Date(),
   );
   const isUnread = !session.isRead;
+  // Mobile-native swipe-to-delete: track touch deltaX on the row and slide
+  // the surface left to reveal a delete handle. Holds open until the user
+  // taps the row, the delete, or starts another swipe.
+  let touchStartX: number | null = null;
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (!isMobile) {
+      return;
+    }
+    touchStartX = e.touches[0]?.clientX ?? null;
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!isMobile || touchStartX === null) {
+      return;
+    }
+    const endX = e.changedTouches[0]?.clientX ?? touchStartX;
+    const dx = endX - touchStartX;
+    touchStartX = null;
+    if (dx < -40) {
+      onOpen(session.id);
+    } else if (dx > 40 && isOpen) {
+      onOpen(null);
+    }
+  };
   return (
-    <div className="group relative">
+    <div
+      className="relative overflow-hidden rounded-xl"
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Swipe-revealed delete affordance — sits underneath the row. */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpen(null);
+          onDelete();
+        }}
+        aria-label="Delete chat"
+        data-testid={`chat-list-delete-${session.id}`}
+        className="absolute inset-y-0 right-0 flex w-20 items-center justify-center bg-muted text-foreground"
+      >
+        <IconTrash size={16} stroke={1.6} />
+      </button>
       <Link
         pathname="/chats/:threadId"
         options={{ pathParams: { threadId: session.id } }}
@@ -362,38 +423,30 @@ function ChatListItem({
           if (e.metaKey || e.ctrlKey || e.shiftKey) {
             return;
           }
+          if (isOpen) {
+            e.preventDefault();
+            onOpen(null);
+            return;
+          }
           e.preventDefault();
           onSelect(session.id);
         }}
         className={cn(
-          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors no-underline",
+          "relative flex items-center gap-3 px-3 py-3 text-left transition-transform no-underline bg-background",
+          isOpen ? "-translate-x-20" : "translate-x-0",
           isSelected
-            ? "bg-accent text-accent-foreground"
-            : "text-foreground hover:bg-accent/50",
+            ? "text-accent-foreground"
+            : "text-foreground",
         )}
       >
-        <span className="relative shrink-0">
-          <AvatarFromUrl
-            avatarUrl={session.agent.avatarUrl}
-            alt=""
-            className="h-10 w-10 rounded-full object-cover object-top"
-          />
-          {isUnread && (
-            <span
-              aria-label="Unread"
-              className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary ring-2 ring-background"
-            />
-          )}
-        </span>
-        <span className="min-w-0 flex-1 flex items-center gap-2">
+        {isUnread && (
           <span
-            className={cn(
-              "truncate text-sm",
-              isUnread ? "font-semibold" : "font-medium",
-            )}
-          >
-            {session.title ?? "New chat"}
-          </span>
+            aria-label="Unread"
+            className="absolute left-0 top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-primary"
+          />
+        )}
+        <span className="min-w-0 flex-1 truncate text-sm font-medium pl-3">
+          {session.title ?? "New chat"}
         </span>
         {dateLabel && (
           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
@@ -401,18 +454,6 @@ function ChatListItem({
           </span>
         )}
       </Link>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onDelete();
-        }}
-        className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-opacity"
-        aria-label="Delete chat"
-      >
-        <IconTrash size={14} stroke={2} />
-      </button>
     </div>
   );
 }

@@ -56,6 +56,7 @@ import { setupRedeemCampaignPage$ } from "./redeem-campaign/redeem-campaign-page
 import { setupRealtime$ } from "./realtime.ts";
 
 import { setupSidebarShortcut$ } from "./zero-page/zero-nav.ts";
+import { watchMobileViewport$ } from "./zero-page/mobile-viewport.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 
 /**
@@ -352,6 +353,7 @@ export const bootstrap$ = command(
       set(setupNotificationListener$, signal),
 
       set(setupSidebarShortcut$, signal),
+      set(watchMobileViewport$, signal),
       set(setupClerk$, signal),
       set(watchOrgSwitch$, signal),
       set(reloadFeatureSwitch$, signal),

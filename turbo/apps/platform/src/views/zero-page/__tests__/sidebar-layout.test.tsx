@@ -509,8 +509,8 @@ describe("mobile top bar - breadcrumb hidden on index pages when redesign on (MO
   });
 });
 
-describe("mobile top bar - breadcrumb kept on detail pages when redesign on (MOBILE-TOP-005)", () => {
-  it("still renders the breadcrumb name on /agents/:id", async () => {
+describe("mobile top bar - agent detail shows back arrow + name title (MOBILE-TOP-005)", () => {
+  it("renders 'My Agent' as the centered title and a back arrow on /agents/:id", async () => {
     setMockTeam([
       {
         id: DEFAULT_AGENT_ID,
@@ -529,10 +529,14 @@ describe("mobile top bar - breadcrumb kept on detail pages when redesign on (MOB
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("breadcrumb-name")).toHaveTextContent(
+      expect(screen.getByTestId("mobile-top-bar-title")).toHaveTextContent(
         "My Agent",
       );
     });
+    expect(
+      screen.getByTestId("mobile-back-to-agents"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("breadcrumb-name")).not.toBeInTheDocument();
   });
 });
 
@@ -671,8 +675,8 @@ describe("mobile top bar - centered title shows tab label on index pages (MOBILE
   });
 });
 
-describe("mobile top bar - centered title hidden on chat detail pages (MOBILE-TOP-007)", () => {
-  it("does not render the centered title when the breadcrumb is shown", async () => {
+describe("mobile top bar - centered title hidden on chat thread pages (MOBILE-TOP-007)", () => {
+  it("does not render the centered title when the breadcrumb is shown on /chats/:id", async () => {
     setMockTeam([
       {
         id: DEFAULT_AGENT_ID,
@@ -684,16 +688,18 @@ describe("mobile top bar - centered title hidden on chat detail pages (MOBILE-TO
         updatedAt: "2024-01-01T00:00:00Z",
       },
     ]);
+    const threadId = "thread-mobile-top-007";
+    mockChatThread(threadId);
     detachedSetupPage({
       context,
-      path: `/agents/${DEFAULT_AGENT_ID}`,
+      path: `/chats/${threadId}`,
       featureSwitches: mobileNativeOn(),
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("breadcrumb-name")).toHaveTextContent(
-        "My Agent",
-      );
+      expect(
+        screen.getByTestId("mobile-back-to-chat-list"),
+      ).toBeInTheDocument();
     });
     expect(
       screen.queryByTestId("mobile-top-bar-title"),

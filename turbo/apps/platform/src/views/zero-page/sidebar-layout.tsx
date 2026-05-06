@@ -37,7 +37,6 @@ import {
   setSidebarExpanded$,
   isChatRoute,
   navigateToChat$,
-  setMobileNewSessionSheetOpen$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -358,19 +357,6 @@ function NewCustomConnectorHeaderButton() {
 // Per-route action cluster on the right of the mobile top bar. Account avatar
 // only appears on the chat-list (Home) tab; per-page primary actions live in
 // the same slot so each surface has at most one or two icons + the avatar.
-function NewSessionHeaderButton() {
-  const setOpen = useSet(setMobileNewSessionSheetOpen$);
-  return (
-    <HeaderIconButton
-      label="Start new chat with another agent"
-      testId="mobile-new-session"
-      onClick={() => {
-        setOpen(true);
-      }}
-    />
-  );
-}
-
 function MobileTopBarPageActions({
   activeId,
 }: {
@@ -379,7 +365,6 @@ function MobileTopBarPageActions({
   if (activeId === "chatList") {
     return (
       <>
-        <NewSessionHeaderButton />
         <ChatListHeaderSearchLink />
         <HeaderAccountAvatar />
       </>
@@ -453,7 +438,7 @@ function BackButton({
   label,
   testId,
 }: {
-  pathname: "/chats" | "/account";
+  pathname: "/chats" | "/account" | "/agents";
   label: string;
   testId: string;
 }) {
@@ -521,6 +506,18 @@ function MobileTopBarLeftSlot({
       />
     );
   }
+  if (
+    activeId === "agentDetail" ||
+    activeId === "agentPermissions"
+  ) {
+    return (
+      <BackButton
+        pathname="/agents"
+        label="Back to agents"
+        testId="mobile-back-to-agents"
+      />
+    );
+  }
   if (isAccountSubRoute(activeId)) {
     return (
       <BackButton
@@ -531,6 +528,28 @@ function MobileTopBarLeftSlot({
     );
   }
   return null;
+}
+
+// Resolve which surface (breadcrumb / centered title / nothing) the mobile
+// top bar should show alongside the route-specific left slot.
+function resolveTopBarSurface(
+  activeId: RouteKey | null,
+  breadcrumb: { name?: string } | null,
+  mobileNativeOn: boolean,
+): { showBreadcrumb: boolean; centeredTitle: string | undefined } {
+  const isChatPage = isChatRoute(activeId);
+  const isAgentSubpage =
+    activeId === "agentDetail" || activeId === "agentPermissions";
+  const hasDetailName = breadcrumb?.name !== undefined;
+  const showBreadcrumb =
+    breadcrumb !== null &&
+    (!mobileNativeOn || isChatPage || (hasDetailName && !isAgentSubpage));
+  if (mobileNativeOn && isAgentSubpage && breadcrumb?.name) {
+    return { showBreadcrumb: false, centeredTitle: breadcrumb.name };
+  }
+  const fallbackTitle =
+    mobileNativeOn && !showBreadcrumb ? mobileTopBarTitle(activeId) : undefined;
+  return { showBreadcrumb, centeredTitle: fallbackTitle };
 }
 
 function MobileTopBar() {
@@ -546,16 +565,11 @@ function MobileTopBar() {
   const features = useLastResolved(featureSwitch$);
   const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
 
-  // On index pages the breadcrumb just repeats the bottom-tab label and the
-  // page's own header. Hide it when the redesign is on to give the org pill
-  // and action buttons more room. Detail pages and chat routes still show
-  // the breadcrumb because the agent / schedule name is real context.
-  const isChatPage = isChatRoute(activeId);
-  const hasDetailName = breadcrumb?.name !== undefined;
-  const showBreadcrumb =
-    breadcrumb !== null && (!mobileNativeOn || isChatPage || hasDetailName);
-  const centeredTitle =
-    mobileNativeOn && !showBreadcrumb ? mobileTopBarTitle(activeId) : undefined;
+  const { showBreadcrumb, centeredTitle } = resolveTopBarSurface(
+    activeId,
+    breadcrumb,
+    mobileNativeOn,
+  );
 
   return (
     <div
