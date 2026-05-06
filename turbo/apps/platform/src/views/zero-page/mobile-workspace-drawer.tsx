@@ -57,11 +57,11 @@ function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
     <div className="flex items-center gap-3 px-2 py-2 rounded-lg bg-muted/40">
       <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium leading-tight truncate text-foreground">
+        <p className="text-[17px] font-medium leading-tight truncate text-foreground">
           {orgName}
         </p>
         {orgSlug && (
-          <p className="text-xs text-muted-foreground truncate mt-0.5">
+          <p className="text-[15px] text-muted-foreground truncate mt-0.5">
             {orgSlug}
           </p>
         )}
@@ -69,7 +69,7 @@ function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
       <button
         type="button"
         onClick={handleManage}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-[hsl(var(--gray-400))] hover:text-foreground hover:bg-accent transition-colors"
+        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[13px] font-medium text-muted-foreground border border-[hsl(var(--gray-400))] hover:text-foreground hover:bg-accent transition-colors"
       >
         <IconSettings size={13} />
         Manage
@@ -113,7 +113,7 @@ function OtherWorkspacesList({ onClose }: { onClose: () => void }) {
               name={membership.organization.name}
               imageUrl={membership.organization.imageUrl}
             />
-            <span className="text-sm truncate flex-1">
+            <span className="text-[17px] truncate flex-1">
               {membership.organization.name}
             </span>
           </button>
@@ -159,14 +159,14 @@ function InvitationRow({
         name={invitation.publicOrganizationData.name}
         imageUrl={invitation.publicOrganizationData.imageUrl}
       />
-      <span className="min-w-0 flex-1 text-sm truncate">
+      <span className="min-w-0 flex-1 text-[17px] truncate">
         {invitation.publicOrganizationData.name}
       </span>
       <button
         type="button"
         disabled={isAccepting}
         onClick={handleAccept}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[13px] font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
       >
         <IconMail size={13} />
         {isAccepting ? "Joining…" : "Join"}
@@ -233,7 +233,7 @@ function CreateWorkspaceButton({ onClose }: { onClose: () => void }) {
         stroke={1.5}
         className="shrink-0 text-muted-foreground"
       />
-      <span className="text-sm">
+      <span className="text-[17px]">
         {creatingOrg ? "Creating…" : "Create workspace"}
       </span>
     </button>
@@ -270,7 +270,7 @@ export function MobileWorkspaceDrawer() {
             <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
             <PendingInvitationsBadge />
           </span>
-          <span className="min-w-0 truncate text-sm font-semibold">
+          <span className="min-w-0 truncate text-[17px] font-semibold">
             {orgName}
           </span>
         </button>

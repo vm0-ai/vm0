@@ -57,10 +57,10 @@ export function MobileNewSessionSheet() {
               className="h-1 w-10 rounded-full bg-[hsl(var(--gray-300))]"
             />
           </div>
-          <SheetTitle className="text-base font-semibold">
+          <SheetTitle className="text-[17px] font-semibold">
             Start a new chat
           </SheetTitle>
-          <SheetDescription className="text-xs">
+          <SheetDescription className="text-[15px]">
             Pick the agent you want to talk to.
           </SheetDescription>
         </SheetHeader>
@@ -82,7 +82,7 @@ export function MobileNewSessionSheet() {
                     alt=""
                     className="h-9 w-9 shrink-0 rounded-full object-cover object-top"
                   />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                  <span className="min-w-0 flex-1 truncate text-[17px] font-medium">
                     {label}
                   </span>
                 </button>

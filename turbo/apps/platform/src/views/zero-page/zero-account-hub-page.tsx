@@ -46,14 +46,14 @@ function AccountRow({
       </span>
       <span className="flex-1 min-w-0">
         <span
-          className={`block text-sm font-semibold truncate ${
+          className={`block text-[17px] font-semibold truncate ${
             destructive ? "text-destructive" : "text-foreground"
           }`}
         >
           {label}
         </span>
         {hint && (
-          <span className="block text-xs text-muted-foreground truncate">
+          <span className="block text-[15px] text-muted-foreground truncate">
             {hint}
           </span>
         )}
@@ -91,12 +91,12 @@ function AccountIdentityCard() {
       <div className="min-w-0 flex-1">
         <p
           data-testid="account-hub-name"
-          className="text-base font-semibold leading-tight truncate text-foreground"
+          className="text-[17px] font-semibold leading-tight truncate text-foreground"
         >
           {name}
         </p>
         {email && (
-          <p className="text-sm text-muted-foreground truncate mt-0.5">
+          <p className="text-[15px] text-muted-foreground truncate mt-0.5">
             {email}
           </p>
         )}

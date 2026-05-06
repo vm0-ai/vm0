@@ -56,11 +56,11 @@ function ResultRow({ session }: { session: ChatThreadListItem }) {
         alt=""
         className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
       />
-      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+      <span className="min-w-0 flex-1 truncate text-[17px] font-medium">
         {session.title ?? "New chat"}
       </span>
       {dateLabel && (
-        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+        <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">
           {dateLabel}
         </span>
       )}
@@ -120,7 +120,7 @@ export function ZeroSearchPage() {
             }}
             placeholder="Search chats"
             data-testid="mobile-search-input"
-            className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-[17px] text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           {term && (
             <button
@@ -143,7 +143,7 @@ export function ZeroSearchPage() {
         )}
       >
         {results.length === 0 ? (
-          <p className="px-3 py-8 text-sm text-muted-foreground text-center">
+          <p className="px-3 py-8 text-[15px] text-muted-foreground text-center">
             {trimmed
               ? "No chats match your search"
               : "Type to search your chats"}
