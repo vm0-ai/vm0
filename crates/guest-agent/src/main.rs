@@ -29,7 +29,8 @@ async fn main() {
 }
 
 /// Top-level orchestrator. Returns exit code directly (never panics/errors out).
-/// Final telemetry upload is guaranteed to run on every code path.
+/// Final telemetry upload is attempted on all paths where the HTTP client can
+/// be initialized; when no API token is configured, that upload is a no-op.
 async fn run() -> i32 {
     // Record API-to-agent E2E time (as early as possible)
     guest_agent::timing::record_e2e_from_api("api_to_agent_start");
