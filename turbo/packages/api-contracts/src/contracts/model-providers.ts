@@ -446,6 +446,28 @@ export const MODEL_PROVIDER_TYPES = {
           },
         },
       },
+      // Paste-based auth: user runs `codex login` locally, then pastes the
+      // resulting ~/.codex/auth.json. The server-side parser (codex-auth-json-
+      // parser.ts) extracts the four CHATGPT_* fields from the raw blob and
+      // persists them via the `oauth` authMethod path; the raw CODEX_AUTH_JSON
+      // blob itself is NEVER stored. The auth_json secret declaration here
+      // exists for the wire-shape and UI rendering (see #11980); storage stays
+      // canonical until #11979 collapses oauth + auth_json onto the four
+      // CHATGPT_* fields.
+      auth_json: {
+        label: "Codex auth.json",
+        helpText:
+          "Run `codex login` locally, then paste the contents of ~/.codex/auth.json below.",
+        secrets: {
+          CODEX_AUTH_JSON: {
+            label: "auth.json contents",
+            required: true,
+            serverOnly: true,
+            placeholder: '{"OPENAI_API_KEY":null,"tokens":{...}}',
+            helpText: "Paste the entire contents of ~/.codex/auth.json",
+          },
+        },
+      },
     } as Record<string, AuthMethodConfig>,
     defaultAuthMethod: "oauth",
     environmentMapping: {

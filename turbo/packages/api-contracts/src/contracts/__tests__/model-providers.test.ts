@@ -292,17 +292,19 @@ describe("codex-oauth-token codex provider", () => {
     expect(getSelectableProviderTypes()).toContain("codex-oauth-token");
   });
 
-  it("uses multi-auth shape with oauth method and four secrets", () => {
+  it("uses multi-auth shape with oauth and auth_json methods", () => {
     const methods = getAuthMethodsForType("codex-oauth-token");
     expect(methods).toBeDefined();
-    expect(Object.keys(methods!)).toEqual(["oauth"]);
-    const secrets = methods!.oauth!.secrets;
-    expect(Object.keys(secrets).sort()).toEqual([
+    expect(Object.keys(methods!).sort()).toEqual(["auth_json", "oauth"]);
+    const oauthSecrets = methods!.oauth!.secrets;
+    expect(Object.keys(oauthSecrets).sort()).toEqual([
       "CHATGPT_ACCESS_TOKEN",
       "CHATGPT_ACCOUNT_ID",
       "CHATGPT_ID_TOKEN",
       "CHATGPT_REFRESH_TOKEN",
     ]);
+    const authJsonSecrets = methods!.auth_json!.secrets;
+    expect(Object.keys(authJsonSecrets)).toEqual(["CODEX_AUTH_JSON"]);
   });
 
   it("marks refresh and id tokens as serverOnly", () => {
@@ -312,6 +314,12 @@ describe("codex-oauth-token codex provider", () => {
     // Access token + account ID are NOT server-only — they reach the sandbox
     expect(secrets.CHATGPT_ACCESS_TOKEN!.serverOnly).not.toBe(true);
     expect(secrets.CHATGPT_ACCOUNT_ID!.serverOnly).not.toBe(true);
+  });
+
+  it("auth_json secret CODEX_AUTH_JSON is serverOnly (raw blob never leaves server)", () => {
+    const secrets = getSecretsForAuthMethod("codex-oauth-token", "auth_json")!;
+    expect(secrets.CODEX_AUTH_JSON!.serverOnly).toBe(true);
+    expect(secrets.CODEX_AUTH_JSON!.required).toBe(true);
   });
 
   it("environmentMapping does NOT reference refresh or id tokens", () => {
