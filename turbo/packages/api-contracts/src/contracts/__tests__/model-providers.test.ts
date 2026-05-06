@@ -336,28 +336,24 @@ describe("chatgpt-oauth-token codex provider", () => {
     ]);
   });
 
-  it("placeholder access token is a parseable JWT with HS256 alg and far-future exp", () => {
+  it("CHATGPT_ACCESS_TOKEN placeholder is an opaque marker (not a JWT)", () => {
+    // Codex doesn't read this env var in ChatGPT mode — it reads the real
+    // JWT from ~/.codex/auth.json (written by guest-agent #11877). The
+    // firewall only needs a stable, non-empty marker to match-and-substitute
+    // at egress. A JWT-shaped placeholder triggers Semgrep's
+    // detected-jwt-token rule even though the contents are obvious dummies.
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
     const token = config.placeholders!.CHATGPT_ACCESS_TOKEN!;
-    const parts = token.split(".");
-    expect(parts).toHaveLength(3);
-    const decode = (s: string): Record<string, unknown> => {
-      return JSON.parse(Buffer.from(s, "base64url").toString("utf8")) as Record<
-        string,
-        unknown
-      >;
-    };
-    const header = decode(parts[0]!);
-    // HS256 cross-cut alignment with #11877 (avoids alg:none antipattern)
-    expect(header.alg).toBe("HS256");
-    const payload = decode(parts[1]!);
-    expect(payload.exp).toBeGreaterThan(Date.now() / 1000 + 86400 * 365);
-    // account_id placeholder MUST equal #11877's literal so future readers
-    // don't see drift across the two surfaces
-    expect(payload.chatgpt_account_id).toBe("ws_VM0_PLACEHOLDER_DO_NOT_TRUST");
+    expect(token.length).toBeGreaterThan(20);
+    // Not a 3-segment JWT — a single dotless string is fine.
+    expect(token.split(".")).toHaveLength(1);
   });
 
   it("CHATGPT_ACCOUNT_ID placeholder equals #11877's literal", () => {
+    // Cross-cut alignment with guest-agent (#11877): the account_id literal
+    // is the single string that crosses both surfaces (firewall placeholder
+    // map AND the auth.json the guest-agent fabricates). Keeping them in
+    // lockstep means future readers can grep one literal and find both.
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["chatgpt-oauth-token"];
     expect(config.placeholders!.CHATGPT_ACCOUNT_ID).toBe(
       "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",

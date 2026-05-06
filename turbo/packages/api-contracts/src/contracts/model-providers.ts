@@ -696,19 +696,18 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
     "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
   ),
   // ChatGPT OAuth provider — multi-header injection + auth.openai.com deny.
-  // Sandbox holds placeholder JWTs (written by guest-agent — see #11877);
-  // firewall replaces them with real tokens at egress. The auth.openai.com
-  // entry is defense-in-depth: codex's CODEX_REFRESH_TOKEN_URL_OVERRIDE
-  // already prevents in-sandbox refreshes, but if codex ever ignores it,
-  // this firewall denies the egress at the proxy layer.
+  // Sandbox holds placeholder strings; firewall replaces them with real
+  // tokens at egress. The auth.openai.com entry is defense-in-depth: codex's
+  // CODEX_REFRESH_TOKEN_URL_OVERRIDE already prevents in-sandbox refreshes,
+  // but if codex ever ignores it, this firewall denies the egress at the
+  // proxy layer.
   //
-  // Placeholder JWT format aligned with guest-agent (#11877):
-  //   - alg=HS256 header (avoids alg:none antipattern)
-  //   - account_id literal "ws_VM0_PLACEHOLDER_DO_NOT_TRUST" — MUST equal
-  //     the string guest-agent writes into ~/.codex/auth.json so future
-  //     readers don't see drift across the two surfaces
-  //   - exp=4102444800 (year 2100) so codex never tries to refresh
-  //   - signature: arbitrary fake bytes (firewall replaces whole token)
+  // Placeholder values are opaque markers, NOT JWTs — codex doesn't read
+  // CHATGPT_ACCESS_TOKEN from env in ChatGPT mode; it reads the real JWT
+  // from ~/.codex/auth.json built by guest-agent (#11877). The placeholder
+  // here only needs to be a stable, non-empty string the firewall can match
+  // and substitute. Account-id placeholder still equals #11877's literal
+  // since the architectural relationship across the two surfaces matters.
   "chatgpt-oauth-token": {
     name: "model-provider:chatgpt-oauth-token",
     apis: [
@@ -733,10 +732,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
       unknownPolicy: "deny",
     },
     placeholders: {
-      // Header  : {"alg":"HS256","typ":"JWT"}
-      // Payload : {"chatgpt_account_id":"ws_VM0_PLACEHOLDER_DO_NOT_TRUST","chatgpt_plan_type":"plus","exp":4102444800}
       CHATGPT_ACCESS_TOKEN:
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjaGF0Z3B0X2FjY291bnRfaWQiOiJ3c19WTTBfUExBQ0VIT0xERVJfRE9fTk9UX1RSVVNUIiwiY2hhdGdwdF9wbGFuX3R5cGUiOiJwbHVzIiwiZXhwIjo0MTAyNDQ0ODAwfQ.VM0PlaceholderSignatureDoNotTrustVM0PlaceholderSignature",
+        "chatgpt-token-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
       CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
     },
   },
