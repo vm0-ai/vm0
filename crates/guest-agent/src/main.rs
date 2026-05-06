@@ -121,8 +121,9 @@ async fn run() -> i32 {
     exit_code
 }
 
-/// Main execution logic: working dir, CLI, checkpoint, and final telemetry
-/// upload (parallel with checkpoint on the success path; serial otherwise).
+/// Main execution logic: working dir, CLI, checkpoint, and cleanup telemetry.
+/// The success path overlaps the pre-checkpoint telemetry flush with
+/// checkpoint creation, then runs the final flush after `/complete`.
 async fn execute(
     masker: &masker::SecretMasker,
     start: Instant,
