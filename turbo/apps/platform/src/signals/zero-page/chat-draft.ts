@@ -15,6 +15,60 @@ interface FileInfo {
   url: string;
 }
 
+function uploadContentTypeByExtension(ext: string): string | undefined {
+  const contentTypeByExtension: Record<string, string | undefined> = {
+    aac: "audio/aac",
+    avif: "image/avif",
+    csv: "text/csv",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    flac: "audio/flac",
+    gif: "image/gif",
+    htm: "text/html",
+    html: "text/html",
+    jpeg: "image/jpeg",
+    jpg: "image/jpeg",
+    json: "application/json",
+    m4a: "audio/mp4",
+    md: "text/markdown",
+    mov: "video/quicktime",
+    mp3: "audio/mpeg",
+    mp4: "video/mp4",
+    mpga: "audio/mpga",
+    odp: "application/vnd.oasis.opendocument.presentation",
+    ods: "application/vnd.oasis.opendocument.spreadsheet",
+    odt: "application/vnd.oasis.opendocument.text",
+    oga: "audio/ogg",
+    ogg: "audio/ogg",
+    opus: "audio/opus",
+    pdf: "application/pdf",
+    png: "image/png",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    rtf: "application/rtf",
+    svg: "image/svg+xml",
+    txt: "text/plain",
+    wav: "audio/wav",
+    wave: "audio/wave",
+    webm: "video/webm",
+    webp: "image/webp",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  };
+  return contentTypeByExtension[ext];
+}
+
+function inferUploadContentType(file: File): string {
+  const explicitType = file.type.split(";")[0]?.trim().toLowerCase();
+  if (explicitType && explicitType !== "application/octet-stream") {
+    return explicitType;
+  }
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  return ext
+    ? (uploadContentTypeByExtension(ext) ?? "application/octet-stream")
+    : "application/octet-stream";
+}
+
 export interface ZeroChatAttachment {
   filename: string;
   contentType: string;
@@ -28,6 +82,7 @@ export interface ZeroChatAttachment {
 }
 
 function createChatAttachment(file: File): ZeroChatAttachment {
+  const contentType = inferUploadContentType(file);
   const resetSignal$ = resetSignal();
   const internalPromise$ = state<Promise<FileInfo> | null>(null);
 
@@ -49,11 +104,14 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     const signal = set(resetSignal$, parentSignal);
 
     const promise = (async () => {
+      // Step 1: ask the server to sign a PUT URL for R2. The file body never
+      // travels through the Next.js runtime, which lets us exceed Vercel's
+      // serverless body cap and next dev's multipart parser limits.
       const prepared = await accept(
         client.prepare({
           body: {
             filename: file.name,
-            contentType: file.type,
+            contentType,
             size: file.size,
           },
           fetchOptions: { signal },
@@ -65,7 +123,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       const putRes = await fetch(prepared.body.uploadUrl, {
         method: "PUT",
         body: file,
-        headers: { "content-type": file.type },
+        headers: { "content-type": contentType },
         signal,
       });
       parentSignal.throwIfAborted();
@@ -86,7 +144,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 
   return {
     filename: file.name,
-    contentType: file.type,
+    contentType,
     size: file.size,
     fileInfo$,
     cancel$,

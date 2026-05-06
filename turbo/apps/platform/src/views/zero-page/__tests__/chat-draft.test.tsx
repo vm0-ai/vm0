@@ -250,6 +250,65 @@ describe("chat draft persistence across thread navigation", () => {
     expect(screen.getByLabelText("Remove huge.png")).toBeInTheDocument();
   });
 
+  it("should infer office content type when the browser file type is empty", async () => {
+    const user = userEvent.setup();
+    mockThreads();
+    const expectedContentType =
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    let prepareBody: { filename: string; contentType: string } | null = null;
+    let putContentType: string | null = null;
+
+    server.use(
+      mockHttp.post("*/api/zero/uploads/prepare", async ({ request }) => {
+        const body = (await request.json()) as {
+          filename: string;
+          contentType: string;
+          size: number;
+        };
+        prepareBody = {
+          filename: body.filename,
+          contentType: body.contentType,
+        };
+        return HttpResponse.json({
+          id: "upload-xlsx",
+          filename: body.filename,
+          contentType: body.contentType,
+          size: body.size,
+          uploadUrl: "https://mock-upload.example.com/budget.xlsx",
+          url: "https://example.com/budget.xlsx",
+        });
+      }),
+      mockHttp.put(
+        "https://mock-upload.example.com/budget.xlsx",
+        ({ request }) => {
+          putContentType = request.headers.get("content-type");
+          return new HttpResponse(null, { status: 200 });
+        },
+      ),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-office-1" });
+
+    await waitFor(() => {
+      expect(getTextarea()).toBeInTheDocument();
+    });
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["sheet"], "budget.xlsx");
+    await user.upload(fileInput, file);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Remove budget.xlsx")).toBeInTheDocument();
+    });
+    expect(prepareBody).toStrictEqual({
+      filename: "budget.xlsx",
+      contentType: expectedContentType,
+    });
+    expect(putContentType).toBe(expectedContentType);
+  });
+
   it("should keep the chip when the R2 put fails", async () => {
     const user = userEvent.setup();
     mockThreads();

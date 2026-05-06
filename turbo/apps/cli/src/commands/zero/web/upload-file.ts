@@ -26,7 +26,7 @@ Notes:
   - Allowed image types: png / jpeg / gif / webp / avif / svg
   - Allowed video types: mp4 / webm / mov
   - Allowed audio types: aac / flac / m4a / mp3 / mp4 / mpga / ogg / opus / wav / webm
-  - Allowed document/text types: pdf / txt / csv / md / html / json
+  - Allowed document/text types: pdf / txt / csv / md / html / json / doc(x) / xls(x) / ppt(x) / odt / ods / odp / rtf
   - Use --content-type for ambiguous extensions like .mp4 or .webm when needed`,
   )
   .action(

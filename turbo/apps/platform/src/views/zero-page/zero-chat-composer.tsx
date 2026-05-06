@@ -985,7 +985,7 @@ export function ZeroChatComposer({
         ref={setFileInputEl}
         type="file"
         className="hidden"
-        accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.md,.json,.html"
+        accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.md,.json,.html,.htm,.doc,.docx,.odt,.rtf,.xls,.xlsx,.ods,.ppt,.pptx,.odp"
         multiple
         onChange={handleFileChange}
       />

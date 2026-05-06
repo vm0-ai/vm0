@@ -62,6 +62,8 @@ function getFileTypeIcon(filename: string): string | null {
     }
     case "doc":
     case "docx":
+    case "odt":
+    case "rtf":
     case "md": {
       return docDocIcon;
     }
@@ -76,6 +78,16 @@ function getFileTypeIcon(filename: string): string | null {
     }
     case "csv": {
       return docCsvIcon;
+    }
+    case "xls":
+    case "xlsx":
+    case "ods": {
+      return docCsvIcon;
+    }
+    case "ppt":
+    case "pptx":
+    case "odp": {
+      return docDocIcon;
     }
     default: {
       return null;
