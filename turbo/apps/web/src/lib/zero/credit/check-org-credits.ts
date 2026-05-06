@@ -15,8 +15,8 @@ import type { Database } from "../../../types/global";
  * stale inflated balance — same form `getBillingStatus` presents in the UI.
  *
  * Callable from any vm0-billable route. For LLM runs that may use BYOK,
- * use `checkOrgCreditsForRun` in zero-run-policy which wraps this with
- * provider resolution and a BYOK fast-exit.
+ * first resolve the run admission context, then call
+ * `checkOrgCreditsForRunAdmission` in zero-run-policy.
  *
  * Accepts an optional `db` so callers inside a transaction (e.g. queue drain
  * under `pg_advisory_xact_lock`) can keep the read within the same boundary.

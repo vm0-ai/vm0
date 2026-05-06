@@ -31,9 +31,9 @@ import {
   checkRunConcurrencyLimit,
   authorizeCompose,
   validateComposeRequirements,
-  checkOrgCreditsForRun,
   checkModelProviderConfigured,
-  resolveProviderTypeForAdmission,
+  resolveRunAdmissionContext,
+  checkOrgCreditsForRunAdmission,
 } from "./zero-run-policy";
 import {
   buildAndDispatchRun,
@@ -52,10 +52,7 @@ import {
   encryptSecretsMap,
   decryptSecretsMap,
 } from "../shared/crypto/secrets-encryption";
-import {
-  isConcurrentRunLimit,
-  isInsufficientCredits,
-} from "@vm0/api-services/errors";
+import { isConcurrentRunLimit } from "@vm0/api-services/errors";
 import { logger } from "../shared/logger";
 import { publishOrgSignal } from "./realtime";
 import { publishChatThreadRunUpdated } from "./chat-thread/chat-message-service";
@@ -332,7 +329,9 @@ async function dequeueNextAtomic(
 
       // Look up org tier from org table (source of truth).
       // Falls back to "free" (most conservative limit) if row is missing.
-      // Credits are checked by checkOrgCreditsForRun() within this transaction.
+      // Credits are re-checked during queued dispatch with the decrypted
+      // CreateRunParams, so modelProviderId and personal-provider preferences
+      // are resolved from the same run context that dispatch uses.
       const [orgRow] = await tx
         .select({ tier: orgMetadata.tier })
         .from(orgMetadata)
@@ -346,18 +345,15 @@ async function dequeueNextAtomic(
       // Fetch all queue entries for this org (ordered FIFO).
       // Typically 0-2 entries; iterating in-transaction to skip
       // already-processed runs without releasing the advisory lock.
-      // LEFT JOIN zeroRuns to read modelProvider for credit check.
       const rows = await tx.execute<{
         run_id: string;
         user_id: string;
         encrypted_params: string | null;
-        model_provider: string | null;
         created_at: Date;
       }>(
-        sql`SELECT q.run_id, q.user_id, q.encrypted_params, zr.model_provider, q.created_at
+        sql`SELECT q.run_id, q.user_id, q.encrypted_params, q.created_at
          FROM agent_run_queue q
          JOIN agent_runs r ON r.id = q.run_id
-         LEFT JOIN zero_runs zr ON zr.id = r.id
          WHERE q.org_id = ${orgId}
          ORDER BY q.created_at ASC`,
       );
@@ -367,32 +363,6 @@ async function dequeueNextAtomic(
         await tx
           .delete(agentRunQueue)
           .where(eq(agentRunQueue.runId, row.run_id));
-
-        // Unified pre-flight credit check (org-level + per-member cap)
-        try {
-          await checkOrgCreditsForRun(
-            orgId,
-            row.user_id,
-            row.model_provider,
-            tx,
-          );
-        } catch (error) {
-          if (isInsufficientCredits(error)) {
-            await transitionRunStatus(
-              row.run_id,
-              {
-                status: "failed",
-                error: error.message,
-                completedAt: new Date(),
-              },
-              ["queued"],
-              tx,
-            );
-            log.debug(`Run ${row.run_id} failed credit check, skipping`);
-            continue;
-          }
-          throw error;
-        }
 
         // Update run status — fails silently if run was already cancelled/failed
         const [updated] = await tx
@@ -604,7 +574,7 @@ export async function dispatchQueuedZeroRun(
     ? Object.values(composeContent.agents)
     : [];
   const composeFramework = composeAgents[0]?.framework ?? "claude-code";
-  const admissionProviderType = await resolveProviderTypeForAdmission({
+  const admissionContext = await resolveRunAdmissionContext({
     orgId: params.orgId,
     userId: params.userId,
     modelProvider: params.modelProvider,
@@ -613,9 +583,14 @@ export async function dispatchQueuedZeroRun(
     preferPersonalProvider: params.preferPersonalProvider,
   });
 
+  await checkOrgCreditsForRunAdmission(admissionContext);
+
   // Validate compose requirements for new runs only
   if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(composeContent, admissionProviderType);
+    await validateComposeRequirements(
+      composeContent,
+      admissionContext.providerType,
+    );
   }
 
   // Register callbacks early so they persist even if context building fails
