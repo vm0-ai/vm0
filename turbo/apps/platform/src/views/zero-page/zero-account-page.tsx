@@ -51,7 +51,7 @@ function AppearanceSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[15px] text-muted-foreground">
+      <p className="text-sm max-md:text-[15px] text-muted-foreground">
         Choose how the interface looks.
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
@@ -65,8 +65,8 @@ function AppearanceSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-[17px] font-medium text-foreground">Theme</div>
-          <div className="text-[15px] text-muted-foreground">
+          <div className="text-sm max-md:text-[17px] font-medium text-foreground">Theme</div>
+          <div className="text-sm max-md:text-[15px] text-muted-foreground">
             Your preferred color scheme
           </div>
         </div>
@@ -117,7 +117,7 @@ function SendModeSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[15px] text-muted-foreground">
+      <p className="text-sm max-md:text-[15px] text-muted-foreground">
         Choose how to send messages in chat.
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
@@ -131,10 +131,10 @@ function SendModeSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-[17px] font-medium text-foreground">
+          <div className="text-sm max-md:text-[17px] font-medium text-foreground">
             Send message with
           </div>
-          <div className="text-[15px] text-muted-foreground">
+          <div className="text-sm max-md:text-[15px] text-muted-foreground">
             {(saving ?? current) === "enter"
               ? "Press Enter to send, Shift+Enter for new line"
               : "Press ⌘/Ctrl+Enter to send, Enter for new line"}
@@ -196,7 +196,7 @@ function CaptureNetworkBodiesSettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[15px] text-muted-foreground">
+      <p className="text-sm max-md:text-[15px] text-muted-foreground">
         Capture HTTP request headers and bodies in network logs for debugging.
       </p>
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
@@ -206,10 +206,10 @@ function CaptureNetworkBodiesSettings() {
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">
-          <div className="text-[17px] font-medium text-foreground">
+          <div className="text-sm max-md:text-[17px] font-medium text-foreground">
             Capture network bodies
           </div>
-          <div className="text-[15px] text-muted-foreground">
+          <div className="text-sm max-md:text-[15px] text-muted-foreground">
             {enabled
               ? `Enabled for the next ${remaining} run${remaining === 1 ? "" : "s"}`
               : "Disabled"}

@@ -573,7 +573,7 @@ function ConnectorsPopoverButton({
                   onChange={(e) => {
                     return setSearch(e.target.value);
                   }}
-                  className="w-full bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground outline-none"
+                  className="w-full bg-transparent text-sm max-md:text-[15px] text-foreground placeholder:text-muted-foreground outline-none"
                 />
               </div>
             )}
@@ -1343,7 +1343,7 @@ export function ZeroChatComposer({
                 setInputRef?.(el);
               }}
               className={cn(
-                "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-base text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0",
+                "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-sm max-md:text-base text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0",
                 composerTextareaMinHeight(hasPendingMessage),
               )}
               rows={3}

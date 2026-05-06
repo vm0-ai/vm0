@@ -379,10 +379,10 @@ function SuggestedPromptButton({
         stroke={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
       />
-      <p className="text-[17px] font-semibold text-foreground pr-5">
+      <p className="text-sm max-md:text-[17px] font-semibold text-foreground pr-5">
         {item.title}
       </p>
-      <p className="text-[15px] text-muted-foreground mt-1.5 leading-relaxed">
+      <p className="text-sm max-md:text-[15px] text-muted-foreground mt-1.5 leading-relaxed">
         {item.description}
       </p>
       {item.connectors && item.connectors.length > 0 && (
@@ -427,13 +427,13 @@ function IdeasUseCasesButton() {
         stroke={2}
         className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
       />
-      <p className="text-[17px] font-semibold text-foreground pr-5">
+      <p className="text-sm max-md:text-[17px] font-semibold text-foreground pr-5">
         Ideas &amp; use cases
       </p>
-      <p className="text-[15px] text-muted-foreground mt-1.5 leading-relaxed">
+      <p className="text-sm max-md:text-[15px] text-muted-foreground mt-1.5 leading-relaxed">
         Browse use cases across all connectors
       </p>
-      <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-[15px] font-medium text-primary">
+      <div className="flex items-center gap-1.5 mt-auto pt-2.5 text-sm max-md:text-[15px] font-medium text-primary">
         <span>View all</span>
         <IconArrowUpRight size={14} stroke={2} />
       </div>
