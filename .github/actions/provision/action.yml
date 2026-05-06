@@ -67,10 +67,18 @@ runs:
           pip3 install ansible-core
         fi
 
-        ansible-playbook -i "${STALE_HOSTS}," ansible/playbooks/provision-runner.yml \
+        run_ansible_playbook() {
+          # GitHub's container step can expose stdin as a non-blocking fd.
+          # Ansible refuses to start with non-blocking stdio, even though these
+          # playbooks never read stdin. Give it a blocking input handle while
+          # preserving stdout/stderr in the Actions log.
+          ansible-playbook "$@" < /dev/null
+        }
+
+        run_ansible_playbook -i "${STALE_HOSTS}," ansible/playbooks/provision-runner.yml \
           -e "ansible_user=${METAL_USER}" -v
 
-        ansible-playbook -i "${STALE_HOSTS}," ansible/playbooks/provision-monitoring.yml \
+        run_ansible_playbook -i "${STALE_HOSTS}," ansible/playbooks/provision-monitoring.yml \
           -e "ansible_user=${METAL_USER}" \
           -e "grafana_cloud_prometheus_url=${GRAFANA_CLOUD_PROMETHEUS_URL}" \
           -e "grafana_cloud_prometheus_user=${GRAFANA_CLOUD_PROMETHEUS_USER}" \
