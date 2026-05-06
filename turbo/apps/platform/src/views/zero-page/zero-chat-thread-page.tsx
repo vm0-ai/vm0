@@ -1933,18 +1933,11 @@ function ChatThreadComposer({
     detach(recallPendingMessage(rootSignal), Reason.DomCallback);
   };
 
-  const mobileNativeOn =
-    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
-
   return (
     <footer
       data-chat-composer
       className="relative shrink-0 bg-[hsl(var(--background))]"
-      style={{
-        paddingBottom: mobileNativeOn
-          ? "0.5rem"
-          : "max(0.5rem, env(safe-area-inset-bottom))",
-      }}
+      style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="overflow-y-auto [scrollbar-gutter:stable] px-4 sm:px-6 pt-3 pb-2">
