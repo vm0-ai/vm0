@@ -1,15 +1,13 @@
 /**
- * Tests for the Connect ChatGPT entry on the model-providers settings tab.
+ * Tests for the Connect Codex entry on the model-providers settings tab.
  *
  * Covers:
  * - Card hidden when CodexOauthProvider feature switch is off (DoD: gate-off)
  * - Card visible when feature switch is on (DoD: gate-on)
- * - Click on the card redirects to /api/zero/chatgpt/oauth/connect (DoD: redirect)
+ * - Click on the card opens the codex auth.json paste dialog
+ *   (replaces the broken cross-origin OAuth redirect; #11980)
  * - Existing-provider row renders workspace name + plan pill when fields
  *   present on codex-oauth-token provider (DoD: post-OAuth display)
- *
- * Wave 2 sub-issue of Epic #11872 (issue #11907). Server-side OAuth route
- * delivered in #11909; this test mocks the redirect target.
  */
 
 import {
