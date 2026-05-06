@@ -897,6 +897,7 @@ PY
             "usage/model_tokens.py",
             "usage/namespaces.py",
             "usage/openai_responses.py",
+            "usage/sse.py",
             "usage/webhook.py",
             "usage/providers/__init__.py",
             "usage/providers/model_provider.py",

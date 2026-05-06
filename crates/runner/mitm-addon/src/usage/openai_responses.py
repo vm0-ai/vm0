@@ -10,11 +10,7 @@ from .model_tokens import (
     MODEL_USAGE_CATEGORY_INPUT,
     MODEL_USAGE_CATEGORY_OUTPUT,
 )
-
-# Keep these in sync with ``usage.anthropic_messages`` so provider-specific SSE parsers
-# have the same boundary handling and bounded skip behavior.
-_SSE_SEPARATORS: tuple[bytes, ...] = (b"\r\n\r\n", b"\n\n")
-_MAX_SEPARATOR_LEN = max(len(s) for s in _SSE_SEPARATORS)
+from .sse import SseUsageScanner
 
 _RESPONSES_USAGE_EVENTS = frozenset(("response.completed", "response.done"))
 
@@ -31,10 +27,6 @@ _RESPONSES_SSE_SCALAR_FIELDS = {
     **_RESPONSES_RESPONSE_SCALAR_FIELDS,
     **{("response", *path): field for path, field in _RESPONSES_RESPONSE_SCALAR_FIELDS.items()},
 }
-
-# Non-data SSE control lines should be tiny. Cap malformed lines so a provider
-# bug cannot grow memory while we wait for a newline.
-_MAX_SSE_CONTROL_LINE_BYTES = 4096
 
 
 def _is_usage_quantity(value: object) -> bool:
@@ -123,120 +115,48 @@ def create_openai_responses_sse_usage_extractor() -> tuple[Callable[[bytes], Non
     """Create an incremental SSE parser for OpenAI Responses streams."""
 
     usage: dict = {}
-    line_buf = bytearray()
-    event_type = {"current": None}
-    skipping = {"active": False}
-    skipping_line = {"active": False}
-    data_state: dict[str, object] = {"extractor": None, "event": None}
+    scanner = SseUsageScanner(_OpenAIResponsesSseUsageHandler(usage))
 
-    def should_capture_data_line() -> bool:
-        evt = event_type["current"]
-        return evt is None or evt in _RESPONSES_USAGE_EVENTS
+    def parse_chunk(chunk: bytes) -> None:
+        scanner.feed(chunk)
 
-    def start_data_payload() -> None:
-        data_state["extractor"] = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
-        data_state["event"] = event_type["current"]
+    return parse_chunk, usage
 
-    def finish_data_payload() -> None:
-        extractor = data_state["extractor"]
-        event_name = data_state["event"]
-        data_state["extractor"] = None
-        data_state["event"] = None
-        if not isinstance(extractor, JsonSelectiveExtractor):
+
+class _OpenAIResponsesSseUsageHandler:
+    def __init__(self, usage: dict) -> None:
+        self._usage = usage
+        self._extractor: JsonSelectiveExtractor | None = None
+        self._event_name: str | None = None
+
+    def should_capture_event(self, event_name: str | None) -> bool:
+        return event_name is None or event_name in _RESPONSES_USAGE_EVENTS
+
+    def on_event_start(self, event_name: str | None) -> None:
+        self._extractor = JsonSelectiveExtractor(scalar_fields=_RESPONSES_SSE_SCALAR_FIELDS)
+        self._event_name = event_name
+
+    def on_data(self, chunk: bytes) -> None:
+        if self._extractor is not None:
+            self._extractor.feed(chunk)
+
+    def on_data_separator(self) -> None:
+        self.on_data(b"\n")
+
+    def on_event_end(self, _event_name: str | None) -> None:
+        extractor = self._extractor
+        event_name = self._event_name
+        self._extractor = None
+        self._event_name = None
+        if extractor is None:
             return
         result = extractor.finish()
         if result.complete:
-            _store_sse_result_values(
-                result.values,
-                usage,
-                event_name=event_name if isinstance(event_name, str) else None,
-            )
+            _store_sse_result_values(result.values, self._usage, event_name=event_name)
 
-    def consume_data_payload(chunk: bytes) -> bytes:
-        extractor = data_state["extractor"]
-        if not isinstance(extractor, JsonSelectiveExtractor):
-            return chunk
-
-        idx = chunk.find(b"\n")
-        if idx == -1:
-            extractor.feed(chunk)
-            return b""
-
-        payload = chunk[:idx]
-        if payload.endswith(b"\r"):
-            payload = payload[:-1]
-        extractor.feed(payload)
-        finish_data_payload()
-        return chunk[idx + 1 :]
-
-    def consume_skip(chunk: bytes) -> bytes:
-        combined = line_buf + chunk
-        for sep in _SSE_SEPARATORS:
-            idx = combined.find(sep)
-            if idx != -1:
-                after = idx + len(sep)
-                line_buf.clear()
-                skipping["active"] = False
-                event_type["current"] = None
-                return bytes(combined[after:])
-
-        tail = _MAX_SEPARATOR_LEN - 1
-        line_buf[:] = combined[-tail:] if len(combined) > tail else combined
-        return b""
-
-    def consume_skipped_line(chunk: bytes) -> bytes:
-        idx = chunk.find(b"\n")
-        if idx == -1:
-            return b""
-        skipping_line["active"] = False
-        return chunk[idx + 1 :]
-
-    def process_line(raw_line: bytes) -> None:
-        line = raw_line.rstrip(b"\r")
-        if line == b"":
-            event_type["current"] = None
-            skipping["active"] = False
-            return
-
-        if skipping["active"]:
-            return
-
-        if line.startswith(b"event: "):
-            evt_name = line[7:].decode("utf-8", errors="replace")
-            event_type["current"] = evt_name
-            if evt_name not in _RESPONSES_USAGE_EVENTS:
-                skipping["active"] = True
-
-    def consume_line_prefix(chunk: bytes) -> bytes:
-        line_buf.append(chunk[0])
-        remaining = chunk[1:]
-
-        if line_buf == b"data: " and should_capture_data_line():
-            line_buf.clear()
-            start_data_payload()
-            return remaining
-
-        if line_buf[-1:] == b"\n":
-            process_line(bytes(line_buf[:-1]))
-            line_buf.clear()
-        elif len(line_buf) > _MAX_SSE_CONTROL_LINE_BYTES:
-            line_buf.clear()
-            skipping_line["active"] = True
-
-        return remaining
-
-    def parse_chunk(chunk: bytes) -> None:
-        while chunk:
-            if data_state["extractor"] is not None:
-                chunk = consume_data_payload(chunk)
-            elif skipping["active"]:
-                chunk = consume_skip(chunk)
-            elif skipping_line["active"]:
-                chunk = consume_skipped_line(chunk)
-            else:
-                chunk = consume_line_prefix(chunk)
-
-    return parse_chunk, usage
+    def on_event_discard(self, _event_name: str | None) -> None:
+        self._extractor = None
+        self._event_name = None
 
 
 class OpenAIResponsesJsonUsageExtractor:

@@ -1701,6 +1701,17 @@ class TestAnthropicSseUsageExtractor:
         assert usage["model"] == "claude-sonnet-4-6"
         assert usage["tokens.input"] == 77
 
+    def test_standalone_cr_line_endings(self):
+        parse, usage = create_anthropic_messages_sse_usage_extractor()
+        parse(
+            b"event: message_start\r"
+            b'data: {"message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":88}}}\r'
+            b"\r"
+        )
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["tokens.input"] == 88
+
     def test_skips_content_block_data_without_buffering(self):
         """Large content_block_delta data should not accumulate in line_buf."""
         parse, usage = create_anthropic_messages_sse_usage_extractor()
@@ -1771,6 +1782,24 @@ class TestAnthropicSseUsageExtractor:
         )
         assert usage["tokens.input"] == 5
         assert usage["tokens.output"] == 99
+
+    def test_extracts_usage_from_large_message_start_data_line(self):
+        parse, usage = create_anthropic_messages_sse_usage_extractor()
+        parse(b"event: message_start\n")
+        parse(
+            b'data: {"type":"message_start","message":{"id":"msg_big",'
+            b'"model":"claude-sonnet-4-6","content":[{"type":"text","text":"' + b"x" * 100_000
+        )
+        parse(
+            b'"}],"usage":{"input_tokens":123,"cache_read_input_tokens":45,"output_tokens":6}}}\n\n'
+        )
+        assert usage == {
+            "message_id": "msg_big",
+            "model": "claude-sonnet-4-6",
+            "tokens.input": 123,
+            "tokens.cache_read": 45,
+            "tokens.output": 6,
+        }
 
     def test_empty_usage_dict_not_reported(self):
         """Empty model_provider_usage (SSE ran but no usage found) should not trigger report."""
@@ -1956,6 +1985,16 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.input"] == 10
+        assert usage["tokens.output"] == 4
+
+    def test_multidata_response_completed_event(self):
+        parse, usage = create_openai_responses_sse_usage_extractor()
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":\n'
+            b'data: {"model":"gpt-5.4","usage":{"output_tokens":4}}}\n\n'
+        )
+        assert usage["model"] == "gpt-5.4"
         assert usage["tokens.output"] == 4
 
     def test_skips_large_irrelevant_events_without_buffering(self):
