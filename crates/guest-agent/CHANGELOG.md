@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.27.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.27.0...guest-agent-v0.27.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* **guest-agent:** checkpoint recoverable abnormal exits ([#11984](https://github.com/vm0-ai/vm0/issues/11984)) ([f4621f4](https://github.com/vm0-ai/vm0/commit/f4621f40f47229f364e0f82a2ca3b4a49b15b15c))
+
+
+### Refactoring
+
+* **guest-agent:** initialize http client explicitly ([#11966](https://github.com/vm0-ai/vm0/issues/11966)) ([d0984f2](https://github.com/vm0-ai/vm0/commit/d0984f2d66307cfd54320e117723e7a3cfdd77ab))
+* rename chatgpt-oauth-token to codex-oauth-token ([#11990](https://github.com/vm0-ai/vm0/issues/11990)) ([0659786](https://github.com/vm0-ai/vm0/commit/06597865f129656105438bc99d4d308b6c9942b7))
+
 ## [0.27.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.5...guest-agent-v0.27.0) (2026-05-06)
 
 

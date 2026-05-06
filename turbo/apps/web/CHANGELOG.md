@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.335.0](https://github.com/vm0-ai/vm0/compare/web-v12.334.1...web-v12.335.0) (2026-05-06)
+
+
+### Features
+
+* add chat thread pending message api ([#11946](https://github.com/vm0-ai/vm0/issues/11946)) ([57717fe](https://github.com/vm0-ai/vm0/commit/57717feece2ba9dc3cf7b48862f56d03f06ced74))
+* **api-contracts,web:** add auth_json authMethod and CODEX_AUTH_JSON parser ([#12005](https://github.com/vm0-ai/vm0/issues/12005)) ([5f0b630](https://github.com/vm0-ai/vm0/commit/5f0b63001561aab3ae6407dfe543f6d48692cce7))
+* **cli:** add official voice generation command ([#11987](https://github.com/vm0-ai/vm0/issues/11987)) ([417632e](https://github.com/vm0-ai/vm0/commit/417632e0656428e89c2b306036a7bbac08d88253))
+
+
+### Bug Fixes
+
+* add og-image route to public routes in clerk middleware ([#12006](https://github.com/vm0-ai/vm0/issues/12006)) ([4911497](https://github.com/vm0-ai/vm0/commit/49114971a7c592df9e3365d922ca423b44c71cc1))
+* **guest-agent:** checkpoint recoverable abnormal exits ([#11984](https://github.com/vm0-ai/vm0/issues/11984)) ([f4621f4](https://github.com/vm0-ai/vm0/commit/f4621f40f47229f364e0f82a2ca3b4a49b15b15c))
+* make e2e default agent seeding race-safe ([#11999](https://github.com/vm0-ai/vm0/issues/11999)) ([9dec14c](https://github.com/vm0-ai/vm0/commit/9dec14ca8f216cfff65eb6776b834ed32e74fe3f))
+* use zero agent id for search filters ([#11995](https://github.com/vm0-ai/vm0/issues/11995)) ([3224bd0](https://github.com/vm0-ai/vm0/commit/3224bd05992be321f80f7c74febd5a393dbae6c4))
+
+
+### Refactoring
+
+* rename chatgpt-oauth-token to codex-oauth-token ([#11990](https://github.com/vm0-ai/vm0/issues/11990)) ([0659786](https://github.com/vm0-ai/vm0/commit/06597865f129656105438bc99d4d308b6c9942b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.259.0
+
 ## [12.334.1](https://github.com/vm0-ai/vm0/compare/web-v12.334.0...web-v12.334.1) (2026-05-06)
 
 

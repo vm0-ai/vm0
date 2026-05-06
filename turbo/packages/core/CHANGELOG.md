@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.259.0](https://github.com/vm0-ai/vm0/compare/core-v8.258.0...core-v8.259.0) (2026-05-06)
+
+
+### Features
+
+* add chat thread pending message api ([#11946](https://github.com/vm0-ai/vm0/issues/11946)) ([57717fe](https://github.com/vm0-ai/vm0/commit/57717feece2ba9dc3cf7b48862f56d03f06ced74))
+
+
+### Refactoring
+
+* rename chatgpt-oauth-token to codex-oauth-token ([#11990](https://github.com/vm0-ai/vm0/issues/11990)) ([0659786](https://github.com/vm0-ai/vm0/commit/06597865f129656105438bc99d4d308b6c9942b7))
+
 ## [8.258.0](https://github.com/vm0-ai/vm0/compare/core-v8.257.0...core-v8.258.0) (2026-05-06)
 
 

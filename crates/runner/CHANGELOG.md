@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.1...runner-rs-v0.100.2) (2026-05-06)
+
+
+### Bug Fixes
+
+* **runner:** disable r2 response checksum warnings ([#11975](https://github.com/vm0-ai/vm0/issues/11975)) ([18a5ffd](https://github.com/vm0-ai/vm0/commit/18a5ffd955372b33f5af6db6deecaef964fe194c))
+
 ## [0.100.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.0...runner-rs-v0.100.1) (2026-05-06)
 
 

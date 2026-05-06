@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.17](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.16...sandbox-fc-v0.27.17) (2026-05-06)
+
+
+### Refactoring
+
+* **sandbox-fc:** own process log readers ([#11985](https://github.com/vm0-ai/vm0/issues/11985)) ([dcbbc6d](https://github.com/vm0-ai/vm0/commit/dcbbc6dc14fb766e170bd724c961db5dd6b2e5b1))
+
 ## [0.27.16](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.15...sandbox-fc-v0.27.16) (2026-05-06)
 
 

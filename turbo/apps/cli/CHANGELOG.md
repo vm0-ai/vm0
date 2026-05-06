@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.143.0](https://github.com/vm0-ai/vm0/compare/cli-v9.142.1...cli-v9.143.0) (2026-05-06)
+
+
+### Features
+
+* **cli:** add official voice generation command ([#11987](https://github.com/vm0-ai/vm0/issues/11987)) ([417632e](https://github.com/vm0-ai/vm0/commit/417632e0656428e89c2b306036a7bbac08d88253))
+
+
+### Bug Fixes
+
+* use zero agent id for search filters ([#11995](https://github.com/vm0-ai/vm0/issues/11995)) ([3224bd0](https://github.com/vm0-ai/vm0/commit/3224bd05992be321f80f7c74febd5a393dbae6c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.259.0
+
 ## [9.142.1](https://github.com/vm0-ai/vm0/compare/cli-v9.142.0...cli-v9.142.1) (2026-05-06)
 
 

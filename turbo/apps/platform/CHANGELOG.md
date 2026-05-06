@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.329.0](https://github.com/vm0-ai/vm0/compare/app-v0.328.0...app-v0.329.0) (2026-05-06)
+
+
+### Features
+
+* add chat thread pending message api ([#11946](https://github.com/vm0-ai/vm0/issues/11946)) ([57717fe](https://github.com/vm0-ai/vm0/commit/57717feece2ba9dc3cf7b48862f56d03f06ced74))
+* **platform:** replace oauth button with codex auth.json paste modal ([#12004](https://github.com/vm0-ai/vm0/issues/12004)) ([0210fdf](https://github.com/vm0-ai/vm0/commit/0210fdf70a8012f1bbbd6632bb25894a0152d4d0))
+
+
+### Bug Fixes
+
+* **platform:** preserve optimistic messages across thread resolution handoff ([#12001](https://github.com/vm0-ai/vm0/issues/12001)) ([993936b](https://github.com/vm0-ai/vm0/commit/993936bb08f05507c1b317b89bc5054ac74c165c))
+* support upload file previews ([#11971](https://github.com/vm0-ai/vm0/issues/11971)) ([98b9ebe](https://github.com/vm0-ai/vm0/commit/98b9ebe0c85c8d95194a44e8fd44ea0abd6e1f46))
+* suppress handled schedule validation logs ([#11976](https://github.com/vm0-ai/vm0/issues/11976)) ([5e47f20](https://github.com/vm0-ai/vm0/commit/5e47f20cb833ce0e94663d1c3a8e431a6ca8e415))
+* use zero agent id for search filters ([#11995](https://github.com/vm0-ai/vm0/issues/11995)) ([3224bd0](https://github.com/vm0-ai/vm0/commit/3224bd05992be321f80f7c74febd5a393dbae6c4))
+
+
+### Refactoring
+
+* **platform:** swap checkbox to switch for prefer_personal_provider toggle ([#11994](https://github.com/vm0-ai/vm0/issues/11994)) ([1a3c476](https://github.com/vm0-ai/vm0/commit/1a3c47691aaf02491e19bb48b8c82ca7f0d3fcea))
+* rename chatgpt-oauth-token to codex-oauth-token ([#11990](https://github.com/vm0-ai/vm0/issues/11990)) ([0659786](https://github.com/vm0-ai/vm0/commit/06597865f129656105438bc99d4d308b6c9942b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.259.0
+
 ## [0.328.0](https://github.com/vm0-ai/vm0/compare/app-v0.327.0...app-v0.328.0) (2026-05-06)
 
 
