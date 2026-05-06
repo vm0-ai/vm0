@@ -18,6 +18,6 @@ export const infisicalHandler: ProviderHandler = {
     return undefined;
   },
   getSecretName: () => {
-    return "INFISICAL_CLIENT_ID";
+    return "INFISICAL_TOKEN";
   },
 };
