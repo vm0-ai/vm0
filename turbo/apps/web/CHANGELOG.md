@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.332.1](https://github.com/vm0-ai/vm0/compare/web-v12.332.0...web-v12.332.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* correct Infisical connector secret name to INFISICAL_TOKEN ([#11940](https://github.com/vm0-ai/vm0/issues/11940)) ([427694f](https://github.com/vm0-ai/vm0/commit/427694f27da01b51561f0456cbf99c8291b2c655))
+
 ## [12.332.0](https://github.com/vm0-ai/vm0/compare/web-v12.331.2...web-v12.332.0) (2026-05-06)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.15](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.14...nbd-cow-v0.4.15) (2026-05-06)
+
+
+### Refactoring
+
+* **nbd-cow:** deduplicate lease return commands ([#11914](https://github.com/vm0-ai/vm0/issues/11914)) ([4350a70](https://github.com/vm0-ai/vm0/commit/4350a70475fb519268608bbcefefffc441a1bedd))
+
 ## [0.4.14](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.13...nbd-cow-v0.4.14) (2026-05-06)
 
 

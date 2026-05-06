@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.325.1](https://github.com/vm0-ai/vm0/compare/app-v0.325.0...app-v0.325.1) (2026-05-06)
+
+
+### Bug Fixes
+
+* drain all pending pages in fetchNextPage$ to close realtime catch-up gap ([#11920](https://github.com/vm0-ai/vm0/issues/11920)) ([5218414](https://github.com/vm0-ai/vm0/commit/5218414a8ae2ee2f1497cb3eb598ba96fd62b63d))
+
 ## [0.325.0](https://github.com/vm0-ai/vm0/compare/app-v0.324.2...app-v0.325.0) (2026-05-06)
 
 
