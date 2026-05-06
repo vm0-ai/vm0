@@ -309,6 +309,72 @@ describe("chat draft persistence across thread navigation", () => {
     expect(putContentType).toBe(expectedContentType);
   });
 
+  it.each([
+    ["archive.zip", "application/zip"],
+    ["document.pages", "application/vnd.apple.pages"],
+    ["photo.heic", "image/heic"],
+    ["events.parquet", "application/vnd.apache.parquet"],
+    ["design.psd", "image/vnd.adobe.photoshop"],
+  ])(
+    "should infer %s content type when the browser file type is empty",
+    async (filename, expectedContentType) => {
+      const user = userEvent.setup();
+      mockThreads();
+      let prepareBody: { filename: string; contentType: string } | null = null;
+      let putContentType: string | null = null;
+
+      server.use(
+        mockHttp.post("*/api/zero/uploads/prepare", async ({ request }) => {
+          const body = (await request.json()) as {
+            filename: string;
+            contentType: string;
+            size: number;
+          };
+          prepareBody = {
+            filename: body.filename,
+            contentType: body.contentType,
+          };
+          return HttpResponse.json({
+            id: `upload-${filename}`,
+            filename: body.filename,
+            contentType: body.contentType,
+            size: body.size,
+            uploadUrl: `https://mock-upload.example.com/${filename}`,
+            url: `https://example.com/${filename}`,
+          });
+        }),
+        mockHttp.put(
+          `https://mock-upload.example.com/${filename}`,
+          ({ request }) => {
+            putContentType = request.headers.get("content-type");
+            return new HttpResponse(null, { status: 200 });
+          },
+        ),
+      );
+
+      detachedSetupPage({ context, path: `/chats/thread-${filename}` });
+
+      await waitFor(() => {
+        expect(getTextarea()).toBeInTheDocument();
+      });
+
+      const fileInput = document.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement;
+      const file = new File(["data"], filename);
+      await user.upload(fileInput, file);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
+      });
+      expect(prepareBody).toStrictEqual({
+        filename,
+        contentType: expectedContentType,
+      });
+      expect(putContentType).toBe(expectedContentType);
+    },
+  );
+
   it("should keep the chip when the R2 put fails", async () => {
     const user = userEvent.setup();
     mockThreads();

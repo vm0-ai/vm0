@@ -62,7 +62,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const { filename, contentType, size } = parsed.data;
+  const { filename, size } = parsed.data;
+  const contentType =
+    parsed.data.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
 
   if (size > MAX_UPLOAD_SIZE_BYTES) {
     return NextResponse.json(
