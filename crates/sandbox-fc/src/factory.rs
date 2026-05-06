@@ -235,13 +235,7 @@ impl FactoryCleanupWaiter {
             Ok(FactoryCleanupTaskOutcome::Completed) => {}
             Ok(FactoryCleanupTaskOutcome::Panicked(payload)) => match panic_policy {
                 FactoryCleanupPanicPolicy::Propagate => std::panic::resume_unwind(payload),
-                FactoryCleanupPanicPolicy::Log => {
-                    warn!(
-                        kind = self.kind.as_str(),
-                        label = %self.label,
-                        "factory cleanup task panicked"
-                    );
-                }
+                FactoryCleanupPanicPolicy::Log => {}
             },
             Err(_) => {
                 info!(
@@ -351,6 +345,7 @@ struct FactoryCleanupRejected<F> {
     cleanup: F,
 }
 
+#[must_use = "factory cleanup registrations must be awaited so closed-group cleanup can run"]
 enum FactoryCleanupRegistration<F> {
     Waiter(FactoryCleanupWaiter),
     Rejected(FactoryCleanupRejected<F>),
@@ -601,22 +596,34 @@ impl FactoryCleanupGroup {
                 let _ = done_tx.send(FactoryCleanupTaskOutcome::Completed);
             }
             Err(payload) => {
-                if let Err(FactoryCleanupTaskOutcome::Panicked(_)) =
-                    done_tx.send(FactoryCleanupTaskOutcome::Panicked(payload))
-                {
-                    warn!(
-                        kind = kind.as_str(),
-                        label = %label,
-                        "factory cleanup task panicked after waiter dropped"
-                    );
-                }
+                warn!(
+                    kind = kind.as_str(),
+                    label = %label,
+                    "factory cleanup task panicked"
+                );
+                let _ = done_tx.send(FactoryCleanupTaskOutcome::Panicked(payload));
             }
         }
         FactoryCleanupTaskFinished { kind, label }
     }
 
     fn reap_completed_locked(state: &mut FactoryCleanupGroupState) {
-        state.tasks.retain(|task| !task.is_finished());
+        let mut index = 0;
+        while index < state.tasks.len() {
+            let Some(task) = state.tasks.get(index) else {
+                break;
+            };
+            if !task.is_finished() {
+                index += 1;
+                continue;
+            }
+
+            let task = state.tasks.swap_remove(index);
+            let Some((record, result)) = task.now_or_never() else {
+                continue;
+            };
+            Self::handle_join_result(record, result, false);
+        }
     }
 
     fn handle_join_result(
