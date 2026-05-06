@@ -143,7 +143,7 @@ export const webhookCompleteContract = c.router({
 export const webhookCheckpointsContract = c.router({
   /**
    * POST /api/webhooks/agent/checkpoints
-   * Create checkpoint for completed agent run
+   * Create a recoverable checkpoint for an agent run.
    */
   create: {
     method: "POST",

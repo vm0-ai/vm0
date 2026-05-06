@@ -14,7 +14,7 @@ use guest_agent::paths;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
 use guest_common::telemetry::record_sandbox_op;
-use guest_common::{log_error, log_info};
+use guest_common::{log_error, log_info, log_warn};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -301,6 +301,15 @@ async fn execute(
         } else if cli_exit_code != 0 {
             log_info!(LOG_TAG, "claude-code failed with exit code {cli_exit_code}");
         }
+
+        if env::has_api() {
+            log_info!(LOG_TAG, "Attempting best-effort recovery checkpoint");
+            match checkpoint::create_recovery_checkpoint(&http).await {
+                Ok(()) => log_info!(LOG_TAG, "Recovery checkpoint created"),
+                Err(e) => log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}"),
+            }
+        }
+
         log_info!(LOG_TAG, "▷ Cleanup");
         final_telemetry(telemetry).await;
     }
