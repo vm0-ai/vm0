@@ -790,7 +790,7 @@ function AgentHeader({
           </div>
         </div>
 
-        <div className="mt-4 sm:mt-6 flex items-center gap-2">
+        <div className="mt-4 sm:mt-6 flex flex-col gap-2 sm:flex-row sm:items-center">
           <AgentTabNav
             activeTab={activeTab}
             onTabChange={onTabChange}
@@ -799,7 +799,7 @@ function AgentHeader({
           <Button
             variant="outline"
             size="sm"
-            className="shrink-0 zero-btn-morandi gap-1.5"
+            className="zero-btn-morandi gap-1.5 w-full sm:w-auto sm:shrink-0"
             onClick={() => {
               nav("/agents/:agentId/chat", {
                 pathParams: { agentId: agentId },

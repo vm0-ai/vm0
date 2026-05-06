@@ -19,9 +19,11 @@ import {
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 
 interface SectionLinkProps {
-  readonly icon: (props: { size?: number; stroke?: number }) => ReactNode;
-  readonly iconBg: string;
-  readonly iconColor: string;
+  readonly icon: (props: {
+    size?: number;
+    stroke?: number;
+    className?: string;
+  }) => ReactNode;
   readonly label: string;
   readonly hint: string;
   readonly onSelect: () => void;
@@ -30,8 +32,6 @@ interface SectionLinkProps {
 
 function SectionLink({
   icon: Icon,
-  iconBg,
-  iconColor,
   label,
   hint,
   onSelect,
@@ -42,15 +42,11 @@ function SectionLink({
       type="button"
       onClick={onSelect}
       data-testid={testId}
-      className="flex w-full items-center gap-3 px-3 py-2.5 rounded-xl bg-muted/50 hover:bg-muted text-left transition-colors"
+      className="flex w-full items-center gap-3 px-3 py-3 rounded-xl bg-muted/40 hover:bg-muted text-left transition-colors"
     >
-      <span
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${iconBg}`}
-      >
-        <Icon size={18} stroke={1.6} />
-      </span>
+      <Icon size={22} stroke={1.6} className="shrink-0 text-foreground" />
       <span className="flex-1 min-w-0">
-        <span className={`block text-sm font-semibold truncate ${iconColor}`}>
+        <span className="block text-sm font-semibold truncate text-foreground">
           {label}
         </span>
         <span className="block text-xs text-muted-foreground truncate">
@@ -84,7 +80,7 @@ export function MobileMoreSheet() {
         // the first row's chevron. The grabber bar + tap-overlay-to-close
         // cover the same affordance without the visual collision.
         hideClose
-        className="rounded-t-2xl max-h-[85vh] overflow-y-auto p-0 shadow-[0_-12px_32px_-12px_rgba(0,0,0,0.18)] dark:shadow-[0_-16px_48px_-12px_rgba(0,0,0,0.55)]"
+        className="rounded-t-2xl min-h-[45vh] max-h-[85vh] overflow-y-auto p-0 shadow-[0_-12px_32px_-12px_rgba(0,0,0,0.18)] dark:shadow-[0_-16px_48px_-12px_rgba(0,0,0,0.55)]"
         data-testid="mobile-more-sheet"
       >
         <SheetHeader className="sr-only">
@@ -99,11 +95,9 @@ export function MobileMoreSheet() {
             className="h-1 w-10 rounded-full bg-[hsl(var(--gray-300))]"
           />
         </div>
-        <div className="flex flex-col gap-2 p-4 pb-8">
+        <div className="flex flex-col gap-2 p-4 pb-10">
           <SectionLink
             icon={IconSparkles}
-            iconBg="bg-[hsl(var(--gray-200))]"
-            iconColor="text-foreground"
             label="Insights"
             hint="Activity charts and usage trends"
             testId="mobile-more-insights"
@@ -113,8 +107,6 @@ export function MobileMoreSheet() {
           />
           <SectionLink
             icon={IconLayoutGrid}
-            iconBg="bg-[hsl(var(--gray-200))]"
-            iconColor="text-foreground"
             label="Slack & Telegram"
             hint="Where Zero works"
             testId="mobile-more-works"
