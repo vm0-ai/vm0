@@ -98,7 +98,7 @@ export const showAppSkeleton$ = command(({ set }) => {
   set(skeletonFirstCycle$, true);
 });
 
-export const hideAppSkeleton$ = command(({ set }) => {
+export const hideAppSkeleton$ = command(({ set }, _signal: AbortSignal) => {
   set(resetSkeletonCycling$);
 
   set(internalVisible$, false);
