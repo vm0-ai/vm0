@@ -177,11 +177,11 @@ export const localeGuardLayer: ProxyLayer = (ctx) => {
 /**
  * Apply i18n for page routes.
  *
- * next-intl redirects locale-less paths (e.g. /use-cases/foo) with 307
- * (temporary). We normalise these:
- * - "/" → rewrite to "/en" so the root URL stays indexable as 200
- * - everything else → 301 so search engines consolidate PageRank on the
- *   canonical /en/… URL
+ * next-intl redirects locale-less paths (e.g. /use-cases/foo, /) with 307
+ * (temporary). We upgrade them to 301 so search engines consolidate PageRank
+ * on the canonical /:locale/… URL. The sitemap and canonical/hreflang tags
+ * all point at the locale-prefixed form, so there is no need to keep a
+ * locale-less variant indexable.
  */
 export const i18nLayer: ProxyLayer = (ctx) => {
   if (ctx.routeKind === "page") {
@@ -189,9 +189,6 @@ export const i18nLayer: ProxyLayer = (ctx) => {
     const location = response.headers.get("location");
     if (location) {
       const url = new URL(location, ctx.request.nextUrl.origin);
-      if (ctx.request.nextUrl.pathname === "/") {
-        return NextResponse.rewrite(url);
-      }
       return NextResponse.redirect(url, 301);
     }
     return response;
