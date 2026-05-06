@@ -187,14 +187,6 @@ struct FactoryCleanupWaiter {
 }
 
 impl FactoryCleanupWaiter {
-    async fn wait_propagating_panic(self) {
-        self.wait(FactoryCleanupPanicPolicy::Propagate).await;
-    }
-
-    async fn wait_logging_panic(self) {
-        self.wait(FactoryCleanupPanicPolicy::Log).await;
-    }
-
     async fn wait(self, panic_policy: FactoryCleanupPanicPolicy) {
         match self.rx.await {
             Ok(FactoryCleanupTaskOutcome::Completed) => {}
@@ -225,6 +217,7 @@ struct FactoryCleanupGroup {
 
 struct FactoryCleanupGroupState {
     accepting: bool,
+    closed: bool,
     tasks: JoinSet<FactoryCleanupTaskFinished>,
     records: HashMap<TaskId, FactoryCleanupTaskRecord>,
 }
@@ -233,8 +226,67 @@ impl FactoryCleanupGroupState {
     fn new() -> Self {
         Self {
             accepting: true,
+            closed: false,
             tasks: JoinSet::new(),
             records: HashMap::new(),
+        }
+    }
+}
+
+struct FactoryCleanupRejected<F> {
+    kind: FactoryCleanupTaskKind,
+    label: String,
+    cleanup: F,
+}
+
+enum FactoryCleanupRegistration<F> {
+    Waiter(FactoryCleanupWaiter),
+    Rejected(FactoryCleanupRejected<F>),
+}
+
+impl<F> FactoryCleanupRegistration<F>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    async fn wait_propagating_panic(self) {
+        self.wait(FactoryCleanupPanicPolicy::Propagate).await;
+    }
+
+    async fn wait_logging_panic(self) {
+        self.wait(FactoryCleanupPanicPolicy::Log).await;
+    }
+
+    async fn wait(self, panic_policy: FactoryCleanupPanicPolicy) {
+        match self {
+            Self::Waiter(waiter) => waiter.wait(panic_policy).await,
+            Self::Rejected(rejected) => rejected.wait(panic_policy).await,
+        }
+    }
+}
+
+impl<F> FactoryCleanupRejected<F>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    async fn wait(self, panic_policy: FactoryCleanupPanicPolicy) {
+        warn!(
+            kind = self.kind.as_str(),
+            label = %self.label,
+            "factory cleanup group is closed; running cleanup in caller task"
+        );
+
+        match AssertUnwindSafe(self.cleanup).catch_unwind().await {
+            Ok(()) => {}
+            Err(payload) => match panic_policy {
+                FactoryCleanupPanicPolicy::Propagate => std::panic::resume_unwind(payload),
+                FactoryCleanupPanicPolicy::Log => {
+                    warn!(
+                        kind = self.kind.as_str(),
+                        label = %self.label,
+                        "factory cleanup task panicked"
+                    );
+                }
+            },
         }
     }
 }
@@ -250,6 +302,7 @@ impl FactoryCleanupGroup {
         let mut state = self.state.lock().await;
         Self::reap_completed_locked(&mut state, false);
         state.accepting = true;
+        state.closed = false;
     }
 
     async fn spawn<F>(
@@ -257,69 +310,107 @@ impl FactoryCleanupGroup {
         kind: FactoryCleanupTaskKind,
         label: impl Into<String>,
         cleanup: F,
-    ) -> FactoryCleanupWaiter
+    ) -> FactoryCleanupRegistration<F>
     where
         F: Future<Output = ()> + Send + 'static,
     {
         let label = label.into();
         let waiter_label = label.clone();
-        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
-        let task = Self::cleanup_task(kind, label.clone(), cleanup, done_tx);
-
         let mut state = self.state.lock().await;
         Self::reap_completed_locked(&mut state, false);
-        if state.accepting {
-            let abort_handle = state.tasks.spawn(task);
-            state.records.insert(
-                abort_handle.id(),
-                FactoryCleanupTaskRecord {
-                    kind,
-                    label: label.clone(),
-                },
-            );
-        } else {
+        if state.closed {
             warn!(
                 kind = kind.as_str(),
                 label = %label,
-                "factory cleanup group is shutting down; cleanup task is not tracked by shutdown"
+                "factory cleanup group is closed; rejecting tracked cleanup registration"
             );
-            std::mem::drop(tokio::spawn(task));
+            return FactoryCleanupRegistration::Rejected(FactoryCleanupRejected {
+                kind,
+                label,
+                cleanup,
+            });
         }
 
-        FactoryCleanupWaiter {
+        if !state.accepting {
+            warn!(
+                kind = kind.as_str(),
+                label = %label,
+                "factory cleanup group is shutting down; registered cleanup task for shutdown drain"
+            );
+        }
+
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let task = Self::cleanup_task(kind, label.clone(), cleanup, done_tx);
+        let abort_handle = state.tasks.spawn(task);
+        state.records.insert(
+            abort_handle.id(),
+            FactoryCleanupTaskRecord {
+                kind,
+                label: label.clone(),
+            },
+        );
+
+        FactoryCleanupRegistration::Waiter(FactoryCleanupWaiter {
             kind,
             label: waiter_label,
             rx: done_rx,
-        }
+        })
     }
 
     async fn shutdown(&self) {
-        let (mut tasks, mut records) = {
-            let mut state = self.state.lock().await;
-            state.accepting = false;
-            Self::reap_completed_locked(&mut state, false);
-            if state.tasks.is_empty() {
-                return;
-            }
-            (
-                std::mem::replace(&mut state.tasks, JoinSet::new()),
-                std::mem::take(&mut state.records),
-            )
-        };
-
         let timeout = tokio::time::sleep(FACTORY_CLEANUP_SHUTDOWN_TIMEOUT);
         tokio::pin!(timeout);
 
         loop {
-            if tasks.is_empty() {
+            let Some((mut tasks, mut records)) = self.take_shutdown_batch().await else {
                 return;
+            };
+
+            if self
+                .drain_shutdown_batch(&mut tasks, &mut records, &mut timeout)
+                .await
+            {
+                self.abort_remaining_after_shutdown_timeout().await;
+                return;
+            }
+        }
+    }
+
+    async fn take_shutdown_batch(
+        &self,
+    ) -> Option<(
+        JoinSet<FactoryCleanupTaskFinished>,
+        HashMap<TaskId, FactoryCleanupTaskRecord>,
+    )> {
+        let mut state = self.state.lock().await;
+        state.accepting = false;
+        Self::reap_completed_locked(&mut state, false);
+        if state.tasks.is_empty() {
+            state.closed = true;
+            return None;
+        }
+        Some((
+            std::mem::replace(&mut state.tasks, JoinSet::new()),
+            std::mem::take(&mut state.records),
+        ))
+    }
+
+    async fn drain_shutdown_batch(
+        &self,
+        tasks: &mut JoinSet<FactoryCleanupTaskFinished>,
+        records: &mut HashMap<TaskId, FactoryCleanupTaskRecord>,
+        timeout: &mut std::pin::Pin<&mut tokio::time::Sleep>,
+    ) -> bool {
+        loop {
+            if tasks.is_empty() {
+                return false;
             }
 
             tokio::select! {
                 result = tasks.join_next_with_id() => {
-                    Self::handle_join_result(&mut records, result, false);
+                    Self::handle_join_result(records, result, false);
                 }
-                () = &mut timeout => {
+                () = timeout.as_mut() => {
                     let task_count = tasks.len();
                     warn!(
                         task_count,
@@ -336,12 +427,44 @@ impl FactoryCleanupGroup {
                     tasks.abort_all();
                     while !tasks.is_empty() {
                         let result = tasks.join_next_with_id().await;
-                        Self::handle_join_result(&mut records, result, true);
+                        Self::handle_join_result(records, result, true);
                     }
                     records.clear();
-                    return;
+                    return true;
                 }
             }
+        }
+    }
+
+    async fn abort_remaining_after_shutdown_timeout(&self) {
+        loop {
+            let (mut tasks, mut records) = {
+                let mut state = self.state.lock().await;
+                state.accepting = false;
+                state.closed = true;
+                Self::reap_completed_locked(&mut state, false);
+                if state.tasks.is_empty() {
+                    return;
+                }
+                (
+                    std::mem::replace(&mut state.tasks, JoinSet::new()),
+                    std::mem::take(&mut state.records),
+                )
+            };
+
+            for record in records.values() {
+                warn!(
+                    kind = record.kind.as_str(),
+                    label = %record.label,
+                    "aborting late factory cleanup task after shutdown timeout"
+                );
+            }
+            tasks.abort_all();
+            while !tasks.is_empty() {
+                let result = tasks.join_next_with_id().await;
+                Self::handle_join_result(&mut records, result, true);
+            }
+            records.clear();
         }
     }
 
@@ -1900,6 +2023,62 @@ mod tests {
         shutdown_task.await.unwrap();
 
         assert!(completed.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn factory_cleanup_group_shutdown_drains_late_registered_task() {
+        let group = Arc::new(FactoryCleanupGroup::new());
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+        let late_completed = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+        let waiter = group
+            .spawn(FactoryCleanupTaskKind::Destroy, "first", async move {
+                let _ = started_tx.send(());
+                let _ = release_rx.await;
+            })
+            .await;
+        drop(waiter);
+
+        started_rx.await.unwrap();
+        let shutdown_group = Arc::clone(&group);
+        let shutdown_task = tokio::spawn(async move {
+            shutdown_group.shutdown().await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!shutdown_task.is_finished());
+
+        let late_completed_clone = Arc::clone(&late_completed);
+        let late_waiter = group
+            .spawn(FactoryCleanupTaskKind::Destroy, "late", async move {
+                late_completed_clone.store(true, Ordering::SeqCst);
+            })
+            .await;
+        drop(late_waiter);
+
+        release_tx.send(()).unwrap();
+        shutdown_task.await.unwrap();
+
+        assert!(late_completed.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn factory_cleanup_group_closed_registration_runs_in_caller_task() {
+        let group = FactoryCleanupGroup::new();
+        group.shutdown().await;
+
+        let ran = Arc::new(AtomicBool::new(false));
+        let ran_clone = Arc::clone(&ran);
+        let cleanup = group
+            .spawn(FactoryCleanupTaskKind::Destroy, "closed", async move {
+                ran_clone.store(true, Ordering::SeqCst);
+            })
+            .await;
+
+        assert!(!ran.load(Ordering::SeqCst));
+        cleanup.wait_propagating_panic().await;
+
+        assert!(ran.load(Ordering::SeqCst));
     }
 
     #[tokio::test(start_paused = true)]
