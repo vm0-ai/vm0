@@ -8,6 +8,7 @@ import { downloadBlob } from "../blob/blob-service";
 import { blobs } from "@vm0/db/schema/blob";
 import { sql } from "drizzle-orm";
 import { logger } from "../../shared/logger";
+import type { Database } from "../../../types/global";
 
 const log = logger("session-history");
 
@@ -49,10 +50,11 @@ export async function preRegisterSessionHistoryBlob(
  */
 export async function registerSessionHistoryBlob(
   hash: string,
+  db: Pick<Database, "insert"> = globalThis.services.db,
 ): Promise<string> {
   log.debug(`Registering session history blob, hash=${hash}`);
 
-  await globalThis.services.db
+  await db
     .insert(blobs)
     .values({ hash, size: 0, refCount: 1 })
     .onConflictDoUpdate({

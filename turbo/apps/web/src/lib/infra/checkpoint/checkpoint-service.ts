@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { conversations } from "@vm0/db/schema/conversation";
@@ -16,6 +16,8 @@ import {
   decodeToContextArtifacts,
   isEmptyArtifactPayload,
 } from "./decode-artifact-snapshots";
+import { buildRunResultFromCheckpoint } from "../run/run-result";
+import { CHECKPOINT_RESUMABLE_RUN_STATUSES } from "../run/types";
 
 const log = logger("checkpoint");
 
@@ -62,12 +64,6 @@ export async function createCheckpoint(
   log.debug(
     `Creating conversation record for CLI agent: ${request.cliAgentType}`,
   );
-
-  // Register session history blob (content already uploaded via presigned URL)
-  const historyHash = await registerSessionHistoryBlob(
-    request.cliAgentSessionHistoryHash,
-  );
-  log.debug(`Session history blob registered, hash=${historyHash}`);
 
   // Build agent compose snapshot using version ID for reproducibility
   // Environment is re-expanded from vars/secrets on resume
@@ -136,6 +132,13 @@ export async function createCheckpoint(
       // Upsert conversation, checkpoint, and session link together. A failed
       // session update must not leave a checkpoint row that normal sessionId
       // continuation cannot discover.
+      // Register session history blob (content already uploaded via presigned URL).
+      const historyHash = await registerSessionHistoryBlob(
+        request.cliAgentSessionHistoryHash,
+        tx,
+      );
+      log.debug(`Session history blob registered, hash=${historyHash}`);
+
       const [conversation] = await tx
         .insert(conversations)
         .values({
@@ -198,6 +201,23 @@ export async function createCheckpoint(
       if (!agentSession) {
         throw notFound("AgentSession not found");
       }
+
+      // If /complete or cleanup already made the run terminal before this
+      // checkpoint webhook arrived, backfill result so events/session consumers
+      // can still discover the recoverable checkpoint. Normal ordering is still
+      // checkpoint -> complete; this only covers webhook retry/reordering edges.
+      await tx
+        .update(agentRuns)
+        .set({
+          result: buildRunResultFromCheckpoint(checkpoint, agentSession.id),
+        })
+        .where(
+          and(
+            eq(agentRuns.id, request.runId),
+            inArray(agentRuns.status, CHECKPOINT_RESUMABLE_RUN_STATUSES),
+            isNull(agentRuns.result),
+          ),
+        );
 
       return { conversation, checkpoint, agentSession };
     });

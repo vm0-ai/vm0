@@ -14,7 +14,7 @@ import {
   dispatchTerminalSideEffects,
 } from "../../../../../src/lib/infra/run/run-status";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import { decodeToRecord } from "../../../../../src/lib/infra/checkpoint/decode-artifact-snapshots";
+import { buildRunResultFromCheckpoint } from "../../../../../src/lib/infra/run/run-result";
 import type { RunResult } from "../../../../../src/lib/infra/run/types";
 import { logger } from "../../../../../src/lib/shared/logger";
 import {
@@ -51,38 +51,6 @@ function scheduleTerminalSideEffects(
   });
 }
 
-/**
- * Build a RunResult from a checkpoint record.
- *
- * `checkpoint.artifactSnapshots` is a JSONB column (runtime type `unknown`)
- * that may contain either the legacy Record<name, version> shape or the
- * canonical Array<{name, version, mountPath}>. `RunResult.artifact` is still
- * Record-shaped for downstream consumers, so we project the array shape back
- * to Record on the way out. Empty payloads project to null and are dropped.
- */
-function buildRunResult(
-  checkpoint: typeof checkpoints.$inferSelect,
-  sessionId: string | undefined,
-): RunResult {
-  const artifactRecord = decodeToRecord(checkpoint.artifactSnapshots);
-  const volumeVersions = checkpoint.volumeVersionsSnapshot as
-    | { versions: Record<string, string> }
-    | undefined;
-
-  const result: RunResult = {
-    checkpointId: checkpoint.id,
-    agentSessionId: sessionId ?? checkpoint.conversationId,
-    conversationId: checkpoint.conversationId,
-    volumes: volumeVersions?.versions,
-  };
-
-  if (artifactRecord) {
-    result.artifact = artifactRecord;
-  }
-
-  return result;
-}
-
 async function buildRunResultForRun(
   runId: string,
 ): Promise<RunResult | undefined> {
@@ -103,7 +71,7 @@ async function buildRunResultForRun(
     .where(eq(agentSessions.conversationId, checkpoint.conversationId))
     .limit(1);
 
-  return buildRunResult(checkpoint, session?.id);
+  return buildRunResultFromCheckpoint(checkpoint, session?.id);
 }
 
 const router = tsr.router(webhookCompleteContract, {

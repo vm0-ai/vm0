@@ -8,6 +8,7 @@ import {
   findTestCheckpoint,
   findTestRunRecord,
   getTestAgentSessionWithConversation,
+  setTestRunStatus,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
 import {
@@ -416,6 +417,51 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
       const checkpoint = await findTestCheckpoint(testRunId);
       expect(checkpoint).toBeDefined();
       expect(checkpoint!.artifactSnapshots).toEqual(artifactSnapshots);
+    });
+
+    it("should backfill run result when checkpoint arrives after terminal status", async () => {
+      await setTestRunStatus(testRunId, "failed");
+      const artifactSnapshots = [
+        {
+          name: "test-artifact",
+          version: "version-late",
+          mountPath: "/home/user/workspace",
+        },
+      ];
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/checkpoints",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            cliAgentType: "claude-code",
+            cliAgentSessionId: "late-checkpoint-session",
+            cliAgentSessionHistoryHash: sha256("late-checkpoint-history"),
+            artifactSnapshots,
+            volumeVersionsSnapshot: {
+              versions: { workspace: "vol-late" },
+            },
+          }),
+        },
+      );
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+      const run = await findTestRunRecord(testRunId);
+      expect(run?.result).toMatchObject({
+        checkpointId: body.checkpointId,
+        agentSessionId: body.agentSessionId,
+        conversationId: body.conversationId,
+        artifact: { "test-artifact": "version-late" },
+        volumes: { workspace: "vol-late" },
+      });
     });
   });
 

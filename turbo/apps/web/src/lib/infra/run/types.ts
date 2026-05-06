@@ -31,7 +31,7 @@ export type RunStatus =
  * In-flight checkpoints are not resumable because their snapshots may lag
  * behind the still-running sandbox.
  */
-const CHECKPOINT_RESUMABLE_RUN_STATUSES = [
+export const CHECKPOINT_RESUMABLE_RUN_STATUSES = [
   "completed",
   "failed",
   "timeout",
