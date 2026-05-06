@@ -1,12 +1,15 @@
+import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockApiShadowCompareRoutes } from "../../context/shadow-compare";
+import { writeDb$ } from "../../external/db";
 import {
   deleteZeroChatThread$,
   seedZeroChatMessage$,
@@ -179,6 +182,62 @@ describe("GET /api/zero/chat-threads", () => {
     const thread = response.body.threads[0]!;
     expect(thread.pinnedAt).toBeNull();
     expect(thread.renamedAt).toBeNull();
+  });
+
+  it("returns pinned threads before unpinned threads", async () => {
+    const userId = `user_pin_${randomUUID()}`;
+    const orgId = `org_pin_${randomUUID()}`;
+    const pinned = await track(
+      store.set(
+        seedZeroChatThread$,
+        {
+          userId,
+          orgId,
+          title: "Pinned Thread",
+          pinnedAt: new Date("2025-05-01T10:00:00.000Z"),
+        },
+        context.signal,
+      ),
+    );
+    const unpinned = await track(
+      store.set(
+        seedZeroChatThread$,
+        { userId, orgId, title: "Unpinned Thread" },
+        context.signal,
+      ),
+    );
+    const writeDb = store.set(writeDb$);
+    await writeDb.insert(chatMessages).values({
+      id: randomUUID(),
+      chatThreadId: pinned.threadId,
+      role: "user",
+      content: "msg",
+      createdAt: new Date("2025-05-01T00:00:00.000Z"),
+    });
+    await writeDb.insert(chatMessages).values({
+      id: randomUUID(),
+      chatThreadId: unpinned.threadId,
+      role: "user",
+      content: "msg",
+      createdAt: new Date("2025-05-02T00:00:00.000Z"),
+    });
+
+    mocks.clerk.session(userId, orgId);
+    mockApiShadowCompareRoutes([chatThreadsContract.list]);
+
+    const client = setupApp({ context })(chatThreadsContract);
+
+    const response = await accept(
+      client.list({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.threads).toHaveLength(2);
+    expect(response.body.threads[0]!.id).toBe(pinned.threadId);
+    expect(response.body.threads[1]!.id).toBe(unpinned.threadId);
   });
 });
 

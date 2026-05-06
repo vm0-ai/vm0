@@ -606,6 +606,7 @@ export function zeroChatThreadList(args: {
       )
       .where(and(...filters))
       .orderBy(
+        sql`(${chatThreads.pinnedAt} IS NULL)`,
         desc(sql`COALESCE(${lastMessage.createdAt}, ${chatThreads.createdAt})`),
       );
 
