@@ -13,6 +13,7 @@ import {
 } from "@vm0/connectors/connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { connectors } from "@vm0/db/schema/connector";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { userPlatformConnectors } from "@vm0/db/schema/user-platform-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -20,7 +21,30 @@ import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
+import { isChatgptRefreshError } from "./providers/chatgpt-oauth";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { publishUserSignal } from "../../infra/realtime/client";
+
+/**
+ * Source for an OAuth secret bundle. "connector" (default) reads/writes
+ * connector-typed rows keyed by the run's user; "model-provider" routes to
+ * `model_providers` and `secrets WHERE type='model-provider'`, both of
+ * which are org-tier — keyed by ORG_SENTINEL_USER_ID, not the run's user.
+ * Mirrors the read-side scope in `resolveModelProviderSecrets`.
+ */
+type OAuthSecretSource = "connector" | "model-provider";
+
+/**
+ * Resolve the storage userId for a given OAuth secret source.
+ * Org-tier model providers are stored under the sentinel; connector secrets
+ * stay scoped to the run's user.
+ */
+function resolveSecretUserId(
+  sourceType: OAuthSecretSource,
+  userId: string,
+): string {
+  return sourceType === "model-provider" ? ORG_SENTINEL_USER_ID : userId;
+}
 
 const log = logger("service:connector");
 
@@ -695,6 +719,12 @@ export async function deleteConnector(
  * Looks up the connector's handler from PROVIDER_HANDLERS, calls its refreshToken
  * method, persists new tokens, and updates the in-memory secrets map.
  *
+ * `sourceType` selects which DB rows to read/write:
+ *   - "connector"      → secrets type='connector', metadata on `connectors`
+ *   - "model-provider" → secrets type='model-provider', metadata on `model_providers`
+ * For "model-provider", `metadataKey` must be the model-provider type
+ * (e.g. "chatgpt-oauth-token") used to locate the metadata row.
+ *
  * Returns null if refresh token is unavailable, OAuth credentials are missing,
  * or the refresh fails (caller should fall back to the existing access token).
  */
@@ -703,11 +733,18 @@ export async function refreshConnectorAccessToken(
   orgId: string,
   userId: string,
   connectorSecrets: Record<string, string>,
+  options: { sourceType?: OAuthSecretSource; metadataKey?: string } = {},
 ): Promise<string | null> {
+  const sourceType: OAuthSecretSource = options.sourceType ?? "connector";
   const handler =
     PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
   if (!handler?.refreshToken || !handler.getRefreshSecretName) {
     return null;
+  }
+  if (sourceType === "model-provider" && !options.metadataKey) {
+    throw new Error(
+      `metadataKey required for model-provider source on ${connectorType}`,
+    );
   }
 
   const refreshTokenSecret = handler.getRefreshSecretName();
@@ -719,37 +756,44 @@ export async function refreshConnectorAccessToken(
 
   const env = globalThis.services.env;
   const clientId = handler.getClientId(env);
-  const clientSecret = handler.getClientSecret(env);
-
-  if (!clientId || !clientSecret) {
+  if (!clientId) {
     log.debug(
-      `${connectorType} OAuth credentials not configured, skipping token refresh`,
+      `${connectorType} OAuth client ID not configured, skipping token refresh`,
     );
     return null;
   }
+  // clientSecret may legitimately be undefined for PKCE-only handlers
+  // (e.g. chatgpt-oauth). The handler's refreshToken is the source of truth
+  // for credential needs — if a non-PKCE handler is misconfigured the
+  // upstream call will fail and the catch below records the error.
+  const clientSecret = handler.getClientSecret(env);
 
   const accessTokenSecret = handler.getSecretName();
+
+  const secretUserId = resolveSecretUserId(sourceType, userId);
 
   try {
     const result = await handler.refreshToken(
       clientId,
-      clientSecret,
+      clientSecret ?? "",
       currentRefreshToken,
     );
 
     // Persist new tokens to database
     await upsertConnectorSecret(
       orgId,
-      userId,
+      secretUserId,
       accessTokenSecret,
       result.accessToken,
+      sourceType,
     );
     if (result.refreshToken) {
       await upsertConnectorSecret(
         orgId,
-        userId,
+        secretUserId,
         refreshTokenSecret,
         result.refreshToken,
+        sourceType,
       );
     }
 
@@ -758,16 +802,35 @@ export async function refreshConnectorAccessToken(
       Date.now() +
         (result.expiresIn ?? DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS) * 1000,
     );
-    await globalThis.services.db
-      .update(connectors)
-      .set({ tokenExpiresAt: expiresAt, updatedAt: new Date() })
-      .where(
-        and(
-          eq(connectors.orgId, orgId),
-          eq(connectors.userId, userId),
-          eq(connectors.type, connectorType),
-        ),
-      );
+    if (sourceType === "model-provider") {
+      await globalThis.services.db
+        .update(modelProviders)
+        .set({
+          tokenExpiresAt: expiresAt,
+          needsReconnect: false,
+          lastRefreshErrorCode: null,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(modelProviders.orgId, orgId),
+            eq(modelProviders.userId, secretUserId),
+            // metadataKey is non-null due to the upfront guard
+            eq(modelProviders.type, options.metadataKey!),
+          ),
+        );
+    } else {
+      await globalThis.services.db
+        .update(connectors)
+        .set({ tokenExpiresAt: expiresAt, updatedAt: new Date() })
+        .where(
+          and(
+            eq(connectors.orgId, orgId),
+            eq(connectors.userId, userId),
+            eq(connectors.type, connectorType),
+          ),
+        );
+    }
 
     // Update in-memory secrets map so subsequent mapping uses fresh token
     connectorSecrets[accessTokenSecret] = result.accessToken;
@@ -779,23 +842,44 @@ export async function refreshConnectorAccessToken(
     return result.accessToken;
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    // Preserve typed error codes so Wave 3 stale-UX can render the right CTA.
+    const errorCode = isChatgptRefreshError(err) ? err.code : null;
     log.warn(`${connectorType} token refresh failed: ${message}`, {
       connectorType,
       orgId,
       userId,
+      errorCode,
     });
 
-    // Mark connector as needing reconnect so the UI can surface the failure
-    await globalThis.services.db
-      .update(connectors)
-      .set({ needsReconnect: true, updatedAt: new Date() })
-      .where(
-        and(
-          eq(connectors.orgId, orgId),
-          eq(connectors.userId, userId),
-          eq(connectors.type, connectorType),
-        ),
-      );
+    // Mark provider/connector as needing reconnect so the UI can surface the
+    // failure. For model-provider sources, also persist the typed error code.
+    if (sourceType === "model-provider") {
+      await globalThis.services.db
+        .update(modelProviders)
+        .set({
+          needsReconnect: true,
+          lastRefreshErrorCode: errorCode,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(modelProviders.orgId, orgId),
+            eq(modelProviders.userId, secretUserId),
+            eq(modelProviders.type, options.metadataKey!),
+          ),
+        );
+    } else {
+      await globalThis.services.db
+        .update(connectors)
+        .set({ needsReconnect: true, updatedAt: new Date() })
+        .where(
+          and(
+            eq(connectors.orgId, orgId),
+            eq(connectors.userId, userId),
+            eq(connectors.type, connectorType),
+          ),
+        );
+    }
     return null;
   }
 }
@@ -840,16 +924,25 @@ export async function getConnectorExpiry(
 /**
  * Read the current access token for a connector type from the secrets store.
  * Does NOT trigger a refresh — returns the latest persisted value.
+ *
+ * `sourceType` selects the secrets row's `type` column ("connector" by
+ * default; "model-provider" for handler keys backing model-provider OAuth).
  */
 export async function getConnectorAccessToken(
   connectorType: string,
   orgId: string,
   userId: string,
+  sourceType: OAuthSecretSource = "connector",
 ): Promise<string | null> {
   const handler =
     PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
   if (!handler) return null;
-  return getSecretValue(orgId, userId, handler.getSecretName(), "connector");
+  return getSecretValue(
+    orgId,
+    resolveSecretUserId(sourceType, userId),
+    handler.getSecretName(),
+    sourceType,
+  );
 }
 
 /**
@@ -861,31 +954,84 @@ export async function getConnectorRefreshToken(
   connectorType: string,
   orgId: string,
   userId: string,
+  sourceType: OAuthSecretSource = "connector",
 ): Promise<{ secretName: string; token: string } | null> {
   const handler =
     PROVIDER_HANDLERS[connectorType as keyof typeof PROVIDER_HANDLERS];
   if (!handler?.getRefreshSecretName) return null;
   const secretName = handler.getRefreshSecretName();
-  const token = await getSecretValue(orgId, userId, secretName, "connector");
+  const token = await getSecretValue(
+    orgId,
+    resolveSecretUserId(sourceType, userId),
+    secretName,
+    sourceType,
+  );
   if (!token) return null;
   return { secretName, token };
 }
 
 /**
- * Create or update a connector secret (e.g., refresh token)
+ * Get tokenExpiresAt for model providers matching the given types.
+ * Returns a map of model-provider type → expiry timestamp (epoch seconds), or
+ * null if non-expiring/unknown. Mirrors `getConnectorExpiry` for model-provider
+ * sources (e.g., chatgpt-oauth-token).
+ */
+export async function getModelProviderExpiry(
+  orgId: string,
+  userId: string,
+  modelProviderTypes: string[],
+): Promise<Map<string, number | null>> {
+  const result = new Map<string, number | null>();
+  if (modelProviderTypes.length === 0) return result;
+
+  const rows = await globalThis.services.db
+    .select({
+      type: modelProviders.type,
+      tokenExpiresAt: modelProviders.tokenExpiresAt,
+    })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, orgId),
+        // Org-tier model providers store secrets/metadata under the sentinel
+        eq(
+          modelProviders.userId,
+          resolveSecretUserId("model-provider", userId),
+        ),
+        inArray(modelProviders.type, modelProviderTypes),
+      ),
+    );
+
+  for (const row of rows) {
+    result.set(
+      row.type,
+      row.tokenExpiresAt
+        ? Math.floor(row.tokenExpiresAt.getTime() / 1000)
+        : null,
+    );
+  }
+  return result;
+}
+
+/**
+ * Create or update a connector or model-provider OAuth secret
+ * (e.g., access token, rotated refresh token).
  */
 async function upsertConnectorSecret(
   orgId: string,
   userId: string,
   secretName: string,
   secretValue: string,
+  sourceType: OAuthSecretSource = "connector",
 ): Promise<void> {
   await upsertSecretByOrg(
     orgId,
     userId,
     secretName,
     secretValue,
-    "connector",
-    `Connector secret: ${secretName}`,
+    sourceType,
+    sourceType === "model-provider"
+      ? `Model provider OAuth secret: ${secretName}`
+      : `Connector secret: ${secretName}`,
   );
 }

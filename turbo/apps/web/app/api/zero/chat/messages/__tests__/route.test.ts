@@ -7,6 +7,8 @@ import {
   createTestCompose,
   insertOrgDefaultModelProvider,
   insertOrgNonDefaultModelProvider,
+  insertUserDefaultModelProvider,
+  enablePersonalModelProviderForUser,
   deleteTestModelProvider,
   setTestZeroAgentModelProvider,
   setOrgCredits,
@@ -17,7 +19,10 @@ import {
   countUserRows,
   completeTestRun,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { setTestSessionFramework } from "../../../../../../src/__tests__/db-test-seeders/agents";
+import {
+  setTestSessionFramework,
+  setTestZeroAgentPreferPersonalProvider,
+} from "../../../../../../src/__tests__/db-test-seeders/agents";
 import {
   getTestChatThreadModelOverride,
   getTestModelProviderIdByType,
@@ -1211,6 +1216,206 @@ describe("POST /api/zero/chat/messages", () => {
         const after = await getTestChatThreadModelOverride(threadId);
         expect(after.modelProviderId).toBeNull();
         expect(after.selectedModel).toBeNull();
+      });
+    });
+
+    describe("personal-tier eager-pin (#11918)", () => {
+      it("falls through to agent's pin when feature switch is OFF", async () => {
+        // Agent has the flag on but the staff-only switch is not flipped
+        // for this user — pin must remain agent's id, not personal's.
+        const orgProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          orgProviderId,
+          "claude-opus-4-7",
+        );
+        await setTestZeroAgentPreferPersonalProvider(agentId, true);
+        await insertUserDefaultModelProvider(
+          user.orgId,
+          user.userId,
+          "openai-api-key",
+          "gpt-5.4",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "switch off" }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(orgProviderId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("falls through to agent's pin when flag is OFF", async () => {
+        const orgProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          orgProviderId,
+          "claude-opus-4-7",
+        );
+        // Switch enabled but flag default false — eligibility false.
+        await enablePersonalModelProviderForUser(user.orgId, user.userId);
+        await insertUserDefaultModelProvider(
+          user.orgId,
+          user.userId,
+          "openai-api-key",
+          "gpt-5.4",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "flag off" }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(orgProviderId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("pins to user's personal default id when both flag and switch are ON", async () => {
+        // Both gates open + user has a personal default with its own
+        // selectedModel — pin must be the personal row's id and selectedModel.
+        const orgProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          orgProviderId,
+          "claude-opus-4-7",
+        );
+        await setTestZeroAgentPreferPersonalProvider(agentId, true);
+        await enablePersonalModelProviderForUser(user.orgId, user.userId);
+        const personalProviderId = await insertUserDefaultModelProvider(
+          user.orgId,
+          user.userId,
+          "openai-api-key",
+          "gpt-5.4",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "personal pin" }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(personalProviderId);
+        expect(override.selectedModel).toBe("gpt-5.4");
+      });
+
+      it("falls back to agent's selectedModel when personal row has none", async () => {
+        // Personal default has no selectedModel — precedence is
+        // user > agent > null, so the agent's selectedModel surfaces.
+        const orgProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          orgProviderId,
+          "claude-opus-4-7",
+        );
+        await setTestZeroAgentPreferPersonalProvider(agentId, true);
+        await enablePersonalModelProviderForUser(user.orgId, user.userId);
+        const personalProviderId = await insertUserDefaultModelProvider(
+          user.orgId,
+          user.userId,
+          "openai-api-key",
+          // selectedModel intentionally omitted
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "fallback selected" }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(personalProviderId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("falls through to agent's pin when user has no personal providers", async () => {
+        // Eligible but the user has not seeded any personal rows yet —
+        // graceful degradation to the agent's pin.
+        const orgProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          agentId,
+          orgProviderId,
+          "claude-opus-4-7",
+        );
+        await setTestZeroAgentPreferPersonalProvider(agentId, true);
+        await enablePersonalModelProviderForUser(user.orgId, user.userId);
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "no personal" }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(orgProviderId);
+        expect(override.selectedModel).toBe("claude-opus-4-7");
+      });
+
+      it("pins to user's personal id even when agent has no provider configured", async () => {
+        // Agent has no modelProviderId/selectedModel, but user has a
+        // personal default and is eligible — pin uses the personal row.
+        await setTestZeroAgentPreferPersonalProvider(agentId, true);
+        await enablePersonalModelProviderForUser(user.orgId, user.userId);
+        const personalProviderId = await insertUserDefaultModelProvider(
+          user.orgId,
+          user.userId,
+          "openai-api-key",
+          "gpt-5.4",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ agentId, prompt: "no agent pin" }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { threadId } = await response.json();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(personalProviderId);
+        expect(override.selectedModel).toBe("gpt-5.4");
       });
     });
 

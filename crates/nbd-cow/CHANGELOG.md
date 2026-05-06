@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.14](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.13...nbd-cow-v0.4.14) (2026-05-06)
+
+
+### Refactoring
+
+* **nbd-cow:** dedupe success replies ([#11902](https://github.com/vm0-ai/vm0/issues/11902)) ([9f31d0d](https://github.com/vm0-ai/vm0/commit/9f31d0dcb2f83b4b5bfd794d7541a3d07187f56f))
+
 ## [0.4.13](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.12...nbd-cow-v0.4.13) (2026-05-05)
 
 

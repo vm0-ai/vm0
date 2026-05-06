@@ -10,8 +10,6 @@ import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { validateFrameworkApiKey } from "../infra/run/utils";
 import { logger } from "../shared/logger";
@@ -26,7 +24,7 @@ import {
   getUserDefaultModelProvider,
   getUserAnyDefaultModelProvider,
 } from "./model-provider/model-provider-service";
-import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
+import { isPersonalTierEligible } from "./personal-tier-gate";
 import type { Database } from "../../types/global";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
@@ -144,26 +142,6 @@ export async function validateComposeRequirements(
 }
 
 /**
- * Personal-tier eligibility at the admission boundary. Mirrors the resolver's
- * gate (resolve-model-provider.ts) so admission and runtime apply the same
- * (flag && switch on) check; duplicating the helper rather than sharing it
- * is intentional — see Decision E in plan.md (Epic #11868).
- */
-async function isPersonalTierEligibleForAdmission(
-  orgId: string,
-  userId: string,
-  preferPersonalProvider: boolean | undefined,
-): Promise<boolean> {
-  if (!preferPersonalProvider) return false;
-  const overrides = await loadFeatureSwitchOverrides(orgId, userId);
-  return isFeatureEnabled(FeatureSwitchKey.PersonalModelProvider, {
-    orgId,
-    userId,
-    overrides,
-  });
-}
-
-/**
  * Resolve the provider type that admission checks should treat as the
  * effective key source for this run. Precedence:
  *   explicit override → explicit modelProviderId → personal-tier (gated) →
@@ -201,7 +179,7 @@ export async function resolveProviderTypeForAdmission(params: {
     );
     return row?.type ?? null;
   }
-  const personalEligible = await isPersonalTierEligibleForAdmission(
+  const personalEligible = await isPersonalTierEligible(
     params.orgId,
     params.userId,
     params.preferPersonalProvider,
@@ -291,13 +269,7 @@ export async function checkModelProviderConfigured(
   });
   if (hasExplicitConfig) return;
 
-  if (
-    await isPersonalTierEligibleForAdmission(
-      orgId,
-      userId,
-      preferPersonalProvider,
-    )
-  ) {
+  if (await isPersonalTierEligible(orgId, userId, preferPersonalProvider)) {
     const userType =
       (await getUserDefaultModelProvider(orgId, userId, framework))?.type ??
       (await getUserAnyDefaultModelProvider(orgId, userId))?.type;

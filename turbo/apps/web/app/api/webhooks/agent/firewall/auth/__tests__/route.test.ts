@@ -8,6 +8,9 @@ import {
   createTestSandboxToken,
   insertTestConnectorSecret,
   findTestConnectorTokenExpiresAt,
+  findTestModelProviderTokenState,
+  setTestModelProviderTokenExpiresAt,
+  ORG_SENTINEL_USER_ID,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -1490,6 +1493,203 @@ describe("POST /api/webhooks/agent/firewall/auth", () => {
         "GITHUB_ACCESS_TOKEN",
         "NOTION_ACCESS_TOKEN",
       ]);
+    });
+  });
+
+  describe("Token refresh — chatgpt-oauth-token model provider (#11908)", () => {
+    const CHATGPT_TOKEN_URL = "https://auth.openai.com/oauth/token";
+
+    async function setupChatgptProvider(opts: {
+      tokenExpiresAt: Date | null;
+      accessToken?: string;
+      refreshToken?: string;
+    }): Promise<{ accessToken: string; refreshToken: string }> {
+      const accessToken = opts.accessToken ?? "old-chatgpt-at";
+      const refreshToken = opts.refreshToken ?? "chatgpt-rt";
+
+      const { insertOrgMultiAuthModelProvider } =
+        await import("../../../../../../../src/__tests__/db-test-seeders/org");
+      const { insertTestOrgModelProviderSecret } =
+        await import("../../../../../../../src/__tests__/db-test-seeders/secrets");
+
+      await insertOrgMultiAuthModelProvider(
+        user.orgId,
+        "chatgpt-oauth-token",
+        "oauth",
+      );
+      await setTestModelProviderTokenExpiresAt(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "chatgpt-oauth-token",
+        opts.tokenExpiresAt,
+      );
+
+      for (const [name, value] of [
+        ["CHATGPT_ACCESS_TOKEN", accessToken],
+        ["CHATGPT_REFRESH_TOKEN", refreshToken],
+        ["CHATGPT_ACCOUNT_ID", "ws_acc_123"],
+        ["CHATGPT_ID_TOKEN", "id-tok"],
+      ] as const) {
+        await insertTestOrgModelProviderSecret({
+          orgId: user.orgId,
+          name,
+          value,
+        });
+      }
+
+      return { accessToken, refreshToken };
+    }
+
+    async function readChatgptRefreshTokenSecret(): Promise<string | null> {
+      const { getSecretValue } =
+        await import("../../../../../../../src/lib/zero/secret/secret-service");
+      return getSecretValue(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "CHATGPT_REFRESH_TOKEN",
+        "model-provider",
+      );
+    }
+
+    it("refreshes expired CHATGPT_ACCESS_TOKEN and rotates refresh_token", async () => {
+      await setupChatgptProvider({
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000),
+      });
+
+      server.use(
+        mswHttp.post(CHATGPT_TOKEN_URL, () => {
+          return HttpResponse.json({
+            access_token: "fresh-chatgpt-at",
+            refresh_token: "rotated-chatgpt-rt",
+            expires_in: 600000,
+          });
+        }),
+      );
+
+      const encrypted = encryptTestSecrets({
+        CHATGPT_ACCESS_TOKEN: "old-chatgpt-at",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "chatgpt-oauth" },
+          },
+          testToken,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.headers.Authorization).toBe("Bearer fresh-chatgpt-at");
+      expect(data.refreshedConnectors).toEqual(["chatgpt-oauth"]);
+
+      // Rotated refresh_token persisted under type='model-provider'
+      const persistedRefresh = await readChatgptRefreshTokenSecret();
+      expect(persistedRefresh).toBe("rotated-chatgpt-rt");
+
+      // Metadata row updated: token_expires_at set, needs_reconnect cleared,
+      // last_refresh_error_code cleared
+      const row = await findTestModelProviderTokenState(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "chatgpt-oauth-token",
+      );
+      expect(row).not.toBeNull();
+      expect(row!.tokenExpiresAt).toBeInstanceOf(Date);
+      const expiryEpoch = Math.floor(
+        (row!.tokenExpiresAt as Date).getTime() / 1000,
+      );
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      expect(expiryEpoch).toBeGreaterThan(nowEpoch + 599_900);
+      expect(row!.needsReconnect).toBe(false);
+      expect(row!.lastRefreshErrorCode).toBeNull();
+    });
+
+    it("classifies refresh_token_expired and persists last_refresh_error_code", async () => {
+      await setupChatgptProvider({
+        tokenExpiresAt: new Date(Date.now() - 60 * 1000),
+      });
+
+      server.use(
+        mswHttp.post(CHATGPT_TOKEN_URL, () => {
+          return HttpResponse.json(
+            {
+              error: {
+                code: "refresh_token_expired",
+                message: "Refresh token has expired",
+              },
+            },
+            { status: 401 },
+          );
+        }),
+      );
+
+      const encrypted = encryptTestSecrets({
+        CHATGPT_ACCESS_TOKEN: "old-chatgpt-at",
+      });
+
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.CHATGPT_ACCESS_TOKEN }}",
+            },
+            secretConnectorMap: { CHATGPT_ACCESS_TOKEN: "chatgpt-oauth" },
+          },
+          testToken,
+        ),
+      );
+
+      // Refresh failure surfaces as 502 with TOKEN_REFRESH_FAILED so the
+      // mitm addon can render a clear error to the user instead of silently
+      // using a stale token.
+      expect(response.status).toBe(502);
+      const data = await response.json();
+      expect(data.error.code).toBe("TOKEN_REFRESH_FAILED");
+      expect(data.error.connectors).toEqual(["chatgpt-oauth"]);
+
+      // Metadata row marked stale with the typed code
+      const row = await findTestModelProviderTokenState(
+        user.orgId,
+        ORG_SENTINEL_USER_ID,
+        "chatgpt-oauth-token",
+      );
+      expect(row).not.toBeNull();
+      expect(row!.needsReconnect).toBe(true);
+      expect(row!.lastRefreshErrorCode).toBe("refresh_token_expired");
+    });
+
+    it("non-OAuth providers (no refreshToken on handler) do not enter refresh map", async () => {
+      // openai-api-key has no refreshToken on its handler — secretConnectorMap
+      // is built upstream by resolveModelProviderSecrets and excludes it.
+      // This test verifies the webhook short-circuits cleanly when an entry
+      // somehow makes it through (defense in depth).
+      const encrypted = encryptTestSecrets({
+        OPENAI_TOKEN: "sk-fake",
+      });
+      const response = await POST(
+        makeRequest(
+          {
+            encryptedSecrets: encrypted,
+            authHeaders: {
+              Authorization: "Bearer ${{ secrets.OPENAI_TOKEN }}",
+            },
+            // No secretConnectorMap entry for OPENAI_TOKEN — refresh skipped
+            secretConnectorMap: {},
+          },
+          testToken,
+        ),
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.refreshedConnectors).toEqual([]);
+      expect(data.headers.Authorization).toBe("Bearer sk-fake");
     });
   });
 });

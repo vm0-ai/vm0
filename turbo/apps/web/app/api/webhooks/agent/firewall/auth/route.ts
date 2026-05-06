@@ -12,7 +12,12 @@ import {
   getConnectorExpiry,
   getConnectorAccessToken,
   getConnectorRefreshToken,
+  getModelProviderExpiry,
 } from "../../../../../../src/lib/zero/connector/connector-service";
+import {
+  getRefreshSourceType,
+  SOURCE_HANDLER_TO_PROVIDER_TYPE,
+} from "../../../../../../src/lib/zero/handler-key-bridge";
 import { basicAuthTemplateRe } from "@vm0/connectors/firewall-types";
 
 const bodySchema = z.object({
@@ -56,7 +61,12 @@ async function syncRefreshTokensFromDb(
   if (connectorTypes.length === 0) return;
   const results = await Promise.all(
     connectorTypes.map((ct) => {
-      return getConnectorRefreshToken(ct, orgId, userId);
+      return getConnectorRefreshToken(
+        ct,
+        orgId,
+        userId,
+        getRefreshSourceType(ct),
+      );
     }),
   );
   for (const result of results) {
@@ -75,6 +85,37 @@ interface RefreshResult {
   refreshedConnectors: string[];
   refreshedSecrets: string[];
   failedConnectors: string[];
+}
+
+/**
+ * Read tokenExpiresAt for each connector handler key, dispatching by source
+ * (connector vs model-provider). Returns a unified map keyed by handler key.
+ */
+async function getExpiryByHandlerKey(
+  orgId: string,
+  userId: string,
+  connectorTypes: string[],
+): Promise<Map<string, number | null>> {
+  const connectorOnly = connectorTypes.filter((ct) => {
+    return getRefreshSourceType(ct) === "connector";
+  });
+  const modelProviderHandlerKeys = connectorTypes.filter((ct) => {
+    return getRefreshSourceType(ct) === "model-provider";
+  });
+  const modelProviderMetadataKeys = modelProviderHandlerKeys.map((k) => {
+    return SOURCE_HANDLER_TO_PROVIDER_TYPE[k] ?? k;
+  });
+  const [connectorExpiry, modelProviderExpiry] = await Promise.all([
+    getConnectorExpiry(orgId, userId, connectorOnly),
+    getModelProviderExpiry(orgId, userId, modelProviderMetadataKeys),
+  ]);
+  const merged = new Map<string, number | null>(connectorExpiry);
+  for (const handlerKey of modelProviderHandlerKeys) {
+    const metadataKey =
+      SOURCE_HANDLER_TO_PROVIDER_TYPE[handlerKey] ?? handlerKey;
+    merged.set(handlerKey, modelProviderExpiry.get(metadataKey) ?? null);
+  }
+  return merged;
 }
 
 async function refreshExpiredTokens(
@@ -116,7 +157,9 @@ async function refreshExpiredTokens(
   }
 
   const connectorTypes = [...new Set(refreshable.values())];
-  const expiryMap = await getConnectorExpiry(
+  // Read expiries dispatched by source (connector vs model-provider) — see
+  // getExpiryByHandlerKey for the merge logic.
+  const expiryMap = await getExpiryByHandlerKey(
     run.orgId,
     auth.userId,
     connectorTypes,
@@ -159,11 +202,17 @@ async function refreshExpiredTokens(
   const refreshResults = await Promise.all(
     toRefresh.map(async (connectorType) => {
       log.debug(`[${auth.runId}] Refreshing expired ${connectorType} token`);
+      const sourceType = getRefreshSourceType(connectorType);
+      const metadataKey =
+        sourceType === "model-provider"
+          ? SOURCE_HANDLER_TO_PROVIDER_TYPE[connectorType]
+          : undefined;
       const freshToken = await refreshConnectorAccessToken(
         connectorType,
         run.orgId,
         auth.userId,
         secrets,
+        { sourceType, metadataKey },
       );
       if (!freshToken) {
         log.warn(`[${auth.runId}] Failed to refresh ${connectorType} token`);
@@ -191,7 +240,12 @@ async function refreshExpiredTokens(
       skippedTypes.map(async (ct) => {
         return {
           connectorType: ct,
-          token: await getConnectorAccessToken(ct, run.orgId, auth.userId),
+          token: await getConnectorAccessToken(
+            ct,
+            run.orgId,
+            auth.userId,
+            getRefreshSourceType(ct),
+          ),
         };
       }),
     );
@@ -230,9 +284,9 @@ async function refreshExpiredTokens(
       return r.connectorType;
     });
 
-  // Use accurate DB values after refresh; skip extra query if nothing changed
+  // Use accurate DB values after refresh; skip extra query if nothing changed.
   const finalExpiryMap = refreshed
-    ? await getConnectorExpiry(run.orgId, auth.userId, connectorTypes)
+    ? await getExpiryByHandlerKey(run.orgId, auth.userId, connectorTypes)
     : expiryMap;
 
   let earliestExpiry: number | null = null;

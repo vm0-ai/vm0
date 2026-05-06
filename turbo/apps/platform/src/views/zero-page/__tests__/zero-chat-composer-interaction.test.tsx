@@ -121,6 +121,22 @@ describe("zero chat composer - file input", () => {
     expect(attachButton).toBeInTheDocument();
   });
 
+  it("allows common office document extensions in the file picker", async () => {
+    mockChatLifecycle();
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
+    });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    expect(fileInput.getAttribute("accept")).toContain(".xlsx");
+    expect(fileInput.getAttribute("accept")).toContain(".pptx");
+    expect(fileInput.getAttribute("accept")).toContain(".docx");
+  });
+
   // CHAT-I-023
   it("shows attachment chip after a file is selected via the file input", async () => {
     const user = userEvent.setup();

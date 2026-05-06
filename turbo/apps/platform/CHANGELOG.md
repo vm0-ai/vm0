@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.325.0](https://github.com/vm0-ai/vm0/compare/app-v0.324.2...app-v0.325.0) (2026-05-06)
+
+
+### Features
+
+* **api-contracts:** add chatgpt-oauth-token provider and per-provider firewall url dispatch ([#11885](https://github.com/vm0-ai/vm0/issues/11885)) ([939f38c](https://github.com/vm0-ai/vm0/commit/939f38c2233ab598b45ed31d3c5e2228a786ee39))
+* **connector:** add chatgpt-oauth provider handler with pkce and token refresh ([#11882](https://github.com/vm0-ai/vm0/issues/11882)) ([7655b36](https://github.com/vm0-ai/vm0/commit/7655b364c5f69efddb8c29b976908731e527769a))
+* **platform:** add Connect ChatGPT entry on model-providers settings ([#11919](https://github.com/vm0-ai/vm0/issues/11919)) ([1b390a2](https://github.com/vm0-ai/vm0/commit/1b390a21b4ec6120fdef9d7e5d798c168da22db6))
+* support office file uploads ([#11911](https://github.com/vm0-ai/vm0/issues/11911)) ([1e331b4](https://github.com/vm0-ai/vm0/commit/1e331b4cd92d7342ef768aed53fda03f3780123d))
+* **zero:** plumb prefer_personal_provider through agent and schedule contracts ([#11903](https://github.com/vm0-ai/vm0/issues/11903)) ([5f7eff3](https://github.com/vm0-ai/vm0/commit/5f7eff3ec22c62087f57ffeb5d611a12afd5b2fa))
+
+
+### Bug Fixes
+
+* add safe-area-inset-top padding to sidebar org switcher for PWA mobile ([#11754](https://github.com/vm0-ai/vm0/issues/11754)) ([e230882](https://github.com/vm0-ai/vm0/commit/e230882651b66d23d6dff7795d60b6ce63b8c768))
+* clear schedule toggle await lint ([#11912](https://github.com/vm0-ai/vm0/issues/11912)) ([8547f68](https://github.com/vm0-ai/vm0/commit/8547f68480b00486f2e2cb9d45fa95c301c8f7f6))
+
+
+### Refactoring
+
+* **platform:** align Clerk Account modal with design tokens and dark mode ([#11624](https://github.com/vm0-ai/vm0/issues/11624)) ([ede7731](https://github.com/vm0-ai/vm0/commit/ede77317bbe03c240a9162454aed9b2585ed44eb))
+* remove fully-enabled IdbMessage and SkeletonNoPreload feature switches ([#11913](https://github.com/vm0-ai/vm0/issues/11913)) ([e41a1aa](https://github.com/vm0-ai/vm0/commit/e41a1aa020ab4c1254b9824bd48ab4115f47bb51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.257.0
+
 ## [0.324.2](https://github.com/vm0-ai/vm0/compare/app-v0.324.1...app-v0.324.2) (2026-05-05)
 
 

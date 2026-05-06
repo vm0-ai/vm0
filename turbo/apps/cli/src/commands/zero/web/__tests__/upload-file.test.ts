@@ -275,6 +275,94 @@ describe("zero web upload-file command", () => {
       const parsed = JSON.parse(stdout) as Record<string, unknown>;
       expect(parsed.contentType).toBe(expectedContentType);
     });
+
+    it("should infer office content types from common extensions", async () => {
+      const cases = [
+        {
+          filename: "brief.docx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+        {
+          filename: "budget.xlsx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        },
+        {
+          filename: "deck.pptx",
+          contentType:
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        },
+      ] as const;
+      const preparedById = new Map<
+        string,
+        { filename: string; contentType: string; size: number }
+      >();
+      const preparedBodies: Array<{ filename: string; contentType: string }> =
+        [];
+
+      server.use(
+        http.post(PREPARE_URL, async ({ request }) => {
+          const body = (await request.json()) as {
+            filename: string;
+            contentType: string;
+            size: number;
+          };
+          const id = `${body.filename}-uuid`;
+          preparedBodies.push({
+            filename: body.filename,
+            contentType: body.contentType,
+          });
+          preparedById.set(id, {
+            filename: body.filename,
+            contentType: body.contentType,
+            size: body.size,
+          });
+
+          return HttpResponse.json(
+            {
+              id,
+              filename: body.filename,
+              contentType: body.contentType,
+              size: body.size,
+              uploadUrl: PUT_URL,
+              url: `https://presigned.example.com/${body.filename}`,
+            },
+            { status: 200 },
+          );
+        }),
+        http.put(PUT_URL, () => {
+          return new HttpResponse(null, { status: 200 });
+        }),
+        http.post(COMPLETE_URL, async ({ request }) => {
+          const body = (await request.json()) as {
+            id: string;
+            contentType: string;
+          };
+          const prepared = preparedById.get(body.id);
+          if (!prepared) {
+            throw new Error(`missing prepared upload for ${body.id}`);
+          }
+          expect(body.contentType).toBe(prepared.contentType);
+          return HttpResponse.json({
+            id: body.id,
+            filename: prepared.filename,
+            contentType: prepared.contentType,
+            size: prepared.size,
+            url: `https://presigned.example.com/${prepared.filename}`,
+          });
+        }),
+      );
+
+      for (const { filename } of cases) {
+        const filePath = join(tmpDir, filename);
+        writeFileSync(filePath, Buffer.from("office"));
+
+        await uploadFileCommand.parseAsync(["node", "cli", "-f", filePath]);
+      }
+
+      expect(preparedBodies).toEqual(cases);
+    });
   });
 
   describe("validation errors", () => {

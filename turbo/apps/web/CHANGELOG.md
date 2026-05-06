@@ -1,5 +1,38 @@
 # Changelog
 
+## [12.332.0](https://github.com/vm0-ai/vm0/compare/web-v12.331.2...web-v12.332.0) (2026-05-06)
+
+
+### Features
+
+* **api-contracts:** add chatgpt-oauth-token provider and per-provider firewall url dispatch ([#11885](https://github.com/vm0-ai/vm0/issues/11885)) ([939f38c](https://github.com/vm0-ai/vm0/commit/939f38c2233ab598b45ed31d3c5e2228a786ee39))
+* **connector:** add chatgpt-oauth provider handler with pkce and token refresh ([#11882](https://github.com/vm0-ai/vm0/issues/11882)) ([7655b36](https://github.com/vm0-ai/vm0/commit/7655b364c5f69efddb8c29b976908731e527769a))
+* **db,core:** add prefer_personal_provider columns and personal model provider feature switch ([#11880](https://github.com/vm0-ai/vm0/issues/11880)) ([67ddf5b](https://github.com/vm0-ai/vm0/commit/67ddf5bf31df9107aeb6fb627693487d76f1d2c7)), closes [#11873](https://github.com/vm0-ai/vm0/issues/11873)
+* support office file uploads ([#11911](https://github.com/vm0-ai/vm0/issues/11911)) ([1e331b4](https://github.com/vm0-ai/vm0/commit/1e331b4cd92d7342ef768aed53fda03f3780123d))
+* **web:** add chatgpt oauth connect and callback routes ([#11923](https://github.com/vm0-ai/vm0/issues/11923)) ([ddba392](https://github.com/vm0-ai/vm0/commit/ddba392b8b9e03dd249a4f8823e2fa2186fd8e4b))
+* **web:** add podcast deep research use case ([#11832](https://github.com/vm0-ai/vm0/issues/11832)) ([2076acb](https://github.com/vm0-ai/vm0/commit/2076acb4a157f0893db7644ece8a02e867e02ac7))
+* **web:** wire HeyGen + ElevenLabs into promo-video use case ([#11831](https://github.com/vm0-ai/vm0/issues/11831)) ([f451035](https://github.com/vm0-ai/vm0/commit/f4510356a8e21adbdb42985c7a2c83a6dfa68645))
+* **zero:** add personal-tier /api/zero/me/model-providers routes ([#11905](https://github.com/vm0-ai/vm0/issues/11905)) ([e88f621](https://github.com/vm0-ai/vm0/commit/e88f621abbe1e8de05019ff8cd456b72822347bc)), closes [#11898](https://github.com/vm0-ai/vm0/issues/11898)
+* **zero:** add personal-tier model provider service layer + user-aware id lookup ([#11884](https://github.com/vm0-ai/vm0/issues/11884)) ([bf6313f](https://github.com/vm0-ai/vm0/commit/bf6313fc1e1cf0ba34b197bf7ba77e005ce5cc05))
+* **zero:** compute personal eager-pin in chat thread creation ([#11924](https://github.com/vm0-ai/vm0/issues/11924)) ([18c5634](https://github.com/vm0-ai/vm0/commit/18c5634dee4f7d9102aef2fa026e93b6de5a1132))
+* **zero:** honor prefer_personal_provider in resolveModelProviderSecrets ([#11906](https://github.com/vm0-ai/vm0/issues/11906)) ([024a2f2](https://github.com/vm0-ai/vm0/commit/024a2f282a2dd4cc70a09a48635e906e9ff58e2c))
+* **zero:** plumb prefer_personal_provider through agent and schedule contracts ([#11903](https://github.com/vm0-ai/vm0/issues/11903)) ([5f7eff3](https://github.com/vm0-ai/vm0/commit/5f7eff3ec22c62087f57ffeb5d611a12afd5b2fa))
+* **zero:** wire model-provider oauth secrets into firewall refresh pipeline ([#11921](https://github.com/vm0-ai/vm0/issues/11921)) ([db601e5](https://github.com/vm0-ai/vm0/commit/db601e508afecdad6434d30bc1f2f9e682ebda3c))
+
+
+### Bug Fixes
+
+* **seo:** add /rankings page to sitemap ([#11910](https://github.com/vm0-ai/vm0/issues/11910)) ([16bae9b](https://github.com/vm0-ai/vm0/commit/16bae9b31d6748403c01ac514a33d450afb9decc))
+* **seo:** disallow /_next/ static assets in robots.txt ([#11893](https://github.com/vm0-ai/vm0/issues/11893)) ([e6d092a](https://github.com/vm0-ai/vm0/commit/e6d092ac4c8771e6eba48276cbf533728ae58ed4))
+* **seo:** drop incomplete Product JSON-LD on model detail pages ([#11811](https://github.com/vm0-ai/vm0/issues/11811)) ([862a425](https://github.com/vm0-ai/vm0/commit/862a4258c29d55e0528e15f30f932eec5459994c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.257.0
+
 ## [12.331.2](https://github.com/vm0-ai/vm0/compare/web-v12.331.1...web-v12.331.2) (2026-05-05)
 
 

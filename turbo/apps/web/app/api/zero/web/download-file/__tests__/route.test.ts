@@ -122,6 +122,26 @@ describe("GET /api/zero/web/download-file", () => {
     expect(response.headers.get("x-file-mimetype")).toBe("image/png");
   });
 
+  it("downloads office file with correct mimetype", async () => {
+    const fileId = "sheet-uuid";
+    const fileContent = Buffer.from("fake-xlsx-data");
+    const s3Key = `uploads/${user.userId}/${fileId}/budget.xlsx`;
+
+    context.mocks.s3.listS3Objects.mockResolvedValueOnce([
+      { key: s3Key, size: fileContent.length },
+    ]);
+    context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(fileContent);
+
+    const request = await authedRequest(fileId);
+    const response = await GET(request as never);
+
+    const expected =
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe(expected);
+    expect(response.headers.get("x-file-mimetype")).toBe(expected);
+  });
+
   it("returns application/octet-stream for unknown extensions", async () => {
     const fileId = "bin-uuid";
     const fileContent = Buffer.from("binary-data");

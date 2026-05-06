@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.257.0](https://github.com/vm0-ai/vm0/compare/core-v8.256.0...core-v8.257.0) (2026-05-06)
+
+
+### Features
+
+* **db,core:** add prefer_personal_provider columns and personal model provider feature switch ([#11880](https://github.com/vm0-ai/vm0/issues/11880)) ([67ddf5b](https://github.com/vm0-ai/vm0/commit/67ddf5bf31df9107aeb6fb627693487d76f1d2c7)), closes [#11873](https://github.com/vm0-ai/vm0/issues/11873)
+
+
+### Refactoring
+
+* remove fully-enabled IdbMessage and SkeletonNoPreload feature switches ([#11913](https://github.com/vm0-ai/vm0/issues/11913)) ([e41a1aa](https://github.com/vm0-ai/vm0/commit/e41a1aa020ab4c1254b9824bd48ab4115f47bb51))
+
 ## [8.256.0](https://github.com/vm0-ai/vm0/compare/core-v8.255.0...core-v8.256.0) (2026-05-05)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.141.0](https://github.com/vm0-ai/vm0/compare/cli-v9.140.9...cli-v9.141.0) (2026-05-06)
+
+
+### Features
+
+* support office file uploads ([#11911](https://github.com/vm0-ai/vm0/issues/11911)) ([1e331b4](https://github.com/vm0-ai/vm0/commit/1e331b4cd92d7342ef768aed53fda03f3780123d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.257.0
+
 ## [9.140.9](https://github.com/vm0-ai/vm0/compare/cli-v9.140.8...cli-v9.140.9) (2026-05-05)
 
 

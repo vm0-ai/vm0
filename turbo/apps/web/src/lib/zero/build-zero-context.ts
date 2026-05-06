@@ -71,6 +71,21 @@ const log = logger("zero:build-context");
  * memory-as-artifact) we log and skip rather than silently mount over a path
  * the user may have declared for a different purpose.
  */
+/**
+ * Merge multiple secretConnectorMap fragments. Used to combine the
+ * connector-typed map (post-filter) with the model-provider-derived map
+ * (which bypasses the filter — model-provider secrets ARE the source).
+ */
+function mergeSecretConnectorMaps(
+  ...maps: (Record<string, string> | undefined)[]
+): Record<string, string> | undefined {
+  const merged: Record<string, string> = {};
+  for (const m of maps) {
+    if (m) Object.assign(merged, m);
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
 function injectAutoMemoryArtifactIfNewRun(
   artifacts: ContextArtifact[],
   resolution: ConversationResolution | null,
@@ -270,9 +285,17 @@ async function resolveSecretsAndEnvironment(
     : undefined;
 
   // Filter secretConnectorMap: remove keys overridden by higher-priority sources.
-  const secretConnectorMap = filterSecretConnectorMap(
+  // Then merge in model-provider-derived entries (CHATGPT_ACCESS_TOKEN → "chatgpt-oauth"
+  // for chatgpt-oauth-token providers). Model-provider entries are added AFTER the
+  // filter because they share names with `modelProviderResult.secrets` — those secrets
+  // ARE the source of the OAuth refresh, not an override target.
+  const filteredOauthMap = filterSecretConnectorMap(
     oauthResult.secretConnectorMap,
     [modelProviderResult.secrets, dbSecrets, cliSecrets],
+  );
+  const secretConnectorMap = mergeSecretConnectorMaps(
+    filteredOauthMap,
+    modelProviderResult.secretConnectorMap,
   );
 
   // Auto-generate config entry for model provider (if applicable).

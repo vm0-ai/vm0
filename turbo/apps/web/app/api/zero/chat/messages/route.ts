@@ -26,7 +26,11 @@ import {
   type WebChatIncompleteRound,
 } from "../../../../../src/lib/zero/integration-prompt";
 import { isApiError, providerDeleted } from "@vm0/api-services/errors";
-import { getModelProviderById } from "../../../../../src/lib/zero/model-provider/model-provider-service";
+import {
+  getModelProviderById,
+  getUserAnyDefaultModelProvider,
+} from "../../../../../src/lib/zero/model-provider/model-provider-service";
+import { isPersonalTierEligible } from "../../../../../src/lib/zero/personal-tier-gate";
 import {
   createChatThread,
   getChatThread,
@@ -184,6 +188,72 @@ async function rejectIfThreadModelLocked(
     existing.modelProviderId !== incoming.modelProviderId ||
     existing.selectedModel !== incoming.selectedModel
   );
+}
+
+/**
+ * Compute the eager-pin written into `chat_threads.modelProviderId` /
+ * `selected_model` at NEW thread creation. Defaults to the agent's stored
+ * pin; promotes to the caller's personal-tier default when (Epic #11868):
+ *   1. the agent has `prefer_personal_provider=true`, AND
+ *   2. the `personalModelProvider` feature switch is on for the caller, AND
+ *   3. the user has a personal default provider in this workspace.
+ *
+ * `selectedModel` precedence: user's personal row > agent's > null —
+ * mirrors the resolver's runtime fallback chain.
+ *
+ * Why a single `getUserAnyDefaultModelProvider` is sufficient here (vs the
+ * resolver's two-step `getUserDefaultModelProvider(framework) ?? any-default`
+ * chain): #11752 introduced the workspace single-default invariant
+ * (`idx_model_providers_one_default_per_user`) — at most one
+ * `isDefault=true` row per `(orgId, userId)`. The framework-scoped variant
+ * therefore returns either that same row (when its framework matches) or
+ * null (cross-framework), and the any-default fallback returns the row
+ * unconditionally. The two-step chain is NOT redundant in the resolver
+ * because of the framework-propagation handshake (Epic #11520 — provider's
+ * framework wins, and the resolver returns `framework: getFrameworkForType(
+ * providerType)` derived from the row it picked). At pin time we don't
+ * propagate framework — we persist row id + model and let the resolver
+ * re-derive framework when the run dispatches via `getModelProviderById`.
+ * One read suffices; documenting the asymmetry so the optimization isn't
+ * mistakenly mirrored back into the resolver.
+ *
+ * Existing-thread sends bypass this helper — see Decision F2 in plan.md
+ * for the per-thread immutability rationale.
+ */
+async function computeEagerPin(
+  orgId: string,
+  userId: string,
+  agent: {
+    modelProviderId: string | null;
+    selectedModel: string | null;
+    preferPersonalProvider: boolean;
+  },
+): Promise<{
+  modelProviderId: string | null;
+  selectedModel: string | null;
+}> {
+  const personalEligible = await isPersonalTierEligible(
+    orgId,
+    userId,
+    agent.preferPersonalProvider,
+  );
+  if (!personalEligible) {
+    return {
+      modelProviderId: agent.modelProviderId,
+      selectedModel: agent.selectedModel,
+    };
+  }
+  const userRow = await getUserAnyDefaultModelProvider(orgId, userId);
+  if (!userRow) {
+    return {
+      modelProviderId: agent.modelProviderId,
+      selectedModel: agent.selectedModel,
+    };
+  }
+  return {
+    modelProviderId: userRow.id,
+    selectedModel: userRow.selectedModel ?? agent.selectedModel ?? null,
+  };
 }
 
 /**
@@ -406,16 +476,30 @@ const router = tsr.router(chatMessagesContract, {
     }
 
     try {
+      // Existing-thread sends pass the agent's pin literally — `resolveThread`
+      // doesn't use it on that branch (it reads the persisted pin instead),
+      // so the personal-tier eligibility check is skipped. NEW threads
+      // compute the eager-pin via `computeEagerPin` so per-Epic #11868 the
+      // user's personal default lands in the persisted pin when the agent's
+      // `prefer_personal_provider` is on and the switch is enabled for
+      // the caller.
+      const eagerPin = body.threadId
+        ? {
+            modelProviderId: agent.modelProviderId,
+            selectedModel: agent.selectedModel,
+          }
+        : await computeEagerPin(callerOrg.orgId, authCtx.userId, {
+            modelProviderId: agent.modelProviderId,
+            selectedModel: agent.selectedModel,
+            preferPersonalProvider: agent.preferPersonalProvider,
+          });
       const { threadId, sessionId, incompleteContext, isNewThread } =
         await resolveThread(
           authCtx.userId,
           body.agentId,
           body.threadId,
           body.clientThreadId,
-          {
-            modelProviderId: agent.modelProviderId,
-            selectedModel: agent.selectedModel,
-          },
+          eagerPin,
           dims,
         );
 

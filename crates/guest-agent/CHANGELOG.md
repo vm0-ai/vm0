@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.5...guest-agent-v0.27.0) (2026-05-06)
+
+
+### Features
+
+* **guest-agent:** bootstrap codex chatgpt-oauth mode via fabricated auth.json ([#11881](https://github.com/vm0-ai/vm0/issues/11881)) ([d7f8127](https://github.com/vm0-ai/vm0/commit/d7f81275af55020f7de7d54a432e2d80b6a62902))
+
 ## [0.26.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.4...guest-agent-v0.26.5) (2026-05-05)
 
 ## [0.26.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.26.3...guest-agent-v0.26.4) (2026-05-03)

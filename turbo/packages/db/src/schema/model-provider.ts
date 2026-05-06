@@ -39,6 +39,14 @@ export const modelProviders = pgTable(
     selectedModel: varchar("selected_model", { length: 255 }),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
+    // OAuth token state (mirrors `connectors`). Set/cleared by the firewall
+    // refresh pipeline for OAuth-typed model providers (e.g. chatgpt-oauth-token).
+    // null tokenExpiresAt = unknown; refreshable providers auto-refresh on next use.
+    tokenExpiresAt: timestamp("token_expires_at"),
+    needsReconnect: boolean("needs_reconnect").notNull().default(false),
+    // Captures ChatgptRefreshError.code (or equivalent) on refresh failure;
+    // null on success or non-OAuth providers. Wave 3 stale-UX renders this.
+    lastRefreshErrorCode: varchar("last_refresh_error_code", { length: 64 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

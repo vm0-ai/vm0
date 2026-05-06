@@ -13,6 +13,7 @@ import {
   getChatgptSecretName,
   getChatgptRefreshSecretName,
   isChatgptRefreshError,
+  isChatgptFreePlanError,
   type ChatgptRefreshError,
   CHATGPT_OAUTH_CLIENT_ID,
   CHATGPT_OAUTH_ISSUER,
@@ -256,7 +257,7 @@ describe("connector/providers/chatgpt-oauth", () => {
       expect(result.workspaceName).toBeNull();
     });
 
-    it("rejects free plan_type", async () => {
+    it("rejects free plan_type with typed ChatgptFreePlanError", async () => {
       const idToken = makeIdToken({ accountId: "a", planType: "free" });
       const { handler } = http.post(TOKEN_URL, () => {
         return HttpResponse.json({
@@ -267,9 +268,22 @@ describe("connector/providers/chatgpt-oauth", () => {
       });
       server.use(handler);
 
-      await expect(
-        exchangeChatgptCode("x", "x", "c", "https://example.com/cb", "v"),
-      ).rejects.toThrow(/free plan/i);
+      const promise = exchangeChatgptCode(
+        "x",
+        "x",
+        "c",
+        "https://example.com/cb",
+        "v",
+      );
+      await expect(promise).rejects.toThrow(/free plan/i);
+      await expect(promise).rejects.toSatisfy(isChatgptFreePlanError);
+    });
+
+    it("isChatgptFreePlanError type guard rejects unrelated errors", () => {
+      expect(isChatgptFreePlanError(new Error("anything else"))).toBe(false);
+      expect(isChatgptFreePlanError("not even an error")).toBe(false);
+      expect(isChatgptFreePlanError(null)).toBe(false);
+      expect(isChatgptFreePlanError(undefined)).toBe(false);
     });
 
     it("throws when id_token is missing required auth claims", async () => {

@@ -2360,6 +2360,13 @@
       "when": 1778000439624,
       "tag": "0336_lethal_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 337,
+      "version": "7",
+      "when": 1778037579424,
+      "tag": "0337_nifty_machine_man",
+      "breakpoints": true
     }
   ]
 }
