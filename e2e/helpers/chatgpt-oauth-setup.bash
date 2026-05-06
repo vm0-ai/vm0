@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# Bats helper for seeding chatgpt-oauth-token model_provider state via the
+# /api/cli/auth/test-chatgpt-oauth endpoint. Used by E2E tests of the
+# ChatGPT-OAuth Codex flow (issue #11941, Epic #11872).
+
+# Encode an email for URL query: "+ → %2B", "@ → %40".
+_chatgpt_encode_email() {
+    if [ -z "${E2E_RUNNER_EMAIL:-}" ]; then
+        echo "E2E_RUNNER_EMAIL not set" >&2
+        return 1
+    fi
+    printf '%s' "$E2E_RUNNER_EMAIL" | sed 's/+/%2B/g; s/@/%40/g'
+}
+
+# Seed a chatgpt-oauth-token model provider for E2E tests.
+#
+# Usage:
+#   seed_chatgpt_oauth <access_token> <refresh_token> <account_id> <id_token> [expires_in] [needs_reconnect] [last_refresh_error_code]
+#
+# expires_in: seconds from now until token expiry (default 600; negative pre-expires).
+# needs_reconnect: "true" or "false" (default "false").
+# last_refresh_error_code: optional refresh-error code for stale-state simulation.
+seed_chatgpt_oauth() {
+    local access_token="$1"
+    local refresh_token="$2"
+    local account_id="$3"
+    local id_token="$4"
+    local expires_in="${5:-600}"
+    local needs_reconnect="${6:-false}"
+    local last_refresh_error_code="${7:-}"
+
+    local body
+    if [ -n "$last_refresh_error_code" ]; then
+        body=$(jq -n \
+            --arg at "$access_token" \
+            --arg rt "$refresh_token" \
+            --arg ai "$account_id" \
+            --arg it "$id_token" \
+            --argjson ei "$expires_in" \
+            --argjson nr "$needs_reconnect" \
+            --arg lrec "$last_refresh_error_code" \
+            '{accessToken: $at, refreshToken: $rt, accountId: $ai, idToken: $it, expiresIn: $ei, needsReconnect: $nr, lastRefreshErrorCode: $lrec}')
+    else
+        body=$(jq -n \
+            --arg at "$access_token" \
+            --arg rt "$refresh_token" \
+            --arg ai "$account_id" \
+            --arg it "$id_token" \
+            --argjson ei "$expires_in" \
+            --argjson nr "$needs_reconnect" \
+            '{accessToken: $at, refreshToken: $rt, accountId: $ai, idToken: $it, expiresIn: $ei, needsReconnect: $nr}')
+    fi
+
+    local encoded_email
+    encoded_email=$(_chatgpt_encode_email) || return 1
+
+    local curl_args=(-s -w "\n%{http_code}" -X POST -H "Content-Type: application/json")
+    if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    curl_args+=(-d "$body")
+
+    local resp http_code resp_body
+    resp=$(curl "${curl_args[@]}" "${VM0_API_URL}/api/cli/auth/test-chatgpt-oauth?email=${encoded_email}")
+    http_code=$(echo "$resp" | tail -n1)
+    resp_body=$(echo "$resp" | head -n-1)
+
+    if [ "$http_code" != "200" ]; then
+        echo "test-chatgpt-oauth seed failed: HTTP $http_code" >&2
+        echo "Response: $resp_body" >&2
+        return 1
+    fi
+}
+
+# Enable the chatgptOauthProvider feature switch for the current test user.
+# Required so isChatgptOauthEligible(orgId, userId) returns true and the
+# OAuth connect/callback routes don't 404. The switch is staff-only by
+# default, so production users see no surface.
+enable_chatgpt_oauth_provider() {
+    if [ -z "${VM0_TEST_TOKEN:-}" ] && [ -z "${ZERO_TOKEN:-}" ] && [ -z "${VM0_TOKEN:-}" ]; then
+        echo "enable_chatgpt_oauth_provider: no auth token in env" >&2
+        return 1
+    fi
+    local token="${VM0_TEST_TOKEN:-${ZERO_TOKEN:-${VM0_TOKEN:-}}}"
+    local curl_args=(-fsS -X POST -H "Content-Type: application/json"
+        -H "Authorization: Bearer $token"
+        -d '{"switches":{"chatgptOauthProvider":true}}')
+    if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/feature-switches" >/dev/null
+}
+
+# Best-effort cleanup of feature-switch overrides — DELETE clears all
+# overrides for the user (test_user_id resolved server-side).
+disable_chatgpt_oauth_provider() {
+    if [ -z "${VM0_TEST_TOKEN:-}" ] && [ -z "${ZERO_TOKEN:-}" ] && [ -z "${VM0_TOKEN:-}" ]; then
+        return 0
+    fi
+    local token="${VM0_TEST_TOKEN:-${ZERO_TOKEN:-${VM0_TOKEN:-}}}"
+    local curl_args=(-fsS -X DELETE -H "Authorization: Bearer $token")
+    if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/feature-switches" >/dev/null 2>&1 || true
+}
+
+# Probe whether Wave 3 (#11932) features are present. Used to gate Test 4
+# (stale recovery) tests so this PR can ship before #11932 merges.
+#
+# Returns 0 if the model-providers API surface includes `needsReconnect`
+# in its response (Wave 3's API widening). Returns 1 otherwise.
+chatgpt_oauth_stale_supported() {
+    if [ -z "${VM0_TEST_TOKEN:-}" ]; then
+        return 1
+    fi
+
+    local curl_args=(-s -H "Authorization: Bearer $VM0_TEST_TOKEN")
+    if [ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+
+    local resp
+    resp=$(curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/model-providers" 2>/dev/null)
+
+    # Probe for needsReconnect field on any provider in the response. Schema-
+    # level signal is more robust than UI-shape probes.
+    echo "$resp" | jq -e 'type == "array" and (.[0] | has("needsReconnect"))' >/dev/null 2>&1
+}
