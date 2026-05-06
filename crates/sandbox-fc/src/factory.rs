@@ -2045,6 +2045,26 @@ mod tests {
         }
     }
 
+    struct SpawnLateCleanupOnDrop {
+        group: Arc<FactoryCleanupGroup>,
+        late_aborted: Arc<AtomicBool>,
+    }
+
+    impl Drop for SpawnLateCleanupOnDrop {
+        fn drop(&mut self) {
+            let late_flag = AbortFlag(Arc::clone(&self.late_aborted));
+            let waiter = self.group.spawn(
+                FactoryCleanupTaskKind::Destroy,
+                "late-after-timeout",
+                async move {
+                    let _flag = late_flag;
+                    std::future::pending::<()>().await;
+                },
+            );
+            drop(waiter);
+        }
+    }
+
     fn assert_factory_invalid_state(
         err: SandboxError,
         expected_state: &str,
@@ -2312,6 +2332,33 @@ mod tests {
         shutdown.await;
 
         assert!(aborted.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn factory_cleanup_group_shutdown_aborts_task_registered_during_timeout_abort() {
+        let group = Arc::new(FactoryCleanupGroup::new());
+        let late_aborted = Arc::new(AtomicBool::new(false));
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+
+        let on_drop = SpawnLateCleanupOnDrop {
+            group: Arc::clone(&group),
+            late_aborted: Arc::clone(&late_aborted),
+        };
+        let waiter = group.spawn(FactoryCleanupTaskKind::Destroy, "sandbox", async move {
+            let _on_drop = on_drop;
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        drop(waiter);
+
+        started_rx.await.unwrap();
+        let shutdown = group.shutdown();
+        tokio::pin!(shutdown);
+        tokio::task::yield_now().await;
+        tokio::time::advance(FACTORY_CLEANUP_SHUTDOWN_TIMEOUT).await;
+        shutdown.await;
+
+        assert!(late_aborted.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
