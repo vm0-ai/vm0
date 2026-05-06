@@ -131,7 +131,11 @@ describe("GET /api/zero/chat-threads", () => {
     const fixture = await track(
       store.set(
         seedZeroChatThread$,
-        { title: "Pinned & Renamed", pinnedAt: pinnedDate, renamedAt: renamedDate },
+        {
+          title: "Pinned & Renamed",
+          pinnedAt: pinnedDate,
+          renamedAt: renamedDate,
+        },
         context.signal,
       ),
     );

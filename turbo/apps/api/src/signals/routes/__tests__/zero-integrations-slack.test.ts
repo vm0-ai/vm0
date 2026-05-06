@@ -83,9 +83,7 @@ async function cleanupSlackFixture(fixture: SlackFixture): Promise<void> {
     .delete(slackOrgInstallations)
     .where(eq(slackOrgInstallations.slackWorkspaceId, fixture.workspaceId));
   await writeDb.delete(orgCache).where(eq(orgCache.orgId, fixture.orgId));
-  await writeDb
-    .delete(orgMetadata)
-    .where(eq(orgMetadata.orgId, fixture.orgId));
+  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   await writeDb.delete(zeroAgents).where(eq(zeroAgents.id, fixture.composeId));
   await writeDb
     .delete(agentComposes)
@@ -161,9 +159,7 @@ describe("GET /api/zero/integrations/slack", () => {
   it("returns isConnected: false when user has no connection", async () => {
     await writeDb
       .delete(slackOrgConnections)
-      .where(
-        eq(slackOrgConnections.slackWorkspaceId, fixture.workspaceId),
-      );
+      .where(eq(slackOrgConnections.slackWorkspaceId, fixture.workspaceId));
 
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: true,
