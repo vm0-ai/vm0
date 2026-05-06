@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -52,7 +53,16 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     expect(response.status).toBe(401);
   });
 
-  it("lists Telegram bots in the active org", async () => {
+  const officialBotExpectation = expect.objectContaining({
+    id: OFFICIAL_TELEGRAM_BOT_ID,
+    kind: "official",
+    isOwner: false,
+    official: expect.objectContaining({
+      linkedTelegramUserId: null,
+    }),
+  });
+
+  it("lists the official bot and custom Telegram bots in the active org", async () => {
     const botId = await createTestTelegramInstallation({
       telegramBotId: "123456789",
       ownerUserId: user.userId,
@@ -87,9 +97,10 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    expect(data.bots).toHaveLength(2);
+    expect(data.bots).toHaveLength(3);
     expect(data.bots).toEqual(
       expect.arrayContaining([
+        officialBotExpectation,
         expect.objectContaining({
           id: botId,
           username: "bot_123456789",
@@ -112,10 +123,11 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     ).toBe(false);
   });
 
-  it("returns an empty list when the active org has no Telegram bots", async () => {
+  it("returns the official bot when the active org has no custom Telegram bots", async () => {
     const response = await GET((await authedRequest()) as never);
+    const data = await response.json();
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ bots: [] });
+    expect(data.bots).toEqual([officialBotExpectation]);
   });
 });
