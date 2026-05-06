@@ -78,15 +78,7 @@ pub async fn dispatch(
                 handle_flush(&request, &cow, &mut writer).await?;
             }
             Command::Trim => {
-                // Trim is a no-op for now (COW file is sparse, unused blocks are holes)
-                send_reply(
-                    &mut writer,
-                    &NbdReply {
-                        error: 0,
-                        handle: request.handle,
-                    },
-                )
-                .await?;
+                handle_trim(&request, &mut writer).await?;
             }
             Command::Disconnect => {
                 let mut cow = cow.write().await;
@@ -121,10 +113,7 @@ async fn handle_read(
         return Ok(());
     }
 
-    let reply = NbdReply {
-        error: 0,
-        handle: request.handle,
-    };
+    let reply = success_reply(request.handle);
     let reply_buf = protocol::serialize_reply(&reply);
     writer.write_all(&reply_buf).await?;
     writer.write_all(&data).await?;
@@ -173,11 +162,7 @@ async fn handle_write(
         return Ok(());
     }
 
-    let reply = NbdReply {
-        error: 0,
-        handle: request.handle,
-    };
-    send_reply(writer, &reply).await
+    send_success_reply(writer, request.handle).await
 }
 
 async fn handle_flush(
@@ -195,17 +180,32 @@ async fn handle_flush(
         return Ok(());
     }
 
-    let reply = NbdReply {
-        error: 0,
-        handle: request.handle,
-    };
-    send_reply(writer, &reply).await
+    send_success_reply(writer, request.handle).await
+}
+
+async fn handle_trim(
+    request: &NbdRequest,
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+) -> Result<()> {
+    // Trim is a no-op for now (COW file is sparse, unused blocks are holes)
+    send_success_reply(writer, request.handle).await
+}
+
+fn success_reply(handle: u64) -> NbdReply {
+    NbdReply { error: 0, handle }
 }
 
 async fn send_reply(writer: &mut tokio::net::unix::OwnedWriteHalf, reply: &NbdReply) -> Result<()> {
     let buf = protocol::serialize_reply(reply);
     writer.write_all(&buf).await?;
     Ok(())
+}
+
+async fn send_success_reply(
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    handle: u64,
+) -> Result<()> {
+    send_reply(writer, &success_reply(handle)).await
 }
 
 async fn send_error_reply(
