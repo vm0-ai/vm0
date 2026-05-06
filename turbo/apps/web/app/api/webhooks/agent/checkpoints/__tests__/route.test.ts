@@ -8,6 +8,7 @@ import {
   findTestCheckpoint,
   findTestRunRecord,
   getTestAgentSessionWithConversation,
+  setTestRunResult,
   setTestRunStatus,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
@@ -462,6 +463,150 @@ describe("POST /api/webhooks/agent/checkpoints", () => {
         artifact: { "test-artifact": "version-late" },
         volumes: { workspace: "vol-late" },
       });
+    });
+
+    it("should not overwrite checkpoint when terminal result already exists", async () => {
+      const artifactSnapshots = [
+        {
+          name: "test-artifact",
+          version: "version-first",
+          mountPath: "/home/user/workspace",
+        },
+      ];
+
+      const firstResponse = await POST(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${testToken}`,
+            },
+            body: JSON.stringify({
+              runId: testRunId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "first-terminal-session",
+              cliAgentSessionHistoryHash: sha256("first-terminal-history"),
+              artifactSnapshots,
+            }),
+          },
+        ),
+      );
+      expect(firstResponse.status).toBe(200);
+      const firstBody = await firstResponse.json();
+
+      await setTestRunStatus(testRunId, "failed");
+      await setTestRunResult(testRunId, {
+        checkpointId: firstBody.checkpointId,
+        agentSessionId: firstBody.agentSessionId,
+        conversationId: firstBody.conversationId,
+        artifact: { "test-artifact": "version-first" },
+      });
+
+      const lateResponse = await POST(
+        createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${testToken}`,
+            },
+            body: JSON.stringify({
+              runId: testRunId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: "stale-terminal-session",
+              cliAgentSessionHistoryHash: sha256("stale-terminal-history"),
+              artifactSnapshots: [
+                {
+                  name: "test-artifact",
+                  version: "version-stale",
+                  mountPath: "/home/user/workspace",
+                },
+              ],
+            }),
+          },
+        ),
+      );
+
+      expect(lateResponse.status).toBe(200);
+      expect(await lateResponse.json()).toMatchObject({
+        checkpointId: firstBody.checkpointId,
+        agentSessionId: firstBody.agentSessionId,
+        conversationId: firstBody.conversationId,
+        artifacts: artifactSnapshots,
+      });
+
+      const checkpoint = await findTestCheckpoint(testRunId);
+      expect(checkpoint?.artifactSnapshots).toEqual(artifactSnapshots);
+      const run = await findTestRunRecord(testRunId);
+      expect(run?.result).toMatchObject({
+        artifact: { "test-artifact": "version-first" },
+      });
+    });
+
+    it("should keep checkpoint and result consistent for concurrent terminal checkpoints", async () => {
+      await setTestRunStatus(testRunId, "failed");
+
+      const makeRequest = (version: string) => {
+        return createTestRequest(
+          "http://localhost:3000/api/webhooks/agent/checkpoints",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${testToken}`,
+            },
+            body: JSON.stringify({
+              runId: testRunId,
+              cliAgentType: "claude-code",
+              cliAgentSessionId: `parallel-${version}`,
+              cliAgentSessionHistoryHash: sha256(`parallel-${version}`),
+              artifactSnapshots: [
+                {
+                  name: "test-artifact",
+                  version,
+                  mountPath: "/home/user/workspace",
+                },
+              ],
+            }),
+          },
+        );
+      };
+
+      const [leftResponse, rightResponse] = await Promise.all([
+        POST(makeRequest("version-left")),
+        POST(makeRequest("version-right")),
+      ]);
+
+      expect(leftResponse.status).toBe(200);
+      expect(rightResponse.status).toBe(200);
+      const [leftBody, rightBody] = await Promise.all([
+        leftResponse.json(),
+        rightResponse.json(),
+      ]);
+
+      const checkpoint = await findTestCheckpoint(testRunId);
+      const run = await findTestRunRecord(testRunId);
+      const artifactVersion = (
+        run?.result as {
+          artifact?: {
+            "test-artifact"?: string;
+          };
+        } | null
+      )?.artifact?.["test-artifact"];
+
+      expect(["version-left", "version-right"]).toContain(artifactVersion);
+      expect(checkpoint?.artifactSnapshots).toEqual([
+        {
+          name: "test-artifact",
+          version: artifactVersion,
+          mountPath: "/home/user/workspace",
+        },
+      ]);
+      expect(leftBody.artifacts).toEqual(checkpoint?.artifactSnapshots);
+      expect(rightBody.artifacts).toEqual(checkpoint?.artifactSnapshots);
     });
   });
 

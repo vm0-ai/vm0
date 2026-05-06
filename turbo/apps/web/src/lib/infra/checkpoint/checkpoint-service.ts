@@ -17,7 +17,10 @@ import {
   isEmptyArtifactPayload,
 } from "./decode-artifact-snapshots";
 import { buildRunResultFromCheckpoint } from "../run/run-result";
-import { CHECKPOINT_RESUMABLE_RUN_STATUSES } from "../run/types";
+import {
+  CHECKPOINT_RESUMABLE_RUN_STATUSES,
+  isCheckpointResumableRunStatus,
+} from "../run/types";
 
 const log = logger("checkpoint");
 
@@ -42,93 +45,131 @@ export async function createCheckpoint(
 ): Promise<CheckpointResponse> {
   log.debug(`Creating checkpoint for run ${request.runId}`);
 
-  // Fetch agent run from database
-  const [run] = await globalThis.services.db
-    .select()
-    .from(agentRuns)
-    .where(and(eq(agentRuns.id, request.runId), eq(agentRuns.userId, userId)))
-    .limit(1);
-
-  if (!run) {
-    throw notFound("Agent run not found");
-  }
-
-  // agentComposeVersionId may be null if agent was deleted (historical runs)
-  // but during active run execution it should always be present
-  if (!run.agentComposeVersionId) {
-    throw notFound(
-      "Agent compose version not found (agent may have been deleted)",
-    );
-  }
-
-  log.debug(
-    `Creating conversation record for CLI agent: ${request.cliAgentType}`,
-  );
-
-  // Build agent compose snapshot using version ID for reproducibility
-  // Environment is re-expanded from vars/secrets on resume
-  // Note: secrets values are NEVER stored - only names for validation
-  const agentComposeSnapshot: AgentComposeSnapshot = {
-    agentComposeVersionId: run.agentComposeVersionId,
-    vars: (run.vars as Record<string, string>) || undefined,
-    secretNames: (run.secretNames as string[]) || undefined,
-  };
-
-  // Enrich volume versions snapshot with additional volumes from run record
-  const runAdditionalVolumes = run.additionalVolumes as Array<{
-    name: string;
-    version?: string;
-    mountPath: string;
-  }> | null;
-
-  const enrichedVolumeSnapshot = request.volumeVersionsSnapshot
-    ? {
-        versions: request.volumeVersionsSnapshot.versions,
-        ...(runAdditionalVolumes && runAdditionalVolumes.length > 0
-          ? {
-              additionalVolumes: runAdditionalVolumes.map((vol) => {
-                const versionId =
-                  request.volumeVersionsSnapshot!.versions[vol.name] ??
-                  vol.version;
-                if (!versionId) {
-                  log.warn(
-                    `Additional volume "${vol.name}" has no resolved version from runner and no version specified at run time, defaulting to "latest"`,
-                  );
-                }
-                return {
-                  name: vol.name,
-                  versionId: versionId ?? "latest",
-                  mountPath: vol.mountPath,
-                };
-              }),
-            }
-          : {}),
-      }
-    : null;
-
-  // Normalise the artifactSnapshots payload before persisting. The webhook
-  // contract now only accepts the canonical Array<{name, version, mountPath}>
-  // shape; empty payloads (null, []) collapse to NULL so "no artifacts" has
-  // a single on-disk representation.
-  const rawPayload = request.artifactSnapshots ?? null;
-  const artifactSnapshotsForDb = isEmptyArtifactPayload(rawPayload)
-    ? null
-    : decodeToContextArtifacts(rawPayload);
-
-  const snapshotFields = {
-    agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
-      string,
-      unknown
-    >,
-    artifactSnapshots: artifactSnapshotsForDb,
-    volumeVersionsSnapshot: enrichedVolumeSnapshot as unknown as Record<
-      string,
-      unknown
-    > | null,
-  };
-
   const { conversation, checkpoint, agentSession } =
     await globalThis.services.db.transaction(async (tx) => {
+      // Serialize checkpoint writes with terminal status transitions for this
+      // run. Without this lock, two late checkpoint requests can both observe
+      // result=NULL, then the loser can overwrite the checkpoint row after the
+      // winner already published agent_runs.result.
+      const [run] = await tx
+        .select()
+        .from(agentRuns)
+        .where(
+          and(eq(agentRuns.id, request.runId), eq(agentRuns.userId, userId)),
+        )
+        .for("update")
+        .limit(1);
+
+      if (!run) {
+        throw notFound("Agent run not found");
+      }
+
+      if (isCheckpointResumableRunStatus(run.status) && run.result !== null) {
+        const [checkpoint] = await tx
+          .select()
+          .from(checkpoints)
+          .where(eq(checkpoints.runId, request.runId))
+          .limit(1);
+        if (!checkpoint) {
+          throw notFound("Checkpoint not found for terminal run");
+        }
+
+        const [conversation] = await tx
+          .select()
+          .from(conversations)
+          .where(eq(conversations.id, checkpoint.conversationId))
+          .limit(1);
+        if (!conversation) {
+          throw notFound("Conversation not found for terminal run");
+        }
+
+        const [agentSession] = await tx
+          .select()
+          .from(agentSessions)
+          .where(eq(agentSessions.id, run.sessionId))
+          .limit(1);
+        if (!agentSession) {
+          throw notFound("AgentSession not found");
+        }
+
+        return { conversation, checkpoint, agentSession };
+      }
+
+      // agentComposeVersionId may be null if agent was deleted (historical
+      // runs) but during active run execution it should always be present.
+      if (!run.agentComposeVersionId) {
+        throw notFound(
+          "Agent compose version not found (agent may have been deleted)",
+        );
+      }
+
+      log.debug(
+        `Creating conversation record for CLI agent: ${request.cliAgentType}`,
+      );
+
+      // Build agent compose snapshot using version ID for reproducibility.
+      // Environment is re-expanded from vars/secrets on resume.
+      // Note: secrets values are NEVER stored - only names for validation.
+      const agentComposeSnapshot: AgentComposeSnapshot = {
+        agentComposeVersionId: run.agentComposeVersionId,
+        vars: (run.vars as Record<string, string>) || undefined,
+        secretNames: (run.secretNames as string[]) || undefined,
+      };
+
+      // Enrich volume versions snapshot with additional volumes from run
+      // record.
+      const runAdditionalVolumes = run.additionalVolumes as Array<{
+        name: string;
+        version?: string;
+        mountPath: string;
+      }> | null;
+
+      const enrichedVolumeSnapshot = request.volumeVersionsSnapshot
+        ? {
+            versions: request.volumeVersionsSnapshot.versions,
+            ...(runAdditionalVolumes && runAdditionalVolumes.length > 0
+              ? {
+                  additionalVolumes: runAdditionalVolumes.map((vol) => {
+                    const versionId =
+                      request.volumeVersionsSnapshot!.versions[vol.name] ??
+                      vol.version;
+                    if (!versionId) {
+                      log.warn(
+                        `Additional volume "${vol.name}" has no resolved version from runner and no version specified at run time, defaulting to "latest"`,
+                      );
+                    }
+                    return {
+                      name: vol.name,
+                      versionId: versionId ?? "latest",
+                      mountPath: vol.mountPath,
+                    };
+                  }),
+                }
+              : {}),
+          }
+        : null;
+
+      // Normalise the artifactSnapshots payload before persisting. The webhook
+      // contract now only accepts the canonical Array<{name, version,
+      // mountPath}> shape; empty payloads (null, []) collapse to NULL so "no
+      // artifacts" has a single on-disk representation.
+      const rawPayload = request.artifactSnapshots ?? null;
+      const artifactSnapshotsForDb = isEmptyArtifactPayload(rawPayload)
+        ? null
+        : decodeToContextArtifacts(rawPayload);
+
+      const snapshotFields = {
+        agentComposeSnapshot: agentComposeSnapshot as unknown as Record<
+          string,
+          unknown
+        >,
+        artifactSnapshots: artifactSnapshotsForDb,
+        volumeVersionsSnapshot: enrichedVolumeSnapshot as unknown as Record<
+          string,
+          unknown
+        > | null,
+      };
+
       // Upsert conversation, checkpoint, and session link together. A failed
       // session update must not leave a checkpoint row that normal sessionId
       // continuation cannot discover.
@@ -225,17 +266,19 @@ export async function createCheckpoint(
   log.debug(`Checkpoint created successfully: ${checkpoint.id}`);
   log.debug(`Agent session updated/created: ${agentSession.id}`);
 
-  const volumeSnapshot = request.volumeVersionsSnapshot as
-    | VolumeVersionsSnapshot
-    | undefined;
+  const volumeSnapshot =
+    checkpoint.volumeVersionsSnapshot as VolumeVersionsSnapshot | null;
 
-  // Use volume versions from snapshot for return value
+  // Use persisted volume versions for return value.
   const volumes = volumeSnapshot?.versions;
 
   // Echo back the persisted canonical shape. The webhook contract requires
   // `version` on every entry, so the undefined-branch assertion guards
   // against a ContextArtifact leaking in from a non-webhook caller.
-  const responseArtifacts = artifactSnapshotsForDb?.map((entry) => {
+  const responseArtifactsRaw = decodeToContextArtifacts(
+    checkpoint.artifactSnapshots,
+  );
+  const responseArtifacts = responseArtifactsRaw.map((entry) => {
     if (entry.version === undefined) {
       throw new Error(
         `Invalid checkpoint: artifact "${entry.name}" missing version after normalisation`,
@@ -252,7 +295,7 @@ export async function createCheckpoint(
     checkpointId: checkpoint.id,
     agentSessionId: agentSession.id,
     conversationId: conversation.id,
-    artifacts: responseArtifacts,
+    artifacts: responseArtifacts.length > 0 ? responseArtifacts : undefined,
     volumes,
   };
 }

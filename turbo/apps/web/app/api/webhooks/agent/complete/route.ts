@@ -8,7 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import {
   transitionRunStatus,
   dispatchTerminalSideEffects,
@@ -232,15 +232,12 @@ const router = tsr.router(webhookCompleteContract, {
       // Also accept "timeout" so the sandbox's own exit-code-based error
       // (with the report-error link) supersedes a stale "Run timed out
       // (no heartbeat)" stamped earlier by the cleanup cron.
-      const result = await buildRunResultForRun(body.runId);
-      finalResult = result;
       const transitioned = await transitionRunStatus(
         body.runId,
         {
           status: "failed",
           completedAt: new Date(),
           error: errorMessage,
-          ...(result ? { result } : {}),
           sandboxId: body.sandboxId,
           sandboxReuseResult: body.sandboxReuseResult,
         },
@@ -257,6 +254,20 @@ const router = tsr.router(webhookCompleteContract, {
         };
       }
 
+      const result = await buildRunResultForRun(body.runId);
+      if (result) {
+        finalResult = result;
+        await globalThis.services.db
+          .update(agentRuns)
+          .set({ result })
+          .where(
+            and(
+              eq(agentRuns.id, body.runId),
+              eq(agentRuns.status, "failed"),
+              isNull(agentRuns.result),
+            ),
+          );
+      }
       await publishRunChangedForUserSafely(run.userId, body.runId, {
         status: "failed",
       });
