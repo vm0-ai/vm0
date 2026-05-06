@@ -2776,6 +2776,30 @@ class TestResponseUsageReporting:
         assert "stream_buffer_state" not in flow.metadata
         assert "x_json_response_finish" not in flow.metadata
 
+    def test_response_without_run_id_releases_sse_streaming_state(self, real_flow):
+        """Early-returning SSE flows should not retain parser closures."""
+        flow = real_flow(with_response=False, host="api.openai.com")
+        flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["firewall_billable"] = True
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "text/event-stream"}),
+        )
+
+        mitm_addon.responseheaders(flow)
+        flow.response.stream(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5","usage":{"output_tokens":7}}}\n'
+        )
+        assert "model_sse_usage_finish" in flow.metadata
+
+        mitm_addon.response(flow)
+
+        assert flow.response.stream is False
+        assert "stream_buffer" not in flow.metadata
+        assert "stream_buffer_state" not in flow.metadata
+        assert "model_sse_usage_finish" not in flow.metadata
+
     def test_response_does_not_clear_external_stream_callback(self, tmp_path, real_flow, mitm_ctx):
         """Cleanup should only reset the stream callback installed by this addon."""
         flow = real_flow(with_response=False, host="api.example.com")
