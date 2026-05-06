@@ -263,7 +263,7 @@ impl ProcessMonitorHandle {
 struct SandboxRuntimeHandles {
     process: Option<ProcessMonitorHandle>,
     control: Option<control::ControlServerHandle>,
-    balloon: Option<tokio::task::JoinHandle<()>>,
+    balloon: Option<balloon::ControllerHandle>,
 }
 
 impl SandboxRuntimeHandles {
@@ -275,11 +275,11 @@ impl SandboxRuntimeHandles {
         self.control = Some(control);
     }
 
-    fn set_balloon(&mut self, balloon: tokio::task::JoinHandle<()>) {
+    fn set_balloon(&mut self, balloon: balloon::ControllerHandle) {
         self.balloon = Some(balloon);
     }
 
-    fn balloon_mut(&mut self) -> &mut Option<tokio::task::JoinHandle<()>> {
+    fn balloon_mut(&mut self) -> &mut Option<balloon::ControllerHandle> {
         &mut self.balloon
     }
 
@@ -1526,7 +1526,7 @@ async fn wait_for_balloon(client: &ApiClient<'_>, target_mib: u32, log_id: &str)
 async fn park_inner(
     is_parked: &mut bool,
     memory_mb: u32,
-    balloon_controller: &mut Option<tokio::task::JoinHandle<()>>,
+    balloon_controller: &mut Option<balloon::ControllerHandle>,
     api_sock: &std::path::Path,
     log_id: &str,
 ) -> sandbox::Result<()> {
@@ -1553,9 +1553,8 @@ async fn park_inner(
         // failure handling is `stop_and_destroy_sandbox`, so the sandbox is
         // dropped (and Drop ensures any leftover handles are aborted) before
         // any further operations can observe the missing controller.
-        if let Some(h) = balloon_controller.take() {
-            h.abort();
-            let _ = h.await;
+        if let Some(controller) = balloon_controller.take() {
+            controller.abort_and_join().await;
         }
 
         client
@@ -1605,7 +1604,7 @@ async fn park_inner(
 async fn unpark_inner(
     is_parked: &mut bool,
     memory_mb: u32,
-    balloon_controller: &mut Option<tokio::task::JoinHandle<()>>,
+    balloon_controller: &mut Option<balloon::ControllerHandle>,
     api_sock: &std::path::Path,
     state_rx: watch::Receiver<SandboxState>,
     log_id: &str,
@@ -1642,14 +1641,13 @@ async fn unpark_inner(
         // (and the is_parked guard above ensures we entered exactly one
         // park→unpark transition). Loudly catch invariant violations in
         // debug, and defensively take+abort in release so a violated
-        // invariant doesn't silently leak the old task (dropping a
-        // JoinHandle detaches; it does not abort).
+        // invariant doesn't leave an unexpected controller running.
         debug_assert!(
             balloon_controller.is_none(),
             "controller slot must be None when entering unpark from a parked state",
         );
-        if let Some(h) = balloon_controller.take() {
-            h.abort();
+        if let Some(controller) = balloon_controller.take() {
+            controller.abort();
         }
 
         // Propagate deflate failure rather than swallow it. On a healthy
@@ -2620,13 +2618,17 @@ mod tests {
         reqs.iter().filter(|r| r.method == "PATCH").collect()
     }
 
+    fn test_balloon_controller() -> balloon::ControllerHandle {
+        balloon::ControllerHandle::from_task_for_test(tokio::spawn(async {
+            tokio::time::sleep(Duration::from_secs(3600)).await
+        }))
+    }
+
     #[tokio::test]
     async fn park_inflates_and_pauses() {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         park_inner(&mut is_parked, 2048, &mut controller, &sock, "test-park")
@@ -2654,9 +2656,7 @@ mod tests {
     async fn park_inflates_by_one_at_min_plus_one() {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         park_inner(
@@ -2685,8 +2685,7 @@ mod tests {
     async fn park_small_vm_skips_balloon_but_pauses_vcpus() {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
-        let original_controller: tokio::task::JoinHandle<()> =
-            tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
+        let original_controller = test_balloon_controller();
         let original_id = original_controller.id();
         let mut controller = Some(original_controller);
         let mut is_parked = false;
@@ -2721,7 +2720,7 @@ mod tests {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let mut is_parked = true;
-        let mut controller: Option<tokio::task::JoinHandle<()>> = None;
+        let mut controller: Option<balloon::ControllerHandle> = None;
         let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         unpark_inner(
@@ -2763,7 +2762,7 @@ mod tests {
             spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 400]), None).await;
 
         let mut is_parked = true;
-        let mut controller: Option<tokio::task::JoinHandle<()>> = None;
+        let mut controller: Option<balloon::ControllerHandle> = None;
         let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         let result = unpark_inner(
@@ -2795,8 +2794,7 @@ mod tests {
     async fn unpark_small_vm_skips_balloon_but_resumes_vcpus() {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
-        let original_controller: tokio::task::JoinHandle<()> =
-            tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
+        let original_controller = test_balloon_controller();
         let original_id = original_controller.id();
         let mut controller = Some(original_controller);
         let mut is_parked = true;
@@ -2832,9 +2830,7 @@ mod tests {
     async fn double_park_is_idempotent() {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         park_inner(&mut is_parked, 2048, &mut controller, &sock, "dp")
@@ -2859,7 +2855,7 @@ mod tests {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
         let mut is_parked = true;
-        let mut controller: Option<tokio::task::JoinHandle<()>> = None;
+        let mut controller: Option<balloon::ControllerHandle> = None;
         let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         unpark_inner(
@@ -2905,8 +2901,7 @@ mod tests {
     async fn unpark_without_park_is_noop() {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
-        let original_controller: tokio::task::JoinHandle<()> =
-            tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
+        let original_controller = test_balloon_controller();
         let original_id = original_controller.id();
         let mut controller = Some(original_controller);
         let mut is_parked = false;
@@ -2936,9 +2931,7 @@ mod tests {
     async fn park_unpark_park_cycle() {
         let (sock, reqs, _dir) = spawn_mock_fc_api(std::collections::VecDeque::new(), None).await;
 
-        let initial: tokio::task::JoinHandle<()> =
-            tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
-        let mut controller = Some(initial);
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
         let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
@@ -3006,9 +2999,7 @@ mod tests {
         let (sock, reqs, _dir) =
             spawn_mock_fc_api(std::collections::VecDeque::from(vec![400]), None).await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         let result = park_inner(
@@ -3052,9 +3043,7 @@ mod tests {
         let (sock, reqs, _dir) =
             spawn_mock_fc_api(std::collections::VecDeque::from(vec![400, 204, 204]), None).await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         let first = park_inner(&mut is_parked, 2048, &mut controller, &sock, "retry").await;
@@ -3085,7 +3074,7 @@ mod tests {
             spawn_mock_fc_api(std::collections::VecDeque::from(vec![500, 204, 204]), None).await;
 
         let mut is_parked = true;
-        let mut controller: Option<tokio::task::JoinHandle<()>> = None;
+        let mut controller: Option<balloon::ControllerHandle> = None;
         let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         let first = unpark_inner(
@@ -3137,9 +3126,7 @@ mod tests {
         let (sock, reqs, _dir) =
             spawn_mock_fc_api(std::collections::VecDeque::from(vec![204, 500]), None).await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         let result = park_inner(&mut is_parked, 2048, &mut controller, &sock, "pause-fail").await;
@@ -3163,7 +3150,7 @@ mod tests {
             spawn_mock_fc_api(std::collections::VecDeque::from(vec![500]), None).await;
 
         let mut is_parked = true;
-        let mut controller: Option<tokio::task::JoinHandle<()>> = None;
+        let mut controller: Option<balloon::ControllerHandle> = None;
         let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         let result = unpark_inner(
@@ -3198,7 +3185,7 @@ mod tests {
         .await;
 
         let mut is_parked = true;
-        let mut controller: Option<tokio::task::JoinHandle<()>> = None;
+        let mut controller: Option<balloon::ControllerHandle> = None;
         let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
 
         // First attempt: resume OK, deflate fails.
@@ -3257,9 +3244,7 @@ mod tests {
             actual_clone.store(1536, Ordering::Relaxed);
         });
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         park_inner(&mut is_parked, 2048, &mut controller, &sock, "wait-test")
@@ -3299,9 +3284,7 @@ mod tests {
         )
         .await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         park_inner(&mut is_parked, 4096, &mut controller, &sock, "near-test")
@@ -3336,9 +3319,7 @@ mod tests {
         )
         .await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         park_inner(
@@ -3382,9 +3363,7 @@ mod tests {
         )
         .await;
 
-        let mut controller: Option<tokio::task::JoinHandle<()>> = Some(tokio::spawn(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await
-        }));
+        let mut controller = Some(test_balloon_controller());
         let mut is_parked = false;
 
         park_inner(&mut is_parked, 2048, &mut controller, &sock, "timeout-test")
@@ -3422,8 +3401,7 @@ mod tests {
         let (sock, _reqs, _dir) =
             spawn_mock_fc_api(std::collections::VecDeque::from(vec![500]), None).await;
 
-        let original_controller: tokio::task::JoinHandle<()> =
-            tokio::spawn(async { tokio::time::sleep(Duration::from_secs(3600)).await });
+        let original_controller = test_balloon_controller();
         let original_id = original_controller.id();
         let mut controller = Some(original_controller);
         let mut is_parked = false;

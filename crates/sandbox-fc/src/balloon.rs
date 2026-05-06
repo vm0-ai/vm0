@@ -31,13 +31,67 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 /// 12 ticks × 5s = 60s.
 const STATUS_INTERVAL_TICKS: u64 = 12;
 
-/// Spawn the balloon controller loop. Returns a `JoinHandle` that can be aborted.
-pub fn spawn(
+pub(crate) struct ControllerHandle {
+    task: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl ControllerHandle {
+    fn spawn(api_sock: PathBuf, memory_mb: u32, state_rx: watch::Receiver<SandboxState>) -> Self {
+        Self {
+            task: Some(tokio::spawn(run_loop(api_sock, memory_mb, state_rx))),
+        }
+    }
+
+    pub(crate) fn abort(mut self) {
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+
+    pub(crate) async fn abort_and_join(mut self) {
+        if let Some(task) = self.task.take() {
+            task.abort();
+            let _ = task.await;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_task_for_test(task: tokio::task::JoinHandle<()>) -> Self {
+        Self { task: Some(task) }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn id(&self) -> tokio::task::Id {
+        self.task
+            .as_ref()
+            .expect("controller handle task must be present")
+            .id()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn wait_for_test(mut self) -> Result<(), tokio::task::JoinError> {
+        self.task
+            .take()
+            .expect("controller handle task must be present")
+            .await
+    }
+}
+
+impl Drop for ControllerHandle {
+    fn drop(&mut self) {
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
+/// Spawn the balloon controller loop.
+pub(crate) fn spawn(
     api_sock: PathBuf,
     memory_mb: u32,
     state_rx: watch::Receiver<SandboxState>,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(run_loop(api_sock, memory_mb, state_rx))
+) -> ControllerHandle {
+    ControllerHandle::spawn(api_sock, memory_mb, state_rx)
 }
 
 async fn run_loop(api_sock: PathBuf, memory_mb: u32, mut state_rx: watch::Receiver<SandboxState>) {
@@ -191,8 +245,25 @@ mod tests {
 
     const LIFECYCLE_TIMEOUT: Duration = Duration::from_secs(1);
 
+    struct DropNotify(Option<tokio::sync::oneshot::Sender<()>>);
+
+    impl Drop for DropNotify {
+        fn drop(&mut self) {
+            if let Some(sender) = self.0.take() {
+                let _ = sender.send(());
+            }
+        }
+    }
+
     async fn await_task_exit(handle: tokio::task::JoinHandle<()>, context: &str) {
         let result = tokio::time::timeout(LIFECYCLE_TIMEOUT, handle)
+            .await
+            .unwrap_or_else(|_| panic!("{context} did not exit within {LIFECYCLE_TIMEOUT:?}"));
+        result.unwrap_or_else(|e| panic!("{context} task failed: {e}"));
+    }
+
+    async fn await_controller_exit(handle: ControllerHandle, context: &str) {
+        let result = tokio::time::timeout(LIFECYCLE_TIMEOUT, handle.wait_for_test())
             .await
             .unwrap_or_else(|_| panic!("{context} did not exit within {LIFECYCLE_TIMEOUT:?}"));
         result.unwrap_or_else(|e| panic!("{context} task failed: {e}"));
@@ -274,6 +345,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn controller_handle_drop_aborts_task() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+        let handle = ControllerHandle::from_task_for_test(tokio::spawn(async move {
+            let _notify = DropNotify(Some(dropped_tx));
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        }));
+
+        tokio::time::timeout(LIFECYCLE_TIMEOUT, started_rx)
+            .await
+            .expect("controller task should start")
+            .expect("controller task start notification should be sent");
+        drop(handle);
+
+        tokio::time::timeout(LIFECYCLE_TIMEOUT, dropped_rx)
+            .await
+            .expect("controller task should be aborted when handle is dropped")
+            .expect("controller task drop notification should be sent");
+    }
+
+    #[tokio::test]
     async fn wait_for_crash_or_stop_returns_on_stopped() {
         let (state_tx, state_rx) = watch::channel(SandboxState::Running);
         state_tx.send(SandboxState::Stopped).unwrap();
@@ -335,7 +428,7 @@ mod tests {
             let (_state_tx, state_rx) = watch::channel(SandboxState::Running);
             let context = format!("small-memory balloon controller ({memory_mb} MiB)");
 
-            await_task_exit(spawn(sock_path, memory_mb, state_rx), &context).await;
+            await_controller_exit(spawn(sock_path, memory_mb, state_rx), &context).await;
         }
     }
 
@@ -346,7 +439,7 @@ mod tests {
 
         state_tx.send(state).unwrap();
         let context = format!("balloon controller after {state:?}");
-        await_task_exit(handle, &context).await;
+        await_controller_exit(handle, &context).await;
     }
 
     #[tokio::test]
