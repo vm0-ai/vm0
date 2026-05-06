@@ -24,7 +24,11 @@ async fn stuck_tool_reap_survives_stdout_eof_before_child_exit()
     // + sigkill grace (1s, unignorable) + slack.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(&masker, heartbeat),
+        guest_agent::cli::execute_cli(
+            &masker,
+            heartbeat,
+            guest_agent::http::HttpClient::new().unwrap(),
+        ),
     )
     .await
     .expect("execute_cli did not return within 15s - stdout EOF forced reap likely broken");

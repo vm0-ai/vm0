@@ -66,6 +66,12 @@ fn setup_env_once() {
 /// `/tmp/vm0-session-*.txt` files written by `extract_session_id`.
 static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+macro_rules! http_client {
+    () => {
+        guest_agent::http::HttpClient::new().unwrap()
+    };
+}
+
 /// Wipe the per-run session-id / history-path files so each test starts
 /// from a clean slate. `extract_session_id` is idempotent (first id wins),
 /// so leaving stale files would mask real failures.
@@ -109,7 +115,7 @@ async fn send_event_extracts_codex_thread_id_and_writes_marker() {
 
     // No API token → send_event skips the HTTP POST but still runs
     // extract_session_id, which is the part we want to assert.
-    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
     assert!(
         result.is_ok(),
         "send_event should succeed when no API token"
@@ -143,7 +149,7 @@ async fn send_event_codex_ignores_non_thread_started_event() {
 
     let masker = SecretMasker::from_raw("");
     let mut event = json!({"type": "turn.completed"});
-    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
     assert!(result.is_ok());
 
     assert!(
@@ -160,7 +166,7 @@ async fn send_event_codex_ignores_empty_thread_id() {
 
     let masker = SecretMasker::from_raw("");
     let mut event = json!({"type": "thread.started", "thread_id": ""});
-    let result = guest_agent::events::send_event(&mut event, 1, &masker).await;
+    let result = guest_agent::events::send_event(&http_client!(), &mut event, 1, &masker).await;
     assert!(result.is_ok());
 
     assert!(

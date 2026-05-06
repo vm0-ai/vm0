@@ -7,7 +7,7 @@ use crate::constants;
 use crate::env;
 use crate::env::Framework;
 use crate::error::AgentError;
-use crate::http;
+use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::urls;
@@ -21,6 +21,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// On the init event, extracts and persists the session ID and
 /// session history path.
 pub async fn send_event(
+    http: &HttpClient,
     event: &mut Value,
     seq: u32,
     masker: &SecretMasker,
@@ -28,7 +29,7 @@ pub async fn send_event(
     let Some(payload) = prepare_event(event, seq, masker) else {
         return Ok(());
     };
-    post_event(&payload).await
+    post_event(http, &payload).await
 }
 
 /// Prepare an event for sending: extract session ID, add sequence number,
@@ -62,8 +63,11 @@ pub fn prepare_event(event: &mut Value, seq: u32, masker: &SecretMasker) -> Opti
 }
 
 /// POST a prepared event payload to the webhook endpoint.
-pub async fn post_event(payload: &Value) -> Result<(), AgentError> {
-    match http::post_json(urls::events_url(), payload, constants::HTTP_MAX_RETRIES).await {
+pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
+    match http
+        .post_json(urls::events_url(), payload, constants::HTTP_MAX_RETRIES)
+        .await
+    {
         Ok(_) => Ok(()),
         Err(e) => {
             log_error!(LOG_TAG, "Failed to send event after retries");

@@ -34,7 +34,11 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
     let started = Instant::now();
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(&masker, heartbeat),
+        guest_agent::cli::execute_cli(
+            &masker,
+            heartbeat,
+            guest_agent::http::HttpClient::new().unwrap(),
+        ),
     )
     .await
     .expect("execute_cli did not return within 15s on the happy path");

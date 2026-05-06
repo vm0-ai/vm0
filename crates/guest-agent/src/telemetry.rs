@@ -13,7 +13,7 @@
 use crate::constants;
 use crate::env;
 use crate::error::AgentError;
-use crate::http;
+use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::urls;
@@ -140,7 +140,11 @@ fn save_position(pos_path: &str, pos: u64) {
 /// pre-checkpoint `flush(UploadMode::Live)`) must use `UploadMode::Live`
 /// so a later pass can safely pick up the tail once the producer
 /// completes the line.
-async fn upload_telemetry(masker: &SecretMasker, mode: UploadMode) -> Result<(), AgentError> {
+async fn upload_telemetry(
+    http: &HttpClient,
+    masker: &SecretMasker,
+    mode: UploadMode,
+) -> Result<(), AgentError> {
     // Read deltas
     let (system_log, log_pos) = read_file_delta(
         paths::system_log_file(),
@@ -178,7 +182,7 @@ async fn upload_telemetry(masker: &SecretMasker, mode: UploadMode) -> Result<(),
     });
 
     // Use 1 attempt for telemetry (non-critical, best-effort)
-    match http::post_json(urls::telemetry_url(), &payload, 1).await {
+    match http.post_json(urls::telemetry_url(), &payload, 1).await {
         Ok(_) => {
             save_position(paths::telemetry_system_log_pos_file(), log_pos);
             save_position(paths::telemetry_metrics_pos_file(), metrics_pos);
@@ -223,9 +227,9 @@ impl Telemetry {
     /// reintroducing the multi-writer race that the channel was built
     /// to eliminate (#11008). The type system can't enforce this — the
     /// constraint is the shared pos paths, not the channel.
-    pub fn spawn(masker: Arc<SecretMasker>) -> Self {
+    pub fn spawn(masker: Arc<SecretMasker>, http: HttpClient) -> Self {
         let (tx, rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
-        let handle = tokio::spawn(run(rx, masker));
+        let handle = tokio::spawn(run(rx, masker, http));
         Self { tx, handle }
     }
 
@@ -266,7 +270,7 @@ impl Telemetry {
 /// select boundary, so a caller-driven flush is never blocked behind a
 /// tick that hasn't started yet. (A tick already in its `await` cannot
 /// be preempted; the worst-case wait for a flush is one in-flight tick.)
-async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>) {
+async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>, http: HttpClient) {
     if !env::has_api() {
         // Drain commands so callers don't block on `reply_rx`. Flushes
         // are a no-op (no API to upload to); Shutdown ends the loop.
@@ -294,13 +298,13 @@ async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>) {
             biased;
             cmd = rx.recv() => match cmd {
                 Some(Cmd::Flush { mode, reply }) => {
-                    let result = upload_telemetry(&masker, mode).await;
+                    let result = upload_telemetry(&http, &masker, mode).await;
                     let _ = reply.send(result);
                 }
                 Some(Cmd::Shutdown) | None => break,
             },
             _ = interval.tick() => {
-                let _ = upload_telemetry(&masker, UploadMode::Live).await;
+                let _ = upload_telemetry(&http, &masker, UploadMode::Live).await;
             }
         }
     }

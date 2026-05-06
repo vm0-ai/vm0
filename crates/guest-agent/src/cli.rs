@@ -4,6 +4,7 @@ use crate::constants;
 use crate::env;
 use crate::error::AgentError;
 use crate::events;
+use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
@@ -360,6 +361,7 @@ pub struct CliExecutionResult {
 pub async fn execute_cli(
     masker: &SecretMasker,
     mut heartbeat_handle: tokio::task::JoinHandle<Result<(), AgentError>>,
+    http: HttpClient,
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting claude-code execution...");
 
@@ -478,10 +480,11 @@ pub async fn execute_cli(
     // stdout reading loop.  Unbounded channel because events are small
     // and CLI lifetime is bounded by JOB_TIMEOUT.
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
+    let event_http = http.clone();
     let event_sender = tokio::spawn(async move {
         let mut acked_prefix = AckedEventPrefix::default();
         while let Some(event) = event_rx.recv().await {
-            match events::post_event(&event.payload).await {
+            match events::post_event(&event_http, &event.payload).await {
                 Ok(()) => {
                     acked_prefix.record_success(event.sequence);
                 }

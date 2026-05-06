@@ -7,6 +7,7 @@ use guest_agent::complete;
 use guest_agent::env;
 use guest_agent::error;
 use guest_agent::heartbeat;
+use guest_agent::http::HttpClient;
 use guest_agent::masker;
 use guest_agent::metrics;
 use guest_agent::paths;
@@ -37,14 +38,31 @@ async fn run() -> i32 {
     if env::working_dir().is_empty() {
         log_error!(LOG_TAG, "Fatal: VM0_WORKING_DIR is required but not set");
         let masker = Arc::new(masker::SecretMasker::from_env());
-        let telemetry = Telemetry::spawn(masker);
+        let telemetry = match HttpClient::new() {
+            Ok(http) => Some(Telemetry::spawn(masker, http)),
+            Err(e) => {
+                log_error!(LOG_TAG, "Final telemetry unavailable: {e}");
+                None
+            }
+        };
         log_info!(LOG_TAG, "▷ Cleanup");
-        final_telemetry(&telemetry).await;
-        telemetry.shutdown().await;
+        if let Some(telemetry) = telemetry {
+            final_telemetry(&telemetry).await;
+            telemetry.shutdown().await;
+        }
         log_info!(LOG_TAG, "Background processes stopped");
         log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
         return 1;
     }
+
+    let http = match HttpClient::new() {
+        Ok(http) => http,
+        Err(e) => {
+            log_error!(LOG_TAG, "Fatal: {e}");
+            log_info!(LOG_TAG, "✗ Sandbox failed (exit code 1)");
+            return 1;
+        }
+    };
 
     // Lifecycle: Header
     log_info!(LOG_TAG, "▶ VM0 Sandbox {}", env::run_id());
@@ -61,7 +79,8 @@ async fn run() -> i32 {
     let t = Instant::now();
     let heartbeat_handle = tokio::spawn({
         let shutdown = shutdown.clone();
-        async move { heartbeat::heartbeat_loop(shutdown).await }
+        let http = http.clone();
+        async move { heartbeat::heartbeat_loop(http, shutdown).await }
     });
     log_info!(LOG_TAG, "Heartbeat started");
     record_sandbox_op("heartbeat_start", t.elapsed(), true, None);
@@ -75,7 +94,7 @@ async fn run() -> i32 {
     record_sandbox_op("metrics_collector_start", t.elapsed(), true, None);
 
     let t = Instant::now();
-    let telemetry = Telemetry::spawn(masker.clone());
+    let telemetry = Telemetry::spawn(masker.clone(), http.clone());
     log_info!(LOG_TAG, "Telemetry upload started");
     record_sandbox_op("telemetry_upload_start", t.elapsed(), true, None);
 
@@ -83,7 +102,7 @@ async fn run() -> i32 {
     // `execute` owns the final telemetry upload — on the success path it's run
     // in parallel with `checkpoint` so the ~1s upload doesn't serialize behind
     // the ~4s snapshot work.
-    let exit_code = execute(&masker, start, heartbeat_handle, &telemetry).await;
+    let exit_code = execute(&masker, start, heartbeat_handle, &telemetry, http).await;
 
     // Stop all background processes. Telemetry uses its own command
     // channel; `shutdown` only covers heartbeat/metrics.
@@ -108,6 +127,7 @@ async fn execute(
     start: Instant,
     heartbeat_handle: tokio::task::JoinHandle<Result<(), error::AgentError>>,
     telemetry: &Telemetry,
+    http: HttpClient,
 ) -> i32 {
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
@@ -155,32 +175,33 @@ async fn execute(
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
-    let (mut exit_code, error_message) = match cli::execute_cli(masker, heartbeat_handle).await {
-        Ok(cli_result) => {
-            last_event_sequence = cli_result.last_event_sequence;
-            let code = cli_result.exit_code;
-            if code != 0 {
-                let msg = if cli_result.stderr_lines.is_empty() {
-                    format!("Agent exited with code {code}")
+    let (mut exit_code, error_message) =
+        match cli::execute_cli(masker, heartbeat_handle, http.clone()).await {
+            Ok(cli_result) => {
+                last_event_sequence = cli_result.last_event_sequence;
+                let code = cli_result.exit_code;
+                if code != 0 {
+                    let msg = if cli_result.stderr_lines.is_empty() {
+                        format!("Agent exited with code {code}")
+                    } else {
+                        log_info!(
+                            LOG_TAG,
+                            "Captured {} stderr lines",
+                            cli_result.stderr_lines.len()
+                        );
+                        cli_result.stderr_lines.join(" ")
+                    };
+                    (code, msg)
                 } else {
-                    log_info!(
-                        LOG_TAG,
-                        "Captured {} stderr lines",
-                        cli_result.stderr_lines.len()
-                    );
-                    cli_result.stderr_lines.join(" ")
-                };
-                (code, msg)
-            } else {
-                (0, String::new())
+                    (0, String::new())
+                }
             }
-        }
-        Err(e) => {
-            let msg = e.to_string();
-            log_error!(LOG_TAG, "CLI execution failed: {msg}");
-            (1, msg)
-        }
-    };
+            Err(e) => {
+                let msg = e.to_string();
+                log_error!(LOG_TAG, "CLI execution failed: {msg}");
+                (1, msg)
+            }
+        };
     let cli_exit_code = exit_code;
     let cli_elapsed = cli_start.elapsed();
     record_sandbox_op(
@@ -219,7 +240,7 @@ async fn execute(
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
         let (cp_result, _) = tokio::join!(
-            checkpoint::create_checkpoint(),
+            checkpoint::create_checkpoint(&http),
             telemetry.flush(UploadMode::Live),
         );
         match cp_result {
@@ -246,6 +267,7 @@ async fn execute(
                 // returned.
                 log_info!(LOG_TAG, "▷ Cleanup");
                 complete::report_success(
+                    &http,
                     env::sandbox_id(),
                     env::sandbox_reuse_result(),
                     last_event_sequence,

@@ -6,7 +6,7 @@ use crate::content_hash;
 use crate::env;
 use crate::env::Framework;
 use crate::error::AgentError;
-use crate::http;
+use crate::http::HttpClient;
 use crate::paths;
 use crate::session_history;
 use crate::urls;
@@ -44,21 +44,23 @@ fn build_artifact_snapshot_entry(name: &str, version: &str, mount_path: &str) ->
 /// dedup). Telemetry is recorded under `session_history_prepare` and
 /// `session_history_s3_upload` to match the pre-parallelization op names.
 async fn upload_session_history(
+    http: &HttpClient,
     history_hash: &str,
     history_size: u64,
     history_bytes: Vec<u8>,
 ) -> Result<(), AgentError> {
     let prep_start = std::time::Instant::now();
-    let prep_resp = match http::post_json(
-        urls::checkpoint_prepare_history_url(),
-        &json!({
-            "runId": env::run_id(),
-            "hash": history_hash,
-            "size": history_size,
-        }),
-        constants::HTTP_MAX_RETRIES,
-    )
-    .await
+    let prep_resp = match http
+        .post_json(
+            urls::checkpoint_prepare_history_url(),
+            &json!({
+                "runId": env::run_id(),
+                "hash": history_hash,
+                "size": history_size,
+            }),
+            constants::HTTP_MAX_RETRIES,
+        )
+        .await
     {
         Ok(Some(v)) => {
             record_sandbox_op("session_history_prepare", prep_start.elapsed(), true, None);
@@ -97,12 +99,13 @@ async fn upload_session_history(
 
     log_info!(LOG_TAG, "Uploading session history to S3...");
     let upload_start = std::time::Instant::now();
-    if let Err(e) = http::put_presigned(
-        presigned_url,
-        Bytes::from(history_bytes),
-        "application/octet-stream",
-    )
-    .await
+    if let Err(e) = http
+        .put_presigned(
+            presigned_url,
+            Bytes::from(history_bytes),
+            "application/octet-stream",
+        )
+        .await
     {
         record_sandbox_op(
             "session_history_s3_upload",
@@ -126,7 +129,7 @@ async fn upload_session_history(
 /// post-#10602, so there is no longer a separate memory arm. Payload shape is
 /// `Array<{name, version, mountPath}>` per #10911 — the receiver tolerates the
 /// legacy `Record<name, version>` form too (#10919).
-async fn snapshot_artifacts() -> Result<Option<serde_json::Value>, AgentError> {
+async fn snapshot_artifacts(http: &HttpClient) -> Result<Option<serde_json::Value>, AgentError> {
     let entries = env::artifacts();
     if entries.is_empty() {
         log_info!(
@@ -181,14 +184,18 @@ async fn snapshot_artifacts() -> Result<Option<serde_json::Value>, AgentError> {
             "Creating VAS snapshot for artifact '{}'",
             entry.name
         );
+        let message = format!("Checkpoint from run {}", env::run_id());
         let snapshot = artifact::create_snapshot(
-            &entry.mount_path,
-            files,
-            &entry.name,
-            "artifact",
-            env::run_id(),
-            &format!("Checkpoint from run {}", env::run_id()),
-            &entry.version_id,
+            http,
+            artifact::CreateSnapshotRequest {
+                mount_path: &entry.mount_path,
+                files,
+                storage_name: &entry.name,
+                storage_type: "artifact",
+                run_id: env::run_id(),
+                message: &message,
+                parent_version_id: &entry.version_id,
+            },
         )
         .await?;
         log_info!(
@@ -207,14 +214,14 @@ async fn snapshot_artifacts() -> Result<Option<serde_json::Value>, AgentError> {
 }
 
 /// Create a checkpoint after a successful run.
-pub async fn create_checkpoint() -> Result<(), AgentError> {
+pub async fn create_checkpoint(http: &HttpClient) -> Result<(), AgentError> {
     let start = std::time::Instant::now();
-    let result = create_checkpoint_impl().await;
+    let result = create_checkpoint_impl(http).await;
     record_sandbox_op("checkpoint_total", start.elapsed(), result.is_ok(), None);
     result
 }
 
-async fn create_checkpoint_impl() -> Result<(), AgentError> {
+async fn create_checkpoint_impl(http: &HttpClient) -> Result<(), AgentError> {
     log_info!(LOG_TAG, "Creating checkpoint...");
 
     // Read session ID. Let `read_to_string` surface `NotFound` directly — an
@@ -307,8 +314,13 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
     let (_, artifact_snapshots) = tokio::try_join!(
-        upload_session_history(&history_hash, history_size, session_history.into_bytes()),
-        snapshot_artifacts(),
+        upload_session_history(
+            http,
+            &history_hash,
+            history_size,
+            session_history.into_bytes()
+        ),
+        snapshot_artifacts(http),
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
@@ -331,12 +343,13 @@ async fn create_checkpoint_impl() -> Result<(), AgentError> {
 
     log_info!(LOG_TAG, "Calling checkpoint API...");
     let api_start = std::time::Instant::now();
-    let result = match http::post_json(
-        urls::checkpoint_url(),
-        &payload,
-        constants::HTTP_MAX_RETRIES,
-    )
-    .await
+    let result = match http
+        .post_json(
+            urls::checkpoint_url(),
+            &payload,
+            constants::HTTP_MAX_RETRIES,
+        )
+        .await
     {
         Ok(v) => v,
         Err(e) => {

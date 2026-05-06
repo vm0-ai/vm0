@@ -11,7 +11,7 @@
 
 use crate::constants;
 use crate::error::AgentError;
-use crate::http;
+use crate::http::HttpClient;
 use crate::urls;
 use api_contracts::generated::types::webhooks::agent::storages::{
     commit as storage_commit, prepare as storage_prepare,
@@ -39,6 +39,16 @@ pub(crate) struct FileEntry {
 
 pub(crate) struct SnapshotResult {
     pub(crate) version_id: String,
+}
+
+pub(crate) struct CreateSnapshotRequest<'a> {
+    pub(crate) mount_path: &'a str,
+    pub(crate) files: Vec<FileEntry>,
+    pub(crate) storage_name: &'a str,
+    pub(crate) storage_type: &'a str,
+    pub(crate) run_id: &'a str,
+    pub(crate) message: &'a str,
+    pub(crate) parent_version_id: &'a str,
 }
 
 fn non_empty_string(value: &str) -> Option<String> {
@@ -91,14 +101,19 @@ pub(crate) async fn walk_files(mount_path: &str) -> Result<Vec<FileEntry>, Agent
 /// pre-walked file list (see [`walk_files`]) — this lets the checkpoint step
 /// share one walk between its skip-check fingerprint and the snapshot upload.
 pub(crate) async fn create_snapshot(
-    mount_path: &str,
-    files: Vec<FileEntry>,
-    storage_name: &str,
-    storage_type: &str,
-    run_id: &str,
-    message: &str,
-    parent_version_id: &str,
+    http: &HttpClient,
+    request: CreateSnapshotRequest<'_>,
 ) -> Result<SnapshotResult, AgentError> {
+    let CreateSnapshotRequest {
+        mount_path,
+        files,
+        storage_name,
+        storage_type,
+        run_id,
+        message,
+        parent_version_id,
+    } = request;
+
     log_info!(
         LOG_TAG,
         "Creating direct upload snapshot for '{storage_name}'"
@@ -118,12 +133,13 @@ pub(crate) async fn create_snapshot(
         changes: None,
     };
 
-    let prep_result = http::post_json(
-        urls::storage_prepare_url(),
-        &prep_payload,
-        constants::HTTP_MAX_RETRIES,
-    )
-    .await;
+    let prep_result = http
+        .post_json(
+            urls::storage_prepare_url(),
+            &prep_payload,
+            constants::HTTP_MAX_RETRIES,
+        )
+        .await;
     let prep_resp = match prep_result {
         Ok(Some(v)) => v,
         Ok(None) => {
@@ -208,12 +224,13 @@ pub(crate) async fn create_snapshot(
             files: to_commit_files(&files),
             message: None,
         };
-        let resp = http::post_json(
-            urls::storage_commit_url(),
-            &commit_payload,
-            constants::HTTP_MAX_RETRIES,
-        )
-        .await?;
+        let resp = http
+            .post_json(
+                urls::storage_commit_url(),
+                &commit_payload,
+                constants::HTTP_MAX_RETRIES,
+            )
+            .await?;
         let commit_success = resp
             .map(|v| {
                 serde_json::from_value::<storage_commit::Response>(v)
@@ -275,7 +292,9 @@ pub(crate) async fn create_snapshot(
     // Step 5: Upload to S3
     log_info!(LOG_TAG, "Uploading archive to S3...");
     let s3_start = std::time::Instant::now();
-    if let Err(e) = http::put_presigned_file(&archive_url, &archive_path, "application/gzip").await
+    if let Err(e) = http
+        .put_presigned_file(&archive_url, &archive_path, "application/gzip")
+        .await
     {
         record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
         return Err(e);
@@ -283,8 +302,9 @@ pub(crate) async fn create_snapshot(
 
     log_info!(LOG_TAG, "Uploading manifest to S3...");
     let manifest_data = tokio::fs::read(&manifest_path).await?;
-    if let Err(e) =
-        http::put_presigned(&manifest_url, manifest_data.into(), "application/json").await
+    if let Err(e) = http
+        .put_presigned(&manifest_url, manifest_data.into(), "application/json")
+        .await
     {
         record_sandbox_op("artifact_s3_upload", s3_start.elapsed(), false, None);
         return Err(e);
@@ -303,12 +323,13 @@ pub(crate) async fn create_snapshot(
         files: to_commit_files(&files),
         message: Some(message.to_string()),
     };
-    let resp = match http::post_json(
-        urls::storage_commit_url(),
-        &commit_payload,
-        constants::HTTP_MAX_RETRIES,
-    )
-    .await
+    let resp = match http
+        .post_json(
+            urls::storage_commit_url(),
+            &commit_payload,
+            constants::HTTP_MAX_RETRIES,
+        )
+        .await
     {
         Ok(v) => v,
         Err(e) => {
@@ -1226,14 +1247,18 @@ mod tests {
                 .json_body(serde_json::json!({ "success": true }));
         });
 
+        let http = HttpClient::new().unwrap();
         let result = create_snapshot(
-            root.to_str().unwrap(),
-            files,
-            "storage",
-            "artifact",
-            "run-id",
-            "message",
-            "",
+            &http,
+            CreateSnapshotRequest {
+                mount_path: root.to_str().unwrap(),
+                files,
+                storage_name: "storage",
+                storage_type: "artifact",
+                run_id: "run-id",
+                message: "message",
+                parent_version_id: "",
+            },
         )
         .await;
 

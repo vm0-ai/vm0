@@ -7,7 +7,7 @@
 use crate::constants;
 use crate::env;
 use crate::error::AgentError;
-use crate::http;
+use crate::http::HttpClient;
 use crate::urls;
 use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
@@ -23,12 +23,16 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 ///
 /// The caller should race this against CLI execution so that a network
 /// failure terminates the run early.
-pub async fn heartbeat_loop(shutdown: CancellationToken) -> Result<(), AgentError> {
-    heartbeat_loop_with_interval(shutdown, constants::HEARTBEAT_INTERVAL_SECS).await
+pub async fn heartbeat_loop(
+    http: HttpClient,
+    shutdown: CancellationToken,
+) -> Result<(), AgentError> {
+    heartbeat_loop_with_interval(http, shutdown, constants::HEARTBEAT_INTERVAL_SECS).await
 }
 
 /// Like [`heartbeat_loop`] but with a configurable interval (for testing).
 pub async fn heartbeat_loop_with_interval(
+    http: HttpClient,
     shutdown: CancellationToken,
     interval_secs: u64,
 ) -> Result<(), AgentError> {
@@ -47,7 +51,7 @@ pub async fn heartbeat_loop_with_interval(
             _ = shutdown.cancelled() => return Ok(()),
             _ = interval.tick() => {
                 let payload = json!({ "runId": env::run_id() });
-                match http::post_json(urls::heartbeat_url(), &payload, constants::HTTP_MAX_RETRIES).await {
+                match http.post_json(urls::heartbeat_url(), &payload, constants::HTTP_MAX_RETRIES).await {
                     Ok(_) => {
                         if is_first {
                             log_info!(LOG_TAG, "Heartbeat sent (initial)");
