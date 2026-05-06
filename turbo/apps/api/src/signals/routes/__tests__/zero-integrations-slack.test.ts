@@ -25,7 +25,7 @@ interface SlackFixture {
 }
 
 async function seedSlackFixture(
-  overrides: { orgRole?: "admin" | "member" } = {},
+  _overrides: { orgRole?: "admin" | "member" } = {},
 ): Promise<SlackFixture> {
   const userId = `user_${randomUUID()}`;
   const orgId = `org_${randomUUID()}`;
@@ -153,7 +153,7 @@ describe("GET /api/zero/integrations/slack", () => {
       [200],
     );
 
-    expect(response.body.isAdmin).toBe(false);
+    expect(response.body.isAdmin).toBeFalsy();
   });
 
   it("returns isConnected: false when user has no connection", async () => {
@@ -182,7 +182,7 @@ describe("GET /api/zero/integrations/slack", () => {
       [200],
     );
 
-    expect(response.body.isConnected).toBe(false);
+    expect(response.body.isConnected).toBeFalsy();
     expect(response.body.isInstalled).toBeTruthy();
     expect(response.body.isAdmin).toBeTruthy();
   });
