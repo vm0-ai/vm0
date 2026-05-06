@@ -201,6 +201,35 @@ interface GenerateWebVoiceResult {
   voice: string;
 }
 
+interface GenerateWebImageOptions {
+  prompt: string;
+  size?: string;
+  quality?: string;
+  background?: string;
+  outputFormat?: string;
+}
+
+interface GenerateWebImageResult {
+  id: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  url: string;
+  creditsCharged: number;
+  model: string;
+  imageSize: string;
+  quality: string;
+  background: string;
+  outputFormat: string;
+  revisedPrompt?: string;
+  usage: {
+    textInputTokens: number;
+    imageInputTokens: number;
+    imageOutputTokens: number;
+    totalTokens: number;
+  };
+}
+
 interface PrepareUploadResponse {
   id: string;
   filename: string;
@@ -384,4 +413,53 @@ export async function generateWebVoice(
   }
 
   return (await response.json()) as GenerateWebVoiceResult;
+}
+
+/**
+ * Generate a billed image from a prompt and receive the permanent /f URL.
+ * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Clerk session.
+ */
+export async function generateWebImage(
+  options: GenerateWebImageOptions,
+): Promise<GenerateWebImageResult> {
+  const baseUrl = await getBaseUrl();
+  const token = await getActiveToken();
+  if (!token) {
+    throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
+  }
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  if (bypassSecret) {
+    headers["x-vercel-protection-bypass"] = bypassSecret;
+  }
+
+  const response = await fetch(
+    new URL("/api/zero/image-io/generate", baseUrl),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        prompt: options.prompt,
+        ...(options.size ? { size: options.size } : {}),
+        ...(options.quality ? { quality: options.quality } : {}),
+        ...(options.background ? { background: options.background } : {}),
+        ...(options.outputFormat ? { outputFormat: options.outputFormat } : {}),
+      }),
+    },
+  );
+
+  if (!response.ok) {
+    const { message, code } = await parseErrorBody(
+      response,
+      "Failed to generate image",
+    );
+    throw new ApiRequestError(message, code, response.status);
+  }
+
+  return (await response.json()) as GenerateWebImageResult;
 }

@@ -210,6 +210,7 @@ export {
   findOrgPromoRedemption,
   findTestUsageEvent,
   findTestUsageEventsByRunId,
+  findTestRunlessUsageEventsByOrgProvider,
   findUsageDaily,
   findInsightsDaily,
 } from "./credits";

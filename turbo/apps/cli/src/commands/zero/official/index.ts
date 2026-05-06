@@ -9,5 +9,6 @@ export const zeroOfficialCommand = new Command()
     "after",
     `
 Examples:
+  Generate image:   zero official generate image --prompt "A watercolor fox"
   Generate speech:  zero official generate voice --text "Hello"`,
   );
