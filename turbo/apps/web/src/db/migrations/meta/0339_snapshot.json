@@ -1,6 +1,6 @@
 {
-  "id": "a0c86588-2621-4391-9e30-749d0770eccd",
-  "prevId": "2a9493f3-8ac8-4f59-bf9f-1825528eb1a4",
+  "id": "ea0b5cf8-8164-4cc8-8128-fc1cab9fa808",
+  "prevId": "a0c86588-2621-4391-9e30-749d0770eccd",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3730,6 +3730,18 @@
         "last_refresh_error_code": {
           "name": "last_refresh_error_code",
           "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "workspace_name": {
+          "name": "workspace_name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "plan_type": {
+          "name": "plan_type",
+          "type": "varchar(32)",
           "primaryKey": false,
           "notNull": false
         },

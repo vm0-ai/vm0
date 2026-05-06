@@ -3,7 +3,11 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { GET, POST } from "../route";
 import { DELETE } from "../[type]/route";
 import { POST as setDefaultPOST } from "../[type]/default/route";
-import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  setTestModelProviderNeedsReconnect,
+  ORG_SENTINEL_USER_ID,
+} from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
@@ -52,6 +56,8 @@ async function listProviders(): Promise<
     secretNames: string[] | null;
     isDefault: boolean;
     selectedModel: string | null;
+    needsReconnect: boolean;
+    lastRefreshErrorCode: string | null;
   }>
 > {
   const request = createTestRequest(listUrl());
@@ -449,14 +455,12 @@ describe("Org-level model provider routes", () => {
       await createProvider("anthropic-api-key", "sk-ant-test");
       const providers = await listProviders();
       expect(providers).toHaveLength(1);
-      const p = providers[0] as Record<string, unknown>;
-      expect(p.needsReconnect).toBe(false);
-      expect(p.lastRefreshErrorCode).toBeNull();
+      const p = providers[0];
+      expect(p?.needsReconnect).toBe(false);
+      expect(p?.lastRefreshErrorCode).toBeNull();
     });
 
     it("emits needsReconnect=true + lastRefreshErrorCode after firewall refresh failure", async () => {
-      const { setTestModelProviderNeedsReconnect, ORG_SENTINEL_USER_ID } =
-        await import("../../../../../src/__tests__/api-test-helpers");
       await createMultiAuthProvider("chatgpt-oauth-token", "oauth", {
         CHATGPT_ACCESS_TOKEN: "at",
         CHATGPT_REFRESH_TOKEN: "rt",
@@ -474,9 +478,10 @@ describe("Org-level model provider routes", () => {
       const providers = await listProviders();
       const stale = providers.find((p) => {
         return p.type === "chatgpt-oauth-token";
-      }) as Record<string, unknown>;
-      expect(stale.needsReconnect).toBe(true);
-      expect(stale.lastRefreshErrorCode).toBe("refresh_token_expired");
+      });
+      expect(stale).toBeDefined();
+      expect(stale?.needsReconnect).toBe(true);
+      expect(stale?.lastRefreshErrorCode).toBe("refresh_token_expired");
     });
   });
 });
