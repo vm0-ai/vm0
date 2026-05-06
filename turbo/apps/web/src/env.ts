@@ -62,6 +62,9 @@ function initEnv() {
       E2E_SLACK_MOCK_ENABLED: z.enum(["true", "false", "1", "0"]).optional(),
       TELEGRAM_API_URL: z.url().optional(),
       E2E_TELEGRAM_MOCK_ENABLED: z.enum(["true", "false", "1", "0"]).optional(),
+      TELEGRAM_OFFICIAL_BOT_TOKEN: z.string().min(1).optional(),
+      TELEGRAM_OFFICIAL_BOT_USERNAME: z.string().min(1).optional(),
+      TELEGRAM_OFFICIAL_WEBHOOK_SECRET: z.string().min(1).optional(),
       VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent compose/agent UUID for new integrations
       // Ahrefs OAuth (for connector)
       AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
@@ -314,6 +317,11 @@ function initEnv() {
       E2E_SLACK_MOCK_ENABLED: process.env.E2E_SLACK_MOCK_ENABLED,
       TELEGRAM_API_URL: process.env.TELEGRAM_API_URL,
       E2E_TELEGRAM_MOCK_ENABLED: process.env.E2E_TELEGRAM_MOCK_ENABLED,
+      TELEGRAM_OFFICIAL_BOT_TOKEN: process.env.TELEGRAM_OFFICIAL_BOT_TOKEN,
+      TELEGRAM_OFFICIAL_BOT_USERNAME:
+        process.env.TELEGRAM_OFFICIAL_BOT_USERNAME,
+      TELEGRAM_OFFICIAL_WEBHOOK_SECRET:
+        process.env.TELEGRAM_OFFICIAL_WEBHOOK_SECRET,
       VM0_DEFAULT_AGENT: process.env.VM0_DEFAULT_AGENT,
       AHREFS_OAUTH_CLIENT_ID: process.env.AHREFS_OAUTH_CLIENT_ID,
       AHREFS_OAUTH_CLIENT_SECRET: process.env.AHREFS_OAUTH_CLIENT_SECRET,

@@ -204,6 +204,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace the Invite people button in the agent chat page header with a New button that creates a new chat thread",
     enabled: false,
   },
+  [FeatureSwitchKey.OfficialTelegramBot]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show and enable the shared official Zero Telegram bot integration",
+    enabled: true,
+  },
   [FeatureSwitchKey.ChatManualHistory]: {
     maintainer: "linghan@vm0.ai",
     description:

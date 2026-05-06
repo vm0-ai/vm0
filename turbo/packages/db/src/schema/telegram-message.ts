@@ -1,5 +1,6 @@
 import {
   boolean,
+  check,
   integer,
   jsonb,
   pgTable,
@@ -10,7 +11,9 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { telegramInstallations } from "./telegram-installation";
+import { telegramOfficialUserLinks } from "./telegram-official-user-link";
 
 export interface TelegramMessageEntity {
   type: string;
@@ -38,14 +41,19 @@ export const telegramMessages = pgTable(
   "telegram_messages",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    installationId: varchar("installation_id", { length: 255 })
-      .notNull()
-      .references(
-        () => {
-          return telegramInstallations.telegramBotId;
-        },
-        { onDelete: "cascade" },
-      ),
+    installationId: varchar("installation_id", { length: 255 }).references(
+      () => {
+        return telegramInstallations.telegramBotId;
+      },
+      { onDelete: "cascade" },
+    ),
+    officialOrgId: text("official_org_id"),
+    officialUserLinkId: uuid("official_user_link_id").references(
+      () => {
+        return telegramOfficialUserLinks.id;
+      },
+      { onDelete: "set null" },
+    ),
     chatId: varchar("chat_id", { length: 255 }).notNull(),
     messageId: varchar("message_id", { length: 255 }).notNull(),
     fromUserId: varchar("from_user_id", { length: 255 }).notNull(),
@@ -68,18 +76,25 @@ export const telegramMessages = pgTable(
   (table) => {
     return [
       // Each message is unique per installation + chat + message ID
-      uniqueIndex("idx_telegram_messages_unique").on(
-        table.installationId,
-        table.chatId,
-        table.messageId,
-      ),
+      uniqueIndex("idx_telegram_messages_unique")
+        .on(table.installationId, table.chatId, table.messageId)
+        .where(sql`installation_id IS NOT NULL`),
+      uniqueIndex("idx_telegram_messages_official_unique")
+        .on(table.officialOrgId, table.chatId, table.messageId)
+        .where(sql`official_org_id IS NOT NULL`),
       // Index for context queries (recent messages in a chat)
-      index("idx_telegram_messages_chat").on(
-        table.installationId,
-        table.chatId,
-      ),
+      index("idx_telegram_messages_chat")
+        .on(table.installationId, table.chatId)
+        .where(sql`installation_id IS NOT NULL`),
+      index("idx_telegram_messages_official_chat")
+        .on(table.officialOrgId, table.chatId)
+        .where(sql`official_org_id IS NOT NULL`),
       // Index for 30-day cleanup cron
       index("idx_telegram_messages_created_at").on(table.createdAt),
+      check(
+        "chk_telegram_messages_one_owner",
+        sql`(installation_id IS NOT NULL) <> (official_org_id IS NOT NULL)`,
+      ),
     ];
   },
 );

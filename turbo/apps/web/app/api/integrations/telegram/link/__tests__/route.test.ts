@@ -1,6 +1,7 @@
 import { createHmac, createHash } from "node:crypto";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HttpResponse, http as mswHttp } from "msw";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { DELETE, GET, POST } from "../route";
 import {
   testContext,
@@ -11,19 +12,29 @@ import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
 import {
   createTestTelegramInstallation,
+  findTestOfficialTelegramUserLink,
+  findTestOfficialTelegramUserLinksByVm0UserId,
   findTestTelegramUserLinksByVm0UserId,
+  insertTestOfficialTelegramUserLink,
   insertTestTelegramUserLink,
   signTestConnectParams,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { signConnectParams } from "../../../../../../src/lib/zero/telegram/connect-token";
 import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
+import { reloadEnv } from "../../../../../../src/env";
 
 const TEST_BOT_TOKEN = "test-bot-token";
+const OFFICIAL_BOT_TOKEN = "777000:official-token";
+const OFFICIAL_BOT_USERNAME = "zero_vm0_bot";
 
 /**
  * Build valid Telegram Login Widget auth data signed with the test bot token.
  */
-function makeTelegramAuth(telegramUserId: number, username?: string) {
+function makeTelegramAuth(
+  telegramUserId: number,
+  username?: string,
+  botToken = TEST_BOT_TOKEN,
+) {
   const authDate = Math.floor(Date.now() / 1000);
   const fields: Record<string, string | number> = {
     auth_date: authDate,
@@ -41,7 +52,7 @@ function makeTelegramAuth(telegramUserId: number, username?: string) {
     })
     .join("\n");
 
-  const secretKey = createHash("sha256").update(TEST_BOT_TOKEN).digest();
+  const secretKey = createHash("sha256").update(botToken).digest();
   const hash = createHmac("sha256", secretKey)
     .update(checkString)
     .digest("hex");
@@ -83,6 +94,13 @@ function linkRequest(
         }
       : {}),
   });
+}
+
+function setupOfficialTelegramEnv() {
+  vi.stubEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
+  vi.stubEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", OFFICIAL_BOT_USERNAME);
+  vi.stubEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", "official-webhook-secret");
+  reloadEnv();
 }
 
 describe("/api/integrations/telegram/link", () => {
@@ -165,6 +183,7 @@ describe("/api/integrations/telegram/link", () => {
       expect(unlinkedData.installation).toEqual({
         id: unlinkedBotId,
         botUsername: `bot_${unlinkedBotId}`,
+        loginBotId: unlinkedBotId,
         domainConfigured: false,
       });
     });
@@ -191,7 +210,32 @@ describe("/api/integrations/telegram/link", () => {
       expect(data.installation).toEqual({
         id: installationId,
         botUsername: `bot_${telegramBotId}`,
+        loginBotId: installationId,
         domainConfigured: true,
+      });
+    });
+
+    it("returns official bot link status with the login bot id", async () => {
+      setupOfficialTelegramEnv();
+      await context.setupUser();
+
+      const response = await GET(
+        linkRequest("GET", undefined, {
+          botId: OFFICIAL_TELEGRAM_BOT_ID,
+          origin: "https://app.example.com/settings/telegram",
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data).toEqual({
+        linked: false,
+        installation: {
+          id: OFFICIAL_TELEGRAM_BOT_ID,
+          botUsername: OFFICIAL_BOT_USERNAME,
+          loginBotId: "777000",
+          domainConfigured: false,
+        },
       });
     });
 
@@ -297,6 +341,28 @@ describe("/api/integrations/telegram/link", () => {
         }),
       ).toStrictEqual([secondBotId]);
     });
+
+    it("deletes only the official link when botId=official", async () => {
+      setupOfficialTelegramEnv();
+      const user = await context.setupUser();
+      await insertTestOfficialTelegramUserLink({
+        telegramUserId: "99090",
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+      });
+
+      const response = await DELETE(
+        linkRequest("DELETE", undefined, {
+          botId: OFFICIAL_TELEGRAM_BOT_ID,
+        }),
+      );
+
+      expect(response.status).toBe(204);
+      const rows = await findTestOfficialTelegramUserLinksByVm0UserId(
+        user.userId,
+      );
+      expect(rows).toHaveLength(0);
+    });
   });
 
   describe("POST", () => {
@@ -381,6 +447,68 @@ describe("/api/integrations/telegram/link", () => {
       const userLinks = await findTestTelegramUserLinksByVm0UserId(user.userId);
       expect(userLinks[0]?.telegramUsername).toBe("ada_tg");
       expect(userLinks[0]?.telegramDisplayName).toBe("Test");
+    });
+
+    it("links the official bot account via telegramAuth", async () => {
+      setupOfficialTelegramEnv();
+      const user = await context.setupUser();
+      const telegramUserId = 99301;
+      const telegramAuth = makeTelegramAuth(
+        telegramUserId,
+        "official_tg",
+        OFFICIAL_BOT_TOKEN,
+      );
+
+      const response = await POST(
+        linkRequest("POST", {
+          telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          telegramAuth,
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data).toEqual({
+        botUsername: OFFICIAL_BOT_USERNAME,
+        telegramUserId: String(telegramUserId),
+      });
+
+      const officialLink = await findTestOfficialTelegramUserLink({
+        telegramUserId: String(telegramUserId),
+        orgId: user.orgId,
+      });
+
+      expect(officialLink?.vm0UserId).toBe(user.userId);
+      expect(officialLink?.telegramUsername).toBe("official_tg");
+      expect(officialLink?.telegramDisplayName).toBe("Test");
+    });
+
+    it("requires disconnect before moving an official Telegram user to another org", async () => {
+      setupOfficialTelegramEnv();
+      await context.setupUser();
+      const otherOrgId = uniqueId("org");
+      const telegramUserId = 99302;
+      await insertTestOfficialTelegramUserLink({
+        telegramUserId: String(telegramUserId),
+        vm0UserId: uniqueId("other-user"),
+        orgId: otherOrgId,
+      });
+
+      const response = await POST(
+        linkRequest("POST", {
+          telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          telegramAuth: makeTelegramAuth(
+            telegramUserId,
+            "official_tg",
+            OFFICIAL_BOT_TOKEN,
+          ),
+        }),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(409);
+      expect(data.error.code).toBe("CONFLICT");
+      expect(data.error.message).toContain("Disconnect it before connecting");
     });
 
     it("keeps an existing Telegram user link from being reassigned within the same bot", async () => {

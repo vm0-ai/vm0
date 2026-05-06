@@ -75,14 +75,56 @@ interface ThreadSessionLookup {
   lastProcessedMessageId: string | undefined;
 }
 
+type TelegramThreadSessionOwner =
+  | { kind: "custom"; userLinkId: string }
+  | { kind: "official"; userLinkId: string };
+
+export type TelegramMessageScope =
+  | string
+  | { kind: "custom"; installationId: string }
+  | { kind: "official"; orgId: string; userLinkId?: string | null };
+
+function normalizeThreadSessionOwner(
+  owner: string | TelegramThreadSessionOwner,
+): TelegramThreadSessionOwner {
+  if (typeof owner === "string") {
+    return { kind: "custom", userLinkId: owner };
+  }
+  return owner;
+}
+
+function normalizeTelegramMessageScope(scope: TelegramMessageScope):
+  | {
+      kind: "custom";
+      installationId: string;
+    }
+  | {
+      kind: "official";
+      orgId: string;
+      userLinkId: string | null;
+    } {
+  if (typeof scope === "string") {
+    return { kind: "custom", installationId: scope };
+  }
+  if (scope.kind === "custom") {
+    return scope;
+  }
+  return {
+    kind: "official",
+    orgId: scope.orgId,
+    userLinkId: scope.userLinkId ?? null,
+  };
+}
+
 /**
  * Look up an existing thread session by chat + rootMessageId + user link.
  */
 export async function lookupTelegramThreadSession(
   chatId: string,
   rootMessageId: string,
-  userLinkId: string,
+  owner: string | TelegramThreadSessionOwner,
 ): Promise<ThreadSessionLookup> {
+  const normalizedOwner = normalizeThreadSessionOwner(owner);
   const [session] = await globalThis.services.db
     .select({
       agentSessionId: telegramThreadSessions.agentSessionId,
@@ -91,7 +133,15 @@ export async function lookupTelegramThreadSession(
     .from(telegramThreadSessions)
     .where(
       and(
-        eq(telegramThreadSessions.telegramUserLinkId, userLinkId),
+        normalizedOwner.kind === "custom"
+          ? eq(
+              telegramThreadSessions.telegramUserLinkId,
+              normalizedOwner.userLinkId,
+            )
+          : eq(
+              telegramThreadSessions.telegramOfficialUserLinkId,
+              normalizedOwner.userLinkId,
+            ),
         eq(telegramThreadSessions.chatId, chatId),
         eq(telegramThreadSessions.rootMessageId, rootMessageId),
       ),
@@ -109,6 +159,7 @@ export async function lookupTelegramThreadSession(
  */
 export async function saveTelegramThreadSession(opts: {
   userLinkId: string;
+  userLinkKind?: "custom" | "official";
   chatId: string;
   rootMessageId: string;
   previousRootMessageId: string | undefined;
@@ -127,13 +178,16 @@ export async function saveTelegramThreadSession(opts: {
     messageId,
     runStatus,
   } = opts;
+  const userLinkKind = opts.userLinkKind ?? "custom";
 
   if (!existingSessionId && newSessionId) {
     // New thread — create mapping
     await globalThis.services.db
       .insert(telegramThreadSessions)
       .values({
-        telegramUserLinkId: userLinkId,
+        telegramUserLinkId: userLinkKind === "custom" ? userLinkId : null,
+        telegramOfficialUserLinkId:
+          userLinkKind === "official" ? userLinkId : null,
         chatId,
         rootMessageId,
         agentSessionId: newSessionId,
@@ -156,7 +210,9 @@ export async function saveTelegramThreadSession(opts: {
       })
       .where(
         and(
-          eq(telegramThreadSessions.telegramUserLinkId, userLinkId),
+          userLinkKind === "custom"
+            ? eq(telegramThreadSessions.telegramUserLinkId, userLinkId)
+            : eq(telegramThreadSessions.telegramOfficialUserLinkId, userLinkId),
           eq(telegramThreadSessions.chatId, chatId),
           eq(telegramThreadSessions.rootMessageId, matchRootMessageId),
         ),
@@ -170,17 +226,25 @@ export async function saveTelegramThreadSession(opts: {
  * Stores the text/caption, first supported attachment, and rich entities.
  */
 export async function storeTelegramMessage(
-  installationId: string,
+  scope: TelegramMessageScope,
   chatId: string,
   message: TelegramContextMessageInput,
 ): Promise<void> {
+  const normalizedScope = normalizeTelegramMessageScope(scope);
   const file = extractTelegramFileForContext(message);
   const entities = extractTelegramMessageEntities(message);
 
   await globalThis.services.db
     .insert(telegramMessages)
     .values({
-      installationId,
+      installationId:
+        normalizedScope.kind === "custom"
+          ? normalizedScope.installationId
+          : null,
+      officialOrgId:
+        normalizedScope.kind === "official" ? normalizedScope.orgId : null,
+      officialUserLinkId:
+        normalizedScope.kind === "official" ? normalizedScope.userLinkId : null,
       chatId,
       messageId: String(message.message_id),
       fromUserId: String(message.from?.id ?? 0),

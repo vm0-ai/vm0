@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { HttpResponse, http as mswHttp } from "msw";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { DELETE, GET, PATCH } from "../route";
 import {
   testContext,
@@ -13,8 +14,10 @@ import {
   createTelegramThreadSession,
   createTestTelegramInstallation,
   countTestTelegramMessages,
+  findTestTelegramUserAgentPreference,
   insertTelegramMessage,
   insertTestTelegramUserLink,
+  seedTestTelegramUserAgentPreference,
   telegramThreadSessionExists,
   telegramUserLinkExists,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -202,6 +205,30 @@ describe("/api/integrations/telegram/[botId]", () => {
       expect(data.isOwner).toBe(false);
       expect(data.isConnected).toBe(false);
     });
+
+    it("returns the official bot status", async () => {
+      await context.setupUser();
+
+      const response = await GET(
+        botRequest("GET"),
+        routeParams(OFFICIAL_TELEGRAM_BOT_ID),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data).toEqual(
+        expect.objectContaining({
+          id: OFFICIAL_TELEGRAM_BOT_ID,
+          kind: "official",
+          isOwner: false,
+          isConnected: false,
+          official: expect.objectContaining({
+            configured: false,
+            usesDefaultAgent: true,
+          }),
+        }),
+      );
+    });
   });
 
   describe("PATCH", () => {
@@ -337,6 +364,52 @@ describe("/api/integrations/telegram/[botId]", () => {
 
       expect(response.status).toBe(404);
       expect(data.error.code).toBe("NOT_FOUND");
+    });
+
+    it("updates the official bot agent preference for the current user and org", async () => {
+      const user = await context.setupUser();
+      const { composeId, name } = await createTestCompose(uniqueId("agent"));
+
+      const response = await PATCH(
+        botRequest("PATCH", { selectedAgentId: composeId }),
+        routeParams(OFFICIAL_TELEGRAM_BOT_ID),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.agent).toEqual({ id: composeId, name });
+      expect(data.official.usesDefaultAgent).toBe(false);
+
+      const preference = await findTestTelegramUserAgentPreference({
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+      });
+      expect(preference?.selectedComposeId).toBe(composeId);
+    });
+
+    it("clears the official bot agent preference when selectedAgentId is null", async () => {
+      const user = await context.setupUser();
+      const { composeId } = await createTestCompose(uniqueId("agent"));
+      await seedTestTelegramUserAgentPreference({
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+        selectedComposeId: composeId,
+      });
+
+      const response = await PATCH(
+        botRequest("PATCH", { selectedAgentId: null }),
+        routeParams(OFFICIAL_TELEGRAM_BOT_ID),
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.official.usesDefaultAgent).toBe(true);
+
+      const preference = await findTestTelegramUserAgentPreference({
+        vm0UserId: user.userId,
+        orgId: user.orgId,
+      });
+      expect(preference?.selectedComposeId).toBeNull();
     });
   });
 

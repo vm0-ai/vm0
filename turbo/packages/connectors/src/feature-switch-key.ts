@@ -37,6 +37,7 @@ export enum FeatureSwitchKey {
   AutoSkill = "autoSkill",
   TestOauthConnector = "testOauthConnector",
   ChatHeaderNewButton = "chatHeaderNewButton",
+  OfficialTelegramBot = "officialTelegramBot",
 
   ChatManualHistory = "chatManualHistory",
   ChatMessageStartButton = "chatMessageStartButton",

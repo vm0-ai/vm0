@@ -12,6 +12,8 @@ export {
   createTelegramPendingLinkInstallation,
   createTelegramCallbackInstallation,
   createTelegramThreadSession,
+  insertTestOfficialTelegramUserLink,
+  seedTestTelegramUserAgentPreference,
   signTestConnectParams,
 } from "../db-test-seeders/telegram";
 
@@ -21,6 +23,9 @@ export {
   countTelegramUserLinkRows,
   findTestTelegramUserLinksByVm0UserId,
   findTestTelegramInstallationsByOwner,
+  findTestOfficialTelegramUserLink,
+  findTestOfficialTelegramUserLinksByVm0UserId,
+  findTestTelegramUserAgentPreference,
   getTestTelegramBotToken,
   telegramUserLinkExists,
   telegramThreadSessionExists,

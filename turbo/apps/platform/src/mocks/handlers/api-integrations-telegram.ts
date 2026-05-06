@@ -53,12 +53,14 @@ let mockLinkStatus: TelegramLinkStatusResponse = { linked: false };
 function statusToBot(status: TelegramBotStatus): TelegramBot {
   return {
     id: status.id,
+    kind: status.kind,
     username: status.username,
     avatarUrl: status.avatarUrl,
     agent: status.agent,
     isOwner: status.isOwner,
     isConnected: status.isConnected,
     tokenStatus: status.tokenStatus,
+    official: status.official,
   };
 }
 
@@ -152,10 +154,25 @@ export const apiIntegrationsTelegramHandlers = [
           error: { message: "Telegram bot not found", code: "NOT_FOUND" },
         });
       }
-      const agent = { id: body.defaultAgentId, name: "default-agent" };
-      mockTelegramStatuses[status.id] = { ...status, agent };
+      const nextAgentId =
+        body.defaultAgentId ?? body.selectedAgentId ?? status.agent?.id;
+      const agent = nextAgentId
+        ? { id: nextAgentId, name: "default-agent" }
+        : status.agent;
+      mockTelegramStatuses[status.id] = {
+        ...status,
+        agent,
+        official: status.official
+          ? {
+              ...status.official,
+              usesDefaultAgent: body.selectedAgentId === null,
+            }
+          : status.official,
+      };
       mockTelegramList.bots = mockTelegramList.bots.map((bot) => {
-        return bot.id === status.id ? { ...bot, agent } : bot;
+        return bot.id === status.id
+          ? statusToBot(mockTelegramStatuses[status.id]!)
+          : bot;
       });
       return respond(200, mockTelegramStatuses[status.id]!);
     },

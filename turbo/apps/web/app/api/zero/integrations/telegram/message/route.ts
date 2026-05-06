@@ -15,6 +15,10 @@ import {
 } from "../../../../../../src/lib/zero/telegram/client";
 import { buildTelegramResponse } from "../../../../../../src/lib/zero/telegram/format";
 import { resolveTelegramMessageSendFooterText } from "../../../../../../src/lib/zero/telegram/footer";
+import {
+  getOfficialTelegramBotConfig,
+  isOfficialTelegramBotId,
+} from "../../../../../../src/lib/zero/telegram/official";
 import type {
   SendTelegramMessageBody,
   SendTelegramMessageResponse,
@@ -50,6 +54,10 @@ async function resolveTelegramBotToken(
   orgId: string,
   botId: string,
 ): Promise<string | null> {
+  if (isOfficialTelegramBotId(botId)) {
+    return getOfficialTelegramBotConfig().botToken;
+  }
+
   const [row] = await globalThis.services.db
     .select({ encryptedBotToken: telegramInstallations.encryptedBotToken })
     .from(telegramInstallations)

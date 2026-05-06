@@ -10,6 +10,8 @@ import {
 } from "./images";
 import type { TelegramClient } from "./client";
 import { logger } from "../../shared/logger";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "./official";
+import type { TelegramMessageScope } from "./handlers/shared";
 
 const log = logger("telegram:context");
 
@@ -42,6 +44,34 @@ interface TelegramContextMessage {
   messageId: string;
 }
 
+function normalizeTelegramContextScope(scope: TelegramMessageScope):
+  | {
+      kind: "custom";
+      installationId: string;
+      botId: string;
+    }
+  | {
+      kind: "official";
+      orgId: string;
+      botId: string;
+    } {
+  if (typeof scope === "string") {
+    return { kind: "custom", installationId: scope, botId: scope };
+  }
+  if (scope.kind === "custom") {
+    return {
+      kind: "custom",
+      installationId: scope.installationId,
+      botId: scope.installationId,
+    };
+  }
+  return {
+    kind: "official",
+    orgId: scope.orgId,
+    botId: OFFICIAL_TELEGRAM_BOT_ID,
+  };
+}
+
 /**
  * Fetch recent Telegram messages for a chat and build execution context.
  *
@@ -53,12 +83,13 @@ interface TelegramContextMessage {
  * @returns executionContext (only new messages, with file references)
  */
 export async function fetchTelegramContext(
-  installationId: string,
+  scope: TelegramMessageScope,
   chatId: string,
   lastProcessedMessageId?: string,
   _client?: TelegramClient,
   currentMessageId?: string,
 ): Promise<{ executionContext: string }> {
+  const normalizedScope = normalizeTelegramContextScope(scope);
   const messages = await globalThis.services.db
     .select({
       fromUsername: telegramMessages.fromUsername,
@@ -80,7 +111,9 @@ export async function fetchTelegramContext(
     .from(telegramMessages)
     .where(
       and(
-        eq(telegramMessages.installationId, installationId),
+        normalizedScope.kind === "custom"
+          ? eq(telegramMessages.installationId, normalizedScope.installationId)
+          : eq(telegramMessages.officialOrgId, normalizedScope.orgId),
         eq(telegramMessages.chatId, chatId),
       ),
     )
@@ -108,7 +141,7 @@ export async function fetchTelegramContext(
   // Execution context: include image references for on-demand CLI download.
   const executionContext =
     executionMessages.length > 0
-      ? formatContextForAgent(executionMessages, installationId)
+      ? formatContextForAgent(executionMessages, normalizedScope.botId)
       : "";
 
   return { executionContext };

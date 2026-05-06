@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { HttpResponse } from "msw";
+import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { GET } from "../route";
 import {
   testContext,
@@ -56,14 +57,21 @@ describe("/api/integrations/telegram", () => {
       expect(data.error.code).toBe("UNAUTHORIZED");
     });
 
-    it("returns an empty list when the active org has no Telegram bots", async () => {
+    it("returns the official bot when the active org has no custom Telegram bots", async () => {
       await context.setupUser();
 
       const response = await GET(telegramRequest());
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data).toEqual({ bots: [] });
+      expect(data.bots).toEqual([
+        expect.objectContaining({
+          id: OFFICIAL_TELEGRAM_BOT_ID,
+          kind: "official",
+          isOwner: false,
+          isConnected: false,
+        }),
+      ]);
     });
 
     it("returns all bots in the active org", async () => {
@@ -87,9 +95,13 @@ describe("/api/integrations/telegram", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.bots).toHaveLength(2);
+      expect(data.bots).toHaveLength(3);
       expect(data.bots).toEqual(
         expect.arrayContaining([
+          expect.objectContaining({
+            id: OFFICIAL_TELEGRAM_BOT_ID,
+            kind: "official",
+          }),
           expect.objectContaining({
             id: firstBotId,
             username: `bot_${firstBotId}`,
@@ -131,13 +143,19 @@ describe("/api/integrations/telegram", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.bots).toEqual([
-        expect.objectContaining({
-          id: botId,
-          isOwner: false,
-          isConnected: false,
-        }),
-      ]);
+      expect(data.bots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: OFFICIAL_TELEGRAM_BOT_ID,
+            kind: "official",
+          }),
+          expect.objectContaining({
+            id: botId,
+            isOwner: false,
+            isConnected: false,
+          }),
+        ]),
+      );
     });
 
     it("excludes owned bots from other orgs", async () => {
@@ -151,7 +169,12 @@ describe("/api/integrations/telegram", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data).toEqual({ bots: [] });
+      expect(data.bots).toEqual([
+        expect.objectContaining({
+          id: OFFICIAL_TELEGRAM_BOT_ID,
+          kind: "official",
+        }),
+      ]);
     });
 
     it("marks org bots as connected when the user is linked but not the owner", async () => {
@@ -170,13 +193,19 @@ describe("/api/integrations/telegram", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.bots).toEqual([
-        expect.objectContaining({
-          id: botId,
-          isOwner: false,
-          isConnected: true,
-        }),
-      ]);
+      expect(data.bots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: OFFICIAL_TELEGRAM_BOT_ID,
+            kind: "official",
+          }),
+          expect.objectContaining({
+            id: botId,
+            isOwner: false,
+            isConnected: true,
+          }),
+        ]),
+      );
     });
 
     it("marks a bot token invalid when Telegram rejects the stored token", async () => {
@@ -192,12 +221,18 @@ describe("/api/integrations/telegram", () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.bots).toEqual([
-        expect.objectContaining({
-          id: botId,
-          tokenStatus: "invalid",
-        }),
-      ]);
+      expect(data.bots).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: OFFICIAL_TELEGRAM_BOT_ID,
+            kind: "official",
+          }),
+          expect.objectContaining({
+            id: botId,
+            tokenStatus: "invalid",
+          }),
+        ]),
+      );
     });
   });
 });

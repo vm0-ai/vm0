@@ -2,6 +2,8 @@ import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { decryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
@@ -36,6 +38,51 @@ export async function findTestTelegramUserLinksByVm0UserId(vm0UserId: string) {
     .select()
     .from(telegramUserLinks)
     .where(eq(telegramUserLinks.vm0UserId, vm0UserId));
+}
+
+export async function findTestOfficialTelegramUserLinksByVm0UserId(
+  vm0UserId: string,
+) {
+  return globalThis.services.db
+    .select()
+    .from(telegramOfficialUserLinks)
+    .where(eq(telegramOfficialUserLinks.vm0UserId, vm0UserId));
+}
+
+export async function findTestOfficialTelegramUserLink(params: {
+  telegramUserId: string;
+  orgId: string;
+}) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(telegramOfficialUserLinks)
+    .where(
+      and(
+        eq(telegramOfficialUserLinks.telegramUserId, params.telegramUserId),
+        eq(telegramOfficialUserLinks.orgId, params.orgId),
+      ),
+    )
+    .limit(1);
+
+  return row;
+}
+
+export async function findTestTelegramUserAgentPreference(params: {
+  vm0UserId: string;
+  orgId: string;
+}) {
+  const [row] = await globalThis.services.db
+    .select()
+    .from(telegramUserAgentPreferences)
+    .where(
+      and(
+        eq(telegramUserAgentPreferences.vm0UserId, params.vm0UserId),
+        eq(telegramUserAgentPreferences.orgId, params.orgId),
+      ),
+    )
+    .limit(1);
+
+  return row;
 }
 
 /**
