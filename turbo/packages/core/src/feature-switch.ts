@@ -308,21 +308,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.IdbMessage]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Cache chat thread messages in IndexedDB for instant cold open. " +
-      "When off, every thread open fetches messages from the server.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.SkeletonNoPreload]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Hide the app skeleton without awaiting agents/avatar prefetch. " +
-      "When on, the skeleton hides as soon as the route resolves, " +
-      "letting components render with their own loading states.",
-    enabled: true,
-  },
   [FeatureSwitchKey.PersonalModelProvider]: {
     maintainer: "lancy@vm0.ai",
     description:

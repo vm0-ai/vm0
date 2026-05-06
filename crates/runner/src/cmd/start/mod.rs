@@ -752,7 +752,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             false
         };
         tokio::select! {
-            // Job discovery via provider (Ably push + poll).
+            // Job discovery via provider (Ably wakeups + HTTP poll).
             // The future is pinned outside the loop so heartbeat/cleanup
             // ticks don't cancel and restart its internal poll timer. See #8747.
             discovered = &mut discover_fut, if can_discover => {
@@ -845,9 +845,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     let teardown = TeardownTimer::start();
 
-    // Drop the pinned discover future so it releases the discovery Mutex.
-    // Without this, provider.shutdown() deadlocks trying to acquire the
-    // same Mutex that the still-alive discover_fut holds.
+    // Drop the pinned discover future before provider shutdown so any
+    // provider-local discovery resources are released first. This also keeps
+    // the historical shutdown-deadlock regression covered by mock providers.
     drop(discover_fut);
     teardown.event("drop_discover_fut");
 

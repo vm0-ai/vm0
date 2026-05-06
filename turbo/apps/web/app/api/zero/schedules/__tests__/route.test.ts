@@ -134,6 +134,120 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(data.schedule.name).toBe("agent-id-test");
   });
 
+  it("should default preferPersonalProvider to false when omitted", async () => {
+    const response = await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "no-prefer",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+        }),
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.schedule.preferPersonalProvider).toBe(false);
+  });
+
+  it("should round-trip preferPersonalProvider=true on deploy", async () => {
+    const response = await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "with-prefer",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+          preferPersonalProvider: true,
+        }),
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(data.schedule.preferPersonalProvider).toBe(true);
+  });
+
+  it("should preserve preferPersonalProvider on update without field", async () => {
+    await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "flip-prefer",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+          preferPersonalProvider: true,
+        }),
+      }),
+    );
+
+    // Re-deploy without the field — partial-update semantics preserve the
+    // previously persisted value (mirrors agent PUT/PATCH behaviour).
+    const response = await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "flip-prefer",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+        }),
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.schedule.preferPersonalProvider).toBe(true);
+  });
+
+  it("should clear preferPersonalProvider when explicitly set to false", async () => {
+    await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "explicit-clear-prefer",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+          preferPersonalProvider: true,
+        }),
+      }),
+    );
+
+    const response = await POST(
+      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: testZeroAgentId,
+          name: "explicit-clear-prefer",
+          cronExpression: "0 9 * * *",
+          timezone: "UTC",
+          prompt: "Test",
+          preferPersonalProvider: false,
+        }),
+      }),
+    );
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.schedule.preferPersonalProvider).toBe(false);
+  });
+
   it("should reject unauthenticated request", async () => {
     mockClerk({ userId: null });
 

@@ -34,6 +34,7 @@ interface SandboxAuthContext {
   readonly tokenType: "sandbox";
   readonly userId: string;
   readonly orgId: string;
+  readonly orgRole?: undefined;
   readonly runId: string;
 }
 

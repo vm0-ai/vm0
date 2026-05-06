@@ -76,6 +76,7 @@ function scheduleResponse(
     updatedAt: schedule.updatedAt.toISOString(),
     modelProviderId: schedule.modelProviderId ?? null,
     selectedModel: schedule.selectedModel ?? null,
+    preferPersonalProvider: schedule.preferPersonalProvider ?? false,
   };
 }
 

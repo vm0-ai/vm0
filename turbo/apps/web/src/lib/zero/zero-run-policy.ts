@@ -10,6 +10,8 @@ import {
   MODEL_PROVIDER_TYPES,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { validateFrameworkApiKey } from "../infra/run/utils";
 import { logger } from "../shared/logger";
@@ -21,7 +23,10 @@ import {
   getOrgAnyDefaultModelProvider,
   getOrgAnyDefaultModelProviderType,
   getModelProviderById,
+  getUserDefaultModelProvider,
+  getUserAnyDefaultModelProvider,
 } from "./model-provider/model-provider-service";
+import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import type { Database } from "../../types/global";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
@@ -139,16 +144,43 @@ export async function validateComposeRequirements(
 }
 
 /**
+ * Personal-tier eligibility at the admission boundary. Mirrors the resolver's
+ * gate (resolve-model-provider.ts) so admission and runtime apply the same
+ * (flag && switch on) check; duplicating the helper rather than sharing it
+ * is intentional — see Decision E in plan.md (Epic #11868).
+ */
+async function isPersonalTierEligibleForAdmission(
+  orgId: string,
+  userId: string,
+  preferPersonalProvider: boolean | undefined,
+): Promise<boolean> {
+  if (!preferPersonalProvider) return false;
+  const overrides = await loadFeatureSwitchOverrides(orgId, userId);
+  return isFeatureEnabled(FeatureSwitchKey.PersonalModelProvider, {
+    orgId,
+    userId,
+    overrides,
+  });
+}
+
+/**
  * Resolve the provider type that admission checks should treat as the
  * effective key source for this run. Precedence:
- *   explicit override → explicit modelProviderId → org default for compose
- *   framework → any org default (cross-framework fallback).
+ *   explicit override → explicit modelProviderId → personal-tier (gated) →
+ *   org default for compose framework → any org default (cross-framework
+ *   fallback).
  *
  * The cross-framework fallback implements Epic #11520's "provider's framework
  * wins" rule at the admission boundary: an org with only a codex provider
  * still admits a claude-code compose; the provider's framework propagates
  * downstream via `resolvedFramework` so dispatch launches the right binary.
- * Returns null only when the org has no `isDefault: true` provider at all.
+ *
+ * The personal-tier branch (Epic #11868) admits a user with only personal
+ * providers — without it admission would throw `noModelProvider()` even
+ * though the resolver downstream would have served them.
+ *
+ * Returns null only when the user has no personal tier (or it's gated off)
+ * AND the org has no `isDefault: true` provider at all.
  */
 export async function resolveProviderTypeForAdmission(params: {
   orgId: string;
@@ -156,6 +188,7 @@ export async function resolveProviderTypeForAdmission(params: {
   modelProvider?: string | null;
   modelProviderId?: string | null;
   composeFramework: string;
+  preferPersonalProvider?: boolean;
 }): Promise<ModelProviderType | null> {
   if (params.modelProvider && params.modelProvider in MODEL_PROVIDER_TYPES) {
     return params.modelProvider as ModelProviderType;
@@ -167,6 +200,20 @@ export async function resolveProviderTypeForAdmission(params: {
       params.modelProviderId,
     );
     return row?.type ?? null;
+  }
+  const personalEligible = await isPersonalTierEligibleForAdmission(
+    params.orgId,
+    params.userId,
+    params.preferPersonalProvider,
+  );
+  if (personalEligible) {
+    const userDef =
+      (await getUserDefaultModelProvider(
+        params.orgId,
+        params.userId,
+        params.composeFramework,
+      )) ?? (await getUserAnyDefaultModelProvider(params.orgId, params.userId));
+    if (userDef) return userDef.type;
   }
   const def =
     (await getOrgDefaultModelProvider(params.orgId, params.composeFramework)) ??
@@ -214,14 +261,23 @@ export async function checkOrgCreditsForRun(
 }
 
 /**
- * Pre-flight check: ensure the org has a model provider configured.
+ * Pre-flight check: ensure a model provider is configured.
+ *
  * Skips when compose has explicit env vars, an explicit modelProvider param
  * is provided, or the framework doesn't use model providers.
+ *
+ * When `preferPersonalProvider` is on AND the personal feature switch is
+ * enabled for the caller (Epic #11868), accepts a personal-tier provider
+ * before falling through to the org chain — without this the admission
+ * boundary would throw `noModelProvider()` for users who only have personal
+ * providers, even though the resolver downstream would have served them.
  */
 export async function checkModelProviderConfigured(
   orgId: string,
+  userId: string,
   modelProvider: string | null | undefined,
   composeContent: AgentComposeYaml,
+  preferPersonalProvider?: boolean,
 ): Promise<void> {
   if (modelProvider) return;
 
@@ -234,6 +290,19 @@ export async function checkModelProviderConfigured(
     return firstAgent?.environment?.[v] !== undefined;
   });
   if (hasExplicitConfig) return;
+
+  if (
+    await isPersonalTierEligibleForAdmission(
+      orgId,
+      userId,
+      preferPersonalProvider,
+    )
+  ) {
+    const userType =
+      (await getUserDefaultModelProvider(orgId, userId, framework))?.type ??
+      (await getUserAnyDefaultModelProvider(orgId, userId))?.type;
+    if (userType) return;
+  }
 
   // Framework-scoped default first; fall back to any org default so a
   // codex-only org still admits a claude-code compose. Mirrors the

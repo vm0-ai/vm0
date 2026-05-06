@@ -14,7 +14,7 @@ import {
   setEditingScheduleId$,
   openEditScheduleDialog$,
   togglingIds$,
-  setTogglingIds$,
+  toggleScheduleCardEnabled$,
   runningIds$,
   setRunningIds$,
   pendingDeleteEntry$,
@@ -282,7 +282,7 @@ export function ZeroScheduleCard({
   const setEditingScheduleId = useSet(setEditingScheduleId$);
   const openEditDialog = useSet(openEditScheduleDialog$);
   const togglingIds = useGet(togglingIds$);
-  const setTogglingIds = useSet(setTogglingIds$);
+  const toggleScheduleCardEnabled = useSet(toggleScheduleCardEnabled$);
 
   const editingEntry = editingScheduleId
     ? (scheduleList.find((e) => {
@@ -330,22 +330,16 @@ export function ZeroScheduleCard({
         if (entry.name === undefined) {
           return;
         }
-        const id = entry.id;
-        setTogglingIds((prev) => {
-          return new Set([...prev, id]);
-        });
         detach(
-          // TODO: for yuma@vm0.ai
-          // It looks like we are maintaining some temporary states within the View,
-          // which should be refactored into a CCState pattern.
-          // oxlint-disable-next-line promise/prefer-await-to-then
-          onToggleEnabled({ name: entry.name, enabled }).finally(() => {
-            setTogglingIds((prev) => {
-              const next = new Set(prev);
-              next.delete(id);
-              return next;
-            });
-          }),
+          toggleScheduleCardEnabled(
+            {
+              id: entry.id,
+              name: entry.name,
+              enabled,
+              onToggleEnabled,
+            },
+            signal,
+          ),
           Reason.DomCallback,
         );
       }

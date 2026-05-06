@@ -159,6 +159,7 @@ export async function createTestZeroAgent(
     permissionPolicies?: RawPermissionPolicies;
     modelProviderId?: string | null;
     selectedModel?: string | null;
+    preferPersonalProvider?: boolean;
   },
 ): Promise<void> {
   initServices();
@@ -187,6 +188,7 @@ export async function createTestZeroAgent(
       permissionPolicies: metadata.permissionPolicies ?? null,
       modelProviderId: metadata.modelProviderId ?? null,
       selectedModel: metadata.selectedModel ?? null,
+      preferPersonalProvider: metadata.preferPersonalProvider ?? false,
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
@@ -197,6 +199,7 @@ export async function createTestZeroAgent(
         permissionPolicies: metadata.permissionPolicies ?? null,
         modelProviderId: metadata.modelProviderId ?? null,
         selectedModel: metadata.selectedModel ?? null,
+        preferPersonalProvider: metadata.preferPersonalProvider ?? false,
       },
     });
 }
@@ -257,6 +260,25 @@ export async function setTestZeroAgentModelProvider(
   await globalThis.services.db
     .update(zeroAgents)
     .set({ modelProviderId, selectedModel })
+    .where(eq(zeroAgents.id, agentId));
+}
+
+/**
+ * Flip the `prefer_personal_provider` flag on a zero_agents row directly.
+ * Used by tests that need to exercise the personal-tier resolver branch
+ * (#11899) without going through the agent edit API.
+ *
+ * @why-db-direct The agent UI for this flag isn't implemented yet (Wave 3
+ * of Epic #11868); tests need a direct setter to verify runtime plumbing.
+ */
+export async function setTestZeroAgentPreferPersonalProvider(
+  agentId: string,
+  preferPersonalProvider: boolean,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(zeroAgents)
+    .set({ preferPersonalProvider })
     .where(eq(zeroAgents.id, agentId));
 }
 

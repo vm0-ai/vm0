@@ -30,6 +30,7 @@ export const zeroAgentResponseSchema = z.object({
   customSkills: z.array(z.string()).default([]),
   modelProviderId: z.string().uuid().nullable().default(null),
   selectedModel: z.string().nullable().default(null),
+  preferPersonalProvider: z.boolean().default(false),
 });
 
 /**
@@ -43,6 +44,7 @@ export const zeroAgentRequestSchema = z.object({
   customSkills: z.array(zeroAgentCustomSkillNameSchema).optional(),
   modelProviderId: z.string().uuid().nullable().optional(),
   selectedModel: z.string().nullable().optional(),
+  preferPersonalProvider: z.boolean().optional(),
 });
 
 /**
@@ -55,6 +57,7 @@ export const zeroAgentMetadataRequestSchema = z.object({
   avatarUrl: z.string().nullable().optional(),
   modelProviderId: z.string().uuid().nullable().optional(),
   selectedModel: z.string().nullable().optional(),
+  preferPersonalProvider: z.boolean().optional(),
 });
 
 /**

@@ -118,6 +118,7 @@ type ChatThreadRow = {
   readonly modelProviderId: string | null;
   readonly selectedModel: string | null;
   readonly lastReadMessageId: string | null;
+  readonly renamedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 };
@@ -224,6 +225,7 @@ function ownedChatThread(
       modelProviderId: thread.modelProviderId ?? null,
       selectedModel: thread.selectedModel ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
+      renamedAt: thread.renamedAt ?? null,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
     };
@@ -529,6 +531,7 @@ export function zeroChatThreadDetail(args: {
         : null,
       modelProviderId: thread.modelProviderId,
       selectedModel: thread.selectedModel,
+      renamedAt: thread.renamedAt?.toISOString() ?? null,
     };
   });
 }
@@ -570,6 +573,8 @@ export function zeroChatThreadList(args: {
         agentAvatarUrl: zeroAgents.avatarUrl,
         createdAt: chatThreads.createdAt,
         updatedAt: chatThreads.updatedAt,
+        pinnedAt: chatThreads.pinnedAt,
+        renamedAt: chatThreads.renamedAt,
         isRead: sql<boolean>`CASE
           WHEN ${lastMessage.id} IS NULL THEN true
           ELSE COALESCE(${chatThreads.lastReadMessageId} = ${lastMessage.id}, false)
@@ -618,6 +623,8 @@ export function zeroChatThreadList(args: {
         isArchived: thread.lastMessageArchivedAt !== null,
         running: thread.running,
         hasDraft: thread.hasDraft,
+        pinnedAt: thread.pinnedAt?.toISOString() ?? null,
+        renamedAt: thread.renamedAt?.toISOString() ?? null,
       };
     });
   });

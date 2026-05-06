@@ -114,6 +114,7 @@ export const apiAgentsHandlers = [
       customSkills: [],
       modelProviderId: null,
       selectedModel: null,
+      preferPersonalProvider: false,
     });
   }),
 

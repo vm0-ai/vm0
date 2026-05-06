@@ -50,6 +50,7 @@ const getSlackStatusInner$ = computed(async (get) => {
     zeroSlackOrgStatus({
       orgId: auth.orgId,
       userId: auth.userId,
+      orgRole: auth.orgRole,
     }),
   );
 

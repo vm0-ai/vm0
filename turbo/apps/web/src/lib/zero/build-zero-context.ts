@@ -138,6 +138,13 @@ interface BuildZeroContextParams {
   // Per-agent or per-schedule model provider override (by provider ID + model)
   modelProviderId?: string;
   selectedModelOverride?: string;
+  /**
+   * Personal-tier preference (Epic #11868). Threaded into the resolver so
+   * runs that resolve through agents/schedules with the flag set consult
+   * user-tier providers before the org default. Honored only when the
+   * `personalModelProvider` feature switch is on for the caller.
+   */
+  preferPersonalProvider?: boolean;
   // API start time for E2E timing metrics
   apiStartTime: number;
   // Per-permission policies from zero agent configuration (includes unknownPolicy).
@@ -173,6 +180,7 @@ async function resolveSecretsAndEnvironment(
   allowedCustomConnectorIds?: string[],
   modelProviderId?: string,
   selectedModelOverride?: string,
+  preferPersonalProvider?: boolean,
 ): Promise<{
   secrets: Record<string, string> | undefined;
   environment: Record<string, string> | undefined;
@@ -212,6 +220,7 @@ async function resolveSecretsAndEnvironment(
       modelProvider,
       modelProviderId,
       selectedModelOverride,
+      preferPersonalProvider,
     ),
     resolveOauthConnectorSecrets(orgId, userId, allowedConnectorTypes),
     getApiTokenConnectorTypes(orgId, userId),
@@ -385,6 +394,11 @@ interface ResolveCliRunContextParams {
   // Model provider selection
   modelProviderId?: string;
   selectedModelOverride?: string;
+  /**
+   * Personal-tier preference (Epic #11868). Mirrors `BuildZeroContextParams`
+   * — see that interface for full semantics.
+   */
+  preferPersonalProvider?: boolean;
 }
 
 /**
@@ -535,6 +549,7 @@ export async function resolveCliRunContext(
       params.allowedCustomConnectorIds,
       params.modelProviderId,
       params.selectedModelOverride,
+      params.preferPersonalProvider,
     ),
     getUserPreferences(params.orgId, params.userId),
     // Fetch previous run's model provider for compatibility check
@@ -703,6 +718,7 @@ export async function buildZeroExecutionContext(
       params.allowedCustomConnectorIds,
       params.modelProviderId,
       params.selectedModelOverride,
+      params.preferPersonalProvider,
     ),
     params.preloadedUserTimezone !== undefined
       ? Promise.resolve(null)

@@ -1,7 +1,6 @@
 import { command, computed } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { clerk$ } from "../auth.ts";
-import { idbMessageEnabled$ } from "../external/feature-switch.ts";
 import { writeThreadAgentId$ } from "../external/idb-thread-agent-store.ts";
 import {
   chatMessagesContract,
@@ -53,9 +52,6 @@ const writeThreadAgentToCache$ = command(
     agentId: string,
     signal: AbortSignal,
   ): Promise<void> => {
-    if (!(await get(idbMessageEnabled$))) {
-      return;
-    }
     signal.throwIfAborted();
     const clerk = await get(clerk$);
     signal.throwIfAborted();

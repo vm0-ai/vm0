@@ -1,11 +1,15 @@
 import { computed, type Computed } from "ccstate";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgCache } from "@vm0/db/schema/org-cache";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
 import { listConversations } from "../../lib/slack-client";
 import { decryptSecretValue } from "./crypto.utils";
+import type { ApiOrgRole } from "../../types/auth";
 
 interface SlackOrgStatusResult {
   readonly isConnected: boolean;
@@ -21,6 +25,7 @@ interface SlackOrgStatusResult {
 export function zeroSlackOrgStatus(args: {
   readonly orgId: string;
   readonly userId: string;
+  readonly orgRole?: ApiOrgRole;
 }): Computed<Promise<SlackOrgStatusResult>> {
   return computed(async (get) => {
     const db = get(db$);
@@ -31,16 +36,51 @@ export function zeroSlackOrgStatus(args: {
       .where(eq(slackOrgInstallations.orgId, args.orgId))
       .limit(1);
 
+    const isAdmin = args.orgRole === "admin";
+    let defaultAgentName: string | null = null;
+    let agentOrgSlug: string | null = null;
+
+    if (installation) {
+      const [[orgMeta], [orgCacheRow]] = await Promise.all([
+        db
+          .select({ defaultAgentId: orgMetadata.defaultAgentId })
+          .from(orgMetadata)
+          .where(eq(orgMetadata.orgId, args.orgId))
+          .limit(1),
+        db
+          .select({ slug: orgCache.slug })
+          .from(orgCache)
+          .where(eq(orgCache.orgId, args.orgId))
+          .limit(1),
+      ]);
+
+      if (orgMeta?.defaultAgentId) {
+        const [agent] = await db
+          .select({
+            displayName: zeroAgents.displayName,
+            name: zeroAgents.name,
+          })
+          .from(zeroAgents)
+          .where(eq(zeroAgents.id, orgMeta.defaultAgentId))
+          .limit(1);
+        defaultAgentName = agent?.displayName ?? agent?.name ?? null;
+      }
+
+      if (orgCacheRow?.slug) {
+        agentOrgSlug = orgCacheRow.slug;
+      }
+    }
+
     if (!installation) {
       return {
         isConnected: false,
         isInstalled: false,
-        isAdmin: false,
+        isAdmin,
         workspaceName: null,
         installUrl: null,
         connectUrl: null,
-        defaultAgentName: null,
-        agentOrgSlug: null,
+        defaultAgentName,
+        agentOrgSlug,
       };
     }
 
@@ -62,24 +102,24 @@ export function zeroSlackOrgStatus(args: {
       return {
         isConnected: false,
         isInstalled: true,
-        isAdmin: false,
+        isAdmin,
         workspaceName: installation.slackWorkspaceName ?? null,
         installUrl: null,
         connectUrl: null,
-        defaultAgentName: null,
-        agentOrgSlug: null,
+        defaultAgentName,
+        agentOrgSlug,
       };
     }
 
     return {
       isConnected: true,
       isInstalled: true,
-      isAdmin: false,
+      isAdmin,
       workspaceName: installation.slackWorkspaceName ?? null,
       installUrl: null,
       connectUrl: null,
-      defaultAgentName: null,
-      agentOrgSlug: null,
+      defaultAgentName,
+      agentOrgSlug,
     };
   });
 }

@@ -118,10 +118,6 @@ export const trinityEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.Trinity] ?? false;
 });
 
-export const idbMessageEnabled$ = computed((get) => {
-  return get(featureSwitch$)[FeatureSwitchKey.IdbMessage] ?? false;
-});
-
 export const pwaOfflineCacheEnabled$ = computed((get) => {
   return get(featureSwitch$)[FeatureSwitchKey.PwaOfflineCache] ?? false;
 });

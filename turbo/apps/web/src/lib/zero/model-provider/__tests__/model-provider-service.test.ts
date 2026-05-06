@@ -1,23 +1,16 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { isBadRequest } from "@vm0/api-services/errors";
-import {
-  testContext,
-  uniqueId,
-  insertOrgCacheEntry,
-  ensureOrgRow,
-} from "../../../../__tests__/test-helpers";
+import { testContext } from "../../../../__tests__/test-helpers";
 import {
   createTestUserModelProvider,
   createTestUserMultiAuthModelProvider,
   createTestOrgModelProvider,
 } from "../../../../__tests__/api-test-helpers";
 import { ORG_SENTINEL_USER_ID } from "../../org/org-sentinel";
-// eslint-disable-next-line web/no-direct-db-in-tests -- Personal-tier (BYOK) HTTP routes land in Wave 2 of Epic #11868; this issue only ships service-layer exports, so the privacy invariant + vm0 validation can only be verified at the service boundary until then.
+// eslint-disable-next-line web/no-direct-db-in-tests -- Internal-only resolver helpers (getUserDefaultModelProvider, getUserAnyDefaultModelProvider, getUserModelProviderByType) have no HTTP entry point — they are consumed by the Wave 3 resolver. Cross-tier defense (org-tier vm0 unaffected by user-tier additions) likewise has no user-facing route. Privacy + vm0 user-tier assertions migrated to route-level tests in Wave 2 (#11898).
 import {
-  // Org-tier (existing) — used for cross-tier tests
+  // Org-tier (existing) — used for cross-tier defense tests
   upsertOrgNoSecretModelProvider,
-  upsertOrgModelProvider,
-  // User-tier (new in this issue)
+  // User-tier (added in #11874)
   listUserModelProviders,
   upsertUserModelProvider,
   deleteUserModelProvider,
@@ -26,31 +19,11 @@ import {
   getUserDefaultModelProvider,
   getUserAnyDefaultModelProvider,
   getUserModelProviderByType,
-  // Generic core — directly tested for vm0 defense-in-depth
+  // Generic core — used for cross-tier defense (org default unaffected)
   getModelProviderById,
 } from "../model-provider-service";
 
 const context = testContext();
-
-/**
- * Set up a fresh org with two distinct user IDs (alice + bob) sharing the
- * same orgId. The default `context.setupUser()` creates one (orgId, userId)
- * pair where orgId is derived from userId — for cross-user privacy tests we
- * need both users in the SAME org.
- */
-async function setupTwoUserOrg(): Promise<{
-  orgId: string;
-  alice: string;
-  bob: string;
-}> {
-  const suffix = uniqueId("two-user");
-  const orgId = `org_${suffix}`;
-  const alice = `user_alice_${suffix}`;
-  const bob = `user_bob_${suffix}`;
-  await insertOrgCacheEntry({ orgId, slug: `org-${suffix}` });
-  await ensureOrgRow(orgId);
-  return { orgId, alice, bob };
-}
 
 describe("model-provider-service — user-tier", () => {
   beforeEach(() => {
@@ -77,19 +50,6 @@ describe("model-provider-service — user-tier", () => {
       expect(provider.framework).toBe("claude-code");
       expect(provider.secretName).toBe("ANTHROPIC_API_KEY");
       expect(provider.isDefault).toBe(true);
-    });
-
-    it("rejects vm0 with badRequest at the user tier", async () => {
-      const { orgId, userId } = await context.setupUser();
-
-      await expect(
-        upsertUserModelProvider(orgId, userId, "vm0", ""),
-      ).rejects.toSatisfy((err: unknown) => {
-        return (
-          isBadRequest(err) &&
-          err.message.includes("VM0 managed provider is org-only")
-        );
-      });
     });
 
     it("does not affect vm0 org-tier upsert (no behavior change)", async () => {
@@ -281,62 +241,6 @@ describe("model-provider-service — user-tier", () => {
         "openai-api-key",
       );
       expect(userOpenai?.type).toBe("openai-api-key");
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Privacy invariant — the centerpiece of this issue
-  // ---------------------------------------------------------------------------
-
-  describe("getModelProviderById — privacy invariant (Epic #11868 Decision 1)", () => {
-    it("returns an org-tier row to any caller in the org", async () => {
-      const { orgId, alice } = await setupTwoUserOrg();
-      const { provider } = await upsertOrgModelProvider(
-        orgId,
-        "anthropic-api-key",
-        "org-key",
-      );
-
-      const row = await getModelProviderById(orgId, alice, provider.id);
-      expect(row?.type).toBe("anthropic-api-key");
-    });
-
-    it("returns alice's user-tier row to alice", async () => {
-      const { orgId, alice } = await setupTwoUserOrg();
-      const { provider } = await upsertUserModelProvider(
-        orgId,
-        alice,
-        "openai-api-key",
-        "alice-key",
-      );
-
-      const row = await getModelProviderById(orgId, alice, provider.id);
-      expect(row?.type).toBe("openai-api-key");
-    });
-
-    it("returns null when bob queries alice's user-tier id (privacy invariant)", async () => {
-      const { orgId, alice, bob } = await setupTwoUserOrg();
-      const { provider } = await upsertUserModelProvider(
-        orgId,
-        alice,
-        "openai-api-key",
-        "alice-key",
-      );
-
-      const row = await getModelProviderById(orgId, bob, provider.id);
-      expect(row).toBeNull();
-    });
-
-    it("returns null when caller is in a different org", async () => {
-      const { orgId, alice } = await setupTwoUserOrg();
-      const { provider } = await upsertOrgModelProvider(
-        orgId,
-        "anthropic-api-key",
-        "org-key",
-      );
-
-      const row = await getModelProviderById("org_other", alice, provider.id);
-      expect(row).toBeNull();
     });
   });
 

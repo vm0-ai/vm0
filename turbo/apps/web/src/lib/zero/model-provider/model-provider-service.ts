@@ -22,6 +22,13 @@ const log = logger("service:model-provider");
 
 interface ModelProviderInfo {
   id: string;
+  /**
+   * Owner of the row: ORG_SENTINEL_USER_ID for org-tier rows, real userId
+   * for personal-tier rows. Surfaced so the resolver can derive
+   * `secretUserId` from the resolved row instead of hardcoding the sentinel
+   * (Epic #11868 — personal model providers).
+   */
+  userId: string;
   type: ModelProviderType;
   framework: ModelProviderFramework;
   secretName: string | null;
@@ -42,6 +49,7 @@ interface ModelProviderInfo {
  */
 function selectProviderRow(): {
   id: typeof modelProviders.id;
+  userId: typeof modelProviders.userId;
   type: typeof modelProviders.type;
   isDefault: typeof modelProviders.isDefault;
   selectedModel: typeof modelProviders.selectedModel;
@@ -52,6 +60,7 @@ function selectProviderRow(): {
 } {
   return {
     id: modelProviders.id,
+    userId: modelProviders.userId,
     type: modelProviders.type,
     isDefault: modelProviders.isDefault,
     selectedModel: modelProviders.selectedModel,
@@ -84,6 +93,7 @@ function assertVm0OrgOnly(type: ModelProviderType, userId: string): void {
  */
 function toModelProviderInfo(params: {
   id: string;
+  userId: string;
   type: ModelProviderType;
   secretName?: string | null;
   authMethod?: string | null;
@@ -103,6 +113,7 @@ function toModelProviderInfo(params: {
 
   return {
     id: params.id,
+    userId: params.userId,
     type: params.type,
     framework: getFrameworkForType(params.type),
     secretName: params.secretName ?? null,
@@ -190,6 +201,7 @@ async function listModelProviders(
   return result.map((row) => {
     return toModelProviderInfo({
       id: row.id,
+      userId: row.userId,
       type: row.type as ModelProviderType,
       secretName: row.secretName,
       authMethod: row.authMethod,
@@ -315,6 +327,7 @@ async function upsertModelProvider(
   return {
     provider: toModelProviderInfo({
       id: provider!.id,
+      userId,
       type,
       secretName,
       isDefault: provider!.isDefault,
@@ -541,6 +554,7 @@ async function upsertMultiAuthModelProvider(
   return {
     provider: toModelProviderInfo({
       id: provider!.id,
+      userId,
       type,
       authMethod,
       secretNames,
@@ -632,6 +646,7 @@ async function upsertNoSecretModelProvider(
   return {
     provider: toModelProviderInfo({
       id: provider!.id,
+      userId,
       type,
       isDefault: provider!.isDefault,
       selectedModel: provider!.selectedModel,
@@ -765,6 +780,7 @@ async function setModelProviderDefault(
   if (target.isDefault) {
     return toModelProviderInfo({
       id: target.id,
+      userId,
       type,
       secretName,
       authMethod: target.authMethod,
@@ -800,6 +816,7 @@ async function setModelProviderDefault(
 
   return toModelProviderInfo({
     id: target.id,
+    userId,
     type,
     secretName,
     authMethod: target.authMethod,
@@ -856,6 +873,7 @@ async function updateModelProviderModel(
 
   return toModelProviderInfo({
     id: provider.id,
+    userId,
     type,
     secretName,
     authMethod: provider.authMethod,
@@ -898,6 +916,7 @@ async function getDefaultModelProvider(
 
   return toModelProviderInfo({
     id: defaultProvider.id,
+    userId: defaultProvider.userId,
     type: defaultProvider.type as ModelProviderType,
     secretName: defaultProvider.secretName,
     authMethod: defaultProvider.authMethod,
@@ -936,6 +955,7 @@ async function getAnyDefaultModelProvider(
 
   return toModelProviderInfo({
     id: defaultProvider.id,
+    userId: defaultProvider.userId,
     type: defaultProvider.type as ModelProviderType,
     secretName: defaultProvider.secretName,
     authMethod: defaultProvider.authMethod,
@@ -1182,6 +1202,7 @@ export async function getOrgModelProviderByType(
 
   return toModelProviderInfo({
     id: row.id,
+    userId: row.userId,
     type: row.type as ModelProviderType,
     secretName: row.secretName,
     authMethod: row.authMethod,
@@ -1228,6 +1249,7 @@ export async function getModelProviderById(
 
   return toModelProviderInfo({
     id: row.id,
+    userId: row.userId,
     type: row.type as ModelProviderType,
     secretName: row.secretName,
     authMethod: row.authMethod,
@@ -1389,6 +1411,7 @@ export async function getUserModelProviderByType(
 
   return toModelProviderInfo({
     id: row.id,
+    userId: row.userId,
     type: row.type as ModelProviderType,
     secretName: row.secretName,
     authMethod: row.authMethod,

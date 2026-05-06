@@ -78,6 +78,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly" as const,
       lastModified: BUILD_DATE,
     },
+    {
+      path: "/rankings",
+      priority: 0.8,
+      changeFrequency: "daily" as const,
+      lastModified: BUILD_DATE,
+    },
   ];
 
   const rootRoutes = [

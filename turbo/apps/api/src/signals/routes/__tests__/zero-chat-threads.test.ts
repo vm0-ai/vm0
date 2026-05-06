@@ -2,6 +2,7 @@ import { createStore } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadMessagesContract,
+  chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -72,6 +73,7 @@ describe("GET /api/zero/chat-threads/:id", () => {
       draftAttachments: null,
       modelProviderId: null,
       selectedModel: null,
+      renamedAt: null,
       chatMessages: [
         {
           role: "user",
@@ -90,6 +92,93 @@ describe("GET /api/zero/chat-threads/:id", () => {
         },
       ],
     });
+  });
+
+  it("returns renamedAt as ISO string when thread was renamed", async () => {
+    const renamedDate = new Date("2025-06-01T12:00:00.000Z");
+    const fixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        { title: "Custom Name", renamedAt: renamedDate },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([chatThreadByIdContract.get]);
+
+    const client = setupApp({ context })(chatThreadByIdContract);
+
+    const response = await accept(
+      client.get({
+        params: { id: fixture.threadId },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.renamedAt).toBe("2025-06-01T12:00:00.000Z");
+  });
+});
+
+describe("GET /api/zero/chat-threads", () => {
+  const track = createFixtureTracker<ZeroChatThreadFixture>((fixture) => {
+    return store.set(deleteZeroChatThread$, fixture, context.signal);
+  });
+
+  it("returns pinnedAt and renamedAt in thread list", async () => {
+    const pinnedDate = new Date("2025-05-01T10:00:00.000Z");
+    const renamedDate = new Date("2025-06-01T12:00:00.000Z");
+    const fixture = await track(
+      store.set(
+        seedZeroChatThread$,
+        {
+          title: "Pinned & Renamed",
+          pinnedAt: pinnedDate,
+          renamedAt: renamedDate,
+        },
+        context.signal,
+      ),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([chatThreadsContract.list]);
+
+    const client = setupApp({ context })(chatThreadsContract);
+
+    const response = await accept(
+      client.list({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.threads).toHaveLength(1);
+    const thread = response.body.threads[0]!;
+    expect(thread.pinnedAt).toBe("2025-05-01T10:00:00.000Z");
+    expect(thread.renamedAt).toBe("2025-06-01T12:00:00.000Z");
+  });
+
+  it("returns pinnedAt and renamedAt as null when not set", async () => {
+    const fixture = await track(
+      store.set(seedZeroChatThread$, {}, context.signal),
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mockApiShadowCompareRoutes([chatThreadsContract.list]);
+
+    const client = setupApp({ context })(chatThreadsContract);
+
+    const response = await accept(
+      client.list({
+        query: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.threads).toHaveLength(1);
+    const thread = response.body.threads[0]!;
+    expect(thread.pinnedAt).toBeNull();
+    expect(thread.renamedAt).toBeNull();
   });
 });
 

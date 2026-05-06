@@ -14,11 +14,15 @@ import {
   findTestRunnerJobEntry,
   insertVm0ApiKeys,
   insertTestConnectorSecret,
+  insertUserDefaultModelProvider,
+  enablePersonalModelProviderForUser,
 } from "../../../__tests__/api-test-helpers";
+import { insertTestUserModelProviderSecret } from "../../../__tests__/db-test-seeders/secrets";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
 import {
   setTestSessionArtifacts,
   setTestSessionFramework,
+  setTestZeroAgentPreferPersonalProvider,
 } from "../../../__tests__/db-test-seeders/agents";
 import { setOrgCredits } from "../../../__tests__/db-test-seeders/org";
 import { setTestCheckpointArtifactSnapshots } from "../../../__tests__/db-test-seeders/runs";
@@ -184,6 +188,87 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job!.executionContext.billableFirewalls).toEqual([]);
       expect(job!.executionContext.modelUsageProvider).toBeUndefined();
+    });
+
+    it("agent.preferPersonalProvider flows end-to-end into the resolver (#11899)", async () => {
+      // Smoke test for the plumbing chain: agent column → resolveEffectiveModel
+      // → CreateRunParams → buildZeroExecutionContext → resolveModelProviderSecrets.
+      // The runner job replaces the API-key value with a firewall placeholder,
+      // so we assert via `selectedModel` (surfaced as ANTHROPIC_MODEL): the
+      // personal row's selectedModel must win over the org's. Proves the
+      // resolver landed on the personal row, which only happens when the
+      // agent's flag plus the feature switch override were both honored
+      // through the entire param-merge chain.
+      const agentName = uniqueId("personal-tier-agent");
+      await createTestCompose(agentName, { skipDefaultApiKey: true });
+      const personalAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await setTestZeroAgentPreferPersonalProvider(personalAgentId, true);
+
+      await enablePersonalModelProviderForUser(user.orgId, user.userId);
+      await insertUserDefaultModelProvider(
+        user.orgId,
+        user.userId,
+        "anthropic-api-key",
+        "claude-haiku-4-5",
+      );
+      await insertTestUserModelProviderSecret({
+        orgId: user.orgId,
+        userId: user.userId,
+        name: "ANTHROPIC_API_KEY",
+        value: "personal-anthropic-key",
+      });
+      await upsertOrgModelProvider(
+        user.orgId,
+        "anthropic-api-key",
+        "org-anthropic-key",
+        "claude-opus-4-6",
+      );
+
+      const result = await createZeroRun(
+        baseParams({ agentId: personalAgentId }),
+      );
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        ANTHROPIC_MODEL: "claude-haiku-4-5",
+      });
+    });
+
+    it("admits run when user has only a personal provider and prefers personal (#11899)", async () => {
+      // Without the personal-tier branch in admission, this run would
+      // throw `noModelProvider()` because the org has nothing configured —
+      // even though the resolver downstream would have served the user's
+      // personal default. Covers `resolveProviderTypeForAdmission` +
+      // `checkModelProviderConfigured` user-tier handling. Asserts via
+      // selectedModel injection (the only resolver-derived signal that
+      // survives firewall placeholder substitution).
+      const agentName = uniqueId("personal-only-admission");
+      await createTestCompose(agentName, { skipDefaultApiKey: true });
+      const adminAgentId = await getTestZeroAgentId(user.orgId, agentName);
+      await setTestZeroAgentPreferPersonalProvider(adminAgentId, true);
+
+      await enablePersonalModelProviderForUser(user.orgId, user.userId);
+      await insertUserDefaultModelProvider(
+        user.orgId,
+        user.userId,
+        "anthropic-api-key",
+        "claude-haiku-4-5",
+      );
+      await insertTestUserModelProviderSecret({
+        orgId: user.orgId,
+        userId: user.userId,
+        name: "ANTHROPIC_API_KEY",
+        value: "personal-only-key",
+      });
+
+      const result = await createZeroRun(baseParams({ agentId: adminAgentId }));
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        ANTHROPIC_MODEL: "claude-haiku-4-5",
+      });
     });
 
     it("should include billable connector firewall names when attached", async () => {

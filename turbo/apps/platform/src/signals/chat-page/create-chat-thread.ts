@@ -43,7 +43,6 @@ import type {
 import { logger } from "../log.ts";
 import type { ChatThreadDataSource } from "./chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
-import { idbMessageEnabled$ } from "../external/feature-switch.ts";
 import {
   enrichBlocksWithTextPreviews,
   parseBodyRenderBlocks,
@@ -332,13 +331,11 @@ function createAgentInfoSignals(
   // for a given thread. Consult the IDB cache first; on miss, fall back
   // to threadData$ and backfill so the next visit hits the cache.
   const agentId$ = computed(async (get): Promise<string | null> => {
-    const cacheEnabled = await get(idbMessageEnabled$);
-    const clerk = cacheEnabled ? await get(clerk$) : null;
+    const clerk = await get(clerk$);
     const userId = clerk?.user?.id ?? null;
     const orgId = clerk?.organization?.id ?? null;
-    const cacheActive = cacheEnabled && userId !== null && orgId !== null;
 
-    if (cacheActive && userId !== null && orgId !== null) {
+    if (userId !== null && orgId !== null) {
       const cached = await readThreadAgentId$(userId, orgId, threadId);
       if (cached) {
         return cached;
@@ -346,7 +343,7 @@ function createAgentInfoSignals(
     }
     const thread = await get(threadData$);
     const agentId = thread?.agentId ?? null;
-    if (agentId && cacheActive && userId !== null && orgId !== null) {
+    if (agentId && userId !== null && orgId !== null) {
       await writeThreadAgentId$(userId, orgId, threadId, agentId);
     }
     return agentId;

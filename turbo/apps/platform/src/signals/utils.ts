@@ -171,6 +171,19 @@ export async function bestEffort(p: Promise<unknown>): Promise<void> {
   }
 }
 
+export async function withCleanup<T>(
+  promise: Promise<T>,
+  cleanup: () => void,
+): Promise<T> {
+  // Centralizes command cleanup that must preserve the original promise result.
+  // eslint-disable-next-line no-restricted-syntax -- helper preserves rejection while guaranteeing cleanup
+  try {
+    return await promise;
+  } finally {
+    cleanup();
+  }
+}
+
 export function toVoid<T>(p: Promise<T>): Promise<void> {
   // This helper intentionally discards fulfillment values while preserving rejection semantics.
   // confirmed by ethan@vm0.ai
