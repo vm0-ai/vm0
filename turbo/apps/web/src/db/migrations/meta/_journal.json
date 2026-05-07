@@ -2395,6 +2395,13 @@
       "when": 1778065381592,
       "tag": "0341_backfill_codex_oauth_provider_feature_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1778122063617,
+      "tag": "0342_add_gpt_image_usage_pricing",
+      "breakpoints": true
     }
   ]
 }
