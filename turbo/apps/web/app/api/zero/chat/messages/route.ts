@@ -6,6 +6,12 @@ import {
   chatMessagesContract,
   type AttachFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  allowsCustomModel,
+  getDefaultModel,
+  getModels,
+  type ModelProviderType,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -276,8 +282,39 @@ async function computeEagerPin(
   }
   return {
     modelProviderId: userRow.id,
-    selectedModel: userRow.selectedModel ?? agent.selectedModel ?? null,
+    selectedModel: resolveProviderSelectedModel(
+      userRow.type,
+      userRow.selectedModel,
+      agent.selectedModel,
+    ),
   };
+}
+
+function canProviderUseModel(
+  type: ModelProviderType,
+  model: string | null | undefined,
+): model is string {
+  if (!model) {
+    return false;
+  }
+  if (allowsCustomModel(type)) {
+    return true;
+  }
+  return getModels(type)?.includes(model) ?? false;
+}
+
+function resolveProviderSelectedModel(
+  type: ModelProviderType,
+  selectedModel: string | null,
+  fallbackSelectedModel: string | null,
+): string | null {
+  if (selectedModel) {
+    return selectedModel;
+  }
+  if (canProviderUseModel(type, fallbackSelectedModel)) {
+    return fallbackSelectedModel;
+  }
+  return getDefaultModel(type) ?? null;
 }
 
 /**
