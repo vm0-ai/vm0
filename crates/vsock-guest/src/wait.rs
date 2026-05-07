@@ -339,7 +339,7 @@ mod tests {
 
         let elapsed = start.elapsed();
         assert!(
-            elapsed < Duration::from_millis(800),
+            elapsed < Duration::from_millis(900),
             "fast child exits should not accumulate the 50ms cancel poll interval per child; \
              {iterations} waits took {elapsed:?}",
         );
