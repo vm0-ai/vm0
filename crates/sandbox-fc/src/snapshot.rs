@@ -1159,9 +1159,18 @@ impl SnapshotAttempt {
         let cow_device = self.cow_device.take().ok_or_else(|| {
             SnapshotError::Teardown("snapshot attempt missing COW device before publish".into())
         })?;
-        let mut publish_attempt = SnapshotPublishAttempt::new(cow_device);
+        self.publish_attempt = Some(SnapshotPublishAttempt::new(cow_device));
+        self.resolve_success_publish().await
+    }
+
+    async fn resolve_success_publish(&mut self) -> Result<SnapshotPublishAttempt, SnapshotError> {
+        let publish_attempt = self.publish_attempt.as_mut().ok_or_else(|| {
+            SnapshotError::Teardown("snapshot publish attempt missing before publish".into())
+        })?;
         publish_attempt.resolve_keep_cow().await?;
-        Ok(publish_attempt)
+        self.publish_attempt.take().ok_or_else(|| {
+            SnapshotError::Teardown("snapshot publish attempt missing after prepare".into())
+        })
     }
 
     async fn cleanup_failure(&mut self) {
@@ -2481,6 +2490,57 @@ mod tests {
             report.cleanup_events,
             vec!["publish", "device_pool"],
             "publish cleanup must finish before device pool cleanup"
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_attempt_drop_handoff_cleans_publish_resolve_cancellation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (mut attempt, _sock_dir) = snapshot_attempt_for_test(&dir);
+        write_required_snapshot_artifacts(&attempt.output).await;
+        let kept_cow = write_kept_cow_for_test(&attempt.output.work_dir(), "cancel-resolve").await;
+        let cow_file = kept_cow.cow_file.clone();
+        let bitmap_file = kept_cow.bitmap_file.clone();
+        let output_dir = attempt.output.dir().to_path_buf();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (kept_tx, kept_rx) = tokio::sync::oneshot::channel();
+        let (cleanup_tx, cleanup_rx) = tokio::sync::oneshot::channel();
+
+        attempt.track_publish_attempt_for_test(
+            SnapshotPublishAttempt::new_with_keep_future_for_test(async move {
+                let _ = started_tx.send(());
+                kept_rx.await.map_err(|_| {
+                    nbd_cow::error::NbdCowError::Io(std::io::Error::other("test sender dropped"))
+                })
+            }),
+        );
+        attempt.notify_cleanup_complete_for_test(cleanup_tx);
+
+        let handle = tokio::spawn(async move { attempt.resolve_success_publish().await });
+        started_rx
+            .await
+            .expect("keep-COW finalizer should be polled");
+        handle.abort();
+        let _ = handle.await;
+
+        kept_tx.send(kept_cow).expect("send kept cow");
+        let report = wait_for_snapshot_cleanup(cleanup_rx).await;
+        let output = SnapshotOutputPaths::new(output_dir);
+
+        assert!(report.publish_cleaned);
+        assert!(
+            !tokio::fs::try_exists(&cow_file).await.unwrap(),
+            "cancellation cleanup should remove temporary cow"
+        );
+        assert!(
+            !tokio::fs::try_exists(&bitmap_file).await.unwrap(),
+            "cancellation cleanup should remove temporary bitmap"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "cancellation cleanup must not publish complete marker"
         );
     }
 
