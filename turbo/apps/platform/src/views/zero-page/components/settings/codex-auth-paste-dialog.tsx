@@ -27,7 +27,75 @@ import { ApiError } from "../../../../lib/accept.ts";
 import { detach, isValidJson, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
-type CodexPasteScope = "org" | "personal";
+type CodexPasteDialogState = {
+  open: boolean;
+  mode: "connect" | "reconnect";
+};
+
+/**
+ * Loadable state read by the dialog. Mirrors the shape exported by
+ * `ccstate-react/experimental` — the dialog only inspects `state` and
+ * `error`, so the data shape is intentionally `unknown` (both org and
+ * personal commands resolve to a non-void payload, and we don't want the
+ * bundle interface to bake one scope's payload into the other's signature).
+ */
+type SubmitLoadable =
+  | { state: "idle" }
+  | { state: "loading" }
+  | { state: "hasData"; data: unknown }
+  | { state: "hasError"; error: unknown };
+
+/**
+ * The set of signals the paste dialog reads/writes for one scope. Both the
+ * org and personal variants conform to this shape, so the inner presentational
+ * `CodexAuthPasteDialogView` can be agnostic of which scope it is rendering
+ * — only the wrapper (`Org…` / `Personal…`) subscribes to the right bundle.
+ */
+interface CodexPasteScopeBundle {
+  dialog: CodexPasteDialogState;
+  paste: string;
+  setDialog: (next: CodexPasteDialogState) => void;
+  updatePaste: (next: string) => void;
+  submitLoadable: SubmitLoadable;
+  submit: (signal: AbortSignal) => Promise<unknown>;
+}
+
+/**
+ * Org-tier wrapper. Subscribes only to the org signal bundle so the personal
+ * bundle is not evaluated on this render path. Used from `org-providers-tab`.
+ */
+export function CodexAuthPasteDialog() {
+  const bundle = useOrgCodexPasteBundle();
+  return <CodexAuthPasteDialogView bundle={bundle} />;
+}
+
+/**
+ * Personal-tier wrapper. Subscribes only to the personal signal bundle so
+ * the org bundle is not evaluated on this render path. Used from
+ * `personal-providers-tab`.
+ */
+export function PersonalCodexAuthPasteDialog() {
+  const bundle = usePersonalCodexPasteBundle();
+  return <CodexAuthPasteDialogView bundle={bundle} />;
+}
+
+function useOrgCodexPasteBundle(): CodexPasteScopeBundle {
+  const dialog = useGet(codexPasteDialogState$);
+  const paste = useGet(codexPasteContent$);
+  const setDialog = useSet(setCodexPasteDialogState$);
+  const updatePaste = useSet(updateCodexPasteContent$);
+  const [submitLoadable, submit] = useLoadableSet(submitCodexAuthJson$);
+  return { dialog, paste, setDialog, updatePaste, submitLoadable, submit };
+}
+
+function usePersonalCodexPasteBundle(): CodexPasteScopeBundle {
+  const dialog = useGet(codexPasteDialogStatePersonal$);
+  const paste = useGet(codexPasteContentPersonal$);
+  const setDialog = useSet(setCodexPasteDialogStatePersonal$);
+  const updatePaste = useSet(updateCodexPasteContentPersonal$);
+  const [submitLoadable, submit] = useLoadableSet(submitCodexAuthJsonPersonal$);
+  return { dialog, paste, setDialog, updatePaste, submitLoadable, submit };
+}
 
 /**
  * Paste-based connection dialog for the codex-oauth-token provider.
@@ -35,9 +103,8 @@ type CodexPasteScope = "org" | "personal";
  * Replaces the broken cross-origin `window.location.assign` redirect that
  * shipped in #11909. Same component handles first-time connect and re-paste
  * recovery from a stale session — only the title differs by mode. The
- * `scope` prop selects between org-tier (`/api/zero/model-providers`) and
- * personal-tier (`/api/zero/me/model-providers`) signal bundles so a single
- * UI component drives both contexts (#12024).
+ * scope-specific signal bundle is supplied by the wrapper component so this
+ * presentational layer is agnostic of org vs personal tier (#12024).
  *
  * Submit POSTs `{ type: 'codex-oauth-token', authMethod: 'auth_json',
  * secrets: { CODEX_AUTH_JSON: <raw> } }` to the scope-appropriate endpoint.
@@ -46,35 +113,14 @@ type CodexPasteScope = "org" | "personal";
  * user is staring at the textarea, an inline message keeps cause-and-effect
  * close.
  */
-export function CodexAuthPasteDialog({
-  scope = "org",
+function CodexAuthPasteDialogView({
+  bundle,
 }: {
-  scope?: CodexPasteScope;
+  bundle: CodexPasteScopeBundle;
 }) {
-  // Both bundles must be subscribed unconditionally to keep hook order
-  // stable; the unused side is read but its value isn't acted on.
-  const orgDialog = useGet(codexPasteDialogState$);
-  const orgPaste = useGet(codexPasteContent$);
-  const personalDialog = useGet(codexPasteDialogStatePersonal$);
-  const personalPaste = useGet(codexPasteContentPersonal$);
-  const setOrgDialog = useSet(setCodexPasteDialogState$);
-  const updateOrgPaste = useSet(updateCodexPasteContent$);
-  const setPersonalDialog = useSet(setCodexPasteDialogStatePersonal$);
-  const updatePersonalPaste = useSet(updateCodexPasteContentPersonal$);
+  const { dialog, paste, setDialog, updatePaste, submitLoadable, submit } =
+    bundle;
   const pageSignal = useGet(pageSignal$);
-  const [orgSubmitLoadable, orgSubmit] = useLoadableSet(submitCodexAuthJson$);
-  const [personalSubmitLoadable, personalSubmit] = useLoadableSet(
-    submitCodexAuthJsonPersonal$,
-  );
-
-  const dialog = scope === "personal" ? personalDialog : orgDialog;
-  const paste = scope === "personal" ? personalPaste : orgPaste;
-  const setDialog = scope === "personal" ? setPersonalDialog : setOrgDialog;
-  const updatePaste =
-    scope === "personal" ? updatePersonalPaste : updateOrgPaste;
-  const submitLoadable =
-    scope === "personal" ? personalSubmitLoadable : orgSubmitLoadable;
-  const submit = scope === "personal" ? personalSubmit : orgSubmit;
 
   const submitting = submitLoadable.state === "loading";
   const serverError =

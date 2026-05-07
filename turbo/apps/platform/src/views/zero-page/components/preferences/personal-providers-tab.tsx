@@ -35,7 +35,7 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { PersonalAddProviderDialog } from "../settings/personal-add-provider-dialog.tsx";
 import { PersonalProviderDialog } from "../settings/personal-provider-dialog.tsx";
 import { PersonalDeleteProviderDialog } from "../settings/personal-delete-provider-dialog.tsx";
-import { CodexAuthPasteDialog } from "../settings/codex-auth-paste-dialog.tsx";
+import { PersonalCodexAuthPasteDialog } from "../settings/codex-auth-paste-dialog.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
@@ -47,7 +47,7 @@ export function PersonalProvidersTab() {
       <ProviderListSection />
       <PersonalDeleteProviderDialog />
       <PersonalProviderDialog />
-      <CodexAuthPasteDialog scope="personal" />
+      <PersonalCodexAuthPasteDialog />
     </div>
   );
 }
