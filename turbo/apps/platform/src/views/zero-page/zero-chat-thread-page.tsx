@@ -2241,14 +2241,6 @@ function isImageFilename(filename: string): boolean {
   );
 }
 
-function isVideoFilename(filename: string): boolean {
-  return /\.(mp4|webm|mov|ogv)$/i.test(filename);
-}
-
-function isAudioFilename(filename: string): boolean {
-  return /\.(mp3|wav|wave|m4a|aac|ogg|oga|opus|flac|mpga)$/i.test(filename);
-}
-
 function AssistantErrorContent({ error }: { error: string }) {
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveOrgManageTab$);
@@ -2437,8 +2429,6 @@ function resolveAttachments(
       url: f.url,
       contentType,
       isImage: kind === "image" || isImageFilename(f.filename),
-      isVideo: kind === "video" || isVideoFilename(f.filename),
-      isAudio: kind === "audio" || isAudioFilename(f.filename),
       kind,
     };
   });
@@ -2626,47 +2616,14 @@ function UserMessageAttachments({
             />
           );
         }
-        if (a.isVideo) {
-          return (
-            <video
-              key={a.url}
-              src={a.url}
-              controls
-              className="max-h-48 max-w-full rounded-lg border border-foreground/10"
-            />
-          );
-        }
-        if (a.isAudio) {
-          return (
-            <audio
-              key={a.url}
-              src={a.url}
-              controls
-              preload="metadata"
-              className="w-full max-w-md"
-              aria-label={`Audio preview for ${a.filename}`}
-            />
-          );
-        }
         if (
           a.kind === "markdown" ||
+          a.kind === "text" ||
+          a.kind === "json" ||
           a.kind === "csv" ||
           a.kind === "pdf" ||
-          a.kind === "html" ||
-          a.kind === "file"
+          a.kind === "html"
         ) {
-          return (
-            <AttachmentPreview
-              key={a.url}
-              attachment={{
-                filename: a.filename,
-                url: a.url,
-                contentType: a.contentType,
-              }}
-            />
-          );
-        }
-        if (a.kind === "text" || a.kind === "json") {
           return (
             <PreviewableFileAttachmentChip
               key={a.url}
@@ -2677,7 +2634,12 @@ function UserMessageAttachments({
           );
         }
         return (
-          <FileAttachmentChip key={a.url} filename={a.filename} url={a.url} />
+          <FileAttachmentChip
+            key={a.url}
+            filename={a.filename}
+            url={a.url}
+            contentType={a.contentType}
+          />
         );
       })}
     </div>
@@ -2809,8 +2771,6 @@ function persistedAttachmentsToResolved(
       url: a.url,
       contentType: a.contentType,
       isImage: kind === "image" || isImageFilename(a.filename),
-      isVideo: kind === "video" || isVideoFilename(a.filename),
-      isAudio: kind === "audio" || isAudioFilename(a.filename),
       kind,
     };
   });
