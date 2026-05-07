@@ -1,7 +1,6 @@
 import { writeOutput } from "./codegen";
 
-const DOCS_URL =
-  "https://developers.google.com/google-ads/api/rest/auth";
+const DOCS_URL = "https://developers.google.com/google-ads/api/rest/auth";
 const PLACEHOLDER_VALUE =
   "ya29.A0CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSa";
 
