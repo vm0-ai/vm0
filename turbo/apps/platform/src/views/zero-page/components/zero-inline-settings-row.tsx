@@ -28,7 +28,9 @@ export function InlineSettingsRow({
           {label}
         </p>
         {description ? (
-          <p className="text-[15px] sm:text-xs text-muted-foreground mt-1 leading-snug">
+          // Helper text is desktop-only — mobile keeps the form compact and
+          // relies on the label + placeholder to explain each control.
+          <p className="hidden sm:block text-xs text-muted-foreground mt-1 leading-snug">
             {description}
           </p>
         ) : null}
