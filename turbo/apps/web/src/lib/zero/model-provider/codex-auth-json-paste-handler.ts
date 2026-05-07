@@ -79,6 +79,31 @@ type UpsertCodexProvider = (args: {
 }) => Promise<{ provider: UpsertedProvider; created: boolean }>;
 
 /**
+ * Common args shared by both scopes. Split out so the discriminated union
+ * below can intersect each scope's identity fields onto the same payload
+ * without repeating the paste-flow inputs.
+ */
+interface CodexAuthJsonPasteCommonArgs {
+  rawAuthJson: string;
+  selectedModel: string | undefined;
+  upsert: UpsertCodexProvider;
+}
+
+/**
+ * Discriminated union over the calling scope. The org variant carries only
+ * `orgId`; the personal variant additionally requires `userId`. Encoded in
+ * the type system (rather than as a doc-comment on a `userId?: string`) so
+ * the personal call site cannot compile without a real userId.
+ */
+type CodexAuthJsonPasteArgs =
+  | ({ scope: "org"; orgId: string } & CodexAuthJsonPasteCommonArgs)
+  | ({
+      scope: "personal";
+      orgId: string;
+      userId: string;
+    } & CodexAuthJsonPasteCommonArgs);
+
+/**
  * Handle the codex-oauth-token + auth_json paste-based connect flow.
  *
  * Parses the raw `~/.codex/auth.json` server-side and persists the four
@@ -89,16 +114,7 @@ type UpsertCodexProvider = (args: {
  * route (`/api/zero/me/model-providers`) so the paste contract — error codes,
  * log fields, response shape — cannot drift between the two scopes.
  */
-export async function handleCodexAuthJsonPaste(args: {
-  /** `"org" | "personal"` — drives the log namespace and the log payload. */
-  scope: "org" | "personal";
-  orgId: string;
-  /** Required for personal scope, omitted for org scope. */
-  userId?: string;
-  rawAuthJson: string;
-  selectedModel: string | undefined;
-  upsert: UpsertCodexProvider;
-}) {
+export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
   const log = logger(
     args.scope === "personal"
       ? "api:zero-me-model-providers"

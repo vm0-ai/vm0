@@ -33,17 +33,17 @@ type CodexPasteDialogState = {
 };
 
 /**
- * Loadable state read by the dialog. Mirrors the shape exported by
- * `ccstate-react/experimental` — the dialog only inspects `state` and
- * `error`, so the data shape is intentionally `unknown` (both org and
- * personal commands resolve to a non-void payload, and we don't want the
- * bundle interface to bake one scope's payload into the other's signature).
+ * Loadable state read by the dialog. Derived from `useLoadableSet`'s actual
+ * return tuple so the discriminator union here cannot drift from
+ * `ccstate-react/experimental` — if the upstream library renames/adds a
+ * state, this type updates with it. `unknown` for the data type because the
+ * dialog only inspects `state` and `error` (both org and personal commands
+ * resolve to a non-void payload, and we don't want the bundle interface to
+ * bake one scope's payload into the other's signature).
  */
-type SubmitLoadable =
-  | { state: "idle" }
-  | { state: "loading" }
-  | { state: "hasData"; data: unknown }
-  | { state: "hasError"; error: unknown };
+type SubmitLoadable = ReturnType<
+  typeof useLoadableSet<unknown, [AbortSignal]>
+>[0];
 
 /**
  * The set of signals the paste dialog reads/writes for one scope. Both the
