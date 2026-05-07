@@ -3111,6 +3111,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn abort_on_drop_task_explicit_abort_removes_vsock_listener() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = dir.path().join("snapshot-vsock-explicit-abort");
+        let listener =
+            std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+        let base = base.display().to_string();
+
+        let task = AbortOnDropTask::new(tokio::spawn(async move {
+            vsock_host::VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
+        }));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !listener.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("vsock listener should bind");
+
+        task.abort();
+        let join = task.await;
+        assert!(
+            join.is_err_and(|e| e.is_cancelled()),
+            "explicit abort should cancel the listener task"
+        );
+
+        assert!(
+            !listener.exists(),
+            "explicit abort should remove the vsock listener socket"
+        );
+    }
+
+    #[tokio::test]
     async fn cleanup_snapshot_attempt_dir_removes_empty_token_dir() {
         let dir = tempfile::tempdir().expect("tempdir");
         let work = dir.path().join("work");

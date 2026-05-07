@@ -1554,6 +1554,7 @@ mod tests {
 
     struct FailingPendingSnapshotPublish {
         discarded: Arc<AtomicBool>,
+        discard_error: Option<&'static str>,
     }
 
     #[async_trait::async_trait]
@@ -1564,12 +1565,16 @@ mod tests {
 
         async fn discard(&mut self) -> Result<(), sandbox::SnapshotError> {
             self.discarded.store(true, Ordering::SeqCst);
-            Ok(())
+            match self.discard_error {
+                Some(message) => Err(sandbox::SnapshotError::Teardown(message.into())),
+                None => Ok(()),
+            }
         }
     }
 
     struct FailingSnapshotProvider {
         discarded: Arc<AtomicBool>,
+        discard_error: Option<&'static str>,
     }
 
     #[async_trait::async_trait]
@@ -1580,6 +1585,7 @@ mod tests {
         ) -> Result<Box<dyn sandbox::PendingSnapshotPublish>, sandbox::SnapshotError> {
             Ok(Box::new(FailingPendingSnapshotPublish {
                 discarded: Arc::clone(&self.discarded),
+                discard_error: self.discard_error,
             }))
         }
 
@@ -1870,6 +1876,7 @@ exit 1
         let discarded = Arc::new(AtomicBool::new(false));
         let provider = FailingSnapshotProvider {
             discarded: Arc::clone(&discarded),
+            discard_error: None,
         };
         let def = profile::ProfileDef {
             vcpu: 1,
@@ -1895,6 +1902,48 @@ exit 1
         assert!(
             discarded.load(Ordering::SeqCst),
             "build_snapshot should explicitly discard after commit failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_snapshot_preserves_commit_error_when_discard_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let rootfs_paths = RootfsPaths::new(&home, "rootfs-hash");
+        tokio::fs::create_dir_all(rootfs_paths.dir()).await.unwrap();
+        tokio::fs::write(rootfs_paths.rootfs(), b"rootfs")
+            .await
+            .unwrap();
+        let snapshot_dir = dir.path().join("snapshot");
+        let discarded = Arc::new(AtomicBool::new(false));
+        let provider = FailingSnapshotProvider {
+            discarded: Arc::clone(&discarded),
+            discard_error: Some("discard failed"),
+        };
+        let def = profile::ProfileDef {
+            vcpu: 1,
+            memory_mb: 128,
+            disk_mb: 16,
+        };
+
+        let err = build_snapshot(
+            &home,
+            &rootfs_paths,
+            "snapshot-hash",
+            &snapshot_dir,
+            &def,
+            &provider,
+        )
+        .await
+        .expect_err("snapshot publish should fail");
+
+        assert!(
+            matches!(err, RunnerError::Snapshot(sandbox::SnapshotError::Teardown(ref message)) if message == "publish failed"),
+            "discard failure must not mask the publish failure, got: {err:?}"
+        );
+        assert!(
+            discarded.load(Ordering::SeqCst),
+            "build_snapshot should still try discard after commit failure"
         );
     }
 
