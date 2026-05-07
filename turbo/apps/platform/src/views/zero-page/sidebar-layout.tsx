@@ -615,7 +615,11 @@ function MobileTopBar() {
           ? "min-h-14 py-1.5"
           : "min-h-12 bg-background border-b border-border/50",
       )}
-      style={{ paddingTop: "env(safe-area-inset-top)" }}
+      style={{
+        paddingTop: mobileNativeOn
+          ? "max(env(safe-area-inset-top), 12px)"
+          : "env(safe-area-inset-top)",
+      }}
     >
       <MobileTopBarLeftSlot
         activeId={activeId}

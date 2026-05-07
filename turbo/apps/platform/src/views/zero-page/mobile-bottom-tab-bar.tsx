@@ -70,7 +70,7 @@ const MOBILE_TABS: readonly MobileTab[] = [
 // rounded-3xl (24px) minus the 6px inset, so the inner and outer corners
 // stay concentric.
 const TAB_BASE =
-  "flex flex-1 flex-col items-center justify-center gap-1 px-2 py-2 rounded-[18px] text-[13px] leading-none no-underline transition-colors";
+  "flex flex-1 flex-col items-center justify-center gap-1 px-2 py-2 rounded-[18px] text-[11px] leading-none no-underline transition-colors";
 const TAB_ACTIVE = "bg-foreground/5 text-primary font-semibold";
 const TAB_INACTIVE = "text-muted-foreground font-medium";
 const ICON_SIZE = 24;

@@ -14,6 +14,7 @@ import {
 import {
   Card,
   CardContent,
+  cn,
   Dialog,
   DialogContent,
   DialogHeader,
@@ -172,7 +173,11 @@ export function AgentsPage() {
         }`}
       >
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-          {effectiveViewMode === "grid" ? <AgentGridView /> : <AgentListView />}
+          {effectiveViewMode === "grid" ? (
+            <AgentGridView />
+          ) : (
+            <AgentListView flat={mobileRedesign} />
+          )}
         </div>
       </main>
 
@@ -229,20 +234,25 @@ function AgentGridView() {
   );
 }
 
-function AgentListView() {
+function AgentListView({ flat = false }: { flat?: boolean }) {
   const agentsLoadable = useLoadable(sortedAgents$);
   const loading = agentsLoadable.state === "loading";
   const agents =
     agentsLoadable.state === "hasData" ? agentsLoadable.data : null;
 
   return (
-    <div className="zero-card overflow-hidden">
+    <div className={cn(flat ? "flex flex-col" : "zero-card overflow-hidden")}>
       {loading &&
         (!agents || agents.length === 0) &&
         [1, 2, 3].map((i, _, arr) => {
           return (
             <div key={i}>
-              <div className="flex items-center gap-3 px-5 py-4 animate-pulse">
+              <div
+                className={cn(
+                  "flex items-center gap-3 py-4 animate-pulse",
+                  flat ? "" : "px-5",
+                )}
+              >
                 <div className="h-10 w-10 rounded-full bg-muted" />
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="h-4 w-24 rounded bg-muted" />
@@ -250,7 +260,12 @@ function AgentListView() {
                 </div>
               </div>
               {i < arr.length && (
-                <div className="mx-5 border-b border-border/50" />
+                <div
+                  className={cn(
+                    "border-b border-border/50",
+                    flat ? "" : "mx-5",
+                  )}
+                />
               )}
             </div>
           );
@@ -264,7 +279,11 @@ function AgentListView() {
             options={{ pathParams: { agentId: agent.id } }}
             className="block no-underline text-inherit"
           >
-            <AgentListRow agent={agent} isLast={idx === agents.length - 1} />
+            <AgentListRow
+              agent={agent}
+              isLast={idx === agents.length - 1}
+              flat={flat}
+            />
           </Link>
         );
       })}
@@ -450,7 +469,11 @@ function AgentCard({ agent }: AgentProps) {
   );
 }
 
-function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
+function AgentListRow({
+  agent,
+  isLast,
+  flat = false,
+}: AgentProps & { isLast?: boolean; flat?: boolean }) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
 
@@ -461,7 +484,12 @@ function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
 
   return (
     <>
-      <div className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors hover:bg-muted/30 cursor-pointer">
+      <div
+        className={cn(
+          "flex items-center gap-3 py-4 w-full text-left transition-colors hover:bg-muted/30 cursor-pointer",
+          flat ? "" : "px-5",
+        )}
+      >
         <AgentAvatarImg
           name={agent.id}
           alt={displayName}
@@ -476,7 +504,11 @@ function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
           </p>
         </div>
       </div>
-      {!isLast && <div className="mx-5 border-b border-border/50" />}
+      {!isLast && (
+        <div
+          className={cn("border-b border-border/50", flat ? "" : "mx-5")}
+        />
+      )}
     </>
   );
 }

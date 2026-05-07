@@ -2,7 +2,7 @@
 // oxlint-disable max-lines-per-function
 "use client";
 
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import {
   scheduleViewMode$,
   setScheduleViewMode$,
@@ -23,6 +23,7 @@ import {
   setDeletingSchedule$,
 } from "../../signals/zero-page/schedule-card.ts";
 import { IconPlus, IconList, IconLayoutGrid } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Card,
   CardContent,
@@ -31,6 +32,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "@vm0/ui";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { isMobileViewport$ } from "../../signals/zero-page/mobile-viewport.ts";
 import {
   bestEffort,
   detach,
@@ -270,8 +273,15 @@ export function ZeroScheduleCard({
   saving,
 }: ZeroScheduleCardProps) {
   const signal = useGet(pageSignal$);
+  const features = useLastResolved(featureSwitch$);
+  const mobileNativeOn =
+    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const isMobile = useGet(isMobileViewport$);
+  const mobileRedesign = mobileNativeOn && isMobile;
   const scheduleViewMode = useGet(scheduleViewMode$);
   const setScheduleViewMode = useSet(setScheduleViewMode$);
+  // Mobile redesign drops the calendar view toggle — list is the only mode.
+  const effectiveViewMode = mobileRedesign ? "list" : scheduleViewMode;
   const internalScheduleList = useGet(internalScheduleList$);
   const setScheduleList = useSet(setScheduleList$);
   // In API mode (onSave provided), use prop directly; otherwise use internal state
@@ -485,53 +495,73 @@ export function ZeroScheduleCard({
   };
 
   return (
-    <Card className="zero-card">
-      <CardContent className="p-0 flex flex-col">
-        <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50">
+    <Card
+      className={
+        mobileRedesign
+          ? "border-0 rounded-none shadow-none bg-transparent flex-1 flex flex-col min-h-0"
+          : "zero-card"
+      }
+    >
+      <CardContent className="p-0 flex flex-col flex-1 min-h-0">
+        <header
+          className={
+            mobileRedesign
+              ? "flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4"
+              : "flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50"
+          }
+        >
           <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">
+            <h2 className="text-lg max-md:text-xl font-semibold tracking-tight text-foreground">
               {title}
             </h2>
-            <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+            {!mobileRedesign && (
+              <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+            )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+              className={
+                mobileRedesign
+                  ? "zero-btn-morandi h-11 gap-2 shrink-0 rounded-lg border text-[17px]"
+                  : "zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+              }
               onClick={openAddSchedule}
             >
-              <IconPlus size={14} stroke={2} />
+              <IconPlus size={mobileRedesign ? 16 : 14} stroke={2} />
               Add schedule
             </Button>
-            <Tabs
-              value={scheduleViewMode}
-              onValueChange={(v) => {
-                return setScheduleViewMode(v as "list" | "calendar");
-              }}
-              className="shrink-0"
-            >
-              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-                <TabsTrigger
-                  value="list"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconList size={14} stroke={1.5} />
-                  List
-                </TabsTrigger>
-                <TabsTrigger
-                  value="calendar"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                >
-                  <IconLayoutGrid size={14} stroke={1.5} />
-                  Calendar
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            {!mobileRedesign && (
+              <Tabs
+                value={scheduleViewMode}
+                onValueChange={(v) => {
+                  return setScheduleViewMode(v as "list" | "calendar");
+                }}
+                className="shrink-0"
+              >
+                <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                  <TabsTrigger
+                    value="list"
+                    className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  >
+                    <IconList size={14} stroke={1.5} />
+                    List
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="calendar"
+                    className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  >
+                    <IconLayoutGrid size={14} stroke={1.5} />
+                    Calendar
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
           </div>
         </header>
-        {scheduleViewMode === "list" && (
+        {effectiveViewMode === "list" && (
           <ScheduleListView
             entries={scheduleList}
             togglingIds={togglingIds}
@@ -544,7 +574,7 @@ export function ZeroScheduleCard({
           />
         )}
 
-        {scheduleViewMode === "calendar" && (
+        {effectiveViewMode === "calendar" && (
           <ScheduleCalendarView
             entries={scheduleList}
             onEdit={openEditSchedule}

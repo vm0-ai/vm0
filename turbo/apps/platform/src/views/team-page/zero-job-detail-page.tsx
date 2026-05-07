@@ -807,7 +807,7 @@ function AgentHeader({
           <Button
             variant="outline"
             size="sm"
-            className="zero-btn-morandi gap-1.5 w-full sm:w-auto sm:shrink-0"
+            className="zero-btn-morandi gap-1.5 w-full sm:w-auto sm:shrink-0 h-11 sm:h-9 text-[17px] sm:text-sm"
             onClick={() => {
               nav("/agents/:agentId/chat", {
                 pathParams: { agentId: agentId },
@@ -815,7 +815,7 @@ function AgentHeader({
             }}
             aria-label={`Chat with ${displayName}`}
           >
-            <IconMessageCircle size={14} stroke={2} />
+            <IconMessageCircle size={16} stroke={2} />
             Chat with {displayName}
           </Button>
         </div>
@@ -988,7 +988,7 @@ export function ZeroJobDetailPage() {
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
       />
-      <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
+      <main className="flex-1 flex flex-col min-h-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
         <AgentTabContent
           activeTab={activeTab}
           agentId={fields.agentId}
