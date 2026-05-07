@@ -44,6 +44,7 @@
     "source=certs,target=/home/vscode/.local/certs",
     "source=claude,target=/home/vscode/.local/share/claude",
     "source=codex,target=/home/vscode/.codex",
+    "source=codex-switch,target=/home/vscode/.codex-switch",
     "source=pki,target=/home/vscode/.pki",
     "source=cloudflared,target=/home/vscode/.cloudflared",
     "source=agent-browser,target=/home/vscode/.local/share/agent-browser"
