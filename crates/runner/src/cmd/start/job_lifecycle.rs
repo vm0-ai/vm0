@@ -5,8 +5,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use crate::ids::RunId;
 use crate::provider::JobProvider;
 use crate::resource_budget::BudgetLease;
-use crate::status::StatusTracker;
 use crate::types::SandboxReuseResult;
+
+use super::ownership::{OwnershipTransitions, RunSandbox};
 
 /// Ownership facts known by the outer runner task for panic cleanup.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -152,7 +153,7 @@ impl CompletionReady {
     pub(super) async fn complete_and_release(
         self,
         provider: &dyn JobProvider,
-        status: &StatusTracker,
+        ownership: &OwnershipTransitions<'_>,
         cleanup_state: &RunCleanupState,
     ) {
         let Self { payload, budget } = self;
@@ -173,7 +174,9 @@ impl CompletionReady {
                 Some(reuse_result),
             )
             .await;
-        status.remove_run_if_matching(run_id, sandbox_id).await;
+        ownership
+            .active_completed(RunSandbox::new(run_id, sandbox_id))
+            .await;
         cleanup_state.mark_status_removed();
         budget.release();
     }
@@ -193,6 +196,8 @@ mod tests {
     use crate::resource_budget::{BudgetLease, ResourceBudget};
     use crate::status::StatusTracker;
     use crate::types::{ExecutionContext, HeartbeatState, SandboxReuseResult};
+
+    use super::super::ownership::OwnershipTransitions;
 
     fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
         let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
@@ -271,6 +276,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let ownership = OwnershipTransitions::new(&status);
         let provider = CompletionOrderProvider {
             budget: Arc::clone(&budget),
             budget_count_at_complete: Arc::clone(&budget_count_at_complete),
@@ -286,7 +292,7 @@ mod tests {
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::active(ActiveBudgetLease::new(lease)),
         )
-        .complete_and_release(&provider, &status, &cleanup_state)
+        .complete_and_release(&provider, &ownership, &cleanup_state)
         .await;
 
         assert_eq!(
@@ -320,6 +326,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let ownership = OwnershipTransitions::new(&status);
         let provider = CompletionOrderProvider {
             budget: Arc::clone(&budget),
             budget_count_at_complete,
@@ -335,7 +342,7 @@ mod tests {
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::idle_owned(),
         )
-        .complete_and_release(&provider, &status, &cleanup_state)
+        .complete_and_release(&provider, &ownership, &cleanup_state)
         .await;
 
         assert_eq!(
@@ -359,6 +366,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let ownership = OwnershipTransitions::new(&status);
         let provider = CompletionOrderProvider {
             budget: Arc::clone(&budget),
             budget_count_at_complete,
@@ -376,7 +384,7 @@ mod tests {
             test_completion_payload(run_id, completed_sandbox_id),
             BudgetOwnership::active(ActiveBudgetLease::new(lease)),
         )
-        .complete_and_release(&provider, &status, &cleanup_state)
+        .complete_and_release(&provider, &ownership, &cleanup_state)
         .await;
 
         assert_eq!(
@@ -398,6 +406,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let ownership = OwnershipTransitions::new(&status);
         let provider = CompletionOrderProvider {
             budget: Arc::clone(&budget),
             budget_count_at_complete: Arc::clone(&budget_count_at_complete),
@@ -413,7 +422,7 @@ mod tests {
             test_completion_payload(run_id, sandbox_id),
             BudgetOwnership::active(ActiveBudgetLease::from_rejected_park(lease)),
         )
-        .complete_and_release(&provider, &status, &cleanup_state)
+        .complete_and_release(&provider, &ownership, &cleanup_state)
         .await;
 
         assert_eq!(

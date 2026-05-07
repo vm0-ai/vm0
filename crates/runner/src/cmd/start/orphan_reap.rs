@@ -6,7 +6,8 @@ use std::sync::Arc;
 use sandbox::SandboxId;
 use tracing::{info, warn};
 
-use super::idle_lifecycle::{SharedIdlePool, set_idle_status_snapshot};
+use super::idle_lifecycle::SharedIdlePool;
+use super::ownership::{OwnershipTransitions, RunSandbox};
 use crate::ids::RunId;
 use crate::process;
 use crate::status::StatusTracker;
@@ -61,7 +62,7 @@ impl OrphanedActiveRuns {
         }
     }
 
-    async fn remove_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
+    pub(super) async fn remove_if_matching(&self, run_id: RunId, sandbox_id: SandboxId) -> bool {
         let mut runs = self.inner.lock().await;
         let removed =
             matches!(runs.get(&run_id), Some(current) if current.sandbox_id == sandbox_id);
@@ -171,27 +172,24 @@ async fn reap_orphaned_active_run_records(
         .collect();
     drop(pool);
     let mut non_idle_records = Vec::new();
-    let mut refreshed_idle_status = false;
+    let ownership = OwnershipTransitions::new(status);
+    let idle_owned_runs = idle_owned_records
+        .iter()
+        .copied()
+        .map(|record| RunSandbox::new(record.run_id, record.sandbox_id));
+    let reconciled_idle_runs = ownership
+        .orphan_reconciled_idle_owned(orphaned_active_runs, idle_owned_runs, idle_snapshot)
+        .await;
+    for run in reconciled_idle_runs {
+        info!(
+            run_id = %run.run_id(),
+            sandbox_id = %run.sandbox_id(),
+            "orphaned active run reconciled as idle-pool owned"
+        );
+    }
     for record in records {
         if idle_owned_records.contains(&record) {
-            if !orphaned_active_runs
-                .remove_if_matching(record.run_id, record.sandbox_id)
-                .await
-            {
-                continue;
-            }
-            if !refreshed_idle_status {
-                set_idle_status_snapshot(status, idle_snapshot.clone()).await;
-                refreshed_idle_status = true;
-            }
-            status
-                .remove_run_if_matching(record.run_id, record.sandbox_id)
-                .await;
-            info!(
-                run_id = %record.run_id,
-                sandbox_id = %record.sandbox_id,
-                "orphaned active run reconciled as idle-pool owned"
-            );
+            continue;
         } else {
             non_idle_records.push(record);
         }
@@ -304,15 +302,16 @@ async fn reap_orphaned_active_runs_with_firecrackers(
             continue;
         }
 
-        if !orphaned_active_runs
-            .remove_if_matching(record.run_id, record.sandbox_id)
+        let ownership = OwnershipTransitions::new(status);
+        if !ownership
+            .orphan_confirmed_absent(
+                orphaned_active_runs,
+                RunSandbox::new(record.run_id, record.sandbox_id),
+            )
             .await
         {
             continue;
         }
-        status
-            .remove_run_if_matching(record.run_id, record.sandbox_id)
-            .await;
         info!(
             run_id = %record.run_id,
             sandbox_id = %record.sandbox_id,

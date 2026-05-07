@@ -15,11 +15,12 @@ use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
 use super::factory_lifecycle::SharedFactory;
-use super::idle_lifecycle::{SharedIdlePool, set_idle_status_snapshot};
+use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
     ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState,
 };
 use super::orphan_reap::OrphanedActiveRuns;
+use super::ownership::{OwnershipTransitions, RunSandbox};
 use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, maybe_panic_outer_job};
@@ -252,8 +253,9 @@ pub(super) fn spawn_job(
             .await;
 
             // Structural guarantee: claim (in provider) is always paired with complete.
+            let ownership = OwnershipTransitions::new(status.as_ref());
             completion_ready
-                .complete_and_release(provider.as_ref(), status.as_ref(), &cleanup_state_for_body)
+                .complete_and_release(provider.as_ref(), &ownership, &cleanup_state_for_body)
                 .await;
 
             // Best-effort telemetry, deferred past `provider.complete` so the
@@ -318,16 +320,17 @@ pub(super) async fn cleanup_panicked_job(
     orphaned_active_runs: OrphanedActiveRuns,
 ) {
     cancel_tokens.lock().await.remove(&run_id);
+    let ownership = OwnershipTransitions::new(status.as_ref());
+    let run = RunSandbox::new(run_id, sandbox_id);
 
     match cleanup_state.disposition() {
         RunCleanupDisposition::StatusRemoved => {}
         RunCleanupDisposition::DestroyCompleted => {
-            status.remove_run_if_matching(run_id, sandbox_id).await;
+            ownership.active_destroy_completed(run).await;
         }
         RunCleanupDisposition::IdlePoolOwned => {
             let snapshot = idle_pool.lock().await.status_snapshot();
-            set_idle_status_snapshot(&status, snapshot).await;
-            status.remove_run_if_matching(run_id, sandbox_id).await;
+            ownership.active_idle_pool_owned(run, snapshot).await;
         }
         RunCleanupDisposition::ActiveOrUnknown => {
             warn!(
@@ -335,7 +338,9 @@ pub(super) async fn cleanup_panicked_job(
                 sandbox_id = %sandbox_id,
                 "outer job task panicked before sandbox ownership was proven; leaving active run visible for orphan reconciliation"
             );
-            orphaned_active_runs.insert(run_id, sandbox_id).await;
+            ownership
+                .active_ownership_unknown(&orphaned_active_runs, run)
+                .await;
         }
     }
 }
