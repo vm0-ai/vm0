@@ -431,15 +431,14 @@ describe("POST /api/zero/chat/messages", () => {
           });
           expect(round2ConnectorsSpan?.org_id).toBeTruthy();
 
-          // run_id is stamped after the tx commits — only post-commit spans
-          // carry it.
+          // run_id is stamped after agent_runs insert returns; spans emitted
+          // after that point carry it even while still inside the tx.
           const persistSpan = chatSpanEvents.find((e) => {
             return e.op_type === "api_chat_send_persist_zero_run_metadata";
           });
           expect(persistSpan?.run_id).toBe(data.runId);
 
-          // insert_run_record happens inside the tx, before commit — emits
-          // with run_id absent.
+          // insert_run_record emits before the inserted run id is stamped.
           const insertRunRecordSpan = chatSpanEvents.find((e) => {
             return e.op_type === "api_chat_send_create_run_insert_run_record";
           });

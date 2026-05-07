@@ -44,6 +44,10 @@ import {
 } from "./zero-run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { buildZeroExecutionContext } from "./build-zero-context";
+import {
+  persistZeroRunMetadata,
+  type ZeroRunMetadataValues,
+} from "./zero-run-metadata";
 import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
 import { isConcurrentRunLimit } from "@vm0/api-services/errors";
@@ -299,6 +303,20 @@ function resolveEffectiveModel(
   };
 }
 
+function buildZeroRunMetadata(
+  params: CreateZeroRunParams,
+  runParams: CreateRunParams,
+): ZeroRunMetadataValues {
+  return {
+    triggerSource: params.triggerSource,
+    scheduleId: params.scheduleId,
+    triggerAgentId: params.triggerAgentId,
+    chatThreadId: params.chatThreadId,
+    modelProvider: params.modelProvider,
+    selectedModel: runParams.selectedModelOverride,
+  };
+}
+
 /** Context needed by insertRunWithAdvisoryLock — carved out of createZeroRunRecord. */
 interface InsertRunWithAdvisoryLockParams {
   resolved: Awaited<ReturnType<typeof resolveStartRunCompose>>;
@@ -334,6 +352,7 @@ async function insertRunWithAdvisoryLock(
     emit,
     stamp,
   } = ctx;
+  const zeroRunMetadata = buildZeroRunMetadata(params, runParams);
 
   let run;
   try {
@@ -366,21 +385,29 @@ async function insertRunWithAdvisoryLock(
         });
       });
       emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
+
+      stamp({ run_id: insertT.result.id });
+      const persistT = await timed(async () => {
+        return persistZeroRunMetadata(tx, insertT.result.id, zeroRunMetadata);
+      });
+      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
+
       return insertT.result;
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      const queueResult = await enqueueRun(runParams);
+      let persistDurationMs: number | undefined;
+      const queueResult = await enqueueRun(runParams, {
+        zeroRunMetadata,
+        onZeroRunMetadataPersisted: (durationMs) => {
+          persistDurationMs = durationMs;
+        },
+      });
 
       stamp({ run_id: queueResult.runId });
-
-      const persistT = await timed(async () => {
-        return persistZeroRunMetadata(queueResult.runId, params, {
-          selectedModelOverride: runParams.selectedModelOverride,
-          modelProviderId: runParams.modelProviderId,
-        });
-      });
-      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
+      if (persistDurationMs !== undefined) {
+        emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistDurationMs);
+      }
 
       return {
         runId: queueResult.runId,
@@ -393,16 +420,6 @@ async function insertRunWithAdvisoryLock(
   }
 
   const transactionTime = Date.now();
-
-  stamp({ run_id: run.id });
-
-  const persistT = await timed(async () => {
-    return persistZeroRunMetadata(run.id, params, {
-      selectedModelOverride: runParams.selectedModelOverride,
-      modelProviderId: runParams.modelProviderId,
-    });
-  });
-  emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
 
   const record: CreateRunRecordResult = {
     run: { id: run.id, createdAt: run.createdAt },
@@ -942,27 +959,6 @@ export async function createZeroRun(
     sessionId: result.sessionId,
     markResponseReady,
   };
-}
-
-/**
- * Persist zero-layer metadata to zero_runs table.
- * Called eagerly during createZeroRunRecord so that activity queries see the
- * correct triggerSource immediately (before dispatch completes).
- */
-async function persistZeroRunMetadata(
-  runId: string,
-  params: CreateZeroRunParams,
-  modelOverride?: { selectedModelOverride?: string; modelProviderId?: string },
-): Promise<void> {
-  await globalThis.services.db.insert(zeroRuns).values({
-    id: runId,
-    triggerSource: params.triggerSource,
-    scheduleId: params.scheduleId ?? null,
-    triggerAgentId: params.triggerAgentId ?? null,
-    chatThreadId: params.chatThreadId ?? null,
-    modelProvider: params.modelProvider ?? null,
-    selectedModel: modelOverride?.selectedModelOverride ?? null,
-  });
 }
 
 /**
