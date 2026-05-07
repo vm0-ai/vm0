@@ -96,8 +96,9 @@ interface ResolvedThread {
 /**
  * Persist the composer's per-run override onto the thread row and return the
  * effective override to use for this run (precedence: per-run > thread > agent).
- * `undefined` for `modelSelection` means "leave thread row as-is" — older
- * clients that never saw the field still get the thread/agent fall-through.
+ * `null` or `undefined` for `modelSelection` means "inherit" — older clients
+ * that never saw the field and newer clients explicitly choosing "Use default"
+ * both get the thread/agent fall-through.
  *
  * When the thread carries an eager-pinned provider but that provider has since
  * been deleted, this throws `providerDeleted()` rather than silently falling
@@ -127,7 +128,7 @@ async function resolveRunModelOverride(
       providerId: modelSelection.modelProviderId,
       selectedModel: modelSelection.selectedModel,
     };
-  } else if (modelSelection === undefined) {
+  } else {
     const [thread] = await globalThis.services.db
       .select({
         modelProviderId: chatThreads.modelProviderId,

@@ -28,18 +28,15 @@ import {
   type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  getDefaultModel,
-  type ModelProviderResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { orgModelProviders$ } from "../external/org-model-providers.ts";
 import { agentById } from "../agent.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
+import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
+import { resolveEffectiveAgentDefaultSelection } from "../zero-page/model-provider-default.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -269,32 +266,22 @@ function createModelSelection(
           selectedModel: thread.selectedModel,
         };
       }
-      // No thread override → fall back to the agent's default, then to the
-      // org default. Seeding here (rather than letting the picker show its
-      // null-value fallback) keeps the picker's displayed model identical
-      // to what the send body carries. Without this seed, the backend
-      // would receive `modelSelection: null` while the UI advertised a
-      // specific model, producing a display/run mismatch.
-      if (thread?.agentId) {
-        const agent = await get(agentById(thread.agentId));
-        if (agent?.modelProviderId && agent.selectedModel) {
-          return {
-            modelProviderId: agent.modelProviderId,
-            selectedModel: agent.selectedModel,
-          };
-        }
-      }
-      const { modelProviders } = await get(orgModelProviders$);
-      const defaultProvider = modelProviders.find((p) => {
-        return p.isDefault;
+      // No thread override → fall back to preferred personal default, then
+      // the agent's default, then the workspace default. Seeding here
+      // (rather than letting the picker show its null-value fallback) keeps
+      // the picker's displayed model identical to what the send body carries.
+      // Without this seed, the backend would receive `modelSelection: null`
+      // while the UI advertised a specific model, producing a display/run
+      // mismatch.
+      const agent = thread?.agentId
+        ? await get(agentById(thread.agentId))
+        : null;
+      const composerProviders = await get(composerModelProviders$);
+      return resolveEffectiveAgentDefaultSelection({
+        agent,
+        providers: composerProviders.providers,
+        tiers: composerProviders.tiers,
       });
-      if (defaultProvider?.selectedModel) {
-        return {
-          modelProviderId: defaultProvider.id,
-          selectedModel: defaultProvider.selectedModel,
-        };
-      }
-      return null;
     },
   );
 
@@ -375,13 +362,12 @@ function createAgentInfoSignals(
         return null;
       }
       const agent = await get(agentById(agentId));
-      if (!agent?.modelProviderId || !agent.selectedModel) {
-        return null;
-      }
-      return {
-        modelProviderId: agent.modelProviderId,
-        selectedModel: agent.selectedModel,
-      };
+      const composerProviders = await get(composerModelProviders$);
+      return resolveEffectiveAgentDefaultSelection({
+        agent,
+        providers: composerProviders.providers,
+        tiers: composerProviders.tiers,
+      });
     },
   );
 
@@ -1144,23 +1130,14 @@ function createSendMessage(deps: SendMessageDeps) {
       if (!effectiveSelectedModel) {
         const agent = await get(agentById(agentId));
         signal.throwIfAborted();
-        if (agent?.modelProviderId && agent.selectedModel) {
-          effectiveSelectedModel = agent.selectedModel;
-        }
-      }
-      if (!effectiveSelectedModel) {
-        const { modelProviders } = await get(orgModelProviders$);
+        const composerProviders = await get(composerModelProviders$);
         signal.throwIfAborted();
-        const defaultProvider = (
-          modelProviders as ModelProviderResponse[]
-        ).find((provider) => {
-          return provider.isDefault;
-        });
-        const defaultModel = defaultProvider
-          ? getDefaultModel(defaultProvider.type)
-          : undefined;
         effectiveSelectedModel =
-          defaultProvider?.selectedModel ?? defaultModel ?? undefined;
+          resolveEffectiveAgentDefaultSelection({
+            agent,
+            providers: composerProviders.providers,
+            tiers: composerProviders.tiers,
+          })?.selectedModel ?? undefined;
       }
 
       const result = await set(

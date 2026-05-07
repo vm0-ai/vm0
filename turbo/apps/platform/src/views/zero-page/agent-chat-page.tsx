@@ -50,6 +50,7 @@ import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-ma
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import { composerModelProviders$ } from "../../signals/zero-page/composer-model-providers.ts";
+import { resolveEffectiveAgentDefaultSelection } from "../../signals/zero-page/model-provider-default.ts";
 import {
   chatPageInput$,
   chatPageModelSelection$,
@@ -476,13 +477,13 @@ export function AgentChatPage() {
   const setModelSelection = useSet(setChatPageModelSelection$);
   const resetModelSelection = useSet(resetChatPageModelSelection$);
   const currentAgent = useLastResolved(currentChatAgent$);
-  const agentModelDefault =
-    currentAgent?.modelProviderId && currentAgent?.selectedModel
-      ? {
-          modelProviderId: currentAgent.modelProviderId,
-          selectedModel: currentAgent.selectedModel,
-        }
-      : null;
+  const agentModelDefault = composerProviders
+    ? resolveEffectiveAgentDefaultSelection({
+        agent: currentAgent,
+        providers: composerProviders.providers,
+        tiers: composerProviders.tiers,
+      })
+    : null;
 
   const handleSendMessage = (message: string) => {
     if (!currentChatAgentId) {

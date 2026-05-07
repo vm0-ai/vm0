@@ -74,7 +74,6 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getDefaultModel,
   getModelImageInputSupport,
   type ModelProviderResponse,
   type ModelProviderType,
@@ -104,6 +103,7 @@ import {
   authorizeConnector$,
   deauthorizeConnector$,
 } from "../../signals/zero-page/zero-connectors.ts";
+import { resolveWorkspaceDefaultSelection } from "../../signals/zero-page/model-provider-default.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   showAddDialog$,
@@ -245,32 +245,10 @@ function resolveConnectorLabel(
   return connectorMap.get(type as ConnectorType)?.label ?? type;
 }
 
-interface ResolvedComposerModel {
-  modelProviderId: string;
-  selectedModel: string;
-}
-
-function resolveProviderSelection(
-  provider: ModelProviderResponse | undefined,
-): ResolvedComposerModel | null {
-  if (!provider) {
-    return null;
-  }
-  const selectedModel =
-    provider.selectedModel ?? getDefaultModel(provider.type);
-  if (!selectedModel) {
-    return null;
-  }
-  return {
-    modelProviderId: provider.id,
-    selectedModel,
-  };
-}
-
 function resolveComposerModelForSelection(
   modelPicker: ComposerModelPicker | undefined,
   selection: ModelProviderSelection | null,
-): ResolvedComposerModel | null {
+): ModelProviderSelection | null {
   if (!modelPicker) {
     return null;
   }
@@ -280,10 +258,10 @@ function resolveComposerModelForSelection(
   if (modelPicker.agentDefault) {
     return modelPicker.agentDefault;
   }
-  const defaultProvider = modelPicker.providers.find((provider) => {
-    return provider.isDefault;
-  });
-  return resolveProviderSelection(defaultProvider);
+  return resolveWorkspaceDefaultSelection(
+    modelPicker.providers,
+    modelPicker.tiers,
+  );
 }
 
 interface VisualAttachmentUnsupportedState {

@@ -8,10 +8,6 @@ import {
   type ChatThreadListItem,
   type ModelSelectionRequest,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  getDefaultModel,
-  type ModelProviderResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import {
@@ -42,7 +38,8 @@ import {
 } from "./optimistic-chat-thread-state.ts";
 import { toVoid } from "../utils.ts";
 import { agentById } from "../agent.ts";
-import { orgModelProviders$ } from "../external/org-model-providers.ts";
+import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
+import { resolveEffectiveAgentDefaultSelection } from "../zero-page/model-provider-default.ts";
 
 export type { OptimisticChatPane };
 export { optimisticChatThread$ };
@@ -351,23 +348,14 @@ const sendNewThreadMessage$ = command(
     if (!effectiveSelectedModel) {
       const agent = await get(agentById(agentId));
       signal.throwIfAborted();
-      if (agent?.modelProviderId && agent.selectedModel) {
-        effectiveSelectedModel = agent.selectedModel;
-      }
-    }
-    if (!effectiveSelectedModel) {
-      const { modelProviders } = await get(orgModelProviders$);
+      const composerProviders = await get(composerModelProviders$);
       signal.throwIfAborted();
-      const defaultProvider = (modelProviders as ModelProviderResponse[]).find(
-        (provider) => {
-          return provider.isDefault;
-        },
-      );
-      const defaultModel = defaultProvider
-        ? getDefaultModel(defaultProvider.type)
-        : undefined;
       effectiveSelectedModel =
-        defaultProvider?.selectedModel ?? defaultModel ?? undefined;
+        resolveEffectiveAgentDefaultSelection({
+          agent,
+          providers: composerProviders.providers,
+          tiers: composerProviders.tiers,
+        })?.selectedModel ?? undefined;
     }
     const prepared = await set(
       prepareUserMessageFromDraft$,

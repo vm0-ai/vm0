@@ -1324,6 +1324,56 @@ describe("POST /api/zero/chat/messages", () => {
         expect(override.selectedModel).toBe("gpt-5.4");
       });
 
+      it("runs the personal default when the request explicitly inherits modelSelection null", async () => {
+        // The web picker sends `modelSelection: null` when the user chooses
+        // "Use agent default". That must inherit the newly created thread's
+        // eager pin, not fall back to the agent's org-tier provider.
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("personal-null-inherit"),
+          { noEnvironmentBlock: true },
+        );
+        const orgProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          composeAgentId,
+          orgProviderId,
+          "claude-opus-4-7",
+        );
+        await setTestZeroAgentPreferPersonalProvider(composeAgentId, true);
+        await enablePersonalModelProviderForUser(user.orgId, user.userId);
+        const personalProviderId = await insertUserDefaultModelProvider(
+          user.orgId,
+          user.userId,
+          "openai-api-key",
+          "gpt-5.4",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "explicit inherit personal pin",
+              modelSelection: null,
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { runId, threadId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(personalProviderId);
+        expect(override.selectedModel).toBe("gpt-5.4");
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
+      });
+
       it("falls back to agent's selectedModel when personal row has none", async () => {
         // Personal default has no selectedModel — precedence is
         // user > agent > null, so the agent's selectedModel surfaces.
