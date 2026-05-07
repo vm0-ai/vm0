@@ -27,7 +27,16 @@ const PROTOCOL_VERSION: &str = "5";
 const AGENT_STRING: &str = concat!("ably-subscriber-rs/", env!("CARGO_PKG_VERSION"));
 
 fn is_localhost(host: &str) -> bool {
-    host.starts_with("127.0.0.1") || host.starts_with("localhost")
+    let Ok(url) = url::Url::parse(&format!("http://{host}/")) else {
+        return false;
+    };
+
+    match url.host() {
+        Some(url::Host::Domain(host)) if host.eq_ignore_ascii_case("localhost") => true,
+        Some(url::Host::Ipv4(addr)) if addr == std::net::Ipv4Addr::LOCALHOST => true,
+        Some(url::Host::Ipv6(addr)) if addr == std::net::Ipv6Addr::LOCALHOST => true,
+        _ => false,
+    }
 }
 
 fn error_or_unknown(error: Option<ErrorInfo>) -> ErrorInfo {
@@ -1913,5 +1922,28 @@ mod tests {
 
         let url = build_ws_url("localhost:9000", "tok", None).unwrap();
         assert!(url.starts_with("ws://localhost:9000/"));
+
+        let url = build_ws_url("LOCALHOST:9000", "tok", None).unwrap();
+        assert!(url.starts_with("ws://localhost:9000/"));
+
+        let url = build_ws_url("[::1]:9000", "tok", None).unwrap();
+        assert!(url.starts_with("ws://[::1]:9000/"));
+    }
+
+    #[test]
+    fn build_ws_url_localhost_prefixes_use_wss() {
+        let cases = [
+            ("localhost.evil.com", "wss://localhost.evil.com/"),
+            ("127.0.0.1.attacker.com", "wss://127.0.0.1.attacker.com/"),
+            ("127.0.0.10", "wss://127.0.0.10/"),
+        ];
+
+        for (host, expected_prefix) in cases {
+            let url = build_ws_url(host, "tok", None).unwrap();
+            assert!(
+                url.starts_with(expected_prefix),
+                "host {host} unexpectedly used plaintext URL {url}",
+            );
+        }
     }
 }
