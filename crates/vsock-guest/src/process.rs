@@ -1,4 +1,4 @@
-use std::process::ExitStatus;
+use std::process::{Child, ExitStatus};
 
 use crate::log::log;
 
@@ -107,6 +107,56 @@ pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
     }
 
     true
+}
+
+/// Kill the process tree for a spawned child and reap the direct child.
+pub(crate) fn kill_and_reap_child(mut child: Child) {
+    let child_id = child.id();
+    match child.try_wait() {
+        Ok(Some(_)) => return,
+        Ok(None) => {}
+        Err(e) => {
+            log(
+                "WARN",
+                &format!("failed to check child pid={child_id} before kill: {e}"),
+            );
+        }
+    }
+
+    // SAFETY: child_id comes from a live `Child` returned by Command::spawn.
+    let killed = unsafe { kill_process_tree(child_id) } || child.kill().is_ok();
+    if !killed {
+        log(
+            "WARN",
+            &format!("failed to signal process tree for child pid={child_id}"),
+        );
+    }
+
+    if let Err(e) = child.wait() {
+        log("WARN", &format!("failed to reap child pid={child_id}: {e}"));
+    }
+}
+
+pub(crate) struct ChildReapGuard {
+    child: Option<Child>,
+}
+
+impl ChildReapGuard {
+    pub(crate) fn new(child: Child) -> Self {
+        Self { child: Some(child) }
+    }
+
+    pub(crate) fn into_child(mut self) -> Option<Child> {
+        self.child.take()
+    }
+}
+
+impl Drop for ChildReapGuard {
+    fn drop(&mut self) {
+        if let Some(child) = self.child.take() {
+            kill_and_reap_child(child);
+        }
+    }
 }
 
 #[cfg(test)]

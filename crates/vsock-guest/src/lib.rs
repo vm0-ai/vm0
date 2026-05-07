@@ -15,6 +15,7 @@ mod log;
 mod monitor;
 mod process;
 mod shutdown;
+mod threading;
 mod wait;
 mod writer;
 

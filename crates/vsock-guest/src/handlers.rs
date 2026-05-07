@@ -2,7 +2,6 @@ use std::io::{self, Write};
 use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
-use std::thread;
 
 use vsock_proto::{
     self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
@@ -15,12 +14,16 @@ use crate::exec::{
     build_exec_command, prepend_env, spawn_in_own_process_group, spawn_with_pipes, truncate_preview,
 };
 use crate::log::log;
-use crate::process::extract_exit_code;
+use crate::process::{extract_exit_code, kill_and_reap_child};
 use crate::shutdown::handle_shutdown;
+use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     WaitOutcome, await_drain_deadline, finalize_buffered_result,
     wait_with_drain_and_timeout_or_cancelled, wait_with_kill_timeout,
 };
+
+const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
+const WRITE_TIMEOUT_MS: u32 = 30_000;
 
 pub(crate) enum MessageOutcome {
     Response(Vec<u8>),
@@ -89,8 +92,6 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
 
     // Execute as 'user' (UID 1000) to match E2B sandbox behavior
     // Use subprocess instead of direct fs::write to run as user
-    const WRITE_TIMEOUT_MS: u32 = 30_000;
-
     let escaped_path = path.replace('\'', "'\\''");
 
     // Build the write command: tee for privileged writes (build_exec_command
@@ -126,12 +127,18 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
     if let Some(mut stdin) = child.stdin.take()
         && let Err(e) = stdin.write_all(content)
     {
-        let _ = child.kill();
-        let _ = child.wait(); // Prevent zombie process
+        kill_and_reap_child(child);
         return (false, format!("Failed to write to stdin: {e}"));
     }
     // stdin is dropped here, closing the pipe
 
+    wait_write_file_child(child, SystemThreadSpawner)
+}
+
+fn wait_write_file_child<S>(mut child: Child, spawner: S) -> (bool, String)
+where
+    S: ThreadSpawner,
+{
     // Drain stderr concurrently with wait via the cancellable helper. Stdout
     // is `Stdio::null()` so there's no orphan-fd hazard there. After the
     // child exits, the drain thread either reaches EOF naturally or — if a
@@ -142,20 +149,29 @@ fn handle_write_file(path: &str, content: &[u8], use_sudo: bool, append: bool) -
     let stderr_pipe = match child.stderr.take() {
         Some(p) => p,
         None => {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_and_reap_child(child);
             return (false, "missing stderr pipe".to_string());
         }
     };
     let cancel = Arc::new(AtomicBool::new(false));
     let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
     let stderr_handle = {
-        let cancel = cancel.clone();
-        thread::spawn(move || {
-            let buf = drain_into_vec_cancellable(stderr_pipe, &cancel);
-            let _ = done_tx.send(());
-            buf
-        })
+        let drain_cancel = cancel.clone();
+        match spawner.spawn_vec(
+            THREAD_WRITE_STDERR,
+            Box::new(move || {
+                let buf = drain_into_vec_cancellable(stderr_pipe, &drain_cancel);
+                let _ = done_tx.send(());
+                buf
+            }),
+        ) {
+            Ok(handle) => handle,
+            Err(e) => {
+                cancel.store(true, std::sync::atomic::Ordering::Release);
+                kill_and_reap_child(child);
+                return (false, format!("Failed to spawn stderr drain thread: {e}"));
+            }
+        }
     };
 
     let outcome = wait_with_kill_timeout(child, WRITE_TIMEOUT_MS);
@@ -225,6 +241,12 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::threading::test_support::FailingThreadSpawner;
+
+    fn pid_alive(pid: u32) -> bool {
+        // SAFETY: kill(pid, 0) is the standard process-existence check.
+        unsafe { libc::kill(pid as i32, 0) == 0 }
+    }
 
     #[cfg(unix)]
     #[test]
@@ -237,5 +259,18 @@ mod tests {
         let _ = child.wait();
 
         assert_eq!(pgid, pid as libc::pid_t);
+    }
+
+    #[test]
+    fn write_file_stderr_drain_spawn_failure_kills_and_reaps_child() {
+        let child = spawn_write_file_command("sleep 60", false).unwrap();
+        let pid = child.id();
+
+        let (success, error) =
+            wait_write_file_child(child, FailingThreadSpawner::fail_once(THREAD_WRITE_STDERR));
+
+        assert!(!success);
+        assert!(error.contains("stderr drain thread"));
+        assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
     }
 }

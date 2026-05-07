@@ -5,7 +5,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::drain::drain_into_vec_cancellable;
-use crate::process::{extract_exit_code, kill_process_tree};
+use crate::process::{extract_exit_code, kill_and_reap_child, kill_process_tree};
+use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
 
 /// Exit code returned when command times out (same as bash/Python)
 pub(crate) const EXIT_CODE_TIMEOUT: i32 = 124;
@@ -16,6 +17,9 @@ pub(crate) const EXIT_CODE_TIMEOUT: i32 = 124;
 /// child processes hold pipe fds open.
 pub(crate) const DRAIN_DEADLINE_SECS: u64 = 5;
 const WATCHDOG_CANCEL_POLL_INTERVAL_MS: u64 = 50;
+const THREAD_WAIT_WATCHDOG: &str = "vsock-wait-watchdog";
+const THREAD_DRAIN_STDOUT: &str = "vsock-drain-stdout";
+const THREAD_DRAIN_STDERR: &str = "vsock-drain-stderr";
 
 /// Outcome of child wait helpers.
 pub(crate) enum WaitOutcome {
@@ -105,19 +109,15 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
 
     thread::scope(|scope| {
         let (done_tx, done_rx) = mpsc::channel::<()>();
-        let watchdog = match thread::Builder::new()
-            .name("vsock-wait-watchdog".to_string())
-            .spawn_scoped(scope, move || {
-                wait_for_done_timeout_or_cancelled(done_rx, deadline, cancel, child_id)
-            }) {
+        let watchdog = match spawn_scoped_named(scope, THREAD_WAIT_WATCHDOG, move || {
+            wait_for_done_timeout_or_cancelled(done_rx, deadline, cancel, child_id)
+        }) {
             Ok(watchdog) => watchdog,
             Err(e) => {
                 // If the watchdog cannot be created, timeout/cancel can no
                 // longer be enforced. Kill and reap the child instead of
                 // letting it outlive the failed wait helper.
-                // SAFETY: child_id is a valid PID from Command::spawn.
-                let _ = unsafe { kill_process_tree(child_id) } || child.kill().is_ok();
-                let _ = child.wait();
+                kill_and_reap_child(child);
                 return WaitOutcome::WaitFailed(format!("failed to spawn wait watchdog: {e}"));
             }
         };
@@ -220,18 +220,34 @@ fn kill_child(child_id: u32, reason: KillReason) -> WatchdogKill {
 /// EPIPE / SIGPIPE, so neither kernel pipe buffers nor our heap accumulate
 /// further bytes.
 pub(crate) fn wait_with_drain_and_timeout_or_cancelled(
-    mut child: Child,
+    child: Child,
     timeout_ms: u32,
     external_cancel: &AtomicBool,
 ) -> (WaitOutcome, Vec<u8>, Vec<u8>) {
+    wait_with_drain_and_timeout_or_cancelled_with_spawner(
+        child,
+        timeout_ms,
+        external_cancel,
+        SystemThreadSpawner,
+    )
+}
+
+fn wait_with_drain_and_timeout_or_cancelled_with_spawner<S>(
+    mut child: Child,
+    timeout_ms: u32,
+    external_cancel: &AtomicBool,
+    spawner: S,
+) -> (WaitOutcome, Vec<u8>, Vec<u8>)
+where
+    S: ThreadSpawner,
+{
     // Defensive: if either pipe is missing the caller broke the
     // `spawn_with_pipes` invariant. Reap the child before returning so we
     // don't leave a zombie — `Child`'s `Drop` doesn't wait.
     let stdout = match child.stdout.take() {
         Some(s) => s,
         None => {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_and_reap_child(child);
             return (
                 WaitOutcome::WaitFailed("missing stdout pipe".to_string()),
                 Vec::new(),
@@ -242,8 +258,7 @@ pub(crate) fn wait_with_drain_and_timeout_or_cancelled(
     let stderr = match child.stderr.take() {
         Some(s) => s,
         None => {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_and_reap_child(child);
             return (
                 WaitOutcome::WaitFailed("missing stderr pipe".to_string()),
                 Vec::new(),
@@ -256,22 +271,54 @@ pub(crate) fn wait_with_drain_and_timeout_or_cancelled(
     let (done_tx, done_rx) = mpsc::channel::<()>();
 
     let stdout_handle = {
-        let cancel = cancel.clone();
+        let drain_cancel = cancel.clone();
         let tx = done_tx.clone();
-        thread::spawn(move || {
-            let buf = drain_into_vec_cancellable(stdout, &cancel);
-            let _ = tx.send(());
-            buf
-        })
+        match spawner.spawn_vec(
+            THREAD_DRAIN_STDOUT,
+            Box::new(move || {
+                let buf = drain_into_vec_cancellable(stdout, &drain_cancel);
+                let _ = tx.send(());
+                buf
+            }),
+        ) {
+            Ok(handle) => handle,
+            Err(e) => {
+                cancel.store(true, Ordering::Release);
+                drop(stderr);
+                drop(done_tx);
+                kill_and_reap_child(child);
+                return (
+                    WaitOutcome::WaitFailed(format!("failed to spawn stdout drain thread: {e}")),
+                    Vec::new(),
+                    Vec::new(),
+                );
+            }
+        }
     };
     let stderr_handle = {
-        let cancel = cancel.clone();
+        let drain_cancel = cancel.clone();
         let tx = done_tx.clone();
-        thread::spawn(move || {
-            let buf = drain_into_vec_cancellable(stderr, &cancel);
-            let _ = tx.send(());
-            buf
-        })
+        match spawner.spawn_vec(
+            THREAD_DRAIN_STDERR,
+            Box::new(move || {
+                let buf = drain_into_vec_cancellable(stderr, &drain_cancel);
+                let _ = tx.send(());
+                buf
+            }),
+        ) {
+            Ok(handle) => handle,
+            Err(e) => {
+                cancel.store(true, Ordering::Release);
+                drop(done_tx);
+                kill_and_reap_child(child);
+                let _ = stdout_handle.join();
+                return (
+                    WaitOutcome::WaitFailed(format!("failed to spawn stderr drain thread: {e}")),
+                    Vec::new(),
+                    Vec::new(),
+                );
+            }
+        }
     };
     drop(done_tx); // so recv returns Disconnected if both drain threads die
 
@@ -312,10 +359,16 @@ pub(crate) fn finalize_buffered_result(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::threading::test_support::FailingThreadSpawner;
     use std::process::{Command, Stdio};
 
     fn successful_status() -> ExitStatus {
         Command::new("true").status().unwrap()
+    }
+
+    fn pid_alive(pid: u32) -> bool {
+        // SAFETY: kill(pid, 0) is the standard process-existence check.
+        unsafe { libc::kill(pid as i32, 0) == 0 }
     }
 
     #[test]
@@ -390,6 +443,39 @@ mod tests {
         let outcome = wait_with_kill_timeout_or_cancelled(child, 30_000, &cancel);
 
         assert!(matches!(outcome, WaitOutcome::Cancelled));
+    }
+
+    #[test]
+    fn drain_spawn_failure_kills_and_reaps_child_after_first_drain_starts() {
+        let cancel = AtomicBool::new(false);
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("echo stdout-ready; sleep 60")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command.spawn().unwrap();
+        let pid = child.id();
+
+        let (outcome, stdout, stderr) = wait_with_drain_and_timeout_or_cancelled_with_spawner(
+            child,
+            0,
+            &cancel,
+            FailingThreadSpawner::fail_once(THREAD_DRAIN_STDERR),
+        );
+
+        assert!(
+            matches!(outcome, WaitOutcome::WaitFailed(msg) if msg.contains("stderr drain thread")),
+            "unexpected wait outcome"
+        );
+        assert!(stdout.is_empty());
+        assert!(stderr.is_empty());
+        assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
     }
 
     #[test]

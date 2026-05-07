@@ -11,6 +11,7 @@ use crate::error::to_io_error;
 use crate::handlers::{MessageOutcome, handle_exec, handle_message};
 use crate::log::log;
 use crate::monitor::{SpawnWatchRequest, handle_spawn_watch};
+use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::writer::GuestWriter;
 
 // Vsock constants (only used on Linux)
@@ -19,10 +20,19 @@ const VSOCK_CID_HOST: u32 = 2;
 
 /// Read buffer size for the connection event loop (local tuning constant).
 const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB
+const THREAD_EXEC_WORKER: &str = "vsock-exec-worker";
 
 enum ConnectionEnd {
     Closed,
     Shutdown,
+}
+
+struct ExecWorkerRequest {
+    timeout_ms: u32,
+    command: String,
+    env: Vec<(String, String)>,
+    sudo: bool,
+    seq: u32,
 }
 
 /// Signals all command work spawned for this host connection when the
@@ -163,25 +173,17 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     .collect();
                 let sudo = d.sudo;
                 let seq = msg.seq;
-                let w = writer.clone();
-                let connection_cancel = connection_cancel.clone();
-                thread::spawn(move || {
-                    let env_refs: Vec<(&str, &str)> =
-                        env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-                    let (exit_code, stdout, stderr) =
-                        handle_exec(timeout_ms, &command, &env_refs, sudo, &connection_cancel);
-                    let payload = vsock_proto::encode_exec_result(exit_code, &stdout, &stderr);
-                    let encoded = match vsock_proto::encode(MSG_EXEC_RESULT, seq, &payload) {
-                        Ok(msg) => msg,
-                        Err(e) => {
-                            log("ERROR", &format!("Failed to encode exec_result: {}", e));
-                            return;
-                        }
-                    };
-                    if let Err(e) = w.write_frame(&encoded) {
-                        log("ERROR", &format!("Failed to send exec_result: {}", e));
-                    }
-                });
+                spawn_exec_worker(
+                    ExecWorkerRequest {
+                        timeout_ms,
+                        command,
+                        env,
+                        sudo,
+                        seq,
+                    },
+                    writer.clone(),
+                    connection_cancel.clone(),
+                )?;
             } else {
                 match handle_message(&msg)? {
                     MessageOutcome::Response(response) => {
@@ -201,6 +203,71 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
 
     log("INFO", "Host disconnected");
     Ok(ConnectionEnd::Closed)
+}
+
+fn spawn_exec_worker(
+    request: ExecWorkerRequest,
+    writer: GuestWriter,
+    connection_cancel: Arc<AtomicBool>,
+) -> io::Result<()> {
+    spawn_exec_worker_with_spawner(request, writer, connection_cancel, SystemThreadSpawner)
+}
+
+fn spawn_exec_worker_with_spawner<S>(
+    request: ExecWorkerRequest,
+    writer: GuestWriter,
+    connection_cancel: Arc<AtomicBool>,
+    spawner: S,
+) -> io::Result<()>
+where
+    S: ThreadSpawner,
+{
+    let worker_writer = writer.clone();
+    let seq = request.seq;
+    let result = spawner.spawn_unit(
+        THREAD_EXEC_WORKER,
+        Box::new(move || {
+            let env_refs: Vec<(&str, &str)> = request
+                .env
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
+            let (exit_code, stdout, stderr) = handle_exec(
+                request.timeout_ms,
+                &request.command,
+                &env_refs,
+                request.sudo,
+                &connection_cancel,
+            );
+            if let Err(e) = send_exec_result(seq, exit_code, &stdout, &stderr, &worker_writer) {
+                log("ERROR", &format!("Failed to send exec_result: {e}"));
+            }
+        }),
+    );
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            let stderr = format!("Failed to spawn exec worker thread: {e}");
+            send_exec_result(seq, 1, &[], stderr.as_bytes(), &writer)
+        }
+    }
+}
+
+fn send_exec_result(
+    seq: u32,
+    exit_code: i32,
+    stdout: &[u8],
+    stderr: &[u8],
+    writer: &GuestWriter,
+) -> io::Result<()> {
+    let payload = vsock_proto::encode_exec_result(exit_code, stdout, stderr);
+    let encoded = vsock_proto::encode(MSG_EXEC_RESULT, seq, &payload).map_err(to_io_error)?;
+    if let Err(e) = writer.write_frame(&encoded) {
+        log("ERROR", &format!("Failed to send exec_result: {}", e));
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// Maximum reconnection attempts before giving up
@@ -285,5 +352,63 @@ pub fn run(unix_socket: Option<&str>) -> io::Result<()> {
                 thread::sleep(Duration::from_millis(RECONNECT_DELAY_MS));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::threading::test_support::FailingThreadSpawner;
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
+    use std::time::Duration;
+
+    fn read_message(stream: &mut UnixStream) -> vsock_proto::RawMessage {
+        let mut hdr = [0u8; 4];
+        stream.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        stream.read_exact(&mut body).unwrap();
+
+        let mut full = Vec::with_capacity(4 + body_len);
+        full.extend_from_slice(&hdr);
+        full.extend_from_slice(&body);
+        let mut decoder = vsock_proto::Decoder::new();
+        let mut messages = decoder.decode(&full).unwrap();
+        assert_eq!(messages.len(), 1);
+        messages.remove(0)
+    }
+
+    #[test]
+    fn exec_worker_spawn_failure_returns_exec_result() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+
+        spawn_exec_worker_with_spawner(
+            ExecWorkerRequest {
+                timeout_ms: 0,
+                command: "echo should-not-run".to_string(),
+                env: Vec::new(),
+                sudo: false,
+                seq: 42,
+            },
+            writer,
+            Arc::new(AtomicBool::new(false)),
+            FailingThreadSpawner::fail_once(THREAD_EXEC_WORKER),
+        )
+        .unwrap();
+
+        let msg = read_message(&mut host);
+        assert_eq!(msg.msg_type, MSG_EXEC_RESULT);
+        assert_eq!(msg.seq, 42);
+        let (code, stdout, stderr) = vsock_proto::decode_exec_result(&msg.payload).unwrap();
+        assert_eq!(code, 1);
+        assert!(stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(stderr).contains("exec worker thread"),
+            "unexpected stderr: {:?}",
+            String::from_utf8_lossy(stderr),
+        );
     }
 }
