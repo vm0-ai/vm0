@@ -357,8 +357,7 @@ function buildTemplateDescription(
 
 /**
  * Generate a concise schedule description using the lightweight model.
- * Falls back to a template-based description if the model returns null
- * (e.g., model unavailable or empty response).
+ * Falls back to a template-based description if the model is unavailable.
  */
 async function generateDescription(
   request: DeployScheduleRequest,
@@ -372,14 +371,23 @@ async function generateDescription(
         ? `loop every ${request.intervalSeconds}s`
         : "unknown trigger";
 
-  const text = await generateScheduleDescription(
-    agentName,
-    request.name,
-    triggerSummary,
-    request.prompt,
-  );
+  try {
+    const text = await generateScheduleDescription(
+      agentName,
+      request.name,
+      triggerSummary,
+      request.prompt,
+    );
 
-  return text ?? buildTemplateDescription(request, agentName);
+    return text ?? buildTemplateDescription(request, agentName);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log.warn("Schedule description generation failed, using fallback", {
+      error: message,
+      scheduleName: request.name,
+    });
+    return buildTemplateDescription(request, agentName);
+  }
 }
 
 /**
