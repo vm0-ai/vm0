@@ -295,7 +295,7 @@ describe("POST /api/zero/voice-io/speech", () => {
     });
     expect(body.id).toEqual(expect.any(String));
     expect(body.url).toBe(
-      `http://localhost:3000/f/${encodeURIComponent(userId)}/${body.id}/${body.filename}`,
+      `http://localhost:3000/f/${encodeURIComponent(userId.replace(/^user_/, ""))}/${body.id}/${body.filename}`,
     );
 
     expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledTimes(1);

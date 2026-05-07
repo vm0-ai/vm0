@@ -672,7 +672,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(userMsg.attachFiles[0].id).toBe("resolve-uuid-1");
       expect(userMsg.attachFiles[0].filename).toBe("data.csv");
       expect(userMsg.attachFiles[0].url).toBe(
-        `http://localhost:3000/f/${encodeURIComponent(user.userId)}/resolve-uuid-1/data.csv`,
+        `http://localhost:3000/f/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/resolve-uuid-1/data.csv`,
       );
     });
 

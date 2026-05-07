@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { generatePresignedUrl } from "../../../../../src/lib/infra/s3/s3-client";
+import { storageUserIdFromFileUrlSegment } from "../../../../../src/lib/zero/uploads/file-url";
 import { env } from "../../../../../src/env";
 import { applyCorsHeaders } from "../../../../../proxy.cors";
 
@@ -8,12 +9,13 @@ import { applyCorsHeaders } from "../../../../../proxy.cors";
  * Permanent file URL resolver.
  *
  * Callers (chat messages, drafts, Slack unfurls, external share links) hold
- * a stable `/f/{userId}/{id}/{filename}` URL returned by
- * /api/zero/uploads/prepare. The three path segments rebuild the full S3
- * key (`uploads/{userId}/{id}/{filename}`) — the same convention the
- * prepare route uses — so this route needs no database or S3 listing to
- * resolve the object. It mints a short-lived presigned URL per request and
- * 302-redirects the browser.
+ * a stable `/f/{publicUserId}/{id}/{filename}` URL returned by
+ * /api/zero/uploads/prepare. New URLs omit the Clerk `user_` prefix from the
+ * user segment, but old `/f/user_...` links remain valid. The three path
+ * segments rebuild the full S3 key (`uploads/{userId}/{id}/{filename}`) —
+ * the same convention the prepare route uses — so this route needs no
+ * database or S3 listing to resolve the object. It mints a short-lived
+ * presigned URL per request and 302-redirects the browser.
  *
  * Access model: share-by-link. The path itself is the capability — any
  * caller that knows it may fetch the file, matching the semantics of the
@@ -83,9 +85,10 @@ export async function GET(
 ) {
   initServices();
   const { userId, id, filename } = await params;
+  const storageUserId = storageUserIdFromFileUrlSegment(userId);
 
   const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
-  const s3Key = `uploads/${userId}/${id}/${filename}`;
+  const s3Key = `uploads/${storageUserId}/${id}/${filename}`;
 
   const wantDownload = request.nextUrl.searchParams.get("download") === "1";
   const wantRaw = request.nextUrl.searchParams.get("raw") === "1";

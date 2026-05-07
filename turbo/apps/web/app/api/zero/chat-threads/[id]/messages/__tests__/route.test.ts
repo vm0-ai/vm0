@@ -353,7 +353,7 @@ describe("GET /api/zero/chat-threads/:threadId/messages", () => {
     expect(userMsg.attachFiles[0].id).toBe("paged-resolve-uuid");
     expect(userMsg.attachFiles[0].filename).toBe("data.csv");
     expect(userMsg.attachFiles[0].url).toBe(
-      `http://localhost:3000/f/${encodeURIComponent(testUserId)}/paged-resolve-uuid/data.csv`,
+      `http://localhost:3000/f/${encodeURIComponent(testUserId.replace(/^user_/, ""))}/paged-resolve-uuid/data.csv`,
     );
   });
 

@@ -462,9 +462,9 @@ type ChatMessage = {
  * Resolve file IDs to permanent file URLs with metadata for the frontend.
  *
  * Lists S3 objects at each file's prefix to recover filename and size, then
- * constructs the permanent `${APP_URL}/f/{userId}/{id}/{filename}` URL. The
- * short-lived presigned signature is materialized per-request inside the /f
- * route, not here — the value returned to the frontend is stable and safe
+ * constructs the permanent `${APP_URL}/f/{publicUserId}/{id}/{filename}` URL.
+ * The short-lived presigned signature is materialized per-request inside the
+ * /f route, not here — the value returned to the frontend is stable and safe
  * to persist in markdown or share over external channels.
  */
 export async function resolveAttachFileUrls(

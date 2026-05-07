@@ -22,10 +22,10 @@ const log = logger("api:zero:uploads:prepare");
  * this path is not constrained by Vercel's ~4.5 MB serverless body cap.
  *
  * The GET-side URL returned to the caller is a permanent
- * `/f/{userId}/{id}/{filename}` redirect served by the app — callers may
- * persist it in messages, drafts, or external channels. The short-lived
- * presigned signature is materialized per-request inside that route, on
- * each individual access.
+ * `/f/{publicUserId}/{id}/{filename}` redirect served by the app — callers
+ * may persist it in messages, drafts, or external channels. The public user
+ * segment omits Clerk's `user_` prefix; the short-lived presigned signature
+ * is materialized per-request inside that route, on each individual access.
  */
 
 const PUT_URL_TTL_SECONDS = 3600; // 1 hour to finish the upload

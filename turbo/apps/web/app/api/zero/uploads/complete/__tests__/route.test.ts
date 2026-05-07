@@ -110,7 +110,7 @@ describe("POST /api/zero/uploads/complete", () => {
       filename: "report.pdf",
       contentType: "application/pdf",
       sizeBytes: 1234,
-      url: `http://localhost:3000/f/${encodeURIComponent(user.userId)}/${fileId}/report.pdf`,
+      url: `http://localhost:3000/f/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/${fileId}/report.pdf`,
       metadata: { s3Key },
     });
   });
