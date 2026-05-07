@@ -675,12 +675,12 @@ export function ZeroSchedulePage() {
       </header>
 
       <main
-        className={`flex-1 overflow-auto px-4 sm:px-6 pb-8 ${
+        className={`flex-1 flex flex-col overflow-auto px-4 sm:px-6 pb-8 ${
           mobileRedesign ? "pt-4 md:pt-3" : "pt-3"
         }`}
       >
-        <div className="mx-auto max-w-[900px]">
-          <div className="zero-card overflow-hidden pb-3">
+        <div className="mx-auto w-full max-w-[900px] flex-1 flex flex-col">
+          <div className="zero-card overflow-hidden pb-3 flex-1 flex flex-col">
             {isInitialLoading ? (
               effectiveListTab === "calendar" ? (
                 <ScheduleCalendarSkeleton />

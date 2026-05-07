@@ -443,7 +443,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
 }) {
   if (entries.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
+      <div className="flex flex-1 min-h-0 flex-col items-center justify-center py-12 gap-3">
         <img
           src={emptyScheduleImg}
           alt="No schedules"
