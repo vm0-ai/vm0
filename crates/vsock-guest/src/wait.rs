@@ -15,7 +15,7 @@ pub(crate) const EXIT_CODE_TIMEOUT: i32 = 124;
 /// `send_process_exit()` anyway to prevent indefinite hangs when orphaned
 /// child processes hold pipe fds open.
 pub(crate) const DRAIN_DEADLINE_SECS: u64 = 5;
-const WAIT_CANCEL_POLL_INTERVAL_MS: u64 = 50;
+const WATCHDOG_CANCEL_POLL_INTERVAL_MS: u64 = 50;
 
 /// Outcome of child wait helpers.
 pub(crate) enum WaitOutcome {
@@ -32,6 +32,11 @@ pub(crate) enum WaitOutcome {
 enum KillReason {
     Timeout,
     Cancelled,
+}
+
+struct WatchdogKill {
+    reason: KillReason,
+    killed: bool,
 }
 
 /// Wait for drain workers to complete within the shared drain deadline, then
@@ -97,44 +102,70 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
     } else {
         None
     };
-    let poll_interval = Duration::from_millis(WAIT_CANCEL_POLL_INTERVAL_MS);
 
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => return WaitOutcome::Exited(status),
-            Ok(None) => {}
-            Err(e) => return WaitOutcome::WaitFailed(e.to_string()),
-        }
+    thread::scope(|scope| {
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        let watchdog = scope
+            .spawn(move || wait_for_done_timeout_or_cancelled(done_rx, deadline, cancel, child_id));
 
-        let now = Instant::now();
-        let reason = if deadline.is_some_and(|deadline| now >= deadline) {
-            Some(KillReason::Timeout)
-        } else if cancel.load(Ordering::Acquire) {
-            Some(KillReason::Cancelled)
-        } else {
-            None
-        };
+        let status = child.wait();
+        let _ = done_tx.send(());
+        let watchdog_kill = watchdog.join().unwrap_or(None);
 
-        if let Some(reason) = reason {
-            // SAFETY: child_id is a valid PID from Command::spawn.
-            let killed = unsafe { kill_process_tree(child_id) } || child.kill().is_ok();
-            return match child.wait() {
-                Err(e) => WaitOutcome::WaitFailed(e.to_string()),
-                Ok(status) if !killed => WaitOutcome::Exited(status),
-                Ok(_) => match reason {
+        match status {
+            Err(e) => WaitOutcome::WaitFailed(e.to_string()),
+            Ok(status) => match watchdog_kill {
+                Some(WatchdogKill {
+                    reason,
+                    killed: true,
+                }) => match reason {
                     KillReason::Timeout => WaitOutcome::TimedOut,
                     KillReason::Cancelled => WaitOutcome::Cancelled,
                 },
-            };
+                _ => WaitOutcome::Exited(status),
+            },
+        }
+    })
+}
+
+fn wait_for_done_timeout_or_cancelled(
+    done_rx: mpsc::Receiver<()>,
+    deadline: Option<Instant>,
+    cancel: &AtomicBool,
+    child_id: u32,
+) -> Option<WatchdogKill> {
+    let poll_interval = Duration::from_millis(WATCHDOG_CANCEL_POLL_INTERVAL_MS);
+
+    loop {
+        let now = Instant::now();
+        let wait_for = match deadline {
+            Some(deadline) => {
+                let remaining = deadline.saturating_duration_since(now);
+                if remaining.is_zero() {
+                    return Some(kill_child(child_id, KillReason::Timeout));
+                }
+                remaining.min(poll_interval)
+            }
+            None => poll_interval,
+        };
+
+        if cancel.load(Ordering::Acquire) {
+            return Some(kill_child(child_id, KillReason::Cancelled));
         }
 
-        let sleep_for = deadline
-            .map(|deadline| deadline.saturating_duration_since(now).min(poll_interval))
-            .unwrap_or(poll_interval);
-        if !sleep_for.is_zero() {
-            thread::sleep(sleep_for);
+        match done_rx.recv_timeout(wait_for) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
     }
+}
+
+fn kill_child(child_id: u32, reason: KillReason) -> WatchdogKill {
+    // SAFETY: child_id is a valid PID from Command::spawn.
+    let killed = unsafe { kill_process_tree(child_id) }
+        // SAFETY: child_id is a process id from Command::spawn.
+        || unsafe { libc::kill(child_id as i32, libc::SIGKILL) == 0 };
+    WatchdogKill { reason, killed }
 }
 
 /// Coordinate child wait + concurrent stdout/stderr drain + timeout-driven kill.
@@ -241,10 +272,64 @@ pub(crate) fn finalize_buffered_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
 
     fn successful_status() -> ExitStatus {
         Command::new("true").status().unwrap()
+    }
+
+    #[test]
+    fn fast_exit_wait_does_not_pay_cancel_poll_interval_per_child() {
+        let iterations = 12;
+        let start = Instant::now();
+
+        for _ in 0..iterations {
+            let child = Command::new("sleep")
+                .arg("0.02")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let outcome = wait_with_kill_timeout(child, 30_000);
+            assert!(
+                matches!(outcome, WaitOutcome::Exited(status) if status.success()),
+                "unexpected wait outcome"
+            );
+        }
+
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "fast child exits should not accumulate the 50ms cancel poll interval per child; \
+             {iterations} waits took {elapsed:?}",
+        );
+    }
+
+    #[test]
+    fn timeout_zero_child_is_cancelled_by_external_cancel() {
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_for_thread = Arc::clone(&cancel);
+        let mut command = Command::new("sleep");
+        command
+            .arg("60")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command.spawn().unwrap();
+
+        let cancel_thread = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            cancel_for_thread.store(true, Ordering::Release);
+        });
+
+        let outcome = wait_with_kill_timeout_or_cancelled(child, 0, &cancel);
+        cancel_thread.join().unwrap();
+
+        assert!(matches!(outcome, WaitOutcome::Cancelled));
     }
 
     #[test]
