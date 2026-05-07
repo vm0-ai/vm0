@@ -423,7 +423,7 @@ function ThreadKindIcon({
     >
       <span
         className={cn(
-          "flex h-14 w-14 items-center justify-center rounded-xl",
+          "flex h-14 w-14 items-center justify-center rounded-full",
           kind === "draft"
             ? "bg-amber-100 text-amber-700"
             : "bg-[hsl(var(--gray-200))] text-foreground/80",
@@ -434,7 +434,7 @@ function ThreadKindIcon({
       {isRunning && (
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-xl bg-blue-500/30 animate-ping"
+          className="pointer-events-none absolute inset-0 rounded-full bg-blue-500/30 animate-ping"
         />
       )}
       {(isUnread || isRunning) && (
