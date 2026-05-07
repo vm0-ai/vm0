@@ -371,7 +371,7 @@ describe("chat page keyboard shortcuts", () => {
     });
   });
 
-  it("plain up/down keys scroll the message list outside the composer", async () => {
+  it("plain up/down keys hand off to native message-list scrolling outside the composer", async () => {
     mockThreadList([{ id: "thread-arrow-scroll", title: "Arrow scroll test" }]);
     server.use(
       mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
@@ -428,16 +428,17 @@ describe("chat page keyboard shortcuts", () => {
       configurable: true,
     });
 
-    scrollContainer!.scrollTop = 100;
-    fireEvent.keyDown(document, { key: "ArrowDown" });
-    expect(scrollContainer!.scrollTop).toBe(172);
+    expect(fireEvent.keyDown(document, { key: "ArrowDown" })).toBeTruthy();
+    expect(document.activeElement).toBe(scrollContainer);
 
-    fireEvent.keyDown(document, { key: "ArrowUp" });
-    expect(scrollContainer!.scrollTop).toBe(100);
+    const activeBeforeUp = document.activeElement;
+    expect(fireEvent.keyDown(document, { key: "ArrowUp" })).toBeTruthy();
+    expect(document.activeElement).toBe(activeBeforeUp);
 
     const composer = document.querySelector("textarea");
     expect(composer).not.toBeNull();
+    composer!.focus();
     fireEvent.keyDown(composer!, { key: "ArrowDown" });
-    expect(scrollContainer!.scrollTop).toBe(100);
+    expect(document.activeElement).toBe(composer);
   });
 });

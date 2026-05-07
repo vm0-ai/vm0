@@ -91,8 +91,8 @@ export const setChatKeyboardScrollRoot$ = onRef(
         get(currentRightThread$),
         targetThreadId ?? activeThreadId,
       );
-      if (thread && set(thread.scrollBy$, direction)) {
-        event.preventDefault();
+      if (thread) {
+        set(thread.prepareKeyboardScroll$);
       }
     };
 

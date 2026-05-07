@@ -1739,7 +1739,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         <div
           ref={setScrollContainer}
           data-scroll-container
-          className="absolute inset-0 overflow-y-auto [scrollbar-gutter:stable]"
+          tabIndex={-1}
+          className="absolute inset-0 overflow-y-auto focus:outline-none [scrollbar-gutter:stable]"
         >
           <main className="px-4 sm:px-6 py-4 items-center @container">
             <div

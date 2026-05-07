@@ -239,6 +239,66 @@ function createScrollByCommand(deps: ScrollByCommandDeps) {
   });
 }
 
+interface PrepareKeyboardScrollCommandDeps {
+  internalScrollContainer$: State<HTMLElement | null>;
+  markUserInput: () => void;
+}
+
+function createPrepareKeyboardScrollCommand(
+  deps: PrepareKeyboardScrollCommandDeps,
+) {
+  return command(({ get }) => {
+    const scrollEl = get(deps.internalScrollContainer$);
+    if (!scrollEl) {
+      return false;
+    }
+    deps.markUserInput();
+    if (!scrollEl.contains(scrollEl.ownerDocument.activeElement)) {
+      scrollEl.focus({ preventScroll: true });
+    }
+    return true;
+  });
+}
+
+interface RecordScrollHeightForPrependCommandDeps {
+  internalScrollContainer$: State<HTMLElement | null>;
+  restoreState: RestoreState;
+}
+
+function createRecordScrollHeightForPrependCommand(
+  deps: RecordScrollHeightForPrependCommandDeps,
+) {
+  return command(({ get }) => {
+    const el = get(deps.internalScrollContainer$);
+    if (el) {
+      deps.restoreState.pendingPrependScrollHeight = el.scrollHeight;
+      L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
+    }
+  });
+}
+
+interface ScrollToTopCommandDeps {
+  internalScrollContainer$: State<HTMLElement | null>;
+  autoScrollDisabled$: State<boolean>;
+  restoreState: RestoreState;
+  id: string | undefined;
+}
+
+function createScrollToTopCommand(deps: ScrollToTopCommandDeps) {
+  return command(({ get, set }) => {
+    const scrollEl = get(deps.internalScrollContainer$);
+    if (!scrollEl) {
+      return;
+    }
+    set(deps.autoScrollDisabled$, true);
+    deps.restoreState.suppressNextScrollToBottom = false;
+    if (deps.id !== undefined) {
+      set(setCachedScrollTop$, deps.id, 0);
+    }
+    scrollEl.scrollTop = 0;
+  });
+}
+
 /**
  * Factory that creates scroll-management signals for a scrollable container.
  *
@@ -372,30 +432,22 @@ export function createScrollSignals(id?: string) {
     markUserInput,
   });
 
-  // Snapshot the container's current scrollHeight before prepending messages.
-  // The ResizeObserver callback will detect the resulting height increase and
-  // compensate scrollTop so the viewport stays anchored on the same content.
-  const recordScrollHeightForPrepend$ = command(({ get }) => {
-    const el = get(internalScrollContainer$);
-    if (el) {
-      restoreState.pendingPrependScrollHeight = el.scrollHeight;
-      L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
-    }
+  const prepareKeyboardScroll$ = createPrepareKeyboardScrollCommand({
+    internalScrollContainer$,
+    markUserInput,
   });
 
-  // Scrolling to top is an explicit opt-out of auto-scroll — disable it so
-  // ResizeObserver doesn't snap back to the bottom when new messages arrive.
-  const scrollToTop$ = command(({ get, set }) => {
-    const scrollEl = get(internalScrollContainer$);
-    if (!scrollEl) {
-      return;
-    }
-    set(autoScrollDisabled$, true);
-    restoreState.suppressNextScrollToBottom = false;
-    if (id !== undefined) {
-      set(setCachedScrollTop$, id, 0);
-    }
-    scrollEl.scrollTop = 0;
+  const recordScrollHeightForPrepend$ =
+    createRecordScrollHeightForPrependCommand({
+      internalScrollContainer$,
+      restoreState,
+    });
+
+  const scrollToTop$ = createScrollToTopCommand({
+    internalScrollContainer$,
+    autoScrollDisabled$,
+    restoreState,
+    id,
   });
 
   return {
@@ -404,6 +456,7 @@ export function createScrollSignals(id?: string) {
     scrollToBottom$,
     scrollToTop$,
     scrollBy$,
+    prepareKeyboardScroll$,
     recordScrollHeightForPrepend$,
   };
 }

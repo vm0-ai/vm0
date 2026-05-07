@@ -174,6 +174,7 @@ export interface ChatThreadSignals {
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
   scrollBy$: Command<boolean, [ScrollStepDirection]>;
+  prepareKeyboardScroll$: Command<boolean, []>;
   // ── Initial-load skeleton ────────────────────────────────────────────────
   // Starts hidden — `setupChatThreadInitScroll$` flips it on only when the
   // IDB cache misses, so cache hits skip the skeleton entirely. Flipped off
