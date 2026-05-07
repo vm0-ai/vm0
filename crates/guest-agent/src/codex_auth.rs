@@ -3,7 +3,7 @@
 //!
 //! Codex (`openai/codex`) decides between API-key mode and ChatGPT mode at
 //! load time from `auth.json` contents. By writing an `auth.json` with
-//! `auth_mode: "Chatgpt"`, `OPENAI_API_KEY: null`, and a `tokens` object
+//! `auth_mode: "chatgpt"`, `OPENAI_API_KEY: null`, and a `tokens` object
 //! whose JWTs carry far-future `exp` claims, we put the codex CLI into
 //! ChatGPT mode without ever holding real OAuth credentials inside the
 //! sandbox. The mitm firewall replaces the placeholder bytes (Bearer
@@ -126,7 +126,7 @@ fn build_id_token_claims(now: DateTime<Utc>) -> Value {
 //
 // Three independent ChatGPT-mode signals (defense in depth against
 // future codex refactors):
-//   1. `auth_mode: "Chatgpt"` (explicit; wins first in `resolved_mode()`)
+//   1. `auth_mode: "chatgpt"` (explicit; wins first in `resolved_mode()`)
 //   2. `OPENAI_API_KEY: null` (defends against the unconditional fallback
 //      being gated on `tokens.is_some()` in some future codex version)
 //   3. `tokens` populated with valid placeholder JWTs
@@ -137,7 +137,7 @@ fn build_auth_json(now: DateTime<Utc>) -> Result<Value, AgentError> {
     let id_jwt = make_placeholder_jwt(&build_id_token_claims(now))?;
 
     Ok(json!({
-        "auth_mode": "Chatgpt",
+        "auth_mode": "chatgpt",
         "OPENAI_API_KEY": Value::Null,
         "tokens": {
             "id_token": id_jwt,
@@ -252,7 +252,7 @@ mod tests {
         );
 
         // Three independent ChatGPT-mode signals.
-        assert_eq!(auth["auth_mode"], "Chatgpt");
+        assert_eq!(auth["auth_mode"], "chatgpt");
         assert_eq!(auth["OPENAI_API_KEY"], Value::Null);
         assert!(auth["tokens"].is_object(), "tokens must be populated");
 

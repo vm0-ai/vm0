@@ -105,8 +105,8 @@ assert_placeholder_account_id() {
 assert_chatgpt_auth_mode() {
     local actual
     actual=$(echo "$AUDIT_JSON" | jq -r '.authMode')
-    if [ "$actual" != "Chatgpt" ]; then
-        echo "Expected auth.json auth_mode='Chatgpt', got: $actual" >&2
+    if [ "$actual" != "chatgpt" ]; then
+        echo "Expected auth.json auth_mode='chatgpt', got: $actual" >&2
         return 1
     fi
 }
