@@ -93,6 +93,34 @@ describe("validateFrameworkApiKey", () => {
         );
       }).not.toThrow();
     });
+
+    // Regression: #12045 — codex-oauth-token is a multi-auth provider, so
+    // getSecretNameForType returns undefined and the openai-api-key match
+    // path can't see it. Its framework IS codex though — the firewall
+    // replacement layer + sandbox-side placeholder auth.json self-provision
+    // ChatGPT-mode auth without using OPENAI_API_KEY (Epic #11974). The
+    // multi-auth fallback in the validator must accept it.
+    it("accepts codex compose when codex-oauth-token provider is configured", () => {
+      expect(() => {
+        validateFrameworkApiKey(
+          makeCompose("codex", {}),
+          "codex-oauth-token" as ModelProviderType,
+        );
+      }).not.toThrow();
+    });
+
+    it("accepts compose=claude-code + provider=codex-oauth-token (provider's codex framework wins)", () => {
+      // Mirrors the openai-api-key Epic #11520 case below: thread pinned to
+      // a codex-oauth-token provider while the compose still says
+      // claude-code. Resolved framework = codex (provider's), and the
+      // codex-oauth-token multi-auth fallback must accept the run.
+      expect(() => {
+        validateFrameworkApiKey(
+          makeCompose("claude-code", {}),
+          "codex-oauth-token" as ModelProviderType,
+        );
+      }).not.toThrow();
+    });
   });
 
   describe("provider framework wins over compose framework (Epic #11520)", () => {
