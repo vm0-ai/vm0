@@ -187,7 +187,6 @@ describe("getVm0VisibleModels", () => {
       [FeatureSwitchKey.CodexBeta]: true,
     });
     expect(withCodex).toContain("gpt-5.5");
-    expect(withCodex).toContain("gpt-5.3-codex");
   });
 });
 
@@ -259,12 +258,7 @@ describe("openai-api-key codex provider", () => {
   });
 
   it("offers codex-compatible models with gpt-5.5 default", () => {
-    const models = getModels("openai-api-key");
-    expect(models).toContain("gpt-5.5");
-    expect(models).toContain("gpt-5.4");
-    expect(models).toContain("gpt-5.4-mini");
-    expect(models).toContain("gpt-5.3-codex");
-    expect(models).toContain("gpt-5.2");
+    expect(getModels("openai-api-key")).toEqual(["gpt-5.5"]);
     expect(getDefaultModel("openai-api-key")).toBe("gpt-5.5");
   });
 
@@ -373,9 +367,8 @@ describe("codex-oauth-token codex provider", () => {
     expect(mapping.OPENAI_MODEL).toBe("$model");
   });
 
-  it("offers gpt-5.x models with gpt-5.5 default", () => {
-    expect(getModels("codex-oauth-token")).toContain("gpt-5.5");
-    expect(getModels("codex-oauth-token")).toContain("gpt-5.3-codex");
+  it("offers gpt-5.5 with gpt-5.5 default", () => {
+    expect(getModels("codex-oauth-token")).toEqual(["gpt-5.5"]);
     expect(getDefaultModel("codex-oauth-token")).toBe("gpt-5.5");
   });
 

@@ -97,7 +97,7 @@ describe("model-provider-picker — personal-tier sectioning (#11959)", () => {
       ),
     ]);
     setMockPersonalModelProviders([
-      makeProvider(PERSONAL_OPENAI_ID, "openai-api-key", true, "gpt-5.4"),
+      makeProvider(PERSONAL_OPENAI_ID, "openai-api-key", true, "gpt-5.5"),
     ]);
 
     const user = userEvent.setup();
@@ -106,7 +106,7 @@ describe("model-provider-picker — personal-tier sectioning (#11959)", () => {
     const text = listboxText();
     expect(text).not.toContain("Personal");
     expect(text).not.toContain("Workspace");
-    expect(text).not.toContain("GPT-5.4");
+    expect(text).not.toContain("GPT-5.5");
   });
 
   it("renders Personal section above Workspace section when switch is on", async () => {
@@ -122,7 +122,7 @@ describe("model-provider-picker — personal-tier sectioning (#11959)", () => {
       ),
     ]);
     setMockPersonalModelProviders([
-      makeProvider(PERSONAL_OPENAI_ID, "openai-api-key", true, "gpt-5.4"),
+      makeProvider(PERSONAL_OPENAI_ID, "openai-api-key", true, "gpt-5.5"),
     ]);
 
     const user = userEvent.setup();
@@ -148,7 +148,7 @@ describe("model-provider-picker — personal-tier sectioning (#11959)", () => {
         true,
         "claude-opus-4-7",
       ),
-      makeProvider(ORG_OPENAI_ID, "openai-api-key", false, "gpt-5.4"),
+      makeProvider(ORG_OPENAI_ID, "openai-api-key", false, "gpt-5.5"),
     ]);
     setMockPersonalModelProviders([]);
 

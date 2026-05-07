@@ -41,10 +41,6 @@ const MODEL_DISPLAY_NAMES = Object.freeze<Record<string, string>>({
   "z-ai/glm-5.1": "GLM-5.1",
   // OpenAI / Codex
   "gpt-5.5": "GPT-5.5",
-  "gpt-5.4": "GPT-5.4",
-  "gpt-5.4-mini": "GPT-5.4 Mini",
-  "gpt-5.3-codex": "GPT-5.3 Codex",
-  "gpt-5.2": "GPT-5.2",
 });
 
 /**

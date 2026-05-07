@@ -1236,7 +1236,7 @@ describe("POST /api/zero/chat/messages", () => {
           user.orgId,
           user.userId,
           "openai-api-key",
-          "gpt-5.4",
+          "gpt-5.5",
         );
 
         const response = await POST(
@@ -1270,7 +1270,7 @@ describe("POST /api/zero/chat/messages", () => {
           user.orgId,
           user.userId,
           "openai-api-key",
-          "gpt-5.4",
+          "gpt-5.5",
         );
 
         const response = await POST(
@@ -1306,7 +1306,7 @@ describe("POST /api/zero/chat/messages", () => {
           user.orgId,
           user.userId,
           "openai-api-key",
-          "gpt-5.4",
+          "gpt-5.5",
         );
 
         const response = await POST(
@@ -1321,7 +1321,7 @@ describe("POST /api/zero/chat/messages", () => {
 
         const override = await getTestChatThreadModelOverride(threadId);
         expect(override.modelProviderId).toBe(personalProviderId);
-        expect(override.selectedModel).toBe("gpt-5.4");
+        expect(override.selectedModel).toBe("gpt-5.5");
       });
 
       it("falls back to agent's selectedModel when personal row has none", async () => {
@@ -1399,7 +1399,7 @@ describe("POST /api/zero/chat/messages", () => {
           user.orgId,
           user.userId,
           "openai-api-key",
-          "gpt-5.4",
+          "gpt-5.5",
         );
 
         const response = await POST(
@@ -1414,7 +1414,7 @@ describe("POST /api/zero/chat/messages", () => {
 
         const override = await getTestChatThreadModelOverride(threadId);
         expect(override.modelProviderId).toBe(personalProviderId);
-        expect(override.selectedModel).toBe("gpt-5.4");
+        expect(override.selectedModel).toBe("gpt-5.5");
       });
     });
 

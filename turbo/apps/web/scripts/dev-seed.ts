@@ -110,26 +110,6 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.5), 1_000_000],
     ["tokens.output", usd(30), 1_000_000],
   ]),
-  ...usageGroup("model", "gpt-5.4", [
-    ["tokens.input", usd(2.5), 1_000_000],
-    ["tokens.cache_read", usd(0.25), 1_000_000],
-    ["tokens.output", usd(15), 1_000_000],
-  ]),
-  ...usageGroup("model", "gpt-5.4-mini", [
-    ["tokens.input", usd(0.75), 1_000_000],
-    ["tokens.cache_read", usd(0.075), 1_000_000],
-    ["tokens.output", usd(4.5), 1_000_000],
-  ]),
-  ...usageGroup("model", "gpt-5.3-codex", [
-    ["tokens.input", usd(1.75), 1_000_000],
-    ["tokens.cache_read", usd(0.175), 1_000_000],
-    ["tokens.output", usd(14), 1_000_000],
-  ]),
-  ...usageGroup("model", "gpt-5.2", [
-    ["tokens.input", usd(1.75), 1_000_000],
-    ["tokens.cache_read", usd(0.175), 1_000_000],
-    ["tokens.output", usd(14), 1_000_000],
-  ]),
 
   // X connector — https://docs.x.com/x-api/getting-started/pricing
   ...usageGroup("connector", "x", [

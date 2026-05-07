@@ -184,11 +184,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
       "claude-code-oauth-token",
       "claude-sonnet-4-6",
     );
-    await insertOrgNonDefaultModelProvider(
-      orgId,
-      "openai-api-key",
-      "gpt-5.4-mini",
-    );
+    await insertOrgNonDefaultModelProvider(orgId, "openai-api-key", "gpt-5.5");
 
     const result = await resolveModelProviderSecrets(
       orgId,
@@ -200,7 +196,7 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
     expect(result.resolvedModelProvider).toBe("openai-api-key");
     expect(result.framework).toBe("codex");
-    expect(result.selectedModel).toBe("gpt-5.4-mini");
+    expect(result.selectedModel).toBe("gpt-5.5");
   });
 
   it("filters serverOnly secrets out of the runner-bound map for codex-oauth-token (#11878)", async () => {
@@ -285,7 +281,7 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
       orgId,
       userId,
       "openai-api-key",
-      "gpt-5.4",
+      "gpt-5.5",
     );
     await insertOrgDefaultModelProvider(
       orgId,
@@ -316,7 +312,7 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
       orgId,
       userId,
       "openai-api-key",
-      "gpt-5.4",
+      "gpt-5.5",
     );
     await insertOrgDefaultModelProvider(
       orgId,
@@ -351,7 +347,7 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
       orgId,
       userId,
       "openai-api-key",
-      "gpt-5.4",
+      "gpt-5.5",
     );
     await insertTestUserModelProviderSecret({
       orgId,
@@ -379,7 +375,7 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
 
     expect(result.resolvedModelProvider).toBe("openai-api-key");
     expect(result.framework).toBe("codex");
-    expect(result.selectedModel).toBe("gpt-5.4");
+    expect(result.selectedModel).toBe("gpt-5.5");
     expect(result.secrets?.OPENAI_API_KEY).toBe("personal-secret-value");
   });
 
@@ -395,7 +391,7 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
       orgId,
       userId,
       "openai-api-key",
-      "gpt-5.4",
+      "gpt-5.5",
     );
 
     const result = await resolveModelProviderSecrets(
@@ -455,7 +451,7 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
       orgId,
       userId,
       "openai-api-key",
-      "gpt-5.4-mini",
+      "gpt-5.5",
     );
     await insertTestUserModelProviderSecret({
       orgId,
@@ -483,7 +479,7 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
 
     expect(result.resolvedModelProvider).toBe("openai-api-key");
     expect(result.framework).toBe("codex");
-    expect(result.selectedModel).toBe("gpt-5.4-mini");
+    expect(result.selectedModel).toBe("gpt-5.5");
     expect(result.secrets?.OPENAI_API_KEY).toBe("personal-openai-key");
   });
 
@@ -499,7 +495,7 @@ describe("resolveModelProviderSecrets — personal tier (#11899)", () => {
       orgId,
       userId,
       "openai-api-key",
-      "gpt-5.4",
+      "gpt-5.5",
     );
     await insertTestUserModelProviderSecret({
       orgId,

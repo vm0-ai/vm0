@@ -102,26 +102,6 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     vendor: "openai",
     featureFlag: FeatureSwitchKey.CodexBeta,
   },
-  "gpt-5.4": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
-  },
-  "gpt-5.4-mini": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
-  },
-  "gpt-5.3-codex": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
-  },
-  "gpt-5.2": {
-    concreteType: "openai-api-key",
-    vendor: "openai",
-    featureFlag: FeatureSwitchKey.CodexBeta,
-  },
 };
 
 export const VM0_MODEL_ALIAS_TO_MODEL = {
@@ -452,13 +432,7 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_API_KEY: "$secret",
       OPENAI_MODEL: "$model",
     } as Record<string, string>,
-    models: [
-      "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-      "gpt-5.3-codex",
-      "gpt-5.2",
-    ] as string[],
+    models: ["gpt-5.5"] as string[],
     defaultModel: "gpt-5.5",
   },
   "codex-oauth-token": {
@@ -519,13 +493,7 @@ export const MODEL_PROVIDER_TYPES = {
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
       OPENAI_MODEL: "$model",
     } as Record<string, string>,
-    models: [
-      "gpt-5.5",
-      "gpt-5.4",
-      "gpt-5.4-mini",
-      "gpt-5.3-codex",
-      "gpt-5.2",
-    ] as string[],
+    models: ["gpt-5.5"] as string[],
     defaultModel: "gpt-5.5",
   },
   "azure-foundry": {

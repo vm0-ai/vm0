@@ -443,7 +443,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
       },
     );
 
-    // Update without metadata (e.g. selectedModel change from settings UI)
+    // Update without metadata (e.g. a settings UI save).
     await upsertOrgMultiAuthModelProvider(
       orgId,
       "codex-oauth-token",
@@ -454,7 +454,7 @@ describe("upsertOrgMultiAuthModelProvider — OAuth metadata + recovery (#11932)
         CHATGPT_ACCOUNT_ID: "acct",
         CHATGPT_ID_TOKEN: "idt",
       },
-      "gpt-5.4",
+      "gpt-5.5",
     );
 
     const state = await findTestModelProviderTokenState(

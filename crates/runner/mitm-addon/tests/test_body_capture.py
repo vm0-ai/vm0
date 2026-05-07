@@ -884,10 +884,10 @@ class TestExtractOpenAIResponsesUsageFromJson:
         assert "reasoning_tokens" not in result
 
     def test_missing_cached_input_details_does_not_emit_cache_read(self):
-        body = b'{"model":"gpt-5.4","usage":{"input_tokens":10,"output_tokens":5}}'
+        body = b'{"model":"gpt-5.5","usage":{"input_tokens":10,"output_tokens":5}}'
         result = extract_openai_responses_usage_from_json(body, None)
         assert result == {
-            "model": "gpt-5.4",
+            "model": "gpt-5.5",
             "tokens.input": 10,
             "tokens.output": 5,
         }
@@ -908,14 +908,14 @@ class TestExtractOpenAIResponsesUsageFromJson:
 
     def test_gzip_compressed(self, headers):
         original = (
-            b'{"model":"gpt-5.3-codex","usage":{"input_tokens":42,'
+            b'{"model":"gpt-5.5","usage":{"input_tokens":42,'
             b'"input_tokens_details":{"cached_tokens":7}}}'
         )
         compressed = gzip.compress(original)
         headers = headers(("Content-Encoding", "gzip"))
         result = extract_openai_responses_usage_from_json(compressed, headers)
         assert result == {
-            "model": "gpt-5.3-codex",
+            "model": "gpt-5.5",
             "tokens.input": 35,
             "tokens.cache_read": 7,
         }
