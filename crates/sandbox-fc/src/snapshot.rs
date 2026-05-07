@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -40,15 +41,100 @@ fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
     }
 }
 
-async fn destroy_snapshot_cow_and_cleanup_attempt_dir(
-    cow_device: PooledNbdCowDevice,
+/// Non-cancellable cleanup for a snapshot COW and its token-scoped attempt dir.
+///
+/// The NBD device finalizer already keeps running after cancellation; this
+/// wrapper keeps the attempt-dir cleanup in the same detached task so a
+/// cancelled waiter cannot leave empty token directories behind.
+struct SnapshotCowCleanupFinalizer {
+    handle: Option<JoinHandle<nbd_cow::error::Result<()>>>,
+}
+
+impl SnapshotCowCleanupFinalizer {
+    fn new(handle: JoinHandle<nbd_cow::error::Result<()>>) -> Self {
+        Self {
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Future for SnapshotCowCleanupFinalizer {
+    type Output = nbd_cow::error::Result<()>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let Some(handle) = this.handle.as_mut() else {
+            return Poll::Ready(Err(nbd_cow::error::NbdCowError::Io(std::io::Error::other(
+                "snapshot COW cleanup finalizer polled after completion",
+            ))));
+        };
+
+        match Pin::new(handle).poll(cx) {
+            Poll::Pending => Poll::Pending,
+            Poll::Ready(result) => {
+                this.handle.take();
+                Poll::Ready(finish_snapshot_cow_cleanup_join(result))
+            }
+        }
+    }
+}
+
+impl Drop for SnapshotCowCleanupFinalizer {
+    fn drop(&mut self) {
+        let Some(handle) = self.handle.take() else {
+            return;
+        };
+
+        match tokio::runtime::Handle::try_current() {
+            Ok(runtime) => {
+                runtime.spawn(observe_detached_snapshot_cow_cleanup(handle));
+            }
+            Err(e) => tracing::warn!(
+                error = %e,
+                "snapshot COW cleanup finalizer dropped outside Tokio runtime; continuing without observer"
+            ),
+        }
+    }
+}
+
+fn finish_snapshot_cow_cleanup_join(
+    result: std::result::Result<nbd_cow::error::Result<()>, tokio::task::JoinError>,
 ) -> nbd_cow::error::Result<()> {
+    match result {
+        Ok(result) => result,
+        Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+        Err(e) => Err(nbd_cow::error::NbdCowError::Io(std::io::Error::other(
+            format!("snapshot COW cleanup finalizer task was cancelled: {e}"),
+        ))),
+    }
+}
+
+async fn observe_detached_snapshot_cow_cleanup(handle: JoinHandle<nbd_cow::error::Result<()>>) {
+    match handle.await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "detached snapshot COW cleanup finalizer failed");
+        }
+        Err(e) if e.is_panic() => {
+            tracing::error!(error = %e, "detached snapshot COW cleanup finalizer panicked");
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "detached snapshot COW cleanup finalizer task was cancelled");
+        }
+    }
+}
+
+fn destroy_snapshot_cow_and_cleanup_attempt_dir(
+    cow_device: PooledNbdCowDevice,
+) -> SnapshotCowCleanupFinalizer {
     let cow_file = cow_device.cow_file().to_path_buf();
-    cow_device
-        .destroy_with_retries(cow_destroy_retry_policy())
-        .await?;
-    cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
-    Ok(())
+    SnapshotCowCleanupFinalizer::new(tokio::spawn(async move {
+        cow_device
+            .destroy_with_retries(cow_destroy_retry_policy())
+            .await?;
+        cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
+        Ok(())
+    }))
 }
 
 async fn destroy_snapshot_cow_after_error(context: &'static str, cow_device: PooledNbdCowDevice) {
@@ -2878,6 +2964,34 @@ mod tests {
             attempt_dir.exists(),
             "disarmed attempt dir guard should leave the owned dir intact"
         );
+    }
+
+    #[tokio::test]
+    async fn snapshot_cow_cleanup_finalizer_continues_after_future_drop() {
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (finish_tx, finish_rx) = tokio::sync::oneshot::channel();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+
+        let finalizer = SnapshotCowCleanupFinalizer::new(tokio::spawn(async move {
+            let _ = started_tx.send(());
+            finish_rx.await.map_err(|e| {
+                nbd_cow::error::NbdCowError::Io(std::io::Error::other(format!(
+                    "test cleanup finalizer release dropped: {e}"
+                )))
+            })?;
+            let _ = done_tx.send(());
+            Ok(())
+        }));
+
+        started_rx
+            .await
+            .expect("cleanup finalizer task should start");
+        drop(finalizer);
+        finish_tx.send(()).expect("release cleanup finalizer");
+        tokio::time::timeout(Duration::from_secs(1), done_rx)
+            .await
+            .expect("dropped cleanup finalizer should continue")
+            .expect("cleanup finalizer should finish");
     }
 
     #[tokio::test]
