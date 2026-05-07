@@ -110,7 +110,10 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
 
         let status = child.wait();
         let _ = done_tx.send(());
-        let watchdog_kill = watchdog.join().unwrap_or(None);
+        let watchdog_kill = match watchdog.join() {
+            Ok(watchdog_kill) => watchdog_kill,
+            Err(panic) => std::panic::resume_unwind(panic),
+        };
 
         match status {
             Err(e) => WaitOutcome::WaitFailed(e.to_string()),
@@ -280,7 +283,7 @@ mod tests {
 
     #[test]
     fn fast_exit_wait_does_not_pay_cancel_poll_interval_per_child() {
-        let iterations = 12;
+        let iterations = 20;
         let start = Instant::now();
 
         for _ in 0..iterations {
@@ -299,7 +302,7 @@ mod tests {
 
         let elapsed = start.elapsed();
         assert!(
-            elapsed < Duration::from_millis(500),
+            elapsed < Duration::from_millis(800),
             "fast child exits should not accumulate the 50ms cancel poll interval per child; \
              {iterations} waits took {elapsed:?}",
         );
