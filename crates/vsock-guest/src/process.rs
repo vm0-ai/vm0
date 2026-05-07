@@ -112,17 +112,10 @@ pub(crate) unsafe fn kill_process_tree(child_id: u32) -> bool {
 /// Kill the process tree for a spawned child and reap the direct child.
 pub(crate) fn kill_and_reap_child(mut child: Child) {
     let child_id = child.id();
-    match child.try_wait() {
-        Ok(Some(_)) => return,
-        Ok(None) => {}
-        Err(e) => {
-            log(
-                "WARN",
-                &format!("failed to check child pid={child_id} before kill: {e}"),
-            );
-        }
-    }
 
+    // Signal before waiting. The direct child may already be a zombie while
+    // descendants still live in its process group; reaping first would release
+    // the child PID and lose the stable PGID we need for group cleanup.
     // SAFETY: child_id comes from a live `Child` returned by Command::spawn.
     let killed = unsafe { kill_process_tree(child_id) } || child.kill().is_ok();
     if !killed {
@@ -241,5 +234,60 @@ mod tests {
     #[test]
     fn parse_stat_ppid_pgid_no_closing_paren() {
         assert_eq!(parse_stat_ppid_pgid("1 bash S 10 42 42"), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    fn process_is_gone_or_zombie(pid: i32) -> bool {
+        match std::fs::read_to_string(format!("/proc/{pid}/stat")) {
+            Ok(stat) => {
+                let close_paren = stat.rfind(')').unwrap_or(0);
+                stat.get(close_paren + 2..)
+                    .and_then(|fields| fields.split_whitespace().next())
+                    == Some("Z")
+            }
+            Err(_) => true,
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn wait_until_process_is_gone_or_zombie(pid: i32) -> bool {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        while std::time::Instant::now() < deadline {
+            if process_is_gone_or_zombie(pid) {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        process_is_gone_or_zombie(pid)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn kill_and_reap_child_kills_group_after_direct_child_exits() {
+        use std::io::{BufRead, BufReader};
+        use std::os::unix::process::CommandExt;
+        use std::process::Stdio;
+
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("sleep 60 & echo $!")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        command.process_group(0);
+
+        let mut child = command.spawn().unwrap();
+        let stdout = child.stdout.take().unwrap();
+        let mut line = String::new();
+        BufReader::new(stdout).read_line(&mut line).unwrap();
+        let background_pid: i32 = line.trim().parse().unwrap();
+
+        assert_eq!(unsafe { libc::kill(background_pid, 0) }, 0);
+        kill_and_reap_child(child);
+
+        if !wait_until_process_is_gone_or_zombie(background_pid) {
+            let _ = unsafe { libc::kill(background_pid, libc::SIGKILL) };
+            panic!("background pid {background_pid} should have been killed");
+        }
     }
 }
