@@ -90,6 +90,12 @@ pub enum SnapshotError {
 /// uncommitted artifacts. Dropping this object without an explicit call must
 /// not publish a usable snapshot.
 ///
+/// `discard` is the deterministic cleanup path. Callers that coordinate access
+/// to the output directory should call it before releasing that exclusivity.
+/// Implementations may intentionally keep `Drop` narrower than `discard` so a
+/// late drop cannot remove a snapshot published by a later owner of the same
+/// output directory.
+///
 /// `commit` takes `&mut self` so a failed publish can preserve provider-owned
 /// cleanup state. Callers may then call `discard` best-effort before treating
 /// the output as incomplete.
@@ -99,6 +105,9 @@ pub trait PendingSnapshotPublish: Send {
     async fn commit(&mut self) -> Result<SnapshotOutput, SnapshotError>;
 
     /// Abandon the uncommitted snapshot artifacts.
+    ///
+    /// This should be called while the caller still owns any output-directory
+    /// lock or equivalent coordination needed by the provider.
     async fn discard(&mut self) -> Result<(), SnapshotError>;
 }
 
