@@ -18,7 +18,7 @@ use super::idle_lifecycle::{
 use super::job_lifecycle::{
     ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady, RunCleanupState,
 };
-use super::ownership::{OwnershipTransitions, RunSandbox};
+use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, maybe_panic_outer_job};
 use crate::idle_pool::{
@@ -230,7 +230,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     drop(pool);
                     let ownership = OwnershipTransitions::new(status.as_ref());
                     ownership
-                        .active_parked_to_idle(RunSandbox::new(run_id, sandbox_id), snapshot)
+                        .publish_idle_status_after_pool_transfer(snapshot)
                         .await;
                     park_notify.notify_one();
                     BudgetOwnership::idle_owned()
@@ -248,7 +248,7 @@ pub(super) async fn finalize_sandbox_for_completion(
                     drop(pool);
                     let ownership = OwnershipTransitions::new(status.as_ref());
                     ownership
-                        .active_parked_to_idle(RunSandbox::new(run_id, sandbox_id), snapshot)
+                        .publish_idle_status_after_pool_transfer(snapshot)
                         .await;
                     // Notify immediately — session is already in pool.
                     // Don't wait for stop_and_destroy which can be slow.

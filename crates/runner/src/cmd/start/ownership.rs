@@ -54,10 +54,12 @@ impl<'a> OwnershipTransitions<'a> {
         self.remove_matching_active(run).await
     }
 
-    /// Active sandbox was accepted by the idle pool; publish idle status.
-    pub(super) async fn active_parked_to_idle(
+    /// Publish the idle-pool state after a caller transferred sandbox ownership.
+    ///
+    /// This intentionally does not remove active status; normal completion does
+    /// that after `provider.complete`.
+    pub(super) async fn publish_idle_status_after_pool_transfer(
         &self,
-        _run: RunSandbox,
         idle_snapshot: IdlePoolSnapshot,
     ) {
         set_idle_status_snapshot(self.status, idle_snapshot).await;
@@ -97,6 +99,9 @@ impl<'a> OwnershipTransitions<'a> {
         let mut reconciled = Vec::new();
         let mut refreshed_idle_status = false;
         for run in runs {
+            if !idle_snapshot_contains_sandbox_id(&idle_snapshot, run.sandbox_id) {
+                continue;
+            }
             if !orphaned_active_runs
                 .remove_if_matching(run.run_id, run.sandbox_id)
                 .await
@@ -133,6 +138,16 @@ impl<'a> OwnershipTransitions<'a> {
             .remove_run_if_matching(run.run_id, run.sandbox_id)
             .await
     }
+}
+
+fn idle_snapshot_contains_sandbox_id(
+    idle_snapshot: &IdlePoolSnapshot,
+    sandbox_id: SandboxId,
+) -> bool {
+    idle_snapshot
+        .idle_vms
+        .iter()
+        .any(|idle_vm| idle_vm.sandbox_id == sandbox_id)
 }
 
 #[cfg(test)]
@@ -262,6 +277,37 @@ mod tests {
         assert_eq!(
             active_runs,
             vec![(run_id.to_string(), current_sandbox_id.to_string())]
+        );
+        assert_eq!(orphans.len().await, 1);
+    }
+
+    #[tokio::test]
+    async fn orphan_idle_owned_requires_idle_snapshot_membership() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let transitions = OwnershipTransitions::new(&status);
+        let orphans = OrphanedActiveRuns::new();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let idle_sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, sandbox_id).await;
+        orphans.insert(run_id, sandbox_id).await;
+
+        let reconciled = transitions
+            .orphan_reconciled_idle_owned(
+                &orphans,
+                [RunSandbox::new(run_id, sandbox_id)],
+                idle_snapshot("sess-different", idle_sandbox_id),
+            )
+            .await;
+
+        assert!(reconciled.is_empty());
+        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
+        assert!(idle_sessions.is_empty());
+        assert_eq!(
+            active_runs,
+            vec![(run_id.to_string(), sandbox_id.to_string())]
         );
         assert_eq!(orphans.len().await, 1);
     }
