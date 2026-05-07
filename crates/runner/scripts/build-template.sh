@@ -104,6 +104,7 @@ TMP_TEMPLATE="${TEMPLATE_FILE}.tmp.$$"
 TEMPLATE_PATH="${OUTPUT_DIR}/${TEMPLATE_FILE}"
 TMP_TEMPLATE_PATH="${OUTPUT_DIR}/${TMP_TEMPLATE}"
 ROOTFS_DIR=""
+CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.2"
@@ -209,6 +210,9 @@ cleanup() {
   if ! rm -f "$TMP_TEMPLATE_PATH"; then
     cleanup_failed=1
   fi
+  if [[ -n "$CACHE_TMP_TAR" ]] && ! rm -f "$CACHE_TMP_TAR"; then
+    cleanup_failed=1
+  fi
 
   if [[ "$cleanup_failed" -ne 0 && "$status" -eq 0 ]]; then
     echo "error: template build cleanup failed" >&2
@@ -241,13 +245,19 @@ debootstrap_build() {
   else
     # --make-tarball downloads packages into a tarball without extracting.
     # It always exits non-zero ("cannot exec ...") because it skips the
-    # second stage, so we check the tarball was created instead.
-    sudo debootstrap --make-tarball="$cache_tar" noble "$ROOTFS_DIR" "$MIRROR" || true
-    if [[ ! -s "$cache_tar" ]]; then
-      echo "error: debootstrap --make-tarball failed to create $cache_tar" >&2
+    # second stage, so we check the tarball was created instead. Write to a
+    # process-scoped temp file first: a cancelled build must not publish a
+    # partial tarball under the stable cache name that another runner may reuse.
+    CACHE_TMP_TAR="${cache_tar}.tmp.$$"
+    rm -f "$CACHE_TMP_TAR"
+    sudo debootstrap --make-tarball="$CACHE_TMP_TAR" noble "$ROOTFS_DIR" "$MIRROR" || true
+    if [[ ! -s "$CACHE_TMP_TAR" ]]; then
+      echo "error: debootstrap --make-tarball failed to create $CACHE_TMP_TAR" >&2
       exit 1
     fi
-    sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
+    sudo debootstrap --unpack-tarball="$(realpath "$CACHE_TMP_TAR")" noble "$ROOTFS_DIR" "$MIRROR"
+    mv -f "$CACHE_TMP_TAR" "$cache_tar"
+    CACHE_TMP_TAR=""
   fi
 
   # Mount virtual filesystems for chroot operations.

@@ -3042,6 +3042,30 @@ exit 1
     }
 
     #[test]
+    fn build_script_publishes_debootstrap_cache_atomically() {
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(r#"CACHE_TMP_TAR="${cache_tar}.tmp.$$""#),
+            "build-template.sh should stage debootstrap cache writes in a process-scoped temp file"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(r#"--make-tarball="$CACHE_TMP_TAR""#),
+            "build-template.sh must not write debootstrap output directly to the stable cache path"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(r#"--unpack-tarball="$(realpath "$CACHE_TMP_TAR")""#),
+            "build-template.sh should validate the temp tarball before publishing it"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains(r#"mv -f "$CACHE_TMP_TAR" "$cache_tar""#),
+            "build-template.sh should atomically publish the verified debootstrap cache tarball"
+        );
+        assert!(
+            !TEMPLATE_BUILD_SCRIPT.contains(r#"--make-tarball="$cache_tar""#),
+            "build-template.sh must not publish partial debootstrap cache tarballs on cancellation"
+        );
+    }
+
+    #[test]
     fn rootfs_scripts_enter_private_mount_namespace() {
         for (name, script) in [
             ("build-template.sh", TEMPLATE_BUILD_SCRIPT),
