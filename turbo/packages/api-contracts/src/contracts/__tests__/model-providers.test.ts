@@ -374,10 +374,27 @@ describe("codex-oauth-token codex provider", () => {
     });
   });
 
+  it("firewall allows the known ChatGPT Codex backend routes", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
+    expect(config.apis[0]!.permissions).toEqual([
+      {
+        name: "codex:api",
+        rules: [
+          "GET /models",
+          "GET /responses",
+          "POST /responses",
+          "POST /analytics-events/events",
+        ],
+      },
+    ]);
+  });
+
   it("firewall denies auth.openai.com via defaultPolicies + permission rule", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
-    expect(config.defaultPolicies?.deny).toContain("denied");
-    expect(config.defaultPolicies?.unknownPolicy).toBe("deny");
+    expect(config.defaultPolicies).toEqual({
+      deny: ["denied"],
+      unknownPolicy: "deny",
+    });
     expect(config.apis[1]!.permissions).toEqual([
       { name: "denied", rules: ["ANY /*"] },
     ]);

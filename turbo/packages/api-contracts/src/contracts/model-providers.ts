@@ -823,7 +823,17 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
             "ChatGPT-Account-ID": "${{ secrets.CHATGPT_ACCOUNT_ID }}",
           },
         },
-        permissions: [],
+        permissions: [
+          {
+            name: "codex:api",
+            rules: [
+              "GET /models",
+              "GET /responses",
+              "POST /responses",
+              "POST /analytics-events/events",
+            ],
+          },
+        ],
       },
       {
         base: "https://auth.openai.com",
