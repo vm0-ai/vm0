@@ -2,7 +2,7 @@
 ///
 /// Every namespace uses the same values — isolation guarantees no conflicts.
 /// These must match the Firecracker VM's network configuration.
-pub struct GuestNetwork {
+pub(crate) struct GuestNetwork {
     /// TAP device name inside namespace (must match Firecracker config).
     pub tap_name: &'static str,
     /// Fixed MAC for the TAP device (host-side, locally administered).
@@ -22,7 +22,12 @@ pub struct GuestNetwork {
     pub prefix_len: u8,
 }
 
-pub const GUEST_NETWORK: GuestNetwork = GuestNetwork {
+/// Canonical guest-facing network values for Firecracker VM namespaces.
+///
+/// Boot arguments, Firecracker network configuration, and namespace TAP setup
+/// all read these values. Keep them compatible with the guest network state
+/// baked into snapshots, including deterministic MAC addresses and IPs.
+pub(crate) const GUEST_NETWORK: GuestNetwork = GuestNetwork {
     tap_name: "vm0-tap",
     tap_mac: "02:00:00:00:00:02",
     guest_mac: "02:00:00:00:00:01",
@@ -41,7 +46,7 @@ pub(crate) fn generate_guest_network_boot_args() -> String {
 }
 
 /// Generate the full kernel boot args string (base flags + network config).
-pub fn generate_boot_args() -> String {
+pub(crate) fn generate_boot_args() -> String {
     format!(
         "console=ttyS0 reboot=k panic=1 pci=off nomodules random.trust_cpu=on \
          quiet loglevel=0 nokaslr audit=0 numa=off mitigations=off noresume \
