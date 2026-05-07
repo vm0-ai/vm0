@@ -39,6 +39,7 @@ import {
   fetchReferencedSecrets,
   filterDbSecretsByConnectorPermissions,
   fetchAndMergeVariables,
+  injectPlatformEnvSecrets,
 } from "./context/resolve-secrets";
 import {
   filterSecretConnectorMap,
@@ -279,6 +280,10 @@ async function resolveSecretsAndEnvironment(
   // Single secrets map with explicit priority (later overrides earlier).
   // Only mapped env vars from connectors are included — raw connector secrets
   // (including refresh tokens) are kept server-side and never sent to the runner.
+  // Platform env secrets (1Password → CI → process.env) for firewall templates.
+  // Injected after DB secrets so DB values take precedence; CLI secrets still win.
+  const envSecrets = injectPlatformEnvSecrets();
+
   const hasCustomConnectorSecrets =
     Object.keys(customConnectorResult.secrets).length > 0;
   const hasSecrets =
@@ -286,13 +291,15 @@ async function resolveSecretsAndEnvironment(
     modelProviderResult.secrets ||
     filteredDbSecrets ||
     cliSecrets ||
-    hasCustomConnectorSecrets;
+    hasCustomConnectorSecrets ||
+    envSecrets;
   const secrets: Record<string, string> | undefined = hasSecrets
     ? {
         ...oauthResult.resolvedSecrets, // connector env mappings (e.g. GITHUB_TOKEN)
         ...modelProviderResult.secrets, // model provider
         ...filteredDbSecrets, // DB user secrets (connector secrets filtered)
         ...customConnectorResult.secrets, // org custom connector per-user secrets
+        ...envSecrets, // platform env secrets (e.g. GOOGLE_ADS_DEVELOPER_TOKEN)
         ...cliSecrets, // highest: CLI --secrets
       }
     : undefined;

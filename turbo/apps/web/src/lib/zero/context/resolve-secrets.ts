@@ -85,6 +85,35 @@ export function filterDbSecretsByConnectorPermissions(
 }
 
 /**
+ * Env vars that should be injected into the context secrets map at runtime.
+ * These platform-level credentials are set via 1Password → process.env
+ * and are NOT stored in the DB variables/secrets tables.
+ *
+ * Each entry is read from process.env at context build time and injected into
+ * the secrets map, making it available for ${{ secrets.XXX }} template
+ * resolution in firewall auth headers.
+ */
+const ENV_SECRET_NAMES = [
+  "GOOGLE_ADS_DEVELOPER_TOKEN",
+  "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+];
+
+/**
+ * Read whitelisted env vars into the secrets map.
+ * Values not set in the environment are silently skipped.
+ */
+export function injectPlatformEnvSecrets(): Record<string, string> | undefined {
+  const result: Record<string, string> = {};
+  for (const name of ENV_SECRET_NAMES) {
+    const value = process.env[name];
+    if (value) {
+      result[name] = value;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
  * Fetch server-stored variables and merge with CLI-provided vars
  * Priority: CLI vars > server-stored vars
  *
