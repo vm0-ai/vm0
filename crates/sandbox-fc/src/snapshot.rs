@@ -699,7 +699,16 @@ impl FirecrackerPendingSnapshotPublish {
             | FirecrackerPendingSnapshotPublishState::Discarded => return Ok(()),
         };
 
-        if cleanup_kept_cow_paths_after_publish_cancellation(&cleanup_paths).await {
+        let output_artifacts_cleaned =
+            cleanup_uncommitted_snapshot_output_artifacts(&self.output).await;
+        let cow_cleaned = cleanup_kept_cow_paths_after_publish_cancellation(&cleanup_paths).await;
+        let work_cleaned = if cow_cleaned {
+            cleanup_snapshot_work_dir(&self.output).await
+        } else {
+            false
+        };
+
+        if output_artifacts_cleaned && cow_cleaned && work_cleaned {
             self.state = FirecrackerPendingSnapshotPublishState::Discarded;
             Ok(())
         } else {
@@ -774,6 +783,47 @@ async fn cleanup_kept_cow_paths_after_publish_cancellation(paths: &KeptCowCleanu
         }
     }
     cleanup_snapshot_attempt_dir_for_cow(&paths.cow_file).await && cleaned
+}
+
+async fn cleanup_uncommitted_snapshot_output_artifacts(output: &SnapshotOutputPaths) -> bool {
+    let mut cleaned = true;
+    for path in [
+        output.complete_marker(),
+        output.snapshot(),
+        output.memory(),
+        output.cow(),
+        output.cow_bitmap(),
+    ] {
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    path = %path.display(),
+                    "failed to cleanup uncommitted snapshot output artifact"
+                );
+                cleaned = false;
+            }
+        }
+    }
+    cleaned
+}
+
+async fn cleanup_snapshot_work_dir(output: &SnapshotOutputPaths) -> bool {
+    let work_dir = output.work_dir();
+    match tokio::fs::remove_dir_all(&work_dir).await {
+        Ok(()) => true,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                path = %work_dir.display(),
+                "failed to cleanup uncommitted snapshot work dir"
+            );
+            false
+        }
+    }
 }
 
 fn cleanup_kept_cow_after_publish_drop(kept_cow: &KeptCow) -> bool {
@@ -2248,6 +2298,14 @@ mod tests {
         pending.discard().await.expect("discard pending publish");
 
         assert!(
+            !tokio::fs::try_exists(output.snapshot()).await.unwrap(),
+            "discard should remove uncommitted snapshot file"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.memory()).await.unwrap(),
+            "discard should remove uncommitted memory file"
+        );
+        assert!(
             !tokio::fs::try_exists(output.cow()).await.unwrap(),
             "discard should not publish stable cow"
         );
@@ -2264,6 +2322,10 @@ mod tests {
         assert!(
             !tokio::fs::try_exists(attempt_dir).await.unwrap(),
             "discard should remove temporary attempt dir"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.work_dir()).await.unwrap(),
+            "discard should remove uncommitted snapshot work dir"
         );
 
         let provider = FirecrackerSnapshotProvider;
@@ -2442,6 +2504,14 @@ mod tests {
             .discard_inner()
             .await
             .expect("failed commit should keep cleanup state for discard");
+        assert!(
+            !tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "cleanup should remove partial stable cow after failed commit"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "cleanup should remove partial stable bitmap after failed commit"
+        );
         assert!(
             !tokio::fs::try_exists(output.complete_marker())
                 .await
