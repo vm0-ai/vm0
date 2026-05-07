@@ -28,6 +28,7 @@
 #   bash build-template.sh \
 #     --output-dir /path/to/output \
 #     --debootstrap-dir /path/to/cache \
+#     --debootstrap-lock /path/to/locks/debootstrap.lock \
 #     --hash <input-hash> \
 #     --disk-mb 16384 \
 #     [--mirror http://archive.ubuntu.com/ubuntu]
@@ -60,6 +61,7 @@ shift
 
 OUTPUT_DIR=""
 DEBOOTSTRAP_DIR=""
+DEBOOTSTRAP_LOCK=""
 INPUT_HASH=""
 DISK_MB=""
 # Default mirror: archive.ubuntu.com only hosts amd64/i386;
@@ -74,6 +76,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir)        OUTPUT_DIR="$2";        shift 2 ;;
     --debootstrap-dir)   DEBOOTSTRAP_DIR="$2";   shift 2 ;;
+    --debootstrap-lock)  DEBOOTSTRAP_LOCK="$2";  shift 2 ;;
     --hash)              INPUT_HASH="$2";        shift 2 ;;
     --disk-mb)           DISK_MB="$2";           shift 2 ;;
     --mirror)            MIRROR="$2";            shift 2 ;;
@@ -81,7 +84,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for var in OUTPUT_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB; do
+for var in OUTPUT_DIR DEBOOTSTRAP_DIR DEBOOTSTRAP_LOCK INPUT_HASH DISK_MB; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -121,7 +124,7 @@ AGENT_BROWSER_VERSION="0.26.0"
 check_dependencies() {
   local missing=()
 
-  for cmd in debootstrap sudo chroot mktemp stat mkfs.ext4 umount mountpoint unshare; do
+  for cmd in debootstrap flock sudo chroot mktemp stat mkfs.ext4 umount mountpoint unshare; do
     if ! command -v "$cmd" &> /dev/null; then
       missing+=("$cmd")
     fi
@@ -231,10 +234,7 @@ trap 'echo "error: command failed at line ${LINENO}: ${BASH_COMMAND}" >&2' ERR
 # Bootstrap Ubuntu 24.04 rootfs
 # ---------------------------------------------------------------------------
 
-debootstrap_build() {
-  echo "bootstrapping Ubuntu 24.04 rootfs..."
-  ROOTFS_DIR="$(mktemp -d)"
-
+debootstrap_cache_locked() {
   # Cache the base package tarball so repeated builds (e.g. after changing
   # a pinned version) skip the ~200 MB download from the Ubuntu mirror.
   local cache_tar="${DEBOOTSTRAP_DIR}/noble-$(dpkg --print-architecture).tar"
@@ -259,6 +259,21 @@ debootstrap_build() {
     mv -f "$CACHE_TMP_TAR" "$cache_tar"
     CACHE_TMP_TAR=""
   fi
+}
+
+debootstrap_build() {
+  echo "bootstrapping Ubuntu 24.04 rootfs..."
+  ROOTFS_DIR="$(mktemp -d)"
+
+  # Only the shared tarball cache needs fleet-wide serialization. Release the
+  # lock before package installation and mkfs so distinct template builds can
+  # run concurrently after they have their private unpacked rootfs.
+  local lock_fd
+  exec {lock_fd}>>"$DEBOOTSTRAP_LOCK"
+  flock "$lock_fd"
+  debootstrap_cache_locked
+  flock -u "$lock_fd"
+  exec {lock_fd}>&-
 
   # Mount virtual filesystems for chroot operations.
   # --bind /dev recursively brings in sub-mounts (pts, shm, etc.);

@@ -1121,16 +1121,16 @@ async fn build_template_locally(
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", output_dir.display())))?;
 
     // Local template build — the slow path (debootstrap + apt install).
-    let debootstrap_lock_path = input.paths.debootstrap_lock();
-    tracing::info!(
-        "acquiring exclusive debootstrap cache lock for template build: {}",
-        debootstrap_lock_path.display()
-    );
-    let _debootstrap_lock = lock::acquire(debootstrap_lock_path).await?;
     let debootstrap_dir = input.paths.debootstrap_dir();
     tokio::fs::create_dir_all(&debootstrap_dir)
         .await
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
+    let locks_dir = input.paths.locks_dir();
+    tokio::fs::create_dir_all(&locks_dir)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", locks_dir.display())))?;
+    let debootstrap_lock_path = input.paths.debootstrap_lock();
+    drop(lock::open_lock_file(&debootstrap_lock_path)?);
     let disk_mb_str = input.disk_mb.to_string();
 
     let mut cmd = rootfs_script_command(&work_dir.join("build-template.sh"));
@@ -1138,6 +1138,8 @@ async fn build_template_locally(
         .arg(output_dir)
         .arg("--debootstrap-dir")
         .arg(&debootstrap_dir)
+        .arg("--debootstrap-lock")
+        .arg(&debootstrap_lock_path)
         .arg("--hash")
         .arg(input.template_hash)
         .arg("--disk-mb")
@@ -3067,6 +3069,30 @@ exit 1
         assert!(
             !TEMPLATE_BUILD_SCRIPT.contains(r#"--make-tarball="$cache_tar""#),
             "build-template.sh must not publish partial debootstrap cache tarballs on cancellation"
+        );
+    }
+
+    #[test]
+    fn build_script_locks_only_debootstrap_cache_access() {
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("--debootstrap-lock"),
+            "build-template.sh should receive the same debootstrap cache lock path used by GC"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("flock \"$lock_fd\""),
+            "build-template.sh should lock shared debootstrap cache access"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("exec {lock_fd}>>\"$DEBOOTSTRAP_LOCK\""),
+            "build-template.sh should open the pre-created lock file without truncating it"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("flock -u \"$lock_fd\""),
+            "build-template.sh should release the debootstrap cache lock after unpack"
+        );
+        assert!(
+            TEMPLATE_BUILD_SCRIPT.contains("debootstrap_cache_locked\n  flock -u"),
+            "build-template.sh should release the cache lock before chroot package install and mkfs"
         );
     }
 

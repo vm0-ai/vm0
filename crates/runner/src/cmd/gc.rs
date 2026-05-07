@@ -647,7 +647,7 @@ async fn gc_debootstrap(
         return Ok(0);
     };
 
-    let mut files: Vec<(PathBuf, u64, SystemTime)> = Vec::new();
+    let mut files: Vec<DeBootstrapCacheFile> = Vec::new();
     while let Some(entry) = next_entry_warn(&mut entries, "gc_debootstrap", &dir).await {
         let path = entry.path();
         let meta = match tokio::fs::metadata(&path).await {
@@ -658,17 +658,23 @@ async fn gc_debootstrap(
             continue;
         }
         let mtime = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
-        files.push((path, meta.len(), mtime));
+        let is_temp = is_debootstrap_temp_tarball(&path);
+        files.push(DeBootstrapCacheFile {
+            path,
+            size: meta.len(),
+            mtime,
+            is_temp,
+        });
     }
 
     // Skip files touched recently (same GC_MIN_AGE as rootfs/snapshots).
     let now = SystemTime::now();
-    files.retain(|(path, _, mtime)| {
-        let age = now.duration_since(*mtime).unwrap_or_default();
+    files.retain(|file| {
+        let age = now.duration_since(file.mtime).unwrap_or_default();
         if age < GC_MIN_AGE {
             info!(
                 "debootstrap cache: {} too recent ({}s old), skipping",
-                path.display(),
+                file.path.display(),
                 age.as_secs()
             );
             false
@@ -677,31 +683,51 @@ async fn gc_debootstrap(
         }
     });
 
-    // Sort newest first, keep the N most recent.
-    files.sort_by_key(|f| std::cmp::Reverse(f.2));
+    // Sort newest first, keep the N most recent stable tarballs. Stale
+    // `*.tar.tmp.<pid>` files are cancellation residue and must not consume a
+    // keep_latest slot that would otherwise protect a usable cache tarball.
+    files.sort_by_key(|f| std::cmp::Reverse(f.mtime));
     let keep = keep_latest.unwrap_or(0);
+    let mut stable_seen = 0usize;
 
     let mut freed: u64 = 0;
-    for (path, size, _) in files.iter().skip(keep) {
+    for file in files.iter() {
+        if !file.is_temp && stable_seen < keep {
+            stable_seen += 1;
+            continue;
+        }
         if dry_run {
             info!(
                 "debootstrap cache: would remove {} ({})",
-                path.display(),
-                human_bytes(*size)
+                file.path.display(),
+                human_bytes(file.size)
             );
-        } else if let Err(e) = tokio::fs::remove_file(path).await {
-            tracing::warn!("remove {}: {e}", path.display());
+        } else if let Err(e) = tokio::fs::remove_file(&file.path).await {
+            tracing::warn!("remove {}: {e}", file.path.display());
             continue;
         } else {
             info!(
                 "debootstrap cache: removed {} ({})",
-                path.display(),
-                human_bytes(*size)
+                file.path.display(),
+                human_bytes(file.size)
             );
         }
-        freed += size;
+        freed += file.size;
     }
     Ok(freed)
+}
+
+struct DeBootstrapCacheFile {
+    path: PathBuf,
+    size: u64,
+    mtime: SystemTime,
+    is_temp: bool,
+}
+
+fn is_debootstrap_temp_tarball(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.contains(".tar.tmp."))
 }
 
 /// Remove unused lock files. Any lock file that can be exclusively locked is
@@ -1874,6 +1900,43 @@ mod tests {
         assert!(
             recent_tmp.exists(),
             "recent debootstrap temp tarball may still belong to an active build"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_temp_tarballs_do_not_consume_keep_latest_slots() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let stable_tar = debootstrap_dir.join("noble-amd64.tar");
+        let newer_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.789");
+        std::fs::write(&stable_tar, b"stable").unwrap();
+        std::fs::write(&newer_tmp, b"newer partial").unwrap();
+        let temp_size = std::fs::metadata(&newer_tmp).unwrap().len();
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let newer_time = old_time + Duration::from_secs(60);
+        std::fs::File::open(&stable_tar)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+        std::fs::File::open(&newer_tmp)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(newer_time))
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(1), false).await.unwrap();
+
+        assert_eq!(freed, temp_size);
+        assert!(
+            stable_tar.exists(),
+            "keep_latest should protect the stable debootstrap tarball"
+        );
+        assert!(
+            !newer_tmp.exists(),
+            "stale temp tarballs must not consume keep_latest slots"
         );
     }
 
