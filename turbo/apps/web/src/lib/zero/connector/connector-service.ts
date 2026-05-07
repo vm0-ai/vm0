@@ -218,7 +218,9 @@ export async function listConnectors(
       return c.type;
     }),
   );
-  const now = new Date().toISOString();
+  // Use a fixed timestamp for derived connectors — they are inferred from
+  // secrets/variables rather than explicitly created, so a stable sentinel
+  // value keeps shadow comparisons deterministic.
   const derivedConnectors: ConnectorResponse[] = derivedTypes
     .filter((type) => {
       return !dbTypeSet.has(type);
@@ -233,8 +235,8 @@ export async function listConnectors(
         externalEmail: null,
         oauthScopes: null,
         needsReconnect: false,
-        createdAt: now,
-        updatedAt: now,
+        createdAt: "1970-01-01T00:00:00.000Z",
+        updatedAt: "1970-01-01T00:00:00.000Z",
       };
     });
 
@@ -358,7 +360,7 @@ export async function getConnector(
   });
   if (!secretsOk || !variablesOk) return null;
 
-  const now = new Date().toISOString();
+  // Use a fixed timestamp — this connector is inferred, not explicitly created.
   return {
     id: null,
     type,
@@ -368,8 +370,8 @@ export async function getConnector(
     externalEmail: null,
     oauthScopes: null,
     needsReconnect: false,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: "1970-01-01T00:00:00.000Z",
+    updatedAt: "1970-01-01T00:00:00.000Z",
   };
 }
 
