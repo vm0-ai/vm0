@@ -371,6 +371,23 @@ mod tests {
         unsafe { libc::kill(pid as i32, 0) == 0 }
     }
 
+    fn spawn_sleeping_child_with_pipes() -> (Child, u32) {
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("echo stdout-ready; sleep 60")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command.spawn().unwrap();
+        let pid = child.id();
+        (child, pid)
+    }
+
     #[test]
     fn fast_exit_wait_does_not_pay_cancel_poll_interval_per_child() {
         let iterations = 20;
@@ -448,19 +465,7 @@ mod tests {
     #[test]
     fn drain_spawn_failure_kills_and_reaps_child_after_first_drain_starts() {
         let cancel = AtomicBool::new(false);
-        let mut command = Command::new("sh");
-        command
-            .arg("-c")
-            .arg("echo stdout-ready; sleep 60")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            command.process_group(0);
-        }
-        let child = command.spawn().unwrap();
-        let pid = child.id();
+        let (child, pid) = spawn_sleeping_child_with_pipes();
 
         let (outcome, stdout, stderr) = wait_with_drain_and_timeout_or_cancelled_with_spawner(
             child,
@@ -471,6 +476,27 @@ mod tests {
 
         assert!(
             matches!(outcome, WaitOutcome::WaitFailed(msg) if msg.contains("stderr drain thread")),
+            "unexpected wait outcome"
+        );
+        assert!(stdout.is_empty());
+        assert!(stderr.is_empty());
+        assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
+    }
+
+    #[test]
+    fn drain_spawn_failure_kills_and_reaps_child_before_any_drain_starts() {
+        let cancel = AtomicBool::new(false);
+        let (child, pid) = spawn_sleeping_child_with_pipes();
+
+        let (outcome, stdout, stderr) = wait_with_drain_and_timeout_or_cancelled_with_spawner(
+            child,
+            0,
+            &cancel,
+            FailingThreadSpawner::fail_once(THREAD_DRAIN_STDOUT),
+        );
+
+        assert!(
+            matches!(outcome, WaitOutcome::WaitFailed(msg) if msg.contains("stdout drain thread")),
             "unexpected wait outcome"
         );
         assert!(stdout.is_empty());
