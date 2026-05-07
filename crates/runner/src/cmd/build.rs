@@ -819,17 +819,6 @@ async fn remove_dir_all_if_exists(path: &Path, label: &str) -> RunnerResult<()> 
     }
 }
 
-async fn remove_file_if_exists(path: &Path, label: &str) -> RunnerResult<()> {
-    match tokio::fs::remove_file(path).await {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(RunnerError::Internal(format!(
-            "remove {label} {}: {e}",
-            path.display()
-        ))),
-    }
-}
-
 async fn finish_temp_dir_result(
     path: &Path,
     label: &str,
@@ -1216,30 +1205,30 @@ impl LocalFilePublish {
     /// so any staging file is crash residue, not a live writer's in-progress
     /// file. Non-existence is the common case and not logged. Removal is best
     /// effort: a failure here leaves the next write step to fail or overwrite.
+    ///
+    /// Keep this synchronous while the caller owns the rootfs lock. A cancelled
+    /// Tokio fs operation can continue on the blocking pool after the lock is
+    /// dropped, which is not safe for the fixed staging path.
     async fn cleanup_stale_staging_best_effort(&self) {
-        match tokio::fs::try_exists(&self.staging).await {
-            Ok(true) => {
+        match std::fs::symlink_metadata(&self.staging) {
+            Ok(metadata) => {
                 tracing::warn!(
                     "removing stale rootfs staging file from a previous failed build: {}",
                     self.staging.display()
                 );
-                if let Err(e) = tokio::fs::remove_file(&self.staging).await {
-                    if e.kind() == std::io::ErrorKind::IsADirectory {
-                        if let Err(dir_err) = tokio::fs::remove_dir_all(&self.staging).await {
-                            tracing::warn!(
-                                "failed to remove stale staging directory {}: {dir_err}",
-                                self.staging.display()
-                            );
-                        }
-                    } else {
-                        tracing::warn!(
-                            "failed to remove stale staging file {}: {e}",
-                            self.staging.display()
-                        );
-                    }
+                let result = if metadata.file_type().is_dir() {
+                    std::fs::remove_dir_all(&self.staging)
+                } else {
+                    std::fs::remove_file(&self.staging)
+                };
+                if let Err(e) = result {
+                    tracing::warn!(
+                        "failed to remove stale staging path {}: {e}",
+                        self.staging.display()
+                    );
                 }
             }
-            Ok(false) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
                 tracing::warn!(
                     "check staging {}: {e} (continuing; any residue will be overwritten)",
@@ -1254,22 +1243,20 @@ impl LocalFilePublish {
     /// Same-filesystem rename is POSIX-atomic, so this is the single step
     /// that makes the published file visible to future presence checks.
     async fn commit(&self) -> RunnerResult<()> {
-        tokio::fs::rename(&self.staging, &self.stable)
-            .await
-            .map_err(|e| {
-                RunnerError::Internal(format!(
-                    "commit rootfs {} → {}: {e}",
-                    self.staging.display(),
-                    self.stable.display()
-                ))
-            })
+        std::fs::rename(&self.staging, &self.stable).map_err(|e| {
+            RunnerError::Internal(format!(
+                "commit rootfs {} → {}: {e}",
+                self.staging.display(),
+                self.stable.display()
+            ))
+        })
     }
 
     async fn finish_after_result(&self, result: RunnerResult<()>) -> RunnerResult<()> {
         match result {
             Ok(()) => Ok(()),
             Err(original_err) => {
-                match remove_file_if_exists(&self.staging, "failed rootfs staging file").await {
+                match remove_file_if_exists_sync(&self.staging, "failed rootfs staging file") {
                     Ok(()) => Err(original_err),
                     Err(cleanup_err) => {
                         tracing::warn!(
@@ -1281,6 +1268,17 @@ impl LocalFilePublish {
                 }
             }
         }
+    }
+}
+
+fn remove_file_if_exists_sync(path: &Path, label: &str) -> RunnerResult<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "remove {label} {}: {e}",
+            path.display()
+        ))),
     }
 }
 
