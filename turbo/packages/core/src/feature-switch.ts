@@ -268,6 +268,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Route platform API traffic to the api backend host instead of the www backend host. Unported endpoints continue through the api backend's web fallback proxy.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConnectorCategories]: {
     maintainer: "ethan@vm0.ai",
