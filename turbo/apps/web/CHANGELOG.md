@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.337.0](https://github.com/vm0-ai/vm0/compare/web-v12.336.0...web-v12.337.0) (2026-05-07)
+
+
+### Features
+
+* **platform:** unify codex auth.json paste flow across personal + org contexts ([#12027](https://github.com/vm0-ai/vm0/issues/12027)) ([7c3a308](https://github.com/vm0-ai/vm0/commit/7c3a308558e815cef15b0968b81ee7e0818d37fb))
+
+
+### Performance Improvements
+
+* **chat:** persist zero run metadata in transactions ([#12029](https://github.com/vm0-ai/vm0/issues/12029)) ([057efd7](https://github.com/vm0-ai/vm0/commit/057efd76188d803cd63d5f91fb4dae8b0464d4f3))
+
 ## [12.336.0](https://github.com/vm0-ai/vm0/compare/web-v12.335.0...web-v12.336.0) (2026-05-07)
 
 

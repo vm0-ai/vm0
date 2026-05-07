@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.3...runner-rs-v0.100.4) (2026-05-07)
+
+
+### Bug Fixes
+
+* **runner:** select usage parser from cli agent type ([#12030](https://github.com/vm0-ai/vm0/issues/12030)) ([6cdd8ef](https://github.com/vm0-ai/vm0/commit/6cdd8ef2e777139fdef56d8e36c589a38be64e58))
+
 ## [0.100.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.2...runner-rs-v0.100.3) (2026-05-07)
 
 

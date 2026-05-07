@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.330.0](https://github.com/vm0-ai/vm0/compare/app-v0.329.0...app-v0.330.0) (2026-05-07)
+
+
+### Features
+
+* **platform:** unify codex auth.json paste flow across personal + org contexts ([#12027](https://github.com/vm0-ai/vm0/issues/12027)) ([7c3a308](https://github.com/vm0-ai/vm0/commit/7c3a308558e815cef15b0968b81ee7e0818d37fb))
+
 ## [0.329.0](https://github.com/vm0-ai/vm0/compare/app-v0.328.0...app-v0.329.0) (2026-05-06)
 
 
