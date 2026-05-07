@@ -5,6 +5,7 @@
 
 use crate::protocol::ProtocolError;
 
+/// Error type returned by `nbd-cow` operations.
 #[derive(Debug, thiserror::Error)]
 pub enum NbdCowError {
     #[error("protocol error: {0}")]
@@ -30,4 +31,5 @@ pub enum NbdCowError {
     NoFreeDevice,
 }
 
+/// Result type used by `nbd-cow` APIs.
 pub type Result<T> = std::result::Result<T, NbdCowError>;
