@@ -807,7 +807,7 @@ function AgentHeader({
           <Button
             variant="outline"
             size="sm"
-            className="zero-btn-morandi gap-1.5 w-full sm:w-auto sm:shrink-0 h-11 sm:h-9 text-[17px] sm:text-sm"
+            className="zero-btn-morandi order-first sm:order-none gap-1.5 w-full sm:w-auto sm:shrink-0 h-11 sm:h-9 text-[17px] sm:text-sm"
             onClick={() => {
               nav("/agents/:agentId/chat", {
                 pathParams: { agentId: agentId },
