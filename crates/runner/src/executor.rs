@@ -393,8 +393,10 @@ async fn register_proxy(
     let network_log_path = config.log_paths.network_log(context.run_id);
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
+    let cli_agent_type = normalized_cli_agent_type(&context.cli_agent_type);
     let registration = proxy::VmRegistration {
         run_id: &run_id_str,
+        cli_agent_type,
         sandbox_token: &context.sandbox_token,
         network_log_path: &network_log_path,
         proxy_log_path: &proxy_log_path,
@@ -1314,11 +1316,7 @@ fn build_env_json(
     // The API omits cli_agent_type for claude-code agents (the default).
     env.insert(
         "CLI_AGENT_TYPE".into(),
-        if context.cli_agent_type.is_empty() {
-            "claude-code".into()
-        } else {
-            context.cli_agent_type.clone()
-        },
+        normalized_cli_agent_type(&context.cli_agent_type).into(),
     );
 
     // Vercel bypass
@@ -1434,6 +1432,14 @@ fn build_env_json(
     }
 
     env
+}
+
+fn normalized_cli_agent_type(cli_agent_type: &str) -> &str {
+    if cli_agent_type.is_empty() {
+        "claude-code"
+    } else {
+        cli_agent_type
+    }
 }
 
 #[cfg(test)]

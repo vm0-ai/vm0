@@ -674,6 +674,7 @@ class TestRequestHandler:
                 await mitm_addon.request(flow)
 
             assert flow.metadata["firewall_name"] == "model-provider:anthropic-api-key"
+            assert flow.metadata["cli_agent_type"] == "claude-code"
             assert flow.metadata["firewall_billable"] is False
             assert "_usage_flow_tracked" not in flow.metadata
             assert usage.counters._in_flight_flows == 0
@@ -695,6 +696,7 @@ class TestRequestHandler:
             "vms": {
                 "10.200.0.5": {
                     "runId": "run-model-1",
+                    "cliAgentType": "codex",
                     "billableFirewalls": [firewall_name],
                     "modelUsageProvider": "claude-opus-4-6",
                     "sandboxToken": "tok-model",
@@ -745,6 +747,7 @@ class TestRequestHandler:
                 await mitm_addon.request(flow)
 
             assert flow.metadata["firewall_name"] == firewall_name
+            assert flow.metadata["cli_agent_type"] == "codex"
             assert flow.metadata["firewall_billable"] is True
             assert flow.metadata["model_usage_provider"] == "claude-opus-4-6"
             assert flow.metadata["_usage_flow_tracked"] is True
@@ -1326,6 +1329,7 @@ class TestResponseHeadersHandler:
         ).encode()
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
             status_code=200,
@@ -2308,6 +2312,7 @@ class TestResponseHeadersSseParser:
             headers=http.Headers(**{"content-type": "Text/Event-Stream"}),
         )
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
@@ -2329,6 +2334,7 @@ class TestResponseHeadersSseParser:
             headers=http.Headers(**{"content-type": "text/event-stream"}),
         )
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
@@ -2353,6 +2359,7 @@ class TestResponseHeadersSseParser:
             headers=http.Headers(**{"content-type": "text/event-stream"}),
         )
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
 
         mitm_addon.responseheaders(flow)
@@ -2368,6 +2375,54 @@ class TestResponseHeadersSseParser:
         assert flow.metadata["model_provider_usage"]["model"] == "gpt-5.5"
         assert flow.metadata["model_provider_usage"]["tokens.input"] == 30
         assert flow.metadata["model_provider_usage"]["tokens.cache_read"] == 12
+
+    def test_codex_oauth_model_provider_uses_openai_sse_parser(self, real_flow):
+        flow = real_flow(with_response=False, host="chatgpt.com")
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "text/event-stream"}),
+        )
+        flow.metadata["firewall_name"] = "model-provider:codex-oauth-token"
+        flow.metadata["cli_agent_type"] = "codex"
+        flow.metadata["firewall_billable"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        assert "model_provider_usage" in flow.metadata
+        callback = flow.response.stream
+        callback(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":42,'
+            b'"input_tokens_details":{"cached_tokens":12}}}}\n\n'
+        )
+        assert flow.metadata["model_provider_usage"]["model"] == "gpt-5.5"
+        assert flow.metadata["model_provider_usage"]["tokens.input"] == 30
+        assert flow.metadata["model_provider_usage"]["tokens.cache_read"] == 12
+
+    @pytest.mark.parametrize("cli_agent_type", [None, ""])
+    def test_default_cli_agent_type_uses_anthropic_sse_parser(self, real_flow, cli_agent_type):
+        flow = real_flow(with_response=False, host="chatgpt.com")
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(**{"content-type": "text/event-stream"}),
+        )
+        flow.metadata["firewall_name"] = "model-provider:codex-oauth-token"
+        if cli_agent_type is not None:
+            flow.metadata["cli_agent_type"] = cli_agent_type
+        flow.metadata["firewall_billable"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        callback(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":'
+            b'{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":42}}}\n\n'
+        )
+        assert flow.metadata["model_provider_usage"]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata["model_provider_usage"]["tokens.input"] == 42
 
     def test_decompresses_gzip_sse_before_parsing(self, real_flow, headers):
         """Compressed SSE streams must be decompressed before usage extraction."""
@@ -2512,6 +2567,65 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
+        flow.metadata["firewall_billable"] = True
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        body = json.dumps(
+            {
+                "id": "resp_1",
+                "model": "gpt-5.5",
+                "usage": {
+                    "input_tokens": 50,
+                    "output_tokens": 200,
+                    "input_tokens_details": {"cached_tokens": 10},
+                },
+            }
+        ).encode()
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=http.Headers(
+                **{"content-type": "application/json", "content-length": str(len(body))}
+            ),
+        )
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            mitm_ctx(),
+            patch.object(usage.webhook, "_opener") as mock_opener,
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon.response(flow)
+            usage.webhook.usage_executor.shutdown(wait=True)
+
+        extracted = flow.metadata["model_provider_usage"]
+        assert extracted["message_id"] == "resp_1"
+        assert extracted["model"] == "gpt-5.5"
+        assert extracted["tokens.input"] == 40
+        assert extracted["tokens.output"] == 200
+        assert extracted["tokens.cache_read"] == 10
+        events = _usage_event_events_from_calls(mock_opener.open.call_args_list)
+        by_category = {event["category"]: event["quantity"] for event in events}
+        assert by_category == {
+            "tokens.input": 40,
+            "tokens.output": 200,
+            "tokens.cache_read": 10,
+        }
+
+    def test_codex_oauth_non_streaming_json_fallback(
+        self, tmp_path, real_flow, mitm_ctx, fresh_usage_executor
+    ):
+        """Codex OAuth model-provider fallback uses OpenAI Responses mapping."""
+        flow = real_flow(with_response=False, host="chatgpt.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://chatgpt.com/backend-api/codex/responses"
+        flow.metadata["firewall_name"] = "model-provider:codex-oauth-token"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         body = json.dumps(
@@ -2573,6 +2687,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = False
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["stream_buffer"] = bytearray(body)
@@ -2605,6 +2720,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.response = tutils.tresp(
@@ -2648,6 +2764,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["model_provider_usage"] = {
@@ -2684,6 +2801,7 @@ class TestResponseUsageReporting:
         flow.metadata["firewall_action"] = "ALLOW"
         flow.metadata["original_url"] = "https://api.openai.com/v1/responses"
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
         flow.metadata["vm_sandbox_token"] = "tok-xyz"
         flow.metadata["model_provider_usage"] = {"model": "gpt-5.5"}
@@ -2924,6 +3042,7 @@ class TestResponseUsageReporting:
         """Early-returning SSE flows should not retain parser closures."""
         flow = real_flow(with_response=False, host="api.openai.com")
         flow.metadata["firewall_name"] = "model-provider:openai-api-key"
+        flow.metadata["cli_agent_type"] = "codex"
         flow.metadata["firewall_billable"] = True
         flow.response = tutils.tresp(
             status_code=200,
