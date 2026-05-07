@@ -70,8 +70,11 @@ function AccountRow({
  * (insetted to leave room for the leading icon).
  */
 function AccountSection({ children }: { children: ReactNode }) {
+  // zero-card carries the shared card surface (bg-card + border + shadow),
+  // so each section now reads as a real card lifted off the page bg, with
+  // hairline dividers between rows.
   return (
-    <div className="overflow-hidden rounded-2xl bg-background border border-border/50 [&>button]:bg-background [&>button+button]:border-t [&>button+button]:border-border/50">
+    <div className="zero-card overflow-hidden [&>button+button]:border-t [&>button+button]:border-border/50">
       {children}
     </div>
   );
