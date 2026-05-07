@@ -1860,6 +1860,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_debootstrap_missing_cache_dir_does_not_create_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            !home.debootstrap_dir().exists(),
+            "missing debootstrap cache dir should remain absent"
+        );
+        assert!(
+            !home.debootstrap_lock().exists(),
+            "GC must not create the debootstrap lock when there is no cache dir"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_debootstrap_skips_when_cache_lock_is_held() {
         use std::fs::FileTimes;
 
@@ -1911,6 +1929,33 @@ mod tests {
         assert!(
             lock_path.exists(),
             "debootstrap GC must not remove its own lock file"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_ignores_non_cache_files() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let unrelated = debootstrap_dir.join("README");
+        std::fs::write(&unrelated, b"metadata").unwrap();
+        std::fs::File::open(&unrelated)
+            .unwrap()
+            .set_times(
+                FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+            )
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            unrelated.exists(),
+            "debootstrap GC should only remove cache tarballs"
         );
     }
 
