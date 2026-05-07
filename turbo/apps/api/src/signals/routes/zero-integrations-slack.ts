@@ -60,7 +60,8 @@ const getSlackEnvironment$ = computed(
     const auth = get(organizationAuthContext$);
     const db = get(db$);
 
-    // Find the default agent via org metadata
+    // Three sequential queries to resolve default-agent → compose → version
+    // (each depends on the prior result, so a single JOIN is not straightforward).
     const [meta] = await db
       .select({ defaultAgentId: orgMetadata.defaultAgentId })
       .from(orgMetadata)
