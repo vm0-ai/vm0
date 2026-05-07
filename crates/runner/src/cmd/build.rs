@@ -595,7 +595,7 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 );
             }
 
-            let _snapshot_lock = lock::acquire(paths.snapshot_lock(snapshot_hash)).await?;
+            let snapshot_lock = lock::acquire(paths.snapshot_lock(snapshot_hash)).await?;
             if provider.is_complete(snapshot_dir).await.unwrap_or(false) {
                 tracing::info!(
                     "[OK] image already built: rootfs={rootfs_hash}, snapshot={snapshot_hash}"
@@ -612,6 +612,7 @@ pub async fn run_build(mut args: BuildArgs, provider: &dyn SnapshotProvider) -> 
                 snapshot_dir,
                 def,
                 provider,
+                snapshot_lock,
             )
             .await?;
 
@@ -630,6 +631,7 @@ async fn build_snapshot(
     snapshot_dir: &Path,
     def: &profile::ProfileDef,
     provider: &dyn SnapshotProvider,
+    snapshot_lock: Flock<File>,
 ) -> RunnerResult<()> {
     // Snapshot dir is nested under the rootfs dir:
     // <images>/<rootfs_hash>/snapshots/<snapshot_hash>/
@@ -647,20 +649,14 @@ async fn build_snapshot(
         memory_mb: def.memory_mb,
     };
 
-    let mut pending = provider.create_uncommitted_snapshot(create_config).await?;
-    let output = match pending.commit().await {
-        Ok(output) => output,
-        Err(err) => {
-            if let Err(discard_err) = pending.discard().await {
-                tracing::warn!(
-                    error = %discard_err,
-                    snapshot_dir = %snapshot_dir.display(),
-                    "failed to discard uncommitted snapshot after publish failure"
-                );
-            }
-            return Err(err.into());
-        }
-    };
+    let pending = provider.create_uncommitted_snapshot(create_config).await?;
+    let output = shielded_snapshot_publish(
+        pending,
+        snapshot_lock,
+        snapshot_hash.to_string(),
+        snapshot_dir.to_path_buf(),
+    )
+    .await?;
 
     let (snapshot_sz, memory_sz, cow_sz) = tokio::join!(
         file_sizes(&output.snapshot_path),
@@ -678,6 +674,71 @@ async fn build_snapshot(
     );
 
     Ok(())
+}
+
+async fn shielded_snapshot_publish(
+    pending: Box<dyn sandbox::PendingSnapshotPublish>,
+    snapshot_lock: Flock<File>,
+    snapshot_hash: String,
+    snapshot_dir: PathBuf,
+) -> RunnerResult<sandbox::SnapshotOutput> {
+    let (result_tx, result_rx) =
+        tokio::sync::oneshot::channel::<Result<sandbox::SnapshotOutput, sandbox::SnapshotError>>();
+
+    tokio::spawn(async move {
+        let result =
+            commit_or_discard_pending_snapshot(pending, &snapshot_hash, &snapshot_dir).await;
+        drop(snapshot_lock);
+
+        if let Err(result) = result_tx.send(result) {
+            match result {
+                Ok(_) => {
+                    tracing::info!(
+                        snapshot_hash,
+                        snapshot_dir = %snapshot_dir.display(),
+                        "detached snapshot publish committed after caller cancellation"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err,
+                        snapshot_hash,
+                        snapshot_dir = %snapshot_dir.display(),
+                        "detached snapshot publish failed after caller cancellation"
+                    );
+                }
+            }
+        }
+    });
+
+    match result_rx.await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(err)) => Err(err.into()),
+        Err(err) => Err(RunnerError::Internal(format!(
+            "snapshot publish task ended before reporting completion: {err}"
+        ))),
+    }
+}
+
+async fn commit_or_discard_pending_snapshot(
+    mut pending: Box<dyn sandbox::PendingSnapshotPublish>,
+    snapshot_hash: &str,
+    snapshot_dir: &Path,
+) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+    match pending.commit().await {
+        Ok(output) => Ok(output),
+        Err(err) => {
+            if let Err(discard_err) = pending.discard().await {
+                tracing::warn!(
+                    error = %discard_err,
+                    snapshot_hash,
+                    snapshot_dir = %snapshot_dir.display(),
+                    "failed to discard uncommitted snapshot after publish failure"
+                );
+            }
+            Err(err)
+        }
+    }
 }
 
 async fn ensure_rootfs_under_lock(
@@ -1702,6 +1763,96 @@ mod tests {
         }
     }
 
+    enum ControlledCommitOutcome {
+        Success,
+        Failure,
+    }
+
+    struct ControlledPendingSnapshotPublish {
+        output_dir: PathBuf,
+        commit_outcome: ControlledCommitOutcome,
+        commit_entered: Option<tokio::sync::oneshot::Sender<()>>,
+        commit_release: Option<tokio::sync::oneshot::Receiver<()>>,
+        commit_done: Option<tokio::sync::oneshot::Sender<()>>,
+        discard_entered: Option<tokio::sync::oneshot::Sender<()>>,
+        discard_release: Option<tokio::sync::oneshot::Receiver<()>>,
+        discard_done: Option<tokio::sync::oneshot::Sender<()>>,
+    }
+
+    #[async_trait::async_trait]
+    impl sandbox::PendingSnapshotPublish for ControlledPendingSnapshotPublish {
+        async fn commit(&mut self) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+            if let Some(tx) = self.commit_entered.take() {
+                let _ = tx.send(());
+            }
+            if let Some(rx) = self.commit_release.take() {
+                let _ = rx.await;
+            }
+            if let Some(tx) = self.commit_done.take() {
+                let _ = tx.send(());
+            }
+
+            match self.commit_outcome {
+                ControlledCommitOutcome::Success => Ok(sandbox::SnapshotOutput {
+                    snapshot_path: self.output_dir.join("snapshot.bin"),
+                    memory_path: self.output_dir.join("memory.bin"),
+                    cow_path: self.output_dir.join("cow.img"),
+                }),
+                ControlledCommitOutcome::Failure => {
+                    Err(sandbox::SnapshotError::Teardown("publish failed".into()))
+                }
+            }
+        }
+
+        async fn discard(&mut self) -> Result<(), sandbox::SnapshotError> {
+            if let Some(tx) = self.discard_entered.take() {
+                let _ = tx.send(());
+            }
+            if let Some(rx) = self.discard_release.take() {
+                let _ = rx.await;
+            }
+            if let Some(tx) = self.discard_done.take() {
+                let _ = tx.send(());
+            }
+            Ok(())
+        }
+    }
+
+    async fn acquire_test_snapshot_lock(home: &HomePaths, snapshot_hash: &str) -> Flock<File> {
+        lock::acquire(home.snapshot_lock(snapshot_hash))
+            .await
+            .expect("acquire test snapshot lock")
+    }
+
+    async fn assert_lock_blocked(lock_path: PathBuf) {
+        let err = lock::try_acquire(lock_path)
+            .await
+            .expect_err("snapshot lock should still be held");
+        assert!(
+            err.to_string().contains("already held"),
+            "unexpected lock error: {err}"
+        );
+    }
+
+    async fn wait_until_lock_available(lock_path: PathBuf) {
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                match lock::try_acquire(lock_path.clone()).await {
+                    Ok(guard) => {
+                        drop(guard);
+                        break;
+                    }
+                    Err(err) if err.to_string().contains("already held") => {
+                        tokio::task::yield_now().await;
+                    }
+                    Err(err) => panic!("unexpected lock error: {err}"),
+                }
+            }
+        })
+        .await
+        .unwrap_or_else(|_| panic!("timed out waiting for snapshot lock to be released"));
+    }
+
     struct ProcessGroupCleanup {
         pgid_file: PathBuf,
     }
@@ -1952,6 +2103,7 @@ exit 1
             &snapshot_dir,
             &def,
             &provider,
+            acquire_test_snapshot_lock(&home, "snapshot-hash").await,
         )
         .await
         .unwrap();
@@ -1995,6 +2147,7 @@ exit 1
             &snapshot_dir,
             &def,
             &provider,
+            acquire_test_snapshot_lock(&home, "snapshot-hash").await,
         )
         .await
         .expect_err("snapshot publish should fail");
@@ -2037,6 +2190,7 @@ exit 1
             &snapshot_dir,
             &def,
             &provider,
+            acquire_test_snapshot_lock(&home, "snapshot-hash").await,
         )
         .await
         .expect_err("snapshot publish should fail");
@@ -2049,6 +2203,100 @@ exit 1
             discarded.load(Ordering::SeqCst),
             "build_snapshot should still try discard after commit failure"
         );
+    }
+
+    #[tokio::test]
+    async fn shielded_snapshot_publish_keeps_lock_after_waiter_cancelled_until_commit_finishes() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let snapshot_hash = "snapshot-hash";
+        let snapshot_lock_path = home.snapshot_lock(snapshot_hash);
+        let snapshot_lock = lock::acquire(snapshot_lock_path.clone())
+            .await
+            .expect("acquire snapshot lock");
+        let snapshot_dir = dir.path().join("snapshot");
+        let (commit_entered_tx, commit_entered_rx) = tokio::sync::oneshot::channel();
+        let (commit_release_tx, commit_release_rx) = tokio::sync::oneshot::channel();
+        let (commit_done_tx, commit_done_rx) = tokio::sync::oneshot::channel();
+        let pending = ControlledPendingSnapshotPublish {
+            output_dir: snapshot_dir.clone(),
+            commit_outcome: ControlledCommitOutcome::Success,
+            commit_entered: Some(commit_entered_tx),
+            commit_release: Some(commit_release_rx),
+            commit_done: Some(commit_done_tx),
+            discard_entered: None,
+            discard_release: None,
+            discard_done: None,
+        };
+
+        let waiter = tokio::spawn(shielded_snapshot_publish(
+            Box::new(pending),
+            snapshot_lock,
+            snapshot_hash.to_string(),
+            snapshot_dir,
+        ));
+        commit_entered_rx.await.expect("commit should start");
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+
+        assert_lock_blocked(snapshot_lock_path.clone()).await;
+
+        commit_release_tx
+            .send(())
+            .expect("release commit waiter after cancellation");
+        commit_done_rx.await.expect("commit should finish");
+        wait_until_lock_available(snapshot_lock_path).await;
+    }
+
+    #[tokio::test]
+    async fn shielded_snapshot_publish_keeps_lock_after_waiter_cancelled_until_discard_finishes() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let snapshot_hash = "snapshot-hash";
+        let snapshot_lock_path = home.snapshot_lock(snapshot_hash);
+        let snapshot_lock = lock::acquire(snapshot_lock_path.clone())
+            .await
+            .expect("acquire snapshot lock");
+        let snapshot_dir = dir.path().join("snapshot");
+        let (commit_entered_tx, commit_entered_rx) = tokio::sync::oneshot::channel();
+        let (commit_release_tx, commit_release_rx) = tokio::sync::oneshot::channel();
+        let (discard_entered_tx, discard_entered_rx) = tokio::sync::oneshot::channel();
+        let (discard_release_tx, discard_release_rx) = tokio::sync::oneshot::channel();
+        let (discard_done_tx, discard_done_rx) = tokio::sync::oneshot::channel();
+        let pending = ControlledPendingSnapshotPublish {
+            output_dir: snapshot_dir.clone(),
+            commit_outcome: ControlledCommitOutcome::Failure,
+            commit_entered: Some(commit_entered_tx),
+            commit_release: Some(commit_release_rx),
+            commit_done: None,
+            discard_entered: Some(discard_entered_tx),
+            discard_release: Some(discard_release_rx),
+            discard_done: Some(discard_done_tx),
+        };
+
+        let waiter = tokio::spawn(shielded_snapshot_publish(
+            Box::new(pending),
+            snapshot_lock,
+            snapshot_hash.to_string(),
+            snapshot_dir,
+        ));
+        commit_entered_rx.await.expect("commit should start");
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
+
+        assert_lock_blocked(snapshot_lock_path.clone()).await;
+
+        commit_release_tx
+            .send(())
+            .expect("release failing commit after cancellation");
+        discard_entered_rx.await.expect("discard should start");
+        assert_lock_blocked(snapshot_lock_path.clone()).await;
+
+        discard_release_tx
+            .send(())
+            .expect("release discard after cancellation");
+        discard_done_rx.await.expect("discard should finish");
+        wait_until_lock_available(snapshot_lock_path).await;
     }
 
     #[test]
