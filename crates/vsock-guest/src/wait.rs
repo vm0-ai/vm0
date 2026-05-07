@@ -373,6 +373,26 @@ mod tests {
     }
 
     #[test]
+    fn nonzero_timeout_child_is_cancelled_by_pre_signalled_cancel() {
+        let cancel = AtomicBool::new(true);
+        let mut command = Command::new("sleep");
+        command
+            .arg("60")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            command.process_group(0);
+        }
+        let child = command.spawn().unwrap();
+
+        let outcome = wait_with_kill_timeout_or_cancelled(child, 30_000, &cancel);
+
+        assert!(matches!(outcome, WaitOutcome::Cancelled));
+    }
+
+    #[test]
     fn watchdog_done_signal_wins_over_elapsed_deadline() {
         let cancel = AtomicBool::new(false);
         let (done_tx, done_rx) = mpsc::channel::<()>();
@@ -384,6 +404,17 @@ mod tests {
             &cancel,
             i32::MAX as u32,
         );
+
+        assert!(outcome.is_none());
+    }
+
+    #[test]
+    fn watchdog_done_signal_wins_over_pre_signalled_cancel() {
+        let cancel = AtomicBool::new(true);
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        done_tx.send(()).unwrap();
+
+        let outcome = wait_for_done_timeout_or_cancelled(done_rx, None, &cancel, i32::MAX as u32);
 
         assert!(outcome.is_none());
     }
