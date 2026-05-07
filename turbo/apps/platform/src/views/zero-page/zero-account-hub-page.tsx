@@ -20,7 +20,6 @@ import { apiBaseForNavigation$ } from "../../signals/fetch.ts";
 interface AccountRowProps {
   readonly icon: (props: { size?: number; stroke?: number }) => ReactNode;
   readonly label: string;
-  readonly hint?: string;
   readonly onSelect: () => void;
   readonly testId: string;
   readonly destructive?: boolean;
@@ -29,7 +28,6 @@ interface AccountRowProps {
 function AccountRow({
   icon: Icon,
   label,
-  hint,
   onSelect,
   testId,
   destructive,
@@ -39,31 +37,43 @@ function AccountRow({
       type="button"
       onClick={onSelect}
       data-testid={testId}
-      className="flex w-full items-center gap-3 px-3 py-3 rounded-xl bg-muted/40 hover:bg-muted text-left transition-colors"
+      className="flex w-full items-center gap-3 px-4 h-12 text-left transition-colors hover:bg-muted/40 active:bg-muted/60"
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center text-muted-foreground">
-        <Icon size={18} stroke={1.6} />
+      <span
+        className={`flex h-7 w-7 shrink-0 items-center justify-center ${
+          destructive ? "text-destructive" : "text-muted-foreground"
+        }`}
+      >
+        <Icon size={20} stroke={1.6} />
       </span>
-      <span className="flex-1 min-w-0">
-        <span
-          className={`block text-[17px] font-semibold truncate ${
-            destructive ? "text-destructive" : "text-foreground"
-          }`}
-        >
-          {label}
-        </span>
-        {hint && (
-          <span className="block text-[15px] text-muted-foreground truncate">
-            {hint}
-          </span>
-        )}
+      <span
+        className={`flex-1 min-w-0 truncate text-[17px] ${
+          destructive
+            ? "text-destructive font-medium"
+            : "text-foreground font-medium"
+        }`}
+      >
+        {label}
       </span>
       <IconChevronRight
         size={16}
         stroke={1.6}
-        className="shrink-0 text-muted-foreground"
+        className="shrink-0 text-muted-foreground/60"
       />
     </button>
+  );
+}
+
+/**
+ * iOS Settings-style grouped section. Wraps a set of AccountRow children
+ * in a single rounded white card with hairline separators between rows
+ * (insetted to leave room for the leading icon).
+ */
+function AccountSection({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-2xl bg-background border border-border/50 [&>button]:bg-background [&>button+button]:border-t [&>button+button]:border-border/50">
+      {children}
+    </div>
   );
 }
 
@@ -148,20 +158,18 @@ export function ZeroAccountHubPage() {
       className="flex flex-1 flex-col min-h-0 overflow-auto"
       data-testid="account-hub-page"
     >
-      <div className="mx-auto w-full max-w-[640px] flex flex-col gap-4 px-4 pt-4 pb-12">
+      <div className="mx-auto w-full max-w-[640px] flex flex-col gap-6 px-4 pt-4 pb-12">
         <AccountIdentityCard />
-        <div className="flex flex-col gap-2">
+        <AccountSection>
           <AccountRow
             icon={IconAdjustmentsHorizontal}
             label="Preferences"
-            hint="Appearance, time zone, and chat input"
             testId="account-hub-preferences"
             onSelect={goPreferences}
           />
           <AccountRow
             icon={IconChartBar}
             label="Usage"
-            hint="Credits and activity"
             testId="account-hub-usage"
             onSelect={goUsage}
           />
@@ -169,22 +177,21 @@ export function ZeroAccountHubPage() {
             <AccountRow
               icon={IconKey}
               label="API Keys"
-              hint="Manage personal access tokens"
               testId="account-hub-api-keys"
               onSelect={goApiKeys}
             />
           )}
+        </AccountSection>
+        <AccountSection>
           <AccountRow
             icon={IconUser}
             label="Manage account"
-            hint="Profile, security, connected accounts"
             testId="account-hub-manage"
             onSelect={handleManage}
           />
           <AccountRow
             icon={IconUserPlus}
             label="Add account"
-            hint="Sign in with another email"
             testId="account-hub-add"
             onSelect={handleAddAccount}
           />
@@ -192,11 +199,12 @@ export function ZeroAccountHubPage() {
             <AccountRow
               icon={IconDatabaseExport}
               label="Export data"
-              hint="Download a copy of your data"
               testId="account-hub-export"
               onSelect={handleExport}
             />
           )}
+        </AccountSection>
+        <AccountSection>
           <AccountRow
             icon={IconLogout}
             label="Sign out"
@@ -204,7 +212,7 @@ export function ZeroAccountHubPage() {
             onSelect={handleSignOut}
             destructive
           />
-        </div>
+        </AccountSection>
       </div>
     </div>
   );
