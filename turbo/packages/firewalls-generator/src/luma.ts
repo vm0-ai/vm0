@@ -11,7 +11,8 @@
 
 import { writeOutput } from "./codegen";
 
-const DOCS_URL = "https://docs.luma.com/reference/getting-started-with-your-api";
+const DOCS_URL =
+  "https://docs.luma.com/reference/getting-started-with-your-api";
 const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalC";
 
 function generateTypeScript(): string {
