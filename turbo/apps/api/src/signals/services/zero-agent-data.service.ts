@@ -1,6 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { connectorTypeSchema } from "@vm0/connectors/connectors";
 import { toFirewallPolicies } from "@vm0/connectors/firewall-types";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { userConnectors } from "@vm0/db/schema/user-connector";
@@ -137,8 +138,9 @@ export function zeroAgentEnabledConnectorTypes(args: {
         ),
       );
 
-    return rows.map((row) => {
-      return row.connectorType;
+    return rows.flatMap((row) => {
+      const parsed = connectorTypeSchema.safeParse(row.connectorType);
+      return parsed.success ? [parsed.data] : [];
     });
   });
 }
