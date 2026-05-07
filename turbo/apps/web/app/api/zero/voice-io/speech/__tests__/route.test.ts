@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { randomUUID } from "crypto";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../../src/mocks/server";
 import {
+  createTestCompose,
   createTestRequest,
   createTestOrg,
   deleteTestUsagePricing,
   findTestUsageEventsByRunId,
   getOrgCredits,
+  insertOrgMembersCacheEntry,
+  insertTestChatThread,
   insertTestUsagePricing,
   setOrgCredits,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -18,6 +20,9 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
 import { generateZeroToken } from "../../../../../../src/lib/auth/sandbox-token";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { findTestRunUploadedFiles } from "../../../../../../src/__tests__/db-test-assertions/run-uploaded-files";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 vi.hoisted(() => {
   vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
@@ -140,9 +145,28 @@ async function seedSpeechPricing() {
   });
 }
 
+async function setupRunScopedToken(userId: string, orgId: string) {
+  const { composeId } = await createTestCompose(uniqueId("speech-agent"));
+  const threadId = await insertTestChatThread(userId, composeId, "Voices");
+  const { runId } = await seedTestRun(userId, composeId, {
+    chatThreadId: threadId,
+    orgId,
+    triggerSource: "schedule",
+  });
+  await insertOrgMembersCacheEntry({
+    orgId,
+    userId,
+    role: "admin",
+  });
+  mockClerk({ userId: null });
+  const token = await generateZeroToken(userId, runId, orgId);
+  return { token, runId, threadId };
+}
+
 describe("POST /api/zero/voice-io/speech", () => {
   beforeEach(() => {
     context.setupMocks();
+    mockAblyPublish.mockClear();
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     reloadEnv();
   });
@@ -219,11 +243,10 @@ describe("POST /api/zero/voice-io/speech", () => {
     expect(openAiCalled).toBe(false);
   });
 
-  it("stores a /f WAV file, settles credits inline, and does not bind the run", async () => {
+  it("stores a /f WAV file, records it as a run artifact, and keeps usage runless", async () => {
     const userId = uniqueId("speech-ok");
     const { orgId } = await setupOrg(userId);
-    const runId = randomUUID();
-    const token = await generateZeroToken(userId, runId, orgId);
+    const { token, runId, threadId } = await setupRunScopedToken(userId, orgId);
     await setOrgCredits(orgId, 1000);
     await seedSpeechPricing();
     const wavBytes = createWavBytes(10);
@@ -283,6 +306,29 @@ describe("POST /api/zero/voice-io/speech", () => {
     expect(uploadedBytes.equals(Buffer.from(wavBytes))).toBe(true);
     expect(contentType).toBe("audio/wav");
 
+    const rows = await findTestRunUploadedFiles("schedule", body.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      runId,
+      source: "schedule",
+      externalId: body.id,
+      userId,
+      orgId,
+      filename: body.filename,
+      contentType: "audio/wav",
+      sizeBytes: wavBytes.byteLength,
+      url: body.url,
+      metadata: expect.objectContaining({
+        generatedBy: "zero-official-voice",
+        model: "gpt-4o-mini-tts",
+        voice: "cedar",
+        s3Key: `uploads/${userId}/${body.id}/${body.filename}`,
+      }),
+    });
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `chatThreadArtifactsChanged:${threadId}`,
+      null,
+    );
     expect(await getOrgCredits(orgId)).toBe(996);
     expect(await findTestUsageEventsByRunId(runId)).toEqual([]);
   });
@@ -290,8 +336,7 @@ describe("POST /api/zero/voice-io/speech", () => {
   it("estimates WAV duration from actual data bytes when data chunk size is oversized", async () => {
     const userId = uniqueId("speech-oversized-data");
     const { orgId } = await setupOrg(userId);
-    const runId = randomUUID();
-    const token = await generateZeroToken(userId, runId, orgId);
+    const { token, runId } = await setupRunScopedToken(userId, orgId);
     await setOrgCredits(orgId, 1000);
     await seedSpeechPricing();
     const wavBytes = createWavBytesWithJunkAndOversizedDataChunk(10);

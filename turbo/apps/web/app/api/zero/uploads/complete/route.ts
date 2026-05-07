@@ -6,7 +6,7 @@ import { listS3Objects } from "../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../src/env";
 import { inferMimetype } from "../../../../../src/lib/shared/mimetype";
 import { buildFileUrl } from "../../../../../src/lib/zero/uploads/file-url";
-import { recordRunUploadedFile } from "../../../../../src/lib/zero/uploads/run-uploaded-files";
+import { recordWebUploadedFile } from "../../../../../src/lib/zero/uploads/run-uploaded-files";
 import { logger } from "../../../../../src/lib/shared/logger";
 import { ALLOWED_UPLOAD_TYPES } from "../../../../../src/lib/zero/uploads/constants";
 
@@ -71,9 +71,8 @@ export async function POST(request: NextRequest) {
       ? s3Object.lastModified.toISOString()
       : undefined;
 
-  await recordRunUploadedFile({
+  await recordWebUploadedFile({
     runId: authCtx.runId,
-    source: "web",
     externalId: id,
     userId: authCtx.userId,
     orgId: authCtx.orgId,
@@ -81,8 +80,8 @@ export async function POST(request: NextRequest) {
     contentType,
     sizeBytes: size,
     url,
+    s3Key: s3Object.key,
     metadata: {
-      s3Key: s3Object.key,
       ...(lastModified ? { lastModified } : {}),
     },
   });

@@ -368,6 +368,9 @@ describe("POST /api/zero/runs", () => {
 
       const job = await findTestRunnerJobEntry(data.runId);
       expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        VM0_RUN_SOURCE: "web",
+      });
       const encrypted = job!.executionContext.encryptedSecrets;
       expect(encrypted).not.toBeNull();
 

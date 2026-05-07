@@ -37,6 +37,7 @@ describe("POST /api/zero/uploads/complete", () => {
 
   async function zeroTokenWithRun(options?: {
     withChatThread?: boolean;
+    triggerSource?: string;
   }): Promise<{
     token: string;
     runId: string;
@@ -49,7 +50,12 @@ describe("POST /api/zero/uploads/complete", () => {
     const { runId } = await seedTestRun(
       user.userId,
       composeId,
-      threadId ? { chatThreadId: threadId } : undefined,
+      threadId
+        ? {
+            chatThreadId: threadId,
+            triggerSource: options?.triggerSource ?? "web",
+          }
+        : { triggerSource: options?.triggerSource ?? "web" },
     );
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,

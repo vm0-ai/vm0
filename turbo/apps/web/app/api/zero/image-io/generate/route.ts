@@ -11,6 +11,7 @@ import { checkOrgCredits } from "../../../../../src/lib/zero/credit/check-org-cr
 import { processOrgUsageEvents } from "../../../../../src/lib/zero/credit/usage-event-service";
 import { uploadS3Buffer } from "../../../../../src/lib/infra/s3/s3-client";
 import { buildFileUrl } from "../../../../../src/lib/zero/uploads/file-url";
+import { recordGeneratedRunFile } from "../../../../../src/lib/zero/uploads/run-uploaded-files";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -363,6 +364,26 @@ async function handlePost(request: Request): Promise<Response> {
   const bucket = env().R2_USER_STORAGES_BUCKET_NAME;
   await uploadS3Buffer(bucket, s3Key, imageBytes, contentType);
   const url = buildFileUrl(authCtx.userId, fileId, filename);
+
+  await recordGeneratedRunFile({
+    runId: authCtx.runId,
+    externalId: fileId,
+    userId: authCtx.userId,
+    orgId: authCtx.orgId,
+    filename,
+    contentType,
+    sizeBytes: imageBytes.byteLength,
+    url,
+    s3Key,
+    metadata: {
+      generatedBy: "zero-official-image",
+      model: MODEL,
+      imageSize: responseBody.size ?? options.size,
+      quality: responseBody.quality ?? options.quality,
+      background: responseBody.background ?? options.background,
+      outputFormat,
+    },
+  });
 
   const usageRows = [
     { category: TEXT_INPUT_CATEGORY, quantity: usage.textInputTokens },

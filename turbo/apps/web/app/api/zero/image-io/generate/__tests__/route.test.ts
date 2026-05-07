@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { randomUUID } from "crypto";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../../../src/mocks/server";
 import {
+  createTestCompose,
   createTestRequest,
   createTestOrg,
   deleteTestUsagePricing,
   findTestRunlessUsageEventsByOrgProvider,
   getOrgCredits,
+  insertOrgMembersCacheEntry,
+  insertTestChatThread,
   insertTestUsagePricing,
   setOrgCredits,
 } from "../../../../../../src/__tests__/api-test-helpers";
@@ -18,6 +20,9 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { reloadEnv } from "../../../../../../src/env";
 import { generateZeroToken } from "../../../../../../src/lib/auth/sandbox-token";
+import { seedTestRun } from "../../../../../../src/__tests__/db-test-seeders/runs";
+import { findTestRunUploadedFiles } from "../../../../../../src/__tests__/db-test-assertions/run-uploaded-files";
+import { mockAblyPublish } from "../../../../../../src/__tests__/ably-mock";
 
 vi.hoisted(() => {
   vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
@@ -74,23 +79,41 @@ async function seedImagePricing() {
     kind: "image",
     provider: MODEL,
     category: "tokens.input.text",
-    unitPrice: 5000,
+    unitPrice: 6000,
     unitSize: 1_000_000,
   });
   await insertTestUsagePricing({
     kind: "image",
     provider: MODEL,
     category: "tokens.input.image",
-    unitPrice: 8000,
+    unitPrice: 9600,
     unitSize: 1_000_000,
   });
   await insertTestUsagePricing({
     kind: "image",
     provider: MODEL,
     category: "tokens.output.image",
-    unitPrice: 30_000,
+    unitPrice: 36_000,
     unitSize: 1_000_000,
   });
+}
+
+async function setupRunScopedToken(userId: string, orgId: string) {
+  const { composeId } = await createTestCompose(uniqueId("image-agent"));
+  const threadId = await insertTestChatThread(userId, composeId, "Images");
+  const { runId } = await seedTestRun(userId, composeId, {
+    chatThreadId: threadId,
+    orgId,
+    triggerSource: "schedule",
+  });
+  await insertOrgMembersCacheEntry({
+    orgId,
+    userId,
+    role: "admin",
+  });
+  mockClerk({ userId: null });
+  const token = await generateZeroToken(userId, runId, orgId);
+  return { token, runId, threadId };
 }
 
 async function deleteImagePricing() {
@@ -110,6 +133,7 @@ async function deleteImagePricing() {
 describe("POST /api/zero/image-io/generate", () => {
   beforeEach(() => {
     context.setupMocks();
+    mockAblyPublish.mockClear();
     vi.stubEnv("OPENAI_API_KEY", "test-openai-key");
     reloadEnv();
   });
@@ -172,8 +196,7 @@ describe("POST /api/zero/image-io/generate", () => {
   it("stores a /f image and settles OpenAI usage tokens inline", async () => {
     const userId = uniqueId("image-ok");
     const { orgId } = await setupOrg(userId);
-    const runId = randomUUID();
-    const token = await generateZeroToken(userId, runId, orgId);
+    const { token, runId, threadId } = await setupRunScopedToken(userId, orgId);
     await setOrgCredits(orgId, 1000);
     await seedImagePricing();
 
@@ -231,7 +254,7 @@ describe("POST /api/zero/image-io/generate", () => {
       filename: expect.stringMatching(/^image-[0-9a-f-]{8}\.png$/),
       contentType: "image/png",
       size: IMAGE_BYTES.byteLength,
-      creditsCharged: 65,
+      creditsCharged: 78,
       model: MODEL,
       imageSize: "1024x1024",
       quality: "medium",
@@ -256,7 +279,29 @@ describe("POST /api/zero/image-io/generate", () => {
     expect(uploadedBytes.equals(IMAGE_BYTES)).toBe(true);
     expect(contentType).toBe("image/png");
 
-    expect(await getOrgCredits(orgId)).toBe(935);
+    const rows = await findTestRunUploadedFiles("schedule", body.id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      runId,
+      source: "schedule",
+      externalId: body.id,
+      userId,
+      orgId,
+      filename: body.filename,
+      contentType: "image/png",
+      sizeBytes: IMAGE_BYTES.byteLength,
+      url: body.url,
+      metadata: expect.objectContaining({
+        generatedBy: "zero-official-image",
+        model: MODEL,
+        s3Key: `uploads/${userId}/${body.id}/${body.filename}`,
+      }),
+    });
+    expect(mockAblyPublish).toHaveBeenCalledWith(
+      `chatThreadArtifactsChanged:${threadId}`,
+      null,
+    );
+    expect(await getOrgCredits(orgId)).toBe(922);
     expect(await findTestRunlessUsageEventsByOrgProvider(orgId, MODEL)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -265,7 +310,7 @@ describe("POST /api/zero/image-io/generate", () => {
           provider: MODEL,
           category: "tokens.input.text",
           quantity: 1000,
-          creditsCharged: 5,
+          creditsCharged: 6,
           status: "processed",
         }),
         expect.objectContaining({
@@ -274,7 +319,7 @@ describe("POST /api/zero/image-io/generate", () => {
           provider: MODEL,
           category: "tokens.output.image",
           quantity: 2000,
-          creditsCharged: 60,
+          creditsCharged: 72,
           status: "processed",
         }),
       ]),

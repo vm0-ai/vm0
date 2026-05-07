@@ -38,7 +38,9 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
     runId: string;
   }> {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await seedTestRun(user.userId, composeId);
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      triggerSource: "telegram",
+    });
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,
       userId: user.userId,

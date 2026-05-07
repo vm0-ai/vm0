@@ -39,7 +39,9 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     runId: string;
   }> {
     const { composeId } = await createTestCompose(uniqueId("agent"));
-    const { runId } = await seedTestRun(user.userId, composeId);
+    const { runId } = await seedTestRun(user.userId, composeId, {
+      triggerSource: "slack",
+    });
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,
       userId: user.userId,

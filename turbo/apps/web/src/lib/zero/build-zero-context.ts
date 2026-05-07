@@ -109,6 +109,17 @@ function injectAutoMemoryArtifactIfNewRun(
   return artifacts;
 }
 
+function withRuntimeRunEnvironment(
+  environment: Record<string, string> | undefined,
+  triggerSource: string | undefined,
+): Record<string, string> | undefined {
+  if (!triggerSource) return environment;
+  return {
+    ...(environment ?? {}),
+    VM0_RUN_SOURCE: triggerSource,
+  };
+}
+
 /**
  * Parameters for building Zero execution context.
  * Contains all fields needed to resolve secrets, model providers, connectors,
@@ -176,6 +187,8 @@ interface BuildZeroContextParams {
   allowedCustomConnectorIds?: string[];
   // Pre-fetched user timezone from Phase 1 — skips getUserPreferences() when provided
   preloadedUserTimezone?: string;
+  // Origin of the run request, injected into the sandbox as VM0_RUN_SOURCE.
+  triggerSource?: string;
 }
 
 /**
@@ -777,6 +790,10 @@ export async function buildZeroExecutionContext(
   } = secretsResult;
   const userTimezone =
     params.preloadedUserTimezone ?? userPrefs?.timezone ?? undefined;
+  const runtimeEnvironment = withRuntimeRunEnvironment(
+    environment,
+    params.triggerSource,
+  );
 
   // Step 5: Compatibility checks for session continues.
   // - Provider: avoid mid-conversation base URL mismatches.
@@ -812,7 +829,7 @@ export async function buildZeroExecutionContext(
       artifacts,
       volumeVersions,
       additionalVolumes,
-      environment,
+      environment: runtimeEnvironment,
       userTimezone,
       firewalls: permissionResult?.firewalls,
       networkPolicies: permissionResult?.networkPolicies,

@@ -173,11 +173,11 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
   ]),
 
   // OpenAI GPT Image 2 — https://platform.openai.com/docs/pricing
-  // Uses the exact token usage returned by the Images API.
+  // Uses the exact token usage returned by the Images API with 20% markup.
   ...usageGroup("image", "gpt-image-2", [
-    ["tokens.input.text", usd(5), 1_000_000],
-    ["tokens.input.image", usd(8), 1_000_000],
-    ["tokens.output.image", usd(30), 1_000_000],
+    ["tokens.input.text", usd(6), 1_000_000],
+    ["tokens.input.image", usd(9.6), 1_000_000],
+    ["tokens.output.image", usd(36), 1_000_000],
   ]),
 
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
