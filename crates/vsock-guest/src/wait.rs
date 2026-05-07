@@ -105,8 +105,22 @@ pub(crate) fn wait_with_kill_timeout_or_cancelled(
 
     thread::scope(|scope| {
         let (done_tx, done_rx) = mpsc::channel::<()>();
-        let watchdog = scope
-            .spawn(move || wait_for_done_timeout_or_cancelled(done_rx, deadline, cancel, child_id));
+        let watchdog = match thread::Builder::new()
+            .name("vsock-wait-watchdog".to_string())
+            .spawn_scoped(scope, move || {
+                wait_for_done_timeout_or_cancelled(done_rx, deadline, cancel, child_id)
+            }) {
+            Ok(watchdog) => watchdog,
+            Err(e) => {
+                // If the watchdog cannot be created, timeout/cancel can no
+                // longer be enforced. Kill and reap the child instead of
+                // letting it outlive the failed wait helper.
+                // SAFETY: child_id is a valid PID from Command::spawn.
+                let _ = unsafe { kill_process_tree(child_id) } || child.kill().is_ok();
+                let _ = child.wait();
+                return WaitOutcome::WaitFailed(format!("failed to spawn wait watchdog: {e}"));
+            }
+        };
 
         let status = child.wait();
         let _ = done_tx.send(());
