@@ -55,6 +55,26 @@ function isKeyboardScrollBlockedTarget(target: EventTarget | null): boolean {
   return target.closest('[role="dialog"]') !== null;
 }
 
+function isDocumentScrollTarget(root: HTMLElement, target: EventTarget | null) {
+  const doc = root.ownerDocument;
+  return (
+    target === doc || target === doc.body || target === doc.documentElement
+  );
+}
+
+function isKeyboardScrollAllowedTarget(
+  root: HTMLElement,
+  target: EventTarget | null,
+): boolean {
+  if (isKeyboardScrollBlockedTarget(target)) {
+    return false;
+  }
+  return (
+    isDocumentScrollTarget(root, target) ||
+    (target instanceof Node && root.contains(target))
+  );
+}
+
 function resolveKeyboardScrollThread(
   leftThread: ChatThreadSignals | null,
   rightThread: ChatThreadSignals | null,
@@ -82,7 +102,7 @@ export const setChatKeyboardScrollRoot$ = onRef(
         return;
       }
       const direction = plainArrowScrollDirection(event);
-      if (!direction || isKeyboardScrollBlockedTarget(event.target)) {
+      if (!direction || !isKeyboardScrollAllowedTarget(el, event.target)) {
         return;
       }
       const targetThreadId = chatThreadIdForKeyboardTarget(event.target);

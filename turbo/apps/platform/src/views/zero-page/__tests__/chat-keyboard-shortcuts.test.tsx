@@ -440,5 +440,12 @@ describe("chat page keyboard shortcuts", () => {
     composer!.focus();
     fireEvent.keyDown(composer!, { key: "ArrowDown" });
     expect(document.activeElement).toBe(composer);
+
+    const outsideButton = document.createElement("button");
+    document.body.appendChild(outsideButton);
+    outsideButton.focus();
+    fireEvent.keyDown(outsideButton, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(outsideButton);
+    outsideButton.remove();
   });
 });
