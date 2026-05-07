@@ -103,7 +103,13 @@ const ENV_SECRET_NAMES = [
  * Read whitelisted env vars into the secrets map.
  * Values not set in the environment are silently skipped.
  */
-export function injectPlatformEnvSecrets(): Record<string, string> | undefined {
+export function injectPlatformEnvSecrets(
+  connectorTypes: readonly ConnectorType[],
+): Record<string, string> | undefined {
+  if (!connectorTypes.includes("google-ads")) {
+    return undefined;
+  }
+
   const result: Record<string, string> = {};
   const platformEnv = env();
   for (const name of ENV_SECRET_NAMES) {

@@ -3,6 +3,7 @@ import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
+import { injectPlatformEnvSecrets } from "../../../context/resolve-secrets";
 import { PROVIDER_HANDLERS } from "../../provider-registry";
 import { googleAdsHandler } from "../google-ads-handler";
 
@@ -139,6 +140,10 @@ describe("connector/providers/google-ads", () => {
         refreshToken: null,
         expiresIn: 3600,
       });
+    });
+
+    it("does not inject platform env secrets for unrelated connector contexts", () => {
+      expect(injectPlatformEnvSecrets(["github"])).toBeUndefined();
     });
   });
 });

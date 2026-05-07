@@ -281,8 +281,9 @@ async function resolveSecretsAndEnvironment(
   // Only mapped env vars from connectors are included — raw connector secrets
   // (including refresh tokens) are kept server-side and never sent to the runner.
   // Platform env secrets (1Password → CI → process.env) for firewall templates.
-  // Injected after DB secrets so DB values take precedence; CLI secrets still win.
-  const envSecrets = injectPlatformEnvSecrets();
+  // Injected only for connector contexts that need them, after DB secrets so DB
+  // values take precedence; CLI secrets still win.
+  const envSecrets = injectPlatformEnvSecrets(connectorTypes);
 
   const hasCustomConnectorSecrets =
     Object.keys(customConnectorResult.secrets).length > 0;
