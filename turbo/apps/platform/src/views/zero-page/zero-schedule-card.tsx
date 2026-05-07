@@ -495,26 +495,26 @@ export function ZeroScheduleCard({
   };
 
   return (
-    <Card className="zero-card overflow-hidden">
-      <CardContent className="p-0 flex flex-col">
-        {mobileRedesign ? (
-          // Mobile (Option A): drop the redundant "<agent>'s scheduled tasks"
-          // title and let a single full-width "Add schedule" button own the
-          // header. The screen's top bar already names the section.
-          <header className="px-5 pt-3 pb-3">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-11 w-full gap-2 rounded-lg border text-[15px]"
-              onClick={openAddSchedule}
-            >
-              <IconPlus size={16} stroke={2} />
-              Add schedule
-            </Button>
-          </header>
-        ) : (
-          <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50">
+    <>
+      {/* Mobile: lift the "Add schedule" CTA out of the card so it reads
+          as a primary action that drops a new entry into the list below.
+          Desktop keeps it inside the card header alongside the title. */}
+      {mobileRedesign && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-11 w-full gap-2 rounded-lg border text-[15px] mb-3"
+          onClick={openAddSchedule}
+        >
+          <IconPlus size={16} stroke={2} />
+          Add schedule
+        </Button>
+      )}
+      <Card className="zero-card overflow-hidden">
+        <CardContent className="p-0 flex flex-col">
+          {!mobileRedesign && (
+            <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold tracking-tight text-foreground">
                 {title}
@@ -658,7 +658,8 @@ export function ZeroScheduleCard({
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </>
   );
 }
