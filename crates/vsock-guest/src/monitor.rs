@@ -14,7 +14,7 @@ use crate::process::{ChildReapGuard, kill_and_reap_child};
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
 use crate::wait::{
     DRAIN_DEADLINE_SECS, await_drain_deadline, finalize_buffered_result, finalize_wait_outcome,
-    wait_with_drain_and_timeout_or_cancelled, wait_with_kill_timeout_or_cancelled,
+    wait_with_drain_and_timeout_or_cancelled_with_spawner, wait_with_kill_timeout_or_cancelled,
 };
 use crate::writer::GuestWriter;
 
@@ -492,6 +492,7 @@ where
     } = request;
     let child_guard = ChildReapGuard::new(child);
     let exit_writer = writer.clone();
+    let monitor_spawner = spawner.clone();
     let result = spawner.spawn_unit(
         THREAD_BUFFERED_MONITOR,
         Box::new(move || {
@@ -503,7 +504,12 @@ where
                 return;
             };
             let (outcome, stdout, stderr_buf) =
-                wait_with_drain_and_timeout_or_cancelled(child, timeout_ms, &connection_cancel);
+                wait_with_drain_and_timeout_or_cancelled_with_spawner(
+                    child,
+                    timeout_ms,
+                    &connection_cancel,
+                    monitor_spawner,
+                );
             let (exit_code, stdout, stderr) = finalize_buffered_result(outcome, stdout, stderr_buf);
 
             log(
@@ -551,6 +557,7 @@ fn send_process_exit(pid: u32, exit_code: i32, stdout: &[u8], stderr: &[u8], wri
 mod tests {
     use super::*;
     use crate::threading::test_support::FailingThreadSpawner;
+    use crate::wait::THREAD_DRAIN_STDOUT;
     use std::io::Read;
     use std::os::unix::net::UnixStream;
     use std::time::Duration;
@@ -742,6 +749,49 @@ mod tests {
         assert!(stdout.is_empty());
         assert!(
             String::from_utf8_lossy(stderr).contains("buffered monitor thread"),
+            "unexpected stderr: {:?}",
+            String::from_utf8_lossy(stderr),
+        );
+        assert!(!pid_alive(pid), "child pid {pid} should have been reaped");
+    }
+
+    #[test]
+    fn buffered_monitor_drain_spawn_failure_reports_process_exit_and_reaps_child() {
+        let (guest, mut host) = UnixStream::pair().unwrap();
+        host.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+        let writer = GuestWriter::new(guest);
+        let cancel = Arc::new(AtomicBool::new(false));
+
+        handle_spawn_watch_with_spawner(
+            SpawnWatchRequest {
+                timeout_ms: 0,
+                command: "sleep 60",
+                env: &[],
+                sudo: false,
+                stream_stdout: false,
+                stdout_log_path: None,
+            },
+            11,
+            writer,
+            cancel,
+            FailingThreadSpawner::fail_once(THREAD_DRAIN_STDOUT),
+        )
+        .unwrap();
+
+        let result = read_message(&mut host);
+        assert_eq!(result.msg_type, MSG_SPAWN_WATCH_RESULT);
+        assert_eq!(result.seq, 11);
+        let pid = vsock_proto::decode_spawn_watch_result(&result.payload).unwrap();
+
+        let exit = read_message(&mut host);
+        assert_eq!(exit.msg_type, MSG_PROCESS_EXIT);
+        let (exit_pid, code, stdout, stderr) =
+            vsock_proto::decode_process_exit(&exit.payload).unwrap();
+        assert_eq!(exit_pid, pid);
+        assert_eq!(code, 1);
+        assert!(stdout.is_empty());
+        assert!(
+            String::from_utf8_lossy(stderr).contains("stdout drain thread"),
             "unexpected stderr: {:?}",
             String::from_utf8_lossy(stderr),
         );

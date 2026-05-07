@@ -18,7 +18,7 @@ pub(crate) const EXIT_CODE_TIMEOUT: i32 = 124;
 pub(crate) const DRAIN_DEADLINE_SECS: u64 = 5;
 const WATCHDOG_CANCEL_POLL_INTERVAL_MS: u64 = 50;
 const THREAD_WAIT_WATCHDOG: &str = "vsock-wait-watchdog";
-const THREAD_DRAIN_STDOUT: &str = "vsock-drain-stdout";
+pub(crate) const THREAD_DRAIN_STDOUT: &str = "vsock-drain-stdout";
 const THREAD_DRAIN_STDERR: &str = "vsock-drain-stderr";
 
 /// Outcome of child wait helpers.
@@ -232,7 +232,7 @@ pub(crate) fn wait_with_drain_and_timeout_or_cancelled(
     )
 }
 
-fn wait_with_drain_and_timeout_or_cancelled_with_spawner<S>(
+pub(crate) fn wait_with_drain_and_timeout_or_cancelled_with_spawner<S>(
     mut child: Child,
     timeout_ms: u32,
     external_cancel: &AtomicBool,
