@@ -36,7 +36,7 @@ setup_file() {
     # default when the workspace has none, and we cannot promote it here
     # because the e2e workspace is shared with other tests that depend on
     # their own seeded default.
-    setup_codex_openai_provider "$OPENAI_API_KEY"
+    $ZERO_CLI org model-provider setup --type "openai-api-key" --secret "$OPENAI_API_KEY" >/dev/null
 
     # 3. Compose declares framework: codex explicitly. The framework is
     # matched at admission (zero-run-policy.ts:213-238 calls

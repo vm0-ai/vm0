@@ -54,44 +54,27 @@ _codex_zero_curl() {
 # resolves overrides via ctx.overrides[key] keyed by the enum value, so a
 # wrong-cased key would be silently ignored.
 enable_codex_beta() {
-    _codex_zero_curl "/api/zero/feature-switches" \
-        -X POST \
-        -d '{"switches":{"codexBeta":true}}' \
-        >/dev/null
-}
-
-# Configure the OpenAI BYOK provider for codex smoke tests.
-#
-# The provider creation endpoint is intentionally hidden behind codexBeta and
-# returns a 404 when the switch is off. Runner E2E files share one user and run
-# in parallel, so tolerate a stale/cleared feature-switch read by re-enabling
-# codexBeta and retrying only that gated 404.
-setup_codex_openai_provider() {
-    local secret="$1"
-    local max_attempts="${CODEX_ZERO_PROVIDER_SETUP_ATTEMPTS:-5}"
-    local retry_delay="${CODEX_ZERO_PROVIDER_SETUP_RETRY_DELAY_S:-2}"
-    local attempt output status
+    local max_attempts="${CODEX_ZERO_FEATURE_SWITCH_ATTEMPTS:-5}"
+    local retry_delay="${CODEX_ZERO_FEATURE_SWITCH_RETRY_DELAY_S:-2}"
+    local attempt body enabled post_output post_status last_error
 
     for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
-        enable_codex_beta
-        status=$?
-        if [[ "$status" -ne 0 ]]; then
-            echo "# setup_codex_openai_provider: enable_codex_beta failed on attempt ${attempt}/${max_attempts}" >&2
+        post_output=$(_codex_zero_curl "/api/zero/feature-switches" \
+            -X POST \
+            -d '{"switches":{"codexBeta":true}}' \
+            2>&1 >/dev/null)
+        post_status=$?
+        if [[ "$post_status" -ne 0 ]]; then
+            last_error="$post_output"
+            echo "# enable_codex_beta: update failed on attempt ${attempt}/${max_attempts}" >&2
         else
-            output=$($ZERO_CLI org model-provider setup \
-                --type "openai-api-key" \
-                --secret "$secret" 2>&1)
-            status=$?
-            if [[ "$status" -eq 0 ]]; then
+            body=$(_codex_zero_curl "/api/zero/feature-switches" 2>&1 || true)
+            enabled=$(printf '%s' "$body" | jq -r '.switches.codexBeta // false' 2>/dev/null || printf 'false')
+            if [[ "$enabled" == "true" ]]; then
                 return 0
             fi
 
-            if [[ "$output" != *'Provider "openai-api-key" not found'* ]]; then
-                printf '%s\n' "$output" >&2
-                return "$status"
-            fi
-
-            echo "# setup_codex_openai_provider: codexBeta gate was not visible on attempt ${attempt}/${max_attempts}" >&2
+            echo "# enable_codex_beta: codexBeta not visible on attempt ${attempt}/${max_attempts}" >&2
         fi
 
         if (( attempt < max_attempts )); then
@@ -99,10 +82,12 @@ setup_codex_openai_provider() {
         fi
     done
 
-    if [[ -n "${output:-}" ]]; then
-        printf '%s\n' "$output" >&2
+    echo "# enable_codex_beta: codexBeta did not become visible after ${max_attempts} attempts" >&2
+    if [[ -n "${last_error:-}" ]]; then
+        echo "# last update error: $last_error" >&2
     fi
-    return "${status:-1}"
+    echo "# last feature-switches response: ${body:-<empty>}" >&2
+    return 1
 }
 
 # Do not clear feature-switch overrides in teardown. Runner E2E files execute
