@@ -3060,6 +3060,11 @@ exit 1
             "build-template.sh should atomically publish the verified debootstrap cache tarball"
         );
         assert!(
+            TEMPLATE_BUILD_SCRIPT
+                .contains(r#"[[ -n "$CACHE_TMP_TAR" ]] && ! rm -f "$CACHE_TMP_TAR""#),
+            "build-template.sh should remove unpublished debootstrap cache temp files on cleanup"
+        );
+        assert!(
             !TEMPLATE_BUILD_SCRIPT.contains(r#"--make-tarball="$cache_tar""#),
             "build-template.sh must not publish partial debootstrap cache tarballs on cancellation"
         );

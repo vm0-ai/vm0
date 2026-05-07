@@ -1846,6 +1846,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_debootstrap_removes_stale_temp_tarballs_but_keeps_recent_ones() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let stale_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.123");
+        let recent_tmp = debootstrap_dir.join("noble-amd64.tar.tmp.456");
+        std::fs::write(&stale_tmp, b"stale partial").unwrap();
+        std::fs::write(&recent_tmp, b"recent partial").unwrap();
+        let stale_size = std::fs::metadata(&stale_tmp).unwrap().len();
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&stale_tmp)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, stale_size);
+        assert!(
+            !stale_tmp.exists(),
+            "stale debootstrap temp tarball should be GC'd"
+        );
+        assert!(
+            recent_tmp.exists(),
+            "recent debootstrap temp tarball may still belong to an active build"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_job_logs_deletes_stale() {
         use std::fs::FileTimes;
         use std::time::Duration;
