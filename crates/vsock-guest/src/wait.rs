@@ -140,12 +140,16 @@ fn wait_for_done_timeout_or_cancelled(
     let poll_interval = Duration::from_millis(WATCHDOG_CANCEL_POLL_INTERVAL_MS);
 
     loop {
+        if wait_done(&done_rx) {
+            return None;
+        }
+
         let now = Instant::now();
         let wait_for = match deadline {
             Some(deadline) => {
                 let remaining = deadline.saturating_duration_since(now);
                 if remaining.is_zero() {
-                    return Some(kill_child(child_id, KillReason::Timeout));
+                    return kill_child_unless_done(&done_rx, child_id, KillReason::Timeout);
                 }
                 remaining.min(poll_interval)
             }
@@ -153,13 +157,32 @@ fn wait_for_done_timeout_or_cancelled(
         };
 
         if cancel.load(Ordering::Acquire) {
-            return Some(kill_child(child_id, KillReason::Cancelled));
+            return kill_child_unless_done(&done_rx, child_id, KillReason::Cancelled);
         }
 
         match done_rx.recv_timeout(wait_for) {
             Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => return None,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
         }
+    }
+}
+
+fn wait_done(done_rx: &mpsc::Receiver<()>) -> bool {
+    match done_rx.try_recv() {
+        Ok(()) | Err(mpsc::TryRecvError::Disconnected) => true,
+        Err(mpsc::TryRecvError::Empty) => false,
+    }
+}
+
+fn kill_child_unless_done(
+    done_rx: &mpsc::Receiver<()>,
+    child_id: u32,
+    reason: KillReason,
+) -> Option<WatchdogKill> {
+    if wait_done(done_rx) {
+        None
+    } else {
+        Some(kill_child(child_id, reason))
     }
 }
 
@@ -333,6 +356,22 @@ mod tests {
         cancel_thread.join().unwrap();
 
         assert!(matches!(outcome, WaitOutcome::Cancelled));
+    }
+
+    #[test]
+    fn watchdog_done_signal_wins_over_elapsed_deadline() {
+        let cancel = AtomicBool::new(false);
+        let (done_tx, done_rx) = mpsc::channel::<()>();
+        done_tx.send(()).unwrap();
+
+        let outcome = wait_for_done_timeout_or_cancelled(
+            done_rx,
+            Some(Instant::now()),
+            &cancel,
+            i32::MAX as u32,
+        );
+
+        assert!(outcome.is_none());
     }
 
     #[test]
