@@ -95,7 +95,7 @@
 //!
 //! `cmd::build::run_build` defends by passing `force = true` to upload
 //! whenever template download classifies an object as invalid. That bypasses the
-//! dedup check and atomically overwrites the bad object in a single PUT.
+//! dedup check and atomically overwrites the bad object via multipart complete.
 //!
 //! ## Tar entry security
 //!
@@ -470,8 +470,8 @@ impl R2ImageCache {
     /// detecting a corrupt prior upload (download succeeded but template.ext4
     /// is missing). Going through `delete + dedup-upload` would deadlock the
     /// fleet's cache if `DeleteObject` permission is missing or transiently
-    /// failing — `force` is a single-round-trip atomic overwrite that doesn't
-    /// depend on `s3:DeleteObject`.
+    /// failing — `force` keeps the overwrite on the multipart upload path and
+    /// does not depend on `s3:DeleteObject`.
     ///
     /// The client is built from explicit R2 credentials, so it avoids AWS
     /// credential/endpoint discovery stalls. Outer call sites (CI/systemd)
