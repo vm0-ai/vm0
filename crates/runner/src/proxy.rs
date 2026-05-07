@@ -25,7 +25,6 @@ struct ProxyRegistry {
 #[serde(rename_all = "camelCase")]
 struct VmEntry {
     run_id: String,
-    #[serde(default = "default_cli_agent_type")]
     cli_agent_type: String,
     sandbox_token: String,
     registered_at: i64,
@@ -41,10 +40,6 @@ struct VmEntry {
     billable_firewalls: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     model_usage_provider: Option<String>,
-}
-
-fn default_cli_agent_type() -> String {
-    "claude-code".to_string()
 }
 
 /// Parameters for registering a VM in the proxy registry.
@@ -1261,22 +1256,6 @@ PY
             value["vms"]["10.200.0.9"]["modelUsageProvider"],
             serde_json::json!("claude-sonnet-4-6")
         );
-    }
-
-    #[tokio::test]
-    async fn registry_defaults_missing_cli_agent_type_to_claude_code() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        tokio::fs::write(
-            &registry_path,
-            r#"{"vms":{"10.200.0.2":{"runId":"run-legacy","sandboxToken":"tok","registeredAt":1000,"networkLogPath":"/tmp/network.jsonl","proxyLogPath":"/tmp/proxy.jsonl","firewalls":null,"networkPolicies":null,"encryptedSecrets":null,"secretConnectorMap":null,"vars":null,"captureNetworkBodies":false,"billableFirewalls":[]}},"updatedAt":1000}"#,
-        )
-        .await
-        .unwrap();
-
-        let loaded = read_registry(&registry_path).await.unwrap();
-        let vm = loaded.vms.get("10.200.0.2").unwrap();
-        assert_eq!(vm.cli_agent_type, "claude-code");
     }
 
     #[tokio::test]
