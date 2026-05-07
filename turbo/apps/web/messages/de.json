@@ -5554,7 +5554,7 @@
         ],
         "avoidFor": "Skip GPT-5.5 for high-volume classification, simple summarisation, and routine extraction. The premium multiplier is not justified when a cheaper model reaches the same outcome.",
         "comparisons": [],
-        "verdict": "GPT-5.5 is a good VM0 pick when the agent should run through Codex and OpenAI model behaviour is the desired baseline. Use the cheaper GPT tiers for bulk work and reserve the premium tier for steps where reliability matters more than unit cost.",
+        "verdict": "GPT-5.5 is a good VM0 pick when the agent should run through Codex and OpenAI model behaviour is the desired baseline. Use lower-cost non-OpenAI models for bulk work and reserve GPT-5.5 for steps where reliability matters more than unit cost.",
         "faqs": [
           {
             "q": "Can I use GPT-5.5 as a Built-in model on VM0?",

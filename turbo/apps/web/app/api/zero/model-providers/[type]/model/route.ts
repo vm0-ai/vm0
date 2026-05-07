@@ -8,8 +8,9 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { updateOrgModelProviderModel } from "../../../../../../src/lib/zero/model-provider/model-provider-service";
+import { assertVm0SelectedModelEnabled } from "../../../../../../src/lib/zero/model-provider/vm0-model-feature-gate";
 import { logger } from "../../../../../../src/lib/shared/logger";
-import { isNotFound } from "@vm0/api-services/errors";
+import { isBadRequest, isNotFound } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-model-providers");
 
@@ -28,7 +29,6 @@ const router = tsr.router(zeroModelProvidersUpdateModelContract, {
         "Only admins can manage org model providers",
       );
     }
-
     log.debug("updating org model provider model", {
       orgId: org.orgId,
       type: params.type,
@@ -36,6 +36,13 @@ const router = tsr.router(zeroModelProvidersUpdateModelContract, {
     });
 
     try {
+      if (params.type === "vm0") {
+        await assertVm0SelectedModelEnabled({
+          orgId: org.orgId,
+          userId: authCtx.userId,
+          selectedModel: body.selectedModel,
+        });
+      }
       const provider = await updateOrgModelProviderModel(
         org.orgId,
         params.type,
@@ -64,6 +71,9 @@ const router = tsr.router(zeroModelProvidersUpdateModelContract, {
     } catch (error) {
       if (isNotFound(error)) {
         return createErrorResponse("NOT_FOUND", "Resource not found");
+      }
+      if (isBadRequest(error)) {
+        return createErrorResponse("BAD_REQUEST", "Invalid request");
       }
       throw error;
     }

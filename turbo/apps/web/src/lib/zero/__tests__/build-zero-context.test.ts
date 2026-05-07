@@ -16,6 +16,7 @@ import {
   insertTestConnectorSecret,
   insertUserDefaultModelProvider,
   enablePersonalModelProviderForUser,
+  seedUserFeatureSwitches,
 } from "../../../__tests__/api-test-helpers";
 import { insertTestUserModelProviderSecret } from "../../../__tests__/db-test-seeders/secrets";
 import { getTestZeroAgentId } from "../../../__tests__/db-test-assertions/agents";
@@ -42,6 +43,7 @@ import { isNoModelProvider } from "@vm0/api-services/errors";
 import { reloadEnv } from "../../../env";
 import { AUTO_MEMORY_ARTIFACT_NAME, AUTO_MEMORY_MOUNT_PATH } from "../memory";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -169,6 +171,9 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
           apiKey: "sk-vm0-openai-model-usage",
         },
       ]);
+      await seedUserFeatureSwitches(user.orgId, user.userId, {
+        [FeatureSwitchKey.CodexBeta]: true,
+      });
       await setOrgCredits(user.orgId, 10000);
 
       const result = await createZeroRun(baseParams({ agentId: modelAgentId }));

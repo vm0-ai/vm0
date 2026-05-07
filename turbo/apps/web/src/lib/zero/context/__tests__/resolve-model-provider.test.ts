@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { resolveModelProviderSecrets } from "../resolve-model-provider";
-import { isNoModelProvider, isStaleProvider } from "@vm0/api-services/errors";
+import {
+  isNoModelProvider,
+  isNotFound,
+  isStaleProvider,
+} from "@vm0/api-services/errors";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestOrg,
@@ -12,6 +16,7 @@ import {
   enablePersonalModelProviderForUser,
   setTestModelProviderNeedsReconnect,
   insertVm0ApiKeys,
+  seedUserFeatureSwitches,
   ORG_SENTINEL_USER_ID,
 } from "../../../../__tests__/api-test-helpers";
 import { getTestModelProviderIdByType } from "../../../../__tests__/db-test-assertions/org";
@@ -20,6 +25,7 @@ import {
   insertTestOrgModelProviderSecret,
   insertTestUserModelProviderSecret,
 } from "../../../../__tests__/db-test-seeders/secrets";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 const context = testContext();
 
@@ -115,6 +121,9 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
         apiKey: "sk-vm0-openai-test",
       },
     ]);
+    await seedUserFeatureSwitches(orgId, userId, {
+      [FeatureSwitchKey.CodexBeta]: true,
+    });
 
     const result = await resolveModelProviderSecrets(
       orgId,
@@ -132,6 +141,23 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
       OPENAI_MODEL: "gpt-5.5",
     });
     expect(result.secrets?.OPENAI_API_KEY).toBe("sk-vm0-openai-test");
+  });
+
+  it("rejects VM0 Codex models when CodexBeta is disabled", async () => {
+    const userId = uniqueId("vm0-codex-gated");
+    const orgId = await setupOrg(userId);
+    await insertOrgDefaultModelProvider(orgId, "vm0", "gpt-5.5");
+    await insertVm0ApiKeys([
+      {
+        vendor: "openai",
+        model: "gpt-5.5",
+        apiKey: "sk-vm0-openai-disabled",
+      },
+    ]);
+
+    await expect(
+      resolveModelProviderSecrets(orgId, userId, "claude-code", false),
+    ).rejects.toSatisfy(isNotFound);
   });
 
   it("does not borrow workspace default's selectedModel when explicit modelProvider type differs (#11743)", async () => {

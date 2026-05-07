@@ -28,6 +28,7 @@ import {
   getUserAnyDefaultModelProvider,
   getUserModelProviderByType,
 } from "../model-provider/model-provider-service";
+import { assertVm0SelectedModelEnabled } from "../model-provider/vm0-model-feature-gate";
 import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
@@ -524,6 +525,11 @@ export async function resolveModelProviderSecrets(
     if (!selectedModel) {
       throw badRequest("VM0 provider requires a selected model");
     }
+    await assertVm0SelectedModelEnabled({
+      orgId,
+      userId,
+      selectedModel,
+    });
     return resolveVm0Provider(selectedModel);
   }
 

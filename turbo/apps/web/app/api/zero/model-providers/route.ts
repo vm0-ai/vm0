@@ -20,6 +20,7 @@ import {
   upsertOrgMultiAuthModelProvider,
   upsertOrgNoSecretModelProvider,
 } from "../../../../src/lib/zero/model-provider/model-provider-service";
+import { assertVm0SelectedModelEnabled } from "../../../../src/lib/zero/model-provider/vm0-model-feature-gate";
 import {
   parseCodexAuthJson,
   isCodexAuthJsonShapeError,
@@ -27,7 +28,7 @@ import {
 } from "../../../../src/lib/zero/model-provider/codex-auth-json-parser";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 import { logger } from "../../../../src/lib/shared/logger";
-import { isBadRequest } from "@vm0/api-services/errors";
+import { isBadRequest, isNotFound } from "@vm0/api-services/errors";
 
 const log = logger("api:zero-model-providers");
 
@@ -204,7 +205,6 @@ const router = tsr.router(zeroModelProvidersMainContract, {
         return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
       }
     }
-
     if (type === "codex-oauth-token" && authMethod === "auth_json") {
       const overrides = await loadFeatureSwitchOverrides(
         org.orgId,
@@ -244,6 +244,11 @@ const router = tsr.router(zeroModelProvidersMainContract, {
       let created: boolean;
 
       if (type === "vm0") {
+        await assertVm0SelectedModelEnabled({
+          orgId: org.orgId,
+          userId: authCtx.userId,
+          selectedModel,
+        });
         const result = await upsertOrgNoSecretModelProvider(
           org.orgId,
           type,
@@ -289,6 +294,9 @@ const router = tsr.router(zeroModelProvidersMainContract, {
         body: { provider: serializeProvider(provider), created },
       };
     } catch (error) {
+      if (isNotFound(error)) {
+        return createErrorResponse("NOT_FOUND", "Resource not found");
+      }
       if (isBadRequest(error)) {
         return createErrorResponse("BAD_REQUEST", "Invalid request");
       }

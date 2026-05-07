@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { GET, POST } from "../route";
 import { DELETE } from "../[type]/route";
 import { POST as setDefaultPOST } from "../[type]/default/route";
+import { PATCH as updateModelPATCH } from "../[type]/model/route";
 import {
   createTestRequest,
   setTestModelProviderNeedsReconnect,
@@ -48,6 +49,10 @@ function deleteUrl(type: string): string {
 
 function setDefaultUrl(type: string): string {
   return `${BASE_URL}/${type}/default`;
+}
+
+function updateModelUrl(type: string): string {
+  return `${BASE_URL}/${type}/model`;
 }
 
 async function listProviders(): Promise<
@@ -368,6 +373,49 @@ describe("Org-level model provider routes", () => {
 
       const response = await createProvider("anthropic-api-key", "sk-ant-test");
       expect(response.status).toBe(201);
+    });
+  });
+
+  describe("vm0 codex model gate", () => {
+    it("returns 404 when creating vm0 with a hidden Codex model", async () => {
+      mockIsFeatureEnabled.mockImplementation((key) => {
+        return key !== FeatureSwitchKey.CodexBeta;
+      });
+
+      const request = createTestRequest(upsertUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "vm0", selectedModel: "gpt-5.5" }),
+      });
+      const response = await POST(request);
+
+      expect(response.status).toBe(404);
+    });
+
+    it("returns 404 when updating vm0 to a hidden Codex model", async () => {
+      mockIsFeatureEnabled.mockReturnValue(true);
+      const createRequest = createTestRequest(upsertUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "vm0",
+          selectedModel: "claude-sonnet-4-6",
+        }),
+      });
+      const createResponse = await POST(createRequest);
+      expect(createResponse.status).toBe(201);
+
+      mockIsFeatureEnabled.mockImplementation((key) => {
+        return key !== FeatureSwitchKey.CodexBeta;
+      });
+      const updateRequest = createTestRequest(updateModelUrl("vm0"), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedModel: "gpt-5.5" }),
+      });
+      const response = await updateModelPATCH(updateRequest);
+
+      expect(response.status).toBe(404);
     });
   });
 
