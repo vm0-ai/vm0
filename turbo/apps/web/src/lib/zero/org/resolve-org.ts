@@ -30,6 +30,15 @@ type ResolvedMember = {
   userId: string;
 };
 
+interface ResolvedOrgResult {
+  org: ResolvedOrg;
+  member: ResolvedMember;
+}
+
+interface ResolvedOrgWithMetadataResult extends ResolvedOrgResult {
+  orgMeta?: OrgMetadata;
+}
+
 /**
  * Verify a user's membership in a Clerk organization.
  *
@@ -73,7 +82,21 @@ async function verifyMembership(
  */
 export async function resolveOrg(
   authCtx: AuthContext,
-): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
+): Promise<ResolvedOrgResult> {
+  const { org, member } = await resolveOrgWithMetadata(authCtx);
+  return { org, member };
+}
+
+/**
+ * Resolve org and return the DB-backed org metadata when it exists.
+ *
+ * Brand-new orgs can resolve from JWT claims before onboarding creates
+ * org_metadata; in that fallback case `orgMeta` is omitted so callers do not
+ * mistake synthetic credits=0 for a fresh database read.
+ */
+export async function resolveOrgWithMetadata(
+  authCtx: AuthContext,
+): Promise<ResolvedOrgWithMetadataResult> {
   const orgId = authCtx.orgId ?? null;
   if (!orgId) {
     throw badRequest(
@@ -82,8 +105,10 @@ export async function resolveOrg(
   }
 
   let orgMeta: OrgMetadata;
+  let dbOrgMeta: OrgMetadata | undefined;
   try {
     orgMeta = await getOrgMetadata(orgId);
+    dbOrgMeta = orgMeta;
   } catch (error) {
     if (!isNotFound(error)) throw error;
     // Brand-new org: JWT proves existence, org_metadata row not yet created
@@ -95,7 +120,7 @@ export async function resolveOrg(
     defaultAgentId: orgMeta.defaultAgentId,
   };
   const member = await verifyMembership(resolved, authCtx);
-  return { org: resolved, member };
+  return { org: resolved, member, orgMeta: dbOrgMeta };
 }
 
 /**

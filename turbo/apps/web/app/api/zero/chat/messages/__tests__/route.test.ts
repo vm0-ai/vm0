@@ -734,6 +734,31 @@ describe("POST /api/zero/chat/messages", () => {
           counter.restore();
         }
       });
+
+      it("reads zero_agents once and org_metadata once for vm0-managed credit admission", async () => {
+        await insertOrgDefaultModelProvider(user.orgId, "vm0");
+        await setOrgCredits(user.orgId, 10_000);
+
+        const counter = createQueryCounter();
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "dedup with vm0 credit admission",
+              }),
+            }),
+          );
+
+          expect(response.status).toBe(201);
+          expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(1);
+        } finally {
+          counter.restore();
+        }
+      });
     });
 
     describe("per-run model selection (composer picker)", () => {

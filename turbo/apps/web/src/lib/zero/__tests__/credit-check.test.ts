@@ -424,6 +424,36 @@ describe("checkOrgCredits (general vm0 credit gate)", () => {
     });
   });
 
+  it("throws with preloaded credits when member creditEnabled is false", async () => {
+    await insertOrgMembersEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      creditEnabled: false,
+    });
+
+    await expectInsufficientCredits(() => {
+      return checkOrgCredits(user.orgId, user.userId, {
+        preloadedOrgCredits: { orgId: user.orgId, credits: 10_000 },
+      });
+    });
+  });
+
+  it("throws with preloaded credits when unsettled expired credits exhaust spendable balance", async () => {
+    await insertCreditExpiresRecord({
+      orgId: user.orgId,
+      source: "subscription_renewal",
+      amount: 5000,
+      remaining: 5000,
+      expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+
+    await expectInsufficientCredits(() => {
+      return checkOrgCredits(user.orgId, user.userId, {
+        preloadedOrgCredits: { orgId: user.orgId, credits: 5000 },
+      });
+    });
+  });
+
   it("throws when org_metadata row is missing", async () => {
     await deleteOrgRow(user.orgId);
     await expectInsufficientCredits(() => {

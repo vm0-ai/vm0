@@ -111,6 +111,10 @@ export interface ZeroAgentForRun {
   preferPersonalProvider: boolean;
 }
 
+type OrgAdmissionMetadata = Pick<OrgMetadata, "orgId" | "tier"> & {
+  credits?: number;
+};
+
 /**
  * Fetch the union projection of zero_agents needed to create a run. Shared by
  * the web chat route (404 check + model override fields) and the service's
@@ -191,13 +195,12 @@ export interface CreateZeroRunParams {
    */
   preloadedAgent?: ZeroAgentForRun;
   /**
-   * Pre-fetched org tier scoped to the caller's active org. Round 2 uses it
-   * only when resolved.orgId === preloadedOrgTier.orgId (cross-org composes
-   * still read fresh org_metadata). Typed as a structural Pick so that the
-   * caller cannot accidentally populate a fake .credits — and so future code
-   * cannot read .credits via this preload.
+   * Pre-fetched org metadata scoped to the caller's active org. Round 2 uses it
+   * only when resolved.orgId === preloadedOrgMetadata.orgId (cross-org composes
+   * still read fresh org_metadata). `credits` is optional because brand-new org
+   * fallback metadata is synthetic and should not bypass the credit row read.
    */
-  preloadedOrgTier?: Pick<OrgMetadata, "orgId" | "tier">;
+  preloadedOrgMetadata?: OrgAdmissionMetadata;
   /**
    * When present, each Phase-1 sub-stage emits a span to the `sandbox-op-log`
    * Axiom dataset with `source: "web-chat"`, carrying these dimensions. The
@@ -245,10 +248,10 @@ function loadZeroAgentForRun(
   return preloaded ? Promise.resolve(preloaded) : fetchZeroAgentForRun(agentId);
 }
 
-function loadOrgTier(
-  preloaded: Pick<OrgMetadata, "orgId" | "tier"> | undefined,
+function loadOrgAdmissionMetadata(
+  preloaded: OrgAdmissionMetadata | undefined,
   orgId: string,
-): Promise<Pick<OrgMetadata, "orgId" | "tier">> {
+): Promise<OrgAdmissionMetadata> {
   if (preloaded && preloaded.orgId === orgId) {
     return Promise.resolve(preloaded);
   }
@@ -577,7 +580,10 @@ async function createZeroRunRecord(
   // composes (rare; also caught by authorizeCompose below) fall through to
   // a fresh SELECT because the preload's tier is scoped to authCtx.orgId.
   const round2OrgMeta = timed(async () => {
-    return loadOrgTier(params.preloadedOrgTier, resolved.orgId);
+    return loadOrgAdmissionMetadata(
+      params.preloadedOrgMetadata,
+      resolved.orgId,
+    );
   });
   const round2UserContext = timed(async () => {
     return loadRunUserContext(resolved.orgId, params.userId);
@@ -712,7 +718,12 @@ async function createZeroRunRecord(
   }
 
   const round3Credits = timed(async () => {
-    return checkOrgCreditsForRunAdmission(admissionContext);
+    if (orgMeta.credits === undefined) {
+      return checkOrgCreditsForRunAdmission(admissionContext, db);
+    }
+    return checkOrgCreditsForRunAdmission(admissionContext, db, {
+      preloadedOrgCredits: { orgId: orgMeta.orgId, credits: orgMeta.credits },
+    });
   });
   const round3ModelProvider = timed(async () => {
     return checkModelProviderConfigured(
