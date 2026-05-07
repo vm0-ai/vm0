@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.13](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.12...vsock-guest-v0.10.13) (2026-05-07)
+
+
+### Refactoring
+
+* **vsock-guest:** handle thread spawn failures ([#12100](https://github.com/vm0-ai/vm0/issues/12100)) ([521365a](https://github.com/vm0-ai/vm0/commit/521365a5dd128f3e55a6d7f00bc42b7e9b248045))
+
 ## [0.10.12](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.11...vsock-guest-v0.10.12) (2026-05-07)
 
 

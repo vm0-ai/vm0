@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.334.1](https://github.com/vm0-ai/vm0/compare/app-v0.334.0...app-v0.334.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* close mobile sidebar overlay on account actions ([#12098](https://github.com/vm0-ai/vm0/issues/12098)) ([53d7393](https://github.com/vm0-ai/vm0/commit/53d7393ace54147888e7382e29a96dfac26923e2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.1
+    * @vm0/core bumped to 8.261.1
+
 ## [0.334.0](https://github.com/vm0-ai/vm0/compare/app-v0.333.0...app-v0.334.0) (2026-05-07)
 
 

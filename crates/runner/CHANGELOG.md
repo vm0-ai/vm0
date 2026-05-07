@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.100.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.8...runner-rs-v0.100.9) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** clarify r2 template materialization ([#12104](https://github.com/vm0-ai/vm0/issues/12104)) ([6649d63](https://github.com/vm0-ai/vm0/commit/6649d63b2f58ab29ee7c150e1d055529e0888de5))
+* **runner:** shield snapshot publish cancellation ([#12101](https://github.com/vm0-ai/vm0/issues/12101)) ([ecc38a4](https://github.com/vm0-ai/vm0/commit/ecc38a414a24c72d654d049f6eb38906ce24b734))
+
 ## [0.100.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.7...runner-rs-v0.100.8) (2026-05-07)
 
 

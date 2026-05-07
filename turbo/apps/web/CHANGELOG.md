@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.341.1](https://github.com/vm0-ai/vm0/compare/web-v12.341.0...web-v12.341.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* allow codex oauth backend routes ([#12099](https://github.com/vm0-ai/vm0/issues/12099)) ([dd4ae22](https://github.com/vm0-ai/vm0/commit/dd4ae22d5f542160341c27b8696bb120a017d338))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.1
+    * @vm0/core bumped to 8.261.1
+    * @vm0/db bumped to 1.0.1
+
 ## [12.341.0](https://github.com/vm0-ai/vm0/compare/web-v12.340.0...web-v12.341.0) (2026-05-07)
 
 
