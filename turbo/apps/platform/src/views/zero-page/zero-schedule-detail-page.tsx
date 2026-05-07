@@ -866,25 +866,25 @@ function ScheduleDetailView({
           <div className="mx-auto max-w-[900px]">
             <div
               className={cn(
-                "flex flex-col gap-2 min-w-0 sm:flex-row sm:items-center sm:gap-4",
+                "flex flex-col items-center gap-3 text-center min-w-0 sm:flex-row sm:items-center sm:gap-4 sm:text-left",
                 dimmed && "opacity-90",
               )}
             >
               <div
-                className="h-[54px] w-[54px] flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
+                className="h-20 w-20 sm:h-[54px] sm:w-[54px] flex items-center justify-center rounded-xl bg-muted/60 text-muted-foreground"
                 aria-hidden
               >
                 <IconCalendar
-                  size={24}
+                  size={32}
                   stroke={1.25}
-                  className="shrink-0 opacity-90"
+                  className="shrink-0 opacity-90 sm:!h-6 sm:!w-6"
                 />
               </div>
-              <div className="min-w-0 flex-1 flex flex-col gap-1">
-                <h1 className="min-w-0 text-[15px] sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
+              <div className="min-w-0 w-full sm:w-auto sm:flex-1 flex flex-col gap-1">
+                <h1 className="min-w-0 text-lg font-semibold tracking-tight text-foreground leading-tight truncate sm:text-lg">
                   {summaryTitle}
                 </h1>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[15px] sm:text-xs text-muted-foreground leading-tight">
+                <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-[15px] sm:text-xs text-muted-foreground leading-tight sm:justify-start">
                   <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span
                       className={cn(
