@@ -2,25 +2,31 @@ use std::io::{self, Write};
 use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::thread;
+use std::time::Duration;
 
 use vsock_proto::{
-    self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT,
-    RawMessage,
+    self, BoundedExecStream, BoundedExecTermination, MSG_BOUNDED_EXEC_OUTPUT, MSG_ERROR, MSG_PING,
+    MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage,
 };
 
 use crate::drain::drain_into_vec_cancellable;
 use crate::error::to_io_error;
 use crate::exec::{
-    build_exec_command, prepend_env, spawn_in_own_process_group, spawn_with_pipes, truncate_preview,
+    build_exec_command, prepend_env, spawn_in_own_process_group, spawn_with_pipes,
+    spawn_with_stdio_pipes, truncate_preview,
 };
 use crate::log::log;
 use crate::process::extract_exit_code;
 use crate::shutdown::handle_shutdown;
 use crate::wait::{
-    WaitOutcome, await_drain_deadline, finalize_buffered_result,
-    wait_with_drain_and_timeout_or_cancelled, wait_with_kill_timeout,
+    BoundedDrainEvent, BoundedDrainSender, BoundedDrainStream, BoundedWaitResult, WaitOutcome,
+    await_drain_deadline, finalize_buffered_result,
+    wait_with_bounded_drain_and_timeout_or_cancelled, wait_with_drain_and_timeout_or_cancelled,
+    wait_with_kill_timeout,
 };
+use crate::writer::GuestWriter;
 
 pub(crate) enum MessageOutcome {
     Response(Vec<u8>),
@@ -72,6 +78,211 @@ pub(crate) fn handle_exec(
         ),
     );
     result
+}
+
+pub(crate) struct BoundedExecHandled {
+    pub(crate) termination: BoundedExecTermination,
+    pub(crate) exit_code: Option<i32>,
+    pub(crate) duration_ms: u64,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
+    pub(crate) stdout_truncated: bool,
+    pub(crate) stderr_truncated: bool,
+}
+
+pub(crate) struct BoundedExecRequest<'a> {
+    pub(crate) timeout_ms: u32,
+    pub(crate) command: &'a str,
+    pub(crate) env: &'a [(&'a str, &'a str)],
+    pub(crate) sudo: bool,
+    pub(crate) stdin: &'a [u8],
+    pub(crate) stdout_limit_bytes: usize,
+    pub(crate) stderr_limit_bytes: usize,
+    pub(crate) stream_output: bool,
+}
+
+pub(crate) fn handle_bounded_exec(
+    request: BoundedExecRequest<'_>,
+    seq: u32,
+    writer: GuestWriter,
+    connection_cancel: &Arc<AtomicBool>,
+) -> BoundedExecHandled {
+    log(
+        "INFO",
+        &format!(
+            "bounded_exec: {} (timeout={}ms, sudo={}, env_count={}, stdin_len={}, stdout_limit={}, stderr_limit={}, stream={})",
+            truncate_preview(request.command),
+            request.timeout_ms,
+            request.sudo,
+            request.env.len(),
+            request.stdin.len(),
+            request.stdout_limit_bytes,
+            request.stderr_limit_bytes,
+            request.stream_output,
+        ),
+    );
+    let command = prepend_env(request.command, request.env);
+    let start = std::time::Instant::now();
+
+    let child = match spawn_with_stdio_pipes(&command, request.sudo) {
+        Ok(c) => c,
+        Err(e) => {
+            let (stderr, stderr_truncated) = limit_bytes(
+                format!("Failed to execute: {e}").as_bytes(),
+                request.stderr_limit_bytes,
+            );
+            return BoundedExecHandled {
+                termination: BoundedExecTermination::StartFailed,
+                exit_code: None,
+                duration_ms: duration_ms(start.elapsed()),
+                stdout: Vec::new(),
+                stderr,
+                stdout_truncated: false,
+                stderr_truncated,
+            };
+        }
+    };
+
+    let stream_sender = request
+        .stream_output
+        .then(|| bounded_exec_stream_sender(seq, writer, Arc::clone(connection_cancel)));
+    let result = wait_with_bounded_drain_and_timeout_or_cancelled(
+        child,
+        request.timeout_ms,
+        request.stdin.to_vec(),
+        request.stdout_limit_bytes,
+        request.stderr_limit_bytes,
+        stream_sender,
+        connection_cancel,
+    );
+
+    let handled = finalize_bounded_wait_result(result, request.stderr_limit_bytes);
+    log(
+        "INFO",
+        &format!(
+            "bounded_exec result: termination={:?}, exit_code={:?}, stdout_len={}, stderr_len={}, stdout_truncated={}, stderr_truncated={}",
+            handled.termination,
+            handled.exit_code,
+            handled.stdout.len(),
+            handled.stderr.len(),
+            handled.stdout_truncated,
+            handled.stderr_truncated,
+        ),
+    );
+    handled
+}
+
+fn bounded_exec_stream_sender(
+    seq: u32,
+    writer: GuestWriter,
+    connection_cancel: Arc<AtomicBool>,
+) -> BoundedDrainSender {
+    Arc::new(move |event: BoundedDrainEvent| {
+        let stream = match event.stream {
+            BoundedDrainStream::Stdout => BoundedExecStream::Stdout,
+            BoundedDrainStream::Stderr => BoundedExecStream::Stderr,
+        };
+        let payload = match vsock_proto::encode_bounded_exec_output(
+            stream,
+            event.sequence,
+            &event.chunk,
+            event.truncated,
+        ) {
+            Ok(payload) => payload,
+            Err(e) => {
+                log(
+                    "ERROR",
+                    &format!("bounded_exec: failed to encode output event: {e}"),
+                );
+                connection_cancel.store(true, Ordering::Release);
+                return false;
+            }
+        };
+        let msg = match vsock_proto::encode(MSG_BOUNDED_EXEC_OUTPUT, seq, &payload) {
+            Ok(msg) => msg,
+            Err(e) => {
+                log(
+                    "ERROR",
+                    &format!("bounded_exec: failed to encode output frame: {e}"),
+                );
+                connection_cancel.store(true, Ordering::Release);
+                return false;
+            }
+        };
+        if let Err(e) = writer.write_frame(&msg) {
+            log(
+                "WARN",
+                &format!("bounded_exec: failed to send output event: {e}"),
+            );
+            connection_cancel.store(true, Ordering::Release);
+            return false;
+        }
+        true
+    })
+}
+
+fn finalize_bounded_wait_result(
+    result: BoundedWaitResult,
+    stderr_limit: usize,
+) -> BoundedExecHandled {
+    let duration_ms = duration_ms(result.duration);
+    let stdout = result.stdout.bytes;
+    let stdout_truncated = result.stdout.truncated;
+    let stderr_truncated = result.stderr.truncated;
+    match result.outcome {
+        WaitOutcome::Exited(status) => BoundedExecHandled {
+            termination: BoundedExecTermination::Exited,
+            exit_code: Some(extract_exit_code(status)),
+            duration_ms,
+            stdout,
+            stderr: result.stderr.bytes,
+            stdout_truncated,
+            stderr_truncated,
+        },
+        WaitOutcome::TimedOut => BoundedExecHandled {
+            termination: BoundedExecTermination::TimedOut,
+            exit_code: None,
+            duration_ms,
+            stdout,
+            stderr: result.stderr.bytes,
+            stdout_truncated,
+            stderr_truncated,
+        },
+        WaitOutcome::Cancelled => BoundedExecHandled {
+            termination: BoundedExecTermination::Cancelled,
+            exit_code: None,
+            duration_ms,
+            stdout,
+            stderr: result.stderr.bytes,
+            stdout_truncated,
+            stderr_truncated,
+        },
+        WaitOutcome::WaitFailed(msg) => {
+            let (stderr, wait_msg_truncated) =
+                limit_bytes(format!("Failed to wait: {msg}").as_bytes(), stderr_limit);
+            BoundedExecHandled {
+                termination: BoundedExecTermination::WaitFailed,
+                exit_code: None,
+                duration_ms,
+                stdout,
+                stderr,
+                stdout_truncated,
+                stderr_truncated: stderr_truncated || wait_msg_truncated,
+            }
+        }
+    }
+}
+
+fn limit_bytes(bytes: &[u8], limit: usize) -> (Vec<u8>, bool) {
+    if bytes.len() <= limit {
+        (bytes.to_vec(), false)
+    } else {
+        (bytes.get(..limit).unwrap_or_default().to_vec(), true)
+    }
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 /// Handle write_file message

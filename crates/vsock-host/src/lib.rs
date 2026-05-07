@@ -31,12 +31,14 @@ use tokio::task::JoinHandle;
 use tokio::time::{self, Instant};
 
 use vsock_proto::{
-    Decoder, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG, MSG_PROCESS_EXIT, MSG_READY,
-    MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
-    MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage,
+    BoundedExecStream, BoundedExecTermination, Decoder, MSG_BOUNDED_EXEC, MSG_BOUNDED_EXEC_OUTPUT,
+    MSG_BOUNDED_EXEC_RESULT, MSG_ERROR, MSG_EXEC, MSG_EXEC_RESULT, MSG_PING, MSG_PONG,
+    MSG_PROCESS_EXIT, MSG_READY, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH,
+    MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, RawMessage,
 };
 
 const READ_BUF_SIZE: usize = 64 * 1024;
+const BOUNDED_EXEC_RESULT_OVERHEAD: usize = 22;
 
 /// Result of executing a command on the guest.
 #[derive(Debug, Clone)]
@@ -44,6 +46,67 @@ pub struct ExecResult {
     pub exit_code: i32,
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum BoundedExecOutputStream {
+    Stdout,
+    Stderr,
+}
+
+#[derive(Debug, Clone)]
+pub struct BoundedExecOutputEvent {
+    pub stream: BoundedExecOutputStream,
+    pub sequence: u32,
+    pub chunk: Vec<u8>,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum BoundedExecStatus {
+    Exited { exit_code: i32 },
+    TimedOut,
+    Cancelled,
+    StartFailed,
+    WaitFailed,
+}
+
+#[derive(Debug, Clone)]
+pub struct BoundedExecResult {
+    pub status: BoundedExecStatus,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+    pub duration_ms: u64,
+}
+
+pub struct BoundedExecRequest<'a> {
+    pub command: &'a str,
+    pub timeout_ms: u32,
+    pub env: &'a [(&'a str, &'a str)],
+    pub sudo: bool,
+    pub stdin: &'a [u8],
+    pub stdout_limit_bytes: u32,
+    pub stderr_limit_bytes: u32,
+    pub output_tx: Option<mpsc::Sender<BoundedExecOutputEvent>>,
+}
+
+fn validate_bounded_exec_limits(request: &BoundedExecRequest<'_>) -> io::Result<()> {
+    let stdout = request.stdout_limit_bytes as usize;
+    let stderr = request.stderr_limit_bytes as usize;
+    let max_payload = vsock_proto::MAX_MESSAGE_SIZE - vsock_proto::MIN_BODY_SIZE;
+    if stdout
+        .checked_add(stderr)
+        .and_then(|sum| sum.checked_add(BOUNDED_EXEC_RESULT_OVERHEAD))
+        .is_none_or(|size| size > max_payload)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "bounded_exec stdout/stderr limits exceed result frame size",
+        ));
+    }
+    Ok(())
 }
 
 /// Event emitted when a spawned process exits.
@@ -57,7 +120,8 @@ pub struct ProcessExitEvent {
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
 ///
-/// The three registration tables (`pending`, `pending_stdout`, `stdout_senders`)
+/// The registration tables (`pending`, `pending_stdout`,
+/// `bounded_output_senders`, `stdout_senders`)
 /// live inside the `Connected` variant so they are structurally unreachable
 /// once the reader task has exited. `exits` lives in BOTH variants because it
 /// is an observation log — a cached exit event remains a valid answer to
@@ -77,6 +141,8 @@ enum ConnectionState {
         /// when it processes the `spawn_watch_result` — before any
         /// `stdout_chunk` for that pid is processed.
         pending_stdout: HashMap<u32, mpsc::UnboundedSender<Vec<u8>>>,
+        /// Bounded exec output event senders: request seq → channel sender.
+        bounded_output_senders: HashMap<u32, mpsc::Sender<BoundedExecOutputEvent>>,
         /// Stdout chunk senders: pid → channel sender.
         /// Populated by `reader_loop` when it processes `spawn_watch_result`,
         /// fed by `reader_loop` when it processes `stdout_chunk`.
@@ -159,6 +225,23 @@ impl Drop for PendingStdoutGuard {
     }
 }
 
+struct BoundedOutputGuard {
+    shared: Arc<Shared>,
+    seq: u32,
+}
+
+impl BoundedOutputGuard {
+    fn new(shared: Arc<Shared>, seq: u32) -> Self {
+        Self { shared, seq }
+    }
+}
+
+impl Drop for BoundedOutputGuard {
+    fn drop(&mut self) {
+        self.shared.remove_bounded_output_sender(self.seq);
+    }
+}
+
 impl Shared {
     /// Get next sequence number, skipping 0 (reserved for unsolicited messages).
     fn next_seq(&self) -> u32 {
@@ -195,11 +278,17 @@ impl Shared {
                 ConnectionState::Connected {
                     pending,
                     pending_stdout,
+                    bounded_output_senders,
                     stdout_senders,
                     exits,
                 } => {
                     *guard = ConnectionState::Closed { exits };
-                    Some((pending, pending_stdout, stdout_senders))
+                    Some((
+                        pending,
+                        pending_stdout,
+                        bounded_output_senders,
+                        stdout_senders,
+                    ))
                 }
                 closed @ ConnectionState::Closed { .. } => {
                     // Reassign the whole variant; cached `exits` preserved
@@ -226,6 +315,17 @@ impl Shared {
         let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if let ConnectionState::Connected { pending_stdout, .. } = &mut *guard {
             pending_stdout.remove(&seq);
+        }
+    }
+
+    fn remove_bounded_output_sender(&self, seq: u32) {
+        let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if let ConnectionState::Connected {
+            bounded_output_senders,
+            ..
+        } = &mut *guard
+        {
+            bounded_output_senders.remove(&seq);
         }
     }
 }
@@ -304,6 +404,40 @@ async fn reader_loop(
                         }
                     }
                 }
+            } else if msg.msg_type == MSG_BOUNDED_EXEC_OUTPUT {
+                if let Ok(decoded) = vsock_proto::decode_bounded_exec_output(&msg.payload) {
+                    let event = BoundedExecOutputEvent {
+                        stream: match decoded.stream {
+                            BoundedExecStream::Stdout => BoundedExecOutputStream::Stdout,
+                            BoundedExecStream::Stderr => BoundedExecOutputStream::Stderr,
+                        },
+                        sequence: decoded.sequence,
+                        chunk: decoded.chunk.to_vec(),
+                        truncated: decoded.truncated,
+                    };
+                    let sender = {
+                        let guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                        match &*guard {
+                            ConnectionState::Connected {
+                                bounded_output_senders,
+                                ..
+                            } => bounded_output_senders.get(&msg.seq).cloned(),
+                            ConnectionState::Closed { .. } => None,
+                        }
+                    };
+                    if let Some(tx) = sender
+                        && tx.try_send(event).is_err()
+                    {
+                        let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
+                        if let ConnectionState::Connected {
+                            bounded_output_senders,
+                            ..
+                        } = &mut *guard
+                        {
+                            bounded_output_senders.remove(&msg.seq);
+                        }
+                    }
+                }
             } else if msg.msg_type == MSG_PROCESS_EXIT && msg.seq == 0 {
                 if let Ok((pid, exit_code, stdout, stderr)) =
                     vsock_proto::decode_process_exit(&msg.payload)
@@ -340,6 +474,7 @@ async fn reader_loop(
                         ConnectionState::Connected {
                             pending,
                             pending_stdout,
+                            bounded_output_senders,
                             stdout_senders,
                             ..
                         } => {
@@ -349,6 +484,9 @@ async fn reader_loop(
                                 && let Some(tx) = pending_stdout.remove(&msg.seq)
                             {
                                 stdout_senders.insert(pid, tx);
+                            }
+                            if msg.msg_type == MSG_BOUNDED_EXEC_RESULT {
+                                bounded_output_senders.remove(&msg.seq);
                             }
                             pending.remove(&msg.seq)
                         }
@@ -427,6 +565,7 @@ impl VsockHost {
             state: std::sync::Mutex::new(ConnectionState::Connected {
                 pending: HashMap::new(),
                 pending_stdout: HashMap::new(),
+                bounded_output_senders: HashMap::new(),
                 stdout_senders: HashMap::new(),
                 exits: HashMap::new(),
             }),
@@ -571,6 +710,58 @@ impl VsockHost {
         }
     }
 
+    async fn request_raw_with_bounded_output(
+        &self,
+        msg_type: u8,
+        seq: u32,
+        payload: &[u8],
+        timeout: Duration,
+        output_tx: Option<mpsc::Sender<BoundedExecOutputEvent>>,
+    ) -> io::Result<RawMessage> {
+        let data = vsock_proto::encode(msg_type, seq, payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut guard = self.shared.state.lock().unwrap_or_else(|e| e.into_inner());
+            match &mut *guard {
+                ConnectionState::Closed { .. } => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionReset,
+                        "connection closed",
+                    ));
+                }
+                ConnectionState::Connected {
+                    pending,
+                    bounded_output_senders,
+                    ..
+                } => {
+                    pending.insert(seq, tx);
+                    if let Some(output_tx) = output_tx {
+                        bounded_output_senders.insert(seq, output_tx);
+                    }
+                }
+            }
+        }
+        let _pending_guard = PendingRequestGuard::new(Arc::clone(&self.shared), seq);
+        let _bounded_output_guard = BoundedOutputGuard::new(Arc::clone(&self.shared), seq);
+
+        self.shared.writer.lock().await.write_all(&data).await?;
+
+        tokio::select! {
+            biased;
+            result = rx => {
+                result.map_err(|_| io::Error::new(
+                    io::ErrorKind::ConnectionReset,
+                    "connection closed",
+                ))
+            }
+            _ = tokio::time::sleep(timeout) => {
+                Err(io::Error::new(io::ErrorKind::TimedOut, "request timeout"))
+            }
+        }
+    }
+
     /// Execute a command on the guest.
     ///
     /// `timeout_ms` must be positive. Callers needing unbounded commands
@@ -619,6 +810,76 @@ impl VsockHost {
             exit_code,
             stdout: stdout.to_vec(),
             stderr: stderr.to_vec(),
+        })
+    }
+
+    pub async fn bounded_exec(
+        &self,
+        request: BoundedExecRequest<'_>,
+    ) -> io::Result<BoundedExecResult> {
+        if request.timeout_ms == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "bounded_exec requires a positive timeout",
+            ));
+        }
+        validate_bounded_exec_limits(&request)?;
+
+        let stream_output = request.output_tx.is_some();
+        let payload = vsock_proto::encode_bounded_exec(vsock_proto::BoundedExecPayload {
+            timeout_ms: request.timeout_ms,
+            command: request.command,
+            env: request.env,
+            sudo: request.sudo,
+            stdin: request.stdin,
+            stdout_limit_bytes: request.stdout_limit_bytes,
+            stderr_limit_bytes: request.stderr_limit_bytes,
+            stream_output,
+        })
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+
+        let seq = self.shared.next_seq();
+        let timeout = Duration::from_millis(request.timeout_ms as u64 + 5000);
+        let resp = self
+            .request_raw_with_bounded_output(
+                MSG_BOUNDED_EXEC,
+                seq,
+                &payload,
+                timeout,
+                request.output_tx,
+            )
+            .await?;
+
+        if resp.msg_type == MSG_ERROR {
+            let msg = vsock_proto::decode_error(&resp.payload)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+            return Err(io::Error::other(msg));
+        }
+
+        if resp.msg_type != MSG_BOUNDED_EXEC_RESULT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unexpected response type: 0x{:02X}", resp.msg_type),
+            ));
+        }
+
+        let decoded = vsock_proto::decode_bounded_exec_result(&resp.payload)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
+        Ok(BoundedExecResult {
+            status: match decoded.termination {
+                BoundedExecTermination::Exited => BoundedExecStatus::Exited {
+                    exit_code: decoded.exit_code.unwrap_or_default(),
+                },
+                BoundedExecTermination::TimedOut => BoundedExecStatus::TimedOut,
+                BoundedExecTermination::Cancelled => BoundedExecStatus::Cancelled,
+                BoundedExecTermination::StartFailed => BoundedExecStatus::StartFailed,
+                BoundedExecTermination::WaitFailed => BoundedExecStatus::WaitFailed,
+            },
+            stdout: decoded.stdout.to_vec(),
+            stderr: decoded.stderr.to_vec(),
+            stdout_truncated: decoded.stdout_truncated,
+            stderr_truncated: decoded.stderr_truncated,
+            duration_ms: decoded.duration_ms,
         })
     }
 
@@ -951,16 +1212,22 @@ mod tests {
         VsockHost::from_stream(stream, deadline).await
     }
 
-    fn registration_counts(host: &VsockHost) -> (usize, usize, usize) {
+    fn registration_counts(host: &VsockHost) -> (usize, usize, usize, usize) {
         let guard = host.shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &*guard {
             ConnectionState::Connected {
                 pending,
                 pending_stdout,
+                bounded_output_senders,
                 stdout_senders,
                 ..
-            } => (pending.len(), pending_stdout.len(), stdout_senders.len()),
-            ConnectionState::Closed { .. } => (0, 0, 0),
+            } => (
+                pending.len(),
+                pending_stdout.len(),
+                bounded_output_senders.len(),
+                stdout_senders.len(),
+            ),
+            ConnectionState::Closed { .. } => (0, 0, 0, 0),
         }
     }
 
@@ -1066,6 +1333,132 @@ mod tests {
         let result = host.exec("badcmd", 5000, &[], false).await.unwrap();
         assert_eq!(result.exit_code, 1);
         assert_eq!(result.stderr, b"command not found");
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_dispatches_output_and_result() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+
+            let mut buf = [0u8; 4096];
+            let n = guest.read(&mut buf).await.unwrap();
+            let msgs = decoder.decode(&buf[..n]).unwrap();
+            assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC);
+
+            let d = vsock_proto::decode_bounded_exec(&msgs[0].payload).unwrap();
+            assert_eq!(d.command, "auth-cli login");
+            assert_eq!(d.timeout_ms, 5000);
+            assert_eq!(d.stdin, b"confirm\n");
+            assert_eq!(d.stdout_limit_bytes, 1024);
+            assert_eq!(d.stderr_limit_bytes, 2048);
+            assert!(d.stream_output);
+
+            let event = vsock_proto::encode_bounded_exec_output(
+                BoundedExecStream::Stdout,
+                0,
+                b"https://login.example",
+                false,
+            )
+            .unwrap();
+            let event_msg =
+                vsock_proto::encode(MSG_BOUNDED_EXEC_OUTPUT, msgs[0].seq, &event).unwrap();
+            guest.write_all(&event_msg).await.unwrap();
+
+            let payload = vsock_proto::encode_bounded_exec_result(
+                BoundedExecTermination::Exited,
+                Some(0),
+                42,
+                b"done",
+                b"",
+                false,
+                false,
+            );
+            let resp = vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, msgs[0].seq, &payload).unwrap();
+            guest.write_all(&resp).await.unwrap();
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let (output_tx, mut output_rx) = mpsc::channel(4);
+        let result = host
+            .bounded_exec(BoundedExecRequest {
+                command: "auth-cli login",
+                timeout_ms: 5000,
+                env: &[],
+                sudo: false,
+                stdin: b"confirm\n",
+                stdout_limit_bytes: 1024,
+                stderr_limit_bytes: 2048,
+                output_tx: Some(output_tx),
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(result.status, BoundedExecStatus::Exited { exit_code: 0 });
+        assert_eq!(result.stdout, b"done");
+        assert_eq!(result.duration_ms, 42);
+
+        let event = output_rx.recv().await.unwrap();
+        assert_eq!(event.stream, BoundedExecOutputStream::Stdout);
+        assert_eq!(event.sequence, 0);
+        assert_eq!(event.chunk, b"https://login.example");
+        assert!(!event.truncated);
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_rejects_zero_timeout() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let err = host
+            .bounded_exec(BoundedExecRequest {
+                command: "echo hi",
+                timeout_ms: 0,
+                env: &[],
+                sudo: false,
+                stdin: &[],
+                stdout_limit_bytes: 1024,
+                stderr_limit_bytes: 1024,
+                output_tx: None,
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    #[tokio::test]
+    async fn test_bounded_exec_rejects_oversized_final_output_limits() {
+        let (host_stream, mut guest) = make_pair();
+
+        tokio::spawn(async move {
+            let mut decoder = Decoder::new();
+            mock_handshake(&mut guest, &mut decoder).await;
+        });
+
+        let host = host_from_stream(host_stream).await.unwrap();
+        let max_payload = vsock_proto::MAX_MESSAGE_SIZE - vsock_proto::MIN_BODY_SIZE;
+        let too_large_stdout = max_payload - BOUNDED_EXEC_RESULT_OVERHEAD + 1;
+        let err = host
+            .bounded_exec(BoundedExecRequest {
+                command: "echo hi",
+                timeout_ms: 1000,
+                env: &[],
+                sudo: false,
+                stdin: &[],
+                stdout_limit_bytes: too_large_stdout as u32,
+                stderr_limit_bytes: 0,
+                output_tx: None,
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
     }
 
     #[tokio::test]
@@ -1530,13 +1923,13 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), request_seen.notified())
             .await
             .expect("guest should receive spawn_watch request");
-        assert_eq!(registration_counts(&host), (1, 1, 0));
+        assert_eq!(registration_counts(&host), (1, 1, 0, 0));
 
         task.abort();
         let _ = task.await;
         assert_eq!(
             registration_counts(&host),
-            (0, 0, 0),
+            (0, 0, 0, 0),
             "aborted spawn_watch future must clean pending registrations",
         );
 

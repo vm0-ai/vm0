@@ -1,10 +1,12 @@
+use std::io;
+use std::os::unix::io::AsRawFd;
 use std::process::{Child, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::drain::drain_into_vec_cancellable;
+use crate::drain::{drain_into_vec_cancellable, drain_until_eof_or_cancelled};
 use crate::process::{extract_exit_code, kill_process_tree};
 
 /// Exit code returned when command times out (same as bash/Python)
@@ -27,6 +29,33 @@ pub(crate) enum WaitOutcome {
     Cancelled,
     /// `wait()` itself failed; carries the error message.
     WaitFailed(String),
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum BoundedDrainStream {
+    Stdout,
+    Stderr,
+}
+
+pub(crate) struct BoundedDrainEvent {
+    pub(crate) stream: BoundedDrainStream,
+    pub(crate) sequence: u32,
+    pub(crate) chunk: Vec<u8>,
+    pub(crate) truncated: bool,
+}
+
+pub(crate) type BoundedDrainSender = Arc<dyn Fn(BoundedDrainEvent) -> bool + Send + Sync>;
+
+pub(crate) struct BoundedDrainBuffer {
+    pub(crate) bytes: Vec<u8>,
+    pub(crate) truncated: bool,
+}
+
+pub(crate) struct BoundedWaitResult {
+    pub(crate) outcome: WaitOutcome,
+    pub(crate) stdout: BoundedDrainBuffer,
+    pub(crate) stderr: BoundedDrainBuffer,
+    pub(crate) duration: Duration,
 }
 
 enum KillReason {
@@ -215,6 +244,254 @@ pub(crate) fn wait_with_drain_and_timeout_or_cancelled(
     let stderr_buf = stderr_handle.join().unwrap_or_default();
 
     (outcome, stdout_buf, stderr_buf)
+}
+
+pub(crate) fn wait_with_bounded_drain_and_timeout_or_cancelled(
+    mut child: Child,
+    timeout_ms: u32,
+    stdin: Vec<u8>,
+    stdout_limit: usize,
+    stderr_limit: usize,
+    stream_sender: Option<BoundedDrainSender>,
+    external_cancel: &AtomicBool,
+) -> BoundedWaitResult {
+    let start = Instant::now();
+
+    let child_stdin = match child.stdin.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return BoundedWaitResult {
+                outcome: WaitOutcome::WaitFailed("missing stdin pipe".to_string()),
+                stdout: BoundedDrainBuffer {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                stderr: BoundedDrainBuffer {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                duration: start.elapsed(),
+            };
+        }
+    };
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return BoundedWaitResult {
+                outcome: WaitOutcome::WaitFailed("missing stdout pipe".to_string()),
+                stdout: BoundedDrainBuffer {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                stderr: BoundedDrainBuffer {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                duration: start.elapsed(),
+            };
+        }
+    };
+    let stderr = match child.stderr.take() {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return BoundedWaitResult {
+                outcome: WaitOutcome::WaitFailed("missing stderr pipe".to_string()),
+                stdout: BoundedDrainBuffer {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                stderr: BoundedDrainBuffer {
+                    bytes: Vec::new(),
+                    truncated: false,
+                },
+                duration: start.elapsed(),
+            };
+        }
+    };
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let (done_tx, done_rx) = mpsc::channel::<()>();
+
+    let stdin_cancel = Arc::new(AtomicBool::new(false));
+    let stdin_handle = {
+        let stdin_cancel = stdin_cancel.clone();
+        thread::spawn(move || write_stdin_cancellable(child_stdin, &stdin, &stdin_cancel))
+    };
+
+    let stdout_handle = {
+        let cancel = cancel.clone();
+        let tx = done_tx.clone();
+        let stream_sender = stream_sender.clone();
+        thread::spawn(move || {
+            let buf = drain_bounded_cancellable(
+                stdout,
+                &cancel,
+                stdout_limit,
+                BoundedDrainStream::Stdout,
+                stream_sender,
+            );
+            let _ = tx.send(());
+            buf
+        })
+    };
+    let stderr_handle = {
+        let cancel = cancel.clone();
+        let tx = done_tx.clone();
+        thread::spawn(move || {
+            let buf = drain_bounded_cancellable(
+                stderr,
+                &cancel,
+                stderr_limit,
+                BoundedDrainStream::Stderr,
+                stream_sender,
+            );
+            let _ = tx.send(());
+            buf
+        })
+    };
+    drop(done_tx);
+
+    let outcome = wait_with_kill_timeout_or_cancelled(child, timeout_ms, external_cancel);
+    stdin_cancel.store(true, Ordering::Release);
+    if matches!(outcome, WaitOutcome::Cancelled) || external_cancel.load(Ordering::Acquire) {
+        cancel.store(true, Ordering::Release);
+    }
+
+    let _ = await_drain_deadline(&done_rx, 2, &cancel);
+    let _ = stdin_handle.join();
+
+    BoundedWaitResult {
+        outcome,
+        stdout: stdout_handle.join().unwrap_or(BoundedDrainBuffer {
+            bytes: Vec::new(),
+            truncated: false,
+        }),
+        stderr: stderr_handle.join().unwrap_or(BoundedDrainBuffer {
+            bytes: Vec::new(),
+            truncated: false,
+        }),
+        duration: start.elapsed(),
+    }
+}
+
+fn drain_bounded_cancellable<R>(
+    pipe: R,
+    cancel: &AtomicBool,
+    limit: usize,
+    stream: BoundedDrainStream,
+    stream_sender: Option<BoundedDrainSender>,
+) -> BoundedDrainBuffer
+where
+    R: std::os::unix::io::AsRawFd,
+{
+    let mut bytes = Vec::with_capacity(limit.min(8 * 1024));
+    let mut truncated = false;
+    let mut sequence = 0u32;
+    drain_until_eof_or_cancelled(pipe, cancel, |chunk| {
+        let remaining = limit.saturating_sub(bytes.len());
+        if remaining == 0 {
+            truncated = true;
+            return;
+        }
+
+        let keep = remaining.min(chunk.len());
+        let kept = chunk.get(..keep).unwrap_or_default();
+        bytes.extend_from_slice(kept);
+
+        let chunk_truncated = keep < chunk.len();
+        truncated |= chunk_truncated;
+        if let Some(sender) = &stream_sender
+            && !kept.is_empty()
+        {
+            let ok = sender(BoundedDrainEvent {
+                stream,
+                sequence,
+                chunk: kept.to_vec(),
+                truncated: chunk_truncated,
+            });
+            sequence = sequence.wrapping_add(1);
+            if !ok {
+                truncated = true;
+                cancel.store(true, Ordering::Release);
+            }
+        }
+    });
+    BoundedDrainBuffer { bytes, truncated }
+}
+
+fn write_stdin_cancellable<W>(stdin: W, bytes: &[u8], cancel: &AtomicBool)
+where
+    W: AsRawFd,
+{
+    let raw_fd = stdin.as_raw_fd();
+    // `poll(POLLOUT)` only proves some capacity exists. A blocking pipe write
+    // with a larger buffer can still block before cancellation is observed, so
+    // make this fd nonblocking for the lifetime of the stdin writer thread.
+    // SAFETY: raw_fd belongs to `stdin`, which is owned by this function.
+    let flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFL) };
+    if flags >= 0 {
+        // SAFETY: raw_fd is valid and the fd is closed when `stdin` is dropped.
+        let _ = unsafe { libc::fcntl(raw_fd, libc::F_SETFL, flags | libc::O_NONBLOCK) };
+    }
+
+    let mut written = 0usize;
+    while written < bytes.len() {
+        if cancel.load(Ordering::Acquire) {
+            break;
+        }
+
+        let mut pfd = libc::pollfd {
+            fd: raw_fd,
+            events: libc::POLLOUT,
+            revents: 0,
+        };
+        // SAFETY: pfd is valid and describes the stdin fd owned by this
+        // function for the duration of the write loop.
+        let r = unsafe { libc::poll(&mut pfd, 1, WAIT_CANCEL_POLL_INTERVAL_MS as libc::c_int) };
+        if r < 0 {
+            if io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            break;
+        }
+        if r == 0 {
+            continue;
+        }
+        if pfd.revents & libc::POLLNVAL != 0 {
+            break;
+        }
+        if pfd.revents & (libc::POLLERR | libc::POLLHUP) != 0 {
+            break;
+        }
+        if pfd.revents & libc::POLLOUT == 0 {
+            continue;
+        }
+
+        let Some(remaining) = bytes.get(written..) else {
+            break;
+        };
+        // SAFETY: raw_fd belongs to `stdin`, which remains alive until this
+        // function returns. `remaining` points to valid memory for its length.
+        let n = unsafe { libc::write(raw_fd, remaining.as_ptr().cast(), remaining.len()) };
+        if n == 0 {
+            break;
+        }
+        if n < 0 {
+            let kind = io::Error::last_os_error().kind();
+            if matches!(kind, io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock) {
+                continue;
+            }
+            break;
+        }
+        written = written.saturating_add(n as usize);
+    }
+    drop(stdin);
 }
 
 /// Resolve a [`WaitOutcome`] + drained stderr into protocol exit fields.

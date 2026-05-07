@@ -121,6 +121,16 @@ pub(crate) fn spawn_with_pipes(command: &str, sudo: bool) -> io::Result<Child> {
     spawn_in_own_process_group(&mut command)
 }
 
+/// Spawn `command` with stdin/stdout/stderr piped.
+pub(crate) fn spawn_with_stdio_pipes(command: &str, sudo: bool) -> io::Result<Child> {
+    let mut command = build_exec_command(command, sudo);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    spawn_in_own_process_group(&mut command)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

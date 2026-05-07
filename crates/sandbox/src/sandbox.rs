@@ -183,6 +183,13 @@ pub trait Sandbox: Send + Sync + Any {
     /// Returns an error if the sandbox is not running or if the backing
     /// process crashes during execution.
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult>;
+    /// Run `request.cmd` in the guest with bounded stdin, bounded final
+    /// stdout/stderr, optional bounded stdout/stderr streaming, and
+    /// structured termination metadata.
+    async fn bounded_exec(
+        &self,
+        request: &crate::BoundedExecRequest<'_>,
+    ) -> Result<crate::BoundedExecResult>;
     /// Write `content` to `path` inside the guest, creating or
     /// truncating as needed. Returns an error if the sandbox is not
     /// running or if the backing process crashes.

@@ -11,8 +11,9 @@ use std::time::Duration;
 
 use vsock_guest::{handle_connection, run};
 use vsock_proto::{
-    self, MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK,
-    MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
+    self, BoundedExecStream, BoundedExecTermination, MSG_BOUNDED_EXEC, MSG_BOUNDED_EXEC_OUTPUT,
+    MSG_BOUNDED_EXEC_RESULT, MSG_EXEC, MSG_EXEC_RESULT, MSG_PROCESS_EXIT, MSG_SHUTDOWN,
+    MSG_SHUTDOWN_ACK, MSG_SPAWN_WATCH, MSG_SPAWN_WATCH_RESULT, MSG_STDOUT_CHUNK,
 };
 
 const EXIT_CODE_TIMEOUT: i32 = 124;
@@ -126,6 +127,38 @@ fn send_exec_and_read_result(
     vsock_proto::decode_exec_result(&msgs[0].payload)
         .map(|(code, out, err)| (code, out.to_vec(), err.to_vec()))
         .unwrap()
+}
+
+fn discard_ready(reader: &mut impl std::io::Read) {
+    let mut hdr = [0u8; 4];
+    reader.read_exact(&mut hdr).unwrap();
+    let body_len = u32::from_be_bytes(hdr) as usize;
+    let mut body = vec![0u8; body_len];
+    reader.read_exact(&mut body).unwrap();
+}
+
+fn send_bounded_exec(
+    writer: &mut impl std::io::Write,
+    seq: u32,
+    command: &str,
+    stdin: &[u8],
+    stdout_limit: u32,
+    stderr_limit: u32,
+    stream_output: bool,
+) {
+    let payload = vsock_proto::encode_bounded_exec(vsock_proto::BoundedExecPayload {
+        timeout_ms: 5000,
+        command,
+        env: &[],
+        sudo: false,
+        stdin,
+        stdout_limit_bytes: stdout_limit,
+        stderr_limit_bytes: stderr_limit,
+        stream_output,
+    })
+    .unwrap();
+    let msg = vsock_proto::encode(MSG_BOUNDED_EXEC, seq, &payload).unwrap();
+    writer.write_all(&msg).unwrap();
 }
 
 /// Verify that a slow exec does not block a fast exec that arrives later.
@@ -306,6 +339,205 @@ fn exec_timeout_zero_means_no_timeout() {
     assert_eq!(code, 0);
     assert_eq!(String::from_utf8_lossy(&stdout), "hello\n");
     assert_eq!(stderr, b"");
+
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+#[test]
+fn bounded_exec_passes_stdin_and_returns_structured_result() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    discard_ready(&mut host_reader);
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_bounded_exec(
+        &mut host_writer,
+        10,
+        "read line; echo \"out:$line\"; echo err >&2",
+        b"hello\n",
+        1024,
+        1024,
+        false,
+    );
+
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    let n = host_reader.read(&mut buf).unwrap();
+    let msgs = decoder.decode(buf.get(..n).unwrap()).unwrap();
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC_RESULT);
+    assert_eq!(msgs[0].seq, 10);
+
+    let result = vsock_proto::decode_bounded_exec_result(&msgs[0].payload).unwrap();
+    assert_eq!(result.termination, BoundedExecTermination::Exited);
+    assert_eq!(result.exit_code, Some(0));
+    assert_eq!(String::from_utf8_lossy(result.stdout), "out:hello\n");
+    assert_eq!(String::from_utf8_lossy(result.stderr), "err\n");
+    assert!(!result.stdout_truncated);
+    assert!(!result.stderr_truncated);
+
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+#[test]
+fn bounded_exec_child_exit_does_not_block_on_inherited_stdin() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let orphan = OrphanProcessGuard::new("bounded-stdin-orphan");
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    discard_ready(&mut host_reader);
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    let command = format!(
+        "sleep 30 <&0 >/dev/null 2>/dev/null & echo $! > {}; exit 7",
+        orphan.pid_path()
+    );
+    let stdin = vec![b'x'; 1024 * 1024];
+    send_bounded_exec(&mut host_writer, 13, &command, &stdin, 1024, 1024, false);
+
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    let n = host_reader.read(&mut buf).unwrap();
+    let msgs = decoder.decode(buf.get(..n).unwrap()).unwrap();
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC_RESULT);
+    let result = vsock_proto::decode_bounded_exec_result(&msgs[0].payload).unwrap();
+    assert_eq!(result.termination, BoundedExecTermination::Exited);
+    assert_eq!(result.exit_code, Some(7));
+
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+#[test]
+fn bounded_exec_streams_output_before_final_result() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    discard_ready(&mut host_reader);
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_bounded_exec(
+        &mut host_writer,
+        11,
+        "printf 'https://login.example/code\\n'; sleep 1; printf done",
+        &[],
+        1024,
+        1024,
+        true,
+    );
+
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut saw_stream_before_result = false;
+    let mut saw_result = false;
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+
+    while std::time::Instant::now() < deadline && !saw_result {
+        let mut buf = [0u8; 4096];
+        let n = host_reader.read(&mut buf).unwrap();
+        for msg in decoder.decode(buf.get(..n).unwrap()).unwrap() {
+            assert_eq!(msg.seq, 11);
+            match msg.msg_type {
+                MSG_BOUNDED_EXEC_OUTPUT => {
+                    assert!(!saw_result, "streaming output must precede final result");
+                    let event = vsock_proto::decode_bounded_exec_output(&msg.payload).unwrap();
+                    assert_eq!(event.stream, BoundedExecStream::Stdout);
+                    let chunk = String::from_utf8_lossy(event.chunk);
+                    if chunk.contains("https://login.example/code") {
+                        saw_stream_before_result = true;
+                    }
+                }
+                MSG_BOUNDED_EXEC_RESULT => {
+                    saw_result = true;
+                    let result = vsock_proto::decode_bounded_exec_result(&msg.payload).unwrap();
+                    assert_eq!(result.termination, BoundedExecTermination::Exited);
+                    assert_eq!(result.exit_code, Some(0));
+                    assert!(String::from_utf8_lossy(result.stdout).contains("done"));
+                }
+                other => panic!("unexpected message type: 0x{other:02X}"),
+            }
+        }
+    }
+
+    assert!(saw_stream_before_result);
+    assert!(saw_result);
+
+    drop(host_writer);
+    drop(host_reader);
+    let _ = handle.join();
+}
+
+#[test]
+fn bounded_exec_truncates_final_output_and_still_exits() {
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let (guest_stream, host_stream) = StdUnixStream::pair().unwrap();
+    let mut host_writer = host_stream.try_clone().unwrap();
+    let mut host_reader = host_stream;
+
+    let handle = thread::spawn(move || {
+        let _ = handle_connection(guest_stream);
+    });
+
+    discard_ready(&mut host_reader);
+    host_reader
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+
+    send_bounded_exec(
+        &mut host_writer,
+        12,
+        "python3 - <<'PY'\nprint('x' * 100000)\nPY",
+        &[],
+        7,
+        1024,
+        false,
+    );
+
+    let mut decoder = vsock_proto::Decoder::new();
+    let mut buf = [0u8; 4096];
+    let n = host_reader.read(&mut buf).unwrap();
+    let msgs = decoder.decode(buf.get(..n).unwrap()).unwrap();
+    assert_eq!(msgs.len(), 1);
+    assert_eq!(msgs[0].msg_type, MSG_BOUNDED_EXEC_RESULT);
+    let result = vsock_proto::decode_bounded_exec_result(&msgs[0].payload).unwrap();
+    assert_eq!(result.termination, BoundedExecTermination::Exited);
+    assert_eq!(result.exit_code, Some(0));
+    assert_eq!(result.stdout, b"xxxxxxx");
+    assert!(result.stdout_truncated);
 
     drop(host_writer);
     drop(host_reader);

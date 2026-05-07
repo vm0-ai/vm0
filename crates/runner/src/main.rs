@@ -30,6 +30,7 @@ mod runner_dirname;
 mod status;
 mod storage_cache;
 mod telemetry;
+mod trusted_command;
 mod types;
 
 use std::path::Path;

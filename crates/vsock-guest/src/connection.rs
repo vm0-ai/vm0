@@ -5,10 +5,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use vsock_proto::{self, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY, MSG_SPAWN_WATCH};
+use vsock_proto::{
+    self, MSG_BOUNDED_EXEC, MSG_BOUNDED_EXEC_RESULT, MSG_EXEC, MSG_EXEC_RESULT, MSG_READY,
+    MSG_SPAWN_WATCH,
+};
 
 use crate::error::to_io_error;
-use crate::handlers::{MessageOutcome, handle_exec, handle_message};
+use crate::handlers::{
+    BoundedExecRequest, MessageOutcome, handle_bounded_exec, handle_exec, handle_message,
+};
 use crate::log::log;
 use crate::monitor::{SpawnWatchRequest, handle_spawn_watch};
 use crate::writer::GuestWriter;
@@ -180,6 +185,72 @@ fn handle_connection_with_outcome(stream: UnixStream) -> io::Result<ConnectionEn
                     };
                     if let Err(e) = w.write_frame(&encoded) {
                         log("ERROR", &format!("Failed to send exec_result: {}", e));
+                    }
+                });
+            } else if msg.msg_type == MSG_BOUNDED_EXEC {
+                log(
+                    "INFO",
+                    &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
+                );
+                let d = vsock_proto::decode_bounded_exec(&msg.payload).map_err(to_io_error)?;
+                let timeout_ms = d.timeout_ms;
+                let command = d.command.to_owned();
+                let env: Vec<(String, String)> = d
+                    .env
+                    .iter()
+                    .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+                    .collect();
+                let sudo = d.sudo;
+                let stdin = d.stdin.to_vec();
+                let stdout_limit_bytes = d.stdout_limit_bytes as usize;
+                let stderr_limit_bytes = d.stderr_limit_bytes as usize;
+                let stream_output = d.stream_output;
+                let seq = msg.seq;
+                let w = writer.clone();
+                let connection_cancel = connection_cancel.clone();
+                thread::spawn(move || {
+                    let env_refs: Vec<(&str, &str)> =
+                        env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+                    let result = handle_bounded_exec(
+                        BoundedExecRequest {
+                            timeout_ms,
+                            command: &command,
+                            env: &env_refs,
+                            sudo,
+                            stdin: &stdin,
+                            stdout_limit_bytes,
+                            stderr_limit_bytes,
+                            stream_output,
+                        },
+                        seq,
+                        w.clone(),
+                        &connection_cancel,
+                    );
+                    let payload = vsock_proto::encode_bounded_exec_result(
+                        result.termination,
+                        result.exit_code,
+                        result.duration_ms,
+                        &result.stdout,
+                        &result.stderr,
+                        result.stdout_truncated,
+                        result.stderr_truncated,
+                    );
+                    let encoded = match vsock_proto::encode(MSG_BOUNDED_EXEC_RESULT, seq, &payload)
+                    {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            log(
+                                "ERROR",
+                                &format!("Failed to encode bounded_exec_result: {}", e),
+                            );
+                            return;
+                        }
+                    };
+                    if let Err(e) = w.write_frame(&encoded) {
+                        log(
+                            "ERROR",
+                            &format!("Failed to send bounded_exec_result: {}", e),
+                        );
                     }
                 });
             } else {

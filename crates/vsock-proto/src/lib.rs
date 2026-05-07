@@ -28,6 +28,9 @@
 //! | 0x0A | H→G       | shutdown          | (empty) |
 //! | 0x0B | G→H       | shutdown_ack      | (empty) |
 //! | 0x0C | G→H       | stdout_chunk      | `[4B pid][data]` |
+//! | 0x0D | H→G       | bounded_exec      | bounded structured exec request |
+//! | 0x0E | G→H       | bounded_exec_result | bounded structured exec final result |
+//! | 0x0F | G→H       | bounded_exec_output | bounded structured exec stdout/stderr chunk |
 //! | 0xFF | G→H       | error             | `[2B error_len][error]` |
 
 /// Header size (4-byte length prefix).
@@ -53,6 +56,9 @@ pub const MSG_PROCESS_EXIT: u8 = 0x09;
 pub const MSG_SHUTDOWN: u8 = 0x0A;
 pub const MSG_SHUTDOWN_ACK: u8 = 0x0B;
 pub const MSG_STDOUT_CHUNK: u8 = 0x0C;
+pub const MSG_BOUNDED_EXEC: u8 = 0x0D;
+pub const MSG_BOUNDED_EXEC_RESULT: u8 = 0x0E;
+pub const MSG_BOUNDED_EXEC_OUTPUT: u8 = 0x0F;
 pub const MSG_ERROR: u8 = 0xFF;
 
 /// Default vsock port for host-guest communication.
@@ -60,6 +66,25 @@ pub const VSOCK_PORT: u32 = 1000;
 
 // Exec payload flags.
 pub const EXEC_FLAG_SUDO: u8 = 0x01;
+
+// Bounded exec payload flags.
+pub const BOUNDED_EXEC_FLAG_SUDO: u8 = 0x01;
+pub const BOUNDED_EXEC_FLAG_STREAM_OUTPUT: u8 = 0x02;
+
+// Bounded exec result flags.
+pub const BOUNDED_EXEC_RESULT_FLAG_STDOUT_TRUNCATED: u8 = 0x01;
+pub const BOUNDED_EXEC_RESULT_FLAG_STDERR_TRUNCATED: u8 = 0x02;
+
+// Bounded exec output event flags.
+pub const BOUNDED_EXEC_OUTPUT_FLAG_TRUNCATED: u8 = 0x01;
+
+pub const BOUNDED_EXEC_STREAM_STDOUT: u8 = 0x01;
+pub const BOUNDED_EXEC_STREAM_STDERR: u8 = 0x02;
+pub const BOUNDED_EXEC_TERMINATION_EXITED: u8 = 0x00;
+pub const BOUNDED_EXEC_TERMINATION_TIMED_OUT: u8 = 0x01;
+pub const BOUNDED_EXEC_TERMINATION_CANCELLED: u8 = 0x02;
+pub const BOUNDED_EXEC_TERMINATION_START_FAILED: u8 = 0x03;
+pub const BOUNDED_EXEC_TERMINATION_WAIT_FAILED: u8 = 0x04;
 
 // Spawn-watch payload flags.
 pub const SPAWN_WATCH_FLAG_SUDO: u8 = 0x01;
@@ -114,6 +139,12 @@ fn read_u32_at(data: &[u8], offset: usize) -> Option<u32> {
 fn read_i32_at(data: &[u8], offset: usize) -> Option<i32> {
     let bytes: [u8; 4] = data.get(offset..offset + 4)?.try_into().ok()?;
     Some(i32::from_be_bytes(bytes))
+}
+
+/// Read a `u64` from `data` at `offset`. Returns `None` if out of bounds.
+fn read_u64_at(data: &[u8], offset: usize) -> Option<u64> {
+    let bytes: [u8; 8] = data.get(offset..offset + 8)?.try_into().ok()?;
+    Some(u64::from_be_bytes(bytes))
 }
 
 /// A raw decoded message.
@@ -173,6 +204,65 @@ pub fn encode_exec(timeout_ms: u32, command: &str, env: &[(&str, &str)], sudo: b
         }
     }
     p
+}
+
+pub struct BoundedExecPayload<'a> {
+    pub timeout_ms: u32,
+    pub command: &'a str,
+    pub env: &'a [(&'a str, &'a str)],
+    pub sudo: bool,
+    pub stdin: &'a [u8],
+    pub stdout_limit_bytes: u32,
+    pub stderr_limit_bytes: u32,
+    pub stream_output: bool,
+}
+
+/// Encode bounded_exec payload.
+///
+/// Wire format:
+/// `[4B timeout_ms][1B flags][4B stdout_limit][4B stderr_limit][4B stdin_len][stdin][4B cmd_len][command][4B env_count]([4B key_len][key][4B val_len][value])*`.
+pub fn encode_bounded_exec(request: BoundedExecPayload<'_>) -> Result<Vec<u8>, ProtocolError> {
+    let cmd = request.command.as_bytes();
+    ensure_u32_len("stdin", request.stdin.len())?;
+    ensure_u32_len("command", cmd.len())?;
+    ensure_u32_len("env_count", request.env.len())?;
+    for (key, val) in request.env {
+        ensure_u32_len("env_key", key.len())?;
+        ensure_u32_len("env_value", val.len())?;
+    }
+
+    let env_size: usize = 4 + request
+        .env
+        .iter()
+        .map(|(k, v)| 8 + k.len() + v.len())
+        .sum::<usize>();
+    let mut p = Vec::with_capacity(21 + request.stdin.len() + cmd.len() + env_size);
+    p.extend_from_slice(&request.timeout_ms.to_be_bytes());
+    let mut flags = if request.sudo {
+        BOUNDED_EXEC_FLAG_SUDO
+    } else {
+        0
+    };
+    if request.stream_output {
+        flags |= BOUNDED_EXEC_FLAG_STREAM_OUTPUT;
+    }
+    p.push(flags);
+    p.extend_from_slice(&request.stdout_limit_bytes.to_be_bytes());
+    p.extend_from_slice(&request.stderr_limit_bytes.to_be_bytes());
+    p.extend_from_slice(&(request.stdin.len() as u32).to_be_bytes());
+    p.extend_from_slice(request.stdin);
+    p.extend_from_slice(&(cmd.len() as u32).to_be_bytes());
+    p.extend_from_slice(cmd);
+    p.extend_from_slice(&(request.env.len() as u32).to_be_bytes());
+    for (key, val) in request.env {
+        let kb = key.as_bytes();
+        let vb = val.as_bytes();
+        p.extend_from_slice(&(kb.len() as u32).to_be_bytes());
+        p.extend_from_slice(kb);
+        p.extend_from_slice(&(vb.len() as u32).to_be_bytes());
+        p.extend_from_slice(vb);
+    }
+    Ok(p)
 }
 
 /// Encode spawn_watch payload: exec fields + optional `[2B log_path_len][log_path]`.
@@ -244,6 +334,122 @@ pub fn encode_exec_result(exit_code: i32, stdout: &[u8], stderr: &[u8]) -> Vec<u
     p.extend_from_slice(&exit_code.to_be_bytes());
     append_output_pair(&mut p, stdout, stderr);
     p
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoundedExecTermination {
+    Exited,
+    TimedOut,
+    Cancelled,
+    StartFailed,
+    WaitFailed,
+}
+
+impl BoundedExecTermination {
+    fn tag(self) -> u8 {
+        match self {
+            Self::Exited => BOUNDED_EXEC_TERMINATION_EXITED,
+            Self::TimedOut => BOUNDED_EXEC_TERMINATION_TIMED_OUT,
+            Self::Cancelled => BOUNDED_EXEC_TERMINATION_CANCELLED,
+            Self::StartFailed => BOUNDED_EXEC_TERMINATION_START_FAILED,
+            Self::WaitFailed => BOUNDED_EXEC_TERMINATION_WAIT_FAILED,
+        }
+    }
+
+    fn from_tag(tag: u8) -> Result<Self, ProtocolError> {
+        match tag {
+            BOUNDED_EXEC_TERMINATION_EXITED => Ok(Self::Exited),
+            BOUNDED_EXEC_TERMINATION_TIMED_OUT => Ok(Self::TimedOut),
+            BOUNDED_EXEC_TERMINATION_CANCELLED => Ok(Self::Cancelled),
+            BOUNDED_EXEC_TERMINATION_START_FAILED => Ok(Self::StartFailed),
+            BOUNDED_EXEC_TERMINATION_WAIT_FAILED => Ok(Self::WaitFailed),
+            _ => Err(ProtocolError::InvalidPayload(
+                "bounded_exec_result invalid termination",
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoundedExecStream {
+    Stdout,
+    Stderr,
+}
+
+impl BoundedExecStream {
+    fn tag(self) -> u8 {
+        match self {
+            Self::Stdout => BOUNDED_EXEC_STREAM_STDOUT,
+            Self::Stderr => BOUNDED_EXEC_STREAM_STDERR,
+        }
+    }
+
+    fn from_tag(tag: u8) -> Result<Self, ProtocolError> {
+        match tag {
+            BOUNDED_EXEC_STREAM_STDOUT => Ok(Self::Stdout),
+            BOUNDED_EXEC_STREAM_STDERR => Ok(Self::Stderr),
+            _ => Err(ProtocolError::InvalidPayload(
+                "bounded_exec_output invalid stream",
+            )),
+        }
+    }
+}
+
+/// Encode bounded_exec_result payload:
+/// `[1B termination][4B exit_code][8B duration_ms][1B flags][4B stdout_len][stdout][4B stderr_len][stderr]`.
+pub fn encode_bounded_exec_result(
+    termination: BoundedExecTermination,
+    exit_code: Option<i32>,
+    duration_ms: u64,
+    stdout: &[u8],
+    stderr: &[u8],
+    stdout_truncated: bool,
+    stderr_truncated: bool,
+) -> Vec<u8> {
+    let mut p = Vec::with_capacity(22 + stdout.len() + stderr.len());
+    p.push(termination.tag());
+    p.extend_from_slice(&exit_code.unwrap_or_default().to_be_bytes());
+    p.extend_from_slice(&duration_ms.to_be_bytes());
+    let mut flags = 0u8;
+    if stdout_truncated {
+        flags |= BOUNDED_EXEC_RESULT_FLAG_STDOUT_TRUNCATED;
+    }
+    if stderr_truncated {
+        flags |= BOUNDED_EXEC_RESULT_FLAG_STDERR_TRUNCATED;
+    }
+    p.push(flags);
+    append_output_pair(&mut p, stdout, stderr);
+    p
+}
+
+/// Encode bounded_exec_output payload:
+/// `[1B stream][4B sequence][1B flags][4B chunk_len][chunk]`.
+pub fn encode_bounded_exec_output(
+    stream: BoundedExecStream,
+    sequence: u32,
+    chunk: &[u8],
+    truncated: bool,
+) -> Result<Vec<u8>, ProtocolError> {
+    ensure_u32_len("chunk", chunk.len())?;
+    let mut p = Vec::with_capacity(10 + chunk.len());
+    p.push(stream.tag());
+    p.extend_from_slice(&sequence.to_be_bytes());
+    p.push(if truncated {
+        BOUNDED_EXEC_OUTPUT_FLAG_TRUNCATED
+    } else {
+        0
+    });
+    p.extend_from_slice(&(chunk.len() as u32).to_be_bytes());
+    p.extend_from_slice(chunk);
+    Ok(p)
+}
+
+fn ensure_u32_len(field: &'static str, len: usize) -> Result<(), ProtocolError> {
+    if len > u32::MAX as usize {
+        Err(ProtocolError::PayloadTooLarge(field, len))
+    } else {
+        Ok(())
+    }
 }
 
 fn append_output_pair(p: &mut Vec<u8>, stdout: &[u8], stderr: &[u8]) {
@@ -429,6 +635,109 @@ pub fn decode_exec(payload: &[u8]) -> Result<DecodedExec<'_>, ProtocolError> {
     decode_exec_inner(payload, EXEC_FLAG_SUDO).map(|d| d.exec)
 }
 
+/// Decode bounded_exec payload into a [`DecodedBoundedExec`] struct.
+pub fn decode_bounded_exec(payload: &[u8]) -> Result<DecodedBoundedExec<'_>, ProtocolError> {
+    let timeout_ms = read_u32_at(payload, 0).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec payload too short",
+    ))?;
+    let flags = read_u8_at(payload, 4).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec payload too short",
+    ))?;
+    let stdout_limit_bytes = read_u32_at(payload, 5).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec payload too short",
+    ))?;
+    let stderr_limit_bytes = read_u32_at(payload, 9).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec payload too short",
+    ))?;
+    let stdin_len = read_u32_at(payload, 13).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec payload too short",
+    ))? as usize;
+    let stdin_start = 17usize;
+    let stdin_end = stdin_start
+        .checked_add(stdin_len)
+        .ok_or(ProtocolError::InvalidPayload(
+            "bounded_exec stdin truncated",
+        ))?;
+    let stdin = payload
+        .get(stdin_start..stdin_end)
+        .ok_or(ProtocolError::InvalidPayload(
+            "bounded_exec stdin truncated",
+        ))?;
+
+    let cmd_len = read_u32_at(payload, stdin_end).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec command length truncated",
+    ))? as usize;
+    let cmd_start = stdin_end
+        .checked_add(4)
+        .ok_or(ProtocolError::InvalidPayload(
+            "bounded_exec command length truncated",
+        ))?;
+    let cmd_end = cmd_start
+        .checked_add(cmd_len)
+        .ok_or(ProtocolError::InvalidPayload(
+            "bounded_exec command truncated",
+        ))?;
+    let command = std::str::from_utf8(payload.get(cmd_start..cmd_end).ok_or(
+        ProtocolError::InvalidPayload("bounded_exec command truncated"),
+    )?)
+    .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in command"))?;
+
+    let env_count = read_u32_at(payload, cmd_end).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec env count truncated",
+    ))? as usize;
+    let mut env = Vec::new();
+    let mut offset = cmd_end.checked_add(4).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec env count truncated",
+    ))?;
+    for _ in 0..env_count {
+        let key_len = read_u32_at(payload, offset).ok_or(ProtocolError::InvalidPayload(
+            "bounded_exec env key_len truncated",
+        ))? as usize;
+        offset += 4;
+        let key_end = offset
+            .checked_add(key_len)
+            .ok_or(ProtocolError::InvalidPayload(
+                "bounded_exec env key truncated",
+            ))?;
+        let key = std::str::from_utf8(payload.get(offset..key_end).ok_or(
+            ProtocolError::InvalidPayload("bounded_exec env key truncated"),
+        )?)
+        .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in env key"))?;
+        offset = key_end;
+
+        let val_len = read_u32_at(payload, offset).ok_or(ProtocolError::InvalidPayload(
+            "bounded_exec env val_len truncated",
+        ))? as usize;
+        offset += 4;
+        let val_end = offset
+            .checked_add(val_len)
+            .ok_or(ProtocolError::InvalidPayload(
+                "bounded_exec env value truncated",
+            ))?;
+        let val = std::str::from_utf8(payload.get(offset..val_end).ok_or(
+            ProtocolError::InvalidPayload("bounded_exec env value truncated"),
+        )?)
+        .map_err(|_| ProtocolError::InvalidPayload("invalid UTF-8 in env value"))?;
+        offset = val_end;
+
+        env.push((key, val));
+    }
+    if offset != payload.len() {
+        return Err(ProtocolError::InvalidPayload("bounded_exec trailing bytes"));
+    }
+
+    Ok(DecodedBoundedExec {
+        timeout_ms,
+        command,
+        env,
+        sudo: (flags & BOUNDED_EXEC_FLAG_SUDO) != 0,
+        stdin,
+        stdout_limit_bytes,
+        stderr_limit_bytes,
+        stream_output: (flags & BOUNDED_EXEC_FLAG_STREAM_OUTPUT) != 0,
+    })
+}
+
 /// Decode spawn_watch payload. Extends exec fields with streaming metadata.
 ///
 /// Wire format: `[exec fields...]([2B log_path_len][log_path])`.
@@ -486,10 +795,79 @@ pub fn decode_exec_result(payload: &[u8]) -> Result<(i32, &[u8], &[u8]), Protoco
     Ok((exit_code, stdout, stderr))
 }
 
+/// Decode bounded_exec_result payload.
+pub fn decode_bounded_exec_result(
+    payload: &[u8],
+) -> Result<DecodedBoundedExecResult<'_>, ProtocolError> {
+    let termination = BoundedExecTermination::from_tag(read_u8_at(payload, 0).ok_or(
+        ProtocolError::InvalidPayload("bounded_exec_result too short"),
+    )?)?;
+    let raw_exit_code = read_i32_at(payload, 1).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec_result too short",
+    ))?;
+    let duration_ms = read_u64_at(payload, 5).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec_result too short",
+    ))?;
+    let flags = read_u8_at(payload, 13).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec_result too short",
+    ))?;
+    let (stdout, stderr) =
+        decode_output_pair_at(payload, 14, OutputPairContext::BoundedExecResult)?;
+    Ok(DecodedBoundedExecResult {
+        termination,
+        exit_code: (termination == BoundedExecTermination::Exited).then_some(raw_exit_code),
+        duration_ms,
+        stdout,
+        stderr,
+        stdout_truncated: (flags & BOUNDED_EXEC_RESULT_FLAG_STDOUT_TRUNCATED) != 0,
+        stderr_truncated: (flags & BOUNDED_EXEC_RESULT_FLAG_STDERR_TRUNCATED) != 0,
+    })
+}
+
+/// Decode bounded_exec_output payload.
+pub fn decode_bounded_exec_output(
+    payload: &[u8],
+) -> Result<DecodedBoundedExecOutput<'_>, ProtocolError> {
+    let stream = BoundedExecStream::from_tag(read_u8_at(payload, 0).ok_or(
+        ProtocolError::InvalidPayload("bounded_exec_output too short"),
+    )?)?;
+    let sequence = read_u32_at(payload, 1).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec_output too short",
+    ))?;
+    let flags = read_u8_at(payload, 5).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec_output too short",
+    ))?;
+    let chunk_len = read_u32_at(payload, 6).ok_or(ProtocolError::InvalidPayload(
+        "bounded_exec_output too short",
+    ))? as usize;
+    let chunk_end = 10usize
+        .checked_add(chunk_len)
+        .ok_or(ProtocolError::InvalidPayload(
+            "bounded_exec_output chunk truncated",
+        ))?;
+    let chunk = payload
+        .get(10..chunk_end)
+        .ok_or(ProtocolError::InvalidPayload(
+            "bounded_exec_output chunk truncated",
+        ))?;
+    if chunk_end != payload.len() {
+        return Err(ProtocolError::InvalidPayload(
+            "bounded_exec_output trailing bytes",
+        ));
+    }
+    Ok(DecodedBoundedExecOutput {
+        stream,
+        sequence,
+        chunk,
+        truncated: (flags & BOUNDED_EXEC_OUTPUT_FLAG_TRUNCATED) != 0,
+    })
+}
+
 #[derive(Clone, Copy)]
 enum OutputPairContext {
     ExecResult,
     ProcessExit,
+    BoundedExecResult,
 }
 
 impl OutputPairContext {
@@ -497,6 +875,7 @@ impl OutputPairContext {
         match self {
             Self::ExecResult => "exec_result too short",
             Self::ProcessExit => "process_exit too short",
+            Self::BoundedExecResult => "bounded_exec_result too short",
         }
     }
 
@@ -504,6 +883,7 @@ impl OutputPairContext {
         match self {
             Self::ExecResult => "exec_result stdout truncated",
             Self::ProcessExit => "process_exit stdout truncated",
+            Self::BoundedExecResult => "bounded_exec_result stdout truncated",
         }
     }
 
@@ -511,6 +891,7 @@ impl OutputPairContext {
         match self {
             Self::ExecResult => "exec_result stderr truncated",
             Self::ProcessExit => "process_exit stderr truncated",
+            Self::BoundedExecResult => "bounded_exec_result stderr truncated",
         }
     }
 }
@@ -601,6 +982,37 @@ pub struct DecodedExec<'a> {
     pub command: &'a str,
     pub env: Vec<(&'a str, &'a str)>,
     pub sudo: bool,
+}
+
+/// Decoded bounded_exec fields.
+pub struct DecodedBoundedExec<'a> {
+    pub timeout_ms: u32,
+    pub command: &'a str,
+    pub env: Vec<(&'a str, &'a str)>,
+    pub sudo: bool,
+    pub stdin: &'a [u8],
+    pub stdout_limit_bytes: u32,
+    pub stderr_limit_bytes: u32,
+    pub stream_output: bool,
+}
+
+/// Decoded bounded_exec_result fields.
+pub struct DecodedBoundedExecResult<'a> {
+    pub termination: BoundedExecTermination,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u64,
+    pub stdout: &'a [u8],
+    pub stderr: &'a [u8],
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+}
+
+/// Decoded bounded_exec_output fields.
+pub struct DecodedBoundedExecOutput<'a> {
+    pub stream: BoundedExecStream,
+    pub sequence: u32,
+    pub chunk: &'a [u8],
+    pub truncated: bool,
 }
 
 /// Decoded spawn_watch fields: exec fields + stdout streaming options.
@@ -831,6 +1243,55 @@ mod tests {
     }
 
     #[test]
+    fn bounded_exec_payload_roundtrip() {
+        let env_vars = [("PATH", "/usr/bin"), ("HOME", "/home/user")];
+        let payload = encode_bounded_exec(BoundedExecPayload {
+            timeout_ms: 3000,
+            command: "cat",
+            env: &env_vars,
+            sudo: true,
+            stdin: b"stdin",
+            stdout_limit_bytes: 1024,
+            stderr_limit_bytes: 2048,
+            stream_output: true,
+        })
+        .unwrap();
+        let d = decode_bounded_exec(&payload).unwrap();
+        assert_eq!(d.timeout_ms, 3000);
+        assert_eq!(d.command, "cat");
+        assert_eq!(d.env, vec![("PATH", "/usr/bin"), ("HOME", "/home/user")]);
+        assert!(d.sudo);
+        assert_eq!(d.stdin, b"stdin");
+        assert_eq!(d.stdout_limit_bytes, 1024);
+        assert_eq!(d.stderr_limit_bytes, 2048);
+        assert!(d.stream_output);
+    }
+
+    #[test]
+    fn bounded_exec_payload_roundtrip_without_stream_or_stdin() {
+        let payload = encode_bounded_exec(BoundedExecPayload {
+            timeout_ms: 3000,
+            command: "true",
+            env: &[],
+            sudo: false,
+            stdin: &[],
+            stdout_limit_bytes: 0,
+            stderr_limit_bytes: 0,
+            stream_output: false,
+        })
+        .unwrap();
+        let d = decode_bounded_exec(&payload).unwrap();
+        assert_eq!(d.timeout_ms, 3000);
+        assert_eq!(d.command, "true");
+        assert!(d.env.is_empty());
+        assert!(!d.sudo);
+        assert!(d.stdin.is_empty());
+        assert_eq!(d.stdout_limit_bytes, 0);
+        assert_eq!(d.stderr_limit_bytes, 0);
+        assert!(!d.stream_output);
+    }
+
+    #[test]
     fn exec_result_payload_roundtrip() {
         let payload = encode_exec_result(0, b"out", b"err");
         let (code, stdout, stderr) = decode_exec_result(&payload).unwrap();
@@ -846,6 +1307,68 @@ mod tests {
         assert_eq!(code, 1);
         assert!(stdout.is_empty());
         assert!(stderr.is_empty());
+    }
+
+    #[test]
+    fn bounded_exec_result_roundtrip_exited() {
+        let payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited,
+            Some(7),
+            1234,
+            b"out",
+            b"err",
+            true,
+            false,
+        );
+        let d = decode_bounded_exec_result(&payload).unwrap();
+        assert_eq!(d.termination, BoundedExecTermination::Exited);
+        assert_eq!(d.exit_code, Some(7));
+        assert_eq!(d.duration_ms, 1234);
+        assert_eq!(d.stdout, b"out");
+        assert_eq!(d.stderr, b"err");
+        assert!(d.stdout_truncated);
+        assert!(!d.stderr_truncated);
+    }
+
+    #[test]
+    fn bounded_exec_result_roundtrip_timeout_without_exit_code() {
+        let payload = encode_bounded_exec_result(
+            BoundedExecTermination::TimedOut,
+            None,
+            5000,
+            b"partial",
+            b"",
+            false,
+            false,
+        );
+        let d = decode_bounded_exec_result(&payload).unwrap();
+        assert_eq!(d.termination, BoundedExecTermination::TimedOut);
+        assert_eq!(d.exit_code, None);
+        assert_eq!(d.duration_ms, 5000);
+        assert_eq!(d.stdout, b"partial");
+    }
+
+    #[test]
+    fn bounded_exec_output_roundtrip_stdout() {
+        let payload =
+            encode_bounded_exec_output(BoundedExecStream::Stdout, 12, b"https://example", true)
+                .unwrap();
+        let d = decode_bounded_exec_output(&payload).unwrap();
+        assert_eq!(d.stream, BoundedExecStream::Stdout);
+        assert_eq!(d.sequence, 12);
+        assert_eq!(d.chunk, b"https://example");
+        assert!(d.truncated);
+    }
+
+    #[test]
+    fn bounded_exec_output_roundtrip_stderr() {
+        let payload =
+            encode_bounded_exec_output(BoundedExecStream::Stderr, 1, b"warn", false).unwrap();
+        let d = decode_bounded_exec_output(&payload).unwrap();
+        assert_eq!(d.stream, BoundedExecStream::Stderr);
+        assert_eq!(d.sequence, 1);
+        assert_eq!(d.chunk, b"warn");
+        assert!(!d.truncated);
     }
 
     #[test]
@@ -1093,8 +1616,64 @@ mod tests {
     }
 
     #[test]
+    fn decode_bounded_exec_rejects_trailing_bytes() {
+        let mut payload = encode_bounded_exec(BoundedExecPayload {
+            timeout_ms: 1000,
+            command: "cmd",
+            env: &[],
+            sudo: false,
+            stdin: &[],
+            stdout_limit_bytes: 1,
+            stderr_limit_bytes: 1,
+            stream_output: false,
+        })
+        .unwrap();
+        payload.push(0xFF);
+
+        assert!(matches!(
+            decode_bounded_exec(&payload),
+            Err(ProtocolError::InvalidPayload("bounded_exec trailing bytes"))
+        ));
+    }
+
+    #[test]
     fn decode_exec_result_too_short() {
         assert!(decode_exec_result(&[0; 8]).is_err());
+    }
+
+    #[test]
+    fn decode_bounded_exec_result_rejects_invalid_termination() {
+        let mut payload = encode_bounded_exec_result(
+            BoundedExecTermination::Exited,
+            Some(0),
+            0,
+            &[],
+            &[],
+            false,
+            false,
+        );
+        payload[0] = 0xFF;
+
+        assert!(matches!(
+            decode_bounded_exec_result(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "bounded_exec_result invalid termination"
+            ))
+        ));
+    }
+
+    #[test]
+    fn decode_bounded_exec_output_rejects_invalid_stream() {
+        let mut payload =
+            encode_bounded_exec_output(BoundedExecStream::Stdout, 1, b"x", false).unwrap();
+        payload[0] = 0xFF;
+
+        assert!(matches!(
+            decode_bounded_exec_output(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "bounded_exec_output invalid stream"
+            ))
+        ));
     }
 
     #[test]

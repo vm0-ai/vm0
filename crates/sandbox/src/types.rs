@@ -20,6 +20,57 @@ pub struct ExecResult {
     pub stderr: Vec<u8>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoundedExecOutputStream {
+    Stdout,
+    Stderr,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BoundedExecOutputEvent {
+    pub stream: BoundedExecOutputStream,
+    pub sequence: u32,
+    pub chunk: Vec<u8>,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BoundedExecStatus {
+    Exited { exit_code: i32 },
+    TimedOut,
+    Cancelled,
+    StartFailed,
+    WaitFailed,
+}
+
+pub struct BoundedExecRequest<'a> {
+    pub cmd: &'a str,
+    pub timeout: Duration,
+    pub env: &'a [(&'a str, &'a str)],
+    pub sudo: bool,
+    pub stdin: &'a [u8],
+    pub stdout_limit_bytes: u32,
+    pub stderr_limit_bytes: u32,
+    pub output_tx: Option<tokio::sync::mpsc::Sender<BoundedExecOutputEvent>>,
+}
+
+impl BoundedExecRequest<'_> {
+    /// Return the timeout as whole milliseconds, saturating at `u32::MAX`.
+    pub fn timeout_ms(&self) -> u32 {
+        u32::try_from(self.timeout.as_millis()).unwrap_or(u32::MAX)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BoundedExecResult {
+    pub status: BoundedExecStatus,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+    pub stdout_truncated: bool,
+    pub stderr_truncated: bool,
+    pub duration_ms: u64,
+}
+
 pub struct SpawnHandle {
     pub pid: u32,
     /// Receives stdout chunks in real-time when the guest streams them.
@@ -97,6 +148,21 @@ mod tests {
             timeout: Duration::from_millis(u32::MAX as u64),
             env: &[],
             sudo: false,
+        };
+        assert_eq!(req.timeout_ms(), u32::MAX);
+    }
+
+    #[test]
+    fn bounded_exec_timeout_ms_saturates_at_u32_max() {
+        let req = BoundedExecRequest {
+            cmd: "cmd",
+            timeout: Duration::from_secs(u64::MAX / 1000),
+            env: &[],
+            sudo: false,
+            stdin: &[],
+            stdout_limit_bytes: 1024,
+            stderr_limit_bytes: 1024,
+            output_tx: None,
         };
         assert_eq!(req.timeout_ms(), u32::MAX);
     }

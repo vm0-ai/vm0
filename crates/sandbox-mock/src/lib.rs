@@ -56,6 +56,23 @@ pub struct SpawnWatchCall {
     pub guest_log_path: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BoundedExecCall {
+    pub cmd: String,
+    pub stdin: Vec<u8>,
+    pub env: Vec<(String, String)>,
+    pub sudo: bool,
+    pub stdout_limit_bytes: u32,
+    pub stderr_limit_bytes: u32,
+    pub streams_output: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WriteFileCall {
+    pub path: String,
+    pub content: Vec<u8>,
+}
+
 enum LifecycleBehavior {
     Result(Result<()>),
     Panic(String),
@@ -282,14 +299,19 @@ impl Default for MockSandboxOverrides {
 
 /// A mock [`Sandbox`] that succeeds on all operations by default.
 ///
-/// Queue custom results with [`push_exec_result`](Self::push_exec_result)
-/// and [`push_write_file_result`](Self::push_write_file_result).
+/// Queue custom results with [`push_exec_result`](Self::push_exec_result),
+/// [`push_bounded_exec_result`](Self::push_bounded_exec_result), and
+/// [`push_write_file_result`](Self::push_write_file_result).
 /// When a queue is empty, the operation returns its default success value.
 pub struct MockSandbox {
     id: String,
     source_ip: String,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
+    bounded_exec_results: Mutex<VecDeque<Result<BoundedExecResult>>>,
+    bounded_exec_events: Mutex<VecDeque<Vec<BoundedExecOutputEvent>>>,
+    bounded_exec_calls: Mutex<Vec<BoundedExecCall>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
+    write_file_calls: Mutex<Vec<WriteFileCall>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
     /// Holds the stdout channel sender alive when simulating a non-closing
     /// channel (e.g. wait_exit_error override). Without this, the sender is
@@ -303,7 +325,11 @@ impl MockSandbox {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
+            bounded_exec_results: Mutex::new(VecDeque::new()),
+            bounded_exec_events: Mutex::new(VecDeque::new()),
+            bounded_exec_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
+            write_file_calls: Mutex::new(Vec::new()),
             overrides: None,
             stdout_tx: Mutex::new(None),
         }
@@ -314,7 +340,11 @@ impl MockSandbox {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
+            bounded_exec_results: Mutex::new(VecDeque::new()),
+            bounded_exec_events: Mutex::new(VecDeque::new()),
+            bounded_exec_calls: Mutex::new(Vec::new()),
             write_file_results: Mutex::new(VecDeque::new()),
+            write_file_calls: Mutex::new(Vec::new()),
             overrides: Some(overrides),
             stdout_tx: Mutex::new(None),
         }
@@ -328,6 +358,28 @@ impl MockSandbox {
     /// Queue an exec result. Results are consumed in FIFO order.
     pub fn push_exec_result(&self, result: Result<ExecResult>) {
         self.exec_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Queue a bounded_exec result. Results are consumed in FIFO order.
+    pub fn push_bounded_exec_result(&self, result: Result<BoundedExecResult>) {
+        self.bounded_exec_results
+            .lock_ignoring_poison()
+            .push_back(result);
+    }
+
+    /// Queue bounded_exec output events emitted before the next result.
+    pub fn push_bounded_exec_output_events(&self, events: Vec<BoundedExecOutputEvent>) {
+        self.bounded_exec_events
+            .lock_ignoring_poison()
+            .push_back(events);
+    }
+
+    pub fn bounded_exec_calls(&self) -> Vec<BoundedExecCall> {
+        self.bounded_exec_calls.lock_ignoring_poison().clone()
+    }
+
+    pub fn write_file_calls(&self) -> Vec<WriteFileCall> {
+        self.write_file_calls.lock_ignoring_poison().clone()
     }
 
     /// Queue a write_file result. Results are consumed in FIFO order.
@@ -344,6 +396,17 @@ fn default_exec_result() -> ExecResult {
         exit_code: 0,
         stdout: Vec::new(),
         stderr: Vec::new(),
+    }
+}
+
+fn default_bounded_exec_result() -> BoundedExecResult {
+    BoundedExecResult {
+        status: BoundedExecStatus::Exited { exit_code: 0 },
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+        duration_ms: 0,
     }
 }
 
@@ -442,7 +505,47 @@ impl Sandbox for MockSandbox {
             .unwrap_or_else(|| Ok(default_exec_result()))
     }
 
-    async fn write_file(&self, _path: &str, _content: &[u8]) -> Result<()> {
+    async fn bounded_exec(&self, request: &BoundedExecRequest<'_>) -> Result<BoundedExecResult> {
+        self.bounded_exec_calls
+            .lock_ignoring_poison()
+            .push(BoundedExecCall {
+                cmd: request.cmd.to_string(),
+                stdin: request.stdin.to_vec(),
+                env: request
+                    .env
+                    .iter()
+                    .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                    .collect(),
+                sudo: request.sudo,
+                stdout_limit_bytes: request.stdout_limit_bytes,
+                stderr_limit_bytes: request.stderr_limit_bytes,
+                streams_output: request.output_tx.is_some(),
+            });
+        let events = self
+            .bounded_exec_events
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or_default();
+        if let Some(tx) = &request.output_tx {
+            for event in events {
+                if tx.send(event).await.is_err() {
+                    break;
+                }
+            }
+        }
+        self.bounded_exec_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or_else(|| Ok(default_bounded_exec_result()))
+    }
+
+    async fn write_file(&self, path: &str, content: &[u8]) -> Result<()> {
+        self.write_file_calls
+            .lock_ignoring_poison()
+            .push(WriteFileCall {
+                path: path.to_string(),
+                content: content.to_vec(),
+            });
         self.write_file_results
             .lock_ignoring_poison()
             .pop_front()

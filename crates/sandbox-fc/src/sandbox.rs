@@ -8,7 +8,8 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::{
-    ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError,
+    BoundedExecOutputEvent, BoundedExecOutputStream, BoundedExecRequest, BoundedExecResult,
+    BoundedExecStatus, ExecRequest, ExecResult, ProcessExit, Sandbox, SandboxConfig, SandboxError,
     SandboxIdleTransition, SandboxInvalidStateContext, SandboxOperation, SandboxOperationReason,
     SpawnHandle,
 };
@@ -1357,6 +1358,55 @@ impl Sandbox for FirecrackerSandbox {
         }
     }
 
+    async fn bounded_exec(
+        &self,
+        request: &BoundedExecRequest<'_>,
+    ) -> sandbox::Result<BoundedExecResult> {
+        let operation = SandboxOperation::Exec;
+        let guest = self.operation_guest(operation).await?;
+        let (host_output_tx, bridge) = bridge_bounded_exec_output(request.output_tx.clone());
+
+        let result = tokio::select! {
+            result = guest.bounded_exec(vsock_host::BoundedExecRequest {
+                command: request.cmd,
+                timeout_ms: request.timeout_ms(),
+                env: request.env,
+                sudo: request.sudo,
+                stdin: request.stdin,
+                stdout_limit_bytes: request.stdout_limit_bytes,
+                stderr_limit_bytes: request.stderr_limit_bytes,
+                output_tx: host_output_tx,
+            }) => {
+                result.map_err(|e| Self::operation_error(operation, e, self.has_backend_crashed()))
+            }
+            () = wait_for_backend_crash(self.state_tx.subscribe()) => {
+                Err(Self::backend_crashed_error(operation))
+            }
+        };
+
+        if let Some(bridge) = bridge {
+            finish_bounded_exec_output_bridge(bridge).await;
+        }
+
+        let result = result?;
+        Ok(BoundedExecResult {
+            status: match result.status {
+                vsock_host::BoundedExecStatus::Exited { exit_code } => {
+                    BoundedExecStatus::Exited { exit_code }
+                }
+                vsock_host::BoundedExecStatus::TimedOut => BoundedExecStatus::TimedOut,
+                vsock_host::BoundedExecStatus::Cancelled => BoundedExecStatus::Cancelled,
+                vsock_host::BoundedExecStatus::StartFailed => BoundedExecStatus::StartFailed,
+                vsock_host::BoundedExecStatus::WaitFailed => BoundedExecStatus::WaitFailed,
+            },
+            stdout: result.stdout,
+            stderr: result.stderr,
+            stdout_truncated: result.stdout_truncated,
+            stderr_truncated: result.stderr_truncated,
+            duration_ms: result.duration_ms,
+        })
+    }
+
     async fn write_file(&self, path: &str, content: &[u8]) -> sandbox::Result<()> {
         let operation = SandboxOperation::WriteFile;
         let guest = self.operation_guest(operation).await?;
@@ -1421,6 +1471,50 @@ impl Sandbox for FirecrackerSandbox {
             () = wait_for_backend_crash(self.state_tx.subscribe()) => {
                 Err(Self::backend_crashed_error(operation))
             }
+        }
+    }
+}
+
+fn bridge_bounded_exec_output(
+    caller_tx: Option<mpsc::Sender<BoundedExecOutputEvent>>,
+) -> (
+    Option<mpsc::Sender<vsock_host::BoundedExecOutputEvent>>,
+    Option<tokio::task::JoinHandle<()>>,
+) {
+    let Some(caller_tx) = caller_tx else {
+        return (None, None);
+    };
+
+    let (host_tx, mut host_rx) = mpsc::channel::<vsock_host::BoundedExecOutputEvent>(32);
+    let bridge = tokio::spawn(async move {
+        while let Some(event) = host_rx.recv().await {
+            let stream = match event.stream {
+                vsock_host::BoundedExecOutputStream::Stdout => BoundedExecOutputStream::Stdout,
+                vsock_host::BoundedExecOutputStream::Stderr => BoundedExecOutputStream::Stderr,
+            };
+            if caller_tx
+                .send(BoundedExecOutputEvent {
+                    stream,
+                    sequence: event.sequence,
+                    chunk: event.chunk,
+                    truncated: event.truncated,
+                })
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+
+    (Some(host_tx), Some(bridge))
+}
+
+async fn finish_bounded_exec_output_bridge(mut bridge: tokio::task::JoinHandle<()>) {
+    tokio::select! {
+        _ = &mut bridge => {}
+        _ = tokio::time::sleep(Duration::from_millis(100)) => {
+            bridge.abort();
         }
     }
 }
