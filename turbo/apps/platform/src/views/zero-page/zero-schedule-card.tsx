@@ -503,37 +503,41 @@ export function ZeroScheduleCard({
       }
     >
       <CardContent className="p-0 flex flex-col flex-1 min-h-0">
-        <header
-          className={
-            mobileRedesign
-              ? "flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4"
-              : "flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50"
-          }
-        >
-          <div className="min-w-0">
-            <h2 className="text-lg max-md:text-xl font-semibold tracking-tight text-foreground">
-              {title}
-            </h2>
-            {!mobileRedesign && (
-              <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
+        {mobileRedesign ? (
+          // Mobile (Option A): drop the redundant "<agent>'s scheduled tasks"
+          // title and let a single full-width "Add schedule" button own the
+          // header. The screen's top bar already names the section.
+          <header className="px-5 pt-3 pb-3">
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className={
-                mobileRedesign
-                  ? "zero-btn-morandi h-11 gap-2 shrink-0 rounded-lg border text-[17px]"
-                  : "zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-              }
+              className="zero-btn-morandi h-11 w-full gap-2 rounded-lg border text-[17px]"
               onClick={openAddSchedule}
             >
-              <IconPlus size={mobileRedesign ? 16 : 14} stroke={2} />
+              <IconPlus size={16} stroke={2} />
               Add schedule
             </Button>
-            {!mobileRedesign && (
+          </header>
+        ) : (
+          <header className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                {title}
+              </h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                onClick={openAddSchedule}
+              >
+                <IconPlus size={14} stroke={2} />
+                Add schedule
+              </Button>
               <Tabs
                 value={scheduleViewMode}
                 onValueChange={(v) => {
@@ -558,9 +562,9 @@ export function ZeroScheduleCard({
                   </TabsTrigger>
                 </TabsList>
               </Tabs>
-            )}
-          </div>
-        </header>
+            </div>
+          </header>
+        )}
         {effectiveViewMode === "list" && (
           <ScheduleListView
             entries={scheduleList}
