@@ -604,21 +604,19 @@ impl SnapshotPublishAttempt {
     }
 
     async fn cleanup_resolved_kept_cow(&mut self) -> bool {
-        let state = std::mem::replace(&mut self.state, SnapshotPublishState::Empty);
-        match state {
-            SnapshotPublishState::KeptCow(kept_cow) => {
-                let cleaned = cleanup_kept_cow_after_publish_cancellation(&kept_cow).await;
-                if !cleaned {
-                    self.state = SnapshotPublishState::KeptCow(kept_cow);
-                }
-                cleaned
+        let cleanup_paths = match &self.state {
+            SnapshotPublishState::KeptCow(kept_cow) => KeptCowCleanupPaths::from_kept_cow(kept_cow),
+            SnapshotPublishState::Empty => return true,
+            SnapshotPublishState::HoldingDevice(_) | SnapshotPublishState::KeepingCow(_) => {
+                return false;
             }
-            SnapshotPublishState::Empty => true,
-            other => {
-                self.state = other;
-                false
-            }
+        };
+
+        let cleaned = cleanup_kept_cow_paths_after_publish_cancellation(&cleanup_paths).await;
+        if cleaned {
+            self.state = SnapshotPublishState::Empty;
         }
+        cleaned
     }
 }
 
@@ -626,6 +624,20 @@ enum FirecrackerPendingSnapshotPublishState {
     Pending(KeptCow),
     Committed,
     Discarded,
+}
+
+struct KeptCowCleanupPaths {
+    cow_file: PathBuf,
+    bitmap_file: PathBuf,
+}
+
+impl KeptCowCleanupPaths {
+    fn from_kept_cow(kept_cow: &KeptCow) -> Self {
+        Self {
+            cow_file: kept_cow.cow_file.clone(),
+            bitmap_file: kept_cow.bitmap_file.clone(),
+        }
+    }
 }
 
 struct FirecrackerPendingSnapshotPublish {
@@ -679,26 +691,21 @@ impl FirecrackerPendingSnapshotPublish {
     }
 
     async fn discard_inner(&mut self) -> Result<(), SnapshotError> {
-        let state = std::mem::replace(
-            &mut self.state,
-            FirecrackerPendingSnapshotPublishState::Discarded,
-        );
-        match state {
+        let cleanup_paths = match &self.state {
             FirecrackerPendingSnapshotPublishState::Pending(kept_cow) => {
-                if cleanup_kept_cow_after_publish_cancellation(&kept_cow).await {
-                    Ok(())
-                } else {
-                    self.state = FirecrackerPendingSnapshotPublishState::Pending(kept_cow);
-                    Err(SnapshotError::Teardown(
-                        "failed to discard uncommitted snapshot artifacts".into(),
-                    ))
-                }
+                KeptCowCleanupPaths::from_kept_cow(kept_cow)
             }
             FirecrackerPendingSnapshotPublishState::Committed
-            | FirecrackerPendingSnapshotPublishState::Discarded => {
-                self.state = state;
-                Ok(())
-            }
+            | FirecrackerPendingSnapshotPublishState::Discarded => return Ok(()),
+        };
+
+        if cleanup_kept_cow_paths_after_publish_cancellation(&cleanup_paths).await {
+            self.state = FirecrackerPendingSnapshotPublishState::Discarded;
+            Ok(())
+        } else {
+            Err(SnapshotError::Teardown(
+                "failed to discard uncommitted snapshot artifacts".into(),
+            ))
         }
     }
 }
@@ -750,9 +757,9 @@ fn snapshot_output_from_config(config: SnapshotConfig) -> SnapshotOutput {
     }
 }
 
-async fn cleanup_kept_cow_after_publish_cancellation(kept_cow: &KeptCow) -> bool {
+async fn cleanup_kept_cow_paths_after_publish_cancellation(paths: &KeptCowCleanupPaths) -> bool {
     let mut cleaned = true;
-    for path in [&kept_cow.bitmap_file, &kept_cow.cow_file] {
+    for path in [&paths.bitmap_file, &paths.cow_file] {
         match tokio::fs::remove_file(path).await {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -766,12 +773,16 @@ async fn cleanup_kept_cow_after_publish_cancellation(kept_cow: &KeptCow) -> bool
             }
         }
     }
-    cleanup_snapshot_attempt_dir_for_cow(&kept_cow.cow_file).await && cleaned
+    cleanup_snapshot_attempt_dir_for_cow(&paths.cow_file).await && cleaned
 }
 
 fn cleanup_kept_cow_after_publish_drop(kept_cow: &KeptCow) -> bool {
+    cleanup_kept_cow_paths_after_publish_drop(&KeptCowCleanupPaths::from_kept_cow(kept_cow))
+}
+
+fn cleanup_kept_cow_paths_after_publish_drop(paths: &KeptCowCleanupPaths) -> bool {
     let mut cleaned = true;
-    for path in [&kept_cow.bitmap_file, &kept_cow.cow_file] {
+    for path in [&paths.bitmap_file, &paths.cow_file] {
         match std::fs::remove_file(path) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -785,7 +796,7 @@ fn cleanup_kept_cow_after_publish_drop(kept_cow: &KeptCow) -> bool {
             }
         }
     }
-    cleanup_snapshot_attempt_dir_for_cow_sync(&kept_cow.cow_file) && cleaned
+    cleanup_snapshot_attempt_dir_for_cow_sync(&paths.cow_file) && cleaned
 }
 
 fn commit_snapshot_cow_output(
@@ -2257,6 +2268,75 @@ mod tests {
 
         let provider = FirecrackerSnapshotProvider;
         assert!(!provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn pending_snapshot_publish_discard_failure_keeps_cleanup_state_for_retry() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let cow_file = snapshot_attempt_cow_file(&output.work_dir(), "pending-discard-retry");
+        let attempt_dir = cow_file.parent().expect("attempt dir").to_path_buf();
+        tokio::fs::create_dir_all(&cow_file)
+            .await
+            .expect("create cow path as directory");
+        let bitmap_file = attempt_dir.join("cow.img.bitmap");
+        tokio::fs::write(&bitmap_file, b"bitmap")
+            .await
+            .expect("write bitmap");
+        let mut pending = FirecrackerPendingSnapshotPublish::new(
+            output.snapshot_config("pending-discard-retry"),
+            SnapshotOutputPaths::new(output.dir().to_path_buf()),
+            KeptCow {
+                cow_file: cow_file.clone(),
+                bitmap_file: bitmap_file.clone(),
+            },
+        );
+
+        pending
+            .discard_inner()
+            .await
+            .expect_err("discard should fail when a temp artifact cannot be removed");
+
+        assert!(
+            !tokio::fs::try_exists(&bitmap_file).await.unwrap(),
+            "failed discard should still remove cleanup work that succeeded"
+        );
+        assert!(
+            tokio::fs::try_exists(&cow_file).await.unwrap(),
+            "failed discard should leave the failed temp artifact for retry"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "failed discard must not publish marker"
+        );
+
+        tokio::fs::remove_dir(&cow_file)
+            .await
+            .expect("remove blocking cow directory");
+        tokio::fs::write(&cow_file, b"cow")
+            .await
+            .expect("write retryable cow file");
+
+        pending
+            .discard_inner()
+            .await
+            .expect("retry should clean retained pending publish state");
+
+        assert!(
+            !tokio::fs::try_exists(attempt_dir).await.unwrap(),
+            "retry should remove temporary attempt dir"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "discard retry must not publish stable cow"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "discard retry must not publish stable cow bitmap"
+        );
     }
 
     #[tokio::test]
