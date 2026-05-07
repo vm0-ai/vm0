@@ -782,10 +782,12 @@
 
 /* Images in content */
 .blog-post-content img {
-  max-width: 100%;
+  display: block;
+  width: 100%;
+  max-width: 400px;
   height: auto;
   border-radius: 8px;
-  margin: 32px 0;
+  margin: 32px auto;
 }
 
 /* Task lists (GFM support) */
