@@ -78,7 +78,7 @@ async function probeApi(
   const response = await fetch(target.toString(), {
     method: "GET",
     headers,
-    signal: AbortSignal.timeout(2000),
+    signal: AbortSignal.timeout(10000),
   }).catch((err: unknown) => {
     return err instanceof Error ? err : new Error(String(err));
   });
