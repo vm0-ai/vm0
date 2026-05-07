@@ -122,7 +122,7 @@ export function ZeroChatListPage() {
       <div
         className={cn(
           "shrink-0 px-4",
-          mobileRedesign ? "pt-1 pb-0" : "pt-4 pb-2",
+          mobileRedesign ? "pt-2 pb-0" : "pt-4 pb-2",
         )}
       >
         <MobileChatAgentSwitcher />
@@ -184,7 +184,7 @@ export function ZeroChatListPage() {
       <div
         className={cn(
           "flex-1 overflow-auto px-4",
-          mobileRedesign ? "pt-1 pb-24" : "pb-4",
+          mobileRedesign ? "pt-2 pb-24" : "pb-4",
         )}
       >
         <ChatList
