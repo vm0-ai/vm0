@@ -28,6 +28,7 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
   return stubConnectorsWithConfiguredTypes(connectors, [
     "fal",
     "luma",
+    "luma-ai",
     "openai",
     "replicate",
     "runway",
@@ -139,7 +140,7 @@ describe("zero doctor generate command", () => {
       `[Authorize Replicate](http://localhost:3000/connectors/replicate/authorize?agentId=${AGENT_ID})`,
     );
     expect(text).toContain(
-      `[Connect and authorize Luma AI](http://localhost:3000/connectors/luma/authorize?agentId=${AGENT_ID})`,
+      `[Connect and authorize Luma AI](http://localhost:3000/connectors/luma-ai/authorize?agentId=${AGENT_ID})`,
     );
     expect(text).toContain(
       "[Reconnect OpenAI](http://localhost:3000/connectors)",

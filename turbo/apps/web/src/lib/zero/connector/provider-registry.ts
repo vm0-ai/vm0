@@ -97,6 +97,7 @@ import { lineHandler } from "./providers/line-handler";
 import { linearHandler } from "./providers/linear-handler";
 import { loopsHandler } from "./providers/loops-handler";
 import { lumaHandler } from "./providers/luma-handler";
+import { lumaAiHandler } from "./providers/luma-ai-handler";
 import { mailsacHandler } from "./providers/mailsac-handler";
 import { makeHandler } from "./providers/make-handler";
 import { manusHandler } from "./providers/manus-handler";
@@ -275,6 +276,7 @@ export const PROVIDER_HANDLERS: Record<
   linear: linearHandler,
   loops: loopsHandler,
   luma: lumaHandler,
+  "luma-ai": lumaAiHandler,
   mailsac: mailsacHandler,
   make: makeHandler,
   manus: manusHandler,

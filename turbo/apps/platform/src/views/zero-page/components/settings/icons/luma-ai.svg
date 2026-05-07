@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Luma AI isometric "L" mark — reproduced from lumalabs.ai brand -->
+  <!-- Left face (darkest) -->
+  <polygon points="6,8 13,12 13,26 6,22" fill="#1a1a1a"/>
+  <!-- Right top face (medium) -->
+  <polygon points="13,12 26,6 26,13 13,19" fill="#6b6b6b"/>
+  <!-- Bottom face (lightest) -->
+  <polygon points="13,19 26,13 26,20 20,23 20,26 13,26" fill="#3d3d3d"/>
+</svg>

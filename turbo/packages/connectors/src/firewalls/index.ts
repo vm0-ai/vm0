@@ -122,6 +122,7 @@ import { lineFirewall } from "./line.generated";
 import { linearFirewall } from "./linear.generated";
 import { loopsFirewall } from "./loops.generated";
 import { lumaFirewall } from "./luma.generated";
+import { lumaAiFirewall } from "./luma-ai.generated";
 import { mailchimpFirewall } from "./mailchimp.generated";
 import { makeFirewall } from "./make.generated";
 import { mailsacFirewall } from "./mailsac.generated";
@@ -312,6 +313,7 @@ const CONNECTOR_FIREWALLS = {
   linear: linearFirewall,
   loops: loopsFirewall,
   luma: lumaFirewall,
+  "luma-ai": lumaAiFirewall,
   mailchimp: mailchimpFirewall,
   make: makeFirewall,
   mailsac: mailsacFirewall,

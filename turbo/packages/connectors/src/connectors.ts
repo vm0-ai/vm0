@@ -146,6 +146,7 @@ import { prismaPostgres } from "./connectors/prisma-postgres";
 import { discord } from "./connectors/discord";
 import { lark } from "./connectors/lark";
 import { luma } from "./connectors/luma";
+import { lumaAi } from "./connectors/luma-ai";
 import { langsmith } from "./connectors/langsmith";
 import { mailsac } from "./connectors/mailsac";
 import { manus } from "./connectors/manus";
@@ -524,6 +525,7 @@ const CONNECTOR_TYPES_DEF = {
   ...discord,
   ...lark,
   ...luma,
+  ...lumaAi,
   ...langsmith,
   ...mailsac,
   ...manus,

@@ -2,21 +2,18 @@ import type { ConnectorConfig } from "../connectors";
 
 export const luma = {
   luma: {
-    label: "Luma AI",
-    category: "ai-image-video",
-    generation: ["image", "video"],
-    environmentMapping: {
-      LUMA_TOKEN: "$secrets.LUMA_TOKEN",
-    },
+    label: "Luma",
+    category: "meetings-scheduling",
     helpText:
-      "Connect your Luma AI account to generate videos and images using the Dream Machine API",
+      "Connect your Luma account to manage events, guests, tickets, and calendar data via the Luma API",
+    tags: ["events", "calendar", "tickets", "guests", "rsvp"],
     authMethods: {
       "api-token": {
         label: "API Key",
         helpText:
-          "1. Sign up at [lumalabs.ai](https://lumalabs.ai)\n2. Go to [lumalabs.ai/dream-machine/api](https://lumalabs.ai/dream-machine/api) or account settings → API Keys\n3. Create a new API key and copy it\n4. Paste the key here",
+          "1. Log in at [lu.ma](https://lu.ma)\n2. Go to Calendars Home → select your calendar → Settings → Developer\n3. Generate or copy your API key\n4. Paste the key here",
         secrets: {
-          LUMA_TOKEN: {
+          LUMA_API_KEY: {
             label: "API Key",
             required: true,
             placeholder: "your-luma-api-key",
@@ -25,5 +22,8 @@ export const luma = {
       },
     },
     defaultAuthMethod: "api-token",
+    environmentMapping: {
+      LUMA_API_KEY: "$secrets.LUMA_API_KEY",
+    },
   },
 } as const satisfies Record<string, ConnectorConfig>;
