@@ -2847,7 +2847,7 @@ function QueuedUserMessage({
             <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
             Queued
           </div>
-          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm max-md:text-[16px] leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
             {bodyBlocks.length > 0 && (
               <div className="px-4 py-3">
                 <BodyContentBlocks

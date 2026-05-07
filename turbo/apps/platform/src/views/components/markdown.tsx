@@ -383,10 +383,9 @@ export function Markdown({
   };
   return (
     <MarkdownPreview
-      className={`!bg-transparent !text-foreground text-sm ${className ?? ""}`}
+      className={`!bg-transparent !text-foreground text-sm max-md:text-[16px] ${className ?? ""}`}
       style={{
         backgroundColor: "transparent",
-        fontSize: "0.875rem",
         lineHeight: "1.5",
         fontFamily: "var(--font-family-sans)",
         ...style,
