@@ -48,7 +48,7 @@ export function MobileChatAgentSwitcher() {
             aria-pressed={active}
             aria-label={`Switch to ${label}`}
             data-testid={`mobile-chat-agent-${agent.id}`}
-            className="flex flex-col items-center gap-1 shrink-0 snap-start text-[13px] font-medium"
+            className="flex flex-col items-center gap-1 shrink-0 snap-start text-[14px] font-medium"
           >
             <span
               className={cn(
@@ -82,7 +82,7 @@ export function MobileChatAgentSwitcher() {
         }}
         aria-label="Start a new chat with another agent"
         data-testid="mobile-new-session-chip"
-        className="flex flex-col items-center gap-1 shrink-0 snap-start text-[13px] font-medium"
+        className="flex flex-col items-center gap-1 shrink-0 snap-start text-[14px] font-medium"
       >
         <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-muted/60 text-muted-foreground">
           <IconPlus size={22} stroke={1.8} />

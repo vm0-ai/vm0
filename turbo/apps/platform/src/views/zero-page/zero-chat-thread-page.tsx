@@ -321,7 +321,7 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
             <Skeleton className="h-5 w-32 shrink-0 rounded" />
           )}
           {showThreadTitle && (
-            <span className="min-w-0 truncate text-sm max-md:text-[15px] font-medium text-muted-foreground">
+            <span className="min-w-0 truncate text-sm max-md:text-[16px] font-medium text-muted-foreground">
               {threadTitle}
             </span>
           )}
@@ -1244,7 +1244,7 @@ function ArtifactPreviewFrame({ file }: { file: ChatThreadArtifactFile }) {
         <ArtifactFileIcon file={file} size="md" />
       </span>
       <div className="min-w-0">
-        <p className="max-w-[260px] truncate text-sm max-md:text-[15px] text-foreground">
+        <p className="max-w-[260px] truncate text-sm max-md:text-[16px] text-foreground">
           {file.filename}
         </p>
       </div>
@@ -1277,10 +1277,10 @@ function ArtifactPreviewPanel({
           <ArtifactPreviewBadge file={file} />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm max-md:text-[15px] font-medium text-foreground">
+          <p className="truncate text-sm max-md:text-[16px] font-medium text-foreground">
             {file.filename}
           </p>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs max-md:text-[13px] text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs max-md:text-[14px] text-muted-foreground">
             <span>{formatBytes(file.size)}</span>
           </div>
         </div>
@@ -1398,12 +1398,12 @@ function ArtifactFileRow({
         <ArtifactThumbnail file={file} selected={selected} />
         <div className="min-w-0 flex-1">
           <span
-            className="block max-w-full truncate text-sm max-md:text-[15px] font-medium text-foreground"
+            className="block max-w-full truncate text-sm max-md:text-[16px] font-medium text-foreground"
             title={file.filename}
           >
             {file.filename}
           </span>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs max-md:text-[13px] text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs max-md:text-[14px] text-muted-foreground">
             <span>{formatBytes(file.size)}</span>
             <span aria-hidden>·</span>
             <span>{formatArtifactTime(file.createdAt)}</span>
@@ -1434,7 +1434,7 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
 
   if (loadable.state === "hasError") {
     return (
-      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm max-md:text-[15px] text-destructive">
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm max-md:text-[16px] text-destructive">
         Failed to load artifacts
       </div>
     );
@@ -1464,7 +1464,7 @@ function ChatArtifactsDrawerContent({ thread }: { thread: ChatThreadSignals }) {
           loading="lazy"
           className="h-24 w-24 object-contain opacity-80"
         />
-        <p className="text-sm max-md:text-[15px] text-muted-foreground">
+        <p className="text-sm max-md:text-[16px] text-muted-foreground">
           No uploaded files in this chat yet.
         </p>
       </div>
@@ -1771,7 +1771,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                 <div className="flex-1 flex items-center justify-center py-16">
                   <div className="flex items-center gap-2 text-destructive">
                     <IconAlertCircle size={16} />
-                    <p className="text-sm max-md:text-[15px]">{sessionError}</p>
+                    <p className="text-sm max-md:text-[16px]">{sessionError}</p>
                   </div>
                 </div>
               )}
@@ -1787,7 +1787,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                       loading="lazy"
                       className="h-24 w-24 object-contain opacity-80"
                     />
-                    <p className="text-sm max-md:text-[15px] text-muted-foreground">
+                    <p className="text-sm max-md:text-[16px] text-muted-foreground">
                       Send a message to start the conversation
                     </p>
                   </div>
@@ -2060,7 +2060,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const pageSignal = useGet(pageSignal$);
 
   const thinkingLabel = isQueued ? (
-    <p className="zero-shimmer-text text-xs max-md:text-[15px] truncate">
+    <p className="zero-shimmer-text text-xs max-md:text-[16px] truncate">
       Waiting in{" "}
       <button
         type="button"
@@ -2073,7 +2073,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
       </button>
     </p>
   ) : (
-    <p className="zero-shimmer-text text-xs max-md:text-[15px] truncate">{rotatingLabel}</p>
+    <p className="zero-shimmer-text text-xs max-md:text-[16px] truncate">{rotatingLabel}</p>
   );
 
   if (!lastGroup) {
@@ -2102,7 +2102,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
             <div className="flex flex-col gap-1.5 h-5 justify-center">
               <div className="h-px w-full bg-border/40" />
               <div className="flex items-center gap-2">
-                <p className="text-[11px] max-md:text-[13px] italic text-muted-foreground/40 font-serif shrink-0">
+                <p className="text-[11px] max-md:text-[14px] italic text-muted-foreground/40 font-serif shrink-0">
                   {donePhrase}
                 </p>
                 <div className="h-px flex-1 bg-border/40" />
@@ -2257,7 +2257,7 @@ function AssistantErrorContent({ error }: { error: string }) {
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
       <div
-        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[13px] max-md:text-[15px] text-muted-foreground"
+        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[14px] max-md:text-[16px] text-muted-foreground"
         style={{
           border: "0.7px solid hsl(var(--border))",
           borderRadius: "12px",

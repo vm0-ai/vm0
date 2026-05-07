@@ -221,7 +221,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
               return (
                 <div key={group.label} className="shrink-0">
                   <div className="h-7 flex items-center pl-2">
-                    <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
+                    <span className="text-[14px] leading-4 text-sidebar-foreground/50 font-medium">
                       {group.label}
                     </span>
                   </div>

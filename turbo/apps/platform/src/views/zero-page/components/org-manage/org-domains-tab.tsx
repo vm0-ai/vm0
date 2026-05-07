@@ -101,7 +101,7 @@ export function OrgDomainsTab() {
         <div
           className={cn(
             ROW_GRID,
-            "sticky top-0 z-10 px-5 py-2.5 text-[13px] font-medium text-foreground bg-card",
+            "sticky top-0 z-10 px-5 py-2.5 text-[14px] font-medium text-foreground bg-card",
           )}
         >
           <div>Domain</div>
@@ -284,11 +284,11 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
           {domain.name}
         </p>
       </div>
-      <div className="text-[13px] text-muted-foreground">
+      <div className="text-[14px] text-muted-foreground">
         {ENROLLMENT_MODE_LABELS[domain.enrollmentMode as OrgEnrollmentMode] ??
           domain.enrollmentMode.replace(/_/g, " ")}
       </div>
-      <div className="text-[13px] text-muted-foreground tabular-nums">
+      <div className="text-[14px] text-muted-foreground tabular-nums">
         {formatDate(domain.createdAt)}
       </div>
       <div>

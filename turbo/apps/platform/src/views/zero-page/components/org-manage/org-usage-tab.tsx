@@ -127,7 +127,7 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
           className="flex min-w-0 cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring"
         >
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-medium text-foreground">
+            <div className="truncate text-[14px] font-medium text-foreground">
               {grant.label}
             </div>
             <div className="text-xs text-muted-foreground">
@@ -135,7 +135,7 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <div className="text-[13px] font-medium tabular-nums text-foreground">
+            <div className="text-[14px] font-medium tabular-nums text-foreground">
               {grant.amount.toLocaleString()}
             </div>
             {hasPartialBalance ? (
@@ -319,7 +319,7 @@ function InlineCapInput({ member }: { member: MemberUsage }) {
         }
         setCapValue(member.userId, v);
       }}
-      className="h-8 w-full text-[13px] tabular-nums placeholder:text-xs"
+      className="h-8 w-full text-[14px] tabular-nums placeholder:text-xs"
     />
   );
 }
@@ -480,7 +480,7 @@ function MembersTable({
   return (
     <div className="overflow-hidden rounded-xl bg-card zero-border">
       {/* Header */}
-      <div className="grid grid-cols-[1fr_7rem_6rem_8.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
+      <div className="grid grid-cols-[1fr_7rem_6rem_8.5rem] gap-x-4 items-center px-5 py-2.5 text-[14px] font-medium text-foreground">
         <span>Member</span>
         <span>Used</span>
         <span>Remaining</span>
@@ -512,7 +512,7 @@ function MembersTable({
                       <p className="truncate text-sm font-medium text-foreground">
                         {name}
                       </p>
-                      <p className="truncate text-[13px] text-muted-foreground">
+                      <p className="truncate text-[14px] text-muted-foreground">
                         {member.email}
                       </p>
                     </>
@@ -523,16 +523,16 @@ function MembersTable({
                   )}
                 </div>
               </div>
-              <span className="text-[13px] tabular-nums text-foreground whitespace-nowrap">
+              <span className="text-[14px] tabular-nums text-foreground whitespace-nowrap">
                 {member.creditsCharged.toLocaleString()}
               </span>
-              <span className="text-[13px] tabular-nums text-muted-foreground/50 whitespace-nowrap">
+              <span className="text-[14px] tabular-nums text-muted-foreground/50 whitespace-nowrap">
                 {remaining !== null ? remaining.toLocaleString() : "–"}
               </span>
               {isAdmin ? (
                 <InlineCapInput member={member} />
               ) : (
-                <span className="text-[13px] tabular-nums text-muted-foreground whitespace-nowrap">
+                <span className="text-[14px] tabular-nums text-muted-foreground whitespace-nowrap">
                   {member.creditCap !== null
                     ? member.creditCap.toLocaleString()
                     : "—"}

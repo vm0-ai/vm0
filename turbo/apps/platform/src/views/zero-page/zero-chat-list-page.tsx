@@ -278,13 +278,13 @@ function ChatList({
   }
 
   if (error) {
-    return <p className="px-3 py-4 text-sm max-md:text-[15px] text-destructive">{error}</p>;
+    return <p className="px-3 py-4 text-sm max-md:text-[16px] text-destructive">{error}</p>;
   }
 
   if (sessions.length === 0) {
     return (
       <div className="flex h-full items-center justify-center px-3">
-        <p className="text-sm max-md:text-[15px] text-muted-foreground text-center">
+        <p className="text-sm max-md:text-[16px] text-muted-foreground text-center">
           {searchTerm.trim()
             ? "No chats match your search"
             : "Start a conversation and it'll show up here"}
@@ -562,20 +562,20 @@ function ChatListItem({
         <span className="min-w-0 flex-1 flex flex-col gap-0.5">
           <span
             className={cn(
-              "truncate text-[15px] max-md:text-[17px] leading-snug",
+              "truncate text-[16px] max-md:text-[17px] leading-snug",
               isUnread ? "font-semibold" : "font-medium",
             )}
           >
             {session.title ?? "New chat"}
           </span>
           {secondary && (
-            <span className="truncate text-xs max-md:text-[15px] text-muted-foreground">
+            <span className="truncate text-xs max-md:text-[16px] text-muted-foreground">
               {secondary}
             </span>
           )}
         </span>
         {dateLabel && (
-          <span className="shrink-0 self-start mt-0.5 text-xs max-md:text-[13px] text-muted-foreground tabular-nums">
+          <span className="shrink-0 self-start mt-0.5 text-xs max-md:text-[14px] text-muted-foreground tabular-nums">
             {dateLabel}
           </span>
         )}

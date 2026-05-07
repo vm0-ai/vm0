@@ -49,10 +49,10 @@ function SectionLink({
     >
       <Icon size={22} stroke={1.6} className="shrink-0 text-foreground" />
       <span className="flex-1 min-w-0">
-        <span className="block text-[15px] font-semibold truncate text-foreground">
+        <span className="block text-[16px] font-semibold truncate text-foreground">
           {label}
         </span>
-        <span className="block text-[13px] text-muted-foreground truncate">
+        <span className="block text-[14px] text-muted-foreground truncate">
           {hint}
         </span>
       </span>

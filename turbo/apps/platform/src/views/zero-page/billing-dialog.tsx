@@ -253,7 +253,7 @@ export function AutoRechargeSection({
                 <p className="text-sm font-medium text-foreground">
                   Automatic top-ups
                 </p>
-                <p className="text-[13px] text-muted-foreground mt-0.5">
+                <p className="text-[14px] text-muted-foreground mt-0.5">
                   Purchase credits when your balance falls below a threshold.
                 </p>
               </div>
@@ -275,7 +275,7 @@ export function AutoRechargeSection({
                     <p className="text-sm font-medium text-foreground">
                       When credits drop below
                     </p>
-                    <p className="text-[13px] text-muted-foreground mt-0.5">
+                    <p className="text-[14px] text-muted-foreground mt-0.5">
                       Trigger a purchase when your credit balance goes under
                       this number.
                     </p>
@@ -302,7 +302,7 @@ export function AutoRechargeSection({
                     <span className="text-xl font-semibold tabular-nums tracking-tight text-foreground">
                       ${dollarAmount}
                     </span>
-                    <p className="text-[13px] font-normal text-muted-foreground">
+                    <p className="text-[14px] font-normal text-muted-foreground">
                       Recharge amount
                     </p>
                   </div>
@@ -323,7 +323,7 @@ export function AutoRechargeSection({
                       aria-label="Auto-recharge credit amount in credits"
                     />
                     <span
-                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground"
+                      className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-muted-foreground"
                       aria-hidden
                     >
                       credits

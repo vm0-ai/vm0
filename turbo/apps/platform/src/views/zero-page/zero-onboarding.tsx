@@ -506,7 +506,7 @@ function ChatPreview() {
       <div className="zero-app w-full flex flex-col gap-5">
         {/* User message */}
         <div className="flex flex-col items-end pl-10">
-          <div className="zero-chat-bubble-user rounded-xl text-[13px] leading-relaxed">
+          <div className="zero-chat-bubble-user rounded-xl text-[14px] leading-relaxed">
             <div className="px-4 py-3">
               Draft a Q2 brief and share it with the team
             </div>
@@ -520,7 +520,7 @@ function ChatPreview() {
             size={24}
             className="shrink-0 rounded-full mt-0.5"
           />
-          <div className="text-[13px] text-foreground leading-relaxed">
+          <div className="text-[14px] text-foreground leading-relaxed">
             Created in Notion and shared in #product. Sarah and James tagged for
             review.
           </div>
@@ -528,7 +528,7 @@ function ChatPreview() {
 
         {/* User follow-up */}
         <div className="flex flex-col items-end pl-10">
-          <div className="zero-chat-bubble-user rounded-xl text-[13px] leading-relaxed">
+          <div className="zero-chat-bubble-user rounded-xl text-[14px] leading-relaxed">
             <div className="px-4 py-3">
               Keep it updated weekly and notify the team
             </div>
@@ -542,7 +542,7 @@ function ChatPreview() {
             size={24}
             className="shrink-0 rounded-full mt-0.5"
           />
-          <div className="text-[13px] text-foreground leading-relaxed">
+          <div className="text-[14px] text-foreground leading-relaxed">
             Done! I&apos;ll update every Friday and post a summary to #product.
             🔄
           </div>

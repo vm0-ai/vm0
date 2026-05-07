@@ -162,7 +162,7 @@ export function OrgMembersTab() {
         <div
           className={cn(
             ROW_GRID,
-            "sticky top-0 z-10 px-5 py-2.5 text-[13px] font-medium text-foreground bg-card",
+            "sticky top-0 z-10 px-5 py-2.5 text-[14px] font-medium text-foreground bg-card",
           )}
         >
           <div>User</div>
@@ -308,7 +308,7 @@ function InviteDialog() {
               }}
             />
             {touched && trimmed && !isValid && (
-              <p className="text-[13px] text-destructive">
+              <p className="text-[14px] text-destructive">
                 Please enter a valid email address
               </p>
             )}
@@ -391,12 +391,12 @@ function MemberRow({
               )}
             </span>
           )}
-          <p className="text-[13px] text-muted-foreground truncate">
+          <p className="text-[14px] text-muted-foreground truncate">
             {member.email}
           </p>
         </div>
       </div>
-      <div className="text-[13px] text-muted-foreground tabular-nums">
+      <div className="text-[14px] text-muted-foreground tabular-nums">
         {formatDate(member.joinedAt)}
       </div>
       <div>
@@ -605,7 +605,7 @@ function PendingInvitationRow({
           <p className="text-sm text-foreground truncate">{invitation.email}</p>
         </div>
       </div>
-      <div className="text-[13px] text-muted-foreground tabular-nums">
+      <div className="text-[14px] text-muted-foreground tabular-nums">
         {formatDate(invitation.createdAt)}
       </div>
       <div>
@@ -709,12 +709,12 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
               {name}
             </span>
           )}
-          <p className="text-[13px] text-muted-foreground truncate">
+          <p className="text-[14px] text-muted-foreground truncate">
             {request.email}
           </p>
         </div>
       </div>
-      <div className="text-[13px] text-muted-foreground tabular-nums">
+      <div className="text-[14px] text-muted-foreground tabular-nums">
         {formatDate(request.createdAt)}
       </div>
       <div>

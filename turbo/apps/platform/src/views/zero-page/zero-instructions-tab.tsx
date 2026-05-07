@@ -43,7 +43,7 @@ export function ZeroInstructionsTab({
           <div className="h-64 w-full rounded bg-muted/30" />
         </div>
       ) : fetchError ? (
-        <p className="text-[15px] sm:text-sm text-destructive">{fetchError}</p>
+        <p className="text-[16px] sm:text-sm text-destructive">{fetchError}</p>
       ) : (
         <>
           <TiptapInstructionsEditor
@@ -53,7 +53,7 @@ export function ZeroInstructionsTab({
             disabled={isBuilding}
           />
           {buildError && (
-            <p className="text-[13px] sm:text-xs font-medium text-destructive mt-3">
+            <p className="text-[14px] sm:text-xs font-medium text-destructive mt-3">
               {buildError}
             </p>
           )}

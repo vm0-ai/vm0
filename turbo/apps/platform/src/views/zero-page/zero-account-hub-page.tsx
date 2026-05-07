@@ -47,7 +47,7 @@ function AccountRow({
         <Icon size={20} stroke={1.6} />
       </span>
       <span
-        className={`flex-1 min-w-0 truncate text-[15px] ${
+        className={`flex-1 min-w-0 truncate text-[16px] ${
           destructive
             ? "text-destructive font-medium"
             : "text-foreground font-medium"
@@ -109,7 +109,7 @@ function AccountIdentityCard() {
           {name}
         </p>
         {email && (
-          <p className="text-[15px] text-muted-foreground truncate mt-0.5">
+          <p className="text-[16px] text-muted-foreground truncate mt-0.5">
             {email}
           </p>
         )}

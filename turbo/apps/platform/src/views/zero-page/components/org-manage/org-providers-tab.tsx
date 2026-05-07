@@ -171,7 +171,7 @@ function DefaultProviderSection() {
             <p className="text-sm font-medium text-foreground">
               Default provider
             </p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
+            <p className="text-[14px] text-muted-foreground mt-0.5">
               Applied to all tasks across schedule, Slack, and web.
             </p>
           </div>

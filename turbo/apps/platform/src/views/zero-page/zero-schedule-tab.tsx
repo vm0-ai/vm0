@@ -92,7 +92,7 @@ export function ZeroScheduleTab({
       <div className="mx-auto max-w-[900px]">
         <Card className="zero-card">
           <CardContent className="px-6 py-6 text-center">
-            <p className="text-[15px] sm:text-sm text-destructive">
+            <p className="text-[16px] sm:text-sm text-destructive">
               {scheduleError}
             </p>
           </CardContent>

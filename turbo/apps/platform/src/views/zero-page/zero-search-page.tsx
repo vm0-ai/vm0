@@ -60,7 +60,7 @@ function ResultRow({ session }: { session: ChatThreadListItem }) {
         {session.title ?? "New chat"}
       </span>
       {dateLabel && (
-        <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">
+        <span className="shrink-0 text-[14px] text-muted-foreground tabular-nums">
           {dateLabel}
         </span>
       )}
@@ -143,7 +143,7 @@ export function ZeroSearchPage() {
         )}
       >
         {results.length === 0 ? (
-          <p className="px-3 py-8 text-[15px] text-muted-foreground text-center">
+          <p className="px-3 py-8 text-[16px] text-muted-foreground text-center">
             {trimmed
               ? "No chats match your search"
               : "Type to search your chats"}

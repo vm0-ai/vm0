@@ -149,14 +149,14 @@ export function AgentsPage() {
               <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
                 <TabsTrigger
                   value="grid"
-                  className="gap-1.5 text-[15px] sm:text-sm data-[state=active]:bg-background px-3"
+                  className="gap-1.5 text-[16px] sm:text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconLayoutGrid size={14} stroke={1.5} />
                   Grid
                 </TabsTrigger>
                 <TabsTrigger
                   value="list"
-                  className="gap-1.5 text-[15px] sm:text-sm data-[state=active]:bg-background px-3"
+                  className="gap-1.5 text-[16px] sm:text-sm data-[state=active]:bg-background px-3"
                 >
                   <IconList size={14} stroke={1.5} />
                   List
@@ -455,7 +455,7 @@ function AgentCard({ agent }: AgentProps) {
           <span className="text-sm max-md:text-[17px] font-medium text-foreground truncate block">
             {displayName}
           </span>
-          <p className="text-[15px] sm:text-[13px] text-muted-foreground mt-0.5 line-clamp-1">
+          <p className="text-[16px] sm:text-[14px] text-muted-foreground mt-0.5 line-clamp-1">
             {description}
           </p>
         </div>
@@ -491,11 +491,11 @@ function AgentListRow({
           className="h-11 w-11 shrink-0 rounded-xl object-cover object-top"
         />
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <span className="truncate text-[15px] max-md:text-[17px] leading-snug font-medium text-foreground">
+          <span className="truncate text-[16px] max-md:text-[17px] leading-snug font-medium text-foreground">
             {displayName}
           </span>
           {description && (
-            <span className="truncate text-xs max-md:text-[15px] text-muted-foreground">
+            <span className="truncate text-xs max-md:text-[16px] text-muted-foreground">
               {description}
             </span>
           )}

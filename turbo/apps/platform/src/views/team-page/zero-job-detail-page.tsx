@@ -186,7 +186,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
               <h2 className="text-lg font-semibold text-foreground">
                 Agent not found
               </h2>
-              <p className="text-[15px] sm:text-sm text-muted-foreground">
+              <p className="text-[16px] sm:text-sm text-muted-foreground">
                 The agent &quot;{agentId}&quot; doesn&apos;t exist or you
                 don&apos;t have access to it.
               </p>
@@ -210,7 +210,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
         <div className="mx-auto max-w-[900px]">
           <Card className="zero-card">
             <CardContent className="px-6 py-6 text-center space-y-3">
-              <p className="text-[15px] sm:text-sm text-destructive">{error}</p>
+              <p className="text-[16px] sm:text-sm text-destructive">{error}</p>
               <Link
                 pathname="/agents/:agentId"
                 options={{ pathParams: { agentId: agentId } }}
@@ -227,7 +227,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
 }
 
 const TAB_TRIGGER_CLASS =
-  "gap-1.5 text-[15px] sm:text-sm data-[state=active]:bg-background px-3";
+  "gap-1.5 text-[16px] sm:text-sm data-[state=active]:bg-background px-3";
 
 /** Coerce hidden tabs back to "authorization" for non-admin default-agent view. */
 function resolveVisibleTab(
@@ -262,23 +262,23 @@ function AgentTabNav({
       {/* Mobile: Select dropdown */}
       <div className="sm:hidden">
         <Select value={activeTab} onValueChange={onTabChange}>
-          <SelectTrigger className="h-11 w-full text-[15px]">
+          <SelectTrigger className="h-11 w-full text-[16px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="authorization" className="text-[15px] py-2.5">
+            <SelectItem value="authorization" className="text-[16px] py-2.5">
               Authorization
             </SelectItem>
-            <SelectItem value="schedule" className="text-[15px] py-2.5">
+            <SelectItem value="schedule" className="text-[16px] py-2.5">
               Scheduled
             </SelectItem>
             {showProfileAndInstructions && (
-              <SelectItem value="profile" className="text-[15px] py-2.5">
+              <SelectItem value="profile" className="text-[16px] py-2.5">
                 Profile
               </SelectItem>
             )}
             {showProfileAndInstructions && (
-              <SelectItem value="instructions" className="text-[15px] py-2.5">
+              <SelectItem value="instructions" className="text-[16px] py-2.5">
                 Instructions
               </SelectItem>
             )}
@@ -345,17 +345,17 @@ function PermissionRow({
         <ConnectorIcon type={connector.type} size={20} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] sm:text-sm font-medium text-foreground">
+            <span className="text-[16px] sm:text-sm font-medium text-foreground">
               {connector.label}
             </span>
             {connector.connector?.externalUsername && (
-              <span className="text-[15px] sm:text-xs text-muted-foreground">
+              <span className="text-[16px] sm:text-xs text-muted-foreground">
                 @{connector.connector.externalUsername}
               </span>
             )}
           </div>
           {connector.helpText && (
-            <p className="text-[15px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-1">
+            <p className="text-[16px] sm:text-xs text-muted-foreground mt-0.5 line-clamp-1">
               {connector.helpText
                 .replace(/^Connect your \w+ account to /i, "")
                 .replace(/^access /i, "")
@@ -520,7 +520,7 @@ function JobPermissionsTab({
               alt="No connectors"
               className="h-20 w-20 object-contain opacity-80"
             />
-            <p className="text-[15px] sm:text-sm text-muted-foreground text-center">
+            <p className="text-[16px] sm:text-sm text-muted-foreground text-center">
               No connected services yet. Head to the{" "}
               <Link
                 pathname="/connectors"
@@ -539,7 +539,7 @@ function JobPermissionsTab({
             <div className="relative border-b border-border/50">
               <div
                 className={cn(
-                  "px-5 pt-4 pb-3 pr-12 text-[15px] sm:text-sm text-muted-foreground transition-opacity duration-150",
+                  "px-5 pt-4 pb-3 pr-12 text-[16px] sm:text-sm text-muted-foreground transition-opacity duration-150",
                   searchActive && "opacity-0 select-none",
                 )}
                 aria-hidden={searchActive}
@@ -618,7 +618,7 @@ function JobPermissionsTab({
                 );
               })
             ) : (
-              <p className="px-5 py-4 text-[15px] sm:text-sm text-muted-foreground">
+              <p className="px-5 py-4 text-[16px] sm:text-sm text-muted-foreground">
                 No results for &ldquo;{search}&rdquo;
               </p>
             )}
@@ -798,7 +798,7 @@ function AgentHeader({
             <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
               {displayName}
             </h1>
-            <p className="text-[15px] sm:text-sm text-muted-foreground mt-1 sm:mt-1.5 leading-snug line-clamp-2">
+            <p className="text-[16px] sm:text-sm text-muted-foreground mt-1 sm:mt-1.5 leading-snug line-clamp-2">
               {description || "Your AI teammate, tuned to you"}
             </p>
           </div>
@@ -813,7 +813,7 @@ function AgentHeader({
           <Button
             variant="outline"
             size="sm"
-            className="zero-btn-morandi order-first sm:order-none gap-1.5 w-full sm:w-auto sm:shrink-0 h-11 sm:h-9 text-[15px] sm:text-sm"
+            className="zero-btn-morandi order-first sm:order-none gap-1.5 w-full sm:w-auto sm:shrink-0 h-11 sm:h-9 text-[16px] sm:text-sm"
             onClick={() => {
               nav("/agents/:agentId/chat", {
                 pathParams: { agentId: agentId },

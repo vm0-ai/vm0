@@ -61,7 +61,7 @@ function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
           {orgName}
         </p>
         {orgSlug && (
-          <p className="text-[15px] text-muted-foreground truncate mt-0.5">
+          <p className="text-[16px] text-muted-foreground truncate mt-0.5">
             {orgSlug}
           </p>
         )}
@@ -69,7 +69,7 @@ function CurrentWorkspaceRow({ onClose }: { onClose: () => void }) {
       <button
         type="button"
         onClick={handleManage}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[13px] font-medium text-muted-foreground border border-[hsl(var(--gray-400))] hover:text-foreground hover:bg-accent transition-colors"
+        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[14px] font-medium text-muted-foreground border border-[hsl(var(--gray-400))] hover:text-foreground hover:bg-accent transition-colors"
       >
         <IconSettings size={13} />
         Manage
@@ -166,7 +166,7 @@ function InvitationRow({
         type="button"
         disabled={isAccepting}
         onClick={handleAccept}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[13px] font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[14px] font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
       >
         <IconMail size={13} />
         {isAccepting ? "Joining…" : "Join"}

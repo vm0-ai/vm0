@@ -252,7 +252,7 @@ function ProfileSection({
         <div className="flex items-center justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">Logo</p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
+            <p className="text-[14px] text-muted-foreground mt-0.5">
               Workspace avatar displayed across the app
             </p>
           </div>
@@ -310,7 +310,7 @@ function ProfileSection({
         <div className="flex items-center justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">Name</p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
+            <p className="text-[14px] text-muted-foreground mt-0.5">
               Used to identify this workspace
             </p>
           </div>
@@ -335,7 +335,7 @@ function ProfileSection({
         <div className="flex items-center justify-between gap-4 px-5 py-4">
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground">Slug</p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
+            <p className="text-[14px] text-muted-foreground mt-0.5">
               URL-friendly identifier for the organization
             </p>
           </div>
@@ -379,7 +379,7 @@ function ProfileSection({
             </Button>
           </div>
           {saveError && (
-            <p className="text-[13px] text-destructive">{saveError}</p>
+            <p className="text-[14px] text-destructive">{saveError}</p>
           )}
         </div>
       )}
@@ -476,7 +476,7 @@ function DangerZoneSection({
                 <p className="text-sm font-medium text-foreground">
                   Leave workspace
                 </p>
-                <p className="text-[13px] text-muted-foreground mt-0.5">
+                <p className="text-[14px] text-muted-foreground mt-0.5">
                   You will lose access to this workspace and its resources.
                 </p>
               </div>
@@ -527,7 +527,7 @@ function DangerZoneSection({
                 <p className="text-sm font-medium text-foreground">
                   Delete workspace
                 </p>
-                <p className="text-[13px] text-muted-foreground mt-0.5">
+                <p className="text-[14px] text-muted-foreground mt-0.5">
                   Permanently delete this workspace and all its data. This
                   action cannot be undone.
                 </p>

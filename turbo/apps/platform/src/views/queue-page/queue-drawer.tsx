@@ -141,7 +141,7 @@ function QueueDrawerContent() {
           {concurrency.active} of {concurrency.limit} slot
           {concurrency.limit !== 1 ? "s" : ""} in use
         </p>
-        <p className="text-[13px] font-light text-muted-foreground leading-relaxed mt-1.5">
+        <p className="text-[14px] font-light text-muted-foreground leading-relaxed mt-1.5">
           {concurrency.available === 0
             ? `You can only run ${concurrency.limit} task${concurrency.limit !== 1 ? "s" : ""} at a time. New runs will wait in a queue until one finishes.`
             : `${concurrency.available} slot${concurrency.available !== 1 ? "s" : ""} available`}
@@ -166,7 +166,7 @@ function QueueDrawerContent() {
           <p className="text-lg font-medium text-foreground mb-1">
             {upgrade.concurrentRuns} concurrent runs
           </p>
-          <p className="text-[13px] font-light text-muted-foreground leading-relaxed mb-4">
+          <p className="text-[14px] font-light text-muted-foreground leading-relaxed mb-4">
             {upgrade.description}
           </p>
 
@@ -184,7 +184,7 @@ function QueueDrawerContent() {
               return (
                 <li key={feature} className="flex items-center gap-2">
                   <CheckCircleIcon />
-                  <span className="text-[13px] font-light text-muted-foreground">
+                  <span className="text-[14px] font-light text-muted-foreground">
                     {feature}
                   </span>
                 </li>

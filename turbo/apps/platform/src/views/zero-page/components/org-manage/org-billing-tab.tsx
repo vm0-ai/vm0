@@ -187,7 +187,7 @@ function PlanCard({
         </span>
       </div>
 
-      <p className="text-[13px] font-light text-muted-foreground leading-relaxed mb-5 min-h-[42px]">
+      <p className="text-[14px] font-light text-muted-foreground leading-relaxed mb-5 min-h-[42px]">
         {plan.description}
       </p>
 
@@ -209,7 +209,7 @@ function PlanCard({
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="16 9 10.5 15 8 12.5" />
               </svg>
-              <span className="text-[13px] font-light text-muted-foreground">
+              <span className="text-[14px] font-light text-muted-foreground">
                 {feature}
               </span>
             </li>
@@ -296,7 +296,7 @@ function PricingPage({
         </TooltipProvider>
         <div>
           <h3 className="text-sm font-medium text-foreground">Compare plans</h3>
-          <p className="text-[13px] text-muted-foreground">
+          <p className="text-[14px] text-muted-foreground">
             Upgrade or downgrade anytime.
           </p>
         </div>
@@ -559,7 +559,7 @@ export function OrgBillingTab() {
                   <p className="text-sm font-medium text-foreground">
                     {formatTierLabel(currentTier)} plan
                   </p>
-                  <p className="text-[13px] text-muted-foreground mt-0.5">
+                  <p className="text-[14px] text-muted-foreground mt-0.5">
                     {periodLabel ?? "No active subscription"}
                   </p>
                 </div>
@@ -578,7 +578,7 @@ export function OrgBillingTab() {
                 <>
                   <div className="h-0 zero-border-t mx-5" />
                   <div className="px-5 py-3">
-                    <p className="text-[13px] text-amber-600 dark:text-amber-400">
+                    <p className="text-[14px] text-amber-600 dark:text-amber-400">
                       Your {formatTierLabel(currentTier)} plan has been
                       cancelled and will end on{" "}
                       {new Date(periodEnd).toLocaleDateString("en-US")}.
@@ -594,7 +594,7 @@ export function OrgBillingTab() {
                       <p className="text-sm font-medium text-foreground">
                         Manage billing
                       </p>
-                      <p className="text-[13px] text-muted-foreground mt-0.5">
+                      <p className="text-[14px] text-muted-foreground mt-0.5">
                         Subscription, payment method, and invoices in Stripe.
                       </p>
                     </div>

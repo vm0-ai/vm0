@@ -504,7 +504,7 @@ export function ZeroScheduleCard({
           type="button"
           variant="outline"
           size="sm"
-          className="zero-btn-morandi h-11 w-full gap-2 rounded-lg border text-[15px] mb-3"
+          className="zero-btn-morandi h-11 w-full gap-2 rounded-lg border text-[16px] mb-3"
           onClick={openAddSchedule}
         >
           <IconPlus size={16} stroke={2} />

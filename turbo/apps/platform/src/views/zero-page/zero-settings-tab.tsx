@@ -248,7 +248,7 @@ export function ZeroSettingsTab({
                     return setAgentName(e.target.value);
                   }}
                   placeholder="What should we call them?"
-                  className="h-9 max-md:h-11 w-full text-[15px] sm:text-sm"
+                  className="h-9 max-md:h-11 w-full text-[16px] sm:text-sm"
                   aria-label="Name"
                 />
               </div>
@@ -268,7 +268,7 @@ export function ZeroSettingsTab({
                   }}
                   placeholder="What does this agent do?"
                   rows={3}
-                  className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-[15px] sm:text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+                  className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-[16px] sm:text-sm text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
                   aria-label="Description"
                 />
               </div>
@@ -298,7 +298,7 @@ export function ZeroSettingsTab({
                           return setTone(opt);
                         }}
                         className={cn(
-                          "h-9 max-md:h-11 sm:h-auto w-full min-w-0 rounded-lg border border-[0.7px] px-3 sm:py-2.5 text-[15px] sm:text-sm font-medium inline-flex items-center justify-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                          "h-9 max-md:h-11 sm:h-auto w-full min-w-0 rounded-lg border border-[0.7px] px-3 sm:py-2.5 text-[16px] sm:text-sm font-medium inline-flex items-center justify-center transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                           tone === opt
                             ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                             : "zero-chip text-muted-foreground hover:text-foreground",
@@ -313,7 +313,7 @@ export function ZeroSettingsTab({
                   className="rounded-lg bg-muted/30 px-3 py-2 w-full zero-border"
                   key={tone}
                 >
-                  <p className="text-[13px] sm:text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
+                  <p className="text-[14px] sm:text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
                     {TONE_HINT[tone]}
                   </p>
                   <div className="my-2 border-t border-border/30" />
@@ -341,7 +341,7 @@ export function ZeroSettingsTab({
                   providers={orgProviders.modelProviders}
                   value={modelSelection}
                   onChange={setModelSelection}
-                  triggerClassName="h-9 max-md:h-11 text-[15px] sm:text-sm"
+                  triggerClassName="h-9 max-md:h-11 text-[16px] sm:text-sm"
                 />
               </InlineSettingsRow>
             )}
@@ -366,10 +366,10 @@ export function ZeroSettingsTab({
             <CardContent className="p-4 sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
                 <div className="min-w-0 sm:max-w-[46%]">
-                  <h3 className="text-[15px] sm:text-sm font-medium text-foreground">
+                  <h3 className="text-[16px] sm:text-sm font-medium text-foreground">
                     Danger zone
                   </h3>
-                  <p className="text-[15px] sm:text-xs text-muted-foreground mt-1 leading-snug">
+                  <p className="text-[16px] sm:text-xs text-muted-foreground mt-1 leading-snug">
                     Permanently remove this agent and all its data. This action
                     cannot be undone.
                   </p>
@@ -380,7 +380,7 @@ export function ZeroSettingsTab({
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[15px] hover:bg-destructive/10 hover:text-destructive"
+                        className="h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[16px] hover:bg-destructive/10 hover:text-destructive"
                       >
                         <IconTrash size={14} stroke={1.5} />
                         Delete agent

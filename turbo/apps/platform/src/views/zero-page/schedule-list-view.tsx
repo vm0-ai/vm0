@@ -365,7 +365,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
       {/* Left: text content — pointer-events disabled so clicks pass through to the Link overlay */}
       <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
         {showAgent && (
-          <span className="block text-[13px] font-medium text-muted-foreground truncate">
+          <span className="block text-[14px] font-medium text-muted-foreground truncate">
             {agentLabel}
           </span>
         )}
@@ -388,7 +388,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
         {nextRunLabel && (
           <span
             className={cn(
-              "text-[13px] text-muted-foreground/80 truncate",
+              "text-[14px] text-muted-foreground/80 truncate",
               dimmed && "text-muted-foreground/60",
             )}
           >
@@ -453,7 +453,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
           <p className="text-[17px] font-medium text-foreground">
             No runs scheduled
           </p>
-          <p className="text-[15px] text-muted-foreground mt-1">
+          <p className="text-[16px] text-muted-foreground mt-1">
             Set up a schedule and your agents will handle the rest.
           </p>
         </div>

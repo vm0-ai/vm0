@@ -166,7 +166,7 @@ function DefaultProviderSection() {
             <p className="text-sm font-medium text-foreground">
               Personal default
             </p>
-            <p className="text-[13px] text-muted-foreground mt-0.5">
+            <p className="text-[14px] text-muted-foreground mt-0.5">
               Used when you opt into your personal provider on an agent.
             </p>
           </div>

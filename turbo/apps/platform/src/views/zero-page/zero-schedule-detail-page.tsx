@@ -398,7 +398,7 @@ function ScheduleSettingsForm({
           <InlineSettingsRow label="Agent" wideControls>
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Select value={form.agentId} disabled>
-                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[15px]">
+                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[16px]">
                   <SelectValue placeholder="Select agent" />
                 </SelectTrigger>
                 <SelectContent>
@@ -426,7 +426,7 @@ function ScheduleSettingsForm({
                   return updateForm({ description: e.target.value });
                 }}
                 placeholder="Leave blank to auto-generate"
-                className="h-9 max-md:h-11 max-md:text-[15px]"
+                className="h-9 max-md:h-11 max-md:text-[16px]"
                 disabled={saving}
               />
             </div>
@@ -513,7 +513,7 @@ function ScheduleSettingsForm({
                   }}
                   agentDefault={agentModelDefault}
                   inheritLabel="agent"
-                  triggerClassName="h-9 max-md:h-11 text-[15px] sm:text-sm"
+                  triggerClassName="h-9 max-md:h-11 text-[16px] sm:text-sm"
                 />
               </div>
             </InlineSettingsRow>
@@ -540,14 +540,14 @@ function ScheduleSettingsForm({
         <Card className="zero-card overflow-hidden border-destructive/20">
           <CardContent className="p-4 sm:p-5">
             <div className="flex flex-row items-center justify-between gap-4">
-              <h3 className="min-w-0 text-[15px] sm:text-sm font-medium text-foreground">
+              <h3 className="min-w-0 text-[16px] sm:text-sm font-medium text-foreground">
                 Danger zone
               </h3>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="shrink-0 h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[15px] hover:bg-destructive/10 hover:text-destructive"
+                className="shrink-0 h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[16px] hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => {
                   return setShowDeleteConfirmVal(true);
                 }}
@@ -877,7 +877,7 @@ function ScheduleDetailView({
                 <h1 className="min-w-0 text-lg font-semibold tracking-tight text-foreground leading-tight truncate sm:text-lg">
                   {summaryTitle}
                 </h1>
-                <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-[15px] sm:text-xs text-muted-foreground leading-tight sm:justify-start">
+                <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-[16px] sm:text-xs text-muted-foreground leading-tight sm:justify-start">
                   <span className="flex items-center gap-1.5 whitespace-nowrap">
                     <span
                       className={cn(
@@ -935,7 +935,7 @@ function ScheduleDetailView({
                     }
                   }}
                 >
-                  <SelectTrigger className="h-11 w-full text-[15px]">
+                  <SelectTrigger className="h-11 w-full text-[16px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -973,7 +973,7 @@ function ScheduleDetailView({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="zero-btn-morandi order-first sm:order-none h-9 max-md:h-11 shrink-0 gap-2 rounded-lg px-4 border text-sm max-md:text-[15px] font-medium transition-colors hover:bg-accent"
+                className="zero-btn-morandi order-first sm:order-none h-9 max-md:h-11 shrink-0 gap-2 rounded-lg px-4 border text-sm max-md:text-[16px] font-medium transition-colors hover:bg-accent"
                 disabled={running || !entry.prompt.trim()}
                 onClick={() => {
                   detach(onRunNow(), Reason.DomCallback);

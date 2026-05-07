@@ -494,7 +494,7 @@ function AvailableConnectorCard({
       <div className="px-5 pb-4 pt-1">
         <div
           data-testid="connector-help-text"
-          className="text-xs max-md:text-[13px] text-muted-foreground line-clamp-2"
+          className="text-xs max-md:text-[14px] text-muted-foreground line-clamp-2"
         >
           {isGoogleOAuthConnector(connector.type) ? (
             <>

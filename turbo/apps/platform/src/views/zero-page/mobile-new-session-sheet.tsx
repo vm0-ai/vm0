@@ -60,7 +60,7 @@ export function MobileNewSessionSheet() {
           <SheetTitle className="text-[17px] font-semibold">
             Start a new chat
           </SheetTitle>
-          <SheetDescription className="text-[15px]">
+          <SheetDescription className="text-[16px]">
             Pick the agent you want to talk to.
           </SheetDescription>
         </SheetHeader>

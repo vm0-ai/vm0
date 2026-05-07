@@ -49,7 +49,7 @@ function CustomConnectorPermissionRow({
         <div className="truncate text-[17px] sm:text-sm font-medium text-foreground">
           {connector.displayName}
         </div>
-        <div className="truncate text-[13px] sm:text-xs text-muted-foreground font-mono">
+        <div className="truncate text-[14px] sm:text-xs text-muted-foreground font-mono">
           {connector.prefixes[0]}
           {!connector.hasSecret && " — no credential set"}
         </div>
@@ -101,7 +101,7 @@ export function JobCustomConnectorsSection() {
 
   return (
     <div className="zero-card">
-      <div className="px-5 pt-4 pb-3 text-[15px] sm:text-sm text-muted-foreground border-b border-border/50">
+      <div className="px-5 pt-4 pb-3 text-[16px] sm:text-sm text-muted-foreground border-b border-border/50">
         Custom connectors registered by your org. Only connectors you have
         supplied a credential for can be toggled on.
       </div>

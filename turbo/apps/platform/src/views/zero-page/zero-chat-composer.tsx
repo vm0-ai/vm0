@@ -540,7 +540,7 @@ function ConnectorsPopoverButton({
                   onChange={(e) => {
                     return setSearch(e.target.value);
                   }}
-                  className="w-full bg-transparent text-sm max-md:text-[15px] text-foreground placeholder:text-muted-foreground outline-none"
+                  className="w-full bg-transparent text-sm max-md:text-[16px] text-foreground placeholder:text-muted-foreground outline-none"
                 />
               </div>
             )}
