@@ -24,7 +24,7 @@ export function InlineSettingsRow({
       )}
     >
       <div className="min-w-0 w-full sm:w-[46%] sm:shrink-0 sm:self-start">
-        <p className="text-[17px] sm:text-sm font-medium text-foreground">
+        <p className="text-[15px] sm:text-sm font-medium text-foreground">
           {label}
         </p>
         {description ? (

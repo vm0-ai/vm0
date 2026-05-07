@@ -262,23 +262,23 @@ function AgentTabNav({
       {/* Mobile: Select dropdown */}
       <div className="sm:hidden">
         <Select value={activeTab} onValueChange={onTabChange}>
-          <SelectTrigger className="h-11 w-full text-[17px]">
+          <SelectTrigger className="h-11 w-full text-[15px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="authorization" className="text-[17px] py-2.5">
+            <SelectItem value="authorization" className="text-[15px] py-2.5">
               Authorization
             </SelectItem>
-            <SelectItem value="schedule" className="text-[17px] py-2.5">
+            <SelectItem value="schedule" className="text-[15px] py-2.5">
               Scheduled
             </SelectItem>
             {showProfileAndInstructions && (
-              <SelectItem value="profile" className="text-[17px] py-2.5">
+              <SelectItem value="profile" className="text-[15px] py-2.5">
                 Profile
               </SelectItem>
             )}
             {showProfileAndInstructions && (
-              <SelectItem value="instructions" className="text-[17px] py-2.5">
+              <SelectItem value="instructions" className="text-[15px] py-2.5">
                 Instructions
               </SelectItem>
             )}
@@ -345,7 +345,7 @@ function PermissionRow({
         <ConnectorIcon type={connector.type} size={20} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-[17px] sm:text-sm font-medium text-foreground">
+            <span className="text-[15px] sm:text-sm font-medium text-foreground">
               {connector.label}
             </span>
             {connector.connector?.externalUsername && (
@@ -807,7 +807,7 @@ function AgentHeader({
           <Button
             variant="outline"
             size="sm"
-            className="zero-btn-morandi order-first sm:order-none gap-1.5 w-full sm:w-auto sm:shrink-0 h-11 sm:h-9 text-[17px] sm:text-sm"
+            className="zero-btn-morandi order-first sm:order-none gap-1.5 w-full sm:w-auto sm:shrink-0 h-11 sm:h-9 text-[15px] sm:text-sm"
             onClick={() => {
               nav("/agents/:agentId/chat", {
                 pathParams: { agentId: agentId },

@@ -366,7 +366,7 @@ export function ZeroSettingsTab({
             <CardContent className="p-4 sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
                 <div className="min-w-0 sm:max-w-[46%]">
-                  <h3 className="text-[17px] sm:text-sm font-medium text-foreground">
+                  <h3 className="text-[15px] sm:text-sm font-medium text-foreground">
                     Danger zone
                   </h3>
                   <p className="text-[15px] sm:text-xs text-muted-foreground mt-1 leading-snug">
