@@ -16,33 +16,65 @@ import {
   submitCodexAuthJson$,
   updateCodexPasteContent$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
+import {
+  codexPasteContentPersonal$,
+  codexPasteDialogStatePersonal$,
+  setCodexPasteDialogStatePersonal$,
+  submitCodexAuthJsonPersonal$,
+  updateCodexPasteContentPersonal$,
+} from "../../../../signals/zero-page/settings/personal-model-providers.ts";
 import { ApiError } from "../../../../lib/accept.ts";
 import { detach, isValidJson, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+
+type CodexPasteScope = "org" | "personal";
 
 /**
  * Paste-based connection dialog for the codex-oauth-token provider.
  *
  * Replaces the broken cross-origin `window.location.assign` redirect that
- * shipped in #11909 (the platform SPA on app.vm0.ai resolved the relative
- * /api/zero/chatgpt/oauth/connect path against itself instead of www.vm0.ai).
- * Same component handles first-time connect and re-paste recovery from a
- * stale session — only the title differs by mode.
+ * shipped in #11909. Same component handles first-time connect and re-paste
+ * recovery from a stale session — only the title differs by mode. The
+ * `scope` prop selects between org-tier (`/api/zero/model-providers`) and
+ * personal-tier (`/api/zero/me/model-providers`) signal bundles so a single
+ * UI component drives both contexts (#12024).
  *
  * Submit POSTs `{ type: 'codex-oauth-token', authMethod: 'auth_json',
- * secrets: { CODEX_AUTH_JSON: <raw> } }` to /api/zero/model-providers; the
- * server-side parser lands in #11978. Typed error codes
- * (`CODEX_AUTH_JSON_SHAPE_INVALID`, `CODEX_FREE_PLAN_REJECTED`) surface
- * inline rather than via toast — the user is staring at the textarea, an
- * inline message keeps cause-and-effect close.
+ * secrets: { CODEX_AUTH_JSON: <raw> } }` to the scope-appropriate endpoint.
+ * Typed error codes (`CODEX_AUTH_JSON_SHAPE_INVALID`,
+ * `CODEX_FREE_PLAN_REJECTED`) surface inline rather than via toast — the
+ * user is staring at the textarea, an inline message keeps cause-and-effect
+ * close.
  */
-export function CodexAuthPasteDialog() {
-  const dialog = useGet(codexPasteDialogState$);
-  const paste = useGet(codexPasteContent$);
-  const setDialog = useSet(setCodexPasteDialogState$);
-  const updatePaste = useSet(updateCodexPasteContent$);
+export function CodexAuthPasteDialog({
+  scope = "org",
+}: {
+  scope?: CodexPasteScope;
+}) {
+  // Both bundles must be subscribed unconditionally to keep hook order
+  // stable; the unused side is read but its value isn't acted on.
+  const orgDialog = useGet(codexPasteDialogState$);
+  const orgPaste = useGet(codexPasteContent$);
+  const personalDialog = useGet(codexPasteDialogStatePersonal$);
+  const personalPaste = useGet(codexPasteContentPersonal$);
+  const setOrgDialog = useSet(setCodexPasteDialogState$);
+  const updateOrgPaste = useSet(updateCodexPasteContent$);
+  const setPersonalDialog = useSet(setCodexPasteDialogStatePersonal$);
+  const updatePersonalPaste = useSet(updateCodexPasteContentPersonal$);
   const pageSignal = useGet(pageSignal$);
-  const [submitLoadable, submit] = useLoadableSet(submitCodexAuthJson$);
+  const [orgSubmitLoadable, orgSubmit] = useLoadableSet(submitCodexAuthJson$);
+  const [personalSubmitLoadable, personalSubmit] = useLoadableSet(
+    submitCodexAuthJsonPersonal$,
+  );
+
+  const dialog = scope === "personal" ? personalDialog : orgDialog;
+  const paste = scope === "personal" ? personalPaste : orgPaste;
+  const setDialog = scope === "personal" ? setPersonalDialog : setOrgDialog;
+  const updatePaste =
+    scope === "personal" ? updatePersonalPaste : updateOrgPaste;
+  const submitLoadable =
+    scope === "personal" ? personalSubmitLoadable : orgSubmitLoadable;
+  const submit = scope === "personal" ? personalSubmit : orgSubmit;
 
   const submitting = submitLoadable.state === "loading";
   const serverError =

@@ -15,6 +15,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   personalConfiguredProviders$,
   personalOpenAddDialog$,
+  setCodexPasteDialogStatePersonal$,
 } from "../../../../signals/zero-page/settings/personal-model-providers.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
@@ -78,7 +79,10 @@ export function PersonalAddProviderDialog({
   const configuredProviders = useLastResolved(personalConfiguredProviders$);
   const features = useLastResolved(featureSwitch$);
   const codexBetaEnabled = features?.[FeatureSwitchKey.CodexBeta] ?? false;
+  const codexOauthEnabled =
+    features?.[FeatureSwitchKey.CodexOauthProvider] ?? false;
   const openAdd = useSet(personalOpenAddDialog$);
+  const openCodexPaste = useSet(setCodexPasteDialogStatePersonal$);
   const configuredSet = new Set(
     configuredProviders?.map((p) => {
       return p.type;
@@ -86,6 +90,15 @@ export function PersonalAddProviderDialog({
   );
 
   const handleAdd = (type: ModelProviderType) => {
+    if (type === "codex-oauth-token") {
+      // Mirror the org-side behavior from #11980: open the paste dialog
+      // (textarea-only) instead of the generic form-based dialog. Close the
+      // picker so only the paste dialog is visible — stacking two dialogs
+      // is confusing (#12024).
+      openCodexPaste({ open: true, mode: "connect" });
+      onOpenChange(false);
+      return;
+    }
     openAdd(type);
   };
 
@@ -94,6 +107,9 @@ export function PersonalAddProviderDialog({
       return false;
     }
     if (type === "openai-api-key" && !codexBetaEnabled) {
+      return false;
+    }
+    if (type === "codex-oauth-token" && !codexOauthEnabled) {
       return false;
     }
     return true;
