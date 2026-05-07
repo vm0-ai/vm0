@@ -509,6 +509,33 @@ describe("zero sidebar - collapse button closes mobile overlay (SIDEBAR-M-023)",
   });
 });
 
+describe("zero sidebar - preferences click closes mobile overlay (SIDEBAR-M-030)", () => {
+  it("sets sidebarExpanded to false when Preferences is clicked from account dropdown while sidebar is open as mobile overlay", async () => {
+    mockBaseAPIs();
+    detachedSetupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Test User")).toBeInTheDocument();
+    });
+
+    // Simulate mobile sidebar expanded state (as if "Open menu" was tapped)
+    context.store.set(setSidebarExpanded$, true);
+    expect(context.store.get(sidebarExpanded$)).toBeTruthy();
+
+    // Open account dropdown
+    click(screen.getByText("Test User"));
+
+    // Click Preferences
+    const preferencesItem = await waitFor(() => {
+      return screen.getByText("Preferences");
+    });
+    click(preferencesItem);
+
+    // The sidebar overlay should close when navigating to settings
+    expect(context.store.get(sidebarExpanded$)).toBeFalsy();
+  });
+});
+
 describe("zero sidebar - agent action menu opens (SIDEBAR-D-066)", () => {
   it("reveals the remove action button on a pinned agent card", async () => {
     const user = userEvent.setup();
