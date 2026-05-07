@@ -25,6 +25,7 @@
           - openssl
           - iproute2
           - iptables
+          - conntrack
           - procps
           - dnsmasq
           - debootstrap
