@@ -31,5 +31,5 @@ pub enum NbdCowError {
     NoFreeDevice,
 }
 
-/// Result type used by `nbd-cow` APIs.
+/// Convenience result type for fallible `nbd-cow` APIs using [`NbdCowError`].
 pub type Result<T> = std::result::Result<T, NbdCowError>;
