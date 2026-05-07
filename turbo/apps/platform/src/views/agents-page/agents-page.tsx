@@ -249,23 +249,18 @@ function AgentListView({ flat = false }: { flat?: boolean }) {
             <div key={i}>
               <div
                 className={cn(
-                  "flex items-center gap-3 py-4 animate-pulse",
+                  "flex items-center gap-3 py-3 animate-pulse",
                   flat ? "" : "px-5",
                 )}
               >
-                <div className="h-10 w-10 rounded-full bg-muted" />
+                <div className="h-11 w-11 rounded-xl bg-muted" />
                 <div className="min-w-0 flex-1 space-y-2">
                   <div className="h-4 w-24 rounded bg-muted" />
                   <div className="h-3 w-40 rounded bg-muted" />
                 </div>
               </div>
-              {i < arr.length && (
-                <div
-                  className={cn(
-                    "border-b border-border/50",
-                    flat ? "" : "mx-5",
-                  )}
-                />
+              {i < arr.length && !flat && (
+                <div className="mx-5 border-b border-border/50" />
               )}
             </div>
           );
@@ -486,29 +481,27 @@ function AgentListRow({
     <>
       <div
         className={cn(
-          "flex items-center gap-3 py-4 w-full text-left transition-colors hover:bg-muted/30 cursor-pointer",
+          "flex items-center gap-3 py-3 w-full text-left transition-colors hover:bg-muted/30 cursor-pointer",
           flat ? "" : "px-5",
         )}
       >
         <AgentAvatarImg
           name={agent.id}
           alt={displayName}
-          className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+          className="h-11 w-11 shrink-0 rounded-xl object-cover object-top"
         />
-        <div className="flex-1 min-w-0">
-          <span className="text-sm max-md:text-[17px] font-medium text-foreground truncate block">
+        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+          <span className="truncate text-[15px] max-md:text-[17px] leading-snug font-medium text-foreground">
             {displayName}
           </span>
-          <p className="text-[15px] sm:text-[13px] text-muted-foreground mt-0.5 line-clamp-1">
-            {description}
-          </p>
+          {description && (
+            <span className="truncate text-xs max-md:text-[15px] text-muted-foreground">
+              {description}
+            </span>
+          )}
         </div>
       </div>
-      {!isLast && (
-        <div
-          className={cn("border-b border-border/50", flat ? "" : "mx-5")}
-        />
-      )}
+      {!isLast && !flat && <div className="mx-5 border-b border-border/50" />}
     </>
   );
 }

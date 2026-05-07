@@ -34,6 +34,7 @@ interface ScheduleItem {
   prompt: string;
   description: string | null;
   createdAt: string;
+  nextRunAt: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +146,7 @@ export const agentScheduleEntries$ = computed(
           name: s.name,
           timezone: s.timezone,
           intervalSeconds: s.intervalSeconds,
+          nextRunAt: s.nextRunAt,
         };
       });
   },

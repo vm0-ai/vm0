@@ -223,39 +223,131 @@ function RowActions<T extends ScheduleEntry>({
 }
 
 // ---------------------------------------------------------------------------
-// Mobile card row
+// Mobile card row — iOS Reminders-style
 // ---------------------------------------------------------------------------
+
+// "Asia/Shanghai" → "Shanghai", "America/Los_Angeles" → "Los Angeles".
+function shortTimezoneLabel(tz: string): string {
+  const last = tz.split("/").pop() ?? tz;
+  return last.replace(/_/g, " ");
+}
+
+// Compress the verbose schedule string into an iOS-style frequency phrase.
+// "Every day at 9:00 AM"   → "Daily • 9:00 AM"
+// "Every weekday at 8:30 AM" → "Weekdays • 8:30 AM"
+// "Every week on Monday at X" → "Mondays • X"
+// "Every month on day 1 at X" → "Monthly • X"
+// "Once on YYYY-MM-DD at X" → "Once • X"
+// "Every N minutes"        → "Every N min"
+function shortenScheduleTime(timeStr: string): string {
+  if (timeStr === "Now") {
+    return "Now";
+  }
+  const loopMin = timeStr.match(/^Every (\d+) minutes?$/);
+  if (loopMin) {
+    return `Every ${loopMin[1]} min`;
+  }
+  const onceMatch = timeStr.match(/^Once on \d{4}-\d{2}-\d{2} at (.+)$/);
+  if (onceMatch) {
+    return `Once • ${onceMatch[1]}`;
+  }
+  const everyDay = timeStr.match(/^Every day at (.+)$/);
+  if (everyDay) {
+    return `Daily • ${everyDay[1]}`;
+  }
+  const everyWeekday = timeStr.match(/^Every weekday at (.+)$/);
+  if (everyWeekday) {
+    return `Weekdays • ${everyWeekday[1]}`;
+  }
+  const weeklyOn = timeStr.match(/^Every week on (.+) at (.+)$/);
+  if (weeklyOn) {
+    const days = weeklyOn[1]
+      .split(/,\s*/)
+      .map((d) => {
+        return d.endsWith("s") ? d : `${d}s`;
+      })
+      .join(", ");
+    return `${days} • ${weeklyOn[2]}`;
+  }
+  const monthly = timeStr.match(/^Every month(?: on day \d+)? at (.+)$/);
+  if (monthly) {
+    return `Monthly • ${monthly[1]}`;
+  }
+  return timeStr;
+}
+
+function formatNextRunLabel(iso: string, now: Date): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) {
+    return null;
+  }
+  const diffMs = d.getTime() - now.getTime();
+  if (diffMs <= 0) {
+    return "Next run any moment";
+  }
+  const diffMin = Math.round(diffMs / 60_000);
+  if (diffMin < 1) {
+    return "Next run any moment";
+  }
+  if (diffMin < 60) {
+    return `Next run in ${diffMin}m`;
+  }
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) {
+    return `Next run in ${diffHour}h`;
+  }
+  const startOfDay = (date: Date) => {
+    return new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+    ).getTime();
+  };
+  const dayDiff = Math.round((startOfDay(d) - startOfDay(now)) / 86_400_000);
+  if (dayDiff === 1) {
+    return "Next run tomorrow";
+  }
+  if (dayDiff < 7) {
+    return `Next run in ${dayDiff} days`;
+  }
+  if (d.getFullYear() === now.getFullYear()) {
+    return `Next run ${d.getMonth() + 1}/${d.getDate()}`;
+  }
+  return `Next run ${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+}
 
 function ScheduleListCard<T extends ScheduleEntry>({
   entry,
   toggling,
-  running,
   showAgent,
   agentLabel,
-  onEdit,
   onToggle,
-  onDelete,
-  onRunNow,
   onOpenDetails,
 }: {
   entry: T;
   toggling: boolean;
-  running: boolean;
   showAgent: boolean;
   agentLabel?: string;
-  onEdit: (entry: T) => void;
   onToggle?: (entry: T, enabled: boolean) => void;
-  onDelete?: (entry: T) => void;
-  onRunNow?: (entry: T) => void;
   onOpenDetails?: (entry: T) => void;
 }) {
   const dimmed = entry.enabled === false;
   const clickable = !!onOpenDetails;
 
+  const subtitleParts: string[] = [shortenScheduleTime(entry.time)];
+  if (entry.timezone) {
+    subtitleParts.push(shortTimezoneLabel(entry.timezone));
+  }
+  const subtitle = subtitleParts.join(" ");
+  const nextRunLabel = entry.nextRunAt
+    ? formatNextRunLabel(entry.nextRunAt, new Date())
+    : null;
+  const title = entry.description || entry.prompt;
+
   return (
     <div
       className={cn(
-        "relative flex items-center gap-2 px-5 py-3 border-b border-border/50 last:border-0 transition-colors",
+        "relative flex items-center gap-3 px-5 py-3 border-b border-border/50 last:border-0 transition-colors",
         clickable && "hover:bg-muted/25",
         dimmed && "opacity-75",
       )}
@@ -273,37 +365,41 @@ function ScheduleListCard<T extends ScheduleEntry>({
       {/* Left: text content — pointer-events disabled so clicks pass through to the Link overlay */}
       <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
         {showAgent && (
-          <span className="block text-[15px] font-medium text-muted-foreground truncate">
+          <span className="block text-[13px] font-medium text-muted-foreground truncate">
             {agentLabel}
           </span>
         )}
         <span
           className={cn(
-            "block text-[17px] text-foreground leading-snug truncate",
+            "block text-[17px] font-semibold text-foreground leading-snug truncate",
             dimmed && "text-muted-foreground",
           )}
         >
-          {entry.description || entry.prompt}
+          {title}
         </span>
         <span
           className={cn(
-            "text-[15px] text-muted-foreground tabular-nums truncate",
+            "text-[14px] text-muted-foreground truncate",
             dimmed && "text-muted-foreground/80",
           )}
         >
-          {entry.time}
-          {entry.timezone && (
-            <span className="text-muted-foreground/70">
-              {" "}
-              · {entry.timezone.replace(/_/g, " ")}
-            </span>
-          )}
+          {subtitle}
         </span>
+        {nextRunLabel && (
+          <span
+            className={cn(
+              "text-[13px] text-muted-foreground/80 truncate",
+              dimmed && "text-muted-foreground/60",
+            )}
+          >
+            {nextRunLabel}
+          </span>
+        )}
       </div>
 
-      {/* Right: toggle + more button — relative + z-10 so they sit above the link overlay */}
-      <div className="relative z-10 flex items-center gap-4 shrink-0">
-        {onToggle && (
+      {/* Right: toggle — sits above the link overlay so taps don't bubble to the row link */}
+      {onToggle && (
+        <div className="relative z-10 shrink-0">
           <LoadingSwitch
             checked={entry.enabled !== false}
             loading={toggling}
@@ -312,15 +408,8 @@ function ScheduleListCard<T extends ScheduleEntry>({
             }}
             ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} ${entry.time}`}
           />
-        )}
-        <RowActions
-          entry={entry}
-          running={running}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onRunNow={onRunNow}
-        />
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -397,13 +486,9 @@ export function ScheduleListView<T extends ScheduleEntry>({
               key={entry.id}
               entry={entry}
               toggling={togglingIds.has(entry.id)}
-              running={runningIds?.has(entry.id) ?? false}
               showAgent={showAgent}
               agentLabel={getAgentLabel?.(entry)}
-              onEdit={onEdit}
               onToggle={onToggle}
-              onDelete={onDelete}
-              onRunNow={onRunNow}
               onOpenDetails={onOpenDetails}
             />
           );

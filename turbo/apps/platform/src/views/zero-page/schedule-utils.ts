@@ -31,6 +31,8 @@ export interface ScheduleEntry {
   timezone?: string;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds?: number | null;
+  /** ISO timestamp of the next scheduled run (when known). */
+  nextRunAt?: string | null;
 }
 
 // ---------------------------------------------------------------------------
