@@ -518,12 +518,10 @@ describe("zero schedule detail page - agent field is read-only", () => {
     detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
-    const agentDescription = await screen.findByText(
-      /The agent is fixed once a schedule is created/i,
-    );
-    // Row structure is <row><leftCol><p label /><p description /></leftCol>
+    const agentLabel = await screen.findByText("Agent");
+    // Row structure is <row><leftCol><p label /></leftCol>
     // <rightCol>{Select}</rightCol></row>; walk up two parents to the row.
-    const row = agentDescription.parentElement?.parentElement;
+    const row = agentLabel.parentElement?.parentElement;
     expect(row).not.toBeNull();
 
     const agentCombobox = within(row!).getByRole("combobox");
