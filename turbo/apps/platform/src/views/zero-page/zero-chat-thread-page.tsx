@@ -2059,7 +2059,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
   const pageSignal = useGet(pageSignal$);
 
   const thinkingLabel = isQueued ? (
-    <p className="zero-shimmer-text text-xs max-md:text-[13px] truncate">
+    <p className="zero-shimmer-text text-xs max-md:text-[15px] truncate">
       Waiting in{" "}
       <button
         type="button"
@@ -2072,7 +2072,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
       </button>
     </p>
   ) : (
-    <p className="zero-shimmer-text text-xs max-md:text-[13px] truncate">{rotatingLabel}</p>
+    <p className="zero-shimmer-text text-xs max-md:text-[15px] truncate">{rotatingLabel}</p>
   );
 
   if (!lastGroup) {
@@ -2101,7 +2101,7 @@ function ThinkingIndicator({ thread }: { thread: ChatThreadSignals }) {
             <div className="flex flex-col gap-1.5 h-5 justify-center">
               <div className="h-px w-full bg-border/40" />
               <div className="flex items-center gap-2">
-                <p className="text-[11px] italic text-muted-foreground/40 font-serif shrink-0">
+                <p className="text-[11px] max-md:text-[13px] italic text-muted-foreground/40 font-serif shrink-0">
                   {donePhrase}
                 </p>
                 <div className="h-px flex-1 bg-border/40" />
@@ -2256,7 +2256,7 @@ function AssistantErrorContent({ error }: { error: string }) {
   if (error.trim().toLowerCase() === "run cancelled") {
     return (
       <div
-        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[13px] text-muted-foreground"
+        className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[13px] max-md:text-[15px] text-muted-foreground"
         style={{
           border: "0.7px solid hsl(var(--border))",
           borderRadius: "12px",
@@ -2885,10 +2885,10 @@ function PagedGroupPrimaryActions({
                 options={{
                   pathParams: { activityRunId: firstRunId },
                 }}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 max-md:p-2 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >
-                <IconChartLine size={18} stroke={1.5} />
+                <IconChartLine size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="bottom">View activity logs</TooltipContent>
@@ -2902,13 +2902,13 @@ function PagedGroupPrimaryActions({
               <button
                 type="button"
                 onClick={onCopy}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 max-md:p-2 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="Copy message"
               >
                 {copied ? (
-                  <IconCheck size={18} stroke={1.5} />
+                  <IconCheck size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
                 ) : (
-                  <IconCopy size={18} stroke={1.5} />
+                  <IconCopy size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
                 )}
               </button>
             </TooltipTrigger>
@@ -2925,13 +2925,13 @@ function PagedGroupPrimaryActions({
               <button
                 type="button"
                 onClick={onTts}
-                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                className="p-1 max-md:p-2 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
               >
                 {isPlayingThis ? (
-                  <IconPlayerStop size={18} stroke={1.5} />
+                  <IconPlayerStop size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
                 ) : (
-                  <IconVolume2 size={18} stroke={1.5} />
+                  <IconVolume2 size={18} stroke={1.5} className="max-md:h-5 max-md:w-5" />
                 )}
               </button>
             </TooltipTrigger>
