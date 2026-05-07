@@ -513,6 +513,7 @@ function ScheduleSettingsForm({
                   }}
                   agentDefault={agentModelDefault}
                   inheritLabel="agent"
+                  triggerClassName="h-9 max-md:h-11 text-[17px] sm:text-sm"
                 />
               </div>
             </InlineSettingsRow>
