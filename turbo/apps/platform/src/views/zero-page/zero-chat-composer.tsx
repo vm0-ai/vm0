@@ -162,8 +162,6 @@ interface ZeroChatComposerProps {
   pendingMessage?: PendingMessage | null;
   /** Recall the queued pending message back into the draft. */
   onRecallPendingMessage?: () => void;
-  /** True while the recall request is in flight — shows a spinner and disables the button. */
-  recallPendingMessageLoading?: boolean;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
   displayName: string;
@@ -853,11 +851,9 @@ function hasPendingMessageContent(
 function PendingMessagePreview({
   pendingMessage,
   onRecall,
-  recallLoading,
 }: {
   pendingMessage: PendingMessage;
   onRecall?: () => void;
-  recallLoading?: boolean;
 }) {
   const content = pendingMessage.content?.trim() ?? "";
   const attachments = pendingMessage.attachments ?? [];
@@ -875,15 +871,10 @@ function PendingMessagePreview({
           <button
             type="button"
             onClick={onRecall}
-            disabled={recallLoading}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             aria-label="Recall queued message"
           >
-            {recallLoading ? (
-              <IconLoader2 size={13} stroke={1.75} className="animate-spin" />
-            ) : (
-              <IconArrowBackUp size={13} stroke={1.75} />
-            )}
+            <IconArrowBackUp size={13} stroke={1.75} />
             Recall
           </button>
         )}
@@ -949,7 +940,6 @@ export function ZeroChatComposer({
   queueWhileSending = false,
   pendingMessage = null,
   onRecallPendingMessage,
-  recallPendingMessageLoading,
   onCancel,
   displayName,
   className,
@@ -1323,7 +1313,6 @@ export function ZeroChatComposer({
               <PendingMessagePreview
                 pendingMessage={pendingMessage}
                 onRecall={onRecallPendingMessage}
-                recallLoading={recallPendingMessageLoading}
               />
             )}
             {visibleAttachments.length > 0 && (

@@ -27,6 +27,7 @@ import {
   type ChatThreadArtifactRun,
   type ModelSelectionRequest,
   type PagedChatMessage,
+  type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   getDefaultModel,
@@ -163,6 +164,10 @@ export interface ChatThreadSignals {
   >;
   queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
   recallPendingMessage$: Command<Promise<void>, [AbortSignal]>;
+  // View-side pending message — masks the server value the moment the user
+  // recalls it so the queued card disappears synchronously, without waiting
+  // for the fire-and-forget server clear to round-trip.
+  pendingMessage$: Computed<Promise<PendingMessage | null>>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -1307,8 +1312,13 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
     set(reloadThread$);
     set(reloadChatThreads$);
-    // Scroll to bottom so the freshly-appended queued message is visible —
-    // mirrors the optimistic-scroll the user gets from `sendMessage$`.
+    // Wait for the refetched threadData before scrolling. The queued card
+    // renders inside the composer footer, so its first appearance shrinks
+    // the message list's clientHeight; scrolling before that render lands
+    // scrollTop against the pre-shrink layout and the bottom drops out of
+    // view once the composer grows.
+    await get(threadData$);
+    signal.throwIfAborted();
     animationFrame(
       () => {
         set(scrollToBottom$);
@@ -1321,27 +1331,47 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
 interface RecallMessageDeps {
   threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   reloadThread$: Command<void, []>;
+  markPendingRecalled$: Command<void, [string]>;
   dataSource: ChatThreadDataSource;
 }
 
 function createRecallPendingMessage(deps: RecallMessageDeps) {
-  const { threadId, draft, cancelDraftSync$, reloadThread$, dataSource } = deps;
-  return command(async ({ set }, signal: AbortSignal) => {
+  const {
+    threadId,
+    threadData$,
+    draft,
+    cancelDraftSync$,
+    reloadThread$,
+    markPendingRecalled$,
+    dataSource,
+  } = deps;
+  return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("recallPendingMessage$ start", { threadId });
-    set(cancelDraftSync$);
-    const result = await set(
-      dataSource.recallPendingMessage$,
-      { threadId },
-      signal,
-    );
+    const thread = await get(threadData$);
     signal.throwIfAborted();
-    const restoredAttachments = (result.draftAttachments ?? []).map(
+    const pending = thread?.pendingMessage;
+    if (!pending) {
+      return;
+    }
+    // Optimistic local state — the queued card disappears and the draft
+    // refills synchronously, before the server round-trip. The mask hides
+    // the cached pendingMessage by updatedAt until threadData$ is refetched
+    // post-server-confirm, at which point the row is naturally gone.
+    set(cancelDraftSync$);
+    const restoredAttachments = (pending.attachments ?? []).map(
       createRestoredAttachment,
     );
-    set(draft.seed$, result.draftContent ?? "", restoredAttachments);
+    set(draft.seed$, pending.content ?? "", restoredAttachments);
+    set(markPendingRecalled$, pending.updatedAt);
+
+    // Server clear. Callers detach the returned promise via useSet so the
+    // UI doesn't block on the round-trip — UX is already optimistic above.
+    await set(dataSource.recallPendingMessage$, { threadId }, signal);
+    signal.throwIfAborted();
     set(reloadThread$);
     set(reloadChatThreads$);
     L.debug("recallPendingMessage$ done", { threadId });
@@ -1349,14 +1379,59 @@ function createRecallPendingMessage(deps: RecallMessageDeps) {
 }
 
 interface MessageCommandsDeps
-  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
+  extends
+    SendMessageDeps,
+    QueueMessageDeps,
+    Omit<RecallMessageDeps, "markPendingRecalled$"> {}
 
 function createMessageCommands(deps: MessageCommandsDeps) {
+  const { pendingMessage$, markPendingRecalled$ } = createPendingMessageView(
+    deps.threadData$,
+  );
   return {
     sendMessage$: createSendMessage(deps),
     queueMessage$: createQueueMessage(deps),
-    recallPendingMessage$: createRecallPendingMessage(deps),
+    recallPendingMessage$: createRecallPendingMessage({
+      ...deps,
+      markPendingRecalled$,
+    }),
+    pendingMessage$,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: pending-message view (with optimistic recall mask)
+// ---------------------------------------------------------------------------
+
+function createPendingMessageView(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  // Tracks the `updatedAt` of the pending message the user just recalled.
+  // While the cached `threadData$` still echoes that same pending row back
+  // (the fire-and-forget server clear hasn't landed yet), `pendingMessage$`
+  // returns null so the queued card disappears synchronously on click.
+  const internalRecalledUpdatedAt$ = state<string | null>(null);
+
+  const pendingMessage$ = computed(
+    async (get): Promise<PendingMessage | null> => {
+      const thread = await get(threadData$);
+      const pending = thread?.pendingMessage ?? null;
+      if (!pending) {
+        return null;
+      }
+      const recalledUpdatedAt = get(internalRecalledUpdatedAt$);
+      if (recalledUpdatedAt === pending.updatedAt) {
+        return null;
+      }
+      return pending;
+    },
+  );
+
+  const markPendingRecalled$ = command(({ set }, updatedAt: string) => {
+    set(internalRecalledUpdatedAt$, updatedAt);
+  });
+
+  return { pendingMessage$, markPendingRecalled$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -1477,19 +1552,18 @@ export function createChatThreadSignals(
     dataSource,
   });
 
-  const { sendMessage$, queueMessage$, recallPendingMessage$ } =
-    createMessageCommands({
-      threadId,
-      threadData$,
-      modelSelection$,
-      draft,
-      cancelDraftSync$,
-      flushDraftClear$,
-      insertOptimisticMessage$,
-      scrollToBottom$,
-      reloadThread$,
-      dataSource,
-    });
+  const messageCommands = createMessageCommands({
+    threadId,
+    threadData$,
+    modelSelection$,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    insertOptimisticMessage$,
+    scrollToBottom$,
+    reloadThread$,
+    dataSource,
+  });
 
   const { setInputRef$, focusInput$ } = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
@@ -1510,9 +1584,7 @@ export function createChatThreadSignals(
     threadData$,
     modelSelection$,
     setModelSelection$,
-    sendMessage$,
-    queueMessage$,
-    recallPendingMessage$,
+    ...messageCommands,
     cancelRun$,
     setScrollContainer$,
     autoScroll$,

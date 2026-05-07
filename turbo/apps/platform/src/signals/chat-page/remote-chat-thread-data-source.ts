@@ -218,6 +218,15 @@ const subscribeRealtime$ = command(
         handlers.onRunChanged$,
         signal,
       ),
+      // Server's auto-send-on-run-complete clears the queued message and
+      // dispatches a new run; reloadThread via the run-changed handler so
+      // the queued card disappears and the freshly-created run shows up.
+      set(
+        setAblyLoop$,
+        `chatThreadPendingMessageChanged:${threadId}`,
+        handlers.onRunChanged$,
+        signal,
+      ),
     ]);
     signal.throwIfAborted();
   },

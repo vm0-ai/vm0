@@ -405,6 +405,10 @@ export function mockChatLifecycle(options?: {
     mockApi(
       chatThreadPendingMessageRecallContract.recall,
       async ({ respond }) => {
+        // Fire the callback when the request arrives, before any gating —
+        // tests use this to assert that recall reached the backend even
+        // when the response is intentionally held open.
+        options?.onPendingMessageRecall?.();
         if (options?.recallGate) {
           await options.recallGate;
         }
@@ -416,7 +420,6 @@ export function mockChatLifecycle(options?: {
         const draftContent = pendingMessage.content;
         const draftAttachments = pendingMessage.attachments;
         pendingMessage = null;
-        options?.onPendingMessageRecall?.();
         return respond(200, {
           draftContent,
           draftAttachments,
