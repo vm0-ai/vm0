@@ -5493,6 +5493,506 @@
         ],
         "routingNotes": "Routed through DeepSeek's Anthropic-compatible endpoint at `api.deepseek.com`. Default model on the DeepSeek provider; also available on VM0 Managed.",
         "vm0Notes": "V4 Flash carries the lowest credit multiplier of any Built-in model (×0.02), roughly 50× less than Sonnet 4.6. Cache reads bill while cache writes are free, and VM0 sets a 10-minute API timeout for the DeepSeek provider that pairs naturally with Flash's short single-shot work."
+      },
+      "gpt-5-5": {
+        "name": "GPT-5.5",
+        "pageTitle": "GPT-5.5 on VM0",
+        "tagline": "OpenAI flagship tier for VM0 Codex runs. Use it for high-stakes code edits, hard debugging, and planner steps where quality matters more than cost.",
+        "cardIntro": "OpenAI flagship tier for VM0 Codex runs. Best for high-stakes code edits, hard debugging, and planner steps.",
+        "metaTitle": "GPT-5.5 on VM0: Pricing, Capabilities & Best Uses",
+        "metaDescription": "GPT-5.5 on VM0. OpenAI model available as a VM0 Built-in model and through OpenAI API key providers, with pricing, routing notes, and recommended agent use cases.",
+        "summary": "GPT-5.5 is part of VM0's OpenAI/Codex lineup. It runs through the Codex framework on VM0, can be used as a Built-in model billed in VM0 credits, and can also be selected for OpenAI API key providers when Codex support is enabled.\n\nThe best fit is agent work that benefits from OpenAI's Responses API and Codex runtime: code edits, tool-heavy plans, long debugging sessions, and workloads where OpenAI model behaviour is preferred over Claude-compatible providers.",
+        "releaseDate": "May 2026 on VM0",
+        "familyPosition": "Premium OpenAI tier in the VM0 Built-in lineup. Highest GPT multiplier in this set.",
+        "background": [
+          "GPT-5.5 is exposed in VM0 as both a managed model option and an OpenAI-backed provider model. VM0 resolves the Built-in model to the OpenAI concrete provider at runtime, which means the runner launches the Codex CLI instead of Claude Code for this model.",
+          "On the billing path, VM0 records the selected model id as the model usage provider and prices usage through the shared usage_event ledger. That keeps Built-in OpenAI model usage aligned with the same token categories used by OpenAI Responses API extraction: input, cached input, and output."
+        ],
+        "architecture": "GPT-5.5 runs through OpenAI-compatible Codex dispatch on VM0. Built-in usage is routed via the OpenAI concrete provider and billed from Responses API token usage categories.",
+        "specs": [
+          {
+            "label": "Family",
+            "value": "OpenAI GPT-5 generation"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "Multilingual"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported"
+          },
+          {
+            "label": "Context window",
+            "value": "400K tokens"
+          },
+          {
+            "label": "API surface",
+            "value": "OpenAI Responses API / Codex"
+          },
+          {
+            "label": "Provider",
+            "value": "OpenAI"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$5 input / $30 output per 1M"
+          }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Code edits",
+            "body": "Best OpenAI option in this lineup for multi-file code edits where the patch needs to apply cleanly."
+          },
+          {
+            "title": "Planning",
+            "body": "Good fit for planner or orchestrator steps that need to choose tools, sequence work, and recover from failed intermediate attempts."
+          },
+          {
+            "title": "Cost",
+            "body": "Premium VM0 multiplier. Route only the steps that need the extra model quality here; keep routine work on GPT-5.4 Mini or cheaper non-OpenAI models."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The hard debugging pass",
+            "body": "Point the agent at a failing test suite and ask it to reason across logs, stack traces, and source changes before editing."
+          },
+          {
+            "title": "The migration patch",
+            "body": "Use it for framework upgrades, API migrations, or refactors where changes span many files and a bad patch wastes CI time."
+          },
+          {
+            "title": "The planner in a Codex workflow",
+            "body": "Let GPT-5.5 decide the plan and delegate routine substeps to cheaper models where appropriate."
+          }
+        ],
+        "avoidFor": "Skip GPT-5.5 for high-volume classification, simple summarisation, and routine extraction. The premium multiplier is not justified when a cheaper model reaches the same outcome.",
+        "comparisons": [],
+        "verdict": "GPT-5.5 is a good VM0 pick when the agent should run through Codex and OpenAI model behaviour is the desired baseline. Use the cheaper GPT tiers for bulk work and reserve the premium tier for steps where reliability matters more than unit cost.",
+        "faqs": [
+          {
+            "q": "Can I use GPT-5.5 as a Built-in model on VM0?",
+            "a": "Yes. GPT-5.5 is available through VM0 Managed routing and uses VM0 credits. It can also be used with a bring-your-own OpenAI API key when that provider is enabled."
+          },
+          {
+            "q": "Which runner framework does GPT-5.5 use?",
+            "a": "GPT-5.5 uses the Codex framework on VM0. The VM0 provider is a meta-provider, so runtime dispatch follows the selected model's concrete OpenAI provider."
+          },
+          {
+            "q": "How does VM0 bill GPT-5.5?",
+            "a": "VM0 records OpenAI Responses API usage as input tokens, cached input tokens, and output tokens, then applies the model's VM0 credit multiplier for Built-in runs."
+          }
+        ],
+        "alternatives": [],
+        "routingNotes": "GPT-5.5 is routed through the OpenAI Responses API for API-key backed runs and through VM0's managed OpenAI key pool for Built-in runs.",
+        "vm0Notes": "On VM0, GPT-5.5 appears in the Built-in model picker behind CodexBeta visibility and dispatches through Codex once selected."
+      },
+      "gpt-5-4": {
+        "name": "GPT-5.4",
+        "pageTitle": "GPT-5.4 on VM0",
+        "tagline": "Balanced OpenAI model for VM0 Codex agents. A practical default when you want Codex behaviour without the GPT-5.5 premium.",
+        "cardIntro": "Balanced OpenAI model for VM0 Codex agents. A practical default when you want Codex behaviour without the GPT-5.5 premium.",
+        "metaTitle": "GPT-5.4 on VM0: Pricing, Capabilities & Best Uses",
+        "metaDescription": "GPT-5.4 on VM0. OpenAI model available as a VM0 Built-in model and through OpenAI API key providers, with pricing, routing notes, and recommended agent use cases.",
+        "summary": "GPT-5.4 is part of VM0's OpenAI/Codex lineup. It runs through the Codex framework on VM0, can be used as a Built-in model billed in VM0 credits, and can also be selected for OpenAI API key providers when Codex support is enabled.\n\nThe best fit is agent work that benefits from OpenAI's Responses API and Codex runtime: code edits, tool-heavy plans, long debugging sessions, and workloads where OpenAI model behaviour is preferred over Claude-compatible providers.",
+        "releaseDate": "May 2026 on VM0",
+        "familyPosition": "Balanced OpenAI tier in the VM0 Built-in lineup. Same VM0 multiplier as Claude Sonnet 4.6.",
+        "background": [
+          "GPT-5.4 is exposed in VM0 as both a managed model option and an OpenAI-backed provider model. VM0 resolves the Built-in model to the OpenAI concrete provider at runtime, which means the runner launches the Codex CLI instead of Claude Code for this model.",
+          "On the billing path, VM0 records the selected model id as the model usage provider and prices usage through the shared usage_event ledger. That keeps Built-in OpenAI model usage aligned with the same token categories used by OpenAI Responses API extraction: input, cached input, and output."
+        ],
+        "architecture": "GPT-5.4 uses OpenAI Responses API usage accounting and Codex runtime dispatch on VM0. It sits at the VM0 ×1 baseline for OpenAI-backed Codex work.",
+        "specs": [
+          {
+            "label": "Family",
+            "value": "OpenAI GPT-5 generation"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "Multilingual"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported"
+          },
+          {
+            "label": "Context window",
+            "value": "400K tokens"
+          },
+          {
+            "label": "API surface",
+            "value": "OpenAI Responses API / Codex"
+          },
+          {
+            "label": "Provider",
+            "value": "OpenAI"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$2.50 input / $15 output per 1M"
+          }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Everyday Codex runs",
+            "body": "Strong default for day-to-day code edits, explanations, test fixes, and tool-using workflows."
+          },
+          {
+            "title": "Latency and cost",
+            "body": "More economical than GPT-5.5 while keeping the OpenAI/Codex runtime path."
+          },
+          {
+            "title": "Escalation path",
+            "body": "Escalate to GPT-5.5 only when the task is visibly failing or requires stronger planning."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The default coding agent",
+            "body": "Use GPT-5.4 for normal code changes, bug fixes, and small refactors where the agent needs reliable tool use."
+          },
+          {
+            "title": "The test-fix loop",
+            "body": "Let it read a failing test, patch the code, and re-run checks without paying premium-tier credits by default."
+          },
+          {
+            "title": "The OpenAI baseline",
+            "body": "Pick it when you want OpenAI model behaviour as the stable baseline for a VM0 agent."
+          }
+        ],
+        "avoidFor": "Skip GPT-5.4 when the task is either trivial enough for a mini/cost-saving model or hard enough that GPT-5.5 is worth the premium.",
+        "comparisons": [],
+        "verdict": "GPT-5.4 is a good VM0 pick when the agent should run through Codex and OpenAI model behaviour is the desired baseline. Use the cheaper GPT tiers for bulk work and reserve the premium tier for steps where reliability matters more than unit cost.",
+        "faqs": [
+          {
+            "q": "Can I use GPT-5.4 as a Built-in model on VM0?",
+            "a": "Yes. GPT-5.4 is available through VM0 Managed routing and uses VM0 credits. It can also be used with a bring-your-own OpenAI API key when that provider is enabled."
+          },
+          {
+            "q": "Which runner framework does GPT-5.4 use?",
+            "a": "GPT-5.4 uses the Codex framework on VM0. The VM0 provider is a meta-provider, so runtime dispatch follows the selected model's concrete OpenAI provider."
+          },
+          {
+            "q": "How does VM0 bill GPT-5.4?",
+            "a": "VM0 records OpenAI Responses API usage as input tokens, cached input tokens, and output tokens, then applies the model's VM0 credit multiplier for Built-in runs."
+          }
+        ],
+        "alternatives": [],
+        "routingNotes": "GPT-5.4 is routed through the OpenAI Responses API for API-key backed runs and through VM0's managed OpenAI key pool for Built-in runs.",
+        "vm0Notes": "On VM0, GPT-5.4 appears in the Built-in model picker behind CodexBeta visibility and dispatches through Codex once selected."
+      },
+      "gpt-5-4-mini": {
+        "name": "GPT-5.4 Mini",
+        "pageTitle": "GPT-5.4 Mini on VM0",
+        "tagline": "Cost-saving OpenAI model for Codex-compatible VM0 work. Good for high-volume, short, or tightly scoped agent steps.",
+        "cardIntro": "Cost-saving OpenAI model for Codex-compatible VM0 work. Good for high-volume, short, or tightly scoped agent steps.",
+        "metaTitle": "GPT-5.4 Mini on VM0: Pricing, Capabilities & Best Uses",
+        "metaDescription": "GPT-5.4 Mini on VM0. OpenAI model available as a VM0 Built-in model and through OpenAI API key providers, with pricing, routing notes, and recommended agent use cases.",
+        "summary": "GPT-5.4 Mini is part of VM0's OpenAI/Codex lineup. It runs through the Codex framework on VM0, can be used as a Built-in model billed in VM0 credits, and can also be selected for OpenAI API key providers when Codex support is enabled.\n\nThe best fit is agent work that benefits from OpenAI's Responses API and Codex runtime: code edits, tool-heavy plans, long debugging sessions, and workloads where OpenAI model behaviour is preferred over Claude-compatible providers.",
+        "releaseDate": "May 2026 on VM0",
+        "familyPosition": "Cost-saving OpenAI tier in the VM0 Built-in lineup.",
+        "background": [
+          "GPT-5.4 Mini is exposed in VM0 as both a managed model option and an OpenAI-backed provider model. VM0 resolves the Built-in model to the OpenAI concrete provider at runtime, which means the runner launches the Codex CLI instead of Claude Code for this model.",
+          "On the billing path, VM0 records the selected model id as the model usage provider and prices usage through the shared usage_event ledger. That keeps Built-in OpenAI model usage aligned with the same token categories used by OpenAI Responses API extraction: input, cached input, and output."
+        ],
+        "architecture": "GPT-5.4 Mini keeps the OpenAI/Codex dispatch path while lowering unit cost. It reports usage through the same Responses API token categories as the larger GPT models.",
+        "specs": [
+          {
+            "label": "Family",
+            "value": "OpenAI GPT-5 generation"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "Multilingual"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported"
+          },
+          {
+            "label": "Context window",
+            "value": "400K tokens"
+          },
+          {
+            "label": "API surface",
+            "value": "OpenAI Responses API / Codex"
+          },
+          {
+            "label": "Provider",
+            "value": "OpenAI"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$0.75 input / $4.50 output per 1M"
+          }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Unit cost",
+            "body": "Best OpenAI option here when volume matters and prompts are well-scoped."
+          },
+          {
+            "title": "Short tasks",
+            "body": "Good for classification, small edits, formatting, and lightweight extraction."
+          },
+          {
+            "title": "Limits",
+            "body": "Do not use it as the planner for long multi-step code migrations unless you can tolerate retries or escalation."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The cheap pre-pass",
+            "body": "Classify issues, summarize files, or decide whether a task should escalate to a stronger model."
+          },
+          {
+            "title": "The small patch worker",
+            "body": "Handle isolated edits where the target file and expected change are already clear."
+          },
+          {
+            "title": "The high-volume extractor",
+            "body": "Extract structured fields from many similar inputs while keeping the OpenAI/Codex route."
+          }
+        ],
+        "avoidFor": "Skip GPT-5.4 Mini for hard debugging, broad refactors, and long-running planner roles. Use GPT-5.4 or GPT-5.5 when quality matters more than unit cost.",
+        "comparisons": [],
+        "verdict": "GPT-5.4 Mini is a good VM0 pick when the agent should run through Codex and OpenAI model behaviour is the desired baseline. Use the cheaper GPT tiers for bulk work and reserve the premium tier for steps where reliability matters more than unit cost.",
+        "faqs": [
+          {
+            "q": "Can I use GPT-5.4 Mini as a Built-in model on VM0?",
+            "a": "Yes. GPT-5.4 Mini is available through VM0 Managed routing and uses VM0 credits. It can also be used with a bring-your-own OpenAI API key when that provider is enabled."
+          },
+          {
+            "q": "Which runner framework does GPT-5.4 Mini use?",
+            "a": "GPT-5.4 Mini uses the Codex framework on VM0. The VM0 provider is a meta-provider, so runtime dispatch follows the selected model's concrete OpenAI provider."
+          },
+          {
+            "q": "How does VM0 bill GPT-5.4 Mini?",
+            "a": "VM0 records OpenAI Responses API usage as input tokens, cached input tokens, and output tokens, then applies the model's VM0 credit multiplier for Built-in runs."
+          }
+        ],
+        "alternatives": [],
+        "routingNotes": "GPT-5.4 Mini is routed through the OpenAI Responses API for API-key backed runs and through VM0's managed OpenAI key pool for Built-in runs.",
+        "vm0Notes": "On VM0, GPT-5.4 Mini appears in the Built-in model picker behind CodexBeta visibility and dispatches through Codex once selected."
+      },
+      "gpt-5-3-codex": {
+        "name": "GPT-5.3 Codex",
+        "pageTitle": "GPT-5.3 Codex on VM0",
+        "tagline": "Code-focused OpenAI model for Codex workflows. Useful when the workload is primarily repository navigation, edits, and test repair.",
+        "cardIntro": "Code-focused OpenAI model for Codex workflows. Useful for repository navigation, edits, and test repair.",
+        "metaTitle": "GPT-5.3 Codex on VM0: Pricing, Capabilities & Best Uses",
+        "metaDescription": "GPT-5.3 Codex on VM0. OpenAI model available as a VM0 Built-in model and through OpenAI API key providers, with pricing, routing notes, and recommended agent use cases.",
+        "summary": "GPT-5.3 Codex is part of VM0's OpenAI/Codex lineup. It runs through the Codex framework on VM0, can be used as a Built-in model billed in VM0 credits, and can also be selected for OpenAI API key providers when Codex support is enabled.\n\nThe best fit is agent work that benefits from OpenAI's Responses API and Codex runtime: code edits, tool-heavy plans, long debugging sessions, and workloads where OpenAI model behaviour is preferred over Claude-compatible providers.",
+        "releaseDate": "May 2026 on VM0",
+        "familyPosition": "Code-focused OpenAI tier for Codex-first VM0 agents.",
+        "background": [
+          "GPT-5.3 Codex is exposed in VM0 as both a managed model option and an OpenAI-backed provider model. VM0 resolves the Built-in model to the OpenAI concrete provider at runtime, which means the runner launches the Codex CLI instead of Claude Code for this model.",
+          "On the billing path, VM0 records the selected model id as the model usage provider and prices usage through the shared usage_event ledger. That keeps Built-in OpenAI model usage aligned with the same token categories used by OpenAI Responses API extraction: input, cached input, and output."
+        ],
+        "architecture": "GPT-5.3 Codex is exposed as an OpenAI/Codex model on VM0. It uses Codex runtime dispatch and OpenAI Responses API usage extraction for billing.",
+        "specs": [
+          {
+            "label": "Family",
+            "value": "OpenAI GPT-5 generation"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "Multilingual"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported"
+          },
+          {
+            "label": "Context window",
+            "value": "400K tokens"
+          },
+          {
+            "label": "API surface",
+            "value": "OpenAI Responses API / Codex"
+          },
+          {
+            "label": "Provider",
+            "value": "OpenAI"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$1.75 input / $14 output per 1M"
+          }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Repository work",
+            "body": "Good fit for tasks that are mostly code search, file edits, and test-output interpretation."
+          },
+          {
+            "title": "Cost balance",
+            "body": "Lower multiplier than GPT-5.4 while staying in the Codex-focused OpenAI path."
+          },
+          {
+            "title": "Scope",
+            "body": "Better for coding workflows than general multimodal or broad research tasks."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The targeted code worker",
+            "body": "Give it a narrow issue, a test failure, and a repo. It can make a bounded patch without paying the premium GPT-5.5 rate."
+          },
+          {
+            "title": "The CI repair loop",
+            "body": "Use it to read compiler/test output, locate the failing area, and patch one module at a time."
+          },
+          {
+            "title": "The code search assistant",
+            "body": "Ask it to trace symbols, explain a local flow, and identify the files a patch should touch."
+          }
+        ],
+        "avoidFor": "Skip GPT-5.3 Codex for broad product reasoning, multimodal analysis, and highest-stakes migrations where GPT-5.5 or another frontier tier is more appropriate.",
+        "comparisons": [],
+        "verdict": "GPT-5.3 Codex is a good VM0 pick when the agent should run through Codex and OpenAI model behaviour is the desired baseline. Use the cheaper GPT tiers for bulk work and reserve the premium tier for steps where reliability matters more than unit cost.",
+        "faqs": [
+          {
+            "q": "Can I use GPT-5.3 Codex as a Built-in model on VM0?",
+            "a": "Yes. GPT-5.3 Codex is available through VM0 Managed routing and uses VM0 credits. It can also be used with a bring-your-own OpenAI API key when that provider is enabled."
+          },
+          {
+            "q": "Which runner framework does GPT-5.3 Codex use?",
+            "a": "GPT-5.3 Codex uses the Codex framework on VM0. The VM0 provider is a meta-provider, so runtime dispatch follows the selected model's concrete OpenAI provider."
+          },
+          {
+            "q": "How does VM0 bill GPT-5.3 Codex?",
+            "a": "VM0 records OpenAI Responses API usage as input tokens, cached input tokens, and output tokens, then applies the model's VM0 credit multiplier for Built-in runs."
+          }
+        ],
+        "alternatives": [],
+        "routingNotes": "GPT-5.3 Codex is routed through the OpenAI Responses API for API-key backed runs and through VM0's managed OpenAI key pool for Built-in runs.",
+        "vm0Notes": "On VM0, GPT-5.3 Codex appears in the Built-in model picker behind CodexBeta visibility and dispatches through Codex once selected."
+      },
+      "gpt-5-2": {
+        "name": "GPT-5.2",
+        "pageTitle": "GPT-5.2 on VM0",
+        "tagline": "Lower-cost OpenAI GPT-5 tier for VM0. A useful stable option for agents that do not need the newest GPT tier.",
+        "cardIntro": "Lower-cost OpenAI GPT-5 tier for VM0. Useful for agents that do not need the newest GPT tier.",
+        "metaTitle": "GPT-5.2 on VM0: Pricing, Capabilities & Best Uses",
+        "metaDescription": "GPT-5.2 on VM0. OpenAI model available as a VM0 Built-in model and through OpenAI API key providers, with pricing, routing notes, and recommended agent use cases.",
+        "summary": "GPT-5.2 is part of VM0's OpenAI/Codex lineup. It runs through the Codex framework on VM0, can be used as a Built-in model billed in VM0 credits, and can also be selected for OpenAI API key providers when Codex support is enabled.\n\nThe best fit is agent work that benefits from OpenAI's Responses API and Codex runtime: code edits, tool-heavy plans, long debugging sessions, and workloads where OpenAI model behaviour is preferred over Claude-compatible providers.",
+        "releaseDate": "May 2026 on VM0",
+        "familyPosition": "Older OpenAI GPT-5 tier kept available for cost and behaviour stability.",
+        "background": [
+          "GPT-5.2 is exposed in VM0 as both a managed model option and an OpenAI-backed provider model. VM0 resolves the Built-in model to the OpenAI concrete provider at runtime, which means the runner launches the Codex CLI instead of Claude Code for this model.",
+          "On the billing path, VM0 records the selected model id as the model usage provider and prices usage through the shared usage_event ledger. That keeps Built-in OpenAI model usage aligned with the same token categories used by OpenAI Responses API extraction: input, cached input, and output."
+        ],
+        "architecture": "GPT-5.2 follows the same VM0 OpenAI routing path as the newer GPT models: Codex dispatch plus Responses API usage extraction.",
+        "specs": [
+          {
+            "label": "Family",
+            "value": "OpenAI GPT-5 generation"
+          },
+          {
+            "label": "Modalities",
+            "value": "Text, vision, code"
+          },
+          {
+            "label": "Languages",
+            "value": "Multilingual"
+          },
+          {
+            "label": "Prompt caching",
+            "value": "Supported"
+          },
+          {
+            "label": "Context window",
+            "value": "400K tokens"
+          },
+          {
+            "label": "API surface",
+            "value": "OpenAI Responses API / Codex"
+          },
+          {
+            "label": "Provider",
+            "value": "OpenAI"
+          },
+          {
+            "label": "Vendor list price",
+            "value": "$1.75 input / $14 output per 1M"
+          }
+        ],
+        "benchmarksNote": "",
+        "benchmarks": [],
+        "performance": [
+          {
+            "title": "Stability",
+            "body": "Good for pinned agents where behaviour has already been validated and changing model tier would require retesting."
+          },
+          {
+            "title": "Cost",
+            "body": "Below the GPT-5.4 baseline while still using OpenAI/Codex routing."
+          },
+          {
+            "title": "Upgrade path",
+            "body": "Move to GPT-5.4 or GPT-5.5 when the task needs stronger reasoning or first-attempt patch quality."
+          }
+        ],
+        "bestForExamples": [
+          {
+            "title": "The pinned production agent",
+            "body": "Keep GPT-5.2 when a workflow has already been validated against it and stability matters more than chasing the newest tier."
+          },
+          {
+            "title": "The budget OpenAI worker",
+            "body": "Use it for routine OpenAI-backed code and text tasks that need Codex compatibility but not premium quality."
+          },
+          {
+            "title": "The controlled migration step",
+            "body": "Run GPT-5.2 and GPT-5.4 side-by-side while measuring whether the newer model improves outcomes enough to justify the cost."
+          }
+        ],
+        "avoidFor": "Skip GPT-5.2 for new high-stakes agents where GPT-5.4 or GPT-5.5 gives better headroom, and for bulk work where GPT-5.4 Mini is cheaper.",
+        "comparisons": [],
+        "verdict": "GPT-5.2 is a good VM0 pick when the agent should run through Codex and OpenAI model behaviour is the desired baseline. Use the cheaper GPT tiers for bulk work and reserve the premium tier for steps where reliability matters more than unit cost.",
+        "faqs": [
+          {
+            "q": "Can I use GPT-5.2 as a Built-in model on VM0?",
+            "a": "Yes. GPT-5.2 is available through VM0 Managed routing and uses VM0 credits. It can also be used with a bring-your-own OpenAI API key when that provider is enabled."
+          },
+          {
+            "q": "Which runner framework does GPT-5.2 use?",
+            "a": "GPT-5.2 uses the Codex framework on VM0. The VM0 provider is a meta-provider, so runtime dispatch follows the selected model's concrete OpenAI provider."
+          },
+          {
+            "q": "How does VM0 bill GPT-5.2?",
+            "a": "VM0 records OpenAI Responses API usage as input tokens, cached input tokens, and output tokens, then applies the model's VM0 credit multiplier for Built-in runs."
+          }
+        ],
+        "alternatives": [],
+        "routingNotes": "GPT-5.2 is routed through the OpenAI Responses API for API-key backed runs and through VM0's managed OpenAI key pool for Built-in runs.",
+        "vm0Notes": "On VM0, GPT-5.2 appears in the Built-in model picker behind CodexBeta visibility and dispatches through Codex once selected."
       }
     }
   },
