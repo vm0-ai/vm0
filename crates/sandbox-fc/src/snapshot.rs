@@ -2402,6 +2402,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pending_snapshot_publish_discard_output_cleanup_failure_keeps_state_for_retry() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        tokio::fs::remove_file(output.snapshot())
+            .await
+            .expect("remove snapshot file");
+        tokio::fs::create_dir(output.snapshot())
+            .await
+            .expect("replace snapshot file with directory");
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "pending-output-retry").await;
+        let cow_file = kept_cow.cow_file.clone();
+        let bitmap_file = kept_cow.bitmap_file.clone();
+        let mut pending = FirecrackerPendingSnapshotPublish::new(
+            output.snapshot_config("pending-output-retry"),
+            SnapshotOutputPaths::new(output.dir().to_path_buf()),
+            kept_cow,
+        );
+
+        pending
+            .discard_inner()
+            .await
+            .expect_err("discard should fail when an output artifact cannot be removed");
+
+        assert!(
+            tokio::fs::metadata(output.snapshot())
+                .await
+                .expect("snapshot directory should remain")
+                .is_dir(),
+            "failed output cleanup should leave the blocking artifact for retry"
+        );
+        assert!(
+            !tokio::fs::try_exists(&cow_file).await.unwrap(),
+            "failed output cleanup should still remove temporary cow"
+        );
+        assert!(
+            !tokio::fs::try_exists(&bitmap_file).await.unwrap(),
+            "failed output cleanup should still remove temporary bitmap"
+        );
+
+        tokio::fs::remove_dir(output.snapshot())
+            .await
+            .expect("remove blocking snapshot directory");
+        pending
+            .discard_inner()
+            .await
+            .expect("retry should clean retained pending publish state");
+
+        assert!(
+            !tokio::fs::try_exists(output.snapshot()).await.unwrap(),
+            "retry should leave no snapshot output"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.memory()).await.unwrap(),
+            "retry should leave no memory output"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.work_dir()).await.unwrap(),
+            "retry should leave no snapshot work dir"
+        );
+    }
+
+    #[tokio::test]
     async fn pending_snapshot_publish_drop_cleans_temp_without_publishing() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().join("output"));
@@ -2434,6 +2497,14 @@ mod tests {
         assert!(
             !tokio::fs::try_exists(attempt_dir).await.unwrap(),
             "drop should cleanup temporary attempt dir"
+        );
+        assert!(
+            tokio::fs::try_exists(output.snapshot()).await.unwrap(),
+            "drop must not cleanup stable snapshot output without the caller's lock"
+        );
+        assert!(
+            tokio::fs::try_exists(output.memory()).await.unwrap(),
+            "drop must not cleanup stable memory output without the caller's lock"
         );
         assert!(
             !tokio::fs::try_exists(output.complete_marker())
