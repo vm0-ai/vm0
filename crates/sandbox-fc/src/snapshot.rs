@@ -469,7 +469,6 @@ enum SnapshotPublishState {
     HoldingDevice(PooledNbdCowDevice),
     KeepingCow(KeepCowFinalizer),
     KeptCow(KeptCow),
-    Committed,
     Empty,
 }
 
@@ -501,10 +500,7 @@ impl SnapshotPublishAttempt {
     }
 
     fn has_cleanup_work(&self) -> bool {
-        !matches!(
-            self.state,
-            SnapshotPublishState::Committed | SnapshotPublishState::Empty
-        )
+        !matches!(self.state, SnapshotPublishState::Empty)
     }
 
     fn start_keep_cow(&mut self) -> Result<(), SnapshotError> {
@@ -524,10 +520,6 @@ impl SnapshotPublishAttempt {
                 self.state = SnapshotPublishState::KeptCow(kept_cow);
                 Ok(())
             }
-            SnapshotPublishState::Committed => {
-                self.state = SnapshotPublishState::Committed;
-                Ok(())
-            }
             SnapshotPublishState::Empty => Err(SnapshotError::Teardown(
                 "snapshot publish attempt missing COW ownership".into(),
             )),
@@ -538,7 +530,7 @@ impl SnapshotPublishAttempt {
         self.start_keep_cow()?;
         let result = match &mut self.state {
             SnapshotPublishState::KeepingCow(finalizer) => finalizer.as_mut().await,
-            SnapshotPublishState::KeptCow(_) | SnapshotPublishState::Committed => return Ok(()),
+            SnapshotPublishState::KeptCow(_) => return Ok(()),
             SnapshotPublishState::HoldingDevice(_) | SnapshotPublishState::Empty => {
                 return Err(SnapshotError::Teardown(
                     "snapshot publish attempt did not start keep-COW finalizer".into(),
@@ -560,31 +552,16 @@ impl SnapshotPublishAttempt {
         }
     }
 
-    async fn commit_success(&mut self, output: &SnapshotOutputPaths) -> Result<(), SnapshotError> {
+    async fn resolve_into_kept_cow(&mut self) -> Result<KeptCow, SnapshotError> {
         self.resolve_keep_cow().await?;
 
         let state = std::mem::replace(&mut self.state, SnapshotPublishState::Empty);
         match state {
-            SnapshotPublishState::KeptCow(kept_cow) => {
-                match commit_snapshot_cow_output(&kept_cow, output) {
-                    Ok(()) => {
-                        self.state = SnapshotPublishState::Committed;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        self.state = SnapshotPublishState::KeptCow(kept_cow);
-                        Err(e)
-                    }
-                }
-            }
-            SnapshotPublishState::Committed => {
-                self.state = SnapshotPublishState::Committed;
-                Ok(())
-            }
+            SnapshotPublishState::KeptCow(kept_cow) => Ok(kept_cow),
             other => {
                 self.state = other;
                 Err(SnapshotError::Teardown(
-                    "snapshot publish attempt reached commit without kept COW".into(),
+                    "snapshot publish attempt resolved without kept COW".into(),
                 ))
             }
         }
@@ -636,92 +613,130 @@ impl SnapshotPublishAttempt {
                 }
                 cleaned
             }
-            SnapshotPublishState::Committed | SnapshotPublishState::Empty => true,
+            SnapshotPublishState::Empty => true,
             other => {
                 self.state = other;
                 false
             }
         }
     }
+}
 
-    fn cleanup_resolved_kept_cow_sync(&mut self) -> bool {
-        let state = std::mem::replace(&mut self.state, SnapshotPublishState::Empty);
-        match state {
-            SnapshotPublishState::KeptCow(kept_cow) => {
-                let cleaned = cleanup_kept_cow_after_publish_drop(&kept_cow);
-                if !cleaned {
-                    self.state = SnapshotPublishState::KeptCow(kept_cow);
-                }
-                cleaned
-            }
-            SnapshotPublishState::Committed | SnapshotPublishState::Empty => true,
-            other => {
-                self.state = other;
-                false
-            }
-        }
-    }
+enum FirecrackerPendingSnapshotPublishState {
+    Pending(KeptCow),
+    Committed,
+    Discarded,
 }
 
 struct FirecrackerPendingSnapshotPublish {
     snapshot_config: SnapshotConfig,
     output: SnapshotOutputPaths,
-    publish_attempt: SnapshotPublishAttempt,
+    state: FirecrackerPendingSnapshotPublishState,
 }
 
 impl FirecrackerPendingSnapshotPublish {
-    async fn commit_config(mut self) -> Result<SnapshotConfig, SnapshotError> {
-        if let Err(err) = self.publish_attempt.commit_success(&self.output).await {
-            if !self.publish_attempt.cleanup_after_cancellation().await {
-                tracing::warn!(
-                    error = %err,
-                    output_dir = %self.output.dir().display(),
-                    "failed to cleanup uncommitted snapshot artifacts after publish failure"
-                );
-            }
-            return Err(err);
+    fn new(
+        snapshot_config: SnapshotConfig,
+        output: SnapshotOutputPaths,
+        kept_cow: KeptCow,
+    ) -> Self {
+        Self {
+            snapshot_config,
+            output,
+            state: FirecrackerPendingSnapshotPublishState::Pending(kept_cow),
         }
-
-        Ok(self.snapshot_config.clone())
     }
 
-    async fn discard_inner(mut self) -> Result<(), SnapshotError> {
-        if self.publish_attempt.cleanup_after_cancellation().await {
-            Ok(())
-        } else {
-            Err(SnapshotError::Teardown(
-                "failed to discard uncommitted snapshot artifacts".into(),
-            ))
+    async fn commit_config(&mut self) -> Result<SnapshotConfig, SnapshotError> {
+        let state = std::mem::replace(
+            &mut self.state,
+            FirecrackerPendingSnapshotPublishState::Discarded,
+        );
+        match state {
+            FirecrackerPendingSnapshotPublishState::Pending(kept_cow) => {
+                match commit_snapshot_cow_output(&kept_cow, &self.output) {
+                    Ok(()) => {
+                        self.state = FirecrackerPendingSnapshotPublishState::Committed;
+                        Ok(self.snapshot_config.clone())
+                    }
+                    Err(e) => {
+                        self.state = FirecrackerPendingSnapshotPublishState::Pending(kept_cow);
+                        Err(e)
+                    }
+                }
+            }
+            FirecrackerPendingSnapshotPublishState::Committed => {
+                self.state = FirecrackerPendingSnapshotPublishState::Committed;
+                Ok(self.snapshot_config.clone())
+            }
+            FirecrackerPendingSnapshotPublishState::Discarded => {
+                self.state = FirecrackerPendingSnapshotPublishState::Discarded;
+                Err(SnapshotError::Teardown(
+                    "pending snapshot publish was already discarded".into(),
+                ))
+            }
+        }
+    }
+
+    async fn discard_inner(&mut self) -> Result<(), SnapshotError> {
+        let state = std::mem::replace(
+            &mut self.state,
+            FirecrackerPendingSnapshotPublishState::Discarded,
+        );
+        match state {
+            FirecrackerPendingSnapshotPublishState::Pending(kept_cow) => {
+                if cleanup_kept_cow_after_publish_cancellation(&kept_cow).await {
+                    Ok(())
+                } else {
+                    self.state = FirecrackerPendingSnapshotPublishState::Pending(kept_cow);
+                    Err(SnapshotError::Teardown(
+                        "failed to discard uncommitted snapshot artifacts".into(),
+                    ))
+                }
+            }
+            FirecrackerPendingSnapshotPublishState::Committed
+            | FirecrackerPendingSnapshotPublishState::Discarded => {
+                self.state = state;
+                Ok(())
+            }
         }
     }
 }
 
 impl Drop for FirecrackerPendingSnapshotPublish {
     fn drop(&mut self) {
-        if self.publish_attempt.has_cleanup_work() {
-            let cleaned = self.publish_attempt.cleanup_resolved_kept_cow_sync();
+        let state = std::mem::replace(
+            &mut self.state,
+            FirecrackerPendingSnapshotPublishState::Discarded,
+        );
+        if let FirecrackerPendingSnapshotPublishState::Pending(kept_cow) = state {
+            let cleaned = cleanup_kept_cow_after_publish_drop(&kept_cow);
+            if !cleaned {
+                self.state = FirecrackerPendingSnapshotPublishState::Pending(kept_cow);
+            }
             tracing::warn!(
                 cleaned,
                 output_dir = %self.output.dir().display(),
                 "uncommitted snapshot publish dropped without commit or discard"
             );
+        } else {
+            self.state = state;
         }
     }
 }
 
 #[async_trait]
 impl PendingSnapshotPublish for FirecrackerPendingSnapshotPublish {
-    async fn commit(self: Box<Self>) -> Result<SnapshotOutput, sandbox::SnapshotError> {
-        let snapshot_config = (*self)
+    async fn commit(&mut self) -> Result<SnapshotOutput, sandbox::SnapshotError> {
+        let snapshot_config = self
             .commit_config()
             .await
             .map_err(SnapshotError::into_sandbox_error)?;
         Ok(snapshot_output_from_config(snapshot_config))
     }
 
-    async fn discard(self: Box<Self>) -> Result<(), sandbox::SnapshotError> {
-        (*self)
-            .discard_inner()
+    async fn discard(&mut self) -> Result<(), sandbox::SnapshotError> {
+        self.discard_inner()
             .await
             .map_err(SnapshotError::into_sandbox_error)
     }
@@ -1155,7 +1170,7 @@ impl SnapshotAttempt {
         }
     }
 
-    async fn prepare_success_publish(&mut self) -> Result<SnapshotPublishAttempt, SnapshotError> {
+    async fn prepare_success_publish(&mut self) -> Result<KeptCow, SnapshotError> {
         let cow_device = self.cow_device.take().ok_or_else(|| {
             SnapshotError::Teardown("snapshot attempt missing COW device before publish".into())
         })?;
@@ -1163,14 +1178,13 @@ impl SnapshotAttempt {
         self.resolve_success_publish().await
     }
 
-    async fn resolve_success_publish(&mut self) -> Result<SnapshotPublishAttempt, SnapshotError> {
+    async fn resolve_success_publish(&mut self) -> Result<KeptCow, SnapshotError> {
         let publish_attempt = self.publish_attempt.as_mut().ok_or_else(|| {
             SnapshotError::Teardown("snapshot publish attempt missing before publish".into())
         })?;
-        publish_attempt.resolve_keep_cow().await?;
-        self.publish_attempt.take().ok_or_else(|| {
-            SnapshotError::Teardown("snapshot publish attempt missing after prepare".into())
-        })
+        let kept_cow = publish_attempt.resolve_into_kept_cow().await?;
+        self.publish_attempt.take();
+        Ok(kept_cow)
     }
 
     async fn cleanup_failure(&mut self) {
@@ -1513,10 +1527,14 @@ impl Drop for SnapshotAttempt {
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
-    create_uncommitted_snapshot(config)
-        .await?
-        .commit_config()
-        .await
+    let mut pending = create_uncommitted_snapshot(config).await?;
+    match pending.commit_config().await {
+        Ok(config) => Ok(config),
+        Err(err) => {
+            let _ = pending.discard_inner().await;
+            Err(err)
+        }
+    }
 }
 
 async fn create_uncommitted_snapshot(
@@ -1607,14 +1625,13 @@ async fn create_uncommitted_snapshot(
     attempt_dir_guard.disarm();
     let result = run_snapshot_workflow(&config, &mut attempt).await;
     let result = match result {
-        Ok(snapshot_config) => match attempt.prepare_success_publish().await {
-            Ok(publish_attempt) => Ok(FirecrackerPendingSnapshotPublish {
+        Ok(snapshot_config) => attempt.prepare_success_publish().await.map(|kept_cow| {
+            FirecrackerPendingSnapshotPublish::new(
                 snapshot_config,
-                output: SnapshotOutputPaths::new(config.output_dir.clone()),
-                publish_attempt,
-            }),
-            Err(err) => Err(err),
-        },
+                SnapshotOutputPaths::new(config.output_dir.clone()),
+                kept_cow,
+            )
+        }),
         Err(err) => Err(err),
     };
 
@@ -2136,12 +2153,12 @@ mod tests {
         write_required_snapshot_artifacts(&output).await;
         let kept_cow = write_kept_cow_for_test(&output.work_dir(), "pending-commit").await;
 
-        let pending: Box<dyn PendingSnapshotPublish> =
-            Box::new(FirecrackerPendingSnapshotPublish {
-                snapshot_config: output.snapshot_config("pending-commit"),
-                output: SnapshotOutputPaths::new(output.dir().to_path_buf()),
-                publish_attempt: SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow),
-            });
+        let mut pending: Box<dyn PendingSnapshotPublish> =
+            Box::new(FirecrackerPendingSnapshotPublish::new(
+                output.snapshot_config("pending-commit"),
+                SnapshotOutputPaths::new(output.dir().to_path_buf()),
+                kept_cow,
+            ));
 
         let published = pending.commit().await.expect("commit pending publish");
 
@@ -2168,18 +2185,22 @@ mod tests {
             .expect("create output dir");
         let kept_cow = write_kept_cow_for_test(&output.work_dir(), "pending-commit-fail").await;
 
-        let pending: Box<dyn PendingSnapshotPublish> =
-            Box::new(FirecrackerPendingSnapshotPublish {
-                snapshot_config: output.snapshot_config("pending-commit-fail"),
-                output: SnapshotOutputPaths::new(output.dir().to_path_buf()),
-                publish_attempt: SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow),
-            });
+        let mut pending: Box<dyn PendingSnapshotPublish> =
+            Box::new(FirecrackerPendingSnapshotPublish::new(
+                output.snapshot_config("pending-commit-fail"),
+                SnapshotOutputPaths::new(output.dir().to_path_buf()),
+                kept_cow,
+            ));
 
         let err = pending
             .commit()
             .await
             .expect_err("pending commit should fail without snapshot and memory artifacts");
         assert!(matches!(err, sandbox::SnapshotError::Io(_)), "got: {err:?}");
+        pending
+            .discard()
+            .await
+            .expect("failed pending commit should keep cleanup state for discard");
         assert!(
             !tokio::fs::try_exists(output.complete_marker())
                 .await
@@ -2206,12 +2227,12 @@ mod tests {
             .expect("attempt dir")
             .to_path_buf();
 
-        let pending: Box<dyn PendingSnapshotPublish> =
-            Box::new(FirecrackerPendingSnapshotPublish {
-                snapshot_config: output.snapshot_config("pending-discard"),
-                output: SnapshotOutputPaths::new(output.dir().to_path_buf()),
-                publish_attempt: SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow),
-            });
+        let mut pending: Box<dyn PendingSnapshotPublish> =
+            Box::new(FirecrackerPendingSnapshotPublish::new(
+                output.snapshot_config("pending-discard"),
+                SnapshotOutputPaths::new(output.dir().to_path_buf()),
+                kept_cow,
+            ));
 
         pending.discard().await.expect("discard pending publish");
 
@@ -2252,11 +2273,11 @@ mod tests {
         let cow_file = kept_cow.cow_file.clone();
         let bitmap_file = kept_cow.bitmap_file.clone();
 
-        let pending = FirecrackerPendingSnapshotPublish {
-            snapshot_config: output.snapshot_config("pending-drop"),
-            output: SnapshotOutputPaths::new(output.dir().to_path_buf()),
-            publish_attempt: SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow),
-        };
+        let pending = FirecrackerPendingSnapshotPublish::new(
+            output.snapshot_config("pending-drop"),
+            SnapshotOutputPaths::new(output.dir().to_path_buf()),
+            kept_cow,
+        );
 
         drop(pending);
 
@@ -2317,17 +2338,17 @@ mod tests {
             .await
             .expect("create output dir");
         let kept_cow = write_kept_cow_for_test(&output.work_dir(), "commit-cleanup").await;
-        let mut publish_attempt = SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow);
+        let mut pending = FirecrackerPendingSnapshotPublish::new(
+            output.snapshot_config("commit-cleanup"),
+            SnapshotOutputPaths::new(output.dir().to_path_buf()),
+            kept_cow,
+        );
 
-        let err = publish_attempt
-            .commit_success(&output)
+        let err = pending
+            .commit_config()
             .await
             .expect_err("commit should fail without snapshot and memory artifacts");
         assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
-        assert!(
-            publish_attempt.has_cleanup_work(),
-            "failed commit must keep publish state so cleanup can finish"
-        );
         assert!(
             tokio::fs::try_exists(output.cow()).await.unwrap(),
             "failed marker publication may leave partial stable cow"
@@ -2337,11 +2358,10 @@ mod tests {
             "failed marker publication may leave partial stable bitmap"
         );
 
-        assert!(publish_attempt.cleanup_after_cancellation().await);
-        assert!(
-            !publish_attempt.has_cleanup_work(),
-            "cleanup should resolve retained publish state"
-        );
+        pending
+            .discard_inner()
+            .await
+            .expect("failed commit should keep cleanup state for discard");
         assert!(
             !tokio::fs::try_exists(output.complete_marker())
                 .await

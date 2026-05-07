@@ -89,13 +89,17 @@ pub enum SnapshotError {
 /// and return the output paths, or [`discard`](Self::discard) to abandon the
 /// uncommitted artifacts. Dropping this object without an explicit call must
 /// not publish a usable snapshot.
+///
+/// `commit` takes `&mut self` so a failed publish can preserve provider-owned
+/// cleanup state. Callers may then call `discard` best-effort before treating
+/// the output as incomplete.
 #[async_trait]
 pub trait PendingSnapshotPublish: Send {
     /// Make the snapshot reusable and return the stable output paths.
-    async fn commit(self: Box<Self>) -> Result<SnapshotOutput, SnapshotError>;
+    async fn commit(&mut self) -> Result<SnapshotOutput, SnapshotError>;
 
     /// Abandon the uncommitted snapshot artifacts.
-    async fn discard(self: Box<Self>) -> Result<(), SnapshotError>;
+    async fn discard(&mut self) -> Result<(), SnapshotError>;
 }
 
 /// Creates snapshots for fast sandbox boot.
@@ -119,10 +123,14 @@ pub trait SnapshotProvider: Send + Sync {
         &self,
         config: SnapshotCreateConfig,
     ) -> Result<SnapshotOutput, SnapshotError> {
-        self.create_uncommitted_snapshot(config)
-            .await?
-            .commit()
-            .await
+        let mut pending = self.create_uncommitted_snapshot(config).await?;
+        match pending.commit().await {
+            Ok(output) => Ok(output),
+            Err(err) => {
+                let _ = pending.discard().await;
+                Err(err)
+            }
+        }
     }
 
     /// Content hash of all internal configuration that affects snapshot output.
