@@ -642,7 +642,8 @@ async fn build_snapshot(
         memory_mb: def.memory_mb,
     };
 
-    let output = provider.create_snapshot(create_config).await?;
+    let pending = provider.create_uncommitted_snapshot(create_config).await?;
+    let output = pending.commit().await?;
 
     let (snapshot_sz, memory_sz, cow_sz) = tokio::join!(
         file_sizes(&output.snapshot_path),
@@ -1414,6 +1415,10 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    };
 
     #[derive(clap::Parser)]
     struct TestBuildCli {
@@ -1471,6 +1476,71 @@ mod tests {
             guest_mock_claude: guest.clone(),
             guest_mock_codex: guest.clone(),
             guest_reseed: guest,
+        }
+    }
+
+    struct RecordingPendingSnapshotPublish {
+        output_dir: PathBuf,
+        committed: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl sandbox::PendingSnapshotPublish for RecordingPendingSnapshotPublish {
+        async fn commit(
+            self: Box<Self>,
+        ) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+            self.committed.store(true, Ordering::SeqCst);
+            let output = sandbox::SnapshotOutput {
+                snapshot_path: self.output_dir.join("snapshot.bin"),
+                memory_path: self.output_dir.join("memory.bin"),
+                cow_path: self.output_dir.join("cow.img"),
+            };
+            tokio::fs::write(&output.snapshot_path, b"snapshot").await?;
+            tokio::fs::write(&output.memory_path, b"memory").await?;
+            tokio::fs::write(&output.cow_path, b"cow").await?;
+            Ok(output)
+        }
+
+        async fn discard(self: Box<Self>) -> Result<(), sandbox::SnapshotError> {
+            Ok(())
+        }
+    }
+
+    struct RecordingSnapshotProvider {
+        create_uncommitted_called: Arc<AtomicBool>,
+        create_snapshot_called: Arc<AtomicBool>,
+        committed: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl SnapshotProvider for RecordingSnapshotProvider {
+        async fn create_uncommitted_snapshot(
+            &self,
+            config: sandbox::SnapshotCreateConfig,
+        ) -> Result<Box<dyn sandbox::PendingSnapshotPublish>, sandbox::SnapshotError> {
+            self.create_uncommitted_called.store(true, Ordering::SeqCst);
+            Ok(Box::new(RecordingPendingSnapshotPublish {
+                output_dir: config.output_dir,
+                committed: Arc::clone(&self.committed),
+            }))
+        }
+
+        async fn create_snapshot(
+            &self,
+            _config: sandbox::SnapshotCreateConfig,
+        ) -> Result<sandbox::SnapshotOutput, sandbox::SnapshotError> {
+            self.create_snapshot_called.store(true, Ordering::SeqCst);
+            Err(sandbox::SnapshotError::Setup(
+                "build_snapshot should use create_uncommitted_snapshot".into(),
+            ))
+        }
+
+        fn config_hash(&self) -> String {
+            "recording-provider".into()
+        }
+
+        async fn is_complete(&self, _output_dir: &Path) -> Result<bool, sandbox::SnapshotError> {
+            Ok(false)
         }
     }
 
@@ -1691,6 +1761,52 @@ exit 1
 
         assert_eq!(resolved, tmp_dir.path().join("guest-agent"));
         assert_eq!(tokio::fs::read(&resolved).await.unwrap(), b"old-binary");
+    }
+
+    #[tokio::test]
+    async fn build_snapshot_uses_explicit_pending_publish_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        let rootfs_paths = RootfsPaths::new(&home, "rootfs-hash");
+        tokio::fs::create_dir_all(rootfs_paths.dir()).await.unwrap();
+        tokio::fs::write(rootfs_paths.rootfs(), b"rootfs")
+            .await
+            .unwrap();
+        let snapshot_dir = dir.path().join("snapshot");
+        let create_uncommitted_called = Arc::new(AtomicBool::new(false));
+        let create_snapshot_called = Arc::new(AtomicBool::new(false));
+        let committed = Arc::new(AtomicBool::new(false));
+        let provider = RecordingSnapshotProvider {
+            create_uncommitted_called: Arc::clone(&create_uncommitted_called),
+            create_snapshot_called: Arc::clone(&create_snapshot_called),
+            committed: Arc::clone(&committed),
+        };
+        let def = profile::ProfileDef {
+            vcpu: 1,
+            memory_mb: 128,
+            disk_mb: 16,
+        };
+
+        build_snapshot(
+            &home,
+            &rootfs_paths,
+            "snapshot-hash",
+            &snapshot_dir,
+            &def,
+            &provider,
+        )
+        .await
+        .unwrap();
+
+        assert!(create_uncommitted_called.load(Ordering::SeqCst));
+        assert!(committed.load(Ordering::SeqCst));
+        assert!(
+            !create_snapshot_called.load(Ordering::SeqCst),
+            "build_snapshot should not use the compatibility create_snapshot path"
+        );
+        assert!(snapshot_dir.join("snapshot.bin").exists());
+        assert!(snapshot_dir.join("memory.bin").exists());
+        assert!(snapshot_dir.join("cow.img").exists());
     }
 
     #[test]

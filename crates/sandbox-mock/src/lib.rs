@@ -650,17 +650,34 @@ impl RuntimeProvider for MockRuntimeProvider {
 /// A mock [`SnapshotProvider`] that returns dummy paths.
 pub struct MockSnapshotProvider;
 
+struct MockPendingSnapshotPublish {
+    output_dir: PathBuf,
+}
+
+#[async_trait]
+impl PendingSnapshotPublish for MockPendingSnapshotPublish {
+    async fn commit(self: Box<Self>) -> std::result::Result<SnapshotOutput, SnapshotError> {
+        Ok(SnapshotOutput {
+            snapshot_path: self.output_dir.join("snapshot.bin"),
+            memory_path: self.output_dir.join("memory.bin"),
+            cow_path: self.output_dir.join("cow.img"),
+        })
+    }
+
+    async fn discard(self: Box<Self>) -> std::result::Result<(), SnapshotError> {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl SnapshotProvider for MockSnapshotProvider {
-    async fn create_snapshot(
+    async fn create_uncommitted_snapshot(
         &self,
         config: SnapshotCreateConfig,
-    ) -> std::result::Result<SnapshotOutput, SnapshotError> {
-        Ok(SnapshotOutput {
-            snapshot_path: config.output_dir.join("snapshot.bin"),
-            memory_path: config.output_dir.join("memory.bin"),
-            cow_path: config.output_dir.join("cow.img"),
-        })
+    ) -> std::result::Result<Box<dyn PendingSnapshotPublish>, SnapshotError> {
+        Ok(Box::new(MockPendingSnapshotPublish {
+            output_dir: config.output_dir,
+        }))
     }
 
     fn config_hash(&self) -> String {
@@ -746,6 +763,18 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
+    fn test_snapshot_config(output_dir: PathBuf) -> SnapshotCreateConfig {
+        SnapshotCreateConfig {
+            id: "test-snapshot".into(),
+            binary_path: "/tmp/firecracker".into(),
+            kernel_path: "/tmp/kernel".into(),
+            rootfs_path: "/tmp/rootfs.ext4".into(),
+            output_dir,
+            vcpu_count: 2,
+            memory_mb: 1024,
+        }
+    }
+
     fn test_sandbox_config() -> SandboxConfig {
         SandboxConfig {
             id: sandbox::SandboxId::new_v4(),
@@ -754,6 +783,22 @@ mod tests {
                 memory_mb: 1024,
             },
         }
+    }
+
+    #[tokio::test]
+    async fn snapshot_provider_can_discard_uncommitted_snapshot() {
+        let provider = MockSnapshotProvider;
+        let output_dir = std::env::temp_dir().join(format!(
+            "sandbox-mock-snapshot-discard-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let pending = provider
+            .create_uncommitted_snapshot(test_snapshot_config(output_dir))
+            .await
+            .expect("create uncommitted snapshot");
+
+        pending.discard().await.expect("discard pending snapshot");
     }
 
     #[tokio::test]
@@ -770,6 +815,32 @@ mod tests {
         let exec = result.unwrap();
         assert_eq!(exec.exit_code, 0);
         assert!(exec.stdout.is_empty());
+    }
+
+    #[tokio::test]
+    async fn snapshot_provider_default_create_snapshot_commits_pending_publish() {
+        let provider = MockSnapshotProvider;
+        let output_dir = std::env::temp_dir().join(format!(
+            "sandbox-mock-snapshot-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+
+        let output = provider
+            .create_snapshot(SnapshotCreateConfig {
+                id: "snapshot-test".into(),
+                binary_path: "/tmp/firecracker".into(),
+                kernel_path: "/tmp/kernel".into(),
+                rootfs_path: "/tmp/rootfs.ext4".into(),
+                output_dir: output_dir.clone(),
+                vcpu_count: 1,
+                memory_mb: 128,
+            })
+            .await
+            .expect("create snapshot");
+
+        assert_eq!(output.snapshot_path, output_dir.join("snapshot.bin"));
+        assert_eq!(output.memory_path, output_dir.join("memory.bin"));
+        assert_eq!(output.cow_path, output_dir.join("cow.img"));
     }
 
     #[tokio::test]

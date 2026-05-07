@@ -13,7 +13,7 @@ use tracing::info;
 
 use nbd_cow::pool::DevicePoolHandle;
 use nbd_cow::{DestroyRetryPolicy, KeptCow, PooledNbdCowDevice};
-use sandbox::{SnapshotCreateConfig, SnapshotOutput, SnapshotProvider};
+use sandbox::{PendingSnapshotPublish, SnapshotCreateConfig, SnapshotOutput, SnapshotProvider};
 
 use crate::api::{ApiClient, ApiError};
 use crate::config::SnapshotConfig;
@@ -643,6 +643,96 @@ impl SnapshotPublishAttempt {
             }
         }
     }
+
+    fn cleanup_resolved_kept_cow_sync(&mut self) -> bool {
+        let state = std::mem::replace(&mut self.state, SnapshotPublishState::Empty);
+        match state {
+            SnapshotPublishState::KeptCow(kept_cow) => {
+                let cleaned = cleanup_kept_cow_after_publish_drop(&kept_cow);
+                if !cleaned {
+                    self.state = SnapshotPublishState::KeptCow(kept_cow);
+                }
+                cleaned
+            }
+            SnapshotPublishState::Committed | SnapshotPublishState::Empty => true,
+            other => {
+                self.state = other;
+                false
+            }
+        }
+    }
+}
+
+struct FirecrackerPendingSnapshotPublish {
+    snapshot_config: SnapshotConfig,
+    output: SnapshotOutputPaths,
+    publish_attempt: SnapshotPublishAttempt,
+}
+
+impl FirecrackerPendingSnapshotPublish {
+    async fn commit_config(mut self) -> Result<SnapshotConfig, SnapshotError> {
+        if let Err(err) = self.publish_attempt.commit_success(&self.output).await {
+            if !self.publish_attempt.cleanup_after_cancellation().await {
+                tracing::warn!(
+                    error = %err,
+                    output_dir = %self.output.dir().display(),
+                    "failed to cleanup uncommitted snapshot artifacts after publish failure"
+                );
+            }
+            return Err(err);
+        }
+
+        Ok(self.snapshot_config.clone())
+    }
+
+    async fn discard_inner(mut self) -> Result<(), SnapshotError> {
+        if self.publish_attempt.cleanup_after_cancellation().await {
+            Ok(())
+        } else {
+            Err(SnapshotError::Teardown(
+                "failed to discard uncommitted snapshot artifacts".into(),
+            ))
+        }
+    }
+}
+
+impl Drop for FirecrackerPendingSnapshotPublish {
+    fn drop(&mut self) {
+        if self.publish_attempt.has_cleanup_work() {
+            let cleaned = self.publish_attempt.cleanup_resolved_kept_cow_sync();
+            tracing::warn!(
+                cleaned,
+                output_dir = %self.output.dir().display(),
+                "uncommitted snapshot publish dropped without commit or discard"
+            );
+        }
+    }
+}
+
+#[async_trait]
+impl PendingSnapshotPublish for FirecrackerPendingSnapshotPublish {
+    async fn commit(self: Box<Self>) -> Result<SnapshotOutput, sandbox::SnapshotError> {
+        let snapshot_config = (*self)
+            .commit_config()
+            .await
+            .map_err(SnapshotError::into_sandbox_error)?;
+        Ok(snapshot_output_from_config(snapshot_config))
+    }
+
+    async fn discard(self: Box<Self>) -> Result<(), sandbox::SnapshotError> {
+        (*self)
+            .discard_inner()
+            .await
+            .map_err(SnapshotError::into_sandbox_error)
+    }
+}
+
+fn snapshot_output_from_config(config: SnapshotConfig) -> SnapshotOutput {
+    SnapshotOutput {
+        snapshot_path: config.snapshot_path,
+        memory_path: config.memory_path,
+        cow_path: config.cow_path,
+    }
 }
 
 async fn cleanup_kept_cow_after_publish_cancellation(kept_cow: &KeptCow) -> bool {
@@ -662,6 +752,25 @@ async fn cleanup_kept_cow_after_publish_cancellation(kept_cow: &KeptCow) -> bool
         }
     }
     cleanup_snapshot_attempt_dir_for_cow(&kept_cow.cow_file).await && cleaned
+}
+
+fn cleanup_kept_cow_after_publish_drop(kept_cow: &KeptCow) -> bool {
+    let mut cleaned = true;
+    for path in [&kept_cow.bitmap_file, &kept_cow.cow_file] {
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    path = %path.display(),
+                    "failed to cleanup kept COW artifact after pending snapshot publish drop"
+                );
+                cleaned = false;
+            }
+        }
+    }
+    cleanup_snapshot_attempt_dir_for_cow_sync(&kept_cow.cow_file) && cleaned
 }
 
 fn commit_snapshot_cow_output(
@@ -707,8 +816,8 @@ async fn destroy_snapshot_cow_after_workflow_error(cow_device: PooledNbdCowDevic
 /// snapshot creation. It intentionally does not participate in the factory
 /// leak-cleaner path used by sandbox creation: a snapshot attempt owns a
 /// one-shot netns pool, a per-snapshot NBD device pool, a single COW device,
-/// and one Firecracker child only until `finish_workflow` and the outer pool /
-/// socket cleanup steps run.
+/// and one Firecracker child only until the workflow runtime cleanup and the
+/// outer pool / socket cleanup steps run.
 ///
 /// Drop never performs async cleanup inline. If cancellation drops the attempt
 /// while it still owns runtime resources, Drop moves them into a detached
@@ -971,7 +1080,7 @@ impl SnapshotAttempt {
         Ok(())
     }
 
-    async fn finish_workflow(
+    async fn finish_runtime_after_workflow(
         &mut self,
         result: Result<SnapshotConfig, SnapshotError>,
     ) -> Result<SnapshotConfig, SnapshotError> {
@@ -998,15 +1107,7 @@ impl SnapshotAttempt {
         // cleanup() only drains pool-owned namespaces, not checked-out leases.
         self.release_network("failed to release netns").await;
 
-        // Tear down NBD COW device.
-        //
-        // After kill_process_group + child.wait(), the kernel may still be
-        // releasing the NBD device fd. Retry destroy until all references are
-        // released. The COW-device bind mount lived inside the FC process's
-        // private mount namespace and was auto-cleaned when the process exited.
-        if result.is_ok() {
-            self.finalize_success().await?;
-        } else {
+        if result.is_err() {
             self.cleanup_failure().await;
         }
 
@@ -1054,17 +1155,13 @@ impl SnapshotAttempt {
         }
     }
 
-    async fn finalize_success(&mut self) -> Result<(), SnapshotError> {
+    async fn prepare_success_publish(&mut self) -> Result<SnapshotPublishAttempt, SnapshotError> {
         let cow_device = self.cow_device.take().ok_or_else(|| {
-            SnapshotError::Teardown("snapshot attempt missing COW device before finalize".into())
+            SnapshotError::Teardown("snapshot attempt missing COW device before publish".into())
         })?;
-        self.publish_attempt = Some(SnapshotPublishAttempt::new(cow_device));
-        let publish_attempt = self.publish_attempt.as_mut().ok_or_else(|| {
-            SnapshotError::Teardown("snapshot publish attempt missing before finalize".into())
-        })?;
-        publish_attempt.commit_success(&self.output).await?;
-        self.publish_attempt.take();
-        Ok(())
+        let mut publish_attempt = SnapshotPublishAttempt::new(cow_device);
+        publish_attempt.resolve_keep_cow().await?;
+        Ok(publish_attempt)
     }
 
     async fn cleanup_failure(&mut self) {
@@ -1402,11 +1499,20 @@ impl Drop for SnapshotAttempt {
 /// 10. Pre-warm guest caches (PAM/nsswitch, CLI modules)
 /// 11. Pause VM
 /// 12. Create snapshot
-/// 13. Move COW file + bitmap to output dir
-/// 14. Cleanup (kill Firecracker, destroy netns, release base image)
+/// 13. Cleanup Firecracker/netns/NBD runtime resources and keep the temporary COW
+/// 14. Move COW file + bitmap to output dir and publish the complete marker
 pub async fn create_snapshot(
     config: SnapshotCreateConfig,
 ) -> Result<SnapshotConfig, SnapshotError> {
+    create_uncommitted_snapshot(config)
+        .await?
+        .commit_config()
+        .await
+}
+
+async fn create_uncommitted_snapshot(
+    config: SnapshotCreateConfig,
+) -> Result<FirecrackerPendingSnapshotPublish, SnapshotError> {
     // Check prerequisites (binary, kernel, rootfs, kvm, runtime dir, etc.).
     prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
         binary_path: &config.binary_path,
@@ -1491,6 +1597,17 @@ pub async fn create_snapshot(
     );
     attempt_dir_guard.disarm();
     let result = run_snapshot_workflow(&config, &mut attempt).await;
+    let result = match result {
+        Ok(snapshot_config) => match attempt.prepare_success_publish().await {
+            Ok(publish_attempt) => Ok(FirecrackerPendingSnapshotPublish {
+                snapshot_config,
+                output: SnapshotOutputPaths::new(config.output_dir.clone()),
+                publish_attempt,
+            }),
+            Err(err) => Err(err),
+        },
+        Err(err) => Err(err),
+    };
 
     attempt.cleanup_device_pool().await;
     attempt.cleanup_netns_pool().await;
@@ -1601,7 +1718,7 @@ async fn run_snapshot_workflow(
     attempt.acquire_network().await?;
     attempt.spawn_firecracker(config).await?;
 
-    // Guard: ensure process and NBD cleanup on any explicit exit path.
+    // Guard: ensure Firecracker and netns cleanup on any explicit exit path.
     let result = run_with_firecracker(
         config,
         attempt.paths(),
@@ -1609,7 +1726,7 @@ async fn run_snapshot_workflow(
         attempt.output(),
     )
     .await;
-    attempt.finish_workflow(result).await
+    attempt.finish_runtime_after_workflow(result).await
 }
 
 /// Inner workflow that runs while Firecracker is alive.
@@ -1733,18 +1850,14 @@ pub struct FirecrackerSnapshotProvider;
 
 #[async_trait]
 impl SnapshotProvider for FirecrackerSnapshotProvider {
-    async fn create_snapshot(
+    async fn create_uncommitted_snapshot(
         &self,
         config: SnapshotCreateConfig,
-    ) -> Result<SnapshotOutput, sandbox::SnapshotError> {
-        let sc = create_snapshot(config)
+    ) -> Result<Box<dyn PendingSnapshotPublish>, sandbox::SnapshotError> {
+        let publish = create_uncommitted_snapshot(config)
             .await
             .map_err(SnapshotError::into_sandbox_error)?;
-        Ok(SnapshotOutput {
-            snapshot_path: sc.snapshot_path,
-            memory_path: sc.memory_path,
-            cow_path: sc.cow_path,
-        })
+        Ok(Box::new(publish))
     }
 
     fn config_hash(&self) -> String {
@@ -2005,6 +2118,126 @@ mod tests {
 
         let provider = FirecrackerSnapshotProvider;
         assert!(provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn pending_snapshot_publish_commit_writes_complete_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "pending-commit").await;
+
+        let pending: Box<dyn PendingSnapshotPublish> =
+            Box::new(FirecrackerPendingSnapshotPublish {
+                snapshot_config: output.snapshot_config("pending-commit"),
+                output: SnapshotOutputPaths::new(output.dir().to_path_buf()),
+                publish_attempt: SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow),
+            });
+
+        let published = pending.commit().await.expect("commit pending publish");
+
+        assert_eq!(published.snapshot_path, output.snapshot());
+        assert_eq!(published.memory_path, output.memory());
+        assert_eq!(published.cow_path, output.cow());
+        assert!(
+            tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "commit should write complete marker"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn pending_snapshot_publish_discard_does_not_publish_marker_or_stable_cow() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "pending-discard").await;
+        let attempt_dir = kept_cow
+            .cow_file
+            .parent()
+            .expect("attempt dir")
+            .to_path_buf();
+
+        let pending: Box<dyn PendingSnapshotPublish> =
+            Box::new(FirecrackerPendingSnapshotPublish {
+                snapshot_config: output.snapshot_config("pending-discard"),
+                output: SnapshotOutputPaths::new(output.dir().to_path_buf()),
+                publish_attempt: SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow),
+            });
+
+        pending.discard().await.expect("discard pending publish");
+
+        assert!(
+            !tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "discard should not publish stable cow"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "discard should not publish stable cow bitmap"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "discard should not write complete marker"
+        );
+        assert!(
+            !tokio::fs::try_exists(attempt_dir).await.unwrap(),
+            "discard should remove temporary attempt dir"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(!provider.is_complete(output.dir()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn pending_snapshot_publish_drop_cleans_temp_without_publishing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "pending-drop").await;
+        let attempt_dir = kept_cow
+            .cow_file
+            .parent()
+            .expect("attempt dir")
+            .to_path_buf();
+        let cow_file = kept_cow.cow_file.clone();
+        let bitmap_file = kept_cow.bitmap_file.clone();
+
+        let pending = FirecrackerPendingSnapshotPublish {
+            snapshot_config: output.snapshot_config("pending-drop"),
+            output: SnapshotOutputPaths::new(output.dir().to_path_buf()),
+            publish_attempt: SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow),
+        };
+
+        drop(pending);
+
+        assert!(
+            !tokio::fs::try_exists(&cow_file).await.unwrap(),
+            "drop should cleanup temporary cow"
+        );
+        assert!(
+            !tokio::fs::try_exists(&bitmap_file).await.unwrap(),
+            "drop should cleanup temporary bitmap"
+        );
+        assert!(
+            !tokio::fs::try_exists(attempt_dir).await.unwrap(),
+            "drop should cleanup temporary attempt dir"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "drop must not write complete marker"
+        );
+        assert!(
+            !tokio::fs::try_exists(output.cow()).await.unwrap(),
+            "drop must not publish stable cow"
+        );
     }
 
     #[tokio::test]
