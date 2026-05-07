@@ -12,9 +12,10 @@
 //! 1. `runner build` computes a `template_hash` for the shared R2 object and
 //!    a separate `rootfs_hash` for local images.
 //! 2. `--warm-rootfs-cache` ensures only the template R2 object exists.
-//! 3. Normal builds materialize the template object into `rootfs.ext4.staging`
-//!    (or build/upload it on miss), customize the staging image locally, verify
-//!    it, and then atomically commit the rootfs.
+//! 3. Normal builds materialize the template object into a per-attempt local
+//!    file (or build/upload it on miss), move the verified template into
+//!    `rootfs.ext4.staging`, customize the staging image locally, verify it,
+//!    and then atomically commit the rootfs.
 //!
 //! Atomicity guarantees:
 //! - Multipart upload is atomic from consumer POV (object only appears after

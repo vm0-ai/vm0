@@ -26,6 +26,11 @@ const GUEST_MOCK_CLAUDE_DEST: &str = "/usr/local/bin/guest-mock-claude";
 const GUEST_MOCK_CODEX_DEST: &str = "/usr/local/bin/guest-mock-codex";
 const ROOTFS_DNS_NAMESERVER: &str = "8.8.8.8";
 const TEMPLATE_FILE: &str = "template.ext4";
+const TEMPLATE_DOWNLOAD_FILE: &str = "downloaded-template.ext4";
+const TEMPLATE_WARM_DIR_PREFIX: &str = "template-warm-";
+const TEMPLATE_WARM_ATTEMPT_DIR_PREFIX: &str = "attempt-";
+const TEMPLATE_BUILD_DIR_PREFIX: &str = "template-build-";
+const TEMPLATE_ATTEMPT_DIR_SUFFIX: &str = ".tmp";
 
 /// Bump to invalidate all shared template images in R2.
 ///
@@ -728,8 +733,9 @@ async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerR
     // Keep warm-up staging on the runner image volume, not the system temp
     // filesystem. Even a cache hit downloads a full template for validation,
     // and /tmp may be much smaller than the runner data disk.
-    let warm_dir = warm_template_dir(input.paths, input.template_hash);
-    remove_path_if_exists(&warm_dir, "stale template warm dir").await?;
+    let warm_parent = template_warm_parent_dir(input.paths, input.template_hash);
+    cleanup_stale_template_attempt_dirs(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX).await?;
+    let warm_dir = template_attempt_dir(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
 
     let result = async {
         tokio::fs::create_dir_all(&warm_dir).await.map_err(|e| {
@@ -784,10 +790,51 @@ async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerR
     finish_temp_dir_result(&warm_dir, "template warm dir", result).await
 }
 
-fn warm_template_dir(paths: &HomePaths, template_hash: &str) -> PathBuf {
+fn template_attempt_dir(parent: &Path, prefix: &str) -> PathBuf {
+    parent.join(format!(
+        "{prefix}{}{TEMPLATE_ATTEMPT_DIR_SUFFIX}",
+        uuid::Uuid::new_v4()
+    ))
+}
+
+fn template_warm_parent_dir(paths: &HomePaths, template_hash: &str) -> PathBuf {
     paths
         .images_dir()
-        .join(format!("template-{template_hash}.warm.tmp"))
+        .join(format!("{TEMPLATE_WARM_DIR_PREFIX}{template_hash}"))
+}
+
+fn is_template_attempt_dir_name(name: &str, prefix: &str) -> bool {
+    name.starts_with(prefix) && name.ends_with(TEMPLATE_ATTEMPT_DIR_SUFFIX)
+}
+
+async fn cleanup_stale_template_attempt_dirs(parent: &Path, prefix: &str) -> RunnerResult<()> {
+    let mut entries = match tokio::fs::read_dir(parent).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "read template attempt parent {}: {e}",
+                parent.display()
+            )));
+        }
+    };
+
+    while let Some(entry) = entries.next_entry().await.map_err(|e| {
+        RunnerError::Internal(format!(
+            "read template attempt entry in {}: {e}",
+            parent.display()
+        ))
+    })? {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if is_template_attempt_dir_name(name, prefix) {
+            remove_path_if_exists(&entry.path(), "stale template attempt dir").await?;
+        }
+    }
+
+    Ok(())
 }
 
 async fn remove_path_if_exists(path: &Path, label: &str) -> RunnerResult<()> {
@@ -845,80 +892,80 @@ async fn obtain_template_to_staging(
     scripts: &mut RootfsScripts,
 ) -> RunnerResult<()> {
     let staging = rootfs_paths.rootfs_staging();
-    let build_dir = template_build_dir(rootfs_paths);
-    remove_path_if_exists(&build_dir, "stale template build dir").await?;
+    cleanup_stale_template_attempt_dirs(rootfs_paths.dir(), TEMPLATE_BUILD_DIR_PREFIX).await?;
+    let attempt_dir = template_attempt_dir(rootfs_paths.dir(), TEMPLATE_BUILD_DIR_PREFIX);
+    let downloaded_template = attempt_dir.join(TEMPLATE_DOWNLOAD_FILE);
     let mut force_reupload = false;
 
-    if let Some(cache) = input.cache.as_cache() {
-        match cache
-            .try_download_template_to_file(input.template_hash, &staging)
-            .await
-        {
-            Ok(true) => {
-                let work_dir_path = scripts.path().await?;
-                if let Err(e) = verify_template_file(&staging, &work_dir_path).await {
-                    tracing::warn!(
-                        "R2 template object for {} failed validation ({e}) — \
-                         rebuilding locally and force-overwriting the bad object",
-                        input.template_hash
-                    );
-                    let _ = tokio::fs::remove_file(&staging).await;
-                    force_reupload = true;
-                } else {
-                    tracing::info!(
-                        "[OK] template downloaded from R2 into staging: {}",
-                        staging.display()
-                    );
-                    return Ok(());
+    let result = async {
+        if let Some(cache) = input.cache.as_cache() {
+            match cache
+                .try_download_template_to_file(input.template_hash, &downloaded_template)
+                .await
+            {
+                Ok(true) => {
+                    let work_dir_path = scripts.path().await?;
+                    if let Err(e) = verify_template_file(&downloaded_template, &work_dir_path).await
+                    {
+                        tracing::warn!(
+                            "R2 template object for {} failed validation ({e}) — \
+                             rebuilding locally and force-overwriting the bad object",
+                            input.template_hash
+                        );
+                        force_reupload = true;
+                    } else {
+                        move_file_sync(&downloaded_template, &staging, "materialize template")?;
+                        tracing::info!(
+                            "[OK] template downloaded from R2 into staging: {}",
+                            staging.display()
+                        );
+                        return Ok(());
+                    }
                 }
-            }
-            Ok(false) => tracing::info!(
-                "R2 template cache miss for {} — building locally",
-                input.template_hash
-            ),
-            Err(e) => {
-                if e.is_invalid_object() {
-                    tracing::warn!(
-                        "R2 template object for {} is invalid ({e}) — \
-                         rebuilding locally and force-overwriting the bad object",
-                        input.template_hash
-                    );
-                    force_reupload = true;
-                } else if input.cache.is_required() {
-                    return Err(RunnerError::Internal(format!(
-                        "R2 template download failed while warming cache: {e}"
-                    )));
-                } else {
-                    tracing::warn!(
-                        "R2 template download failed: {e} — falling back to local build"
-                    );
+                Ok(false) => tracing::info!(
+                    "R2 template cache miss for {} — building locally",
+                    input.template_hash
+                ),
+                Err(e) => {
+                    if e.is_invalid_object() {
+                        tracing::warn!(
+                            "R2 template object for {} is invalid ({e}) — \
+                             rebuilding locally and force-overwriting the bad object",
+                            input.template_hash
+                        );
+                        force_reupload = true;
+                    } else if input.cache.is_required() {
+                        return Err(RunnerError::Internal(format!(
+                            "R2 template download failed while warming cache: {e}"
+                        )));
+                    } else {
+                        tracing::warn!(
+                            "R2 template download failed: {e} — falling back to local build"
+                        );
+                    }
                 }
             }
         }
-    }
 
-    let work_dir_path = scripts.path().await?;
-    let result = async {
-        build_template_locally(input, &build_dir, &work_dir_path).await?;
-        let built_template = build_dir.join(TEMPLATE_FILE);
+        let work_dir_path = scripts.path().await?;
+        build_template_locally(input, &attempt_dir, &work_dir_path).await?;
+        let built_template = attempt_dir.join(TEMPLATE_FILE);
         upload_template_to_r2(input, &built_template, force_reupload).await?;
-        tokio::fs::rename(&built_template, &staging)
-            .await
-            .map_err(|e| {
-                RunnerError::Internal(format!(
-                    "move template {} → {}: {e}",
-                    built_template.display(),
-                    staging.display()
-                ))
-            })
+        move_file_sync(&built_template, &staging, "move template to staging")
     }
     .await;
 
-    finish_temp_dir_result(&build_dir, "template build dir", result).await
+    finish_temp_dir_result(&attempt_dir, "template build dir", result).await
 }
 
-fn template_build_dir(rootfs_paths: &RootfsPaths) -> PathBuf {
-    rootfs_paths.dir().join("template.tmp")
+fn move_file_sync(source: &Path, destination: &Path, label: &str) -> RunnerResult<()> {
+    std::fs::rename(source, destination).map_err(|e| {
+        RunnerError::Internal(format!(
+            "{label} {} → {}: {e}",
+            source.display(),
+            destination.display()
+        ))
+    })
 }
 
 struct RootfsScripts {
@@ -2104,17 +2151,25 @@ exit 1
     }
 
     #[test]
-    fn warm_template_dir_stays_on_runner_image_volume() {
+    fn warm_template_attempt_dir_stays_on_runner_image_volume() {
         let dir = tempfile::tempdir().unwrap();
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let images_dir = home.images_dir();
+        let warm_parent = template_warm_parent_dir(&home, "abc123");
 
-        let warm_dir = warm_template_dir(&home, "abc123");
+        let warm_dir = template_attempt_dir(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        let file_name = warm_dir.file_name().and_then(|name| name.to_str()).unwrap();
 
-        assert!(warm_dir.starts_with(home.images_dir()));
-        assert_eq!(
-            warm_dir.file_name().and_then(|name| name.to_str()),
-            Some("template-abc123.warm.tmp")
-        );
+        assert!(warm_dir.starts_with(&images_dir));
+        assert!(warm_dir.starts_with(&warm_parent));
+        assert!(!is_template_attempt_dir_name(
+            file_name,
+            TEMPLATE_BUILD_DIR_PREFIX
+        ));
+        assert!(is_template_attempt_dir_name(
+            file_name,
+            TEMPLATE_WARM_ATTEMPT_DIR_PREFIX
+        ));
     }
 
     #[tokio::test]
@@ -2599,9 +2654,9 @@ exit 1
         assert_eq!(content, b"customized");
     }
 
-    /// End-to-end contract simulation for the template-download + customization
-    /// path: template arrives directly in staging, customization mutates
-    /// staging, and commit atomically publishes the rootfs.
+    /// End-to-end contract simulation for the template materialization +
+    /// customization path: the verified template is moved into staging,
+    /// customization mutates staging, and commit atomically publishes the rootfs.
     #[tokio::test]
     async fn staging_contract_happy_path() {
         let dir = tempfile::tempdir().unwrap();
@@ -2610,7 +2665,7 @@ exit 1
         let publish = LocalFilePublish::for_rootfs(&rootfs);
         tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
 
-        // Simulate template R2 download directly into staging.
+        // Simulate a verified template being moved into staging.
         tokio::fs::write(rootfs.rootfs_staging(), b"template-download")
             .await
             .unwrap();
@@ -2652,11 +2707,14 @@ exit 1
     }
 
     #[tokio::test]
-    async fn stale_template_build_dir_is_removed_before_reuse() {
+    async fn stale_template_attempt_dir_is_removed_before_reuse() {
         let dir = tempfile::tempdir().unwrap();
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
         let rootfs = RootfsPaths::new(&home, "template-build-residue-hash");
-        let build_dir = template_build_dir(&rootfs);
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        let build_dir = rootfs.dir().join(format!(
+            "{TEMPLATE_BUILD_DIR_PREFIX}old{TEMPLATE_ATTEMPT_DIR_SUFFIX}"
+        ));
         tokio::fs::create_dir_all(build_dir.join("nested"))
             .await
             .unwrap();
@@ -2664,7 +2722,7 @@ exit 1
             .await
             .unwrap();
 
-        remove_path_if_exists(&build_dir, "stale template build dir")
+        cleanup_stale_template_attempt_dirs(rootfs.dir(), TEMPLATE_BUILD_DIR_PREFIX)
             .await
             .unwrap();
 
@@ -2675,23 +2733,47 @@ exit 1
     }
 
     #[tokio::test]
-    async fn stale_template_build_file_is_removed_before_reuse() {
+    async fn stale_template_attempt_file_is_removed_before_reuse() {
         let dir = tempfile::tempdir().unwrap();
         let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
         let rootfs = RootfsPaths::new(&home, "template-build-file-residue-hash");
-        let build_dir = template_build_dir(&rootfs);
         tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        let build_dir = rootfs.dir().join(format!(
+            "{TEMPLATE_BUILD_DIR_PREFIX}old{TEMPLATE_ATTEMPT_DIR_SUFFIX}"
+        ));
         tokio::fs::write(&build_dir, b"not a directory")
             .await
             .unwrap();
 
-        remove_path_if_exists(&build_dir, "stale template build dir")
+        cleanup_stale_template_attempt_dirs(rootfs.dir(), TEMPLATE_BUILD_DIR_PREFIX)
             .await
             .unwrap();
 
         assert!(
             !build_dir.exists(),
             "stale local template build file must not block later template materialization"
+        );
+    }
+
+    #[tokio::test]
+    async fn template_attempt_cleanup_preserves_other_hash_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let this_parent = template_warm_parent_dir(&home, "this-hash");
+        let other_parent = template_warm_parent_dir(&home, "other-hash");
+        let this_dir = template_attempt_dir(&this_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        let other_dir = template_attempt_dir(&other_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        tokio::fs::create_dir_all(&this_dir).await.unwrap();
+        tokio::fs::create_dir_all(&other_dir).await.unwrap();
+
+        cleanup_stale_template_attempt_dirs(&this_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX)
+            .await
+            .unwrap();
+
+        assert!(!this_dir.exists());
+        assert!(
+            other_dir.exists(),
+            "template warm cleanup for one hash must not remove another hash's active attempt"
         );
     }
 
