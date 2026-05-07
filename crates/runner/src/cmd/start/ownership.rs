@@ -225,6 +225,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn active_idle_pool_owned_preserves_reinserted_active_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let transitions = OwnershipTransitions::new(&status);
+        let run_id = RunId::new_v4();
+        let stale_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, stale_sandbox_id).await;
+        status.add_run(run_id, current_sandbox_id).await;
+
+        assert!(
+            !transitions
+                .active_idle_pool_owned(
+                    RunSandbox::new(run_id, stale_sandbox_id),
+                    idle_snapshot("sess-stale", stale_sandbox_id),
+                )
+                .await
+        );
+
+        let (idle_sessions, active_runs) = status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(idle_sessions, vec!["sess-stale"]);
+        assert_eq!(
+            active_runs,
+            vec![(run_id.to_string(), current_sandbox_id.to_string())]
+        );
+    }
+
+    #[tokio::test]
     async fn active_ownership_unknown_registers_orphan_and_keeps_active_visible() {
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
@@ -279,6 +308,35 @@ mod tests {
             vec![(run_id.to_string(), current_sandbox_id.to_string())]
         );
         assert_eq!(orphans.len().await, 1);
+    }
+
+    #[tokio::test]
+    async fn orphan_absent_clears_stale_orphan_without_removing_reinserted_active_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let status_path = dir.path().join("status.json");
+        let status = StatusTracker::new(status_path.clone(), 4, None, None);
+        let transitions = OwnershipTransitions::new(&status);
+        let orphans = OrphanedActiveRuns::new();
+        let run_id = RunId::new_v4();
+        let stale_sandbox_id = SandboxId::new_v4();
+        let current_sandbox_id = SandboxId::new_v4();
+        status.add_run(run_id, stale_sandbox_id).await;
+        orphans.insert(run_id, stale_sandbox_id).await;
+        status.add_run(run_id, current_sandbox_id).await;
+
+        assert!(
+            !transitions
+                .orphan_confirmed_absent(&orphans, RunSandbox::new(run_id, stale_sandbox_id))
+                .await
+        );
+
+        let (_idle_sessions, active_runs) =
+            status_idle_sessions_and_active_runs(&status_path).await;
+        assert_eq!(
+            active_runs,
+            vec![(run_id.to_string(), current_sandbox_id.to_string())]
+        );
+        assert_eq!(orphans.len().await, 0);
     }
 
     #[tokio::test]
