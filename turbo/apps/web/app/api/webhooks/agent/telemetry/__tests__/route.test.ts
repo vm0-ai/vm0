@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { POST } from "../route";
 import {
@@ -13,6 +13,7 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import type { MockInstance } from "vitest";
 import type { ingestToAxiom } from "../../../../../../src/lib/shared/axiom/client";
+import * as metrics from "../../../../../../src/lib/infra/metrics";
 
 const context = testContext();
 
@@ -20,11 +21,20 @@ describe("POST /api/webhooks/agent/telemetry", () => {
   let user: UserContext;
   let testComposeId: string;
   let axiomIngestMock: MockInstance<typeof ingestToAxiom>;
+  // Spy on the boundary into the metrics module — covers the
+  // webhook→recordSandboxInternalOperation pipeline (#12077). The
+  // downstream Axiom client.ingest call is configured-out in tests
+  // (AXIOM_TOKEN_TELEMETRY is unstubbed → ingestSandboxOpLog early-exits),
+  // so we assert at the call site we control.
+  let recordSandboxOpMock: MockInstance<
+    typeof metrics.recordSandboxInternalOperation
+  >;
 
   beforeEach(async () => {
     const mocks = context.setupMocks();
     user = await context.setupUser();
     axiomIngestMock = mocks.axiom.ingestToAxiom;
+    recordSandboxOpMock = vi.spyOn(metrics, "recordSandboxInternalOperation");
 
     // Create compose for run creation (needs Clerk auth from setupUser)
     const { composeId } = await createTestCompose(
@@ -489,9 +499,67 @@ describe("POST /api/webhooks/agent/telemetry", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      // Sandbox operation recording goes via ingestSandboxOpLog → Axiom client.ingest().
-      // The route returned 200 successfully, which means recordSandboxInternalOperation
-      // was called without errors — the assertion on response.status covers this.
+      // Successful op forwarded to recordSandboxInternalOperation with
+      // success=true and no error.
+      expect(recordSandboxOpMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionType: "api_to_agent_start",
+          sandboxType: "runner",
+          durationMs: 1500,
+          success: true,
+          runId,
+          error: undefined,
+        }),
+      );
+    });
+
+    it("should forward op.error and op.success through to axiom (#12077)", async () => {
+      const { runId } = await createRunForWebhook(
+        testComposeId,
+        "Test runner run with stderr",
+      );
+      const testToken = await createTestSandboxToken(user.userId, runId);
+
+      const request = new NextRequest(
+        "http://localhost:3000/api/webhooks/agent/telemetry",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId,
+            sandboxOperations: [
+              {
+                ts: "2026-05-07T08:02:53.184Z",
+                action_type: "cli_execution",
+                duration_ms: 82,
+                success: false,
+                error: "codex exec exited with status 1",
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      // Both success=false AND the underlying error string must be passed
+      // to recordSandboxInternalOperation. Before #12077 the route dropped
+      // op.error on the floor, leaving prod codex failures un-debuggable
+      // from the op-log dataset.
+      expect(recordSandboxOpMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionType: "cli_execution",
+          sandboxType: "runner",
+          durationMs: 82,
+          success: false,
+          runId,
+          error: "codex exec exited with status 1",
+        }),
+      );
     });
   });
 
