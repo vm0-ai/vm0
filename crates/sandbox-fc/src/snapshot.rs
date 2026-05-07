@@ -131,42 +131,57 @@ impl SnapshotError {
     }
 }
 
+fn remove_file_if_exists_sync(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+fn remove_dir_all_if_exists_sync(path: &Path) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
 async fn prepare_snapshot_output(output: &SnapshotOutputPaths) -> Result<PathBuf, SnapshotError> {
     // Paths inside work_dir get baked into the snapshot and are used as
     // bind-mount targets during restore, so they must be deterministic.
     //
     // Only remove snapshot-specific artifacts, not the entire output directory.
+    //
+    // Use synchronous filesystem calls for shared snapshot-hash paths while the
+    // caller holds the snapshot lock. A cancelled Tokio fs operation can keep
+    // running on the blocking pool after the lock is dropped.
     let work = output.work_dir();
-    match tokio::fs::remove_file(output.complete_marker()).await {
-        Ok(()) => {}
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(e.into()),
-    }
-    let _ = tokio::fs::remove_dir_all(&work).await;
+    remove_file_if_exists_sync(&output.complete_marker())?;
+    let _ = remove_dir_all_if_exists_sync(&work);
     for stale in [
         output.snapshot(),
         output.memory(),
         output.cow(),
         output.cow_bitmap(),
     ] {
-        let _ = tokio::fs::remove_file(&stale).await;
+        let _ = remove_file_if_exists_sync(&stale);
     }
-    tokio::fs::create_dir_all(&work).await?;
+    std::fs::create_dir_all(&work)?;
     Ok(work)
 }
 
 async fn cleanup_existing_snapshot_sock_dir(sock_dir: &Path) {
     if sock_dir.exists()
-        && let Err(e) = tokio::fs::remove_dir_all(sock_dir).await
+        && let Err(e) = remove_dir_all_if_exists_sync(sock_dir)
     {
         tracing::warn!(error = %e, "failed to clean stale sock dir");
     }
 }
 
 async fn cleanup_snapshot_sock_dir(sock_dir: &Path, warning: &'static str) -> bool {
-    match tokio::fs::remove_dir_all(sock_dir).await {
+    match remove_dir_all_if_exists_sync(sock_dir) {
         Ok(()) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
         Err(e) => {
             tracing::warn!(error = %e, "{warning}");
             false
@@ -699,11 +714,10 @@ impl FirecrackerPendingSnapshotPublish {
             | FirecrackerPendingSnapshotPublishState::Discarded => return Ok(()),
         };
 
-        let output_artifacts_cleaned =
-            cleanup_uncommitted_snapshot_output_artifacts(&self.output).await;
+        let output_artifacts_cleaned = cleanup_uncommitted_snapshot_output_artifacts(&self.output);
         let cow_cleaned = cleanup_kept_cow_paths_after_publish_cancellation(&cleanup_paths).await;
         let work_cleaned = if cow_cleaned {
-            cleanup_snapshot_work_dir(&self.output).await
+            cleanup_snapshot_work_dir(&self.output)
         } else {
             false
         };
@@ -785,7 +799,7 @@ async fn cleanup_kept_cow_paths_after_publish_cancellation(paths: &KeptCowCleanu
     cleanup_snapshot_attempt_dir_for_cow(&paths.cow_file).await && cleaned
 }
 
-async fn cleanup_uncommitted_snapshot_output_artifacts(output: &SnapshotOutputPaths) -> bool {
+fn cleanup_uncommitted_snapshot_output_artifacts(output: &SnapshotOutputPaths) -> bool {
     let mut cleaned = true;
     for path in [
         output.complete_marker(),
@@ -794,9 +808,8 @@ async fn cleanup_uncommitted_snapshot_output_artifacts(output: &SnapshotOutputPa
         output.cow(),
         output.cow_bitmap(),
     ] {
-        match tokio::fs::remove_file(&path).await {
+        match remove_file_if_exists_sync(&path) {
             Ok(()) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
                 tracing::warn!(
                     error = %e,
@@ -810,11 +823,10 @@ async fn cleanup_uncommitted_snapshot_output_artifacts(output: &SnapshotOutputPa
     cleaned
 }
 
-async fn cleanup_snapshot_work_dir(output: &SnapshotOutputPaths) -> bool {
+fn cleanup_snapshot_work_dir(output: &SnapshotOutputPaths) -> bool {
     let work_dir = output.work_dir();
-    match tokio::fs::remove_dir_all(&work_dir).await {
+    match remove_dir_all_if_exists_sync(&work_dir) {
         Ok(()) => true,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
         Err(e) => {
             tracing::warn!(
                 error = %e,
