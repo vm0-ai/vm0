@@ -734,7 +734,7 @@ async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerR
     // filesystem. Even a cache hit downloads a full template for validation,
     // and /tmp may be much smaller than the runner data disk.
     let warm_parent = template_warm_parent_dir(input.paths, input.template_hash);
-    cleanup_stale_template_attempt_dirs(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX).await?;
+    cleanup_template_warm_parent(&warm_parent).await?;
     let warm_dir = template_attempt_dir(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
 
     let result = async {
@@ -835,6 +835,20 @@ async fn cleanup_stale_template_attempt_dirs(parent: &Path, prefix: &str) -> Run
     }
 
     Ok(())
+}
+
+async fn cleanup_template_warm_parent(parent: &Path) -> RunnerResult<()> {
+    match tokio::fs::symlink_metadata(parent).await {
+        Ok(metadata) if metadata.is_dir() => {
+            cleanup_stale_template_attempt_dirs(parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX).await
+        }
+        Ok(_) => remove_path_if_exists(parent, "stale template warm parent").await,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(RunnerError::Internal(format!(
+            "stat template warm parent {}: {e}",
+            parent.display()
+        ))),
+    }
 }
 
 async fn remove_path_if_exists(path: &Path, label: &str) -> RunnerResult<()> {
@@ -2850,6 +2864,22 @@ exit 1
         assert!(
             other_dir.exists(),
             "template warm cleanup for one hash must not remove another hash's active attempt"
+        );
+    }
+
+    #[tokio::test]
+    async fn template_warm_parent_cleanup_removes_stale_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let parent = template_warm_parent_dir(&home, "abc123");
+        tokio::fs::create_dir_all(home.images_dir()).await.unwrap();
+        tokio::fs::write(&parent, b"not a directory").await.unwrap();
+
+        cleanup_template_warm_parent(&parent).await.unwrap();
+
+        assert!(
+            !parent.exists(),
+            "malformed warm parent file must not block later warm attempts"
         );
     }
 

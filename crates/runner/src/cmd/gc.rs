@@ -2147,6 +2147,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn gc_nested_images_keeps_recent_current_template_warm_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-warm-abc123");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("attempt-new.tmp"), b"partial").unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            warm_dir.exists(),
+            "recent warm rootfs dir must survive the GC grace window"
+        );
+    }
+
+    #[tokio::test]
     async fn gc_nested_images_removes_stale_template_warm_dir() {
         use std::fs::FileTimes;
 
