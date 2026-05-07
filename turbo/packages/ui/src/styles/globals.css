@@ -365,19 +365,24 @@
     stroke-width: var(--icon-stroke-width);
   }
 
-  /* iOS PWA standalone mode: 100svh / 100dvh / 100lvh all leave a gap
-     below the bottom tab bar (the home-indicator safe-area is reported
-     as part of the viewport but vh units exclude it). Position the root
-     fixed at viewport bounds so it spans the entire screen including
-     the safe-area; the home indicator is a translucent overlay and can
-     sit on top of the dock. Web Safari keeps h-svh (set via the Tailwind
-     class) to avoid layout shift when the URL bar collapses. */
-  @media (display-mode: standalone) {
-    .zero-app {
-      position: fixed;
-      inset: 0;
-      height: auto;
-    }
+}
+
+/* iOS PWA standalone mode: 100svh / 100dvh / 100lvh all leave a gap
+   below the bottom tab bar (the home-indicator safe-area is reported
+   as part of the viewport but vh units exclude it). Pin the root to the
+   viewport bounds so it spans the entire screen including the safe-area;
+   the home indicator is a translucent overlay and can sit on top of the
+   dock. Web Safari keeps h-svh (set via the Tailwind class) to avoid
+   layout shift when the URL bar collapses.
+
+   Outside @layer so it wins specificity against Tailwind's h-svh utility
+   (which lives in the utilities layer). !important guarantees the override
+   even when source order works against us. */
+@media (display-mode: standalone) {
+  .zero-app {
+    position: fixed !important;
+    inset: 0 !important;
+    height: auto !important;
   }
 }
 
