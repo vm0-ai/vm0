@@ -2160,6 +2160,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pending_snapshot_publish_commit_failure_does_not_publish_marker() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        tokio::fs::create_dir_all(output.dir())
+            .await
+            .expect("create output dir");
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "pending-commit-fail").await;
+
+        let pending: Box<dyn PendingSnapshotPublish> =
+            Box::new(FirecrackerPendingSnapshotPublish {
+                snapshot_config: output.snapshot_config("pending-commit-fail"),
+                output: SnapshotOutputPaths::new(output.dir().to_path_buf()),
+                publish_attempt: SnapshotPublishAttempt::new_with_kept_cow_for_test(kept_cow),
+            });
+
+        let err = pending
+            .commit()
+            .await
+            .expect_err("pending commit should fail without snapshot and memory artifacts");
+        assert!(matches!(err, sandbox::SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "failed pending commit must not write complete marker"
+        );
+
+        let provider = FirecrackerSnapshotProvider;
+        assert!(
+            !provider.is_complete(output.dir()).await.unwrap(),
+            "failed pending commit must remain incomplete"
+        );
+    }
+
+    #[tokio::test]
     async fn pending_snapshot_publish_discard_does_not_publish_marker_or_stable_cow() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().join("output"));
