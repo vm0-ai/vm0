@@ -41,6 +41,37 @@ fn cow_destroy_retry_policy() -> DestroyRetryPolicy {
     }
 }
 
+struct AbortOnDropTask<T> {
+    handle: JoinHandle<T>,
+}
+
+impl<T> AbortOnDropTask<T> {
+    fn new(handle: JoinHandle<T>) -> Self {
+        Self { handle }
+    }
+
+    fn abort(&self) {
+        self.handle.abort();
+    }
+}
+
+impl<T> Future for AbortOnDropTask<T> {
+    type Output = Result<T, tokio::task::JoinError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        Pin::new(&mut this.handle).poll(cx)
+    }
+}
+
+impl<T> Drop for AbortOnDropTask<T> {
+    fn drop(&mut self) {
+        if !self.handle.is_finished() {
+            self.handle.abort();
+        }
+    }
+}
+
 /// Non-cancellable cleanup for a snapshot COW and its token-scoped attempt dir.
 ///
 /// The NBD device finalizer already keeps running after cancellation; this
@@ -1943,15 +1974,16 @@ async fn run_with_firecracker(
 
     // 7. Bind vsock listener BEFORE starting the instance (race: guest connects ~300ms after boot).
     let vsock_path_for_listen = vsock_uds_str.clone();
-    let vsock_task = tokio::spawn(async move {
+    let vsock_task = AbortOnDropTask::new(tokio::spawn(async move {
         vsock_host::VsockHost::wait_for_connection(&vsock_path_for_listen, VSOCK_CONNECT_TIMEOUT)
             .await
-    });
+    }));
 
     // 8. Start instance.
     let start_result = client.start_instance().await;
     if let Err(e) = start_result {
         vsock_task.abort();
+        let _ = vsock_task.await;
         return Err(e.into());
     }
 
@@ -3045,6 +3077,37 @@ mod tests {
             .await
             .expect("dropped cleanup finalizer should continue")
             .expect("cleanup finalizer should finish");
+    }
+
+    #[tokio::test]
+    async fn abort_on_drop_task_aborts_vsock_listener() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let base = dir.path().join("snapshot-vsock");
+        let listener =
+            std::path::PathBuf::from(format!("{}_{}", base.display(), vsock_proto::VSOCK_PORT));
+        let base = base.display().to_string();
+
+        let task = AbortOnDropTask::new(tokio::spawn(async move {
+            vsock_host::VsockHost::wait_for_connection(&base, Duration::from_secs(30)).await
+        }));
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !listener.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("vsock listener should bind");
+
+        drop(task);
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while listener.exists() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("dropped task should abort and remove vsock listener");
     }
 
     #[tokio::test]
