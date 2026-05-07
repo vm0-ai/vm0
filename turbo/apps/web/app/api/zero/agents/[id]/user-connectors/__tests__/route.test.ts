@@ -6,6 +6,7 @@ import {
   createTestCliToken,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { setComposeHeadVersion } from "../../../../../../../src/__tests__/db-test-seeders/agents";
+import { createTestUserConnector } from "../../../../../../../src/__tests__/db-test-seeders/connectors";
 import { getComposeHeadVersion } from "../../../../../../../src/__tests__/db-test-assertions/agents";
 import {
   testContext,
@@ -83,6 +84,23 @@ describe("User Connectors API", () => {
       expect(res.status).toBe(200);
       const data = await res.json();
       expect(data.enabledTypes).toEqual([]);
+    });
+
+    it("should ignore connector grants for removed connector types", async () => {
+      const agentId = await createAgent();
+      await createTestUserConnector(
+        user.orgId,
+        user.userId,
+        agentId,
+        "nano-banana",
+      );
+      await createTestUserConnector(user.orgId, user.userId, agentId, "github");
+
+      const res = await getUserConnectors(agentId, testCliToken);
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.enabledTypes).toEqual(["github"]);
     });
 
     it("should return 404 for non-existent agent", async () => {
