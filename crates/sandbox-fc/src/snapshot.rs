@@ -2696,6 +2696,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pending_snapshot_publish_discard_recovers_after_partial_bitmap_publish() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = SnapshotOutputPaths::new(dir.path().join("output"));
+        write_required_snapshot_artifacts(&output).await;
+        tokio::fs::create_dir(output.cow())
+            .await
+            .expect("block cow rename with directory");
+        let kept_cow = write_kept_cow_for_test(&output.work_dir(), "partial-bitmap").await;
+        let cow_file = kept_cow.cow_file.clone();
+        let bitmap_file = kept_cow.bitmap_file.clone();
+        let mut pending = FirecrackerPendingSnapshotPublish::new(
+            output.snapshot_config("partial-bitmap"),
+            SnapshotOutputPaths::new(output.dir().to_path_buf()),
+            kept_cow,
+        );
+
+        let err = pending
+            .commit_config()
+            .await
+            .expect_err("commit should fail after publishing bitmap but before cow");
+        assert!(matches!(err, SnapshotError::Io(_)), "got: {err:?}");
+        assert!(
+            tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "failed commit should expose the partial stable bitmap"
+        );
+        assert!(
+            !tokio::fs::try_exists(&bitmap_file).await.unwrap(),
+            "bitmap rename should move the temp bitmap before commit fails"
+        );
+
+        pending
+            .discard_inner()
+            .await
+            .expect_err("discard should keep state when blocking output cow directory remains");
+        assert!(
+            !tokio::fs::try_exists(output.cow_bitmap()).await.unwrap(),
+            "discard should remove the partial stable bitmap"
+        );
+        assert!(
+            !tokio::fs::try_exists(&cow_file).await.unwrap(),
+            "discard should remove the remaining temp cow"
+        );
+
+        tokio::fs::remove_dir(output.cow())
+            .await
+            .expect("remove blocking cow directory");
+        pending
+            .discard_inner()
+            .await
+            .expect("retry should finish cleanup after blocking output is fixed");
+        assert!(
+            !tokio::fs::try_exists(output.complete_marker())
+                .await
+                .unwrap(),
+            "failed commit cleanup must not publish marker"
+        );
+        assert!(
+            !FirecrackerSnapshotProvider
+                .is_complete(output.dir())
+                .await
+                .unwrap(),
+            "partial bitmap publish must remain incomplete"
+        );
+    }
+
+    #[tokio::test]
     async fn snapshot_publish_cleanup_kept_cow_does_not_publish_stable_output() {
         let dir = tempfile::tempdir().expect("tempdir");
         let output = SnapshotOutputPaths::new(dir.path().join("output"));
