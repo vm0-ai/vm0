@@ -47,7 +47,7 @@ function AccountRow({
         <Icon size={20} stroke={1.6} />
       </span>
       <span
-        className={`flex-1 min-w-0 truncate text-[17px] ${
+        className={`flex-1 min-w-0 truncate text-[15px] ${
           destructive
             ? "text-destructive font-medium"
             : "text-foreground font-medium"
