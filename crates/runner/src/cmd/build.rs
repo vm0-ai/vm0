@@ -192,6 +192,81 @@ impl<'a> TemplateCache<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemplateUploadIntent {
+    Deduplicated,
+    ForceOverwriteInvalidRemote,
+}
+
+impl TemplateUploadIntent {
+    fn force(self) -> bool {
+        matches!(self, Self::ForceOverwriteInvalidRemote)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RemoteTemplateDecision {
+    UseDownloaded,
+    BuildAndUpload(TemplateUploadIntent),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TemplateMaterializationMode {
+    FullImage,
+    WarmRootfsCache,
+}
+
+impl TemplateMaterializationMode {
+    fn is_warm_cache(self) -> bool {
+        matches!(self, Self::WarmRootfsCache)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TemplateMaterializationTarget<'a> {
+    RootfsStaging(&'a Path),
+    RemoteCacheOnly,
+}
+
+impl TemplateMaterializationTarget<'_> {
+    fn mode(self) -> TemplateMaterializationMode {
+        match self {
+            Self::RootfsStaging(_) => TemplateMaterializationMode::FullImage,
+            Self::RemoteCacheOnly => TemplateMaterializationMode::WarmRootfsCache,
+        }
+    }
+
+    fn materialize_downloaded(
+        self,
+        input: &TemplateInput<'_>,
+        downloaded_template: &Path,
+    ) -> RunnerResult<()> {
+        match self {
+            Self::RootfsStaging(staging) => {
+                move_file_sync(downloaded_template, staging, "materialize template")?;
+                tracing::info!(
+                    "[OK] template downloaded from R2 into staging: {}",
+                    staging.display()
+                );
+                Ok(())
+            }
+            Self::RemoteCacheOnly => {
+                tracing::info!("[OK] template already in R2: {}", input.template_hash);
+                Ok(())
+            }
+        }
+    }
+
+    fn materialize_built(self, built_template: &Path) -> RunnerResult<()> {
+        match self {
+            Self::RootfsStaging(staging) => {
+                move_file_sync(built_template, staging, "move template to staging")
+            }
+            Self::RemoteCacheOnly => Ok(()),
+        }
+    }
+}
+
 struct TemplateInput<'a> {
     paths: &'a HomePaths,
     template_hash: &'a str,
@@ -786,7 +861,7 @@ async fn ensure_rootfs_under_lock(
 }
 
 async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerResult<()> {
-    let cache = input.cache.as_cache().ok_or_else(|| {
+    input.cache.as_cache().ok_or_else(|| {
         RunnerError::Internal("--warm-rootfs-cache requires R2 template cache".into())
     })?;
     let mut scripts = RootfsScripts::new();
@@ -798,54 +873,12 @@ async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerR
     cleanup_template_warm_parent(&warm_parent).await?;
     let warm_dir = template_attempt_dir(&warm_parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
 
-    let result = async {
-        tokio::fs::create_dir_all(&warm_dir).await.map_err(|e| {
-            RunnerError::Internal(format!(
-                "create template warm dir {}: {e}",
-                warm_dir.display()
-            ))
-        })?;
-        let template = warm_dir.join(TEMPLATE_FILE);
-        let mut force_reupload = false;
-
-        match cache
-            .try_download_template_to_file(input.template_hash, &template)
-            .await
-        {
-            Ok(true) => match verify_template_file(&template, &work_dir_path).await {
-                Ok(()) => {
-                    tracing::info!("[OK] template already in R2: {}", input.template_hash);
-                    return Ok(());
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        "R2 template object for {} failed warm validation ({e}) — \
-                         rebuilding locally and force-overwriting the bad object",
-                        input.template_hash
-                    );
-                    let _ = tokio::fs::remove_file(&template).await;
-                    force_reupload = true;
-                }
-            },
-            Ok(false) => {}
-            Err(e) if e.is_invalid_object() => {
-                tracing::warn!(
-                    "R2 template object for {} is invalid during warm ({e}) — \
-                     rebuilding locally and force-overwriting the bad object",
-                    input.template_hash
-                );
-                force_reupload = true;
-            }
-            Err(e) => {
-                return Err(RunnerError::Internal(format!(
-                    "R2 template download failed while warming cache: {e}"
-                )));
-            }
-        }
-
-        build_template_locally(input, &warm_dir, &work_dir_path).await?;
-        upload_template_to_r2(input, &template, force_reupload).await
-    }
+    let result = materialize_template_from_r2_or_build(
+        input,
+        &warm_dir,
+        &work_dir_path,
+        TemplateMaterializationTarget::RemoteCacheOnly,
+    )
     .await;
 
     finish_template_warm_dir_result(&warm_parent, &warm_dir, result).await
@@ -1008,68 +1041,123 @@ async fn obtain_template_to_staging(
     let staging = rootfs_paths.rootfs_staging();
     cleanup_stale_template_attempt_dirs(rootfs_paths.dir(), TEMPLATE_BUILD_DIR_PREFIX).await?;
     let attempt_dir = template_attempt_dir(rootfs_paths.dir(), TEMPLATE_BUILD_DIR_PREFIX);
-    let downloaded_template = attempt_dir.join(TEMPLATE_DOWNLOAD_FILE);
-    let mut force_reupload = false;
 
     let result = async {
-        if let Some(cache) = input.cache.as_cache() {
-            match cache
-                .try_download_template_to_file(input.template_hash, &downloaded_template)
-                .await
-            {
-                Ok(true) => {
-                    let work_dir_path = scripts.path().await?;
-                    if let Err(e) = verify_template_file(&downloaded_template, &work_dir_path).await
-                    {
-                        tracing::warn!(
-                            "R2 template object for {} failed validation ({e}) — \
-                             rebuilding locally and force-overwriting the bad object",
-                            input.template_hash
-                        );
-                        force_reupload = true;
-                    } else {
-                        move_file_sync(&downloaded_template, &staging, "materialize template")?;
-                        tracing::info!(
-                            "[OK] template downloaded from R2 into staging: {}",
-                            staging.display()
-                        );
-                        return Ok(());
-                    }
-                }
-                Ok(false) => tracing::info!(
-                    "R2 template cache miss for {} — building locally",
-                    input.template_hash
-                ),
-                Err(e) => {
-                    if e.is_invalid_object() {
-                        tracing::warn!(
-                            "R2 template object for {} is invalid ({e}) — \
-                             rebuilding locally and force-overwriting the bad object",
-                            input.template_hash
-                        );
-                        force_reupload = true;
-                    } else if input.cache.is_required() {
-                        return Err(RunnerError::Internal(format!(
-                            "R2 template download failed while warming cache: {e}"
-                        )));
-                    } else {
-                        tracing::warn!(
-                            "R2 template download failed: {e} — falling back to local build"
-                        );
-                    }
-                }
-            }
-        }
-
         let work_dir_path = scripts.path().await?;
-        build_template_locally(input, &attempt_dir, &work_dir_path).await?;
-        let built_template = attempt_dir.join(TEMPLATE_FILE);
-        upload_template_to_r2(input, &built_template, force_reupload).await?;
-        move_file_sync(&built_template, &staging, "move template to staging")
+        materialize_template_from_r2_or_build(
+            input,
+            &attempt_dir,
+            &work_dir_path,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
     }
     .await;
 
     finish_temp_dir_result(&attempt_dir, "template build dir", result).await
+}
+
+async fn materialize_template_from_r2_or_build(
+    input: &TemplateInput<'_>,
+    attempt_dir: &Path,
+    work_dir: &Path,
+    target: TemplateMaterializationTarget<'_>,
+) -> RunnerResult<()> {
+    tokio::fs::create_dir_all(attempt_dir).await.map_err(|e| {
+        RunnerError::Internal(format!(
+            "create template attempt dir {}: {e}",
+            attempt_dir.display()
+        ))
+    })?;
+
+    let downloaded_template = attempt_dir.join(TEMPLATE_DOWNLOAD_FILE);
+    match resolve_remote_template(input, &downloaded_template, work_dir, target.mode()).await? {
+        RemoteTemplateDecision::UseDownloaded => {
+            target.materialize_downloaded(input, &downloaded_template)
+        }
+        RemoteTemplateDecision::BuildAndUpload(upload_intent) => {
+            build_template_locally(input, attempt_dir, work_dir).await?;
+            let built_template = attempt_dir.join(TEMPLATE_FILE);
+            upload_template_to_r2(input, &built_template, upload_intent.force()).await?;
+            target.materialize_built(&built_template)
+        }
+    }
+}
+
+async fn resolve_remote_template(
+    input: &TemplateInput<'_>,
+    downloaded_template: &Path,
+    work_dir: &Path,
+    mode: TemplateMaterializationMode,
+) -> RunnerResult<RemoteTemplateDecision> {
+    let Some(cache) = input.cache.as_cache() else {
+        return Ok(RemoteTemplateDecision::BuildAndUpload(
+            TemplateUploadIntent::Deduplicated,
+        ));
+    };
+
+    match cache
+        .try_download_template_to_file(input.template_hash, downloaded_template)
+        .await
+    {
+        Ok(true) => match verify_template_file(downloaded_template, work_dir).await {
+            Ok(()) => Ok(RemoteTemplateDecision::UseDownloaded),
+            Err(e) => {
+                if mode.is_warm_cache() {
+                    tracing::warn!(
+                        "R2 template object for {} failed warm validation ({e}) — \
+                         rebuilding locally and force-overwriting the bad object",
+                        input.template_hash
+                    );
+                } else {
+                    tracing::warn!(
+                        "R2 template object for {} failed validation ({e}) — \
+                         rebuilding locally and force-overwriting the bad object",
+                        input.template_hash
+                    );
+                }
+                Ok(RemoteTemplateDecision::BuildAndUpload(
+                    TemplateUploadIntent::ForceOverwriteInvalidRemote,
+                ))
+            }
+        },
+        Ok(false) => {
+            tracing::info!(
+                "R2 template cache miss for {} — building locally",
+                input.template_hash
+            );
+            Ok(RemoteTemplateDecision::BuildAndUpload(
+                TemplateUploadIntent::Deduplicated,
+            ))
+        }
+        Err(e) if e.is_invalid_object() => {
+            if mode.is_warm_cache() {
+                tracing::warn!(
+                    "R2 template object for {} is invalid during warm ({e}) — \
+                     rebuilding locally and force-overwriting the bad object",
+                    input.template_hash
+                );
+            } else {
+                tracing::warn!(
+                    "R2 template object for {} is invalid ({e}) — \
+                     rebuilding locally and force-overwriting the bad object",
+                    input.template_hash
+                );
+            }
+            Ok(RemoteTemplateDecision::BuildAndUpload(
+                TemplateUploadIntent::ForceOverwriteInvalidRemote,
+            ))
+        }
+        Err(e) if input.cache.is_required() => Err(RunnerError::Internal(format!(
+            "R2 template download failed while warming cache: {e}"
+        ))),
+        Err(e) => {
+            tracing::warn!("R2 template download failed: {e} — falling back to local build");
+            Ok(RemoteTemplateDecision::BuildAndUpload(
+                TemplateUploadIntent::Deduplicated,
+            ))
+        }
+    }
 }
 
 fn move_file_sync(source: &Path, destination: &Path, label: &str) -> RunnerResult<()> {
@@ -1590,6 +1678,7 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
     use std::sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -1652,6 +1741,187 @@ mod tests {
             guest_mock_codex: guest.clone(),
             guest_reseed: guest,
         }
+    }
+
+    fn template_input<'a>(home: &'a HomePaths, cache: TemplateCache<'a>) -> TemplateInput<'a> {
+        TemplateInput {
+            paths: home,
+            template_hash: "test-template-hash",
+            cache,
+            disk_mb: 128,
+        }
+    }
+
+    fn mock_r2_cache(rules: &[&Rule]) -> R2ImageCache {
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, rules);
+        R2ImageCache::with_client(client, "test-bucket".to_string())
+    }
+
+    async fn fake_rootfs_scripts() -> (RootfsScripts, PathBuf) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let work_dir = temp_dir.path().to_path_buf();
+        tokio::fs::write(
+            work_dir.join("build-template.sh"),
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+output_dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir)
+      output_dir="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$output_dir" ]]; then
+  exit 2
+fi
+
+mkdir -p "$output_dir"
+printf built-template > "$output_dir/template.ext4"
+printf called > "$script_dir/build-template-called"
+"#,
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(
+            work_dir.join("verify-rootfs.sh"),
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+rootfs=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --rootfs)
+      rootfs="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$rootfs" || ! -f "$rootfs" ]]; then
+  exit 2
+fi
+if [[ "$(cat "$rootfs")" == "verify-fail" ]]; then
+  exit 1
+fi
+
+printf called >> "$script_dir/verify-rootfs-called"
+"#,
+        )
+        .await
+        .unwrap();
+        tokio::fs::write(
+            work_dir.join("customize-rootfs.sh"),
+            "#!/usr/bin/env bash\n",
+        )
+        .await
+        .unwrap();
+
+        (
+            RootfsScripts {
+                temp_dir: Some(temp_dir),
+            },
+            work_dir,
+        )
+    }
+
+    async fn template_archive_bytes(content: &[u8]) -> Vec<u8> {
+        let content = content.to_vec();
+        tokio::task::spawn_blocking(move || {
+            let encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
+            let mut archive = tar::Builder::new(encoder);
+            let mut header = tar::Header::new_gnu();
+            header.set_size(u64::try_from(content.len()).unwrap());
+            header.set_mode(0o644);
+            header.set_cksum();
+            let mut reader = content.as_slice();
+            archive
+                .append_data(&mut header, TEMPLATE_FILE, &mut reader)
+                .unwrap();
+            archive.finish().unwrap();
+            let encoder = archive.into_inner().unwrap();
+            encoder.finish().unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    async fn empty_template_archive_bytes() -> Vec<u8> {
+        tokio::task::spawn_blocking(move || {
+            let encoder = zstd::stream::write::Encoder::new(Vec::new(), 1).unwrap();
+            let mut archive = tar::Builder::new(encoder);
+            archive.finish().unwrap();
+            let encoder = archive.into_inner().unwrap();
+            encoder.finish().unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    fn template_get_rule(body: Vec<u8>) -> Rule {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectOutput;
+        use aws_sdk_s3::primitives::ByteStream;
+
+        let body = Arc::new(body);
+        let body_for_closure = Arc::clone(&body);
+        mock!(Client::get_object)
+            .match_requests(|req| {
+                req.bucket() == Some("test-bucket")
+                    && req.key() == Some("runner-templates/test-template-hash.tar.zst")
+            })
+            .then_output(move || {
+                GetObjectOutput::builder()
+                    .body(ByteStream::from((*body_for_closure).clone()))
+                    .build()
+            })
+    }
+
+    fn template_get_miss_rule() -> Rule {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::get_object::GetObjectError;
+        use aws_sdk_s3::types::error::NoSuchKey;
+
+        mock!(Client::get_object)
+            .then_error(|| GetObjectError::NoSuchKey(NoSuchKey::builder().build()))
+    }
+
+    fn template_head_miss_rule() -> Rule {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectError;
+        use aws_sdk_s3::types::error::NotFound;
+
+        mock!(Client::head_object)
+            .then_error(|| HeadObjectError::NotFound(NotFound::builder().build()))
+    }
+
+    fn multipart_success_rules() -> (Rule, Rule, Rule) {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::complete_multipart_upload::CompleteMultipartUploadOutput;
+        use aws_sdk_s3::operation::create_multipart_upload::CreateMultipartUploadOutput;
+        use aws_sdk_s3::operation::upload_part::UploadPartOutput;
+
+        let create = mock!(Client::create_multipart_upload).then_output(|| {
+            CreateMultipartUploadOutput::builder()
+                .upload_id("test-upload-id")
+                .build()
+        });
+        let upload_part = mock!(Client::upload_part)
+            .then_output(|| UploadPartOutput::builder().e_tag("\"etag-123\"").build());
+        let complete = mock!(Client::complete_multipart_upload)
+            .then_output(|| CompleteMultipartUploadOutput::builder().build());
+        (create, upload_part, complete)
     }
 
     struct RecordingPendingSnapshotPublish {
@@ -2376,6 +2646,310 @@ exit 1
         upload_template_to_r2(&input, &template, false)
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn full_image_r2_hit_materializes_without_local_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-hit-rootfs");
+        let archive = template_archive_bytes(b"downloaded-template").await;
+        let get = template_get_rule(archive);
+        let cache = mock_r2_cache(&[&get]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            tokio::fs::read(&staging).await.unwrap(),
+            b"downloaded-template"
+        );
+        assert!(
+            !work_dir.join("build-template-called").exists(),
+            "valid R2 hit must not rebuild locally"
+        );
+        assert_eq!(get.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn full_image_download_request_failure_falls_back_to_local_build() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-download-fallback-rootfs");
+        let get = mock!(Client::get_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let head = template_head_miss_rule();
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&get, &head, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tokio::fs::read(&staging).await.unwrap(), b"built-template");
+        assert!(work_dir.join("build-template-called").exists());
+        assert!(
+            get.num_calls() >= 1,
+            "SDK may retry request failures before best-effort fallback"
+        );
+        assert_eq!(head.num_calls(), 1, "force=false should consult head");
+        assert_eq!(create.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn full_image_upload_failure_is_nonfatal_after_cache_miss() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-upload-best-effort-rootfs");
+        let get = template_get_miss_rule();
+        let head = mock!(Client::head_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let cache = mock_r2_cache(&[&get, &head]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tokio::fs::read(&staging).await.unwrap(), b"built-template");
+        assert!(
+            head.num_calls() >= 1,
+            "SDK may retry upload preflight failures before best-effort fallback"
+        );
+    }
+
+    #[tokio::test]
+    async fn full_image_invalid_remote_object_force_overwrites_r2() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-invalid-rootfs");
+        let get = template_get_rule(empty_template_archive_bytes().await);
+        let head = mock!(Client::head_object).then_output(|| HeadObjectOutput::builder().build());
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&get, &head, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(tokio::fs::read(&staging).await.unwrap(), b"built-template");
+        assert_eq!(
+            head.num_calls(),
+            0,
+            "invalid remote object must force upload and skip head"
+        );
+        assert_eq!(create.num_calls(), 1);
+        assert_eq!(upload_part.num_calls(), 1);
+        assert_eq!(complete.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn full_image_failed_downloaded_template_verification_does_not_publish_bad_template() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let rootfs = RootfsPaths::new(&home, "r2-verify-failed-rootfs");
+        tokio::fs::create_dir_all(rootfs.dir()).await.unwrap();
+        tokio::fs::write(rootfs.rootfs_staging(), b"old-staging")
+            .await
+            .unwrap();
+        let get = template_get_rule(template_archive_bytes(b"verify-fail").await);
+        let head = mock!(Client::head_object).then_output(|| HeadObjectOutput::builder().build());
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&get, &head, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::BestEffort(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = rootfs.dir().join("attempt.tmp");
+        let staging = rootfs.rootfs_staging();
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RootfsStaging(&staging),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            tokio::fs::read(&staging).await.unwrap(),
+            b"built-template",
+            "failed downloaded verification must rebuild instead of publishing the bad file"
+        );
+        assert_eq!(
+            head.num_calls(),
+            0,
+            "verification failure must force upload"
+        );
+        assert_eq!(create.num_calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn warm_cache_download_request_failure_is_fatal() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let get = mock!(Client::get_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let cache = mock_r2_cache(&[&get]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = home.images_dir().join("warm-attempt.tmp");
+
+        let err = materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RemoteCacheOnly,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("R2 template download failed while warming cache"),
+            "got {err}"
+        );
+        assert!(
+            !work_dir.join("build-template-called").exists(),
+            "required download failure must fail before local rebuild"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_cache_upload_failure_is_fatal() {
+        use aws_sdk_s3::Client;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let get = template_get_miss_rule();
+        let head = mock!(Client::head_object)
+            .sequence()
+            .http_status(
+                500,
+                Some("<Error><Code>InternalError</Code></Error>".into()),
+            )
+            .build();
+        let cache = mock_r2_cache(&[&get, &head]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = home.images_dir().join("warm-attempt.tmp");
+
+        let err = materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RemoteCacheOnly,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("R2 upload failed while warming template cache"),
+            "got {err}"
+        );
+        assert!(work_dir.join("build-template-called").exists());
+        assert!(
+            head.num_calls() >= 1,
+            "SDK may retry upload preflight failures before returning required error"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_cache_invalid_remote_object_force_overwrites_r2() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let get = template_get_rule(empty_template_archive_bytes().await);
+        let head = mock!(Client::head_object).then_output(|| HeadObjectOutput::builder().build());
+        let (create, upload_part, complete) = multipart_success_rules();
+        let cache = mock_r2_cache(&[&get, &head, &create, &upload_part, &complete]);
+        let input = template_input(&home, TemplateCache::Required(&cache));
+        let (_scripts, work_dir) = fake_rootfs_scripts().await;
+        let attempt_dir = home.images_dir().join("warm-attempt.tmp");
+
+        materialize_template_from_r2_or_build(
+            &input,
+            &attempt_dir,
+            &work_dir,
+            TemplateMaterializationTarget::RemoteCacheOnly,
+        )
+        .await
+        .unwrap();
+
+        assert!(work_dir.join("build-template-called").exists());
+        assert_eq!(
+            head.num_calls(),
+            0,
+            "invalid remote object must force upload and skip head"
+        );
+        assert_eq!(create.num_calls(), 1);
+        assert_eq!(upload_part.num_calls(), 1);
+        assert_eq!(complete.num_calls(), 1);
     }
 
     #[test]
