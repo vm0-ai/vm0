@@ -629,6 +629,13 @@ async fn gc_debootstrap(
     keep_latest: Option<usize>,
     dry_run: bool,
 ) -> RunnerResult<u64> {
+    let dir = home.debootstrap_dir();
+    if !dir.try_exists().map_err(|e| {
+        RunnerError::Internal(format!("check debootstrap dir {}: {e}", dir.display()))
+    })? {
+        return Ok(0);
+    }
+
     let lock_path = home.debootstrap_lock();
     let _lock = match probe_lock(&lock_path) {
         LockProbe::Free(lock) => lock,
@@ -642,7 +649,6 @@ async fn gc_debootstrap(
         }
     };
 
-    let dir = home.debootstrap_dir();
     let Some(mut entries) = read_dir_or_missing(&dir).await? else {
         return Ok(0);
     };
@@ -657,13 +663,15 @@ async fn gc_debootstrap(
         if !meta.is_file() {
             continue;
         }
+        let Some(kind) = debootstrap_cache_file_kind(&path) else {
+            continue;
+        };
         let mtime = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
-        let is_temp = is_debootstrap_temp_tarball(&path);
         files.push(DeBootstrapCacheFile {
             path,
             size: meta.len(),
             mtime,
-            is_temp,
+            is_temp: matches!(kind, DeBootstrapCacheFileKind::Temp),
         });
     }
 
@@ -724,10 +732,20 @@ struct DeBootstrapCacheFile {
     is_temp: bool,
 }
 
-fn is_debootstrap_temp_tarball(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.contains(".tar.tmp."))
+enum DeBootstrapCacheFileKind {
+    Stable,
+    Temp,
+}
+
+fn debootstrap_cache_file_kind(path: &Path) -> Option<DeBootstrapCacheFileKind> {
+    let name = path.file_name().and_then(|name| name.to_str())?;
+    if name.contains(".tar.tmp.") {
+        Some(DeBootstrapCacheFileKind::Temp)
+    } else if name.ends_with(".tar") {
+        Some(DeBootstrapCacheFileKind::Stable)
+    } else {
+        None
+    }
 }
 
 /// Remove unused lock files. Any lock file that can be exclusively locked is
@@ -1868,6 +1886,31 @@ mod tests {
         assert!(
             cache_tar.exists(),
             "active debootstrap cache tarball must survive GC"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_keeps_its_lock_file() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let lock_path = home.debootstrap_lock();
+        drop(lock::open_lock_file(&lock_path).unwrap());
+        std::fs::File::open(&lock_path)
+            .unwrap()
+            .set_times(
+                FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+            )
+            .unwrap();
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            lock_path.exists(),
+            "debootstrap GC must not remove its own lock file"
         );
     }
 

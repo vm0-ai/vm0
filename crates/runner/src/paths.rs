@@ -148,7 +148,7 @@ impl HomePaths {
     }
 
     pub fn debootstrap_lock(&self) -> PathBuf {
-        self.locks_dir().join("debootstrap.lock")
+        self.debootstrap_dir().join(".lock")
     }
 
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
@@ -411,10 +411,7 @@ mod tests {
         let ca_lock = home.ca_lock();
         assert_eq!(ca_lock, PathBuf::from("/test/locks/ca.lock"));
         let debootstrap_lock = home.debootstrap_lock();
-        assert_eq!(
-            debootstrap_lock,
-            PathBuf::from("/test/locks/debootstrap.lock")
-        );
+        assert_eq!(debootstrap_lock, PathBuf::from("/test/debootstrap/.lock"));
     }
 
     #[test]

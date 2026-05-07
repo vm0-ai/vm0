@@ -28,7 +28,7 @@
 #   bash build-template.sh \
 #     --output-dir /path/to/output \
 #     --debootstrap-dir /path/to/cache \
-#     --debootstrap-lock /path/to/locks/debootstrap.lock \
+#     --debootstrap-lock /path/to/cache/.lock \
 #     --hash <input-hash> \
 #     --disk-mb 16384 \
 #     [--mirror http://archive.ubuntu.com/ubuntu]

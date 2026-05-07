@@ -1125,10 +1125,6 @@ async fn build_template_locally(
     tokio::fs::create_dir_all(&debootstrap_dir)
         .await
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
-    let locks_dir = input.paths.locks_dir();
-    tokio::fs::create_dir_all(&locks_dir)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", locks_dir.display())))?;
     let debootstrap_lock_path = input.paths.debootstrap_lock();
     drop(lock::open_lock_file(&debootstrap_lock_path)?);
     let disk_mb_str = input.disk_mb.to_string();
