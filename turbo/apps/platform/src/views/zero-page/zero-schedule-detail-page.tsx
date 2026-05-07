@@ -979,7 +979,7 @@ function ScheduleDetailView({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent"
+                className="zero-btn-morandi order-first sm:order-none h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent"
                 disabled={running || !entry.prompt.trim()}
                 onClick={() => {
                   detach(onRunNow(), Reason.DomCallback);
