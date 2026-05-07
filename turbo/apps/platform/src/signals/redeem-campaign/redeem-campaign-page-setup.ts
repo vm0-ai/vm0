@@ -12,6 +12,7 @@ import {
   setRedeemResponse$,
   setRedeemStripeSuccess$,
 } from "./redeem-campaign-signals.ts";
+import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 
 /**
  * Setup command for the unified `/redeem/:campaign` route.
@@ -25,6 +26,10 @@ import {
  */
 export const setupRedeemCampaignPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    if (await set(onboardGuard$, signal)) {
+      return;
+    }
+
     set(updatePage$, createElement(RedeemCampaignPage), "minimal");
     set(updateDocumentTitle$, "Claim your credits");
 

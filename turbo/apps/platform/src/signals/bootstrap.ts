@@ -160,7 +160,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.telegramConnect,
-    setup: setupTelegramConnectPage$,
+    setup: setupAuthPageWrapper(setupTelegramConnectPage$),
   },
   {
     path: ROUTES.activityInspect,

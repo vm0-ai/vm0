@@ -12,9 +12,14 @@ import {
 } from "./schedule-run-history.ts";
 import { initScheduleDetailTab$ } from "./schedule-detail-tab.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 
 export const setupScheduleDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    if (await set(onboardGuard$, signal)) {
+      return;
+    }
+
     set(updatePage$, createElement(ZeroScheduleDetailPage), "sidebar");
     set(initScheduleDetailTab$);
 
