@@ -398,7 +398,7 @@ function ScheduleSettingsForm({
           <InlineSettingsRow label="Agent" wideControls>
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Select value={form.agentId} disabled>
-                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[17px]">
+                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[15px]">
                   <SelectValue placeholder="Select agent" />
                 </SelectTrigger>
                 <SelectContent>
@@ -426,7 +426,7 @@ function ScheduleSettingsForm({
                   return updateForm({ description: e.target.value });
                 }}
                 placeholder="Leave blank to auto-generate"
-                className="h-9 max-md:h-11 max-md:text-[17px]"
+                className="h-9 max-md:h-11 max-md:text-[15px]"
                 disabled={saving}
               />
             </div>
@@ -513,7 +513,7 @@ function ScheduleSettingsForm({
                   }}
                   agentDefault={agentModelDefault}
                   inheritLabel="agent"
-                  triggerClassName="h-9 max-md:h-11 text-[17px] sm:text-sm"
+                  triggerClassName="h-9 max-md:h-11 text-[15px] sm:text-sm"
                 />
               </div>
             </InlineSettingsRow>
@@ -553,7 +553,7 @@ function ScheduleSettingsForm({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[17px] hover:bg-destructive/10 hover:text-destructive"
+                  className="h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[15px] hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => {
                     return setShowDeleteConfirmVal(true);
                   }}
@@ -881,7 +881,7 @@ function ScheduleDetailView({
                 />
               </div>
               <div className="min-w-0 flex-1 flex flex-col gap-1">
-                <h1 className="min-w-0 text-[17px] sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
+                <h1 className="min-w-0 text-[15px] sm:text-lg font-semibold tracking-tight text-foreground leading-tight truncate">
                   {summaryTitle}
                 </h1>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[15px] sm:text-xs text-muted-foreground leading-tight">
@@ -942,7 +942,7 @@ function ScheduleDetailView({
                     }
                   }}
                 >
-                  <SelectTrigger className="h-11 w-full text-[17px]">
+                  <SelectTrigger className="h-11 w-full text-[15px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -980,7 +980,7 @@ function ScheduleDetailView({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="zero-btn-morandi order-first sm:order-none h-9 max-md:h-11 shrink-0 gap-2 rounded-lg px-4 border text-sm max-md:text-[17px] font-medium transition-colors hover:bg-accent"
+                className="zero-btn-morandi order-first sm:order-none h-9 max-md:h-11 shrink-0 gap-2 rounded-lg px-4 border text-sm max-md:text-[15px] font-medium transition-colors hover:bg-accent"
                 disabled={running || !entry.prompt.trim()}
                 onClick={() => {
                   detach(onRunNow(), Reason.DomCallback);
