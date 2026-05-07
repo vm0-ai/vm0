@@ -398,7 +398,7 @@ function ScheduleSettingsForm({
           <InlineSettingsRow label="Agent" wideControls>
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Select value={form.agentId} disabled>
-                <SelectTrigger className="h-9 w-full">
+                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[17px]">
                   <SelectValue placeholder="Select agent" />
                 </SelectTrigger>
                 <SelectContent>
@@ -426,7 +426,7 @@ function ScheduleSettingsForm({
                   return updateForm({ description: e.target.value });
                 }}
                 placeholder="Leave blank to auto-generate"
-                className="h-9"
+                className="h-9 max-md:h-11 max-md:text-[17px]"
                 disabled={saving}
               />
             </div>
@@ -552,7 +552,7 @@ function ScheduleSettingsForm({
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[17px] hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => {
                     return setShowDeleteConfirmVal(true);
                   }}
@@ -941,7 +941,7 @@ function ScheduleDetailView({
                     }
                   }}
                 >
-                  <SelectTrigger className="h-9 w-full">
+                  <SelectTrigger className="h-11 w-full text-[17px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -979,13 +979,13 @@ function ScheduleDetailView({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="zero-btn-morandi order-first sm:order-none h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent"
+                className="zero-btn-morandi order-first sm:order-none h-9 max-md:h-11 shrink-0 gap-2 rounded-lg px-4 border text-sm max-md:text-[17px] font-medium transition-colors hover:bg-accent"
                 disabled={running || !entry.prompt.trim()}
                 onClick={() => {
                   detach(onRunNow(), Reason.DomCallback);
                 }}
               >
-                <IconPlayerPlay size={14} stroke={1.5} />
+                <IconPlayerPlay size={14} stroke={1.5} className="max-md:h-4 max-md:w-4" />
                 {running ? "Starting…" : "Run now"}
               </Button>
             </div>

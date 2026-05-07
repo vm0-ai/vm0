@@ -188,7 +188,7 @@ export function ScheduleEditFields({
           Time
         </label>
         <Select value={freq} onValueChange={setFreq}>
-          <SelectTrigger id="schedule-dialog-freq" className="h-9 w-full">
+          <SelectTrigger id="schedule-dialog-freq" className="h-9 max-md:h-11 w-full max-md:text-[17px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -216,7 +216,7 @@ export function ScheduleEditFields({
               return setLoopMinutes(Number(v));
             }}
           >
-            <SelectTrigger id="schedule-dialog-loop" className="h-9 w-full">
+            <SelectTrigger id="schedule-dialog-loop" className="h-9 max-md:h-11 w-full max-md:text-[17px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -246,7 +246,7 @@ export function ScheduleEditFields({
             onChange={(e) => {
               return setDate(e.target.value);
             }}
-            className="h-9 w-full"
+            className="h-9 max-md:h-11 w-full max-md:text-[17px]"
           />
         </div>
       )}
@@ -261,7 +261,7 @@ export function ScheduleEditFields({
                   return setHour(Number(v));
                 }}
               >
-                <SelectTrigger className="h-9 w-full">
+                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[17px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -283,7 +283,7 @@ export function ScheduleEditFields({
                   return setMinute(Number(v));
                 }}
               >
-                <SelectTrigger className="h-9 w-full">
+                <SelectTrigger className="h-9 max-md:h-11 w-full max-md:text-[17px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -309,7 +309,7 @@ export function ScheduleEditFields({
             Timezone
           </label>
           <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger id="schedule-dialog-tz" className="h-9 w-full">
+            <SelectTrigger id="schedule-dialog-tz" className="h-9 max-md:h-11 w-full max-md:text-[17px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
