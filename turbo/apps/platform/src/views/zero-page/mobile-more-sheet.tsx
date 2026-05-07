@@ -37,26 +37,29 @@ function SectionLink({
   onSelect,
   testId,
 }: SectionLinkProps) {
+  // Lighter hairline-list treatment: no per-row card fill, no dividers,
+  // smaller subtitle. Hover gets a subtle muted tint so the affordance
+  // still reads on pointer devices.
   return (
     <button
       type="button"
       onClick={onSelect}
       data-testid={testId}
-      className="flex w-full items-center gap-3 px-3 py-3 rounded-xl bg-muted/40 hover:bg-muted text-left transition-colors"
+      className="flex w-full items-center gap-3 px-3 py-3 rounded-xl text-left transition-colors hover:bg-muted/40 active:bg-muted/60"
     >
       <Icon size={22} stroke={1.6} className="shrink-0 text-foreground" />
       <span className="flex-1 min-w-0">
-        <span className="block text-[17px] font-semibold truncate text-foreground">
+        <span className="block text-[15px] font-semibold truncate text-foreground">
           {label}
         </span>
-        <span className="block text-[15px] text-muted-foreground truncate">
+        <span className="block text-[13px] text-muted-foreground truncate">
           {hint}
         </span>
       </span>
       <IconChevronRight
         size={16}
         stroke={1.6}
-        className="shrink-0 text-muted-foreground"
+        className="shrink-0 text-muted-foreground/60"
       />
     </button>
   );
