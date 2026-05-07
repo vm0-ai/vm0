@@ -30,10 +30,12 @@
 //! fatal `PartialConfig` error — almost certainly a typo'd secret rotation, and
 //! silently disabling cache fleet-wide is worse than failing the deploy.
 //!
-//! Streaming: both upload and download avoid temp files entirely. Upload uses a
-//! `tokio::io::duplex` pipe to couple the sync tar+zstd producer (on a blocking
-//! thread) to the async multipart consumer. Download uses `SyncIoBridge` to
-//! adapt the async S3 body into a sync `Read` for the blocking unpack thread.
+//! Streaming: upload avoids temp files by using a `tokio::io::duplex` pipe to
+//! couple the sync tar+zstd producer (on a blocking thread) to the async
+//! multipart consumer. Download streams the S3 body through `SyncIoBridge` into
+//! a sibling staging directory, then renames the extracted `template.ext4` to
+//! the caller's destination. Callers that coordinate shared output paths should
+//! pass an attempt-scoped destination and perform their own final publish step.
 //! Memory peak per upload ≈ `(2 + CONCURRENCY + 1) × PART_SIZE` — duplex buffer,
 //! in-flight upload chunks, and the part being read — bounded regardless of
 //! image size. Currently ~112 MiB with `PART_SIZE` = 16 MiB and `CONCURRENCY` = 4.
