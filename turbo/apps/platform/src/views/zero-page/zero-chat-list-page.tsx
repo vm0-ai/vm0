@@ -423,13 +423,13 @@ function ThreadKindIcon({
     >
       <span
         className={cn(
-          "flex h-11 w-11 items-center justify-center rounded-xl",
+          "flex h-12 w-12 items-center justify-center rounded-xl",
           kind === "draft"
             ? "bg-amber-100 text-amber-700"
             : "bg-[hsl(var(--gray-200))] text-foreground/80",
         )}
       >
-        <Icon size={18} stroke={1.6} />
+        <Icon size={22} stroke={1.6} />
       </span>
       {isRunning && (
         <span
