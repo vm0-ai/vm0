@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.333.0](https://github.com/vm0-ai/vm0/compare/app-v0.332.0...app-v0.333.0) (2026-05-07)
+
+
+### Features
+
+* rename luma to luma-ai and add luma events connector ([#12076](https://github.com/vm0-ai/vm0/issues/12076)) ([67d5417](https://github.com/vm0-ai/vm0/commit/67d54173e02fb1528ea2533c652e86d2948b78dd))
+
+
+### Bug Fixes
+
+* guard connect routes during onboarding ([#12080](https://github.com/vm0-ai/vm0/issues/12080)) ([bfcdad8](https://github.com/vm0-ai/vm0/commit/bfcdad806229f9abf3748440a63b268096cc7560))
+
 ## [0.332.0](https://github.com/vm0-ai/vm0/compare/app-v0.331.0...app-v0.332.0) (2026-05-07)
 
 

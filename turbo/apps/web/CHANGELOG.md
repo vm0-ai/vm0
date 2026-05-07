@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.340.0](https://github.com/vm0-ai/vm0/compare/web-v12.339.0...web-v12.340.0) (2026-05-07)
+
+
+### Features
+
+* rename luma to luma-ai and add luma events connector ([#12076](https://github.com/vm0-ai/vm0/issues/12076)) ([67d5417](https://github.com/vm0-ai/vm0/commit/67d54173e02fb1528ea2533c652e86d2948b78dd))
+
+
+### Bug Fixes
+
+* preserve real codex stderr through complete + telemetry pipelines ([#12082](https://github.com/vm0-ai/vm0/issues/12082)) ([748c737](https://github.com/vm0-ai/vm0/commit/748c737a1622716107888dcd228c4eccb29bc6c1))
+
 ## [12.339.0](https://github.com/vm0-ai/vm0/compare/web-v12.338.0...web-v12.339.0) (2026-05-07)
 
 

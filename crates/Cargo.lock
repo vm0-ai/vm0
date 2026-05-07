@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "0.7.8"
+version = "0.7.9"
 dependencies = [
  "base64",
  "futures-util",
@@ -1248,7 +1248,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.28.0"
+version = "0.28.1"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -2549,7 +2549,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.100.6"
+version = "0.100.7"
 dependencies = [
  "ably-subscriber",
  "api-contracts",

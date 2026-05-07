@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.28.0...guest-agent-v0.28.1) (2026-05-07)
+
+
+### Bug Fixes
+
+* preserve real codex stderr through complete + telemetry pipelines ([#12082](https://github.com/vm0-ai/vm0/issues/12082)) ([748c737](https://github.com/vm0-ai/vm0/commit/748c737a1622716107888dcd228c4eccb29bc6c1))
+
 ## [0.28.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.27.1...guest-agent-v0.28.0) (2026-05-07)
 
 

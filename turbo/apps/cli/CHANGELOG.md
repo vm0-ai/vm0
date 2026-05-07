@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.145.0](https://github.com/vm0-ai/vm0/compare/cli-v9.144.1...cli-v9.145.0) (2026-05-07)
+
+
+### Features
+
+* rename luma to luma-ai and add luma events connector ([#12076](https://github.com/vm0-ai/vm0/issues/12076)) ([67d5417](https://github.com/vm0-ai/vm0/commit/67d54173e02fb1528ea2533c652e86d2948b78dd))
+
 ## [9.144.1](https://github.com/vm0-ai/vm0/compare/cli-v9.144.0...cli-v9.144.1) (2026-05-07)
 
 
