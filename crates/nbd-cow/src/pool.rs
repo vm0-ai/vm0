@@ -339,60 +339,33 @@ impl DevicePoolHandle {
     }
 }
 
+async fn sleep_until_deadline(deadline: Option<Instant>) {
+    if let Some(deadline) = deadline {
+        tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await;
+    } else {
+        std::future::pending::<()>().await;
+    }
+}
+
 impl DevicePoolActor {
     async fn run(mut self) {
         loop {
             self.pool.process_expired_cooldown();
             let deadline = self.pool.next_cooldown_deadline();
+            let has_pending = !self.pool.pending.is_empty();
 
-            match (!self.pool.pending.is_empty(), deadline) {
-                (false, None) => {
-                    let Some(command) = self.commands.recv().await else {
+            tokio::select! {
+                command = self.commands.recv() => {
+                    let Some(command) = command else {
                         break;
                     };
                     self.handle_command(command).await;
                 }
-                (true, None) => {
-                    tokio::select! {
-                        command = self.commands.recv() => {
-                            let Some(command) = command else {
-                                break;
-                            };
-                            self.handle_command(command).await;
-                        }
-                        scan = self.pool.pending.join_next() => {
-                            self.pool.handle_scan_join(scan);
-                        }
-                    }
+                scan = self.pool.pending.join_next(), if has_pending => {
+                    self.pool.handle_scan_join(scan);
                 }
-                (false, Some(deadline)) => {
-                    tokio::select! {
-                        command = self.commands.recv() => {
-                            let Some(command) = command else {
-                                break;
-                            };
-                            self.handle_command(command).await;
-                        }
-                        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
-                            self.handle_cooldown_deadline();
-                        }
-                    }
-                }
-                (true, Some(deadline)) => {
-                    tokio::select! {
-                        command = self.commands.recv() => {
-                            let Some(command) = command else {
-                                break;
-                            };
-                            self.handle_command(command).await;
-                        }
-                        scan = self.pool.pending.join_next() => {
-                            self.pool.handle_scan_join(scan);
-                        }
-                        _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
-                            self.handle_cooldown_deadline();
-                        }
-                    }
+                () = sleep_until_deadline(deadline), if deadline.is_some() => {
+                    self.handle_cooldown_deadline();
                 }
             }
         }
