@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.338.0](https://github.com/vm0-ai/vm0/compare/web-v12.337.0...web-v12.338.0) (2026-05-07)
+
+
+### Features
+
+* **chat:** auto-send pending message and polish queue ux ([#12050](https://github.com/vm0-ai/vm0/issues/12050)) ([64d4345](https://github.com/vm0-ai/vm0/commit/64d4345b8d1ea7d64d07c197c822131f64e61949))
+
+
+### Bug Fixes
+
+* resolve preferred personal agent defaults ([#12052](https://github.com/vm0-ai/vm0/issues/12052)) ([cf587b9](https://github.com/vm0-ai/vm0/commit/cf587b93c015ca80b9636df8641e1d8e6776925a))
+* strip user prefix from file urls ([#12053](https://github.com/vm0-ai/vm0/issues/12053)) ([e40a2a0](https://github.com/vm0-ai/vm0/commit/e40a2a0195eda3ec3df83c0357f189c4f6412326))
+* **web:** accept multi-auth providers as authoritative for codex framework ([#12047](https://github.com/vm0-ai/vm0/issues/12047)) ([7a3737b](https://github.com/vm0-ai/vm0/commit/7a3737b8011e5d6a611273482127f4f98204f6bc))
+
+
+### Performance Improvements
+
+* **chat:** dedupe vm0 credit admission org metadata read ([#12051](https://github.com/vm0-ai/vm0/issues/12051)) ([65c5377](https://github.com/vm0-ai/vm0/commit/65c5377c991c577077dc9f020deb32f9ed1f0e3f))
+
 ## [12.337.0](https://github.com/vm0-ai/vm0/compare/web-v12.336.0...web-v12.337.0) (2026-05-07)
 
 

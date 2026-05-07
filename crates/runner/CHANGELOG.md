@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.4...runner-rs-v0.100.5) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** centralize ownership transitions ([#12034](https://github.com/vm0-ai/vm0/issues/12034)) ([03cd98f](https://github.com/vm0-ai/vm0/commit/03cd98f32d2a42fd02d6fa1cdb1c34e4bea70ca0))
+
 ## [0.100.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.3...runner-rs-v0.100.4) (2026-05-07)
 
 

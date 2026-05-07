@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.331.0](https://github.com/vm0-ai/vm0/compare/app-v0.330.0...app-v0.331.0) (2026-05-07)
+
+
+### Features
+
+* **chat:** auto-send pending message and polish queue ux ([#12050](https://github.com/vm0-ai/vm0/issues/12050)) ([64d4345](https://github.com/vm0-ai/vm0/commit/64d4345b8d1ea7d64d07c197c822131f64e61949))
+
+
+### Bug Fixes
+
+* resolve preferred personal agent defaults ([#12052](https://github.com/vm0-ai/vm0/issues/12052)) ([cf587b9](https://github.com/vm0-ai/vm0/commit/cf587b93c015ca80b9636df8641e1d8e6776925a))
+* support chat arrow key scrolling ([#12035](https://github.com/vm0-ai/vm0/issues/12035)) ([4bc13ee](https://github.com/vm0-ai/vm0/commit/4bc13ee0dd05114defa14defe95a3b2b9d8eb0ae))
+
 ## [0.330.0](https://github.com/vm0-ai/vm0/compare/app-v0.329.0...app-v0.330.0) (2026-05-07)
 
 
