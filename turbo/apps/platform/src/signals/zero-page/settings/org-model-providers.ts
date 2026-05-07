@@ -380,6 +380,11 @@ export const orgSubmitDialog$ = command(
       );
       if (secretsConfig) {
         for (const [key, config] of Object.entries(secretsConfig)) {
+          // Derived secrets are populated by a server-side parser, not the
+          // form. Skip required-field validation for them (#12024).
+          if (config.derived) {
+            continue;
+          }
           if (config.required && !formValues.secrets[key]?.trim()) {
             errors[key] = `${config.label} is required`;
           }

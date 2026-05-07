@@ -18,6 +18,17 @@ export interface SecretFieldConfig {
    * never see (per #7365). Honored by `resolveMultiAuthProviderSecrets`.
    */
   serverOnly?: boolean;
+  /**
+   * When true, this secret is populated by a server-side parser from another
+   * secret in the same authMethod (typically a single user-input field whose
+   * raw value is exploded into multiple stored fields). UI MUST NOT render an
+   * input for this secret; the storage validation layer still uses it.
+   *
+   * Example: `codex-oauth-token` / `auth_json` — user pastes `CODEX_AUTH_JSON`,
+   * server parser writes `CHATGPT_ACCESS_TOKEN` / `_REFRESH_TOKEN` /
+   * `_ACCOUNT_ID` / `_ID_TOKEN`. Those four are `derived: true`.
+   */
+  derived?: boolean;
 }
 
 /**
@@ -447,23 +458,31 @@ export const MODEL_PROVIDER_TYPES = {
           // layer at egress) — keeping them non-serverOnly preserves the
           // placeholder injection path. CHATGPT_REFRESH_TOKEN and
           // CHATGPT_ID_TOKEN stay serverOnly per the #7365 invariant.
+          //
+          // All four are `derived: true` — the server-side parser populates
+          // them from the user-pasted CODEX_AUTH_JSON. The UI MUST NOT render
+          // them as input fields (per #12024).
           CHATGPT_ACCESS_TOKEN: {
             label: "CHATGPT_ACCESS_TOKEN",
             required: true,
+            derived: true,
           },
           CHATGPT_REFRESH_TOKEN: {
             label: "CHATGPT_REFRESH_TOKEN",
             required: true,
             serverOnly: true,
+            derived: true,
           },
           CHATGPT_ACCOUNT_ID: {
             label: "CHATGPT_ACCOUNT_ID",
             required: true,
+            derived: true,
           },
           CHATGPT_ID_TOKEN: {
             label: "CHATGPT_ID_TOKEN",
             required: true,
             serverOnly: true,
+            derived: true,
           },
         },
       },
