@@ -994,7 +994,7 @@ export function ZeroJobDetailPage() {
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
       />
-      <main className="flex-1 flex flex-col min-h-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
+      <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
         <AgentTabContent
           activeTab={activeTab}
           agentId={fields.agentId}

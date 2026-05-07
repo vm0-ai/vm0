@@ -495,14 +495,8 @@ export function ZeroScheduleCard({
   };
 
   return (
-    <Card
-      className={
-        mobileRedesign
-          ? "border-0 rounded-none shadow-none bg-transparent flex-1 flex flex-col min-h-0"
-          : "zero-card"
-      }
-    >
-      <CardContent className="p-0 flex flex-col flex-1 min-h-0">
+    <Card className="zero-card overflow-hidden">
+      <CardContent className="p-0 flex flex-col">
         {mobileRedesign ? (
           // Mobile (Option A): drop the redundant "<agent>'s scheduled tasks"
           // title and let a single full-width "Add schedule" button own the

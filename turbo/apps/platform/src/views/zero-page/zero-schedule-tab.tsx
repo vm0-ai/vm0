@@ -109,7 +109,7 @@ export function ZeroScheduleTab({
   };
 
   return (
-    <div className="-mx-4 sm:-mx-6 md:mx-auto md:max-w-[900px] flex-1 flex flex-col min-h-0">
+    <div className="mx-auto w-full max-w-[900px]">
       <ZeroScheduleCard
         title={`${displayName}'s scheduled tasks`}
         subtitle={`Tasks you've scheduled with ${displayName} to run automatically.`}
