@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.144.0](https://github.com/vm0-ai/vm0/compare/cli-v9.143.0...cli-v9.144.0) (2026-05-07)
+
+
+### Features
+
+* **cli:** add official image generation command ([#11998](https://github.com/vm0-ai/vm0/issues/11998)) ([da64e8b](https://github.com/vm0-ai/vm0/commit/da64e8b8ecb90a6b304d90ff433cf98eaa62a912))
+
 ## [9.143.0](https://github.com/vm0-ai/vm0/compare/cli-v9.142.1...cli-v9.143.0) (2026-05-06)
 
 

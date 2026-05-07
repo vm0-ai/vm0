@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.2...runner-rs-v0.100.3) (2026-05-07)
+
+
+### Documentation
+
+* **runner:** document local command entrypoints ([#12010](https://github.com/vm0-ai/vm0/issues/12010)) ([26851da](https://github.com/vm0-ai/vm0/commit/26851daf16b347ae75491aa5907f186868ca8cb8))
+
 ## [0.100.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.1...runner-rs-v0.100.2) (2026-05-06)
 
 

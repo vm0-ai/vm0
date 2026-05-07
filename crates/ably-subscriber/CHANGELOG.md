@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.8](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.7...ably-subscriber-v0.7.8) (2026-05-07)
+
+
+### Documentation
+
+* **ably-subscriber:** document token fields ([#12012](https://github.com/vm0-ai/vm0/issues/12012)) ([a4f4671](https://github.com/vm0-ai/vm0/commit/a4f4671fe969048fbce4cf77cb0cbc7a378dee71))
+
 ## [0.7.7](https://github.com/vm0-ai/vm0/compare/ably-subscriber-v0.7.6...ably-subscriber-v0.7.7) (2026-05-05)
 
 

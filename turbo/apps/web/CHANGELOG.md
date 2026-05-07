@@ -1,5 +1,18 @@
 # Changelog
 
+## [12.336.0](https://github.com/vm0-ai/vm0/compare/web-v12.335.0...web-v12.336.0) (2026-05-07)
+
+
+### Features
+
+* **cli:** add official image generation command ([#11998](https://github.com/vm0-ai/vm0/issues/11998)) ([da64e8b](https://github.com/vm0-ai/vm0/commit/da64e8b8ecb90a6b304d90ff433cf98eaa62a912))
+* **web:** SEO-optimize use cases, reorder by ICP, Slack URL override ([#12014](https://github.com/vm0-ai/vm0/issues/12014)) ([d384f88](https://github.com/vm0-ai/vm0/commit/d384f88436de6947a181d5e93687ed39d66125a8))
+
+
+### Bug Fixes
+
+* increase auth shadow probe timeout from 2s to 10s ([#12025](https://github.com/vm0-ai/vm0/issues/12025)) ([2e572f2](https://github.com/vm0-ai/vm0/commit/2e572f264b1b184f1da74687bd4d04a5909b488c))
+
 ## [12.335.0](https://github.com/vm0-ai/vm0/compare/web-v12.334.1...web-v12.335.0) (2026-05-06)
 
 

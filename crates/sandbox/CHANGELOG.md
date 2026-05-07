@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.13](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.12...sandbox-v0.12.13) (2026-05-07)
+
+
+### Documentation
+
+* **sandbox:** add crate-level docs ([#12011](https://github.com/vm0-ai/vm0/issues/12011)) ([cdbb13d](https://github.com/vm0-ai/vm0/commit/cdbb13d1b68b4f3f8ae5b63c6e1166e6bc0f8f65))
+
 ## [0.12.12](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.11...sandbox-v0.12.12) (2026-05-06)
 
 
