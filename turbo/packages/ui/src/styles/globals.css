@@ -367,22 +367,34 @@
 
 }
 
-/* iOS PWA standalone mode: 100svh / 100dvh / 100lvh all leave a gap
-   below the bottom tab bar (the home-indicator safe-area is reported
-   as part of the viewport but vh units exclude it). Pin the root to the
-   viewport bounds so it spans the entire screen including the safe-area;
-   the home indicator is a translucent overlay and can sit on top of the
-   dock. Web Safari keeps h-svh (set via the Tailwind class) to avoid
-   layout shift when the URL bar collapses.
+/* iOS PWA standalone mode: 100svh / 100dvh / 100lvh all return a value
+   that excludes the home-indicator safe-area, leaving a strip of white
+   below the bottom tab bar. Two-part fix:
 
-   Outside @layer so it wins specificity against Tailwind's h-svh utility
-   (which lives in the utilities layer). !important guarantees the override
-   even when source order works against us. */
+   1. Pin the document chain (html → body → #root) to 100% so each link
+      reports the full visual viewport rather than a vh-derived value.
+   2. Anchor .zero-app with position: fixed + explicit edge insets so iOS
+      can't push it up by the safe-area inset. The home indicator is a
+      translucent overlay and can sit on top of the dock — matches the
+      behaviour of Apple's own floating mini-player and Camera Roll docks.
+
+   Web Safari is unaffected (the media query doesn't match) and keeps
+   h-svh to avoid the URL-bar-collapse layout shift. */
 @media (display-mode: standalone) {
+  html,
+  body,
+  #root {
+    height: 100%;
+    min-height: 100%;
+  }
   .zero-app {
     position: fixed !important;
-    inset: 0 !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
     height: auto !important;
+    min-height: 0 !important;
   }
 }
 
