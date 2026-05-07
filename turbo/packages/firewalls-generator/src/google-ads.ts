@@ -27,6 +27,8 @@ function generateTypeScript(): string {
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.GOOGLE_ADS_TOKEN }}",',
+    '          "developer-token": "${{ vars.GOOGLE_ADS_DEVELOPER_TOKEN }}",',
+    '          "login-customer-id": "${{ vars.GOOGLE_ADS_LOGIN_CUSTOMER_ID }}",',
     "        },",
     "      },",
     "      permissions: [],",
