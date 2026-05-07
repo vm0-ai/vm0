@@ -36,6 +36,7 @@ const STORAGE_CACHE_MAX_BYTES: u64 = 1 << 30; // 1 GiB
 /// bound many tiny storage versions, and each cached version also creates a
 /// lock file.
 const STORAGE_CACHE_MAX_ENTRIES: u64 = 5_000;
+const TEMPLATE_WARM_DIR_PREFIX: &str = "template-warm-";
 
 #[derive(Args)]
 pub struct GcArgs {
@@ -243,8 +244,11 @@ async fn try_delete_orphan_rootfs(rootfs_path: &Path, rootfs_hash: &str, dry_run
 }
 
 fn template_warm_hash(name: &str) -> Option<&str> {
-    name.strip_prefix("template-")
-        .and_then(|rest| rest.strip_suffix(".warm.tmp"))
+    name.strip_prefix(TEMPLATE_WARM_DIR_PREFIX)
+        .or_else(|| {
+            name.strip_prefix("template-")
+                .and_then(|rest| rest.strip_suffix(".warm.tmp"))
+        })
         .filter(|hash| !hash.is_empty())
 }
 
@@ -2064,6 +2068,42 @@ mod tests {
         assert_eq!(freed, 0);
     }
 
+    #[test]
+    fn template_warm_hash_accepts_current_and_legacy_names() {
+        assert_eq!(template_warm_hash("template-warm-abc123"), Some("abc123"));
+        assert_eq!(
+            template_warm_hash("template-abc123.warm.tmp"),
+            Some("abc123")
+        );
+        assert_eq!(template_warm_hash("template-warm-"), None);
+        assert_eq!(template_warm_hash("rootfs-hash"), None);
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_keeps_locked_current_template_warm_dir() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-warm-abc123");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("attempt-old.tmp"), b"partial").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&warm_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let lock_file = lock::open_lock_file(&home.template_lock("abc123")).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(warm_dir.exists(), "active warm rootfs dir must survive GC");
+    }
+
     #[tokio::test]
     async fn gc_nested_images_keeps_locked_template_warm_dir() {
         use std::fs::FileTimes;
@@ -2115,6 +2155,31 @@ mod tests {
         let warm_dir = home.images_dir().join("template-abc123.warm.tmp");
         std::fs::create_dir_all(&warm_dir).unwrap();
         std::fs::write(warm_dir.join("template.ext4"), b"partial").unwrap();
+
+        let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        std::fs::File::open(&warm_dir)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let freed = gc_nested_images(&home, Some(0), false).await.unwrap();
+
+        assert!(
+            !warm_dir.exists(),
+            "stale warm rootfs dir should be removed"
+        );
+        assert!(freed > 0);
+    }
+
+    #[tokio::test]
+    async fn gc_nested_images_removes_stale_current_template_warm_dir() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let warm_dir = home.images_dir().join("template-warm-abc123");
+        std::fs::create_dir_all(&warm_dir).unwrap();
+        std::fs::write(warm_dir.join("attempt-old.tmp"), b"partial").unwrap();
 
         let old_time = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         std::fs::File::open(&warm_dir)

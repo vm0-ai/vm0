@@ -787,7 +787,7 @@ async fn ensure_template_cached_under_lock(input: &TemplateInput<'_>) -> RunnerR
     }
     .await;
 
-    finish_temp_dir_result(&warm_dir, "template warm dir", result).await
+    finish_template_warm_dir_result(&warm_parent, &warm_dir, result).await
 }
 
 fn template_attempt_dir(parent: &Path, prefix: &str) -> PathBuf {
@@ -883,6 +883,45 @@ async fn finish_temp_dir_result(
             );
             Err(original_err)
         }
+    }
+}
+
+async fn finish_template_warm_dir_result(
+    parent: &Path,
+    attempt: &Path,
+    result: RunnerResult<()>,
+) -> RunnerResult<()> {
+    let result = finish_temp_dir_result(attempt, "template warm dir", result).await;
+    match remove_empty_dir_if_exists(parent).await {
+        Ok(()) => result,
+        Err(parent_err) => match result {
+            Ok(()) => Err(parent_err),
+            Err(original_err) => {
+                tracing::warn!(
+                    "failed to remove template warm parent {} after an earlier error: {parent_err}",
+                    parent.display()
+                );
+                Err(original_err)
+            }
+        },
+    }
+}
+
+async fn remove_empty_dir_if_exists(path: &Path) -> RunnerResult<()> {
+    match tokio::fs::remove_dir(path).await {
+        Ok(()) => Ok(()),
+        Err(e)
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+            ) =>
+        {
+            Ok(())
+        }
+        Err(e) => Err(RunnerError::Internal(format!(
+            "remove empty template warm parent {}: {e}",
+            path.display()
+        ))),
     }
 }
 
@@ -2210,6 +2249,43 @@ exit 1
             err.to_string().contains("original failure"),
             "original error should win when operation and cleanup both fail, got {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn template_warm_cleanup_removes_empty_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let parent = template_warm_parent_dir(&home, "abc123");
+        let attempt = template_attempt_dir(&parent, TEMPLATE_WARM_ATTEMPT_DIR_PREFIX);
+        tokio::fs::create_dir_all(&attempt).await.unwrap();
+
+        finish_template_warm_dir_result(&parent, &attempt, Ok(()))
+            .await
+            .unwrap();
+
+        assert!(!attempt.exists());
+        assert!(
+            !parent.exists(),
+            "successful warm cleanup should not leave empty parent dirs"
+        );
+    }
+
+    #[tokio::test]
+    async fn template_warm_cleanup_preserves_original_error_when_parent_cleanup_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("not-a-dir");
+        let attempt = parent.join("attempt");
+        tokio::fs::write(&parent, b"file").await.unwrap();
+
+        let err = finish_template_warm_dir_result(
+            &parent,
+            &attempt,
+            Err(RunnerError::Internal("warm failed".into())),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(err.to_string().contains("warm failed"));
     }
 
     #[test]
