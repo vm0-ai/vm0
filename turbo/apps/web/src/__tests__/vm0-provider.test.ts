@@ -13,6 +13,7 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
+  getVm0ModelFramework,
   VM0_MODEL_TO_PROVIDER,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { resolveModelProviderSecrets } from "../lib/zero/context/resolve-model-provider";
@@ -168,6 +169,13 @@ describe("VM0 managed model provider", () => {
       expect(getVm0ApiModel("deepseek-v4-flash")).toBe("deepseek-v4-flash");
     });
 
+    it("should resolve GPT models to openai-api-key and codex framework", () => {
+      expect(getVm0ConcreteProviderType("gpt-5.5")).toBe("openai-api-key");
+      expect(getVm0Vendor("gpt-5.5")).toBe("openai");
+      expect(getVm0ApiModel("gpt-5.5")).toBe("gpt-5.5");
+      expect(getVm0ModelFramework("gpt-5.5")).toBe("codex");
+    });
+
     it("should fall back to display name when no apiModel override is set", () => {
       expect(getVm0ApiModel("claude-sonnet-4-6")).toBe("claude-sonnet-4-6");
     });
@@ -196,6 +204,11 @@ describe("VM0 managed model provider", () => {
         "MiniMax-M2.7",
         "deepseek-v4-pro",
         "deepseek-v4-flash",
+        "gpt-5.5",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.3-codex",
+        "gpt-5.2",
       ]);
     });
   });

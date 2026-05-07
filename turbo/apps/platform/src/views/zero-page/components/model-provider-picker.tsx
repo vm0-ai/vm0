@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { IconCpu } from "@tabler/icons-react";
 import {
   Select,
@@ -21,11 +21,13 @@ import {
   areProvidersCompatible,
   getDefaultModel,
   getModels,
+  getVm0VisibleModels,
   MODEL_PROVIDER_TYPES,
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderResponse,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import type { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   showAllVm0Models$,
@@ -37,6 +39,7 @@ import {
   isVm0PrimaryModel,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
+import { featureSwitch$ } from "../../../signals/external/feature-switch";
 
 export interface ModelProviderSelection {
   modelProviderId: string;
@@ -455,6 +458,8 @@ interface ProviderGroup {
 function buildProviderGroups(
   providers: ModelProviderResponse[],
   sessionProviderType: ModelProviderType | null | undefined,
+  features: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+  preservedSelections: readonly (ModelProviderSelection | null | undefined)[],
 ): ProviderGroup[] {
   return providers
     .map((provider): ProviderGroup | null => {
@@ -462,7 +467,7 @@ function buildProviderGroups(
       if (!typeConfig) {
         return null;
       }
-      const models = getModels(provider.type);
+      const models = getProviderModels(provider, features, preservedSelections);
       if (!models || models.length === 0) {
         return null;
       }
@@ -488,6 +493,40 @@ function buildProviderGroups(
       }
       return a.isVm0 ? -1 : 1;
     });
+}
+
+function getProviderModels(
+  provider: ModelProviderResponse,
+  features: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+  preservedSelections: readonly (ModelProviderSelection | null | undefined)[],
+): readonly string[] | undefined {
+  if (provider.type !== "vm0") {
+    return getModels(provider.type);
+  }
+  const preservedModels = preservedSelections
+    .filter((selection): selection is ModelProviderSelection => {
+      return selection?.modelProviderId === provider.id;
+    })
+    .map((selection) => {
+      return selection.selectedModel;
+    });
+  return appendSelectedModels(getVm0VisibleModels(features), [
+    provider.selectedModel ?? undefined,
+    ...preservedModels,
+  ]);
+}
+
+function appendSelectedModels(
+  models: readonly string[],
+  selectedModels: readonly (string | undefined)[],
+): readonly string[] {
+  const result = [...models];
+  for (const model of selectedModels) {
+    if (model && !result.includes(model)) {
+      result.push(model);
+    }
+  }
+  return result;
 }
 
 function ShowMoreToggleRow({
@@ -800,6 +839,8 @@ export function ModelProviderPicker({
   inheritLabel,
   tiers,
 }: ModelProviderPickerProps) {
+  const features = useLastResolved(featureSwitch$);
+
   if (disabled) {
     return (
       <DisabledPickerLabel
@@ -827,7 +868,10 @@ export function ModelProviderPicker({
     resolveEffectiveDefault(agentDefault, inheritScope);
   const defaultSource: DefaultSource = inheritLabel ?? autoSource;
 
-  const groups = buildProviderGroups(providers, sessionProviderType);
+  const groups = buildProviderGroups(providers, sessionProviderType, features, [
+    value,
+    agentDefault,
+  ]);
   return (
     <ModelSelectDropdown
       groups={groups}

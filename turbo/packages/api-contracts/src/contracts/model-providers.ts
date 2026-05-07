@@ -97,6 +97,31 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "deepseek-api-key",
     vendor: "deepseek",
   },
+  "gpt-5.5": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
+  "gpt-5.4": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
+  "gpt-5.4-mini": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
+  "gpt-5.3-codex": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
+  "gpt-5.2": {
+    concreteType: "openai-api-key",
+    vendor: "openai",
+    featureFlag: FeatureSwitchKey.CodexBeta,
+  },
 };
 
 export const VM0_MODEL_ALIAS_TO_MODEL = {
@@ -192,13 +217,33 @@ export function getVm0VisibleModels(
   features?: Partial<Record<FeatureSwitchKey, boolean>>,
 ): string[] {
   return Object.entries(VM0_MODEL_TO_PROVIDER)
-    .filter(([, { featureFlag }]) => {
-      if (!featureFlag) return true;
-      return features?.[featureFlag] === true;
+    .filter(([model]) => {
+      return isVm0ModelVisible(model, features);
     })
     .map(([model]) => {
       return model;
     });
+}
+
+export function getVm0ModelFeatureFlag(
+  model: string,
+): FeatureSwitchKey | undefined {
+  const entry = VM0_MODEL_TO_PROVIDER[model];
+  if (!entry) {
+    throw new Error(
+      `Unknown VM0 model "${model}". Valid models: ${Object.keys(VM0_MODEL_TO_PROVIDER).join(", ")}`,
+    );
+  }
+  return entry.featureFlag;
+}
+
+export function isVm0ModelVisible(
+  model: string,
+  features?: Partial<Record<FeatureSwitchKey, boolean>>,
+): boolean {
+  const featureFlag = getVm0ModelFeatureFlag(model);
+  if (!featureFlag) return true;
+  return features?.[featureFlag] === true;
 }
 
 /**
@@ -900,6 +945,15 @@ export function getVm0ApiModel(model: string): string {
     );
   }
   return entry.apiModel ?? model;
+}
+
+/**
+ * Get the runtime framework for a VM0 managed model.
+ * VM0 is a meta-provider; dispatch must follow the selected model's concrete
+ * provider instead of the static MODEL_PROVIDER_TYPES.vm0 framework.
+ */
+export function getVm0ModelFramework(model: string): ModelProviderFramework {
+  return getFrameworkForType(getVm0ConcreteProviderType(model));
 }
 
 /**

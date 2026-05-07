@@ -124,7 +124,7 @@ function getOverrides(
     return {
       label: "Built-in model",
       description:
-        "Powered by Claude — uses your VM0 credits. No API key needed.",
+        "Powered by VM0 managed models - uses your VM0 credits. No API key needed.",
     };
   }
   if (type === "aws-bedrock") {
@@ -213,17 +213,22 @@ export function getUIAuthMethodLabel(
 
 /**
  * Credit multiplier for Built-in model offerings, normalized so Claude Sonnet 4.6 = 1x.
- * Sourced from OpenRouter per-token USD pricing and normalized via a blended
- * (input + 5× output) cost against Sonnet 4.6 ($3/$15 per M), rounded to 1
- * decimal. Only applies to the `vm0` provider type; BYOK providers pay the
+ * Sourced from provider per-token USD pricing and normalized via a blended
+ * (input + 5× output) cost against Sonnet 4.6 ($3/$15 per M), rounded for UI
+ * display. Only applies to the `vm0` provider type; BYOK providers pay the
  * vendor directly and do not carry a platform multiplier.
  */
 const VM0_MODEL_CREDIT_MULTIPLIER = Object.freeze<Record<string, number>>({
   "claude-opus-4-6": 1.7,
   "claude-opus-4-7": 1.7,
+  "gpt-5.5": 2,
   "claude-sonnet-4-6": 1,
+  "gpt-5.4": 1,
+  "gpt-5.3-codex": 0.9,
+  "gpt-5.2": 0.9,
   "glm-5.1": 0.4,
   "claude-haiku-4-5": 0.3,
+  "gpt-5.4-mini": 0.3,
   "kimi-k2.6": 0.3,
   "deepseek-v4-pro": 0.06,
   "kimi-k2.5": 0.2,
@@ -243,6 +248,7 @@ export function isVm0PrimaryModel(model: string): boolean {
     model === "claude-opus-4-7" ||
     model === "claude-opus-4-6" ||
     model === "claude-sonnet-4-6" ||
+    model === "gpt-5.5" ||
     model === "deepseek-v4-pro"
   );
 }

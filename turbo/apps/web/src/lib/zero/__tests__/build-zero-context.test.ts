@@ -154,6 +154,38 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       );
     });
 
+    it("should dispatch VM0 Codex models with codex cli and OpenAI billing firewall", async () => {
+      const agentName = uniqueId("vm0-codex-model-agent");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      await upsertOrgNoSecretModelProvider(user.orgId, "vm0", "gpt-5.5");
+      await insertVm0ApiKeys([
+        {
+          vendor: "openai",
+          model: "gpt-5.5",
+          apiKey: "sk-vm0-openai-model-usage",
+        },
+      ]);
+      await setOrgCredits(user.orgId, 10000);
+
+      const result = await createZeroRun(baseParams({ agentId: modelAgentId }));
+
+      await context.mocks.flushAfter();
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.cliAgentType).toBe("codex");
+      expect(job!.executionContext.environment).toMatchObject({
+        OPENAI_MODEL: "gpt-5.5",
+      });
+      expect(job!.executionContext.modelUsageProvider).toBe("gpt-5.5");
+      expect(job!.executionContext.billableFirewalls).toContain(
+        "model-provider:openai-api-key",
+      );
+    });
+
     it("should error when no org default provider exists", async () => {
       const agentName = uniqueId("no-key-agent");
       await createTestCompose(agentName, {

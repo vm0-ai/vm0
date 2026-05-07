@@ -11,6 +11,7 @@ import {
   insertUserNonDefaultModelProvider,
   enablePersonalModelProviderForUser,
   setTestModelProviderNeedsReconnect,
+  insertVm0ApiKeys,
   ORG_SENTINEL_USER_ID,
 } from "../../../../__tests__/api-test-helpers";
 import { getTestModelProviderIdByType } from "../../../../__tests__/db-test-assertions/org";
@@ -101,6 +102,36 @@ describe("resolveModelProviderSecrets — framework gate removed (#11526)", () =
 
     expect(result.resolvedModelProvider).toBe("anthropic-api-key");
     expect(result.framework).toBe("claude-code");
+  });
+
+  it("resolves VM0 Codex models through OpenAI and returns codex framework", async () => {
+    const userId = uniqueId("vm0-codex-resolve");
+    const orgId = await setupOrg(userId);
+    await insertOrgDefaultModelProvider(orgId, "vm0", "gpt-5.5");
+    await insertVm0ApiKeys([
+      {
+        vendor: "openai",
+        model: "gpt-5.5",
+        apiKey: "sk-vm0-openai-test",
+      },
+    ]);
+
+    const result = await resolveModelProviderSecrets(
+      orgId,
+      userId,
+      "claude-code",
+      false,
+    );
+
+    expect(result.resolvedModelProvider).toBe("vm0");
+    expect(result.concreteProviderType).toBe("openai-api-key");
+    expect(result.framework).toBe("codex");
+    expect(result.selectedModel).toBe("gpt-5.5");
+    expect(result.injectedEnvironment).toMatchObject({
+      OPENAI_API_KEY: "${{ secrets.OPENAI_API_KEY }}",
+      OPENAI_MODEL: "gpt-5.5",
+    });
+    expect(result.secrets?.OPENAI_API_KEY).toBe("sk-vm0-openai-test");
   });
 
   it("does not borrow workspace default's selectedModel when explicit modelProvider type differs (#11743)", async () => {

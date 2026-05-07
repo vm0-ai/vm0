@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
@@ -7,6 +8,8 @@ import {
   getDefaultModel,
   getEnvironmentMapping,
   getFrameworkForType,
+  getVm0ModelFeatureFlag,
+  getVm0ModelFramework,
   getVm0VisibleModels,
   normalizeVm0ModelId,
   getModelImageInputSupport,
@@ -147,13 +150,14 @@ describe("model selection for Anthropic-native providers", () => {
 });
 
 describe("getVm0VisibleModels", () => {
-  it("returns all models when no features are provided", () => {
+  it("returns ungated models when no features are provided", () => {
     const models = getVm0VisibleModels();
     expect(models).toContain("kimi-k2.5");
     expect(models).toContain("MiniMax-M2.7");
     expect(models).toContain("glm-5.1");
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("deepseek-v4-flash");
+    expect(models).not.toContain("gpt-5.5");
     // All feature-flagged models must be hidden when no features are provided
     const featureFlaggedModels = Object.entries(VM0_MODEL_TO_PROVIDER)
       .filter(([, config]) => {
@@ -171,6 +175,30 @@ describe("getVm0VisibleModels", () => {
     const models = getVm0VisibleModels({});
     expect(models).toContain("deepseek-v4-pro");
     expect(models).toContain("deepseek-v4-flash");
+  });
+
+  it("shows Codex VM0 models only when CodexBeta is enabled", () => {
+    const withoutCodex = getVm0VisibleModels({
+      [FeatureSwitchKey.CodexBeta]: false,
+    });
+    expect(withoutCodex).not.toContain("gpt-5.5");
+
+    const withCodex = getVm0VisibleModels({
+      [FeatureSwitchKey.CodexBeta]: true,
+    });
+    expect(withCodex).toContain("gpt-5.5");
+    expect(withCodex).toContain("gpt-5.3-codex");
+  });
+});
+
+describe("VM0 managed model framework", () => {
+  it("routes Claude-compatible VM0 models through claude-code", () => {
+    expect(getVm0ModelFramework("claude-sonnet-4-6")).toBe("claude-code");
+  });
+
+  it("routes Codex VM0 models through codex", () => {
+    expect(getVm0ModelFramework("gpt-5.5")).toBe("codex");
+    expect(getVm0ModelFeatureFlag("gpt-5.5")).toBe(FeatureSwitchKey.CodexBeta);
   });
 });
 

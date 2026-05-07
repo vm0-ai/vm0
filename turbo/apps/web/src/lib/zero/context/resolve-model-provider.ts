@@ -9,6 +9,7 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
+  getVm0ModelFramework,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -247,7 +248,7 @@ async function resolveVm0Provider(
     secrets,
     injectedEnvironment,
     resolvedModelProvider: "vm0",
-    framework: getFrameworkForType("vm0"),
+    framework: getVm0ModelFramework(selectedModel),
     concreteProviderType: concreteType,
     selectedModel,
   };

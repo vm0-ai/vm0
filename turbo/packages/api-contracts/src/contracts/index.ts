@@ -280,7 +280,10 @@ export {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ApiModel,
+  getVm0ModelFramework,
+  getVm0ModelFeatureFlag,
   getVm0VisibleModels,
+  isVm0ModelVisible,
   normalizeVm0ModelId,
 } from "./model-providers";
 export {

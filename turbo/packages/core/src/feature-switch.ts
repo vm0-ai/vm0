@@ -302,10 +302,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CodexBeta]: {
     maintainer: "lancy@vm0.ai",
     description:
-      "Gate the codex framework via BYOK OpenAI provider in zero web. " +
-      "When off, the openai-api-key tile is hidden in the add-provider " +
-      "dialog and POST /api/zero/model-providers with type=openai-api-key " +
-      "returns 404. Staff-only during rollout; per-user toggle via Lab.",
+      "Gate the codex framework via BYOK OpenAI provider and VM0-managed " +
+      "Codex models in zero web. When off, the openai-api-key tile and " +
+      "VM0 Codex model options are hidden, and POST /api/zero/model-providers " +
+      "with type=openai-api-key returns 404. Staff-only during rollout; " +
+      "per-user toggle via Lab.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
