@@ -457,7 +457,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       });
     });
 
-    it("should store error with report URL on failed completion", async () => {
+    it("should store fallback error when body.error is missing on failed completion", async () => {
       // Create run directly in DB in running state to avoid runner_job_queue issues
       const { runId } = await seedTestRun(user.userId, testComposeId, {
         status: "running",
@@ -487,12 +487,13 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
 
-      // Verify stored error contains report URL
+      // Without body.error, stored error is the fallback string. The frontend's
+      // formatChatRunErrorMessage handles UI rendering; the column is debug-only.
       const run = await findTestRunRecord(runId);
-      expect(run!.error).toContain(`/runs/${runId}/report-error`);
+      expect(run!.error).toBe("Run failed without error message");
     });
 
-    it("should ignore body.error and always use report URL", async () => {
+    it("should preserve body.error verbatim in agent_runs.error (#12077)", async () => {
       // Create run directly in DB in running state to avoid runner_job_queue issues
       const { runId } = await seedTestRun(user.userId, testComposeId, {
         status: "running",
@@ -511,7 +512,7 @@ describe("POST /api/webhooks/agent/complete", () => {
           body: JSON.stringify({
             runId,
             exitCode: 127,
-            error: "Agent crashed with custom message",
+            error: "unable to load auth.json: refresh_token cannot be empty",
           }),
         },
       );
@@ -523,10 +524,16 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
 
-      // body.error should be ignored; stored error should contain report URL
+      // body.error must be stored verbatim — frontend transforms it for UI
+      // display via formatChatRunErrorMessage, so the column itself is the
+      // debuggable underlying error. Without this, engineers cannot diagnose
+      // production failures from agent_runs alone.
       const run = await findTestRunRecord(runId);
-      expect(run!.error).not.toContain("Agent crashed with custom message");
-      expect(run!.error).toContain(`/runs/${runId}/report-error`);
+      expect(run!.error).toBe(
+        "unable to load auth.json: refresh_token cannot be empty",
+      );
+      // The old report-error template should NOT appear in the column.
+      expect(run!.error).not.toContain("/report-error");
     });
 
     it("should not wait for Axiom visibility on failed completion", async () => {
@@ -698,7 +705,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(callbacks[0]!.attempts).toBe(1);
     });
 
-    it("should dispatch callback with report-error link in error field", async () => {
+    it("should dispatch callback with the runner's real error string", async () => {
       let capturedBody: { error?: string } | undefined;
 
       // Intercept the callback request with MSW
@@ -719,7 +726,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         payload: { testKey: "testValue" },
       });
 
-      // Fail the run
+      // Fail the run with a runner-supplied stderr message (#12077)
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
@@ -731,6 +738,7 @@ describe("POST /api/webhooks/agent/complete", () => {
           body: JSON.stringify({
             runId: testRunId,
             exitCode: 1,
+            error: "codex exec exited with status 1",
           }),
         },
       );
@@ -739,9 +747,10 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       await context.mocks.flushAfter();
 
-      // Verify the callback received the error with report-error link
+      // Callbacks now receive the underlying error verbatim (the user-facing
+      // formatting happens at frontend display time, not in callback dispatch).
       expect(capturedBody).toBeDefined();
-      expect(capturedBody!.error).toContain(`/runs/${testRunId}/report-error`);
+      expect(capturedBody!.error).toBe("codex exec exited with status 1");
     });
 
     it("should register an after() callback for dispatch", async () => {
@@ -1102,11 +1111,10 @@ describe("POST /api/webhooks/agent/complete", () => {
 
   // Race between cleanup-sandboxes cron and webhook/complete: the cron stamps
   // `timeout` first with a generic heartbeat message, then the sandbox's own
-  // completion webhook arrives. The webhook must upgrade the run state. Error
-  // messages are handled by the chat callback (dispatched as a terminal side
-  // effect), not by the webhook directly.
+  // completion webhook arrives. The webhook must upgrade the run state and
+  // overwrite the cron's stale message with the runner's actual error string.
   describe("Timeout upgrade", () => {
-    it("should upgrade timed-out run to failed with report-error link", async () => {
+    it("should upgrade timed-out run to failed with the runner's error", async () => {
       const threadId = await insertTestChatThread(
         user.userId,
         testComposeId,
@@ -1129,8 +1137,9 @@ describe("POST /api/webhooks/agent/complete", () => {
         ["pending", "running"],
       );
 
-      // Sandbox finally reports a failure → webhook should override the
-      // timeout state with the report-error link, not bail.
+      // Sandbox finally reports a failure with its own real stderr → webhook
+      // must override the timeout state and replace the cron's stale message
+      // with the runner-supplied error (#12077).
       const token = await createTestSandboxToken(user.userId, runId);
       const response = await POST(
         createTestRequest("http://localhost:3000/api/webhooks/agent/complete", {
@@ -1142,6 +1151,7 @@ describe("POST /api/webhooks/agent/complete", () => {
           body: JSON.stringify({
             runId,
             exitCode: 1,
+            error: "sandbox terminated mid-execution",
           }),
         }),
       );
@@ -1149,10 +1159,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.status).toBe("failed");
 
-      // agent_runs state upgraded: status=failed, error carries report link
+      // agent_runs state upgraded: status=failed, error carries the runner's
+      // real message and not the cron's stale one.
       const run = await findTestRunRecord(runId);
       expect(run!.status).toBe("failed");
-      expect(run!.error).toContain(`/runs/${runId}/report-error`);
+      expect(run!.error).toBe("sandbox terminated mid-execution");
       expect(run!.error).not.toContain("Run timed out");
     });
 
