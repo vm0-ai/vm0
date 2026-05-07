@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.332.0](https://github.com/vm0-ai/vm0/compare/app-v0.331.0...app-v0.332.0) (2026-05-07)
+
+
+### Features
+
+* add meta-ads connector test and PNG icon ([#12057](https://github.com/vm0-ai/vm0/issues/12057)) ([18c2892](https://github.com/vm0-ai/vm0/commit/18c28928a5ef42212fd4678e5c4e4d3058fbea21))
+* **chat:** render queued message as a user bubble with id-based dedup ([#12059](https://github.com/vm0-ai/vm0/issues/12059)) ([1e12849](https://github.com/vm0-ai/vm0/commit/1e12849625116a3bb0839a3a5788b4acac62b699))
+
+
+### Bug Fixes
+
+* make mobile breadcrumb title match desktop on works page ([#12066](https://github.com/vm0-ai/vm0/issues/12066)) ([8771e67](https://github.com/vm0-ai/vm0/commit/8771e67b3645232f1f51240e6d67ebea9ee169a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.260.0
+
 ## [0.331.0](https://github.com/vm0-ai/vm0/compare/app-v0.330.0...app-v0.331.0) (2026-05-07)
 
 

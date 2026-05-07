@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.339.0](https://github.com/vm0-ai/vm0/compare/web-v12.338.0...web-v12.339.0) (2026-05-07)
+
+
+### Features
+
+* add meta-ads connector test and PNG icon ([#12057](https://github.com/vm0-ai/vm0/issues/12057)) ([18c2892](https://github.com/vm0-ai/vm0/commit/18c28928a5ef42212fd4678e5c4e4d3058fbea21))
+* **chat:** render queued message as a user bubble with id-based dedup ([#12059](https://github.com/vm0-ai/vm0/issues/12059)) ([1e12849](https://github.com/vm0-ai/vm0/commit/1e12849625116a3bb0839a3a5788b4acac62b699))
+
+
+### Bug Fixes
+
+* fix two api shadow divergence sources — slack environment and connector timestamps ([#12055](https://github.com/vm0-ai/vm0/issues/12055)) ([17eaf0b](https://github.com/vm0-ai/vm0/commit/17eaf0bfcc4ace52a92034d17f3322cff554b360))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.260.0
+
 ## [12.338.0](https://github.com/vm0-ai/vm0/compare/web-v12.337.0...web-v12.338.0) (2026-05-07)
 
 

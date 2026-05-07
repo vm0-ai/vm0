@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.19](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.18...sandbox-fc-v0.27.19) (2026-05-07)
+
+
+### Documentation
+
+* **sandbox-fc:** document guest network invariant ([#12060](https://github.com/vm0-ai/vm0/issues/12060)) ([fc43716](https://github.com/vm0-ai/vm0/commit/fc437163ac6caed3a1d4edbe08159fb4868fa782))
+
 ## [0.27.18](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.17...sandbox-fc-v0.27.18) (2026-05-07)
 
 

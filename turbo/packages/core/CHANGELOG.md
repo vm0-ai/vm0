@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.260.0](https://github.com/vm0-ai/vm0/compare/core-v8.259.0...core-v8.260.0) (2026-05-07)
+
+
+### Features
+
+* move ApiBackend feature switch to organization level ([#12073](https://github.com/vm0-ai/vm0/issues/12073)) ([996a0da](https://github.com/vm0-ai/vm0/commit/996a0da00e64106f921f89734082c741b1470e9e))
+
 ## [8.259.0](https://github.com/vm0-ai/vm0/compare/core-v8.258.0...core-v8.259.0) (2026-05-06)
 
 

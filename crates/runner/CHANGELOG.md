@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.5...runner-rs-v0.100.6) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** dedupe network log drain warnings ([#12065](https://github.com/vm0-ai/vm0/issues/12065)) ([902113f](https://github.com/vm0-ai/vm0/commit/902113f2af2265322c71d3e435818ffbfc0e0cd5))
+
 ## [0.100.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.4...runner-rs-v0.100.5) (2026-05-07)
 
 

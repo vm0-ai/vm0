@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.18](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.17...guest-init-v0.16.18) (2026-05-07)
+
+
+### Refactoring
+
+* **guest-init:** deduplicate wait status decoding ([#12064](https://github.com/vm0-ai/vm0/issues/12064)) ([a754857](https://github.com/vm0-ai/vm0/commit/a754857985cbae4f4bd2cc29efd1c78851dfcc82))
+
 ## [0.16.17](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.16...guest-init-v0.16.17) (2026-05-05)
 
 ## [0.16.16](https://github.com/vm0-ai/vm0/compare/guest-init-v0.16.15...guest-init-v0.16.16) (2026-05-03)

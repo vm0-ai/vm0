@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.28.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.27.1...guest-agent-v0.28.0) (2026-05-07)
+
+
+### Features
+
+* pass codex append prompt as developer instructions ([#12063](https://github.com/vm0-ai/vm0/issues/12063)) ([8fb02a3](https://github.com/vm0-ai/vm0/commit/8fb02a3feab159db1fe5dfd35a50c481d267193b))
+
+
+### Bug Fixes
+
+* use lowercase codex auth mode ([#12075](https://github.com/vm0-ai/vm0/issues/12075)) ([0a1770e](https://github.com/vm0-ai/vm0/commit/0a1770e7b9cd27c298351c611b274c054dad8cd4))
+
 ## [0.27.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.27.0...guest-agent-v0.27.1) (2026-05-06)
 
 
