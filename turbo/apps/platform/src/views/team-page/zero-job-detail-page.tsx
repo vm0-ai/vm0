@@ -758,12 +758,15 @@ function AgentHeader({
   return (
     <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-0">
       <div className="mx-auto max-w-[900px]">
-        <div className="flex items-center gap-4">
+        {/* Mobile (max-md): centered hero — large avatar + centered name and
+            tagline, iOS Settings profile pattern. Desktop keeps the existing
+            left-aligned row. */}
+        <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:items-center sm:gap-4 sm:text-left">
           <div className="group relative shrink-0">
             <AgentAvatarImg
               name={agentId}
               alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
+              className="h-20 w-20 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
             />
             {showProfileAndInstructions && (
               <TooltipProvider delayDuration={200}>
@@ -775,7 +778,10 @@ function AgentHeader({
                         onTabChange("profile");
                         openMaker();
                       }}
-                      className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+                      // Always visible on mobile (no hover affordance on
+                      // touch); fades in on hover at sm+ to keep the desktop
+                      // layout unchanged.
+                      className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border transition-all hover:text-foreground sm:opacity-0 sm:group-hover:opacity-100"
                       aria-label="Customize avatar"
                     >
                       <IconWand size={12} stroke={1.5} />
@@ -788,11 +794,11 @@ function AgentHeader({
               </TooltipProvider>
             )}
           </div>
-          <div className="min-w-0">
-            <h1 className="text-[17px] font-semibold tracking-tight text-foreground sm:text-xl truncate">
+          <div className="min-w-0 w-full sm:w-auto">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
               {displayName}
             </h1>
-            <p className="text-[15px] sm:text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
+            <p className="text-[15px] sm:text-sm text-muted-foreground mt-1 sm:mt-1.5 leading-snug line-clamp-2">
               {description || "Your AI teammate, tuned to you"}
             </p>
           </div>
