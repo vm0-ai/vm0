@@ -273,6 +273,7 @@ type ChatThreadPendingMessage = {
   attachments: PersistedAttachment[] | null;
   createdAt: Date;
   updatedAt: Date;
+  clientMessageId: string | null;
 };
 
 type PendingMessageColumns = {
@@ -280,6 +281,7 @@ type PendingMessageColumns = {
   pendingMessageAttachments: PersistedAttachment[] | null;
   pendingMessageCreatedAt: Date | null;
   pendingMessageUpdatedAt: Date | null;
+  pendingMessageClientId?: string | null;
 };
 
 function parsePersistedAttachments(
@@ -303,6 +305,7 @@ function toChatThreadPendingMessage(
     attachments: parsePersistedAttachments(row.pendingMessageAttachments),
     createdAt: row.pendingMessageCreatedAt,
     updatedAt: row.pendingMessageUpdatedAt,
+    clientMessageId: row.pendingMessageClientId ?? null,
   };
 }
 
@@ -462,9 +465,9 @@ type ChatMessage = {
  * Resolve file IDs to permanent file URLs with metadata for the frontend.
  *
  * Lists S3 objects at each file's prefix to recover filename and size, then
- * constructs the permanent `${APP_URL}/f/{userId}/{id}/{filename}` URL. The
- * short-lived presigned signature is materialized per-request inside the /f
- * route, not here — the value returned to the frontend is stable and safe
+ * constructs the permanent `${APP_URL}/f/{publicUserId}/{id}/{filename}` URL.
+ * The short-lived presigned signature is materialized per-request inside the
+ * /f route, not here — the value returned to the frontend is stable and safe
  * to persist in markdown or share over external channels.
  */
 export async function resolveAttachFileUrls(

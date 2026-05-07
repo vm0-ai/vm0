@@ -60,6 +60,17 @@ extern "C" fn handle_shutdown_signal(_sig: libc::c_int) {
     SHUTDOWN_REQUESTED.store(true, Ordering::SeqCst);
 }
 
+fn decode_wait_status(status: libc::c_int) -> i32 {
+    // SAFETY: libc status macros are used only with a status produced by waitpid.
+    if libc::WIFEXITED(status) {
+        libc::WEXITSTATUS(status)
+    } else if libc::WIFSIGNALED(status) {
+        128 + libc::WTERMSIG(status)
+    } else {
+        1
+    }
+}
+
 /// Block until a specific child exits and return its exit code.
 ///
 /// Uses `waitpid(pid, 0)` (blocking) which only returns `pid` on success
@@ -70,13 +81,7 @@ pub fn wait_blocking(pid: i32) -> i32 {
         // SAFETY: pid is a valid child PID; status is written on success.
         let result = unsafe { libc::waitpid(pid, &mut status, 0) };
         if result == pid {
-            return if libc::WIFEXITED(status) {
-                libc::WEXITSTATUS(status)
-            } else if libc::WIFSIGNALED(status) {
-                128 + libc::WTERMSIG(status)
-            } else {
-                1
-            };
+            return decode_wait_status(status);
         }
         // result == -1: EINTR → retry, anything else (ECHILD) → give up
         // SAFETY: __errno_location() is valid after a failed libc call.
@@ -106,14 +111,7 @@ pub fn reap_zombies(watched_pid: i32) -> Option<i32> {
             break;
         }
         if result == watched_pid {
-            // SAFETY: libc macros on a valid wstatus from waitpid.
-            return Some(if libc::WIFEXITED(status) {
-                libc::WEXITSTATUS(status)
-            } else if libc::WIFSIGNALED(status) {
-                128 + libc::WTERMSIG(status)
-            } else {
-                1
-            });
+            return Some(decode_wait_status(status));
         }
         // Orphaned zombie — reaped and discarded
     }

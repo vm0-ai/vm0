@@ -192,4 +192,5 @@ export {
   downloadWebFile,
   uploadWebFile,
   generateWebVoice,
+  generateWebImage,
 } from "./domains/web";

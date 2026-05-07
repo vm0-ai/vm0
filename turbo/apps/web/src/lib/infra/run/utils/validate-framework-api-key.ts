@@ -16,14 +16,21 @@ import type { AgentComposeYaml } from "../../agent-compose/types";
  * claude-code is exempt: the org-level model-provider system
  * (`checkModelProviderConfigured`) already gates runs that lack
  * `ANTHROPIC_API_KEY`. Other frameworks (codex today) are satisfied when
- * either:
+ * any of:
  *   (a) compose `environment` declares the framework's key (literal or
  *       `${{ secrets.X }}` placeholder), OR
- *   (b) a configured `providerType`'s `secretName` matches the framework's
- *       required env var — runtime injection from the provider supplies the
- *       key without compose-level declaration.
+ *   (b) a configured single-secret `providerType`'s `secretName` matches
+ *       the framework's required env var — runtime injection from the
+ *       provider supplies the key without compose-level declaration
+ *       (e.g., openai-api-key → OPENAI_API_KEY), OR
+ *   (c) a configured multi-auth `providerType` is registered with the
+ *       resolved framework. Multi-auth providers self-provision auth via
+ *       firewall-replaced injection rather than the framework's canonical
+ *       env var, so the env-var requirement does not apply
+ *       (e.g., codex-oauth-token → ChatGPT mode placeholder auth.json,
+ *       per Epic #11974).
  *
- * @throws BadRequestError when neither path is satisfied.
+ * @throws BadRequestError when none of the paths are satisfied.
  */
 export function validateFrameworkApiKey(
   compose: AgentComposeYaml,
@@ -48,6 +55,16 @@ export function validateFrameworkApiKey(
   if (requiredVar in env) return;
 
   if (providerType && getSecretNameForType(providerType) === requiredVar) {
+    return;
+  }
+
+  // Multi-auth providers (e.g., codex-oauth-token) don't expose a single
+  // top-level `secretName`, so the previous check returns false. Their
+  // authoritative path is the firewall-replacement layer + sandbox-side
+  // placeholder bootstrap — the framework's env var is intentionally NOT
+  // populated. Accept them when their framework matches the run's
+  // resolved framework.
+  if (providerType && getFrameworkForType(providerType) === framework) {
     return;
   }
 

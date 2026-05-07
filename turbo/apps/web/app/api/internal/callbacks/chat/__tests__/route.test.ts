@@ -16,6 +16,9 @@ import {
   addTestRunToThread,
   getTestChatMessagesByThread,
   insertTestAssistantEventMessages,
+  insertOrgDefaultModelProvider,
+  setTestChatThreadPendingMessage,
+  getTestChatThreadPendingMessage,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { getTestZeroAgentId } from "../../../../../../src/__tests__/db-test-assertions/agents";
 import { reloadEnv } from "../../../../../../src/env";
@@ -1589,6 +1592,174 @@ describe("POST /api/internal/callbacks/chat", () => {
       // Stale subscription should be removed from the DB
       const remaining = await getPushSubscriptionsByEndpoint(endpoint);
       expect(remaining).toHaveLength(0);
+    });
+  });
+
+  describe("Auto-send Pending Message", () => {
+    beforeEach(async () => {
+      // The auto-send path goes through createZeroRun, which requires the
+      // org to have a default model provider configured. Other describes
+      // in this file never reach run creation, so they skip this seed.
+      await insertOrgDefaultModelProvider(user.orgId, "anthropic-api-key");
+    });
+
+    it("should auto-send the queued message as a new run when the previous run completes", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      await setTestChatThreadPendingMessage(threadId, {
+        content: "queued next turn",
+        attachments: null,
+      });
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      // Pending message columns are cleared on the thread row.
+      const pendingAfter = await getTestChatThreadPendingMessage(threadId);
+      expect(pendingAfter?.pendingMessageContent).toBeNull();
+      expect(pendingAfter?.pendingMessageCreatedAt).toBeNull();
+      expect(pendingAfter?.pendingMessageUpdatedAt).toBeNull();
+
+      // A new user chat_message row exists for the queued content, attached
+      // to a different run than the one that just completed.
+      const messages = await getTestChatMessagesByThread(threadId);
+      const queuedRow = messages.find((m) => {
+        return m.role === "user" && m.content === "queued next turn";
+      });
+      expect(queuedRow).toBeDefined();
+      expect(queuedRow!.runId).toBeTruthy();
+      expect(queuedRow!.runId).not.toBe(runId);
+
+      // Frontend reload signal: dedicated pending-message-change channel +
+      // run-created so subscribers refetch the thread state.
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadPendingMessageChanged:${threadId}`,
+        null,
+      );
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadRunCreated:${threadId}`,
+        null,
+      );
+    });
+
+    it("should auto-send the queued message after a failed run too", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+      await setTestChatThreadPendingMessage(threadId, {
+        content: "queued after failure",
+        attachments: null,
+      });
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: "boom",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      const pendingAfter = await getTestChatThreadPendingMessage(threadId);
+      expect(pendingAfter?.pendingMessageContent).toBeNull();
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const queuedRow = messages.find((m) => {
+        return m.role === "user" && m.content === "queued after failure";
+      });
+      expect(queuedRow).toBeDefined();
+      expect(queuedRow!.runId).not.toBe(runId);
+
+      expect(mockAblyPublish).toHaveBeenCalledWith(
+        `chatThreadPendingMessageChanged:${threadId}`,
+        null,
+      );
+    });
+
+    it("should preserve attachments when auto-sending", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      await setTestChatThreadPendingMessage(threadId, {
+        content: "queued with files",
+        attachments: [
+          {
+            id: "att-1",
+            url: "https://example.com/notes.txt",
+            filename: "notes.txt",
+            contentType: "text/plain",
+            size: 12,
+          },
+        ],
+      });
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      const messages = await getTestChatMessagesByThread(threadId);
+      const queuedRow = messages.find((m) => {
+        return m.role === "user" && m.content === "queued with files";
+      });
+      expect(queuedRow).toBeDefined();
+      expect(queuedRow!.attachFiles).toEqual(["att-1"]);
+    });
+
+    it("should not auto-send when no pending message is queued", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      // Only the original user message is present — no auto-sent row.
+      const messages = await getTestChatMessagesByThread(threadId);
+      const userMessages = messages.filter((m) => {
+        return m.role === "user";
+      });
+      expect(userMessages).toHaveLength(1);
+
+      // No pending-message-change signal is published when there was
+      // nothing queued — wasted reloads on every run completion would
+      // hammer subscribers on idle threads.
+      expect(mockAblyPublish).not.toHaveBeenCalledWith(
+        `chatThreadPendingMessageChanged:${threadId}`,
+        null,
+      );
     });
   });
 });

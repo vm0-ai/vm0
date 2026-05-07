@@ -204,6 +204,14 @@ export function MultiAuthFields({
 
       {currentSecrets &&
         Object.entries(currentSecrets).map(([key, coreFieldConfig]) => {
+          // Skip derived secrets — these are populated by a server-side parser
+          // from another secret in the same authMethod (e.g., the four
+          // CHATGPT_* fields under codex-oauth-token / auth_json are derived
+          // from the user-pasted CODEX_AUTH_JSON). Rendering them as input
+          // fields would expose internal storage to the user (#12024).
+          if (coreFieldConfig.derived) {
+            return null;
+          }
           const field = getUISecretField(type, key, coreFieldConfig);
           return (
             <div key={key} className="flex flex-col gap-2">

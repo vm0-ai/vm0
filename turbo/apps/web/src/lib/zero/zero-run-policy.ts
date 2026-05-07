@@ -14,7 +14,10 @@ import { canAccessCompose } from "../infra/agent/compose-access";
 import { validateFrameworkApiKey } from "../infra/run/utils";
 import { logger } from "../shared/logger";
 import { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
-import { checkOrgCredits } from "./credit/check-org-credits";
+import {
+  checkOrgCredits,
+  type CheckOrgCreditsOptions,
+} from "./credit/check-org-credits";
 import {
   getOrgDefaultModelProvider,
   getOrgDefaultModelProviderType,
@@ -232,10 +235,11 @@ export async function resolveRunAdmissionContext(params: {
 export async function checkOrgCreditsForRunAdmission(
   context: RunAdmissionContext,
   db: Database = globalThis.services.db,
+  options: CheckOrgCreditsOptions = {},
 ): Promise<void> {
   if (context.providerType !== "vm0") return;
 
-  await checkOrgCredits(context.orgId, context.userId, db);
+  await checkOrgCredits(context.orgId, context.userId, db, options);
 }
 
 /**

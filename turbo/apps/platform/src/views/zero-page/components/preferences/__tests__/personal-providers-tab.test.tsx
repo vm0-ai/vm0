@@ -222,3 +222,156 @@ describe("personal-providers-tab — provider list rendering", () => {
     expect(screen.getByRole("combobox")).toHaveTextContent(/Anthropic/i);
   });
 });
+
+// ===========================================================================
+// codex-oauth-token paste flow on personal scope (#12024)
+//
+// Mirrors the org-side coverage in zero-page/__tests__/
+// org-add-provider-dialog-codex.test.tsx. Verifies:
+// - The Codex card is gated on FeatureSwitchKey.CodexOauthProvider
+// - Clicking the Codex card opens the paste dialog (not the generic form)
+// - The stale-provider banner appears when needsReconnect=true
+// - Banner button opens the paste dialog in reconnect mode
+// ===========================================================================
+
+describe("personal-providers-tab — codex paste flow", () => {
+  function makeStaleCodexProvider(): ModelProviderResponse {
+    const now = new Date().toISOString();
+    return {
+      id: "00000000-0000-4000-a000-000000000020",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: "CHATGPT_ACCESS_TOKEN",
+      authMethod: "auth_json",
+      secretNames: [
+        "CHATGPT_ACCESS_TOKEN",
+        "CHATGPT_REFRESH_TOKEN",
+        "CHATGPT_ACCOUNT_ID",
+        "CHATGPT_ID_TOKEN",
+      ],
+      isDefault: false,
+      selectedModel: null,
+      createdAt: now,
+      updatedAt: now,
+      needsReconnect: true,
+      lastRefreshErrorCode: "refresh_token_expired",
+      workspaceName: "Personal Acme",
+      planType: "plus",
+    };
+  }
+
+  it("hides the Codex card when the codexOauthProvider feature switch is off", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.PersonalModelProvider]: true,
+      // CodexOauthProvider deliberately omitted → defaults to off
+    });
+    mockPreferences();
+    setMockPersonalModelProviders([]);
+    detachedSetupPage({ context, path: "/settings" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+    });
+    click(screen.getByText("Model Providers"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("personal-add-provider-button"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByTestId("personal-add-provider-button"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Add personal model provider"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByTestId("personal-provider-card-codex-oauth-token"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("clicking the Codex card opens the paste dialog (not the generic form)", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.PersonalModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    mockPreferences();
+    setMockPersonalModelProviders([]);
+    detachedSetupPage({ context, path: "/settings" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+    });
+    click(screen.getByText("Model Providers"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("personal-add-provider-button"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByTestId("personal-add-provider-button"));
+
+    const codexCard = await screen.findByTestId(
+      "personal-provider-card-codex-oauth-token",
+    );
+    click(codexCard);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: /Connect Codex/i }),
+      ).toBeInTheDocument();
+    });
+
+    // The textarea is present (paste-modal UX), not a 5-field generic form
+    expect(screen.getByTestId("codex-paste-textarea")).toBeInTheDocument();
+  });
+
+  it("renders the stale-provider banner when a personal codex provider needs reconnection", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.PersonalModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    mockPreferences();
+    setMockPersonalModelProviders([makeStaleCodexProvider()]);
+    detachedSetupPage({ context, path: "/settings" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+    });
+    click(screen.getByText("Model Providers"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("ChatGPT session needs reconnection"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Your ChatGPT session expired. Re-connect to continue."),
+    ).toBeInTheDocument();
+  });
+
+  it("re-paste auth.json banner button opens the paste dialog in reconnect mode", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.PersonalModelProvider]: true,
+      [FeatureSwitchKey.CodexOauthProvider]: true,
+    });
+    mockPreferences();
+    setMockPersonalModelProviders([makeStaleCodexProvider()]);
+    detachedSetupPage({ context, path: "/settings" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Model Providers")).toBeInTheDocument();
+    });
+    click(screen.getByText("Model Providers"));
+
+    const reconnectBtn = await screen.findByText("Re-paste auth.json");
+    click(reconnectBtn);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: /Re-connect Codex/i }),
+      ).toBeInTheDocument();
+    });
+  });
+});

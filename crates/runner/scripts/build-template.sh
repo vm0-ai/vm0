@@ -107,7 +107,7 @@ ROOTFS_DIR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.2"
-CLAUDE_CODE_VERSION="2.1.128"
+CLAUDE_CODE_VERSION="2.1.132"
 CODEX_CLI_VERSION="0.128.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"

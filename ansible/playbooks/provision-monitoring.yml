@@ -16,7 +16,14 @@
 
   tasks:
     - name: Wait for apt lock to be released
-      shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+      shell: |
+        while fuser \
+          /var/lib/dpkg/lock-frontend \
+          /var/lib/dpkg/lock \
+          /var/lib/apt/lists/lock \
+          /var/cache/apt/archives/lock >/dev/null 2>&1; do
+          sleep 2
+        done
       become: true
       changed_when: false
 
@@ -28,6 +35,7 @@
           - software-properties-common
         state: present
         update_cache: true
+        lock_timeout: 300
       become: true
 
     - name: Ensure keyrings directory exists
@@ -55,6 +63,7 @@
         name: alloy=1.13.2-1
         state: present
         update_cache: true
+        lock_timeout: 300
       become: true
 
     - name: Configure Grafana Alloy

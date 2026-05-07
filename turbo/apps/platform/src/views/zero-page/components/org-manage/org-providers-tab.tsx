@@ -28,6 +28,7 @@ import {
   orgSetDefaultProvider$,
   orgOpenEditDialog$,
   orgOpenDeleteDialog$,
+  setCodexPasteDialogState$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { getUILabel } from "../settings/provider-ui-config.ts";
@@ -35,6 +36,7 @@ import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { OrgAddProviderDialog } from "../settings/org-add-provider-dialog.tsx";
 import { OrgProviderDialog } from "../settings/org-provider-dialog.tsx";
 import { OrgDeleteProviderDialog } from "../settings/org-delete-provider-dialog.tsx";
+import { CodexAuthPasteDialog } from "../settings/codex-auth-paste-dialog.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
@@ -50,13 +52,14 @@ export function OrgProvidersTab() {
       <ProviderListSection isAdmin={isAdmin} />
       <OrgDeleteProviderDialog />
       <OrgProviderDialog />
+      <CodexAuthPasteDialog />
     </div>
   );
 }
 
 /**
  * Render the re-connect banner above the provider list when any
- * chatgpt-oauth-token provider has flipped to needsReconnect=true (the
+ * codex-oauth-token provider has flipped to needsReconnect=true (the
  * firewall refresh pipeline writes this on refresh failure, see #11921).
  * The banner is the primary CTA; the per-row footer also shows a destructive
  * pill so users see the failed row at a glance.
@@ -73,8 +76,9 @@ function StaleProviderBanner({
 }: {
   providers: ModelProviderResponse[];
 }) {
+  const setPasteDialog = useSet(setCodexPasteDialogState$);
   const stale = providers.find((p) => {
-    return p.type === "chatgpt-oauth-token" && p.needsReconnect;
+    return p.type === "codex-oauth-token" && p.needsReconnect;
   });
   if (!stale) {
     return null;
@@ -92,12 +96,15 @@ function StaleProviderBanner({
           {staleMessage(stale.lastRefreshErrorCode)}
         </p>
       </div>
-      <a
-        href="/api/zero/chatgpt/oauth/connect"
+      <button
+        type="button"
+        onClick={() => {
+          return setPasteDialog({ open: true, mode: "reconnect" });
+        }}
         className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
       >
-        Re-connect ChatGPT
-      </a>
+        Re-paste auth.json
+      </button>
     </section>
   );
 }
@@ -203,7 +210,7 @@ function DefaultProviderSection() {
 }
 
 /**
- * Plan strings the chatgpt-oauth-token callback emits today. Values outside
+ * Plan strings the codex-oauth-token callback emits today. Values outside
  * this set still come through as a `string` on the contract — we render the
  * workspace name without a plan pill rather than capitalizing an
  * unrecognized value. Mirrors the ChatGPT subscription tiers documented in
@@ -224,7 +231,7 @@ function capitalizePlan(plan: string): string {
 }
 
 function ProviderRowFooter({ provider }: { provider: ModelProviderResponse }) {
-  if (provider.type === "chatgpt-oauth-token" && provider.needsReconnect) {
+  if (provider.type === "codex-oauth-token" && provider.needsReconnect) {
     return (
       <span className="flex items-center gap-2 text-xs truncate">
         <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" />
@@ -234,7 +241,7 @@ function ProviderRowFooter({ provider }: { provider: ModelProviderResponse }) {
       </span>
     );
   }
-  if (provider.type === "chatgpt-oauth-token" && provider.workspaceName) {
+  if (provider.type === "codex-oauth-token" && provider.workspaceName) {
     const showPlanPill =
       provider.planType !== null &&
       provider.planType !== undefined &&

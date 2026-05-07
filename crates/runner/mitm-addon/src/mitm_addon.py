@@ -171,6 +171,7 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata["vm_proxy_log_path"] = vm_info.get("proxyLogPath", "")
         flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
         flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
+        flow.metadata["cli_agent_type"] = vm_info.get("cliAgentType") or "claude-code"
 
         # Get target hostname
         hostname = flow.request.pretty_host.lower()
@@ -407,7 +408,7 @@ def response(flow: http.HTTPFlow) -> None:
         if firewall_name.startswith("model-provider:") and flow.metadata.get(
             "firewall_billable", False
         ):
-            if firewall_name == "model-provider:openai-api-key":
+            if response_streaming.uses_openai_responses_usage_protocol(flow):
                 json_usage = usage.extract_openai_responses_usage_from_json(
                     bytes(stream_buf),
                     flow.response.headers if flow.response else None,

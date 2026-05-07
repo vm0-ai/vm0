@@ -9,20 +9,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
-import { tmpdir } from "os";
 import { join } from "path";
 import chalk from "chalk";
 import * as os from "os";
 import { infoCommand } from "../index";
 
-// Mock os.homedir to point to temp directory for isolated testing
-vi.mock("os", async () => {
-  const actual = await vi.importActual<typeof os>("os");
-  return {
-    ...actual,
-    homedir: vi.fn(),
-  };
-});
+vi.mock("os", { spy: true });
 
 describe("info command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -36,7 +28,7 @@ describe("info command", () => {
     vi.stubEnv("VM0_API_URL", testApiUrl);
 
     // Create temp directory for each test
-    tempDir = mkdtempSync(join(tmpdir(), "vm0-info-test-"));
+    tempDir = mkdtempSync(join(os.tmpdir(), "vm0-info-test-"));
     mockHomedir.mockReturnValue(tempDir);
   });
 

@@ -628,6 +628,7 @@ describe("zero chat thread page - autoscroll when queued message is consumed", (
         attachments: null,
         createdAt: "2026-03-10T00:00:02Z",
         updatedAt: "2026-03-10T00:00:02Z",
+        clientMessageId: null,
       },
     });
 
@@ -715,6 +716,7 @@ describe("zero chat thread page - opening a thread with a queued message", () =>
         attachments: null,
         createdAt: "2026-03-10T00:00:02Z",
         updatedAt: "2026-03-10T00:00:02Z",
+        clientMessageId: null,
       },
     });
 

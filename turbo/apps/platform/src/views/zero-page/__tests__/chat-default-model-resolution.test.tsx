@@ -34,6 +34,7 @@ import {
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -44,6 +45,10 @@ import {
   setMockOrgModelProviders,
   resetMockOrgModelProviders,
 } from "../../../mocks/handlers/api-org-model-providers.ts";
+import {
+  setMockPersonalModelProviders,
+  resetMockPersonalModelProviders,
+} from "../../../mocks/handlers/api-personal-model-providers.ts";
 import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.helpers.ts";
 import {
   setMockOnboardingStatus,
@@ -59,6 +64,7 @@ const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
+const PERSONAL_OPENAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000004";
 
 const THREAD_ID = "thread-default-model-1";
 
@@ -69,6 +75,7 @@ const THREAD_ID = "thread-default-model-1";
 interface AgentModelConfig {
   modelProviderId: string | null;
   selectedModel: string | null;
+  preferPersonalProvider?: boolean;
 }
 
 function mockAgent(config: AgentModelConfig) {
@@ -96,6 +103,7 @@ function mockAgent(config: AgentModelConfig) {
         customSkills: [] as string[],
         modelProviderId: config.modelProviderId,
         selectedModel: config.selectedModel,
+        preferPersonalProvider: config.preferPersonalProvider ?? false,
       });
     }),
     mockApi(zeroAgentInstructionsContract.get, ({ respond }) => {
@@ -248,6 +256,7 @@ async function expectAgentChatLoaded(): Promise<void> {
 describe("chat composer — default model resolution", () => {
   beforeEach(() => {
     resetMockOrgModelProviders();
+    resetMockPersonalModelProviders();
     resetMockOnboardingStatus();
     setMockFeatureSwitches({});
     // Align onboarding default with the test agent so currentChatAgentId$
@@ -314,6 +323,36 @@ describe("chat composer — default model resolution", () => {
     await expectAgentChatLoaded();
 
     await expectComposerShowsModel("Claude Opus 4.6");
+  });
+
+  it("shows the personal default when the agent prefers personal providers", async () => {
+    setMockFeatureSwitches({
+      [FeatureSwitchKey.PersonalModelProvider]: true,
+    });
+    mockOrgProviders({
+      defaultProviderId: MOONSHOT_PROVIDER_ID,
+      defaultSelectedModel: "kimi-k2.5",
+    });
+    setMockPersonalModelProviders([
+      buildProvider({
+        id: PERSONAL_OPENAI_PROVIDER_ID,
+        type: "openai-api-key",
+        framework: "codex",
+        secretName: "OPENAI_API_KEY",
+        isDefault: true,
+        selectedModel: "gpt-5.4",
+      }),
+    ]);
+    mockAgent({
+      modelProviderId: ANTHROPIC_PROVIDER_ID,
+      selectedModel: "claude-opus-4-7",
+      preferPersonalProvider: true,
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+    await expectAgentChatLoaded();
+
+    await expectComposerShowsModel("gpt-5.4");
   });
 
   // CHAT-DM-004: When the agent is reset to "use org default" (both fields

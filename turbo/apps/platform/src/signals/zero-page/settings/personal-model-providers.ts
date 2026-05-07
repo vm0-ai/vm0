@@ -15,8 +15,12 @@ import {
   createPersonalModelProvider$,
   deletePersonalModelProvider$,
   personalModelProviders$,
+  reloadPersonalModelProviders$,
   setDefaultPersonalModelProvider$,
 } from "../../external/personal-model-providers.ts";
+import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
+import { zeroClient$ } from "../../api-client.ts";
+import { accept } from "../../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // Add provider dialog (list of provider type cards)
@@ -29,6 +33,83 @@ export const personalAddProviderDialogOpen$ = computed((get) => {
 export const setPersonalAddProviderDialogOpen$ = command(
   ({ set }, open: boolean) => {
     set(internalPersonalAddProviderDialogOpen$, open);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Codex auth.json paste dialog (personal scope, mirrors org-side dialog from
+// #11980; unified with org via #12024).
+// ---------------------------------------------------------------------------
+
+type CodexPasteDialogMode = "connect" | "reconnect";
+
+interface CodexPasteDialogState {
+  open: boolean;
+  mode: CodexPasteDialogMode;
+}
+
+const internalCodexPasteDialogStatePersonal$ = state<CodexPasteDialogState>({
+  open: false,
+  mode: "connect",
+});
+
+const internalCodexPasteContentPersonal$ = state<string>("");
+
+export const codexPasteDialogStatePersonal$ = computed((get) => {
+  return get(internalCodexPasteDialogStatePersonal$);
+});
+
+export const codexPasteContentPersonal$ = computed((get) => {
+  return get(internalCodexPasteContentPersonal$);
+});
+
+export const setCodexPasteDialogStatePersonal$ = command(
+  ({ set }, next: CodexPasteDialogState) => {
+    set(internalCodexPasteDialogStatePersonal$, next);
+    if (!next.open) {
+      set(internalCodexPasteContentPersonal$, "");
+    }
+  },
+);
+
+export const updateCodexPasteContentPersonal$ = command(
+  ({ set }, paste: string) => {
+    set(internalCodexPasteContentPersonal$, paste);
+  },
+);
+
+/**
+ * Submit the current personal codex paste content as `~/.codex/auth.json`
+ * via the `auth_json` authMethod. Same semantics as the org-side
+ * `submitCodexAuthJson$` — server parses, derives 4 CHATGPT_* secrets,
+ * persists; toast suppressed so dialog renders typed errors inline.
+ */
+export const submitCodexAuthJsonPersonal$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const rawJson = get(internalCodexPasteContentPersonal$).trim();
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroPersonalModelProvidersMainContract);
+    const result = await accept(
+      client.upsert({
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: rawJson },
+        },
+        fetchOptions: { signal },
+      }),
+      [200, 201],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+
+    set(reloadPersonalModelProviders$);
+    set(internalCodexPasteContentPersonal$, "");
+    set(internalCodexPasteDialogStatePersonal$, (prev) => {
+      return { ...prev, open: false };
+    });
+
+    return result.body;
   },
 );
 
@@ -289,6 +370,11 @@ export const personalSubmitDialog$ = command(
       );
       if (secretsConfig) {
         for (const [key, config] of Object.entries(secretsConfig)) {
+          // Derived secrets are populated by a server-side parser, not the
+          // form. Skip required-field validation for them (#12024).
+          if (config.derived) {
+            continue;
+          }
           if (config.required && !formValues.secrets[key]?.trim()) {
             errors[key] = `${config.label} is required`;
           }

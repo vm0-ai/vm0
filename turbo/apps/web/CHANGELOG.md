@@ -1,5 +1,78 @@
 # Changelog
 
+## [12.338.0](https://github.com/vm0-ai/vm0/compare/web-v12.337.0...web-v12.338.0) (2026-05-07)
+
+
+### Features
+
+* **chat:** auto-send pending message and polish queue ux ([#12050](https://github.com/vm0-ai/vm0/issues/12050)) ([64d4345](https://github.com/vm0-ai/vm0/commit/64d4345b8d1ea7d64d07c197c822131f64e61949))
+
+
+### Bug Fixes
+
+* resolve preferred personal agent defaults ([#12052](https://github.com/vm0-ai/vm0/issues/12052)) ([cf587b9](https://github.com/vm0-ai/vm0/commit/cf587b93c015ca80b9636df8641e1d8e6776925a))
+* strip user prefix from file urls ([#12053](https://github.com/vm0-ai/vm0/issues/12053)) ([e40a2a0](https://github.com/vm0-ai/vm0/commit/e40a2a0195eda3ec3df83c0357f189c4f6412326))
+* **web:** accept multi-auth providers as authoritative for codex framework ([#12047](https://github.com/vm0-ai/vm0/issues/12047)) ([7a3737b](https://github.com/vm0-ai/vm0/commit/7a3737b8011e5d6a611273482127f4f98204f6bc))
+
+
+### Performance Improvements
+
+* **chat:** dedupe vm0 credit admission org metadata read ([#12051](https://github.com/vm0-ai/vm0/issues/12051)) ([65c5377](https://github.com/vm0-ai/vm0/commit/65c5377c991c577077dc9f020deb32f9ed1f0e3f))
+
+## [12.337.0](https://github.com/vm0-ai/vm0/compare/web-v12.336.0...web-v12.337.0) (2026-05-07)
+
+
+### Features
+
+* **platform:** unify codex auth.json paste flow across personal + org contexts ([#12027](https://github.com/vm0-ai/vm0/issues/12027)) ([7c3a308](https://github.com/vm0-ai/vm0/commit/7c3a308558e815cef15b0968b81ee7e0818d37fb))
+
+
+### Performance Improvements
+
+* **chat:** persist zero run metadata in transactions ([#12029](https://github.com/vm0-ai/vm0/issues/12029)) ([057efd7](https://github.com/vm0-ai/vm0/commit/057efd76188d803cd63d5f91fb4dae8b0464d4f3))
+
+## [12.336.0](https://github.com/vm0-ai/vm0/compare/web-v12.335.0...web-v12.336.0) (2026-05-07)
+
+
+### Features
+
+* **cli:** add official image generation command ([#11998](https://github.com/vm0-ai/vm0/issues/11998)) ([da64e8b](https://github.com/vm0-ai/vm0/commit/da64e8b8ecb90a6b304d90ff433cf98eaa62a912))
+* **web:** SEO-optimize use cases, reorder by ICP, Slack URL override ([#12014](https://github.com/vm0-ai/vm0/issues/12014)) ([d384f88](https://github.com/vm0-ai/vm0/commit/d384f88436de6947a181d5e93687ed39d66125a8))
+
+
+### Bug Fixes
+
+* increase auth shadow probe timeout from 2s to 10s ([#12025](https://github.com/vm0-ai/vm0/issues/12025)) ([2e572f2](https://github.com/vm0-ai/vm0/commit/2e572f264b1b184f1da74687bd4d04a5909b488c))
+
+## [12.335.0](https://github.com/vm0-ai/vm0/compare/web-v12.334.1...web-v12.335.0) (2026-05-06)
+
+
+### Features
+
+* add chat thread pending message api ([#11946](https://github.com/vm0-ai/vm0/issues/11946)) ([57717fe](https://github.com/vm0-ai/vm0/commit/57717feece2ba9dc3cf7b48862f56d03f06ced74))
+* **api-contracts,web:** add auth_json authMethod and CODEX_AUTH_JSON parser ([#12005](https://github.com/vm0-ai/vm0/issues/12005)) ([5f0b630](https://github.com/vm0-ai/vm0/commit/5f0b63001561aab3ae6407dfe543f6d48692cce7))
+* **cli:** add official voice generation command ([#11987](https://github.com/vm0-ai/vm0/issues/11987)) ([417632e](https://github.com/vm0-ai/vm0/commit/417632e0656428e89c2b306036a7bbac08d88253))
+
+
+### Bug Fixes
+
+* add og-image route to public routes in clerk middleware ([#12006](https://github.com/vm0-ai/vm0/issues/12006)) ([4911497](https://github.com/vm0-ai/vm0/commit/49114971a7c592df9e3365d922ca423b44c71cc1))
+* **guest-agent:** checkpoint recoverable abnormal exits ([#11984](https://github.com/vm0-ai/vm0/issues/11984)) ([f4621f4](https://github.com/vm0-ai/vm0/commit/f4621f40f47229f364e0f82a2ca3b4a49b15b15c))
+* make e2e default agent seeding race-safe ([#11999](https://github.com/vm0-ai/vm0/issues/11999)) ([9dec14c](https://github.com/vm0-ai/vm0/commit/9dec14ca8f216cfff65eb6776b834ed32e74fe3f))
+* use zero agent id for search filters ([#11995](https://github.com/vm0-ai/vm0/issues/11995)) ([3224bd0](https://github.com/vm0-ai/vm0/commit/3224bd05992be321f80f7c74febd5a393dbae6c4))
+
+
+### Refactoring
+
+* rename chatgpt-oauth-token to codex-oauth-token ([#11990](https://github.com/vm0-ai/vm0/issues/11990)) ([0659786](https://github.com/vm0-ai/vm0/commit/06597865f129656105438bc99d4d308b6c9942b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.259.0
+
 ## [12.334.1](https://github.com/vm0-ai/vm0/compare/web-v12.334.0...web-v12.334.1) (2026-05-06)
 
 

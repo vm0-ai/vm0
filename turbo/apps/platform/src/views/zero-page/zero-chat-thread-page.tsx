@@ -14,6 +14,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   IconAlertCircle,
+  IconArrowBackUp,
   IconHandStop,
   IconPhoto,
   IconChartLine,
@@ -51,7 +52,10 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ChatThreadArtifactFile,
+  PendingMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import emptyChatImg from "./assets/empty-chat.webp";
 import emptyArtifactImg from "./assets/empty-artifact.webp";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -136,6 +140,7 @@ import {
 import {
   navigateToAdjacentThread$,
   scrollCurrentThread$,
+  setChatKeyboardScrollRoot$,
 } from "../../signals/chat-page/chat-keyboard.ts";
 import { sidebarChatThreads$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import {
@@ -1591,10 +1596,14 @@ export function ZeroChatThreadPage() {
   const leftThread = useGet(currentLeftThread$);
   const rightThread = useGet(currentRightThread$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
+  const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
 
   return (
     <>
-      <div className="flex flex-1 min-h-0 bg-transparent">
+      <div
+        ref={setKeyboardScrollRoot}
+        className="flex flex-1 min-h-0 bg-transparent"
+      >
         {leftThread && (
           <ChatThread key={leftThread.threadId} thread={leftThread} />
         )}
@@ -1734,7 +1743,8 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
         <div
           ref={setScrollContainer}
           data-scroll-container
-          className="absolute inset-0 overflow-y-auto [scrollbar-gutter:stable]"
+          tabIndex={-1}
+          className="absolute inset-0 overflow-y-auto focus:outline-none [scrollbar-gutter:stable]"
         >
           <main className="px-4 sm:px-6 py-4 items-center @container">
             <div
@@ -1792,6 +1802,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
                 );
               })}
               <ThinkingIndicator thread={thread} />
+              <QueuedUserMessageRow thread={thread} />
             </div>
           </main>
         </div>
@@ -1870,9 +1881,6 @@ function ChatThreadComposer({
   const allFinished = allFinishedResolved ? allFinishedLoadable.data : false;
   const [sendLoadable, send] = useLoadableSet(thread.sendMessage$);
   const [queueLoadable, queueMessage] = useLoadableSet(thread.queueMessage$);
-  const [recallLoadable, recallPendingMessage] = useLoadableSet(
-    thread.recallPendingMessage$,
-  );
   const sending = !allFinished || sendLoadable.state === "loading";
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
@@ -1929,10 +1937,6 @@ function ChatThreadComposer({
     detach(queueMessage(text, rootSignal), Reason.DomCallback);
   };
 
-  const handleRecallPendingMessage = () => {
-    detach(recallPendingMessage(rootSignal), Reason.DomCallback);
-  };
-
   return (
     <footer
       data-chat-composer
@@ -1950,9 +1954,6 @@ function ChatThreadComposer({
             onQueue={handleQueue}
             sending={sending}
             queueWhileSending={queueWhileSending}
-            pendingMessage={threadData?.pendingMessage ?? null}
-            onRecallPendingMessage={handleRecallPendingMessage}
-            recallPendingMessageLoading={recallLoadable.state === "loading"}
             onCancel={
               allFinishedResolved
                 ? () => {
@@ -2771,6 +2772,107 @@ function PagedUserMessage({
               </button>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QueuedUserMessageRow({ thread }: { thread: ChatThreadSignals }) {
+  // pendingMessage$ already applies the recall mask + (after #PR) the
+  // dedup-by-client-id check, so this row only renders while the queued
+  // bubble has no real-message counterpart in the list.
+  const pendingMessage = useLastResolved(thread.pendingMessage$) ?? null;
+  if (!pendingMessage) {
+    return null;
+  }
+  return <QueuedUserMessage pendingMessage={pendingMessage} thread={thread} />;
+}
+
+function persistedAttachmentsToResolved(
+  attachments: readonly {
+    id: string;
+    url: string;
+    filename: string;
+    contentType: string;
+    size: number;
+  }[],
+): ReturnType<typeof resolveAttachments> {
+  return attachments.map((a) => {
+    const kind = classifyChatAttachment({
+      filename: a.filename,
+      url: a.url,
+      contentType: a.contentType,
+    });
+    return {
+      filename: a.filename,
+      url: a.url,
+      contentType: a.contentType,
+      isImage: kind === "image" || isImageFilename(a.filename),
+      isVideo: kind === "video" || isVideoFilename(a.filename),
+      isAudio: kind === "audio" || isAudioFilename(a.filename),
+      kind,
+    };
+  });
+}
+
+function QueuedUserMessage({
+  pendingMessage,
+  thread,
+}: {
+  pendingMessage: PendingMessage;
+  thread: ChatThreadSignals;
+}) {
+  const content = pendingMessage.content?.trim() ?? "";
+  const attachments = persistedAttachmentsToResolved(
+    pendingMessage.attachments ?? [],
+  );
+  const recallPendingMessage = useSet(thread.recallPendingMessage$);
+  const rootSignal = useGet(rootSignal$);
+  const openImageLightbox = useSet(openAttachmentImageLightbox$);
+  const bodyBlocks = enrichBlocksWithTextPreviews(
+    parseBodyRenderBlocks(content).blocks,
+  );
+
+  const handleRecall = () => {
+    detach(recallPendingMessage(rootSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div data-role="user" className="group" aria-label="Queued message">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex flex-col items-end w-full">
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
+            Queued
+          </div>
+          <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed [overflow-wrap:anywhere] overflow-hidden">
+            {bodyBlocks.length > 0 && (
+              <div className="px-4 py-3">
+                <BodyContentBlocks
+                  blocks={bodyBlocks}
+                  openLightbox={openImageLightbox}
+                  hardBreaks
+                />
+              </div>
+            )}
+            <UserMessageAttachments
+              attachments={attachments}
+              onImageClick={openImageLightbox}
+            />
+          </div>
+          <div className="flex justify-end mt-1">
+            <button
+              type="button"
+              onClick={handleRecall}
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              aria-label="Recall queued message"
+            >
+              <IconArrowBackUp size={13} stroke={1.75} />
+              Recall
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -16,6 +16,10 @@ import {
   upsertOrgMultiAuthModelProvider,
   upsertOrgNoSecretModelProvider,
 } from "../../../../src/lib/zero/model-provider/model-provider-service";
+import {
+  handleCodexAuthJsonPaste,
+  serializeUpsertedProvider,
+} from "../../../../src/lib/zero/model-provider/codex-auth-json-paste-handler";
 import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 import { logger } from "../../../../src/lib/shared/logger";
 import { isBadRequest } from "@vm0/api-services/errors";
@@ -89,6 +93,49 @@ const router = tsr.router(zeroModelProvidersMainContract, {
       }
     }
 
+    if (type === "codex-oauth-token" && authMethod === "auth_json") {
+      const overrides = await loadFeatureSwitchOverrides(
+        org.orgId,
+        authCtx.userId,
+      );
+      const eligible = isFeatureEnabled(FeatureSwitchKey.CodexOauthProvider, {
+        orgId: org.orgId,
+        userId: authCtx.userId,
+        overrides,
+      });
+      if (!eligible) {
+        return createErrorResponse("NOT_FOUND", `Provider "${type}" not found`);
+      }
+      const raw = secrets?.CODEX_AUTH_JSON;
+      if (!raw) {
+        return createErrorResponse(
+          "BAD_REQUEST",
+          "Missing CODEX_AUTH_JSON secret",
+        );
+      }
+      return handleCodexAuthJsonPaste({
+        scope: "org",
+        orgId: org.orgId,
+        rawAuthJson: raw,
+        selectedModel,
+        upsert: ({
+          authMethod: pasteAuthMethod,
+          secretValues,
+          selectedModel: model,
+          metadata,
+        }) => {
+          return upsertOrgMultiAuthModelProvider(
+            org.orgId,
+            "codex-oauth-token",
+            pasteAuthMethod,
+            secretValues,
+            model,
+            metadata,
+          );
+        },
+      });
+    }
+
     log.debug("upserting org model provider", {
       orgId: org.orgId,
       type,
@@ -142,25 +189,7 @@ const router = tsr.router(zeroModelProvidersMainContract, {
 
       return {
         status: (created ? 201 : 200) as 200 | 201,
-        body: {
-          provider: {
-            id: provider.id,
-            type: provider.type,
-            framework: provider.framework,
-            secretName: provider.secretName,
-            authMethod: provider.authMethod ?? null,
-            secretNames: provider.secretNames ?? null,
-            isDefault: provider.isDefault,
-            selectedModel: provider.selectedModel,
-            workspaceName: provider.workspaceName,
-            planType: provider.planType,
-            needsReconnect: provider.needsReconnect,
-            lastRefreshErrorCode: provider.lastRefreshErrorCode,
-            createdAt: provider.createdAt.toISOString(),
-            updatedAt: provider.updatedAt.toISOString(),
-          },
-          created,
-        },
+        body: { provider: serializeUpsertedProvider(provider), created },
       };
     } catch (error) {
       if (isBadRequest(error)) {

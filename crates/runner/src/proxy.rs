@@ -25,6 +25,7 @@ struct ProxyRegistry {
 #[serde(rename_all = "camelCase")]
 struct VmEntry {
     run_id: String,
+    cli_agent_type: String,
     sandbox_token: String,
     registered_at: i64,
     network_log_path: String,
@@ -45,6 +46,7 @@ struct VmEntry {
 #[derive(Debug)]
 pub struct VmRegistration<'a> {
     pub run_id: &'a str,
+    pub cli_agent_type: &'a str,
     pub sandbox_token: &'a str,
     pub network_log_path: &'a std::path::Path,
     pub proxy_log_path: &'a std::path::Path,
@@ -761,6 +763,7 @@ impl ProxyRegistryHandle {
             source_ip.to_string(),
             VmEntry {
                 run_id: registration.run_id.to_string(),
+                cli_agent_type: registration.cli_agent_type.to_string(),
                 sandbox_token: registration.sandbox_token.to_string(),
                 registered_at: now,
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
@@ -936,6 +939,7 @@ PY
             "10.200.0.2".to_string(),
             VmEntry {
                 run_id: "test-run".to_string(),
+                cli_agent_type: "claude-code".to_string(),
                 sandbox_token: String::new(),
                 registered_at: 1000,
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
@@ -989,6 +993,7 @@ PY
         // Register via handle.
         let registration = VmRegistration {
             run_id: "run-1",
+            cli_agent_type: "claude-code",
             sandbox_token: "tok-1",
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
             proxy_log_path: std::path::Path::new("/tmp/proxy-run-1.jsonl"),
@@ -1013,6 +1018,7 @@ PY
         // Re-register same IP overwrites the entry.
         let registration2 = VmRegistration {
             run_id: "run-2",
+            cli_agent_type: "codex",
             sandbox_token: "tok-2",
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
             proxy_log_path: std::path::Path::new("/tmp/proxy-run-2.jsonl"),
@@ -1032,6 +1038,7 @@ PY
         let loaded = read_registry(&registry_path).await.unwrap();
         let vm = loaded.vms.get("10.200.0.2").unwrap();
         assert_eq!(vm.run_id, "run-2");
+        assert_eq!(vm.cli_agent_type, "codex");
 
         // Unregister via handle.
         handle.unregister_vm("10.200.0.2").await.unwrap();
@@ -1072,6 +1079,7 @@ PY
                     std::path::PathBuf::from(format!("/tmp/proxy-{run_id_owned}.jsonl"));
                 let registration = VmRegistration {
                     run_id: &run_id_owned,
+                    cli_agent_type: "claude-code",
                     sandbox_token: "",
                     network_log_path: &log_path,
                     proxy_log_path: &proxy_path,
@@ -1138,6 +1146,7 @@ PY
 
         let registration = VmRegistration {
             run_id: "run-fw",
+            cli_agent_type: "claude-code",
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-fw.jsonl"),
             proxy_log_path: std::path::Path::new("/tmp/proxy-run-fw.jsonl"),
@@ -1213,6 +1222,7 @@ PY
         let billable = ["model-provider:vm0".to_string()];
         let registration = VmRegistration {
             run_id: "run-billing",
+            cli_agent_type: "codex",
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-billing.jsonl"),
             proxy_log_path: std::path::Path::new("/tmp/proxy-run-billing.jsonl"),
@@ -1239,6 +1249,10 @@ PY
             serde_json::json!(["model-provider:vm0"])
         );
         assert_eq!(
+            value["vms"]["10.200.0.9"]["cliAgentType"],
+            serde_json::json!("codex")
+        );
+        assert_eq!(
             value["vms"]["10.200.0.9"]["modelUsageProvider"],
             serde_json::json!("claude-sonnet-4-6")
         );
@@ -1263,6 +1277,7 @@ PY
 
         let registration = VmRegistration {
             run_id: "run-enc",
+            cli_agent_type: "claude-code",
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
             proxy_log_path: std::path::Path::new("/tmp/proxy-run-enc.jsonl"),
@@ -1328,6 +1343,7 @@ PY
 
         let registration = VmRegistration {
             run_id: "run-webhook",
+            cli_agent_type: "claude-code",
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-webhook.jsonl"),
             proxy_log_path: std::path::Path::new("/tmp/proxy-run-webhook.jsonl"),
@@ -1393,6 +1409,7 @@ PY
 
         let registration = VmRegistration {
             run_id: "run-query-auth",
+            cli_agent_type: "claude-code",
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-query.jsonl"),
             proxy_log_path: std::path::Path::new("/tmp/proxy-run-query.jsonl"),

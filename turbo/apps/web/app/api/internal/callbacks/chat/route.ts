@@ -12,6 +12,7 @@ import {
   getLatestMessagesByThreadId,
   PREVIOUS_CONTEXT_MESSAGES,
 } from "../../../../../src/lib/zero/chat-thread/chat-message-service";
+import { autoSendPendingMessageOnRunComplete } from "../../../../../src/lib/zero/chat-thread/auto-send-pending-message";
 import { formatChatRunErrorMessage } from "../../../../../src/lib/zero/chat-thread/chat-run-error-message";
 import {
   generateChatTitle,
@@ -368,6 +369,7 @@ async function handleFailed(
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
+  const apiStartTime = Date.now();
 
   const result = await verifyCallback<ChatCallbackPayload>(request, log);
   if (!result.ok) return result.response;
@@ -419,6 +421,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // failed via dispatchTerminalSideEffects), covering the case where no
   // assistant row was written yet.
   await publishChatThreadRunUpdated(runId);
+
+  // Auto-send a queued pending message as the next round. No-op when the
+  // user hasn't queued anything; otherwise this clears the pending columns
+  // and dispatches a fresh run, mirroring the user's "send next" intent
+  // without requiring an open browser tab.
+  await autoSendPendingMessageOnRunComplete({
+    runId,
+    agentId: payload.agentId,
+    apiStartTime,
+  });
 
   return NextResponse.json({ success: true });
 }

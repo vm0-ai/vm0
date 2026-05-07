@@ -234,7 +234,7 @@ export async function insertOrgDefaultModelProvider(
 }
 
 /**
- * Insert an org-level multi-auth model provider (e.g., chatgpt-oauth-token,
+ * Insert an org-level multi-auth model provider (e.g., codex-oauth-token,
  * aws-bedrock) directly in the database with the given authMethod.
  *
  * Companion to `insertOrgDefaultModelProvider` for tests that need to

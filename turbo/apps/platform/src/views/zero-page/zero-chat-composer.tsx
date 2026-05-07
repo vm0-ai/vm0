@@ -10,9 +10,7 @@ import {
 } from "ccstate-react";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
-  IconArrowBackUp,
   IconArrowUp,
-  IconFile,
   IconLoader2,
   IconMicrophone,
   IconPaperclip,
@@ -64,17 +62,13 @@ import {
   composerFileInput$ as singletonComposerFileInput$,
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
-import type {
-  PendingMessage,
-  PersistedAttachment,
-} from "@vm0/api-contracts/contracts/chat-threads";
+import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import {
   CONNECTOR_TYPES,
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import {
-  getDefaultModel,
   getModelImageInputSupport,
   type ModelProviderResponse,
   type ModelProviderType,
@@ -96,7 +90,6 @@ import {
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
-import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
@@ -104,6 +97,7 @@ import {
   authorizeConnector$,
   deauthorizeConnector$,
 } from "../../signals/zero-page/zero-connectors.ts";
+import { resolveWorkspaceDefaultSelection } from "../../signals/zero-page/model-provider-default.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   showAddDialog$,
@@ -159,11 +153,6 @@ interface ZeroChatComposerProps {
   onQueue?: (message: string) => void;
   sending?: boolean;
   queueWhileSending?: boolean;
-  pendingMessage?: PendingMessage | null;
-  /** Recall the queued pending message back into the draft. */
-  onRecallPendingMessage?: () => void;
-  /** True while the recall request is in flight — shows a spinner and disables the button. */
-  recallPendingMessageLoading?: boolean;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
   displayName: string;
@@ -245,32 +234,10 @@ function resolveConnectorLabel(
   return connectorMap.get(type as ConnectorType)?.label ?? type;
 }
 
-interface ResolvedComposerModel {
-  modelProviderId: string;
-  selectedModel: string;
-}
-
-function resolveProviderSelection(
-  provider: ModelProviderResponse | undefined,
-): ResolvedComposerModel | null {
-  if (!provider) {
-    return null;
-  }
-  const selectedModel =
-    provider.selectedModel ?? getDefaultModel(provider.type);
-  if (!selectedModel) {
-    return null;
-  }
-  return {
-    modelProviderId: provider.id,
-    selectedModel,
-  };
-}
-
 function resolveComposerModelForSelection(
   modelPicker: ComposerModelPicker | undefined,
   selection: ModelProviderSelection | null,
-): ResolvedComposerModel | null {
+): ModelProviderSelection | null {
   if (!modelPicker) {
     return null;
   }
@@ -280,10 +247,10 @@ function resolveComposerModelForSelection(
   if (modelPicker.agentDefault) {
     return modelPicker.agentDefault;
   }
-  const defaultProvider = modelPicker.providers.find((provider) => {
-    return provider.isDefault;
-  });
-  return resolveProviderSelection(defaultProvider);
+  return resolveWorkspaceDefaultSelection(
+    modelPicker.providers,
+    modelPicker.tiers,
+  );
 }
 
 interface VisualAttachmentUnsupportedState {
@@ -840,79 +807,6 @@ function toPersistedAttachments(
     });
 }
 
-function hasPendingMessageContent(
-  pendingMessage: PendingMessage | null,
-): pendingMessage is PendingMessage {
-  return (
-    pendingMessage !== null &&
-    ((pendingMessage.content?.trim() ?? "") !== "" ||
-      (pendingMessage.attachments?.length ?? 0) > 0)
-  );
-}
-
-function PendingMessagePreview({
-  pendingMessage,
-  onRecall,
-  recallLoading,
-}: {
-  pendingMessage: PendingMessage;
-  onRecall?: () => void;
-  recallLoading?: boolean;
-}) {
-  const content = pendingMessage.content?.trim() ?? "";
-  const attachments = pendingMessage.attachments ?? [];
-  return (
-    <div
-      className="border-b border-border/50 bg-muted/30 px-4 py-3"
-      aria-label="Queued message"
-    >
-      <div className="mb-1.5 flex items-center justify-between gap-2 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full bg-primary/70" />
-          Queued
-        </div>
-        {onRecall && (
-          <button
-            type="button"
-            onClick={onRecall}
-            disabled={recallLoading}
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
-            aria-label="Recall queued message"
-          >
-            {recallLoading ? (
-              <IconLoader2 size={13} stroke={1.75} className="animate-spin" />
-            ) : (
-              <IconArrowBackUp size={13} stroke={1.75} />
-            )}
-            Recall
-          </button>
-        )}
-      </div>
-      {content && (
-        <div className="max-h-[100px] overflow-y-auto text-sm leading-5 text-foreground [overflow-wrap:anywhere]">
-          <Markdown source={content.replace(/\n/g, "  \n")} />
-        </div>
-      )}
-      {attachments.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {attachments.map((attachment) => {
-            return (
-              <span
-                key={attachment.id}
-                className="inline-flex max-w-[14rem] items-center gap-1 rounded-md bg-background/80 px-2 py-1 text-xs text-muted-foreground zero-border"
-                title={attachment.filename}
-              >
-                <IconFile size={13} stroke={1.5} className="shrink-0" />
-                <span className="truncate">{attachment.filename}</span>
-              </span>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 type KeyboardSendAction = "none" | "send" | "queue";
 
 function resolveKeyboardSendAction({
@@ -932,10 +826,6 @@ function resolveKeyboardSendAction({
   return sending ? "queue" : "send";
 }
 
-function composerTextareaMinHeight(hasPendingMessage: boolean): string {
-  return hasPendingMessage ? "min-h-[116px]" : "min-h-[96px]";
-}
-
 // ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
@@ -947,9 +837,6 @@ export function ZeroChatComposer({
   onQueue,
   sending,
   queueWhileSending = false,
-  pendingMessage = null,
-  onRecallPendingMessage,
-  recallPendingMessageLoading,
   onCancel,
   displayName,
   className,
@@ -1277,7 +1164,6 @@ export function ZeroChatComposer({
     }
     e.target.value = "";
   };
-  const hasPendingMessage = hasPendingMessageContent(pendingMessage);
 
   const handleModelPickerChange = (
     selection: ModelProviderSelection | null,
@@ -1319,13 +1205,6 @@ export function ZeroChatComposer({
       >
         <CardContent className="p-0">
           <div className="flex flex-col">
-            {hasPendingMessage && (
-              <PendingMessagePreview
-                pendingMessage={pendingMessage}
-                onRecall={onRecallPendingMessage}
-                recallLoading={recallPendingMessageLoading}
-              />
-            )}
             {visibleAttachments.length > 0 && (
               <AttachmentChips
                 attachments={visibleAttachments}
@@ -1343,8 +1222,7 @@ export function ZeroChatComposer({
                 setInputRef?.(el);
               }}
               className={cn(
-                "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-sm max-md:text-[17px] text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0",
-                composerTextareaMinHeight(hasPendingMessage),
+                "w-full resize-none bg-transparent px-4 pt-4 pb-0 text-sm max-md:text-[17px] text-foreground placeholder:text-muted-foreground/40 border-0 focus:outline-none focus:ring-0 min-h-[96px]",
               )}
               rows={3}
               placeholder={

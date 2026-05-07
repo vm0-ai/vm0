@@ -814,10 +814,10 @@ export function ModelProviderPicker({
     );
   }
 
-  // Workspace default for the inherit toggle row resolves against org-tier
-  // rows only when tiers are provided — the user's personal default is a
-  // separate concept, picked explicitly via the Personal section, not
-  // inherited via the agent → workspace chain (Wave 3, Epic #11868).
+  // Workspace fallback for the inherit toggle resolves against org-tier rows
+  // only when tiers are provided. Callers that want "agent default" to mean a
+  // preferred personal provider pass that resolved personal row as
+  // `agentDefault`; otherwise personal defaults stay out of workspace fallback.
   const inheritScope = tiers
     ? providers.filter((p) => {
         return tiers.get(p.id) !== "personal";

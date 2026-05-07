@@ -56,6 +56,6 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   MobileNativeV1 = "mobileNativeV1",
   CodexBeta = "codexBeta",
-  ChatgptOauthProvider = "chatgptOauthProvider",
+  CodexOauthProvider = "codexOauthProvider",
   PersonalModelProvider = "personalModelProvider",
 }

@@ -21,7 +21,19 @@
 #   - CODEX_REFRESH_TOKEN_URL_OVERRIDE env var (must be the no-op localhost URL)
 #
 # Usage:
-#   audit-runner.sh <real_access_token> <real_refresh_token> <real_account_id> <real_id_token>
+#   audit-runner.sh <real_access_token> <real_refresh_token> <real_account_id> <real_id_token> [<auth_json_blob_prefix>] [<workspace_name>]
+#
+# auth_json_blob_prefix: optional. First ~50 chars of the raw codex auth.json
+#   used to seed the provider via the paste flow. Catches "entire blob got
+#   logged" leaks that the per-token scans would still pass (since they only
+#   match individual claim values). Pass an empty string to skip.
+# workspace_name: optional. Synthetic high-entropy workspace_name claim from
+#   the id_token. Catches leaks of derived metadata. Pass an empty string to
+#   skip.
+#
+# plan_type is intentionally NOT scanned — its values ("plus", "pro",
+# "enterprise") are low-entropy English words that would false-positive on
+# any unrelated env or file content.
 #
 # Exit code: always 0 (the bats test makes the assertion on the JSON output
 # so a failed audit is a test failure, not a script failure).
@@ -32,6 +44,8 @@ real_access="$1"
 real_refresh="$2"
 real_account="$3"
 real_id="$4"
+auth_json_blob_prefix="${5:-}"
+workspace_name="${6:-}"
 
 auth_json_path="$HOME/.codex/auth.json"
 auth_mode="missing"
@@ -103,6 +117,8 @@ scan_for_value "$real_access" "access_token"
 scan_for_value "$real_refresh" "refresh_token"
 scan_for_value "$real_account" "account_id"
 scan_for_value "$real_id" "id_token"
+scan_for_value "$auth_json_blob_prefix" "auth_json_blob"
+scan_for_value "$workspace_name" "workspace_name"
 
 # Emit single-line compact JSON (small + easier to extract from agent output).
 jq -nc \

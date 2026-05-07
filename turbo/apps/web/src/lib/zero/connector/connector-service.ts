@@ -21,7 +21,7 @@ import { notFound, badRequest } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
-import { isChatgptRefreshError } from "./providers/chatgpt-oauth";
+import { isChatgptRefreshError } from "./providers/codex-oauth";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { publishUserSignal } from "../../infra/realtime/client";
 
@@ -723,7 +723,7 @@ export async function deleteConnector(
  *   - "connector"      → secrets type='connector', metadata on `connectors`
  *   - "model-provider" → secrets type='model-provider', metadata on `model_providers`
  * For "model-provider", `metadataKey` must be the model-provider type
- * (e.g. "chatgpt-oauth-token") used to locate the metadata row.
+ * (e.g. "codex-oauth-token") used to locate the metadata row.
  *
  * Returns null if refresh token is unavailable, OAuth credentials are missing,
  * or the refresh fails (caller should fall back to the existing access token).
@@ -763,7 +763,7 @@ export async function refreshConnectorAccessToken(
     return null;
   }
   // clientSecret may legitimately be undefined for PKCE-only handlers
-  // (e.g. chatgpt-oauth). The handler's refreshToken is the source of truth
+  // (e.g. codex-oauth). The handler's refreshToken is the source of truth
   // for credential needs — if a non-PKCE handler is misconfigured the
   // upstream call will fail and the catch below records the error.
   const clientSecret = handler.getClientSecret(env);
@@ -974,7 +974,7 @@ export async function getConnectorRefreshToken(
  * Get tokenExpiresAt for model providers matching the given types.
  * Returns a map of model-provider type → expiry timestamp (epoch seconds), or
  * null if non-expiring/unknown. Mirrors `getConnectorExpiry` for model-provider
- * sources (e.g., chatgpt-oauth-token).
+ * sources (e.g., codex-oauth-token).
  */
 export async function getModelProviderExpiry(
   orgId: string,

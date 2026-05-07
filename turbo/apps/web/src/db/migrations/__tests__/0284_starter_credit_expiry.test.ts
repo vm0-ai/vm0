@@ -1,3 +1,5 @@
+/* eslint-disable web/no-direct-db-in-tests -- migration tests exercise pre-migration SQL before API exists */
+
 import { describe, it, expect, beforeEach } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
@@ -21,7 +23,6 @@ async function seedOrg(
   tier: "free" | "pro",
   credits: number,
 ): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: raw row seeding
   await globalThis.services.db
     .insert(orgMetadata)
     .values({ orgId, tier, credits })
@@ -32,7 +33,6 @@ async function seedOrg(
 }
 
 async function clearStarterGrants(orgId: string): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: isolates each run
   await globalThis.services.db
     .delete(creditExpiresRecord)
     .where(
@@ -44,7 +44,6 @@ async function clearStarterGrants(orgId: string): Promise<void> {
 }
 
 async function readStarterGrants(orgId: string) {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: read-back assertion
   return globalThis.services.db
     .select()
     .from(creditExpiresRecord)
@@ -57,7 +56,6 @@ async function readStarterGrants(orgId: string) {
 }
 
 async function runBackfill(): Promise<void> {
-  // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: executes the verbatim backfill body
   await globalThis.services.db.execute(sql`
     INSERT INTO "credit_expires_record" (
       id, org_id, source, stripe_invoice_id, amount, remaining, expires_at, created_at
@@ -85,7 +83,6 @@ async function runBackfill(): Promise<void> {
 describe("migration 0284 backfill body", () => {
   beforeEach(() => {
     context.setupMocks();
-    // eslint-disable-next-line web/no-direct-db-in-tests -- Migration test: needs services initialised to run raw SQL
     initServices();
   });
 

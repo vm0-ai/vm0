@@ -108,6 +108,8 @@ describe("zero doctor generate command", () => {
     expect(text).toContain("openai");
     expect(text).toContain("OpenAI");
     expect(text).not.toContain("replicate-user");
+    expect(text).toContain("Fallback option:");
+    expect(text).toContain("zero official generate image -h");
     expect(text).toContain(
       "Use --all to see every image generation candidate.",
     );
@@ -173,6 +175,11 @@ describe("zero doctor generate command", () => {
         }),
       ]),
     );
+    expect(json).toMatchObject({
+      builtInOption: {
+        description: expect.stringContaining("zero official generate image -h"),
+      },
+    });
   });
 
   it("suggests the official voice command when no voice connector is ready", async () => {

@@ -2388,6 +2388,27 @@
       "when": 1778057269010,
       "tag": "0340_boring_micromacro",
       "breakpoints": true
+    },
+    {
+      "idx": 341,
+      "version": "7",
+      "when": 1778065381592,
+      "tag": "0341_backfill_codex_oauth_provider_feature_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1778122063617,
+      "tag": "0342_add_gpt_image_usage_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 343,
+      "version": "7",
+      "when": 1778135064655,
+      "tag": "0343_light_wonder_man",
+      "breakpoints": true
     }
   ]
 }

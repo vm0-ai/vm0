@@ -56,7 +56,7 @@ export function mergePermissions(
   // Model provider firewalls default to fully permissive, but a config can
   // opt in to selective deny/ask via `defaultPolicies` — used by providers
   // that need to whitelist their inference endpoint while denying ancillary
-  // hosts (e.g., chatgpt-oauth-token denies auth.openai.com from sandbox).
+  // hosts (e.g., codex-oauth-token denies auth.openai.com from sandbox).
   const autoConfigs = modelProviderFirewall ? [modelProviderFirewall] : [];
   if (modelProviderFirewall) {
     const all = collectPermissionNames(modelProviderFirewall.apis);

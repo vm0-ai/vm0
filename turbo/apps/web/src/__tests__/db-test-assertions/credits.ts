@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
@@ -213,5 +213,44 @@ export async function findTestUsageEventsByRunId(runId: string): Promise<
     })
     .from(usageEvent)
     .where(eq(usageEvent.runId, runId))
+    .orderBy(usageEvent.kind, usageEvent.provider, usageEvent.category);
+}
+
+/**
+ * Find runless usage_event records by org and provider.
+ */
+export async function findTestRunlessUsageEventsByOrgProvider(
+  orgId: string,
+  provider: string,
+): Promise<
+  Array<{
+    runId: string | null;
+    kind: string;
+    provider: string;
+    category: string;
+    quantity: number;
+    creditsCharged: number | null;
+    status: string;
+  }>
+> {
+  initServices();
+  return globalThis.services.db
+    .select({
+      runId: usageEvent.runId,
+      kind: usageEvent.kind,
+      provider: usageEvent.provider,
+      category: usageEvent.category,
+      quantity: usageEvent.quantity,
+      creditsCharged: usageEvent.creditsCharged,
+      status: usageEvent.status,
+    })
+    .from(usageEvent)
+    .where(
+      and(
+        eq(usageEvent.orgId, orgId),
+        eq(usageEvent.provider, provider),
+        isNull(usageEvent.runId),
+      ),
+    )
     .orderBy(usageEvent.kind, usageEvent.provider, usageEvent.category);
 }

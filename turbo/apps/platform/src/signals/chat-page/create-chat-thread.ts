@@ -9,7 +9,10 @@ import {
 import { animationFrame, delay } from "signal-timers";
 import { onRef, resetSignal, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { createScrollSignals } from "../auto-scroll.ts";
+import {
+  createScrollSignals,
+  type ScrollStepDirection,
+} from "../auto-scroll.ts";
 import {
   createDraftSignals,
   createRestoredAttachment,
@@ -27,19 +30,17 @@ import {
   type ChatThreadArtifactRun,
   type ModelSelectionRequest,
   type PagedChatMessage,
+  type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  getDefaultModel,
-  type ModelProviderResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { orgModelProviders$ } from "../external/org-model-providers.ts";
 import { agentById } from "../agent.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
+import { composerModelProviders$ } from "../zero-page/composer-model-providers.ts";
+import { resolveEffectiveAgentDefaultSelection } from "../zero-page/model-provider-default.ts";
 import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
@@ -163,11 +164,17 @@ export interface ChatThreadSignals {
   >;
   queueMessage$: Command<Promise<void>, [string, AbortSignal]>;
   recallPendingMessage$: Command<Promise<void>, [AbortSignal]>;
+  // View-side pending message — masks the server value the moment the user
+  // recalls it so the queued card disappears synchronously, without waiting
+  // for the fire-and-forget server clear to round-trip.
+  pendingMessage$: Computed<Promise<PendingMessage | null>>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
+  scrollBy$: Command<boolean, [ScrollStepDirection]>;
+  prepareKeyboardScroll$: Command<boolean, []>;
   // ── Initial-load skeleton ────────────────────────────────────────────────
   // Starts hidden — `setupChatThreadInitScroll$` flips it on only when the
   // IDB cache misses, so cache hits skip the skeleton entirely. Flipped off
@@ -269,32 +276,22 @@ function createModelSelection(
           selectedModel: thread.selectedModel,
         };
       }
-      // No thread override → fall back to the agent's default, then to the
-      // org default. Seeding here (rather than letting the picker show its
-      // null-value fallback) keeps the picker's displayed model identical
-      // to what the send body carries. Without this seed, the backend
-      // would receive `modelSelection: null` while the UI advertised a
-      // specific model, producing a display/run mismatch.
-      if (thread?.agentId) {
-        const agent = await get(agentById(thread.agentId));
-        if (agent?.modelProviderId && agent.selectedModel) {
-          return {
-            modelProviderId: agent.modelProviderId,
-            selectedModel: agent.selectedModel,
-          };
-        }
-      }
-      const { modelProviders } = await get(orgModelProviders$);
-      const defaultProvider = modelProviders.find((p) => {
-        return p.isDefault;
+      // No thread override → fall back to preferred personal default, then
+      // the agent's default, then the workspace default. Seeding here
+      // (rather than letting the picker show its null-value fallback) keeps
+      // the picker's displayed model identical to what the send body carries.
+      // Without this seed, the backend would receive `modelSelection: null`
+      // while the UI advertised a specific model, producing a display/run
+      // mismatch.
+      const agent = thread?.agentId
+        ? await get(agentById(thread.agentId))
+        : null;
+      const composerProviders = await get(composerModelProviders$);
+      return resolveEffectiveAgentDefaultSelection({
+        agent,
+        providers: composerProviders.providers,
+        tiers: composerProviders.tiers,
       });
-      if (defaultProvider?.selectedModel) {
-        return {
-          modelProviderId: defaultProvider.id,
-          selectedModel: defaultProvider.selectedModel,
-        };
-      }
-      return null;
     },
   );
 
@@ -375,13 +372,12 @@ function createAgentInfoSignals(
         return null;
       }
       const agent = await get(agentById(agentId));
-      if (!agent?.modelProviderId || !agent.selectedModel) {
-        return null;
-      }
-      return {
-        modelProviderId: agent.modelProviderId,
-        selectedModel: agent.selectedModel,
-      };
+      const composerProviders = await get(composerModelProviders$);
+      return resolveEffectiveAgentDefaultSelection({
+        agent,
+        providers: composerProviders.providers,
+        tiers: composerProviders.tiers,
+      });
     },
   );
 
@@ -1144,23 +1140,14 @@ function createSendMessage(deps: SendMessageDeps) {
       if (!effectiveSelectedModel) {
         const agent = await get(agentById(agentId));
         signal.throwIfAborted();
-        if (agent?.modelProviderId && agent.selectedModel) {
-          effectiveSelectedModel = agent.selectedModel;
-        }
-      }
-      if (!effectiveSelectedModel) {
-        const { modelProviders } = await get(orgModelProviders$);
+        const composerProviders = await get(composerModelProviders$);
         signal.throwIfAborted();
-        const defaultProvider = (
-          modelProviders as ModelProviderResponse[]
-        ).find((provider) => {
-          return provider.isDefault;
-        });
-        const defaultModel = defaultProvider
-          ? getDefaultModel(defaultProvider.type)
-          : undefined;
         effectiveSelectedModel =
-          defaultProvider?.selectedModel ?? defaultModel ?? undefined;
+          resolveEffectiveAgentDefaultSelection({
+            agent,
+            providers: composerProviders.providers,
+            tiers: composerProviders.tiers,
+          })?.selectedModel ?? undefined;
       }
 
       const result = await set(
@@ -1291,6 +1278,14 @@ function createQueueMessage(deps: QueueMessageDeps) {
     set(cancelDraftSync$);
     set(draft.clear$);
 
+    // Pre-generate the client message id so the eventual auto-sent
+    // chat_messages row uses it; the optimistic queued bubble is mounted
+    // with this id so the merge-by-id reconciliation drops the dupe when
+    // the real row arrives via Ably.
+    const existingPending = thread.pendingMessage;
+    const clientMessageId =
+      existingPending?.clientMessageId ?? crypto.randomUUID();
+
     await Promise.all([
       set(flushDraftClear$, signal),
       set(
@@ -1299,6 +1294,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
           threadId,
           content,
           attachments,
+          clientMessageId,
         },
         signal,
       ),
@@ -1307,8 +1303,13 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
     set(reloadThread$);
     set(reloadChatThreads$);
-    // Scroll to bottom so the freshly-appended queued message is visible —
-    // mirrors the optimistic-scroll the user gets from `sendMessage$`.
+    // Wait for the refetched threadData before scrolling. The queued card
+    // renders inside the composer footer, so its first appearance shrinks
+    // the message list's clientHeight; scrolling before that render lands
+    // scrollTop against the pre-shrink layout and the bottom drops out of
+    // view once the composer grows.
+    await get(threadData$);
+    signal.throwIfAborted();
     animationFrame(
       () => {
         set(scrollToBottom$);
@@ -1321,27 +1322,47 @@ function createQueueMessage(deps: QueueMessageDeps) {
 
 interface RecallMessageDeps {
   threadId: string;
+  threadData$: Computed<Promise<ChatThread | null>>;
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   reloadThread$: Command<void, []>;
+  markPendingRecalled$: Command<void, [string]>;
   dataSource: ChatThreadDataSource;
 }
 
 function createRecallPendingMessage(deps: RecallMessageDeps) {
-  const { threadId, draft, cancelDraftSync$, reloadThread$, dataSource } = deps;
-  return command(async ({ set }, signal: AbortSignal) => {
+  const {
+    threadId,
+    threadData$,
+    draft,
+    cancelDraftSync$,
+    reloadThread$,
+    markPendingRecalled$,
+    dataSource,
+  } = deps;
+  return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("recallPendingMessage$ start", { threadId });
-    set(cancelDraftSync$);
-    const result = await set(
-      dataSource.recallPendingMessage$,
-      { threadId },
-      signal,
-    );
+    const thread = await get(threadData$);
     signal.throwIfAborted();
-    const restoredAttachments = (result.draftAttachments ?? []).map(
+    const pending = thread?.pendingMessage;
+    if (!pending) {
+      return;
+    }
+    // Optimistic local state — the queued card disappears and the draft
+    // refills synchronously, before the server round-trip. The mask hides
+    // the cached pendingMessage by updatedAt until threadData$ is refetched
+    // post-server-confirm, at which point the row is naturally gone.
+    set(cancelDraftSync$);
+    const restoredAttachments = (pending.attachments ?? []).map(
       createRestoredAttachment,
     );
-    set(draft.seed$, result.draftContent ?? "", restoredAttachments);
+    set(draft.seed$, pending.content ?? "", restoredAttachments);
+    set(markPendingRecalled$, pending.updatedAt);
+
+    // Server clear. Callers detach the returned promise via useSet so the
+    // UI doesn't block on the round-trip — UX is already optimistic above.
+    await set(dataSource.recallPendingMessage$, { threadId }, signal);
+    signal.throwIfAborted();
     set(reloadThread$);
     set(reloadChatThreads$);
     L.debug("recallPendingMessage$ done", { threadId });
@@ -1349,14 +1370,81 @@ function createRecallPendingMessage(deps: RecallMessageDeps) {
 }
 
 interface MessageCommandsDeps
-  extends SendMessageDeps, QueueMessageDeps, RecallMessageDeps {}
+  extends
+    SendMessageDeps,
+    QueueMessageDeps,
+    Omit<RecallMessageDeps, "markPendingRecalled$"> {}
 
-function createMessageCommands(deps: MessageCommandsDeps) {
+function createMessageCommands(
+  deps: MessageCommandsDeps & {
+    groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  },
+) {
+  const { pendingMessage$, markPendingRecalled$ } = createPendingMessageView(
+    deps.threadData$,
+    deps.groupedChatMessages$,
+  );
   return {
     sendMessage$: createSendMessage(deps),
     queueMessage$: createQueueMessage(deps),
-    recallPendingMessage$: createRecallPendingMessage(deps),
+    recallPendingMessage$: createRecallPendingMessage({
+      ...deps,
+      markPendingRecalled$,
+    }),
+    pendingMessage$,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: pending-message view (with optimistic recall mask + dedup)
+// ---------------------------------------------------------------------------
+
+function createPendingMessageView(
+  threadData$: Computed<Promise<ChatThread | null>>,
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
+) {
+  // Tracks the `updatedAt` of the pending message the user just recalled.
+  // While the cached `threadData$` still echoes that same pending row back
+  // (the fire-and-forget server clear hasn't landed yet), `pendingMessage$`
+  // returns null so the queued card disappears synchronously on click.
+  const internalRecalledUpdatedAt$ = state<string | null>(null);
+
+  const pendingMessage$ = computed(
+    async (get): Promise<PendingMessage | null> => {
+      const thread = await get(threadData$);
+      const pending = thread?.pendingMessage ?? null;
+      if (!pending) {
+        return null;
+      }
+      const recalledUpdatedAt = get(internalRecalledUpdatedAt$);
+      if (recalledUpdatedAt === pending.updatedAt) {
+        return null;
+      }
+      // Dedup by client message id: when auto-send claims the queued
+      // message, it inserts a chat_messages row reusing the queued
+      // bubble's pre-generated id. Once the realtime fetcher surfaces
+      // that row, the optimistic queued bubble must vacate so we don't
+      // paint the same user message twice.
+      if (pending.clientMessageId) {
+        const groups = await get(groupedChatMessages$);
+        const matched = groups.some((group) => {
+          return group.messages.some((message) => {
+            return message.id === pending.clientMessageId;
+          });
+        });
+        if (matched) {
+          return null;
+        }
+      }
+      return pending;
+    },
+  );
+
+  const markPendingRecalled$ = command(({ set }, updatedAt: string) => {
+    set(internalRecalledUpdatedAt$, updatedAt);
+  });
+
+  return { pendingMessage$, markPendingRecalled$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -1431,13 +1519,8 @@ export function createChatThreadSignals(
   const { threadData$, reloadThread$ } = createThreadData(dataSource);
   const { modelSelection$, setModelSelection$ } =
     createModelSelection(threadData$);
-  const {
-    setScrollContainer$,
-    autoScroll$,
-    scrollToBottom$,
-    scrollToTop$,
-    recordScrollHeightForPrepend$,
-  } = createScrollSignals(threadId);
+  const { recordScrollHeightForPrepend$, ...scrollSignals } =
+    createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
     createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
@@ -1473,23 +1556,23 @@ export function createChatThreadSignals(
     threadData$,
     latestChatMessageId$,
     fetchNextPage$,
-    autoScroll$,
+    autoScroll$: scrollSignals.autoScroll$,
     dataSource,
   });
 
-  const { sendMessage$, queueMessage$, recallPendingMessage$ } =
-    createMessageCommands({
-      threadId,
-      threadData$,
-      modelSelection$,
-      draft,
-      cancelDraftSync$,
-      flushDraftClear$,
-      insertOptimisticMessage$,
-      scrollToBottom$,
-      reloadThread$,
-      dataSource,
-    });
+  const messageCommands = createMessageCommands({
+    threadId,
+    threadData$,
+    modelSelection$,
+    draft,
+    cancelDraftSync$,
+    flushDraftClear$,
+    insertOptimisticMessage$,
+    scrollToBottom$: scrollSignals.scrollToBottom$,
+    reloadThread$,
+    dataSource,
+    groupedChatMessages$,
+  });
 
   const { setInputRef$, focusInput$ } = createInputRef();
   const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
@@ -1510,14 +1593,9 @@ export function createChatThreadSignals(
     threadData$,
     modelSelection$,
     setModelSelection$,
-    sendMessage$,
-    queueMessage$,
-    recallPendingMessage$,
+    ...messageCommands,
     cancelRun$,
-    setScrollContainer$,
-    autoScroll$,
-    scrollToBottom$,
-    scrollToTop$,
+    ...scrollSignals,
     skeletonVisible$,
     showSkeleton$,
     hideSkeleton$,

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.27.18](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.17...sandbox-fc-v0.27.18) (2026-05-07)
+
+
+### Documentation
+
+* **sandbox:** add crate-level docs ([#12011](https://github.com/vm0-ai/vm0/issues/12011)) ([cdbb13d](https://github.com/vm0-ai/vm0/commit/cdbb13d1b68b4f3f8ae5b63c6e1166e6bc0f8f65))
+
+
+### Refactoring
+
+* **sandbox-fc:** add runtime handle owner ([#12000](https://github.com/vm0-ai/vm0/issues/12000)) ([2cf36c0](https://github.com/vm0-ai/vm0/commit/2cf36c0d70e43f63a9a49338293565b2b1b53344))
+* **sandbox-fc:** wrap balloon controller handle ([#12013](https://github.com/vm0-ai/vm0/issues/12013)) ([8882df7](https://github.com/vm0-ai/vm0/commit/8882df7fca7b21db4781edb90a35b37141af435d))
+
+## [0.27.17](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.16...sandbox-fc-v0.27.17) (2026-05-06)
+
+
+### Refactoring
+
+* **sandbox-fc:** own process log readers ([#11985](https://github.com/vm0-ai/vm0/issues/11985)) ([dcbbc6d](https://github.com/vm0-ai/vm0/commit/dcbbc6dc14fb766e170bd724c961db5dd6b2e5b1))
+
 ## [0.27.16](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.15...sandbox-fc-v0.27.16) (2026-05-06)
 
 

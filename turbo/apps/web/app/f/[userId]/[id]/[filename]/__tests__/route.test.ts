@@ -50,6 +50,30 @@ describe("GET /f/[userId]/[id]/[filename]", () => {
     expect(contentDisposition).toBeUndefined();
   });
 
+  it("maps prefixless public user IDs back to Clerk user IDs", async () => {
+    context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+      "https://signed.example.com/doc.pdf?sig=abc",
+    );
+
+    const res = await invoke("alice", "file-id", "doc.pdf");
+
+    expect(res.status).toBe(302);
+
+    const [, key] = context.mocks.s3.generatePresignedUrl.mock.calls[0] ?? [];
+    expect(key).toBe("uploads/user_alice/file-id/doc.pdf");
+  });
+
+  it("keeps non-Clerk user-like URL segments unchanged", async () => {
+    context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+      "https://signed.example.com/doc.pdf?sig=abc",
+    );
+
+    await invoke("user-1", "file-id", "doc.pdf");
+
+    const [, key] = context.mocks.s3.generatePresignedUrl.mock.calls[0] ?? [];
+    expect(key).toBe("uploads/user-1/file-id/doc.pdf");
+  });
+
   it("forces attachment download when ?download=1 is present", async () => {
     context.mocks.s3.generatePresignedUrl.mockResolvedValue(
       "https://signed.example.com/report.pdf",

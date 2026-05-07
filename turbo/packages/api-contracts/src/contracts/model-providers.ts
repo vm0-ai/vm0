@@ -18,6 +18,17 @@ export interface SecretFieldConfig {
    * never see (per #7365). Honored by `resolveMultiAuthProviderSecrets`.
    */
   serverOnly?: boolean;
+  /**
+   * When true, this secret is populated by a server-side parser from another
+   * secret in the same authMethod (typically a single user-input field whose
+   * raw value is exploded into multiple stored fields). UI MUST NOT render an
+   * input for this secret; the storage validation layer still uses it.
+   *
+   * Example: `codex-oauth-token` / `auth_json` — user pastes `CODEX_AUTH_JSON`,
+   * server parser writes `CHATGPT_ACCESS_TOKEN` / `_REFRESH_TOKEN` /
+   * `_ACCOUNT_ID` / `_ID_TOKEN`. Those four are `derived: true`.
+   */
+  derived?: boolean;
 }
 
 /**
@@ -416,38 +427,67 @@ export const MODEL_PROVIDER_TYPES = {
     ] as string[],
     defaultModel: "gpt-5.5",
   },
-  "chatgpt-oauth-token": {
+  "codex-oauth-token": {
     framework: "codex" as const,
-    label: "ChatGPT (Sign in)",
+    label: "ChatGPT (Codex)",
     helpText:
-      "Sign in with ChatGPT (Plus / Pro / Business / Edu / Enterprise). " +
-      "Workspace selection happens on auth.openai.com.",
+      "Run `codex login` on your machine, then paste the resulting " +
+      "~/.codex/auth.json contents to authorize ChatGPT (Plus / Pro / " +
+      "Business / Edu / Enterprise) for Codex.",
     authMethods: {
-      oauth: {
-        label: "Sign in with ChatGPT",
+      // Paste-based auth: client posts CODEX_AUTH_JSON, server parses it via
+      // codex-auth-json-parser.ts and persists the four derived CHATGPT_*
+      // fields. The raw blob is NEVER stored. The wire-shape secret
+      // (CODEX_AUTH_JSON) is declared optional+serverOnly so the contract
+      // accepts it on POST without persisting; the four CHATGPT_* fields are
+      // the canonical stored secrets and the firewall layer reads from those.
+      auth_json: {
+        label: "Codex auth.json",
+        helpText:
+          "Run `codex login` locally, then paste the contents of ~/.codex/auth.json below.",
         secrets: {
+          CODEX_AUTH_JSON: {
+            label: "auth.json contents",
+            required: false,
+            serverOnly: true,
+            placeholder: '{"OPENAI_API_KEY":null,"tokens":{...}}',
+            helpText: "Paste the entire contents of ~/.codex/auth.json",
+          },
+          // CHATGPT_ACCESS_TOKEN and CHATGPT_ACCOUNT_ID reach the sandbox env
+          // as placeholder values (substituted by the firewall token-replacement
+          // layer at egress) — keeping them non-serverOnly preserves the
+          // placeholder injection path. CHATGPT_REFRESH_TOKEN and
+          // CHATGPT_ID_TOKEN stay serverOnly per the #7365 invariant.
+          //
+          // All four are `derived: true` — the server-side parser populates
+          // them from the user-pasted CODEX_AUTH_JSON. The UI MUST NOT render
+          // them as input fields (per #12024).
           CHATGPT_ACCESS_TOKEN: {
             label: "CHATGPT_ACCESS_TOKEN",
             required: true,
+            derived: true,
           },
           CHATGPT_REFRESH_TOKEN: {
             label: "CHATGPT_REFRESH_TOKEN",
             required: true,
             serverOnly: true,
+            derived: true,
           },
           CHATGPT_ACCOUNT_ID: {
             label: "CHATGPT_ACCOUNT_ID",
             required: true,
+            derived: true,
           },
           CHATGPT_ID_TOKEN: {
             label: "CHATGPT_ID_TOKEN",
             required: true,
             serverOnly: true,
+            derived: true,
           },
         },
       },
     } as Record<string, AuthMethodConfig>,
-    defaultAuthMethod: "oauth",
+    defaultAuthMethod: "auth_json",
     environmentMapping: {
       CHATGPT_ACCESS_TOKEN: "$secrets.CHATGPT_ACCESS_TOKEN",
       CHATGPT_ACCOUNT_ID: "$secrets.CHATGPT_ACCOUNT_ID",
@@ -624,8 +664,8 @@ export function getSelectableProviderTypes(): ModelProviderType[] {
 const ANTHROPIC_API_BASE = "https://api.anthropic.com";
 
 function getFirewallBaseUrl(type: ModelProviderType): string {
-  // chatgpt-oauth-token targets ChatGPT's backend, not the public OpenAI API.
-  if (type === "chatgpt-oauth-token") {
+  // codex-oauth-token targets ChatGPT's backend, not the public OpenAI API.
+  if (type === "codex-oauth-token") {
     return "https://chatgpt.com/backend-api/codex";
   }
   // Other codex providers use OpenAI's Responses API — the only inference
@@ -648,7 +688,7 @@ function getFirewallBaseUrl(type: ModelProviderType): string {
  * any possibility of mismatch between auth header templates and placeholders.
  */
 // Helper accepts only single-secret providers — multi-auth firewall configs
-// (e.g., chatgpt-oauth-token) declare their entries inline because they need
+// (e.g., codex-oauth-token) declare their entries inline because they need
 // multiple headers and/or multiple API entries.
 type LegacySingleSecretProvider = {
   [K in FirewallSupportedProvider]: (typeof MODEL_PROVIDER_TYPES)[K] extends {
@@ -772,8 +812,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
   // here only needs to be a stable, non-empty string the firewall can match
   // and substitute. Account-id placeholder still equals #11877's literal
   // since the architectural relationship across the two surfaces matters.
-  "chatgpt-oauth-token": {
-    name: "model-provider:chatgpt-oauth-token",
+  "codex-oauth-token": {
+    name: "model-provider:codex-oauth-token",
     apis: [
       {
         base: "https://chatgpt.com/backend-api/codex",
@@ -831,7 +871,7 @@ export const modelProviderTypeSchema = z.enum([
   "zai-api-key",
   "vercel-ai-gateway",
   "openai-api-key",
-  "chatgpt-oauth-token",
+  "codex-oauth-token",
   "azure-foundry",
   "aws-bedrock",
   "vm0",
@@ -1062,9 +1102,9 @@ export const modelProviderResponseSchema = z.object({
   selectedModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  // ChatGPT-only metadata populated by the chatgpt-oauth-token callback.
+  // ChatGPT-only metadata populated by the codex-oauth-token callback.
   // Other provider types omit these. Mirrors the server-side connector
-  // shape in apps/web/src/lib/zero/connector/providers/chatgpt-oauth.ts.
+  // shape in apps/web/src/lib/zero/connector/providers/codex-oauth.ts.
   // The corresponding server route lands in #11909; declared here so the
   // platform UI does not have to bypass schema validation to read them.
   workspaceName: z.string().nullable().optional(),

@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
 import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
@@ -167,6 +168,39 @@ export async function getTestChatThreadLastReadAt(
     .limit(1);
   if (!row) return undefined;
   return row.lastReadAt;
+}
+
+/**
+ * Read the pending-message columns on a chat thread.
+ *
+ * @why-db-direct Auto-send tests assert that the callback clears all four
+ * pending_message_* columns; the contract returns a normalized
+ * `PendingMessage | null` so cannot distinguish "row had nulls" from
+ * "row was never written."
+ */
+export async function getTestChatThreadPendingMessage(
+  threadId: string,
+): Promise<
+  | {
+      pendingMessageContent: string | null;
+      pendingMessageAttachments: PersistedAttachment[] | null;
+      pendingMessageCreatedAt: Date | null;
+      pendingMessageUpdatedAt: Date | null;
+    }
+  | undefined
+> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      pendingMessageContent: chatThreads.pendingMessageContent,
+      pendingMessageAttachments: chatThreads.pendingMessageAttachments,
+      pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
+      pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  return row;
 }
 
 /**

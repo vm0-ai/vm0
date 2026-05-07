@@ -431,15 +431,14 @@ describe("POST /api/zero/chat/messages", () => {
           });
           expect(round2ConnectorsSpan?.org_id).toBeTruthy();
 
-          // run_id is stamped after the tx commits — only post-commit spans
-          // carry it.
+          // run_id is stamped after agent_runs insert returns; spans emitted
+          // after that point carry it even while still inside the tx.
           const persistSpan = chatSpanEvents.find((e) => {
             return e.op_type === "api_chat_send_persist_zero_run_metadata";
           });
           expect(persistSpan?.run_id).toBe(data.runId);
 
-          // insert_run_record happens inside the tx, before commit — emits
-          // with run_id absent.
+          // insert_run_record emits before the inserted run id is stamped.
           const insertRunRecordSpan = chatSpanEvents.find((e) => {
             return e.op_type === "api_chat_send_create_run_insert_run_record";
           });
@@ -672,7 +671,7 @@ describe("POST /api/zero/chat/messages", () => {
       expect(userMsg.attachFiles[0].id).toBe("resolve-uuid-1");
       expect(userMsg.attachFiles[0].filename).toBe("data.csv");
       expect(userMsg.attachFiles[0].url).toBe(
-        `http://localhost:3000/f/${encodeURIComponent(user.userId)}/resolve-uuid-1/data.csv`,
+        `http://localhost:3000/f/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/resolve-uuid-1/data.csv`,
       );
     });
 
@@ -730,6 +729,31 @@ describe("POST /api/zero/chat/messages", () => {
           // The modelSelection resolves to a BYOK provider, so credit admission
           // fast-exits — no org_metadata read from credits admission. Round 2
           // uses resolveOrg's preloaded tier (the eliminated dup from #10594).
+          expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(1);
+        } finally {
+          counter.restore();
+        }
+      });
+
+      it("reads zero_agents once and org_metadata once for vm0-managed credit admission", async () => {
+        await insertOrgDefaultModelProvider(user.orgId, "vm0");
+        await setOrgCredits(user.orgId, 10_000);
+
+        const counter = createQueryCounter();
+        try {
+          const response = await POST(
+            createTestRequest(URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                agentId,
+                prompt: "dedup with vm0 credit admission",
+              }),
+            }),
+          );
+
+          expect(response.status).toBe(201);
+          expect(counter.countMatching(/from\s+"?zero_agents"?/i)).toBe(1);
           expect(counter.countMatching(/from\s+"?org_metadata"?/i)).toBe(1);
         } finally {
           counter.restore();
@@ -1323,6 +1347,56 @@ describe("POST /api/zero/chat/messages", () => {
         const override = await getTestChatThreadModelOverride(threadId);
         expect(override.modelProviderId).toBe(personalProviderId);
         expect(override.selectedModel).toBe("gpt-5.4");
+      });
+
+      it("runs the personal default when the request explicitly inherits modelSelection null", async () => {
+        // The web picker sends `modelSelection: null` when the user chooses
+        // "Use agent default". That must inherit the newly created thread's
+        // eager pin, not fall back to the agent's org-tier provider.
+        const { agentId: composeAgentId } = await createTestCompose(
+          uniqueId("personal-null-inherit"),
+          { noEnvironmentBlock: true },
+        );
+        const orgProviderId = await getTestModelProviderIdByType(
+          user.orgId,
+          "anthropic-api-key",
+        );
+        await setTestZeroAgentModelProvider(
+          composeAgentId,
+          orgProviderId,
+          "claude-opus-4-7",
+        );
+        await setTestZeroAgentPreferPersonalProvider(composeAgentId, true);
+        await enablePersonalModelProviderForUser(user.orgId, user.userId);
+        const personalProviderId = await insertUserDefaultModelProvider(
+          user.orgId,
+          user.userId,
+          "openai-api-key",
+          "gpt-5.4",
+        );
+
+        const response = await POST(
+          createTestRequest(URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              agentId: composeAgentId,
+              prompt: "explicit inherit personal pin",
+              modelSelection: null,
+            }),
+          }),
+        );
+        expect(response.status).toBe(201);
+        const { runId, threadId } = await response.json();
+        await context.mocks.flushAfter();
+
+        const override = await getTestChatThreadModelOverride(threadId);
+        expect(override.modelProviderId).toBe(personalProviderId);
+        expect(override.selectedModel).toBe("gpt-5.4");
+
+        const job = await findTestRunnerJobEntry(runId);
+        expect(job).toBeDefined();
+        expect(job!.executionContext.cliAgentType).toBe("codex");
       });
 
       it("falls back to agent's selectedModel when personal row has none", async () => {

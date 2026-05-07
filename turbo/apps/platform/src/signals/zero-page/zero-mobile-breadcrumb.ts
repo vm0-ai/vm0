@@ -193,11 +193,18 @@ export const mobileBreadcrumb$ = computed(
       return await get(activityDetailBreadcrumb$);
     }
 
+    if (route === "works") {
+      const displayName = await get(currentChatAgentDisplayName$);
+      return {
+        section: `Where ${displayName ?? "Zero"} works`,
+        sectionPath: ROUTES.works,
+      };
+    }
+
     // Static labels for other non-chat sections
     const nonChatSections: Partial<
       Record<string, { label: string; path: RoutePath }>
     > = {
-      works: { label: "Works", path: ROUTES.works },
       settings: { label: "Settings", path: ROUTES.settings },
       connectors: { label: "Connectors", path: ROUTES.connectors },
     };

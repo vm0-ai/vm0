@@ -39,6 +39,7 @@ export {
   findOrgPromoRedemption,
   findTestUsageEvent,
   findTestUsageEventsByRunId,
+  findTestRunlessUsageEventsByOrgProvider,
   findUsageDaily,
   findInsightsDaily,
 } from "../db-test-assertions/credits";

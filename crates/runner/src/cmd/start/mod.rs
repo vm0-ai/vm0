@@ -15,6 +15,7 @@
 //! - `job_spawn`: claimed job task spawning, completion, and panic cleanup.
 //! - `mitm_restart`: mitmproxy crash restart and backoff.
 //! - `orphan_reap`: orphan active-run reconciliation.
+//! - `ownership`: active/idle/orphan ownership transition ordering.
 //! - `sandbox_finalization`: post-executor sandbox park/destroy finalization.
 //! - `signals`: lifecycle signal registration and mode transitions.
 //!
@@ -68,6 +69,7 @@ mod job_lifecycle;
 mod job_spawn;
 mod mitm_restart;
 mod orphan_reap;
+mod ownership;
 mod sandbox_finalization;
 mod signals;
 

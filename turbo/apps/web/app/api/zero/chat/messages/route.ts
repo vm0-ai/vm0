@@ -16,7 +16,7 @@ import {
   createZeroRun,
   fetchZeroAgentForRun,
 } from "../../../../../src/lib/zero/zero-run-service";
-import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
+import { resolveOrgWithMetadata } from "../../../../../src/lib/zero/org/resolve-org";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
@@ -86,6 +86,29 @@ function buildFullPrompt(
   return `${prompt}\n\n${buildWebAttachFilesPrompt(attachFiles)}`;
 }
 
+interface PreloadedOrgMetadataForRun {
+  orgId: string;
+  tier: string;
+  credits?: number;
+}
+
+function buildPreloadedOrgMetadata(params: {
+  org: { orgId: string; tier: string };
+  orgMeta: { credits: number } | undefined;
+}): PreloadedOrgMetadataForRun {
+  if (!params.orgMeta) {
+    return {
+      orgId: params.org.orgId,
+      tier: params.org.tier,
+    };
+  }
+  return {
+    orgId: params.org.orgId,
+    tier: params.org.tier,
+    credits: params.orgMeta.credits,
+  };
+}
+
 interface ResolvedThread {
   threadId: string;
   sessionId: string | undefined;
@@ -96,8 +119,9 @@ interface ResolvedThread {
 /**
  * Persist the composer's per-run override onto the thread row and return the
  * effective override to use for this run (precedence: per-run > thread > agent).
- * `undefined` for `modelSelection` means "leave thread row as-is" — older
- * clients that never saw the field still get the thread/agent fall-through.
+ * `null` or `undefined` for `modelSelection` means "inherit" — older clients
+ * that never saw the field and newer clients explicitly choosing "Use default"
+ * both get the thread/agent fall-through.
  *
  * When the thread carries an eager-pinned provider but that provider has since
  * been deleted, this throws `providerDeleted()` rather than silently falling
@@ -127,7 +151,7 @@ async function resolveRunModelOverride(
       providerId: modelSelection.modelProviderId,
       selectedModel: modelSelection.selectedModel,
     };
-  } else if (modelSelection === undefined) {
+  } else {
     const [thread] = await globalThis.services.db
       .select({
         modelProviderId: chatThreads.modelProviderId,
@@ -413,16 +437,17 @@ const router = tsr.router(chatMessagesContract, {
       };
     }
 
-    // resolveOrg already fetches org_metadata — capture the tier here so the
-    // service's Round 2 can skip its duplicate getOrgMetadata call. Resolved
-    // up front (rather than only inside the modelSelection branch) so the
-    // orphan-pin detection in resolveRunModelOverride can scope its provider
-    // lookup to the caller's org.
-    const { org: callerOrg } = await resolveOrg(authCtx);
-    const preloadedOrgTier: { orgId: string; tier: string } = {
-      orgId: callerOrg.orgId,
-      tier: callerOrg.tier,
-    };
+    // resolveOrgWithMetadata already fetches org_metadata — capture the tier
+    // and DB-backed credits here so createZeroRun can skip duplicate reads.
+    // Resolved up front (rather than only inside the modelSelection branch) so
+    // the orphan-pin detection in resolveRunModelOverride can scope its
+    // provider lookup to the caller's org.
+    const { org: callerOrg, orgMeta: callerOrgMeta } =
+      await resolveOrgWithMetadata(authCtx);
+    const preloadedOrgMetadata = buildPreloadedOrgMetadata({
+      org: callerOrg,
+      orgMeta: callerOrgMeta,
+    });
 
     // Validate per-run model selection belongs to the caller's org before
     // we trust it to write onto the thread or override the agent's default.
@@ -599,7 +624,7 @@ const router = tsr.router(chatMessagesContract, {
         callbacks: [chatCallback],
         chatThreadId: threadId,
         preloadedAgent: agent,
-        preloadedOrgTier,
+        preloadedOrgMetadata,
         spanDims: dims,
         userProfile: userProfileFromClaims(authCtx),
       });

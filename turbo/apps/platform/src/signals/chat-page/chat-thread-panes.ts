@@ -120,6 +120,21 @@ const resolvePaneThread$ = command(
     const { spec, thread, isNew, matchingOptimistic } = args;
 
     if (matchingOptimistic) {
+      // Transfer optimistic messages from the local pending thread to the
+      // remote-backed thread's delta so messages sent during the optimistic
+      // window survive the handoff. On a new thread the remote initial page
+      // may not yet include the server-committed message (waitUntil race),
+      // and fetchNextPage$ exits early when sinceId is undefined.
+      const optimisticGroups = await get(
+        matchingOptimistic.pendingThread.groupedChatMessages$,
+      );
+      signal.throwIfAborted();
+      for (const group of optimisticGroups) {
+        for (const msg of group.messages) {
+          set(thread.insertOptimisticMessage$, msg);
+        }
+      }
+
       await get(thread.groupedChatMessages$);
       signal.throwIfAborted();
       set(thread.hideSkeleton$);

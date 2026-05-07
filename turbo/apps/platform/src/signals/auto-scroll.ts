@@ -1,10 +1,13 @@
-import { command, state } from "ccstate";
+import { command, state, type State } from "ccstate";
 import { onRef } from "./utils.ts";
 import { logger } from "./log.ts";
 
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD = 10;
 const USER_INPUT_WINDOW_MS = 200;
+const KEY_SCROLL_STEP_PX = 72;
+
+export type ScrollStepDirection = "up" | "down";
 
 // Persists a user's last non-bottom scroll position across container
 // re-binds (e.g. when switching between parallel chat threads). Keyed by
@@ -43,6 +46,11 @@ function isUserScrollKey(key: string): boolean {
     key === "End" ||
     key === " "
   );
+}
+
+function clampScrollTop(el: HTMLElement, scrollTop: number): number {
+  const maxScrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+  return Math.max(0, Math.min(scrollTop, maxScrollTop));
 }
 
 function scrollInfo(el: HTMLElement) {
@@ -188,6 +196,109 @@ function buildResizeHandler(ctx: ResizeHandlerContext) {
   };
 }
 
+interface ScrollByCommandDeps {
+  internalScrollContainer$: State<HTMLElement | null>;
+  autoScrollDisabled$: State<boolean>;
+  id: string | undefined;
+  lastKnownScrollTop: { v: number };
+  markUserInput: () => void;
+}
+
+function createScrollByCommand(deps: ScrollByCommandDeps) {
+  return command(({ get, set }, direction: ScrollStepDirection) => {
+    const scrollEl = get(deps.internalScrollContainer$);
+    if (!scrollEl) {
+      return false;
+    }
+    const delta = direction === "up" ? -KEY_SCROLL_STEP_PX : KEY_SCROLL_STEP_PX;
+    const nextScrollTop = clampScrollTop(scrollEl, scrollEl.scrollTop + delta);
+    if (nextScrollTop === scrollEl.scrollTop) {
+      return false;
+    }
+
+    deps.markUserInput();
+    scrollEl.scrollTop = nextScrollTop;
+
+    const distanceFromBottom =
+      scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+    if (distanceFromBottom <= AT_BOTTOM_THRESHOLD) {
+      set(deps.autoScrollDisabled$, false);
+      if (deps.id !== undefined) {
+        set(clearCachedScrollTop$, deps.id);
+      }
+    } else if (direction === "up") {
+      set(deps.autoScrollDisabled$, true);
+      if (deps.id !== undefined) {
+        set(setCachedScrollTop$, deps.id, scrollEl.scrollTop);
+      }
+    } else if (deps.id !== undefined && get(deps.autoScrollDisabled$)) {
+      set(setCachedScrollTop$, deps.id, scrollEl.scrollTop);
+    }
+    deps.lastKnownScrollTop.v = scrollEl.scrollTop;
+    return true;
+  });
+}
+
+interface PrepareKeyboardScrollCommandDeps {
+  internalScrollContainer$: State<HTMLElement | null>;
+  markUserInput: () => void;
+}
+
+function createPrepareKeyboardScrollCommand(
+  deps: PrepareKeyboardScrollCommandDeps,
+) {
+  return command(({ get }) => {
+    const scrollEl = get(deps.internalScrollContainer$);
+    if (!scrollEl) {
+      return false;
+    }
+    deps.markUserInput();
+    if (!scrollEl.contains(scrollEl.ownerDocument.activeElement)) {
+      scrollEl.focus({ preventScroll: true });
+    }
+    return true;
+  });
+}
+
+interface RecordScrollHeightForPrependCommandDeps {
+  internalScrollContainer$: State<HTMLElement | null>;
+  restoreState: RestoreState;
+}
+
+function createRecordScrollHeightForPrependCommand(
+  deps: RecordScrollHeightForPrependCommandDeps,
+) {
+  return command(({ get }) => {
+    const el = get(deps.internalScrollContainer$);
+    if (el) {
+      deps.restoreState.pendingPrependScrollHeight = el.scrollHeight;
+      L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
+    }
+  });
+}
+
+interface ScrollToTopCommandDeps {
+  internalScrollContainer$: State<HTMLElement | null>;
+  autoScrollDisabled$: State<boolean>;
+  restoreState: RestoreState;
+  id: string | undefined;
+}
+
+function createScrollToTopCommand(deps: ScrollToTopCommandDeps) {
+  return command(({ get, set }) => {
+    const scrollEl = get(deps.internalScrollContainer$);
+    if (!scrollEl) {
+      return;
+    }
+    set(deps.autoScrollDisabled$, true);
+    deps.restoreState.suppressNextScrollToBottom = false;
+    if (deps.id !== undefined) {
+      set(setCachedScrollTop$, deps.id, 0);
+    }
+    scrollEl.scrollTop = 0;
+  });
+}
+
 /**
  * Factory that creates scroll-management signals for a scrollable container.
  *
@@ -219,6 +330,13 @@ export function createScrollSignals(id?: string) {
     suppressNextScrollToBottom: false,
     pendingPrependScrollHeight: null,
   };
+  const lastKnownScrollTop = { v: 0 };
+  const lastUserInputAt = { v: 0 };
+
+  const markUserInput = () => {
+    lastUserInputAt.v = performance.now();
+    restoreState.suppressNextScrollToBottom = false;
+  };
 
   const setScrollContainer$ = onRef(
     command(({ get, set }, el: HTMLElement, signal: AbortSignal) => {
@@ -235,13 +353,8 @@ export function createScrollSignals(id?: string) {
         L.debug("container bound → restoring", `id=${id}`, `saved=${saved}`);
       }
 
-      const lastKnownScrollTop = { v: el.scrollTop };
-      const lastUserInputAt = { v: 0 };
-
-      const markUserInput = () => {
-        lastUserInputAt.v = performance.now();
-        restoreState.suppressNextScrollToBottom = false;
-      };
+      lastKnownScrollTop.v = el.scrollTop;
+      lastUserInputAt.v = 0;
 
       const ctx: ScrollHandlerContext = {
         el,
@@ -311,30 +424,30 @@ export function createScrollSignals(id?: string) {
     scrollEl.scrollTop = scrollEl.scrollHeight;
   });
 
-  // Snapshot the container's current scrollHeight before prepending messages.
-  // The ResizeObserver callback will detect the resulting height increase and
-  // compensate scrollTop so the viewport stays anchored on the same content.
-  const recordScrollHeightForPrepend$ = command(({ get }) => {
-    const el = get(internalScrollContainer$);
-    if (el) {
-      restoreState.pendingPrependScrollHeight = el.scrollHeight;
-      L.debug("recordScrollHeightForPrepend$", `height=${el.scrollHeight}`);
-    }
+  const scrollBy$ = createScrollByCommand({
+    internalScrollContainer$,
+    autoScrollDisabled$,
+    id,
+    lastKnownScrollTop,
+    markUserInput,
   });
 
-  // Scrolling to top is an explicit opt-out of auto-scroll — disable it so
-  // ResizeObserver doesn't snap back to the bottom when new messages arrive.
-  const scrollToTop$ = command(({ get, set }) => {
-    const scrollEl = get(internalScrollContainer$);
-    if (!scrollEl) {
-      return;
-    }
-    set(autoScrollDisabled$, true);
-    restoreState.suppressNextScrollToBottom = false;
-    if (id !== undefined) {
-      set(setCachedScrollTop$, id, 0);
-    }
-    scrollEl.scrollTop = 0;
+  const prepareKeyboardScroll$ = createPrepareKeyboardScrollCommand({
+    internalScrollContainer$,
+    markUserInput,
+  });
+
+  const recordScrollHeightForPrepend$ =
+    createRecordScrollHeightForPrependCommand({
+      internalScrollContainer$,
+      restoreState,
+    });
+
+  const scrollToTop$ = createScrollToTopCommand({
+    internalScrollContainer$,
+    autoScrollDisabled$,
+    restoreState,
+    id,
   });
 
   return {
@@ -342,6 +455,8 @@ export function createScrollSignals(id?: string) {
     autoScroll$,
     scrollToBottom$,
     scrollToTop$,
+    scrollBy$,
+    prepareKeyboardScroll$,
     recordScrollHeightForPrepend$,
   };
 }

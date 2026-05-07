@@ -12,7 +12,7 @@ import { listZeroConnectors } from "../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
 
-type OfficialGenerationType = "voice";
+type OfficialGenerationType = "image" | "voice";
 type DoctorGenerationType = ConnectorGenerationType | OfficialGenerationType;
 
 interface BuiltInGenerationOption {
@@ -22,6 +22,10 @@ interface BuiltInGenerationOption {
 const BUILT_IN_GENERATION_OPTIONS: Partial<
   Record<DoctorGenerationType, BuiltInGenerationOption>
 > = {
+  image: {
+    description:
+      "If the user did not explicitly request a specific connector or provider, you can use the official generation capability. Run `zero official generate image -h` for options.",
+  },
   voice: {
     description:
       "If the user did not explicitly request a specific connector or provider, you can use the official generation capability. Run `zero official generate voice -h` for options.",

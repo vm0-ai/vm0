@@ -370,4 +370,82 @@ describe("chat page keyboard shortcuts", () => {
       expect(scrollContainer!.scrollTop).toBe(0);
     });
   });
+
+  it("plain up/down keys hand off to native message-list scrolling outside the composer", async () => {
+    mockThreadList([{ id: "thread-arrow-scroll", title: "Arrow scroll test" }]);
+    server.use(
+      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "user",
+              content: "Plain arrow scroll test",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          id: "thread-arrow-scroll",
+          title: "Arrow scroll test",
+          agentId: AGENT_ID,
+          chatMessages: [],
+          latestSessionId: null,
+          activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-arrow-scroll" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Plain arrow scroll test")).toBeInTheDocument();
+    });
+
+    const scrollContainer = document.querySelector<HTMLElement>(
+      "[data-scroll-container]",
+    );
+    expect(scrollContainer).not.toBeNull();
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      get: () => {
+        return 1200;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      get: () => {
+        return 300;
+      },
+      configurable: true,
+    });
+
+    expect(fireEvent.keyDown(document, { key: "ArrowDown" })).toBeTruthy();
+    expect(document.activeElement).toBe(scrollContainer);
+
+    const activeBeforeUp = document.activeElement;
+    expect(fireEvent.keyDown(document, { key: "ArrowUp" })).toBeTruthy();
+    expect(document.activeElement).toBe(activeBeforeUp);
+
+    const composer = document.querySelector("textarea");
+    expect(composer).not.toBeNull();
+    composer!.focus();
+    fireEvent.keyDown(composer!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(composer);
+
+    const outsideButton = document.createElement("button");
+    document.body.appendChild(outsideButton);
+    outsideButton.focus();
+    fireEvent.keyDown(outsideButton, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(outsideButton);
+    outsideButton.remove();
+  });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { randomUUID } from "crypto";
 import {
   testContext,
   uniqueId,
@@ -8,6 +9,7 @@ import {
   createTestCompose,
   createTestSchedule,
   findTestRunRecord,
+  findTestRunsByUserAndPrompt,
   findTestRunnerJobEntry,
   findTestZeroRun,
   findTestRunCallbacks,
@@ -373,6 +375,46 @@ describe("createZeroRun() — service-only parameters", () => {
       const zeroRun = await findTestZeroRun(result.runId);
       expect(zeroRun).toBeDefined();
       expect(zeroRun!.triggerSource).toBe("web");
+    });
+
+    it("should persist zero_runs row before returning for queued runs", async () => {
+      await createZeroRun(baseParams({ prompt: uniqueId("occupying-run") }));
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+
+      const result = await createZeroRun(
+        baseParams({ prompt: uniqueId("queued-run"), triggerSource: "web" }),
+      );
+
+      expect(result.status).toBe("queued");
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.triggerSource).toBe("web");
+    });
+
+    it("should roll back the agent run if zero_runs metadata fails", async () => {
+      const prompt = uniqueId("metadata-failure");
+
+      await expect(
+        createZeroRun(baseParams({ prompt, chatThreadId: randomUUID() })),
+      ).rejects.toThrow();
+
+      const runs = await findTestRunsByUserAndPrompt(user.userId, prompt);
+      expect(runs).toHaveLength(0);
+    });
+
+    it("should roll back the queued run if zero_runs metadata fails", async () => {
+      await createZeroRun(baseParams({ prompt: uniqueId("occupying-run") }));
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+      const prompt = uniqueId("queued-metadata-failure");
+
+      await expect(
+        createZeroRun(baseParams({ prompt, chatThreadId: randomUUID() })),
+      ).rejects.toThrow();
+
+      const runs = await findTestRunsByUserAndPrompt(user.userId, prompt);
+      expect(runs).toHaveLength(0);
     });
 
     it("should persist triggerSource for all sources before dispatch", async () => {

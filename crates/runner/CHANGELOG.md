@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.100.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.4...runner-rs-v0.100.5) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** centralize ownership transitions ([#12034](https://github.com/vm0-ai/vm0/issues/12034)) ([03cd98f](https://github.com/vm0-ai/vm0/commit/03cd98f32d2a42fd02d6fa1cdb1c34e4bea70ca0))
+
+## [0.100.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.3...runner-rs-v0.100.4) (2026-05-07)
+
+
+### Bug Fixes
+
+* **runner:** select usage parser from cli agent type ([#12030](https://github.com/vm0-ai/vm0/issues/12030)) ([6cdd8ef](https://github.com/vm0-ai/vm0/commit/6cdd8ef2e777139fdef56d8e36c589a38be64e58))
+
+## [0.100.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.2...runner-rs-v0.100.3) (2026-05-07)
+
+
+### Documentation
+
+* **runner:** document local command entrypoints ([#12010](https://github.com/vm0-ai/vm0/issues/12010)) ([26851da](https://github.com/vm0-ai/vm0/commit/26851daf16b347ae75491aa5907f186868ca8cb8))
+
+## [0.100.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.1...runner-rs-v0.100.2) (2026-05-06)
+
+
+### Bug Fixes
+
+* **runner:** disable r2 response checksum warnings ([#11975](https://github.com/vm0-ai/vm0/issues/11975)) ([18a5ffd](https://github.com/vm0-ai/vm0/commit/18a5ffd955372b33f5af6db6deecaef964fe194c))
+
 ## [0.100.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.0...runner-rs-v0.100.1) (2026-05-06)
 
 

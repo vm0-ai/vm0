@@ -140,6 +140,7 @@ Examples:
   Set up a schedule?     zero schedule setup --help
   Update yourself?       zero agent --help
   Manage custom skills?  zero skill --help
+  Generate image?        zero official generate image --help
   Generate voice?        zero official generate voice --help
   Check your identity?   zero whoami`,
   );

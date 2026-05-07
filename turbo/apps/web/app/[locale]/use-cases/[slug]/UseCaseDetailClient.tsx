@@ -311,7 +311,11 @@ export function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                         {t(`content.${slug}.integrations.${i}.description`)}
                       </div>
                       <a
-                        href={`${platformUrl}/connectors/${integration.connector.id}/connect`}
+                        href={
+                          integration.connector.url
+                            ? `${platformUrl}${integration.connector.url}`
+                            : `${platformUrl}/connectors/${integration.connector.id}/connect`
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
                         className="uc-connect-btn"

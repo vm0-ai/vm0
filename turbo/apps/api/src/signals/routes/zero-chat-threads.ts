@@ -169,6 +169,7 @@ const appendPendingMessageInner$ = command(
         userId: auth.userId,
         content: bodyResult.data.content ?? null,
         attachments: bodyResult.data.attachments ?? null,
+        clientMessageId: bodyResult.data.clientMessageId ?? null,
       },
       signal,
     );

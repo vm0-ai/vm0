@@ -37,6 +37,7 @@ describe("POST /api/zero/uploads/complete", () => {
 
   async function zeroTokenWithRun(options?: {
     withChatThread?: boolean;
+    triggerSource?: string;
   }): Promise<{
     token: string;
     runId: string;
@@ -49,7 +50,12 @@ describe("POST /api/zero/uploads/complete", () => {
     const { runId } = await seedTestRun(
       user.userId,
       composeId,
-      threadId ? { chatThreadId: threadId } : undefined,
+      threadId
+        ? {
+            chatThreadId: threadId,
+            triggerSource: options?.triggerSource ?? "web",
+          }
+        : { triggerSource: options?.triggerSource ?? "web" },
     );
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,
@@ -104,7 +110,7 @@ describe("POST /api/zero/uploads/complete", () => {
       filename: "report.pdf",
       contentType: "application/pdf",
       sizeBytes: 1234,
-      url: `http://localhost:3000/f/${encodeURIComponent(user.userId)}/${fileId}/report.pdf`,
+      url: `http://localhost:3000/f/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/${fileId}/report.pdf`,
       metadata: { s3Key },
     });
   });

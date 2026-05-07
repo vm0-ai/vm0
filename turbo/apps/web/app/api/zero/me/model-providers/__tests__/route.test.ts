@@ -386,6 +386,142 @@ describe("Personal-tier (BYOK) model provider routes", () => {
       expect(response.status).toBe(404);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // codex-oauth-token auth_json paste flow (#12024) — mirrors the org-side
+  // suite in app/api/zero/model-providers/__tests__/route.test.ts.
+  // ---------------------------------------------------------------------------
+
+  describe("codex-oauth-token auth_json paste flow (personal scope)", () => {
+    function base64UrlEncode(input: string): string {
+      return Buffer.from(input, "utf-8")
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+    }
+
+    function makeJwt(payload: Record<string, unknown>): string {
+      const header = base64UrlEncode(
+        JSON.stringify({ alg: "RS256", typ: "JWT" }),
+      );
+      const body = base64UrlEncode(JSON.stringify(payload));
+      return `${header}.${body}.fake-signature`;
+    }
+
+    function makeIdToken(opts: {
+      accountId: string;
+      planType: string;
+      workspaceName?: string;
+    }): string {
+      const auth: Record<string, unknown> = {
+        chatgpt_account_id: opts.accountId,
+        chatgpt_plan_type: opts.planType,
+      };
+      if (opts.workspaceName !== undefined) {
+        auth.organization = { title: opts.workspaceName };
+      }
+      return makeJwt({
+        "https://api.openai.com/auth": auth,
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+    }
+
+    function makeAuthJson(overrides?: { planType?: string }): string {
+      const accessExp = Math.floor(Date.now() / 1000) + 7200;
+      return JSON.stringify({
+        OPENAI_API_KEY: null,
+        tokens: {
+          access_token: makeJwt({ exp: accessExp }),
+          refresh_token: "rt_personal_synthetic_high_entropy",
+          account_id: "ws_acct_plain",
+          id_token: makeIdToken({
+            accountId: "ws_acct_from_id_token_personal",
+            planType: overrides?.planType ?? "plus",
+            workspaceName: "Personal Acme",
+          }),
+        },
+      });
+    }
+
+    async function pasteAuthJson(rawJson: string): Promise<Response> {
+      const request = createTestRequest(upsertUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: rawJson },
+        }),
+      });
+      return POST(request);
+    }
+
+    it("happy path: paste valid auth.json persists derived secrets + metadata", async () => {
+      const response = await pasteAuthJson(makeAuthJson());
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.provider.type).toBe("codex-oauth-token");
+      expect(data.provider.authMethod).toBe("auth_json");
+      expect(data.provider.workspaceName).toBe("Personal Acme");
+      expect(data.provider.planType).toBe("plus");
+      expect(data.provider.needsReconnect).toBe(false);
+    });
+
+    it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID on malformed JSON", async () => {
+      const response = await pasteAuthJson("{ not json");
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("CODEX_AUTH_JSON_SHAPE_INVALID");
+    });
+
+    it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID when tokens.refresh_token missing", async () => {
+      const incomplete = JSON.stringify({
+        tokens: {
+          access_token: makeJwt({ exp: Date.now() }),
+          // refresh_token omitted
+          account_id: "ws_acct",
+          id_token: makeIdToken({ accountId: "ws_acct", planType: "plus" }),
+        },
+      });
+      const response = await pasteAuthJson(incomplete);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("CODEX_AUTH_JSON_SHAPE_INVALID");
+    });
+
+    it("returns 400 CODEX_FREE_PLAN_REJECTED for free-plan accounts", async () => {
+      const response = await pasteAuthJson(makeAuthJson({ planType: "free" }));
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("CODEX_FREE_PLAN_REJECTED");
+    });
+
+    it("returns 400 BAD_REQUEST when CODEX_AUTH_JSON is missing from secrets", async () => {
+      const request = createTestRequest(upsertUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: {},
+        }),
+      });
+      const response = await POST(request);
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error.code).toBe("BAD_REQUEST");
+    });
+
+    it("returns 404 when CodexOauthProvider feature switch is off", async () => {
+      mockIsFeatureEnabled.mockImplementation((key: FeatureSwitchKey) => {
+        // PersonalModelProvider stays on; only CodexOauthProvider gates this branch
+        return key !== FeatureSwitchKey.CodexOauthProvider;
+      });
+      const response = await pasteAuthJson(makeAuthJson());
+      expect(response.status).toBe(404);
+    });
+  });
 });
 
 // ===========================================================================

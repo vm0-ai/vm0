@@ -77,6 +77,18 @@ export const setDefaultOrgModelProvider$ = command(
 );
 
 /**
+ * Force a refetch of `orgModelProviders$`. Used by higher-level commands
+ * that mutate provider state through a different code path (e.g. the codex
+ * auth.json paste flow in #11980, which lives in settings/ to share dialog
+ * state with the paste dialog).
+ */
+export const reloadOrgModelProviders$ = command(({ set }) => {
+  set(internalReloadOrgModelProviders$, (x) => {
+    return x + 1;
+  });
+});
+
+/**
  * Delete an org model provider by type (admin only).
  */
 export const deleteOrgModelProvider$ = command(

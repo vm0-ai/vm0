@@ -85,7 +85,7 @@ describe("POST /api/zero/integrations/telegram/upload-file/init", () => {
     expect(body.uploadId).toMatch(/^[0-9a-f-]{36}$/);
     expect(body.uploadUrl).toBeTypeOf("string");
     expect(body.fileUrl).toContain(
-      `/f/${encodeURIComponent(user.userId)}/${body.uploadId}/daily_report.pdf`,
+      `/f/${encodeURIComponent(user.userId.replace(/^user_/, ""))}/${body.uploadId}/daily_report.pdf`,
     );
 
     const putCall = context.mocks.s3.generatePresignedPutUrl.mock.calls[0];

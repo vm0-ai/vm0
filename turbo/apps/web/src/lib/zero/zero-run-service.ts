@@ -44,6 +44,10 @@ import {
 } from "./zero-run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { buildZeroExecutionContext } from "./build-zero-context";
+import {
+  persistZeroRunMetadata,
+  type ZeroRunMetadataValues,
+} from "./zero-run-metadata";
 import { buildAutoMemoryArtifact } from "./memory";
 import { getOrgMetadata, type OrgMetadata } from "./org/org-metadata-service";
 import { isConcurrentRunLimit } from "@vm0/api-services/errors";
@@ -106,6 +110,10 @@ export interface ZeroAgentForRun {
    */
   preferPersonalProvider: boolean;
 }
+
+type OrgAdmissionMetadata = Pick<OrgMetadata, "orgId" | "tier"> & {
+  credits?: number;
+};
 
 /**
  * Fetch the union projection of zero_agents needed to create a run. Shared by
@@ -187,13 +195,12 @@ export interface CreateZeroRunParams {
    */
   preloadedAgent?: ZeroAgentForRun;
   /**
-   * Pre-fetched org tier scoped to the caller's active org. Round 2 uses it
-   * only when resolved.orgId === preloadedOrgTier.orgId (cross-org composes
-   * still read fresh org_metadata). Typed as a structural Pick so that the
-   * caller cannot accidentally populate a fake .credits — and so future code
-   * cannot read .credits via this preload.
+   * Pre-fetched org metadata scoped to the caller's active org. Round 2 uses it
+   * only when resolved.orgId === preloadedOrgMetadata.orgId (cross-org composes
+   * still read fresh org_metadata). `credits` is optional because brand-new org
+   * fallback metadata is synthetic and should not bypass the credit row read.
    */
-  preloadedOrgTier?: Pick<OrgMetadata, "orgId" | "tier">;
+  preloadedOrgMetadata?: OrgAdmissionMetadata;
   /**
    * When present, each Phase-1 sub-stage emits a span to the `sandbox-op-log`
    * Axiom dataset with `source: "web-chat"`, carrying these dimensions. The
@@ -241,10 +248,10 @@ function loadZeroAgentForRun(
   return preloaded ? Promise.resolve(preloaded) : fetchZeroAgentForRun(agentId);
 }
 
-function loadOrgTier(
-  preloaded: Pick<OrgMetadata, "orgId" | "tier"> | undefined,
+function loadOrgAdmissionMetadata(
+  preloaded: OrgAdmissionMetadata | undefined,
   orgId: string,
-): Promise<Pick<OrgMetadata, "orgId" | "tier">> {
+): Promise<OrgAdmissionMetadata> {
   if (preloaded && preloaded.orgId === orgId) {
     return Promise.resolve(preloaded);
   }
@@ -299,6 +306,20 @@ function resolveEffectiveModel(
   };
 }
 
+function buildZeroRunMetadata(
+  params: CreateZeroRunParams,
+  runParams: CreateRunParams,
+): ZeroRunMetadataValues {
+  return {
+    triggerSource: params.triggerSource,
+    scheduleId: params.scheduleId,
+    triggerAgentId: params.triggerAgentId,
+    chatThreadId: params.chatThreadId,
+    modelProvider: params.modelProvider,
+    selectedModel: runParams.selectedModelOverride,
+  };
+}
+
 /** Context needed by insertRunWithAdvisoryLock — carved out of createZeroRunRecord. */
 interface InsertRunWithAdvisoryLockParams {
   resolved: Awaited<ReturnType<typeof resolveStartRunCompose>>;
@@ -334,6 +355,7 @@ async function insertRunWithAdvisoryLock(
     emit,
     stamp,
   } = ctx;
+  const zeroRunMetadata = buildZeroRunMetadata(params, runParams);
 
   let run;
   try {
@@ -366,21 +388,29 @@ async function insertRunWithAdvisoryLock(
         });
       });
       emit(CHAT_REQUEST_OPS.create_run_insert_run_record, insertT.ms);
+
+      stamp({ run_id: insertT.result.id });
+      const persistT = await timed(async () => {
+        return persistZeroRunMetadata(tx, insertT.result.id, zeroRunMetadata);
+      });
+      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
+
       return insertT.result;
     });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
-      const queueResult = await enqueueRun(runParams);
+      let persistDurationMs: number | undefined;
+      const queueResult = await enqueueRun(runParams, {
+        zeroRunMetadata,
+        onZeroRunMetadataPersisted: (durationMs) => {
+          persistDurationMs = durationMs;
+        },
+      });
 
       stamp({ run_id: queueResult.runId });
-
-      const persistT = await timed(async () => {
-        return persistZeroRunMetadata(queueResult.runId, params, {
-          selectedModelOverride: runParams.selectedModelOverride,
-          modelProviderId: runParams.modelProviderId,
-        });
-      });
-      emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
+      if (persistDurationMs !== undefined) {
+        emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistDurationMs);
+      }
 
       return {
         runId: queueResult.runId,
@@ -393,16 +423,6 @@ async function insertRunWithAdvisoryLock(
   }
 
   const transactionTime = Date.now();
-
-  stamp({ run_id: run.id });
-
-  const persistT = await timed(async () => {
-    return persistZeroRunMetadata(run.id, params, {
-      selectedModelOverride: runParams.selectedModelOverride,
-      modelProviderId: runParams.modelProviderId,
-    });
-  });
-  emit(CHAT_REQUEST_OPS.persist_zero_run_metadata, persistT.ms);
 
   const record: CreateRunRecordResult = {
     run: { id: run.id, createdAt: run.createdAt },
@@ -560,7 +580,10 @@ async function createZeroRunRecord(
   // composes (rare; also caught by authorizeCompose below) fall through to
   // a fresh SELECT because the preload's tier is scoped to authCtx.orgId.
   const round2OrgMeta = timed(async () => {
-    return loadOrgTier(params.preloadedOrgTier, resolved.orgId);
+    return loadOrgAdmissionMetadata(
+      params.preloadedOrgMetadata,
+      resolved.orgId,
+    );
   });
   const round2UserContext = timed(async () => {
     return loadRunUserContext(resolved.orgId, params.userId);
@@ -695,7 +718,12 @@ async function createZeroRunRecord(
   }
 
   const round3Credits = timed(async () => {
-    return checkOrgCreditsForRunAdmission(admissionContext);
+    if (orgMeta.credits === undefined) {
+      return checkOrgCreditsForRunAdmission(admissionContext, db);
+    }
+    return checkOrgCreditsForRunAdmission(admissionContext, db, {
+      preloadedOrgCredits: { orgId: orgMeta.orgId, credits: orgMeta.credits },
+    });
   });
   const round3ModelProvider = timed(async () => {
     return checkModelProviderConfigured(
@@ -942,27 +970,6 @@ export async function createZeroRun(
     sessionId: result.sessionId,
     markResponseReady,
   };
-}
-
-/**
- * Persist zero-layer metadata to zero_runs table.
- * Called eagerly during createZeroRunRecord so that activity queries see the
- * correct triggerSource immediately (before dispatch completes).
- */
-async function persistZeroRunMetadata(
-  runId: string,
-  params: CreateZeroRunParams,
-  modelOverride?: { selectedModelOverride?: string; modelProviderId?: string },
-): Promise<void> {
-  await globalThis.services.db.insert(zeroRuns).values({
-    id: runId,
-    triggerSource: params.triggerSource,
-    scheduleId: params.scheduleId ?? null,
-    triggerAgentId: params.triggerAgentId ?? null,
-    chatThreadId: params.chatThreadId ?? null,
-    modelProvider: params.modelProvider ?? null,
-    selectedModel: modelOverride?.selectedModelOverride ?? null,
-  });
 }
 
 /**

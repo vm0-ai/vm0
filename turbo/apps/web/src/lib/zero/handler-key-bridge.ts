@@ -16,7 +16,7 @@ import { type ModelProviderType } from "@vm0/api-contracts/contracts/model-provi
 export const MODEL_PROVIDER_HANDLER_KEY: Partial<
   Record<ModelProviderType, string>
 > = {
-  "chatgpt-oauth-token": "chatgpt-oauth",
+  "codex-oauth-token": "codex-oauth",
 };
 
 /**
@@ -26,7 +26,7 @@ export const MODEL_PROVIDER_HANDLER_KEY: Partial<
  * default connector source.
  */
 export const HANDLER_KEY_SOURCE_TYPE: Record<string, "model-provider"> = {
-  "chatgpt-oauth": "model-provider",
+  "codex-oauth": "model-provider",
 };
 
 /**
@@ -38,7 +38,7 @@ export const SOURCE_HANDLER_TO_PROVIDER_TYPE: Record<
   string,
   ModelProviderType
 > = {
-  "chatgpt-oauth": "chatgpt-oauth-token",
+  "codex-oauth": "codex-oauth-token",
 };
 
 /**

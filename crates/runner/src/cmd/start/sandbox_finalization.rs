@@ -14,11 +14,11 @@ use tracing::{info, warn};
 
 use super::idle_lifecycle::{
     SharedIdlePool, destroy_idle_jobs_and_wait, destroy_idle_payload_and_wait,
-    set_idle_status_snapshot,
 };
 use super::job_lifecycle::{
     ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady, RunCleanupState,
 };
+use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, maybe_panic_outer_job};
 use crate::idle_pool::{
@@ -228,7 +228,10 @@ pub(super) async fn finalize_sandbox_for_completion(
                     // FirecrackerNotInStatus warnings.
                     let snapshot = pool.status_snapshot();
                     drop(pool);
-                    set_idle_status_snapshot(&status, snapshot).await;
+                    let ownership = OwnershipTransitions::new(status.as_ref());
+                    ownership
+                        .publish_idle_status_after_pool_transfer(snapshot)
+                        .await;
                     park_notify.notify_one();
                     BudgetOwnership::idle_owned()
                 }
@@ -243,7 +246,10 @@ pub(super) async fn finalize_sandbox_for_completion(
                     );
                     let snapshot = pool.status_snapshot();
                     drop(pool);
-                    set_idle_status_snapshot(&status, snapshot).await;
+                    let ownership = OwnershipTransitions::new(status.as_ref());
+                    ownership
+                        .publish_idle_status_after_pool_transfer(snapshot)
+                        .await;
                     // Notify immediately — session is already in pool.
                     // Don't wait for stop_and_destroy which can be slow.
                     park_notify.notify_one();

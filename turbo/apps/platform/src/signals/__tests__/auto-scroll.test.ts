@@ -4,6 +4,25 @@ import { createScrollSignals } from "../auto-scroll.ts";
 
 const context = testContext();
 
+function setScrollableSize(
+  container: HTMLElement,
+  scrollHeight: number,
+  clientHeight: number,
+) {
+  Object.defineProperty(container, "scrollHeight", {
+    get: () => {
+      return scrollHeight;
+    },
+    configurable: true,
+  });
+  Object.defineProperty(container, "clientHeight", {
+    get: () => {
+      return clientHeight;
+    },
+    configurable: true,
+  });
+}
+
 // VC-SCROLL-001: ResizeObserver observes firstElementChild, not the container
 describe("createScrollSignals - ResizeObserver targets inner content", () => {
   it("observes firstElementChild when it exists (VC-SCROLL-001)", () => {
@@ -169,6 +188,69 @@ describe("createScrollSignals - browser-initiated scroll does not disable auto-s
     // autoScroll$ should still execute — auto-scroll was NOT disabled
     context.store.set(autoScroll$);
     expect(container.scrollTop).toBe(1000);
+  });
+});
+
+describe("createScrollSignals - keyboard step scrolling", () => {
+  it("scrollBy$ scrolls upward and disables auto-scroll", () => {
+    const container = document.createElement("div");
+    const inner = document.createElement("div");
+    container.appendChild(inner);
+    document.body.appendChild(container);
+    setScrollableSize(container, 1000, 300);
+
+    const { setScrollContainer$, scrollBy$, autoScroll$ } =
+      createScrollSignals();
+    context.store.set(setScrollContainer$, container);
+
+    container.scrollTop = 500;
+    container.dispatchEvent(new Event("scroll"));
+
+    expect(context.store.set(scrollBy$, "up")).toBeTruthy();
+    expect(container.scrollTop).toBe(428);
+
+    context.store.set(autoScroll$);
+    expect(container.scrollTop).toBe(428);
+  });
+
+  it("scrollBy$ scrolls downward and re-enables auto-scroll at the bottom", () => {
+    const container = document.createElement("div");
+    const inner = document.createElement("div");
+    container.appendChild(inner);
+    document.body.appendChild(container);
+    setScrollableSize(container, 1000, 300);
+
+    const { setScrollContainer$, scrollBy$, autoScroll$ } =
+      createScrollSignals();
+    context.store.set(setScrollContainer$, container);
+
+    container.scrollTop = 500;
+    container.dispatchEvent(new Event("scroll"));
+    container.dispatchEvent(new Event("wheel"));
+    container.scrollTop = 300;
+    container.dispatchEvent(new Event("scroll"));
+
+    container.scrollTop = 650;
+    expect(context.store.set(scrollBy$, "down")).toBeTruthy();
+    expect(container.scrollTop).toBe(700);
+
+    context.store.set(autoScroll$);
+    expect(container.scrollTop).toBe(1000);
+  });
+
+  it("scrollBy$ is a no-op when the container cannot scroll further", () => {
+    const container = document.createElement("div");
+    const inner = document.createElement("div");
+    container.appendChild(inner);
+    document.body.appendChild(container);
+    setScrollableSize(container, 1000, 300);
+
+    const { setScrollContainer$, scrollBy$ } = createScrollSignals();
+    context.store.set(setScrollContainer$, container);
+
+    container.scrollTop = 0;
+    expect(context.store.set(scrollBy$, "up")).toBeFalsy();
+    expect(container.scrollTop).toBe(0);
   });
 });
 

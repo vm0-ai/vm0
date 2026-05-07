@@ -4,7 +4,6 @@ import {
   getEnvironmentMapping,
   getDefaultModel,
   hasAuthMethods,
-  getSecretNamesForAuthMethod,
   getSecretsForAuthMethod,
   MODEL_PROVIDER_TYPES,
   getVm0ConcreteProviderType,
@@ -169,7 +168,7 @@ interface ModelProviderSecretResult {
    *  Used for model usage billing. */
   selectedModel?: string;
   /** Maps secret/env-var names → connector handler key for refresh-capable
-   *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "chatgpt-oauth").
+   *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "codex-oauth").
    *  Merged into the wire `secretConnectorMap` AFTER `filterSecretConnectorMap`
    *  runs — the filter would otherwise drop these because they also appear in
    *  `secrets`, but model-provider entries ARE the source, not an override target. */
@@ -178,7 +177,7 @@ interface ModelProviderSecretResult {
 
 /**
  * Build the secretConnectorMap entries for a model-provider type whose
- * tokens are OAuth-refreshable (e.g. chatgpt-oauth-token).
+ * tokens are OAuth-refreshable (e.g. codex-oauth-token).
  *
  * Returns undefined when the provider has no bridged handler or its handler
  * lacks `refreshToken` — for non-OAuth providers the firewall has nothing
@@ -272,8 +271,8 @@ async function resolveMultiAuthProviderSecrets(
     return undefined;
   }
 
-  const secretNames = getSecretNamesForAuthMethod(providerType, authMethod);
-  if (!secretNames || secretNames.length === 0) {
+  const secretsConfig = getSecretsForAuthMethod(providerType, authMethod);
+  if (!secretsConfig || Object.keys(secretsConfig).length === 0) {
     log.debug(`No secret names found for ${providerType}/${authMethod}`);
     return undefined;
   }
@@ -286,11 +285,11 @@ async function resolveMultiAuthProviderSecrets(
   const secretsMap: Record<string, string> = {};
   let hasAllRequired = true;
 
-  for (const name of secretNames) {
+  for (const [name, config] of Object.entries(secretsConfig)) {
     const value = allSecretValues[name];
     if (value) {
       secretsMap[name] = value;
-    } else {
+    } else if (config.required) {
       log.debug(`Missing secret ${name} for ${providerType}/${authMethod}`);
       hasAllRequired = false;
     }

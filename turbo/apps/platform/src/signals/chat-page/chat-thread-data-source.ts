@@ -26,6 +26,12 @@ export interface AppendPendingMessageArgs {
   threadId: string;
   content: string | undefined;
   attachments: PersistedAttachment[] | undefined;
+  /**
+   * Pre-generated UUID the client uses for the optimistic queued bubble.
+   * The server persists it and reuses it as `chat_messages.id` on
+   * auto-send so the optimistic row reconciles with the real one.
+   */
+  clientMessageId: string | undefined;
 }
 
 export interface RecallPendingMessageArgs {

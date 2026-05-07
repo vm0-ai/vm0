@@ -49,7 +49,12 @@ const patchDraft$ = command(
 const appendPendingMessage$ = command(
   async (
     { get },
-    { threadId, content, attachments }: AppendPendingMessageArgs,
+    {
+      threadId,
+      content,
+      attachments,
+      clientMessageId,
+    }: AppendPendingMessageArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadPendingMessageAppendContract, {
@@ -58,6 +63,7 @@ const appendPendingMessage$ = command(
     const body = {
       ...(content !== undefined ? { content } : {}),
       ...(attachments !== undefined ? { attachments } : {}),
+      ...(clientMessageId !== undefined ? { clientMessageId } : {}),
     };
     const result = await accept(
       client.append({
@@ -215,6 +221,15 @@ const subscribeRealtime$ = command(
       set(
         setAblyLoop$,
         `chatThreadRunUpdated:${threadId}`,
+        handlers.onRunChanged$,
+        signal,
+      ),
+      // Server's auto-send-on-run-complete clears the queued message and
+      // dispatches a new run; reloadThread via the run-changed handler so
+      // the queued card disappears and the freshly-created run shows up.
+      set(
+        setAblyLoop$,
+        `chatThreadPendingMessageChanged:${threadId}`,
         handlers.onRunChanged$,
         signal,
       ),

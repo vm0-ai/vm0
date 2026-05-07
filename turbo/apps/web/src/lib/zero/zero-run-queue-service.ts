@@ -49,6 +49,10 @@ import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import { buildZeroExecutionContext } from "./build-zero-context";
 import { buildAutoMemoryArtifact } from "./memory";
 import {
+  persistZeroRunMetadata,
+  type ZeroRunMetadataValues,
+} from "./zero-run-metadata";
+import {
   encryptSecretsMap,
   decryptSecretsMap,
 } from "../shared/crypto/secrets-encryption";
@@ -77,6 +81,11 @@ type QueuedRunDispatcher = (
   params: CreateRunParams,
 ) => Promise<void>;
 
+interface EnqueueRunOptions {
+  zeroRunMetadata?: ZeroRunMetadataValues;
+  onZeroRunMetadataPersisted?: (durationMs: number) => void;
+}
+
 // ─── Queue Operations (moved from run-queue-service.ts) ─────────────────────
 
 /**
@@ -88,6 +97,7 @@ type QueuedRunDispatcher = (
  */
 export async function enqueueRun(
   params: CreateRunParams,
+  options: EnqueueRunOptions = {},
 ): Promise<CreateRunResult> {
   const { userId, agentComposeVersionId, prompt } = params;
 
@@ -112,6 +122,7 @@ export async function enqueueRun(
   // Eagerly create the agent_sessions row too so sessionId is known on the
   // POST response even for queued runs (same promise as synchronous runs).
   const expiresAt = new Date(Date.now() + QUEUE_TTL_MS);
+  let zeroRunMetadataDurationMs: number | undefined;
 
   const run = await globalThis.services.db.transaction(async (tx) => {
     let sessionId: string;
@@ -157,6 +168,12 @@ export async function enqueueRun(
       throw new Error("Failed to create queued run record");
     }
 
+    if (options.zeroRunMetadata) {
+      const zeroRunMetadataStartedAt = Date.now();
+      await persistZeroRunMetadata(tx, inserted.id, options.zeroRunMetadata);
+      zeroRunMetadataDurationMs = Date.now() - zeroRunMetadataStartedAt;
+    }
+
     await tx.insert(agentRunQueue).values({
       runId: inserted.id,
       userId,
@@ -181,6 +198,10 @@ export async function enqueueRun(
       queueDepth: Number(depthRow?.depth ?? 0),
     };
   });
+
+  if (zeroRunMetadataDurationMs !== undefined) {
+    options.onZeroRunMetadataPersisted?.(zeroRunMetadataDurationMs);
+  }
 
   log.debug(`Enqueued run ${run.id} for user ${userId}`);
 
@@ -619,7 +640,8 @@ export async function dispatchQueuedZeroRun(
 
   // Update zero_runs with resolved model fields before dispatch so metadata
   // is recorded even if dispatch succeeds but a later step fails.
-  // Row already exists (created at enqueue time), so UPDATE is safe.
+  // Zero callers create the row at enqueue time; direct low-level test enqueues
+  // may omit it, in which case this UPDATE is a no-op.
   await globalThis.services.db
     .update(zeroRuns)
     .set({

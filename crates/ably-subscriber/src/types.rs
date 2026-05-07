@@ -41,13 +41,20 @@ pub type BoxError = Box<dyn std::error::Error + Send + Sync>;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenRequest {
+    /// Ably API key name used to sign this token request.
     pub key_name: String,
+    /// Request timestamp, in milliseconds since the Unix epoch.
     pub timestamp: i64,
+    /// Unique nonce used to prevent token request replay.
     pub nonce: String,
+    /// Message Authentication Code for the canonical token request fields.
     pub mac: String,
+    /// JSON-encoded Ably capability requested for the token.
     pub capability: String,
+    /// Requested token lifetime duration, in milliseconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ttl: Option<i64>,
+    /// Client ID to associate with the requested token.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
 }
@@ -56,13 +63,18 @@ pub struct TokenRequest {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenDetails {
+    /// Ably token string used to authenticate realtime requests.
     pub token: String,
+    /// Token expiry time, in milliseconds since the Unix epoch.
     #[serde(default)]
     pub expires: i64,
+    /// Token issue time, in milliseconds since the Unix epoch.
     #[serde(default)]
     pub issued: i64,
+    /// JSON-encoded Ably capability granted to the token.
     #[serde(default)]
     pub capability: Option<String>,
+    /// Client ID associated with the token, when present.
     #[serde(default)]
     pub client_id: Option<String>,
 }

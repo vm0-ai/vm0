@@ -15,6 +15,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   orgConfiguredProviders$,
   orgOpenAddDialog$,
+  setCodexPasteDialogState$,
 } from "../../../../signals/zero-page/settings/org-model-providers.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { getUILabel, getUIDescription } from "./provider-ui-config.ts";
@@ -74,9 +75,10 @@ export function OrgAddProviderDialog({
   const configuredProviders = useLastResolved(orgConfiguredProviders$);
   const features = useLastResolved(featureSwitch$);
   const codexBetaEnabled = features?.[FeatureSwitchKey.CodexBeta] ?? false;
-  const chatgptOauthEnabled =
-    features?.[FeatureSwitchKey.ChatgptOauthProvider] ?? false;
+  const codexOauthEnabled =
+    features?.[FeatureSwitchKey.CodexOauthProvider] ?? false;
   const openAdd = useSet(orgOpenAddDialog$);
+  const openCodexPaste = useSet(setCodexPasteDialogState$);
   const configuredSet = new Set(
     configuredProviders?.map((p) => {
       return p.type;
@@ -84,11 +86,12 @@ export function OrgAddProviderDialog({
   );
 
   const handleAdd = (type: ModelProviderType) => {
-    if (type === "chatgpt-oauth-token") {
-      // Server-side eligibility re-check happens in /api/zero/chatgpt/oauth/connect
-      // (delivered in #11909). The client gate above is a UX optimization to keep
-      // the card out of view; the route returns 404 when ineligible.
-      window.location.assign("/api/zero/chatgpt/oauth/connect");
+    if (type === "codex-oauth-token") {
+      // Open the auth.json paste dialog (#11980 replaces the broken
+      // cross-origin OAuth redirect). Close the picker so only the paste
+      // dialog is visible — stacking two dialogs is confusing.
+      openCodexPaste({ open: true, mode: "connect" });
+      onOpenChange(false);
       return;
     }
     openAdd(type);
@@ -101,7 +104,7 @@ export function OrgAddProviderDialog({
     if (type === "openai-api-key" && !codexBetaEnabled) {
       return false;
     }
-    if (type === "chatgpt-oauth-token" && !chatgptOauthEnabled) {
+    if (type === "codex-oauth-token" && !codexOauthEnabled) {
       return false;
     }
     return true;

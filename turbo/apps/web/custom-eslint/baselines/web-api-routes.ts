@@ -28,7 +28,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/cli/auth/device/route.ts",
   "app/api/cli/auth/org/route.ts",
   "app/api/cli/auth/test-approve/route.ts",
-  "app/api/cli/auth/test-chatgpt-oauth/route.ts",
+  "app/api/cli/auth/test-codex-oauth/route.ts",
   "app/api/cli/auth/test-connector/route.ts",
   "app/api/cli/auth/test-enable-connector/route.ts",
   "app/api/cli/auth/test-token/route.ts",
@@ -143,13 +143,6 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/chat-threads/[id]/route.ts",
   "app/api/zero/chat-threads/[id]/unpin/route.ts",
   "app/api/zero/chat-threads/route.ts",
-  // OAuth connect/callback for the ChatGPT model provider (Epic #11872, sub-issue
-  // #11909). Third-party OAuth callbacks need a stable Next.js route to receive
-  // auth.openai.com's redirect; mirrors the existing apps/web/app/api/connectors
-  // and Slack OAuth patterns. Re-evaluate when an apps/api OAuth-callback
-  // primitive lands.
-  "app/api/zero/chatgpt/oauth/callback/route.ts",
-  "app/api/zero/chatgpt/oauth/connect/route.ts",
   "app/api/zero/composes/[id]/metadata/route.ts",
   "app/api/zero/composes/[id]/route.ts",
   "app/api/zero/composes/list/route.ts",
@@ -189,6 +182,7 @@ export const WEB_API_ROUTE_BASELINE = [
   "app/api/zero/integrations/telegram/message/route.ts",
   "app/api/zero/integrations/telegram/upload-file/complete/route.ts",
   "app/api/zero/integrations/telegram/upload-file/init/route.ts",
+  "app/api/zero/image-io/generate/route.ts",
   "app/api/zero/logs/[id]/route.ts",
   "app/api/zero/logs/route.ts",
   "app/api/zero/logs/search/route.ts",

@@ -13,7 +13,14 @@
 
   tasks:
     - name: Wait for apt lock to be released
-      shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+      shell: |
+        while fuser \
+          /var/lib/dpkg/lock-frontend \
+          /var/lib/dpkg/lock \
+          /var/lib/apt/lists/lock \
+          /var/cache/apt/archives/lock >/dev/null 2>&1; do
+          sleep 2
+        done
       become: true
       changed_when: false
 
@@ -25,11 +32,13 @@
           - openssl
           - iproute2
           - iptables
+          - conntrack
           - procps
           - dnsmasq
           - debootstrap
         state: present
         update_cache: true
+        lock_timeout: 300
       become: true
 
     - name: Disable system dnsmasq (runner manages its own instance)

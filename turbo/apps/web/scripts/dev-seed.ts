@@ -172,6 +172,14 @@ const USAGE_PRICING: (typeof usagePricing.$inferInsert)[] = [
     ["output_image", usd(0.0387), 1],
   ]),
 
+  // OpenAI GPT Image 2 — https://platform.openai.com/docs/pricing
+  // Uses the exact token usage returned by the Images API with 20% markup.
+  ...usageGroup("image", "gpt-image-2", [
+    ["tokens.input.text", usd(6), 1_000_000],
+    ["tokens.input.image", usd(9.6), 1_000_000],
+    ["tokens.output.image", usd(36), 1_000_000],
+  ]),
+
   // OpenAI GPT-4o mini TTS — https://platform.openai.com/docs/pricing
   // $0.015/minute cost with 20% gross margin = $0.01875/minute,
   // rounded to 19 credits/minute.

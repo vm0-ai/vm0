@@ -3,8 +3,9 @@ import { talkDraft$ } from "./chat-draft.ts";
 import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import { orgModelProviders$ } from "../external/org-model-providers.ts";
 import { currentChatAgent$ } from "../agent-chat.ts";
+import { composerModelProviders$ } from "./composer-model-providers.ts";
+import { resolveEffectiveAgentDefaultSelection } from "./model-provider-default.ts";
 
 // ---------------------------------------------------------------------------
 // Landing page local UI state for ZeroChatPage
@@ -52,29 +53,19 @@ export const chatPageModelSelection$ = computed(
     if (user.kind === "set") {
       return user.value;
     }
-    // Priority: agent default > org default. Seed here (rather than letting
-    // the picker fall back to its null-value display) so the model shown
-    // next to Send is the exact model the send body will carry. See the
-    // matching note in `createModelSelection` (create-chat-thread.ts) for
-    // the full display/run mismatch reasoning.
+    // Priority: preferred personal default > agent default > workspace
+    // default. Seed here (rather than letting the picker fall back to its
+    // null-value display) so the model shown next to Send is the exact
+    // model the send body will carry. See the matching note in
+    // `createModelSelection` (create-chat-thread.ts) for the full
+    // display/run mismatch reasoning.
     const agent = await get(currentChatAgent$);
-    if (agent?.modelProviderId && agent.selectedModel) {
-      return {
-        modelProviderId: agent.modelProviderId,
-        selectedModel: agent.selectedModel,
-      };
-    }
-    const { modelProviders } = await get(orgModelProviders$);
-    const defaultProvider = modelProviders.find((p) => {
-      return p.isDefault;
+    const composerProviders = await get(composerModelProviders$);
+    return resolveEffectiveAgentDefaultSelection({
+      agent,
+      providers: composerProviders.providers,
+      tiers: composerProviders.tiers,
     });
-    if (defaultProvider?.selectedModel) {
-      return {
-        modelProviderId: defaultProvider.id,
-        selectedModel: defaultProvider.selectedModel,
-      };
-    }
-    return null;
   },
 );
 

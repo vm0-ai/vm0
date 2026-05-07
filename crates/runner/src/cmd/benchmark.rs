@@ -214,6 +214,7 @@ async fn run_sandbox(
     let proxy_log_path = std::path::PathBuf::from("/dev/null");
     let registration = proxy::VmRegistration {
         run_id: &run_id,
+        cli_agent_type: "claude-code",
         sandbox_token: "",
         network_log_path: &network_log_path,
         proxy_log_path: &proxy_log_path,

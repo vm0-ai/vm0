@@ -27,6 +27,7 @@ import { agentRuns } from "./agent-run";
  *   model     claude-sonnet-4-6            tokens.output
  *   image     gemini-2.5-flash-image       output_tokens
  *   image     gemini-2.5-flash-image       input_tokens
+ *   image     gpt-image-2                  tokens.output.image
  *
  * Charging is applied by the billing processor, which looks up the
  * `(kind, provider, category)` triple in a pricing table and writes

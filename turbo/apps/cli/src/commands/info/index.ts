@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { existsSync } from "fs";
-import { homedir, release, type } from "os";
+import * as os from "os";
 import { join } from "path";
 import { getApiUrl, loadConfig } from "../../lib/api/config";
 import { detectPackageManager } from "../../lib/utils/update-checker";
@@ -9,7 +9,7 @@ import { detectPackageManager } from "../../lib/utils/update-checker";
 declare const __CLI_VERSION__: string;
 
 function getConfigPath() {
-  return join(homedir(), ".vm0", "config.json");
+  return join(os.homedir(), ".vm0", "config.json");
 }
 
 export const infoCommand = new Command()
@@ -51,7 +51,7 @@ export const infoCommand = new Command()
     console.log(chalk.bold("System:"));
     console.log(`  Node: ${process.version}`);
     console.log(`  Platform: ${process.platform} (${process.arch})`);
-    console.log(`  OS: ${type()} ${release()}`);
+    console.log(`  OS: ${os.type()} ${os.release()}`);
     console.log(`  Shell: ${process.env.SHELL ?? "unknown"}`);
     console.log(`  Package Manager: ${detectPackageManager()}`);
   });

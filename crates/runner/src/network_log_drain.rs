@@ -15,6 +15,35 @@ use crate::ids::RunId;
 
 const DEFAULT_DRAIN_TIMEOUT: Duration = Duration::from_millis(500);
 
+macro_rules! warn_drain {
+    ($context:expr, $producer:expr, $message:literal) => {{
+        let context = &$context;
+        let producer = $producer;
+        warn!(
+            run_id = %context.run_id,
+            source_ip = context.source_ip,
+            path = %context.path.display(),
+            generation = context.generation,
+            producer = producer,
+            $message
+        );
+    }};
+    ($context:expr, $producer:expr, timeout_ms = $timeout_ms:expr, $message:literal) => {{
+        let context = &$context;
+        let producer = $producer;
+        let timeout_ms = $timeout_ms;
+        warn!(
+            run_id = %context.run_id,
+            source_ip = context.source_ip,
+            path = %context.path.display(),
+            generation = context.generation,
+            producer = producer,
+            timeout_ms = timeout_ms,
+            $message
+        );
+    }};
+}
+
 #[derive(Clone)]
 pub struct NetworkLogDrainCoordinator {
     producers: Arc<Vec<NetworkLogDrainProducer>>,
@@ -77,23 +106,13 @@ impl NetworkLogDrainProducer {
         match timeout(wait, self.tx.send(NetworkLogDrainRequest { ack: ack_tx })).await {
             Ok(Ok(())) => {}
             Ok(Err(_)) => {
-                warn!(
-                    run_id = %context.run_id,
-                    source_ip = context.source_ip,
-                    path = %context.path.display(),
-                    generation = context.generation,
-                    producer = self.name,
-                    "network log drain producer unavailable"
-                );
+                warn_drain!(context, self.name, "network log drain producer unavailable");
                 return;
             }
             Err(_) => {
-                warn!(
-                    run_id = %context.run_id,
-                    source_ip = context.source_ip,
-                    path = %context.path.display(),
-                    generation = context.generation,
-                    producer = self.name,
+                warn_drain!(
+                    context,
+                    self.name,
                     timeout_ms = wait.as_millis(),
                     "network log drain request timed out"
                 );
@@ -103,23 +122,17 @@ impl NetworkLogDrainProducer {
 
         match timeout(wait, ack_rx).await {
             Ok(Ok(())) => {}
-            Ok(Err(_)) => warn!(
-                run_id = %context.run_id,
-                source_ip = context.source_ip,
-                path = %context.path.display(),
-                generation = context.generation,
-                producer = self.name,
-                "network log drain producer dropped ack"
-            ),
-            Err(_) => warn!(
-                run_id = %context.run_id,
-                source_ip = context.source_ip,
-                path = %context.path.display(),
-                generation = context.generation,
-                producer = self.name,
-                timeout_ms = wait.as_millis(),
-                "network log drain producer timed out"
-            ),
+            Ok(Err(_)) => {
+                warn_drain!(context, self.name, "network log drain producer dropped ack")
+            }
+            Err(_) => {
+                warn_drain!(
+                    context,
+                    self.name,
+                    timeout_ms = wait.as_millis(),
+                    "network log drain producer timed out"
+                )
+            }
         }
     }
 }

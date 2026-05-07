@@ -40,7 +40,7 @@ export const modelProviders = pgTable(
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     // OAuth token state (mirrors `connectors`). Set/cleared by the firewall
-    // refresh pipeline for OAuth-typed model providers (e.g. chatgpt-oauth-token).
+    // refresh pipeline for OAuth-typed model providers (e.g. codex-oauth-token).
     // null tokenExpiresAt = unknown; refreshable providers auto-refresh on next use.
     tokenExpiresAt: timestamp("token_expires_at"),
     needsReconnect: boolean("needs_reconnect").notNull().default(false),

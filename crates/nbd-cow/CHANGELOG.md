@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.16](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.15...nbd-cow-v0.4.16) (2026-05-07)
+
+
+### Refactoring
+
+* **nbd-cow:** collapse device pool actor select ([#12015](https://github.com/vm0-ai/vm0/issues/12015)) ([c6e2552](https://github.com/vm0-ai/vm0/commit/c6e2552ed723b4ae537637a99ead8d49ce504f8f))
+
 ## [0.4.15](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.14...nbd-cow-v0.4.15) (2026-05-06)
 
 

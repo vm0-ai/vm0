@@ -131,6 +131,9 @@ type PendingMessageColumns = {
   readonly pendingMessageAttachments: readonly PersistedAttachment[] | null;
   readonly pendingMessageCreatedAt: Date | null;
   readonly pendingMessageUpdatedAt: Date | null;
+  // Optional so existing selects that don't pull the client id can still
+  // call toPendingMessage; missing field collapses to null in the DTO.
+  readonly pendingMessageClientId?: string | null;
 };
 
 const messageColumns = {
@@ -263,6 +266,7 @@ function toPendingMessage(row: PendingMessageColumns): PendingMessage | null {
     attachments: attachments ? [...attachments] : null,
     createdAt: row.pendingMessageCreatedAt.toISOString(),
     updatedAt: row.pendingMessageUpdatedAt.toISOString(),
+    clientMessageId: row.pendingMessageClientId ?? null,
   };
 }
 
@@ -287,6 +291,7 @@ export const appendZeroChatThreadPendingMessage$ = command(
       readonly userId: string;
       readonly content: string | null;
       readonly attachments: readonly PersistedAttachment[] | null;
+      readonly clientMessageId: string | null;
     },
     signal: AbortSignal,
   ): Promise<PendingMessage | null> => {
@@ -298,6 +303,7 @@ export const appendZeroChatThreadPendingMessage$ = command(
           pendingMessageAttachments: chatThreads.pendingMessageAttachments,
           pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
           pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
+          pendingMessageClientId: chatThreads.pendingMessageClientId,
         })
         .from(chatThreads)
         .where(
@@ -320,6 +326,12 @@ export const appendZeroChatThreadPendingMessage$ = command(
         ...(args.attachments ?? []),
       ];
       const now = nowDate();
+      // First append wins the client id — the queued bubble that issued
+      // it is the one we'll reconcile with on auto-send. Subsequent
+      // appends coalesce content/attachments into the same row but keep
+      // the original id.
+      const nextClientId =
+        thread.pendingMessageClientId ?? args.clientMessageId ?? null;
       const [updated] = await tx
         .update(chatThreads)
         .set({
@@ -333,6 +345,7 @@ export const appendZeroChatThreadPendingMessage$ = command(
             nextAttachments.length > 0 ? nextAttachments : null,
           pendingMessageCreatedAt: thread.pendingMessageCreatedAt ?? now,
           pendingMessageUpdatedAt: now,
+          pendingMessageClientId: nextClientId,
         })
         .where(
           and(
@@ -345,6 +358,7 @@ export const appendZeroChatThreadPendingMessage$ = command(
           pendingMessageAttachments: chatThreads.pendingMessageAttachments,
           pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
           pendingMessageUpdatedAt: chatThreads.pendingMessageUpdatedAt,
+          pendingMessageClientId: chatThreads.pendingMessageClientId,
         });
 
       return updated ? toPendingMessage(updated) : null;

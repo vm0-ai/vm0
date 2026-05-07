@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.18.0](https://github.com/vm0-ai/vm0/compare/api-v1.17.1...api-v1.18.0) (2026-05-06)
+
+
+### Features
+
+* add chat thread pending message api ([#11946](https://github.com/vm0-ai/vm0/issues/11946)) ([57717fe](https://github.com/vm0-ai/vm0/commit/57717feece2ba9dc3cf7b48862f56d03f06ced74))
+
+
+### Bug Fixes
+
+* order pinned threads first in chat thread list API ([#11989](https://github.com/vm0-ai/vm0/issues/11989)) ([14bed95](https://github.com/vm0-ai/vm0/commit/14bed954842a0ccf56b5633e4a6197909e3dfca3))
+* use zero agent id for search filters ([#11995](https://github.com/vm0-ai/vm0/issues/11995)) ([3224bd0](https://github.com/vm0-ai/vm0/commit/3224bd05992be321f80f7c74febd5a393dbae6c4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.259.0
+
 ## [1.17.1](https://github.com/vm0-ai/vm0/compare/api-v1.17.0...api-v1.17.1) (2026-05-06)
 
 
