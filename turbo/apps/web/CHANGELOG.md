@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.341.0](https://github.com/vm0-ai/vm0/compare/web-v12.340.0...web-v12.341.0) (2026-05-07)
+
+
+### Features
+
+* add Google Ads connector ([#12084](https://github.com/vm0-ai/vm0/issues/12084)) ([6d77828](https://github.com/vm0-ai/vm0/commit/6d77828457aff1e8330c66aacbe843b4eb49b6bf))
+
+
+### Bug Fixes
+
+* keep personal provider model defaults compatible ([#12091](https://github.com/vm0-ai/vm0/issues/12091)) ([357cae8](https://github.com/vm0-ai/vm0/commit/357cae8bc0c7d0907e2a52d0e22d7e843be5b336))
+* **web:** fall back when schedule description generation fails ([#12092](https://github.com/vm0-ai/vm0/issues/12092)) ([ee6f8af](https://github.com/vm0-ai/vm0/commit/ee6f8af477c126bbcfc01a786971a9a63b4d2578))
+* **web:** prevent agent reply email markdown crashes ([#12090](https://github.com/vm0-ai/vm0/issues/12090)) ([e61165b](https://github.com/vm0-ai/vm0/commit/e61165b6080ea4e66175f62b566a31bf65264fa2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.0
+    * @vm0/connectors bumped to 1.0.0
+    * @vm0/core bumped to 8.261.0
+    * @vm0/db bumped to 1.0.0
+
 ## [12.340.0](https://github.com/vm0-ai/vm0/compare/web-v12.339.0...web-v12.340.0) (2026-05-07)
 
 

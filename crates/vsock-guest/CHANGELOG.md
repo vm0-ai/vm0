@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.12](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.11...vsock-guest-v0.10.12) (2026-05-07)
+
+
+### Bug Fixes
+
+* remove vsock wait polling from fast exits ([#12088](https://github.com/vm0-ai/vm0/issues/12088)) ([062bee8](https://github.com/vm0-ai/vm0/commit/062bee8c932f550da0dd6e2a715fe3bed096db2d))
+
 ## [0.10.11](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.10.10...vsock-guest-v0.10.11) (2026-05-05)
 
 

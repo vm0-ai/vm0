@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.14](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.13...sandbox-v0.12.14) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** split snapshot publish boundary ([#12044](https://github.com/vm0-ai/vm0/issues/12044)) ([b01e205](https://github.com/vm0-ai/vm0/commit/b01e205e530cb9a6ed5353294077d9a80b70da62))
+
 ## [0.12.13](https://github.com/vm0-ai/vm0/compare/sandbox-v0.12.12...sandbox-v0.12.13) (2026-05-07)
 
 

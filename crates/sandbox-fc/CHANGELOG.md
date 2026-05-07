@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.27.20](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.19...sandbox-fc-v0.27.20) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** split snapshot publish boundary ([#12044](https://github.com/vm0-ai/vm0/issues/12044)) ([b01e205](https://github.com/vm0-ai/vm0/commit/b01e205e530cb9a6ed5353294077d9a80b70da62))
+
 ## [0.27.19](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.27.18...sandbox-fc-v0.27.19) (2026-05-07)
 
 

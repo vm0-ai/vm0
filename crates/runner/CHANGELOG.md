@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.100.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.7...runner-rs-v0.100.8) (2026-05-07)
+
+
+### Refactoring
+
+* **runner:** split snapshot publish boundary ([#12044](https://github.com/vm0-ai/vm0/issues/12044)) ([b01e205](https://github.com/vm0-ai/vm0/commit/b01e205e530cb9a6ed5353294077d9a80b70da62))
+
 ## [0.100.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.6...runner-rs-v0.100.7) (2026-05-07)
 
 ## [0.100.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.100.5...runner-rs-v0.100.6) (2026-05-07)

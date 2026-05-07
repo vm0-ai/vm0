@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.261.0](https://github.com/vm0-ai/vm0/compare/core-v8.260.0...core-v8.261.0) (2026-05-07)
+
+
+### Features
+
+* add Google Ads connector ([#12084](https://github.com/vm0-ai/vm0/issues/12084)) ([6d77828](https://github.com/vm0-ai/vm0/commit/6d77828457aff1e8330c66aacbe843b4eb49b6bf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.0
+    * @vm0/connectors bumped to 1.0.0
+
 ## [8.260.0](https://github.com/vm0-ai/vm0/compare/core-v8.259.0...core-v8.260.0) (2026-05-07)
 
 

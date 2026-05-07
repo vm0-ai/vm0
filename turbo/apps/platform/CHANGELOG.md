@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.334.0](https://github.com/vm0-ai/vm0/compare/app-v0.333.0...app-v0.334.0) (2026-05-07)
+
+
+### Features
+
+* add Google Ads connector ([#12084](https://github.com/vm0-ai/vm0/issues/12084)) ([6d77828](https://github.com/vm0-ai/vm0/commit/6d77828457aff1e8330c66aacbe843b4eb49b6bf))
+
+
+### Bug Fixes
+
+* keep personal provider model defaults compatible ([#12091](https://github.com/vm0-ai/vm0/issues/12091)) ([357cae8](https://github.com/vm0-ai/vm0/commit/357cae8bc0c7d0907e2a52d0e22d7e843be5b336))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.0.0
+    * @vm0/connectors bumped to 1.0.0
+    * @vm0/core bumped to 8.261.0
+
 ## [0.333.0](https://github.com/vm0-ai/vm0/compare/app-v0.332.0...app-v0.333.0) (2026-05-07)
 
 
