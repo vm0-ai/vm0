@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { server } from "../../../../../mocks/server";
 import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
+import { reloadEnv } from "../../../../../env";
 import { injectPlatformEnvSecrets } from "../../../context/resolve-secrets";
 import { PROVIDER_HANDLERS } from "../../provider-registry";
 import { googleAdsHandler } from "../google-ads-handler";
@@ -144,6 +145,17 @@ describe("connector/providers/google-ads", () => {
 
     it("does not inject platform env secrets for unrelated connector contexts", () => {
       expect(injectPlatformEnvSecrets(["github"])).toBeUndefined();
+    });
+
+    it("injects whitelisted platform env secrets for google ads contexts", () => {
+      vi.stubEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "developer-token");
+      vi.stubEnv("GOOGLE_ADS_LOGIN_CUSTOMER_ID", "1234567890");
+      reloadEnv();
+
+      expect(injectPlatformEnvSecrets(["google-ads"])).toEqual({
+        GOOGLE_ADS_DEVELOPER_TOKEN: "developer-token",
+        GOOGLE_ADS_LOGIN_CUSTOMER_ID: "1234567890",
+      });
     });
   });
 });
