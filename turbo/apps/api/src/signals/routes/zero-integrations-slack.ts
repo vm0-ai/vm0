@@ -92,8 +92,12 @@ const getSlackEnvironment$ = computed(
     }
 
     const grouped = extractAndGroupVariables(version.content);
-    const requiredSecrets = grouped.secrets.map((s) => s.name);
-    const requiredVars = grouped.vars.map((v) => v.name);
+    const requiredSecrets = grouped.secrets.map((s) => {
+      return s.name;
+    });
+    const requiredVars = grouped.vars.map((v) => {
+      return v.name;
+    });
 
     const [userSecretList, userVarList, userConnectors] = await Promise.all([
       get(userSecrets({ orgId: auth.orgId, userId: auth.userId })),
@@ -102,22 +106,28 @@ const getSlackEnvironment$ = computed(
     ]);
 
     const connectorProvided = getConnectorProvidedSecretNames(
-      userConnectors.connectors.map((c) => c.type),
+      userConnectors.connectors.map((c) => {
+        return c.type;
+      }),
     );
     const existingSecretNames = new Set([
-      ...userSecretList.secrets.map((s) => s.name),
+      ...userSecretList.secrets.map((s) => {
+        return s.name;
+      }),
       ...connectorProvided,
     ]);
     const existingVarNames = new Set(
-      userVarList.variables.map((v) => v.name),
+      userVarList.variables.map((v) => {
+        return v.name;
+      }),
     );
 
-    const missingSecrets = requiredSecrets.filter(
-      (name) => !existingSecretNames.has(name),
-    );
-    const missingVars = requiredVars.filter(
-      (name) => !existingVarNames.has(name),
-    );
+    const missingSecrets = requiredSecrets.filter((name) => {
+      return !existingSecretNames.has(name);
+    });
+    const missingVars = requiredVars.filter((name) => {
+      return !existingVarNames.has(name);
+    });
 
     return {
       requiredSecrets,
