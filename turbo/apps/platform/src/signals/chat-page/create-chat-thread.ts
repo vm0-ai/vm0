@@ -9,7 +9,10 @@ import {
 import { animationFrame, delay } from "signal-timers";
 import { onRef, resetSignal, setLoop } from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
-import { createScrollSignals } from "../auto-scroll.ts";
+import {
+  createScrollSignals,
+  type ScrollStepDirection,
+} from "../auto-scroll.ts";
 import {
   createDraftSignals,
   createRestoredAttachment,
@@ -170,6 +173,7 @@ export interface ChatThreadSignals {
   autoScroll$: Command<void, []>;
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
+  scrollBy$: Command<boolean, [ScrollStepDirection]>;
   // ── Initial-load skeleton ────────────────────────────────────────────────
   // Starts hidden — `setupChatThreadInitScroll$` flips it on only when the
   // IDB cache misses, so cache hits skip the skeleton entirely. Flipped off
@@ -1483,13 +1487,8 @@ export function createChatThreadSignals(
   const { threadData$, reloadThread$ } = createThreadData(dataSource);
   const { modelSelection$, setModelSelection$ } =
     createModelSelection(threadData$);
-  const {
-    setScrollContainer$,
-    autoScroll$,
-    scrollToBottom$,
-    scrollToTop$,
-    recordScrollHeightForPrepend$,
-  } = createScrollSignals(threadId);
+  const { recordScrollHeightForPrepend$, ...scrollSignals } =
+    createScrollSignals(threadId);
   const { skeletonVisible$, showSkeleton$, hideSkeleton$ } =
     createSkeletonSignals();
   const { composerFileInput$, setComposerFileInput$ } =
@@ -1525,7 +1524,7 @@ export function createChatThreadSignals(
     threadData$,
     latestChatMessageId$,
     fetchNextPage$,
-    autoScroll$,
+    autoScroll$: scrollSignals.autoScroll$,
     dataSource,
   });
 
@@ -1537,7 +1536,7 @@ export function createChatThreadSignals(
     cancelDraftSync$,
     flushDraftClear$,
     insertOptimisticMessage$,
-    scrollToBottom$,
+    scrollToBottom$: scrollSignals.scrollToBottom$,
     reloadThread$,
     dataSource,
   });
@@ -1563,10 +1562,7 @@ export function createChatThreadSignals(
     setModelSelection$,
     ...messageCommands,
     cancelRun$,
-    setScrollContainer$,
-    autoScroll$,
-    scrollToBottom$,
-    scrollToTop$,
+    ...scrollSignals,
     skeletonVisible$,
     showSkeleton$,
     hideSkeleton$,

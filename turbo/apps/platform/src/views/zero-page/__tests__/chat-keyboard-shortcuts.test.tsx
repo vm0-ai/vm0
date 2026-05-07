@@ -370,4 +370,74 @@ describe("chat page keyboard shortcuts", () => {
       expect(scrollContainer!.scrollTop).toBe(0);
     });
   });
+
+  it("plain up/down keys scroll the message list outside the composer", async () => {
+    mockThreadList([{ id: "thread-arrow-scroll", title: "Arrow scroll test" }]);
+    server.use(
+      mockApi(chatThreadMessagesContract.list, ({ query, respond }) => {
+        if (query.sinceId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages: [
+            {
+              id: "msg-1",
+              role: "user",
+              content: "Plain arrow scroll test",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      mockApi(chatThreadByIdContract.get, ({ respond }) => {
+        return respond(200, {
+          id: "thread-arrow-scroll",
+          title: "Arrow scroll test",
+          agentId: AGENT_ID,
+          chatMessages: [],
+          latestSessionId: null,
+          activeRunIds: [],
+          draftContent: null,
+          draftAttachments: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+    );
+
+    detachedSetupPage({ context, path: "/chats/thread-arrow-scroll" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Plain arrow scroll test")).toBeInTheDocument();
+    });
+
+    const scrollContainer = document.querySelector<HTMLElement>(
+      "[data-scroll-container]",
+    );
+    expect(scrollContainer).not.toBeNull();
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      get: () => {
+        return 1200;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      get: () => {
+        return 300;
+      },
+      configurable: true,
+    });
+
+    scrollContainer!.scrollTop = 100;
+    fireEvent.keyDown(document, { key: "ArrowDown" });
+    expect(scrollContainer!.scrollTop).toBe(172);
+
+    fireEvent.keyDown(document, { key: "ArrowUp" });
+    expect(scrollContainer!.scrollTop).toBe(100);
+
+    const composer = document.querySelector("textarea");
+    expect(composer).not.toBeNull();
+    fireEvent.keyDown(composer!, { key: "ArrowDown" });
+    expect(scrollContainer!.scrollTop).toBe(100);
+  });
 });
