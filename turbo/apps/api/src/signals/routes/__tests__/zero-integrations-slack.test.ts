@@ -2,9 +2,14 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
+import {
+  agentComposes,
+  agentComposeVersions,
+} from "@vm0/db/schema/agent-compose";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgCache } from "@vm0/db/schema/org-cache";
+import { secrets } from "@vm0/db/schema/secret";
+import { variables } from "@vm0/db/schema/variable";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { eq } from "drizzle-orm";
@@ -185,5 +190,143 @@ describe("GET /api/zero/integrations/slack", () => {
     expect(response.body.isConnected).toBeFalsy();
     expect(response.body.isInstalled).toBeTruthy();
     expect(response.body.isAdmin).toBeTruthy();
+  });
+
+  describe("environment field", () => {
+    afterEach(async () => {
+      await writeDb.delete(variables).where(eq(variables.orgId, fixture.orgId));
+      await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
+    });
+
+    const dol = "\x24";
+    const composeContent = JSON.parse(
+      `{"settings":{"api_key":"${dol}{{ secrets.SEC_A }}","region":"${dol}{{ vars.VAR_A }}"}}`,
+    ) as Record<string, unknown>;
+
+    async function seedEnvironmentVersion(): Promise<void> {
+      const versionId = randomUUID();
+      await writeDb.insert(agentComposeVersions).values({
+        id: versionId,
+        composeId: fixture.composeId,
+        content: composeContent,
+        createdBy: fixture.userId,
+      });
+      await writeDb
+        .update(agentComposes)
+        .set({ headVersionId: versionId })
+        .where(eq(agentComposes.id, fixture.composeId));
+    }
+
+    async function seedUserSecret(name: string): Promise<void> {
+      await writeDb.insert(secrets).values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name,
+        encryptedValue: `encrypted_${name}`,
+        type: "user",
+      });
+    }
+
+    async function seedUserVariable(
+      name: string,
+      value: string,
+    ): Promise<void> {
+      await writeDb.insert(variables).values({
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name,
+        value,
+      });
+    }
+
+    function mockAdminAuth(): void {
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: true,
+        toAuth: () => {
+          return {
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            orgRole: "org:admin",
+          };
+        },
+      });
+    }
+
+    it("includes environment when connected with head version and secrets/vars present", async () => {
+      await seedEnvironmentVersion();
+      await seedUserSecret("SEC_A");
+      await seedUserVariable("VAR_A", "us-east-1");
+
+      mockAdminAuth();
+      mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
+
+      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+      const response = await accept(
+        client.getStatus({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.environment).toBeDefined();
+      expect(response.body.environment!.requiredSecrets).toStrictEqual([
+        "SEC_A",
+      ]);
+      expect(response.body.environment!.requiredVars).toStrictEqual(["VAR_A"]);
+      expect(response.body.environment!.missingSecrets).toStrictEqual([]);
+      expect(response.body.environment!.missingVars).toStrictEqual([]);
+    });
+
+    it("reports missing secrets and vars in environment", async () => {
+      await seedEnvironmentVersion();
+
+      mockAdminAuth();
+      mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
+
+      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+      const response = await accept(
+        client.getStatus({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.environment).toBeDefined();
+      expect(response.body.environment!.requiredSecrets).toStrictEqual([
+        "SEC_A",
+      ]);
+      expect(response.body.environment!.requiredVars).toStrictEqual(["VAR_A"]);
+      expect(response.body.environment!.missingSecrets).toStrictEqual([
+        "SEC_A",
+      ]);
+      expect(response.body.environment!.missingVars).toStrictEqual(["VAR_A"]);
+    });
+
+    it("omits environment when isConnected is false", async () => {
+      await writeDb
+        .delete(slackOrgConnections)
+        .where(eq(slackOrgConnections.slackWorkspaceId, fixture.workspaceId));
+
+      await seedEnvironmentVersion();
+      await seedUserSecret("SEC_A");
+      await seedUserVariable("VAR_A", "us-east-1");
+
+      mockAdminAuth();
+      mockApiShadowCompareRoutes([zeroIntegrationsSlackContract.getStatus]);
+
+      const client = setupApp({ context })(zeroIntegrationsSlackContract);
+
+      const response = await accept(
+        client.getStatus({
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+
+      expect(response.body.isConnected).toBeFalsy();
+      expect(response.body.environment).toBeUndefined();
+    });
   });
 });
