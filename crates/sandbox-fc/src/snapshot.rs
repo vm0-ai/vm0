@@ -417,17 +417,11 @@ async fn cleanup_after_netns_pool_failure(
     device_pool: &DevicePoolHandle,
     sock_dir: &Path,
 ) {
-    let cow_file = cow_device.cow_file().to_path_buf();
-    if let Err(cleanup_err) = cow_device
-        .destroy_with_retries(cow_destroy_retry_policy())
-        .await
-    {
+    if let Err(cleanup_err) = destroy_snapshot_cow_and_cleanup_attempt_dir(cow_device).await {
         tracing::warn!(
             error = %cleanup_err,
             "failed to destroy COW device after netns pool failure"
         );
-    } else {
-        cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
     }
     device_pool.cleanup().await;
     cleanup_snapshot_sock_dir(
@@ -1528,15 +1522,8 @@ impl SnapshotCleanupFinalizer {
         let Some(cow_device) = self.cow_device.take() else {
             return true;
         };
-        let cow_file = cow_device.cow_file().to_path_buf();
-        match cow_device
-            .destroy_with_retries(cow_destroy_retry_policy())
-            .await
-        {
-            Ok(()) => {
-                cleanup_snapshot_attempt_dir_for_cow(&cow_file).await;
-                true
-            }
+        match destroy_snapshot_cow_and_cleanup_attempt_dir(cow_device).await {
+            Ok(()) => true,
             Err(e) => {
                 tracing::warn!(
                     error = %e,
