@@ -76,6 +76,7 @@
     "generate:github": "tsx src/index.ts github",
     "generate:gitlab": "tsx src/index.ts gitlab",
     "generate:gmail": "tsx src/index.ts gmail",
+    "generate:google-ads": "tsx src/index.ts google-ads",
     "generate:google-calendar": "tsx src/index.ts google-calendar",
     "generate:google-docs": "tsx src/index.ts google-docs",
     "generate:google-drive": "tsx src/index.ts google-drive",

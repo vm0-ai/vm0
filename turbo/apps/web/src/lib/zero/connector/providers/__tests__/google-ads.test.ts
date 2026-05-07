@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { HttpResponse } from "msw";
+import { server } from "../../../../../mocks/server";
+import { http } from "../../../../../__tests__/msw";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { PROVIDER_HANDLERS } from "../../provider-registry";
 import { googleAdsHandler } from "../google-ads-handler";
 
 const context = testContext();
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
+const USER_INFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 
 describe("connector/providers/google-ads", () => {
   beforeEach(() => {
@@ -70,6 +75,70 @@ describe("connector/providers/google-ads", () => {
 
     it("refreshToken is defined (uses shared Google token refresh)", () => {
       expect(googleAdsHandler.refreshToken).toBeDefined();
+    });
+
+    it("exchangeCode maps Google token and user info response", async () => {
+      const { handler: tokenHandler } = http.post(TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "google-ads-access-token",
+          refresh_token: "google-ads-refresh-token",
+          expires_in: 3600,
+          scope:
+            "https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/userinfo.email",
+        });
+      });
+      const { handler: userInfoHandler } = http.get(USER_INFO_URL, () => {
+        return HttpResponse.json({
+          id: "google-user-123",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+        });
+      });
+      server.use(tokenHandler, userInfoHandler);
+
+      const result = await googleAdsHandler.exchangeCode(
+        "client-id",
+        "client-secret",
+        "auth-code",
+        "https://example.com/callback",
+      );
+
+      expect(result).toEqual({
+        accessToken: "google-ads-access-token",
+        refreshToken: "google-ads-refresh-token",
+        expiresIn: 3600,
+        scopes: [
+          "https://www.googleapis.com/auth/adwords",
+          "https://www.googleapis.com/auth/userinfo.email",
+        ],
+        userInfo: {
+          id: "google-user-123",
+          username: "Ada Lovelace",
+          email: "ada@example.com",
+        },
+      });
+    });
+
+    it("refreshToken delegates to the shared Google refresh flow", async () => {
+      const { handler } = http.post(TOKEN_URL, () => {
+        return HttpResponse.json({
+          access_token: "refreshed-google-ads-token",
+          expires_in: 3600,
+        });
+      });
+      server.use(handler);
+
+      const result = await googleAdsHandler.refreshToken?.(
+        "client-id",
+        "client-secret",
+        "refresh-token",
+      );
+
+      expect(result).toEqual({
+        accessToken: "refreshed-google-ads-token",
+        refreshToken: null,
+        expiresIn: 3600,
+      });
     });
   });
 });

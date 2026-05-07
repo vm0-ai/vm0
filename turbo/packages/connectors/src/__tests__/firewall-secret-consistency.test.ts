@@ -6,6 +6,12 @@ import {
 } from "../connector-utils";
 import { getConnectorFirewall, isFirewallConnectorType } from "../firewalls";
 
+const PLATFORM_INJECTED_SECRET_NAMES: Partial<
+  Record<string, readonly string[]>
+> = {
+  "google-ads": ["GOOGLE_ADS_DEVELOPER_TOKEN", "GOOGLE_ADS_LOGIN_CUSTOMER_ID"],
+};
+
 /**
  * Verify that every builtin firewall's placeholder secret names match
  * the env var names exposed by the connector that references it.
@@ -57,6 +63,9 @@ describe("firewall secret name consistency", () => {
             connectorSecretNames.add(name);
           }
         }
+      }
+      for (const name of PLATFORM_INJECTED_SECRET_NAMES[connectorType] ?? []) {
+        connectorSecretNames.add(name);
       }
 
       const firewall = getConnectorFirewall(connectorType);
