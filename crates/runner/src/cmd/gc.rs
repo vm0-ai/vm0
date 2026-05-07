@@ -629,6 +629,19 @@ async fn gc_debootstrap(
     keep_latest: Option<usize>,
     dry_run: bool,
 ) -> RunnerResult<u64> {
+    let lock_path = home.debootstrap_lock();
+    let _lock = match probe_lock(&lock_path) {
+        LockProbe::Free(lock) => lock,
+        LockProbe::Held => {
+            info!("debootstrap cache: in use, skipping");
+            return Ok(0);
+        }
+        LockProbe::Error(e) => {
+            info!("debootstrap cache: lock probe failed ({e}), skipping");
+            return Ok(0);
+        }
+    };
+
     let dir = home.debootstrap_dir();
     let Some(mut entries) = read_dir_or_missing(&dir).await? else {
         return Ok(0);
@@ -1800,6 +1813,36 @@ mod tests {
 
     fn test_home(root: &Path) -> HomePaths {
         HomePaths::with_root(root.to_path_buf())
+    }
+
+    #[tokio::test]
+    async fn gc_debootstrap_skips_when_cache_lock_is_held() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let debootstrap_dir = home.debootstrap_dir();
+        std::fs::create_dir_all(&debootstrap_dir).unwrap();
+        let cache_tar = debootstrap_dir.join("noble-amd64.tar");
+        std::fs::write(&cache_tar, b"cached").unwrap();
+        std::fs::File::open(&cache_tar)
+            .unwrap()
+            .set_times(
+                FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000)),
+            )
+            .unwrap();
+
+        let lock_file = lock::open_lock_file(&home.debootstrap_lock()).unwrap();
+        let _held = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
+
+        let freed = gc_debootstrap(&home, Some(0), false).await.unwrap();
+
+        assert_eq!(freed, 0);
+        assert!(
+            cache_tar.exists(),
+            "active debootstrap cache tarball must survive GC"
+        );
     }
 
     #[tokio::test]

@@ -1121,6 +1121,12 @@ async fn build_template_locally(
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", output_dir.display())))?;
 
     // Local template build — the slow path (debootstrap + apt install).
+    let debootstrap_lock_path = input.paths.debootstrap_lock();
+    tracing::info!(
+        "acquiring exclusive debootstrap cache lock for template build: {}",
+        debootstrap_lock_path.display()
+    );
+    let _debootstrap_lock = lock::acquire(debootstrap_lock_path).await?;
     let debootstrap_dir = input.paths.debootstrap_dir();
     tokio::fs::create_dir_all(&debootstrap_dir)
         .await
