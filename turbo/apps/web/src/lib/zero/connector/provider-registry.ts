@@ -109,7 +109,6 @@ import { miroHandler } from "./providers/miro-handler";
 import { mixpanelHandler } from "./providers/mixpanel-handler";
 import { mondayHandler } from "./providers/monday-handler";
 import { msg9Handler } from "./providers/msg9-handler";
-import { nanoBananaHandler } from "./providers/nano-banana-handler";
 import { neonHandler } from "./providers/neon-handler";
 import { notionHandler } from "./providers/notion-handler";
 import { onyxHandler } from "./providers/onyx-handler";
@@ -288,7 +287,6 @@ export const PROVIDER_HANDLERS: Record<
   mixpanel: mixpanelHandler,
   monday: mondayHandler,
   msg9: msg9Handler,
-  "nano-banana": nanoBananaHandler,
   neon: neonHandler,
   notion: notionHandler,
   onyx: onyxHandler,

@@ -136,7 +136,6 @@ import { mixpanelFirewall } from "./mixpanel.generated";
 import { mondayFirewall } from "./monday.generated";
 import { msg9Firewall } from "./msg9.generated";
 import { n8nFirewall } from "./n8n.generated";
-import { nanoBananaFirewall } from "./nano-banana.generated";
 import { neonFirewall } from "./neon.generated";
 import { notionFirewall } from "./notion.generated";
 import { onyxFirewall } from "./onyx.generated";
@@ -326,7 +325,6 @@ const CONNECTOR_FIREWALLS = {
   monday: mondayFirewall,
   msg9: msg9Firewall,
   n8n: n8nFirewall,
-  "nano-banana": nanoBananaFirewall,
   neon: neonFirewall,
   notion: notionFirewall,
   onyx: onyxFirewall,
