@@ -58,6 +58,7 @@ export async function autoSendPendingMessageOnRunComplete(input: {
       pendingMessageContent: chatThreads.pendingMessageContent,
       pendingMessageAttachments: chatThreads.pendingMessageAttachments,
       pendingMessageCreatedAt: chatThreads.pendingMessageCreatedAt,
+      pendingMessageClientId: chatThreads.pendingMessageClientId,
       modelProviderId: chatThreads.modelProviderId,
       selectedModel: chatThreads.selectedModel,
     })
@@ -76,6 +77,7 @@ export async function autoSendPendingMessageOnRunComplete(input: {
       pendingMessageAttachments: null,
       pendingMessageCreatedAt: null,
       pendingMessageUpdatedAt: null,
+      pendingMessageClientId: null,
     })
     .where(eq(chatThreads.id, threadId));
 
@@ -137,6 +139,10 @@ export async function autoSendPendingMessageOnRunComplete(input: {
             return f.id;
           })
         : undefined,
+    // Reuse the client-pre-generated id so the optimistic queued bubble
+    // already mounted on every browser tab reconciles in place when the
+    // chatThreadMessageCreated Ably event lands.
+    id: thread.pendingMessageClientId ?? undefined,
   });
 
   await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);

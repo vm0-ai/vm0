@@ -219,6 +219,7 @@ export function mockChatLifecycle(options?: {
   onPendingMessageAppend?: (body: {
     content?: string;
     attachments?: PersistedAttachment[];
+    clientMessageId?: string;
   }) => void;
   onPendingMessageRecall?: () => void;
   /**
@@ -398,6 +399,8 @@ export function mockChatLifecycle(options?: {
           attachments: nextAttachments.length > 0 ? nextAttachments : null,
           createdAt: pendingMessage?.createdAt ?? now,
           updatedAt: now,
+          clientMessageId:
+            pendingMessage?.clientMessageId ?? body.clientMessageId ?? null,
         };
         return respond(200, { pendingMessage });
       },

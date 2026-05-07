@@ -70,12 +70,25 @@ const pendingMessageSchema = z.object({
   attachments: z.array(persistedAttachmentSchema).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * Client-generated UUID. The auto-send path uses this as the new
+   * `chat_messages.id` so the optimistic queued bubble reconciles with the
+   * real row by matching id once the server dispatches the queued message.
+   * Nullable for back-compat with rows queued before this field landed.
+   */
+  clientMessageId: z.string().uuid().nullable(),
 });
 
 const appendPendingMessageBodySchema = z
   .object({
     content: z.string().min(1).optional(),
     attachments: z.array(persistedAttachmentSchema).min(1).optional(),
+    /**
+     * Pre-generated UUID the client uses for its optimistic queued-message
+     * bubble. Persisted on the thread and reused as `chat_messages.id`
+     * when the auto-send path dispatches the queued message.
+     */
+    clientMessageId: z.string().uuid().optional(),
   })
   .refine(
     (body) => {

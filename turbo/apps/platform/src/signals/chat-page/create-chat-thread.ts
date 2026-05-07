@@ -1278,6 +1278,14 @@ function createQueueMessage(deps: QueueMessageDeps) {
     set(cancelDraftSync$);
     set(draft.clear$);
 
+    // Pre-generate the client message id so the eventual auto-sent
+    // chat_messages row uses it; the optimistic queued bubble is mounted
+    // with this id so the merge-by-id reconciliation drops the dupe when
+    // the real row arrives via Ably.
+    const existingPending = thread.pendingMessage;
+    const clientMessageId =
+      existingPending?.clientMessageId ?? crypto.randomUUID();
+
     await Promise.all([
       set(flushDraftClear$, signal),
       set(
@@ -1286,6 +1294,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
           threadId,
           content,
           attachments,
+          clientMessageId,
         },
         signal,
       ),
@@ -1366,9 +1375,14 @@ interface MessageCommandsDeps
     QueueMessageDeps,
     Omit<RecallMessageDeps, "markPendingRecalled$"> {}
 
-function createMessageCommands(deps: MessageCommandsDeps) {
+function createMessageCommands(
+  deps: MessageCommandsDeps & {
+    groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>;
+  },
+) {
   const { pendingMessage$, markPendingRecalled$ } = createPendingMessageView(
     deps.threadData$,
+    deps.groupedChatMessages$,
   );
   return {
     sendMessage$: createSendMessage(deps),
@@ -1382,11 +1396,12 @@ function createMessageCommands(deps: MessageCommandsDeps) {
 }
 
 // ---------------------------------------------------------------------------
-// Sub-factory: pending-message view (with optimistic recall mask)
+// Sub-factory: pending-message view (with optimistic recall mask + dedup)
 // ---------------------------------------------------------------------------
 
 function createPendingMessageView(
   threadData$: Computed<Promise<ChatThread | null>>,
+  groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
 ) {
   // Tracks the `updatedAt` of the pending message the user just recalled.
   // While the cached `threadData$` still echoes that same pending row back
@@ -1404,6 +1419,22 @@ function createPendingMessageView(
       const recalledUpdatedAt = get(internalRecalledUpdatedAt$);
       if (recalledUpdatedAt === pending.updatedAt) {
         return null;
+      }
+      // Dedup by client message id: when auto-send claims the queued
+      // message, it inserts a chat_messages row reusing the queued
+      // bubble's pre-generated id. Once the realtime fetcher surfaces
+      // that row, the optimistic queued bubble must vacate so we don't
+      // paint the same user message twice.
+      if (pending.clientMessageId) {
+        const groups = await get(groupedChatMessages$);
+        const matched = groups.some((group) => {
+          return group.messages.some((message) => {
+            return message.id === pending.clientMessageId;
+          });
+        });
+        if (matched) {
+          return null;
+        }
       }
       return pending;
     },
@@ -1540,6 +1571,7 @@ export function createChatThreadSignals(
     scrollToBottom$: scrollSignals.scrollToBottom$,
     reloadThread$,
     dataSource,
+    groupedChatMessages$,
   });
 
   const { setInputRef$, focusInput$ } = createInputRef();

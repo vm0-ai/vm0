@@ -33,6 +33,7 @@ function createEmptyPendingMessage(): PendingMessage {
     attachments: null,
     createdAt: "2026-05-01T00:00:00Z",
     updatedAt: "2026-05-01T00:00:00Z",
+    clientMessageId: null,
   };
 }
 

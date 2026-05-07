@@ -49,7 +49,12 @@ const patchDraft$ = command(
 const appendPendingMessage$ = command(
   async (
     { get },
-    { threadId, content, attachments }: AppendPendingMessageArgs,
+    {
+      threadId,
+      content,
+      attachments,
+      clientMessageId,
+    }: AppendPendingMessageArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadPendingMessageAppendContract, {
@@ -58,6 +63,7 @@ const appendPendingMessage$ = command(
     const body = {
       ...(content !== undefined ? { content } : {}),
       ...(attachments !== undefined ? { attachments } : {}),
+      ...(clientMessageId !== undefined ? { clientMessageId } : {}),
     };
     const result = await accept(
       client.append({

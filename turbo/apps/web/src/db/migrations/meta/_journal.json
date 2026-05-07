@@ -2402,6 +2402,13 @@
       "when": 1778122063617,
       "tag": "0342_add_gpt_image_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 343,
+      "version": "7",
+      "when": 1778135064655,
+      "tag": "0343_light_wonder_man",
+      "breakpoints": true
     }
   ]
 }

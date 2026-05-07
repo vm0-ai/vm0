@@ -26,6 +26,7 @@ const localAppendPendingMessage$ = command(
       attachments: args.attachments ?? null,
       createdAt: now,
       updatedAt: now,
+      clientMessageId: args.clientMessageId ?? null,
     });
   },
 );

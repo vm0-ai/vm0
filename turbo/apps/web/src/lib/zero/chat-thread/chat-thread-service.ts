@@ -273,6 +273,7 @@ type ChatThreadPendingMessage = {
   attachments: PersistedAttachment[] | null;
   createdAt: Date;
   updatedAt: Date;
+  clientMessageId: string | null;
 };
 
 type PendingMessageColumns = {
@@ -280,6 +281,7 @@ type PendingMessageColumns = {
   pendingMessageAttachments: PersistedAttachment[] | null;
   pendingMessageCreatedAt: Date | null;
   pendingMessageUpdatedAt: Date | null;
+  pendingMessageClientId?: string | null;
 };
 
 function parsePersistedAttachments(
@@ -303,6 +305,7 @@ function toChatThreadPendingMessage(
     attachments: parsePersistedAttachments(row.pendingMessageAttachments),
     createdAt: row.pendingMessageCreatedAt,
     updatedAt: row.pendingMessageUpdatedAt,
+    clientMessageId: row.pendingMessageClientId ?? null,
   };
 }
 

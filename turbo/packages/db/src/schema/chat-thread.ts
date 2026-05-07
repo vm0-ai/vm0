@@ -64,6 +64,13 @@ export const chatThreads = pgTable(
     pendingMessageCreatedAt: timestamp("pending_message_created_at"),
     pendingMessageUpdatedAt: timestamp("pending_message_updated_at"),
     /**
+     * Client-generated UUID for the pending message. When the auto-send
+     * path consumes the queue, this id is used as `chat_messages.id` so
+     * the client's optimistic queued bubble reconciles with the real row
+     * by matching id (no flash of a duplicate user message).
+     */
+    pendingMessageClientId: uuid("pending_message_client_id"),
+    /**
      * Slack-style watermark: the last timestamp up to which the user has read
      * messages in this thread. Forward-only — never rewound.
      * NULL means the thread has never been explicitly marked read.
