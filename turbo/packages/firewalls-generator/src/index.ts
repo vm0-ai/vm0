@@ -172,6 +172,7 @@ import { generate as generateZep } from "./zep";
 import { generate as generateZeptomail } from "./zeptomail";
 import { generate as generateWandb } from "./wandb";
 import { generate as generateZoom } from "./zoom";
+import { generate as generateGoogleAds } from "./google-ads";
 import { createGoogleGenerator, googleServiceNames } from "./google";
 
 const GENERATORS: Record<string, () => Promise<void>> = {
@@ -231,6 +232,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "garmin-connect": generateGarminConnect,
   github: generateGitHub,
   gitlab: generateGitlab,
+  "google-ads": generateGoogleAds,
   granola: generateGranola,
   greenhouse: generateGreenhouse,
   groq: generateGroq,

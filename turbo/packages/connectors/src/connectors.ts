@@ -11,6 +11,7 @@ import { gmail } from "./connectors/gmail";
 import { googleSheets } from "./connectors/google-sheets";
 import { googleDocs } from "./connectors/google-docs";
 import { googleDrive } from "./connectors/google-drive";
+import { googleAds } from "./connectors/google-ads";
 import { googleCalendar } from "./connectors/google-calendar";
 import { googleMeet } from "./connectors/google-meet";
 import { close } from "./connectors/close";
@@ -388,6 +389,7 @@ const CONNECTOR_TYPES_DEF = {
   ...googleSheets,
   ...googleDocs,
   ...googleDrive,
+  ...googleAds,
   ...googleCalendar,
   ...googleMeet,
   ...close,

@@ -107,6 +107,7 @@ const CONNECTOR_ICON_COLORFUL = {
   "garmin-connect": true,
   gitlab: true,
   gmail: true,
+  "google-ads": true,
   "google-calendar": true,
   "google-docs": true,
   "google-drive": true,

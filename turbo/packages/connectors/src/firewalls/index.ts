@@ -90,6 +90,7 @@ import { gammaFirewall } from "./gamma.generated";
 import { garminConnectFirewall } from "./garmin-connect.generated";
 import { githubFirewall } from "./github.generated";
 import { gitlabFirewall } from "./gitlab.generated";
+import { googleAdsFirewall } from "./google-ads.generated";
 import { googleCalendarFirewall } from "./google-calendar.generated";
 import { googleDocsFirewall } from "./google-docs.generated";
 import { googleDriveFirewall } from "./google-drive.generated";
@@ -279,6 +280,7 @@ const CONNECTOR_FIREWALLS = {
   github: githubFirewall,
   gitlab: gitlabFirewall,
   gmail: gmailFirewall,
+  "google-ads": googleAdsFirewall,
   "google-calendar": googleCalendarFirewall,
   "google-docs": googleDocsFirewall,
   "google-drive": googleDriveFirewall,

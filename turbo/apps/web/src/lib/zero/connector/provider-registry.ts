@@ -78,6 +78,7 @@ import { hubspotHandler } from "./providers/hubspot-handler";
 import { imgurHandler } from "./providers/imgur-handler";
 import { instagramHandler } from "./providers/instagram-handler";
 import { gmailHandler } from "./providers/gmail-handler";
+import { googleAdsHandler } from "./providers/google-ads-handler";
 import { googleCalendarHandler } from "./providers/google-calendar-handler";
 import { googleDocsHandler } from "./providers/google-docs-handler";
 import { googleDriveHandler } from "./providers/google-drive-handler";
@@ -262,6 +263,7 @@ export const PROVIDER_HANDLERS: Record<
   imgur: imgurHandler,
   instantly: instantlyHandler,
   instagram: instagramHandler,
+  "google-ads": googleAdsHandler,
   "google-calendar": googleCalendarHandler,
   "google-docs": googleDocsHandler,
   "google-drive": googleDriveHandler,

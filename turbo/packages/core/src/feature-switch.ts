@@ -119,6 +119,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Outlook Calendar connector",
     enabled: false,
   },
+  [FeatureSwitchKey.GoogleAdsConnector]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Enable the Google Ads connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
