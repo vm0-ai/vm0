@@ -60,6 +60,51 @@ enable_codex_beta() {
         >/dev/null
 }
 
+# Configure the OpenAI BYOK provider for codex smoke tests.
+#
+# The provider creation endpoint is intentionally hidden behind codexBeta and
+# returns a 404 when the switch is off. Runner E2E files share one user and run
+# in parallel, so tolerate a stale/cleared feature-switch read by re-enabling
+# codexBeta and retrying only that gated 404.
+setup_codex_openai_provider() {
+    local secret="$1"
+    local max_attempts="${CODEX_ZERO_PROVIDER_SETUP_ATTEMPTS:-5}"
+    local retry_delay="${CODEX_ZERO_PROVIDER_SETUP_RETRY_DELAY_S:-2}"
+    local attempt output status
+
+    for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
+        enable_codex_beta
+        status=$?
+        if [[ "$status" -ne 0 ]]; then
+            echo "# setup_codex_openai_provider: enable_codex_beta failed on attempt ${attempt}/${max_attempts}" >&2
+        else
+            output=$($ZERO_CLI org model-provider setup \
+                --type "openai-api-key" \
+                --secret "$secret" 2>&1)
+            status=$?
+            if [[ "$status" -eq 0 ]]; then
+                return 0
+            fi
+
+            if [[ "$output" != *'Provider "openai-api-key" not found'* ]]; then
+                printf '%s\n' "$output" >&2
+                return "$status"
+            fi
+
+            echo "# setup_codex_openai_provider: codexBeta gate was not visible on attempt ${attempt}/${max_attempts}" >&2
+        fi
+
+        if (( attempt < max_attempts )); then
+            sleep "$retry_delay"
+        fi
+    done
+
+    if [[ -n "${output:-}" ]]; then
+        printf '%s\n' "$output" >&2
+    fi
+    return "${status:-1}"
+}
+
 # Do not clear feature-switch overrides in teardown. Runner E2E files execute
 # in parallel and share the same authenticated runner user; DELETE
 # /api/zero/feature-switches removes every override for that shared user, which
