@@ -45,6 +45,16 @@ use crate::error::AgentError;
 /// on egress with the real account id from server-side secrets.
 pub(crate) const PLACEHOLDER_CHATGPT_ACCOUNT_ID: &str = "ws_VM0_PLACEHOLDER_DO_NOT_TRUST";
 
+/// Placeholder refresh_token written into `~/.codex/auth.json` in
+/// codex-oauth mode. Non-empty by design (#12077): newer codex CLI
+/// versions reject auth.json with empty `refresh_token` at boot — codex
+/// exits 1 within milliseconds before any HTTP egress, so the firewall
+/// replacement layer never gets a chance. The opaque marker shape mirrors
+/// `PLACEHOLDER_CHATGPT_ACCOUNT_ID` and is recognizable in audit greps.
+/// The firewall replaces this string with the real refresh_token on the
+/// /oauth/token egress path; the sandbox itself never sees a real token.
+pub(crate) const PLACEHOLDER_CHATGPT_REFRESH_TOKEN: &str = "rt_VM0_PLACEHOLDER_DO_NOT_TRUST";
+
 /// Placeholder ChatGPT plan type. Must be a non-`free` plan name; codex
 /// rejects `free`. The real plan type is enforced server-side at provider
 /// creation; this string only needs to satisfy codex's local parser.
@@ -142,7 +152,11 @@ fn build_auth_json(now: DateTime<Utc>) -> Result<Value, AgentError> {
         "tokens": {
             "id_token": id_jwt,
             "access_token": access_jwt,
-            "refresh_token": "",
+            // Non-empty placeholder per #12077 — empty refresh_token caused
+            // codex CLI to exit 1 at boot before reaching any HTTP egress,
+            // bypassing the firewall replacement entirely. The opaque marker
+            // is replaced with the real refresh_token on /oauth/token egress.
+            "refresh_token": PLACEHOLDER_CHATGPT_REFRESH_TOKEN,
             "account_id": PLACEHOLDER_CHATGPT_ACCOUNT_ID,
         },
         "last_refresh": now.to_rfc3339(),
@@ -258,7 +272,16 @@ mod tests {
 
         // tokens.account_id and refresh_token shape.
         assert_eq!(auth["tokens"]["account_id"], PLACEHOLDER_CHATGPT_ACCOUNT_ID);
-        assert_eq!(auth["tokens"]["refresh_token"], "");
+        // Non-empty placeholder (#12077): empty refresh_token caused codex
+        // CLI to exit 1 at boot before reaching firewall egress.
+        assert_eq!(
+            auth["tokens"]["refresh_token"],
+            PLACEHOLDER_CHATGPT_REFRESH_TOKEN
+        );
+        assert!(
+            !PLACEHOLDER_CHATGPT_REFRESH_TOKEN.is_empty(),
+            "refresh_token must not be empty",
+        );
 
         // last_refresh is RFC3339-parseable.
         let last_refresh = auth["last_refresh"].as_str().unwrap();

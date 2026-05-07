@@ -839,6 +839,12 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS: Record<
       CHATGPT_ACCESS_TOKEN:
         "chatgpt-token-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal",
       CHATGPT_ACCOUNT_ID: "ws_VM0_PLACEHOLDER_DO_NOT_TRUST",
+      // refresh_token written by guest-agent into ~/.codex/auth.json (#12077).
+      // Kept in this map so the firewall can substitute it on egress if codex
+      // ever tries to use it directly — defense-in-depth alongside
+      // CODEX_REFRESH_TOKEN_URL_OVERRIDE which redirects refresh attempts to
+      // localhost. The sandbox never gets the real refresh_token (#7365).
+      CHATGPT_REFRESH_TOKEN: "rt_VM0_PLACEHOLDER_DO_NOT_TRUST",
     },
   },
 };
