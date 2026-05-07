@@ -88,8 +88,9 @@ impl<'a> OwnershipTransitions<'a> {
 
     /// Idle pool now proves ownership for these orphan records.
     ///
-    /// The idle snapshot is published once, before the first matching active
-    /// removal. Stale orphan records are skipped by `(run_id, sandbox_id)`.
+    /// Only runs present in `idle_snapshot` are eligible. The idle snapshot is
+    /// published once, before the first matching active removal. Stale orphan
+    /// records are skipped by `(run_id, sandbox_id)`.
     pub(super) async fn orphan_reconciled_idle_owned(
         &self,
         orphaned_active_runs: &OrphanedActiveRuns,
@@ -118,7 +119,11 @@ impl<'a> OwnershipTransitions<'a> {
         reconciled
     }
 
-    /// Process discovery confirmed the orphan sandbox absent; clear orphan and active status.
+    /// Process discovery confirmed the orphan sandbox absent; clear orphan state.
+    ///
+    /// Returns whether matching active status was also removed. A stale orphan
+    /// can still be cleared when active status is already gone or points at a
+    /// different sandbox.
     pub(super) async fn orphan_confirmed_absent(
         &self,
         orphaned_active_runs: &OrphanedActiveRuns,
