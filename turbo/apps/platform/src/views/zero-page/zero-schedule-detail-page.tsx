@@ -539,29 +539,22 @@ function ScheduleSettingsForm({
       {canDelete && (
         <Card className="zero-card overflow-hidden border-destructive/20">
           <CardContent className="p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-              <div className="min-w-0 sm:max-w-[46%]">
-                <h3 className="text-[15px] sm:text-sm font-medium text-foreground">
-                  Danger zone
-                </h3>
-                <p className="text-[15px] sm:text-xs text-muted-foreground mt-1 leading-snug">
-                  Deleting removes this schedule permanently.
-                </p>
-              </div>
-              <div className="flex shrink-0 self-end sm:self-auto sm:pt-0.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[15px] hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => {
-                    return setShowDeleteConfirmVal(true);
-                  }}
-                >
-                  <IconTrash size={14} stroke={1.5} />
-                  Delete schedule
-                </Button>
-              </div>
+            <div className="flex flex-row items-center justify-between gap-4">
+              <h3 className="min-w-0 text-[15px] sm:text-sm font-medium text-foreground">
+                Danger zone
+              </h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="shrink-0 h-9 max-md:h-11 gap-2 rounded-lg border-destructive/40 px-4 text-destructive max-md:text-[15px] hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => {
+                  return setShowDeleteConfirmVal(true);
+                }}
+              >
+                <IconTrash size={14} stroke={1.5} />
+                Delete schedule
+              </Button>
             </div>
           </CardContent>
         </Card>

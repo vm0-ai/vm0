@@ -41,7 +41,7 @@ export function InlineSettingsRow({
           wideControls
             ? "sm:min-w-0 sm:flex-1 sm:max-w-none sm:pt-0.5"
             : alignControls === "center"
-              ? "flex justify-start sm:justify-end sm:max-w-[min(100%,28rem)]"
+              ? "flex justify-end sm:max-w-[min(100%,28rem)]"
               : "sm:flex sm:max-w-[min(100%,28rem)] sm:justify-end sm:pt-0.5",
         )}
       >
