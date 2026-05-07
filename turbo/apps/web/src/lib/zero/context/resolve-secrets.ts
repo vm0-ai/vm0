@@ -5,6 +5,7 @@ import { logger } from "../../shared/logger";
 import { getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import { env } from "../../../env";
 
 const log = logger("zero:build-context");
 
@@ -96,7 +97,7 @@ export function filterDbSecretsByConnectorPermissions(
 const ENV_SECRET_NAMES = [
   "GOOGLE_ADS_DEVELOPER_TOKEN",
   "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
-];
+] as const;
 
 /**
  * Read whitelisted env vars into the secrets map.
@@ -104,8 +105,9 @@ const ENV_SECRET_NAMES = [
  */
 export function injectPlatformEnvSecrets(): Record<string, string> | undefined {
   const result: Record<string, string> = {};
+  const platformEnv = env();
   for (const name of ENV_SECRET_NAMES) {
-    const value = process.env[name];
+    const value = platformEnv[name];
     if (value) {
       result[name] = value;
     }

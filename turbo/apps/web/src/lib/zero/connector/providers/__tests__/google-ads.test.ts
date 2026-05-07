@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { server } from "../../../../../mocks/server";
 import { testContext } from "../../../../../__tests__/test-helpers";
 import { PROVIDER_HANDLERS } from "../../provider-registry";
 import { googleAdsHandler } from "../google-ads-handler";
@@ -16,12 +15,17 @@ describe("connector/providers/google-ads", () => {
       expect(PROVIDER_HANDLERS["google-ads"]).toBe(googleAdsHandler);
     });
 
-    it("buildAuthUrl builds Google OAuth URL with adwords scope", () => {
+    it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
       const url = googleAdsHandler.buildAuthUrl(
         "test-client",
         "https://example.com/callback",
         "test-state",
       );
+      if (typeof url !== "string") {
+        throw new Error("Expected Google Ads auth URL to be a string");
+      }
+      const params = new URL(url).searchParams;
+      const scopes = new Set(params.get("scope")?.split(" ") ?? []);
 
       expect(url).toContain("client_id=test-client");
       expect(url).toContain(
@@ -32,6 +36,10 @@ describe("connector/providers/google-ads", () => {
       expect(url).toContain("access_type=offline");
       expect(url).toContain("prompt=consent");
       expect(url).toContain("accounts.google.com/o/oauth2/v2/auth");
+      expect(scopes.has("https://www.googleapis.com/auth/adwords")).toBe(true);
+      expect(scopes.has("https://www.googleapis.com/auth/userinfo.email")).toBe(
+        true,
+      );
     });
 
     it("getClientId returns GOOGLE_OAUTH_CLIENT_ID from env", () => {
@@ -55,7 +63,7 @@ describe("connector/providers/google-ads", () => {
     });
 
     it("getRefreshSecretName returns GOOGLE_ADS_REFRESH_TOKEN", () => {
-      expect(googleAdsHandler.getRefreshSecretName()).toBe(
+      expect(googleAdsHandler.getRefreshSecretName?.()).toBe(
         "GOOGLE_ADS_REFRESH_TOKEN",
       );
     });

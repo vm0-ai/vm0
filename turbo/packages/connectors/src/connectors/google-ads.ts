@@ -32,7 +32,10 @@ export const googleAds = {
     oauth: {
       authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
       tokenUrl: "https://oauth2.googleapis.com/token",
-      scopes: ["https://www.googleapis.com/auth/adwords"],
+      scopes: [
+        "https://www.googleapis.com/auth/adwords",
+        "https://www.googleapis.com/auth/userinfo.email",
+      ],
     },
   },
 } as const satisfies Record<string, ConnectorConfig>;
