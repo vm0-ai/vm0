@@ -20,7 +20,7 @@ import type { Database } from "../../../types/global";
 
 const log = logger("service:model-provider");
 
-interface ModelProviderInfo {
+export interface ModelProviderInfo {
   id: string;
   /**
    * Owner of the row: ORG_SENTINEL_USER_ID for org-tier rows, real userId

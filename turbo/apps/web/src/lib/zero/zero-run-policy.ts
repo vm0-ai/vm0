@@ -4,7 +4,9 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   concurrentRunLimit,
   forbidden,
+  modelProviderConnectRequired,
   noModelProvider,
+  staleProvider,
 } from "@vm0/api-services/errors";
 import {
   MODEL_PROVIDER_TYPES,
@@ -26,8 +28,13 @@ import {
   getModelProviderById,
   getUserDefaultModelProvider,
   getUserAnyDefaultModelProvider,
+  getUserModelProviderByType,
 } from "./model-provider/model-provider-service";
 import { isPersonalTierEligible } from "./personal-tier-gate";
+import {
+  isModelFirstModelProviderEnabled,
+  resolveModelFirstRouteDescriptor,
+} from "./model-policy/model-first-route-service";
 import type { Database } from "../../types/global";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
@@ -168,9 +175,23 @@ async function resolveProviderTypeForAdmission(params: {
   userId: string;
   modelProvider?: string | null;
   modelProviderId?: string | null;
+  modelProviderCredentialScope?: string | null;
+  selectedModelOverride?: string | null;
   composeFramework: string;
   preferPersonalProvider?: boolean;
 }): Promise<ModelProviderType | null> {
+  if (await isModelFirstModelProviderEnabled(params.orgId, params.userId)) {
+    const route = await resolveModelFirstRouteDescriptor({
+      orgId: params.orgId,
+      userId: params.userId,
+      selectedModel: params.selectedModelOverride,
+      providerType: params.modelProvider,
+      credentialScope: params.modelProviderCredentialScope,
+      modelProviderId: params.modelProviderId,
+    });
+    return route.providerType;
+  }
+
   if (params.modelProvider && params.modelProvider in MODEL_PROVIDER_TYPES) {
     return params.modelProvider as ModelProviderType;
   }
@@ -213,6 +234,8 @@ export async function resolveRunAdmissionContext(params: {
   userId: string;
   modelProvider?: string | null;
   modelProviderId?: string | null;
+  modelProviderCredentialScope?: string | null;
+  selectedModelOverride?: string | null;
   composeFramework: string;
   preferPersonalProvider?: boolean;
 }): Promise<RunAdmissionContext> {
@@ -260,9 +283,10 @@ export async function checkModelProviderConfigured(
   modelProvider: string | null | undefined,
   composeContent: AgentComposeYaml,
   preferPersonalProvider?: boolean,
+  selectedModelOverride?: string | null,
+  modelProviderId?: string | null,
+  modelProviderCredentialScope?: string | null,
 ): Promise<void> {
-  if (modelProvider) return;
-
   const firstAgent = composeContent.agents
     ? Object.values(composeContent.agents)[0]
     : undefined;
@@ -272,6 +296,36 @@ export async function checkModelProviderConfigured(
     return firstAgent?.environment?.[v] !== undefined;
   });
   if (hasExplicitConfig) return;
+
+  if (await isModelFirstModelProviderEnabled(orgId, userId)) {
+    const route = await resolveModelFirstRouteDescriptor({
+      orgId,
+      userId,
+      selectedModel: selectedModelOverride,
+      providerType: modelProvider,
+      credentialScope: modelProviderCredentialScope,
+      modelProviderId,
+    });
+    if (route.credentialScope === "member") {
+      const memberProvider = await getUserModelProviderByType(
+        orgId,
+        userId,
+        route.providerType,
+      );
+      if (!memberProvider) {
+        throw modelProviderConnectRequired(route.providerType);
+      }
+      if (memberProvider.needsReconnect) {
+        throw staleProvider(
+          memberProvider.type,
+          memberProvider.lastRefreshErrorCode,
+        );
+      }
+    }
+    return;
+  }
+
+  if (modelProvider) return;
 
   if (await isPersonalTierEligible(orgId, userId, preferPersonalProvider)) {
     const userType =

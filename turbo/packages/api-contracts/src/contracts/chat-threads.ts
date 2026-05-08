@@ -2,7 +2,10 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { runStatusSchema } from "./runs";
-import { modelProviderTypeSchema } from "./model-providers";
+import {
+  modelProviderCredentialScopeSchema,
+  modelProviderTypeSchema,
+} from "./model-providers";
 
 const c = initContract();
 
@@ -210,6 +213,10 @@ const chatThreadDetailSchema = z.object({
    * and org defaults) for the next run. Optional for back-compat.
    */
   modelProviderId: z.string().nullable().optional(),
+  modelProviderType: modelProviderTypeSchema.nullable().optional(),
+  modelProviderCredentialScope: modelProviderCredentialScopeSchema
+    .nullable()
+    .optional(),
   selectedModel: z.string().nullable().optional(),
   /**
    * ISO timestamp at which the user manually renamed this thread. Null/undefined

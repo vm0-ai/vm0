@@ -6,14 +6,17 @@ import {
   hasAuthMethods,
   getSecretsForAuthMethod,
   MODEL_PROVIDER_TYPES,
+  getProviderRuntimeModel,
   getVm0ConcreteProviderType,
   getVm0Vendor,
-  getVm0ApiModel,
+  type ModelProviderCredentialScope,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   badRequest,
+  modelProviderConnectRequired,
   noModelProvider,
+  providerDeleted,
   staleProvider,
 } from "@vm0/api-services/errors";
 import { logger } from "../../shared/logger";
@@ -32,7 +35,12 @@ import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { MODEL_PROVIDER_HANDLER_KEY } from "../handler-key-bridge";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";
 import { isPersonalTierEligible } from "../personal-tier-gate";
+import {
+  isModelFirstModelProviderEnabled,
+  resolveModelFirstRouteDescriptor,
+} from "../model-policy/model-first-route-service";
 import type { SecretConnectorMetadata } from "@vm0/api-contracts/contracts/runners";
+import type { ModelProviderInfo } from "../model-provider/model-provider-service";
 
 const log = logger("zero:build-context");
 
@@ -178,6 +186,10 @@ interface ModelProviderSecretResult {
   /** The logical model name selected by the user (e.g. "claude-sonnet-4-6").
    *  Used for model usage billing. */
   selectedModel?: string;
+  /** Model-first route ownership for audit/pinning. Undefined on legacy paths. */
+  credentialScope?: ModelProviderCredentialScope;
+  /** Org-scoped model provider row used by model-first API-key routes. */
+  modelProviderId?: string | null;
   /** Maps secret/env-var names → connector handler key for refresh-capable
    *  model-provider OAuth secrets (e.g. CHATGPT_ACCESS_TOKEN → "codex-oauth").
    *  Merged into the wire `secretConnectorMap` AFTER `filterSecretConnectorMap`
@@ -259,7 +271,7 @@ async function resolveVm0Provider(
 ): Promise<ModelProviderSecretResult> {
   const concreteType = getVm0ConcreteProviderType(selectedModel);
   const vendor = getVm0Vendor(selectedModel);
-  const apiModel = getVm0ApiModel(selectedModel);
+  const apiModel = getProviderRuntimeModel("vm0", selectedModel);
   const poolKey = await getVm0ApiKey(vendor);
   if (!poolKey) {
     throw badRequest(`No API key available for vendor "${vendor}"`);
@@ -283,9 +295,11 @@ async function resolveVm0Provider(
     secrets,
     injectedEnvironment,
     resolvedModelProvider: "vm0",
-    framework: getFrameworkForType("vm0"),
+    framework: getFrameworkForType(concreteType),
     concreteProviderType: concreteType,
     selectedModel,
+    credentialScope: "org",
+    modelProviderId: null,
   };
 }
 
@@ -299,6 +313,7 @@ async function resolveMultiAuthProviderSecrets(
   providerType: ModelProviderType,
   authMethod: string | undefined | null,
   selectedModel: string | undefined,
+  metadataSelectedModel: string | undefined = selectedModel,
 ): Promise<ModelProviderSecretResult | undefined> {
   if (!authMethod) {
     log.debug(
@@ -364,9 +379,183 @@ async function resolveMultiAuthProviderSecrets(
     injectedEnvironment,
     resolvedModelProvider: providerType,
     framework: getFrameworkForType(providerType),
-    selectedModel,
+    selectedModel: metadataSelectedModel,
     secretConnectorMap: refreshMaps?.secretConnectorMap,
     secretConnectorMetadataMap: refreshMaps?.secretConnectorMetadataMap,
+  };
+}
+
+async function resolveProviderSecretsForRoute(params: {
+  orgId: string;
+  secretUserId: string;
+  providerType: ModelProviderType;
+  authMethod?: string | null;
+  canonicalModel: string;
+  credentialScope?: ModelProviderCredentialScope;
+  modelProviderId?: string | null;
+}): Promise<ModelProviderSecretResult> {
+  const {
+    orgId,
+    secretUserId,
+    providerType,
+    authMethod,
+    canonicalModel,
+    credentialScope,
+    modelProviderId,
+  } = params;
+
+  if (providerType === "vm0") {
+    return resolveVm0Provider(canonicalModel);
+  }
+
+  const runtimeModel = getProviderRuntimeModel(providerType, canonicalModel);
+  const resolvedFramework = getFrameworkForType(providerType);
+
+  if (hasAuthMethods(providerType)) {
+    const resolved = await resolveMultiAuthProviderSecrets(
+      orgId,
+      secretUserId,
+      providerType,
+      authMethod,
+      runtimeModel,
+      canonicalModel,
+    );
+    return (
+      resolved ?? {
+        secrets: undefined,
+        injectedEnvironment: undefined,
+        resolvedModelProvider: providerType,
+        framework: resolvedFramework,
+        selectedModel: canonicalModel,
+        credentialScope,
+        modelProviderId,
+      }
+    );
+  }
+
+  const secretName = getSecretNameForType(providerType);
+  if (!secretName) {
+    return {
+      secrets: undefined,
+      injectedEnvironment: undefined,
+      resolvedModelProvider: providerType,
+      framework: resolvedFramework,
+      selectedModel: canonicalModel,
+      credentialScope,
+      modelProviderId,
+    };
+  }
+
+  const secretValue = await getSecretValue(
+    orgId,
+    secretUserId,
+    secretName,
+    "model-provider",
+  );
+
+  if (!secretValue) {
+    return {
+      secrets: undefined,
+      injectedEnvironment: undefined,
+      resolvedModelProvider: providerType,
+      framework: resolvedFramework,
+      selectedModel: canonicalModel,
+      credentialScope,
+      modelProviderId,
+    };
+  }
+
+  const injectedEnvironment = resolveEnvironmentMapping(
+    providerType,
+    secretName,
+    runtimeModel,
+  );
+
+  log.debug(
+    `Resolved model-first model provider env: ${Object.keys(injectedEnvironment).join(", ")}`,
+  );
+
+  return {
+    secrets: { [secretName]: secretValue },
+    injectedEnvironment,
+    resolvedModelProvider: providerType,
+    framework: resolvedFramework,
+    selectedModel: canonicalModel,
+    credentialScope,
+    modelProviderId,
+  };
+}
+
+async function resolveModelFirstProviderSecrets(params: {
+  orgId: string;
+  userId: string;
+  selectedModelOverride?: string;
+  explicitModelProvider?: string;
+  modelProviderId?: string;
+  modelProviderCredentialScope?: string;
+}): Promise<ModelProviderSecretResult> {
+  const route = await resolveModelFirstRouteDescriptor({
+    orgId: params.orgId,
+    userId: params.userId,
+    selectedModel: params.selectedModelOverride,
+    providerType: params.explicitModelProvider,
+    credentialScope: params.modelProviderCredentialScope,
+    modelProviderId: params.modelProviderId,
+  });
+
+  let providerRow: ModelProviderInfo | null = null;
+  let secretUserId = ORG_SENTINEL_USER_ID;
+
+  if (route.credentialScope === "member") {
+    providerRow = await getUserModelProviderByType(
+      params.orgId,
+      params.userId,
+      route.providerType,
+    );
+    if (!providerRow) {
+      throw modelProviderConnectRequired(route.providerType);
+    }
+    secretUserId = params.userId;
+  } else if (route.providerType !== "vm0") {
+    if (!route.modelProviderId) {
+      throw badRequest("Org-scoped model route is missing modelProviderId");
+    }
+    providerRow = await getModelProviderById(
+      params.orgId,
+      params.userId,
+      route.modelProviderId,
+    );
+    if (
+      !providerRow ||
+      providerRow.userId !== ORG_SENTINEL_USER_ID ||
+      providerRow.type !== route.providerType
+    ) {
+      throw providerDeleted();
+    }
+  }
+
+  if (providerRow?.needsReconnect) {
+    throw staleProvider(providerRow.type, providerRow.lastRefreshErrorCode);
+  }
+
+  const resolved = await resolveProviderSecretsForRoute({
+    orgId: params.orgId,
+    secretUserId,
+    providerType: route.providerType,
+    authMethod: providerRow?.authMethod,
+    canonicalModel: route.selectedModel,
+    credentialScope: route.credentialScope,
+    modelProviderId: route.modelProviderId,
+  });
+
+  if (route.credentialScope === "member" && !resolved.secrets) {
+    throw modelProviderConnectRequired(route.providerType);
+  }
+
+  return {
+    ...resolved,
+    credentialScope: route.credentialScope,
+    modelProviderId: route.modelProviderId,
   };
 }
 
@@ -464,6 +653,7 @@ export async function resolveModelProviderSecrets(
   modelProviderId?: string,
   selectedModelOverride?: string,
   preferPersonalProvider?: boolean,
+  modelProviderCredentialScope?: string,
 ): Promise<ModelProviderSecretResult> {
   const secrets: Record<string, string> | undefined = undefined;
   const timings: ResolveModelProviderSecretTimings = {
@@ -483,6 +673,17 @@ export async function resolveModelProviderSecrets(
       framework,
       timings,
     };
+  }
+
+  if (await isModelFirstModelProviderEnabled(orgId, userId)) {
+    return resolveModelFirstProviderSecrets({
+      orgId,
+      userId,
+      selectedModelOverride,
+      explicitModelProvider,
+      modelProviderId,
+      modelProviderCredentialScope,
+    });
   }
 
   // Resolve provider: specific ID override → personal-tier branch (gated) →

@@ -134,6 +134,34 @@ export const providerDeleted = makeApiError(
 );
 
 /**
+ * Thrown by the model-first resolver when an org policy routes a model through
+ * a member-scoped OAuth provider, but the current member has not connected
+ * their own credential yet.
+ */
+interface ModelProviderConnectRequiredError extends ApiErrorBase {
+  readonly name: "ModelProviderConnectRequiredError";
+  readonly code: "MODEL_PROVIDER_CONNECT_REQUIRED";
+  readonly providerType: string;
+}
+
+export function modelProviderConnectRequired(
+  providerType: string,
+  message?: string,
+): ModelProviderConnectRequiredError {
+  const err = new Error(
+    message ??
+      `Connect "${providerType}" before using this workspace model route.`,
+  );
+  Object.assign(err, {
+    name: "ModelProviderConnectRequiredError",
+    code: "MODEL_PROVIDER_CONNECT_REQUIRED",
+    statusCode: 422,
+    providerType,
+  });
+  return err as ModelProviderConnectRequiredError;
+}
+
+/**
  * Thrown by the model-provider resolver when a provider's OAuth refresh has
  * failed and the user must re-connect before a sandbox can dispatch. Carries
  * `providerType` and `refreshErrorCode` so callers can render the correct
@@ -213,6 +241,12 @@ export function isStaleProvider(
   e: unknown,
 ): e is ReturnType<typeof staleProvider> {
   return e instanceof Error && e.name === "StaleProviderError";
+}
+
+export function isModelProviderConnectRequired(
+  e: unknown,
+): e is ReturnType<typeof modelProviderConnectRequired> {
+  return e instanceof Error && e.name === "ModelProviderConnectRequiredError";
 }
 
 export function isProviderDeleted(

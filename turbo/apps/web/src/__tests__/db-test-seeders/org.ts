@@ -6,6 +6,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { ORG_SENTINEL_USER_ID } from "../../lib/zero/org/org-sentinel";
 import { getTestAuthContext } from "../api-test-helpers/core";
@@ -527,4 +528,57 @@ export async function enablePersonalModelProviderForUser(
         updatedAt: new Date(),
       },
     });
+}
+
+/**
+ * Enable the `modelFirstModelProvider` feature switch for a specific user.
+ *
+ * @why-db-direct Tests need deterministic feature switch state without
+ *   relying on static staff-org hashes.
+ */
+export async function enableModelFirstModelProviderForUser(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .insert(userFeatureSwitches)
+    .values({
+      orgId,
+      userId,
+      switches: { modelFirstModelProvider: true },
+    })
+    .onConflictDoUpdate({
+      target: [userFeatureSwitches.orgId, userFeatureSwitches.userId],
+      set: {
+        switches: { modelFirstModelProvider: true },
+        updatedAt: new Date(),
+      },
+    });
+}
+
+export async function insertOrgModelPolicy(params: {
+  orgId: string;
+  model: string;
+  sortOrder: number;
+  enabled?: boolean;
+  defaultProviderType?: string;
+  credentialScope?: string;
+  modelProviderId?: string | null;
+}): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(orgModelPolicies)
+    .values({
+      orgId: params.orgId,
+      model: params.model,
+      sortOrder: params.sortOrder,
+      enabled: params.enabled ?? true,
+      defaultProviderType: params.defaultProviderType ?? "vm0",
+      credentialScope: params.credentialScope ?? "org",
+      modelProviderId: params.modelProviderId ?? null,
+    })
+    .returning({ id: orgModelPolicies.id });
+  if (!row) throw new Error("insertOrgModelPolicy: insert failed");
+  return row.id;
 }

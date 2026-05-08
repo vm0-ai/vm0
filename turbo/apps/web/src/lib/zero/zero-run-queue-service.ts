@@ -589,6 +589,9 @@ export async function dispatchQueuedZeroRun(
     params.modelProvider,
     composeContent,
     params.preferPersonalProvider,
+    params.selectedModelOverride,
+    params.modelProviderId,
+    params.modelProviderCredentialScope,
   );
 
   const composeAgents = composeContent?.agents
@@ -600,6 +603,8 @@ export async function dispatchQueuedZeroRun(
     userId: params.userId,
     modelProvider: params.modelProvider,
     modelProviderId: params.modelProviderId,
+    modelProviderCredentialScope: params.modelProviderCredentialScope,
+    selectedModelOverride: params.selectedModelOverride,
     composeFramework,
     preferPersonalProvider: params.preferPersonalProvider,
   });
@@ -646,6 +651,9 @@ export async function dispatchQueuedZeroRun(
     .update(zeroRuns)
     .set({
       modelProvider: contextResult.resolvedModelProvider ?? null,
+      modelProviderId: contextResult.modelProviderId ?? null,
+      modelProviderCredentialScope:
+        contextResult.modelProviderCredentialScope ?? null,
       selectedModel: contextResult.selectedModel ?? null,
     })
     .where(eq(zeroRuns.id, runId));

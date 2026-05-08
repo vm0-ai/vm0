@@ -1,6 +1,9 @@
 import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { modelProviderTypeSchema } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  modelProviderCredentialScopeSchema,
+  modelProviderTypeSchema,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getUserId } from "../../../../../src/lib/auth/get-auth-context";
@@ -71,6 +74,17 @@ const router = tsr.router(chatThreadByIdContract, {
           ? null
           : (modelProviderTypeSchema.safeParse(latestRunProviderTypeRaw).data ??
             null);
+      const threadModelProviderType =
+        thread.modelProviderType === null
+          ? null
+          : (modelProviderTypeSchema.safeParse(thread.modelProviderType).data ??
+            null);
+      const threadModelProviderCredentialScope =
+        thread.modelProviderCredentialScope === null
+          ? null
+          : (modelProviderCredentialScopeSchema.safeParse(
+              thread.modelProviderCredentialScope,
+            ).data ?? null);
 
       return {
         status: 200 as const,
@@ -98,6 +112,8 @@ const router = tsr.router(chatThreadByIdContract, {
               }
             : null,
           modelProviderId: thread.modelProviderId,
+          modelProviderType: threadModelProviderType,
+          modelProviderCredentialScope: threadModelProviderCredentialScope,
           selectedModel: thread.selectedModel,
           renamedAt: thread.renamedAt ? thread.renamedAt.toISOString() : null,
         },

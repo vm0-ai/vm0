@@ -38,7 +38,12 @@ export async function createChatThread(
   agentComposeId: string,
   title?: string | null,
   id?: string,
-  pin?: { modelProviderId: string | null; selectedModel: string | null },
+  pin?: {
+    modelProviderId: string | null;
+    modelProviderType?: string | null;
+    modelProviderCredentialScope?: string | null;
+    selectedModel: string | null;
+  },
 ): Promise<{ id: string; createdAt: Date }> {
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
@@ -48,6 +53,8 @@ export async function createChatThread(
       agentComposeId,
       title: title ?? null,
       modelProviderId: pin?.modelProviderId ?? null,
+      modelProviderType: pin?.modelProviderType ?? null,
+      modelProviderCredentialScope: pin?.modelProviderCredentialScope ?? null,
       selectedModel: pin?.selectedModel ?? null,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
@@ -219,6 +226,8 @@ export async function getChatThread(
   draftAttachments: PersistedAttachment[] | null;
   pendingMessage: ChatThreadPendingMessage | null;
   modelProviderId: string | null;
+  modelProviderType: string | null;
+  modelProviderCredentialScope: string | null;
   selectedModel: string | null;
   lastReadMessageId: string | null;
   renamedAt: Date | null;
@@ -246,6 +255,8 @@ export async function getChatThread(
       .parse(thread.draftAttachments ?? null),
     pendingMessage: toChatThreadPendingMessage(thread),
     modelProviderId: thread.modelProviderId ?? null,
+    modelProviderType: thread.modelProviderType ?? null,
+    modelProviderCredentialScope: thread.modelProviderCredentialScope ?? null,
     selectedModel: thread.selectedModel ?? null,
     lastReadMessageId: thread.lastReadMessageId ?? null,
     renamedAt: thread.renamedAt ?? null,

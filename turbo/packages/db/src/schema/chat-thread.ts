@@ -95,6 +95,10 @@ export const chatThreads = pgTable(
      * error rather than silently falling back to the agent's current provider.
      */
     modelProviderId: uuid("model_provider_id"),
+    modelProviderType: varchar("model_provider_type", { length: 50 }),
+    modelProviderCredentialScope: varchar("model_provider_credential_scope", {
+      length: 20,
+    }),
     selectedModel: varchar("selected_model", { length: 255 }),
     /**
      * Timestamp at which the user pinned this thread to the top of the sidebar.

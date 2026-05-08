@@ -166,6 +166,8 @@ export interface CreateZeroRunParams {
   modelProvider?: string;
   /** Per-agent or per-schedule model provider ID override. */
   modelProviderId?: string;
+  /** Model-first credential scope for pinned routes. */
+  modelProviderCredentialScope?: string;
   /** Per-agent or per-schedule selected model override. */
   selectedModelOverride?: string;
   /**
@@ -288,17 +290,22 @@ function buildSystemSkillVolumes(connectorTypes: readonly string[]): Array<{
 function resolveEffectiveModel(
   params: Pick<
     CreateZeroRunParams,
-    "modelProviderId" | "selectedModelOverride" | "preferPersonalProvider"
+    | "modelProviderId"
+    | "modelProviderCredentialScope"
+    | "selectedModelOverride"
+    | "preferPersonalProvider"
   >,
   row?: ZeroAgentForRun | null,
 ): {
   modelProviderId?: string;
+  modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
   preferPersonalProvider: boolean;
 } {
   return {
     modelProviderId:
       params.modelProviderId ?? row?.modelProviderId ?? undefined,
+    modelProviderCredentialScope: params.modelProviderCredentialScope,
     selectedModelOverride:
       params.selectedModelOverride ?? row?.selectedModel ?? undefined,
     preferPersonalProvider:
@@ -316,6 +323,8 @@ function buildZeroRunMetadata(
     triggerAgentId: params.triggerAgentId,
     chatThreadId: params.chatThreadId,
     modelProvider: params.modelProvider,
+    modelProviderId: runParams.modelProviderId,
+    modelProviderCredentialScope: runParams.modelProviderCredentialScope,
     selectedModel: runParams.selectedModelOverride,
   };
 }
@@ -706,6 +715,8 @@ async function createZeroRunRecord(
     userId: params.userId,
     modelProvider: params.modelProvider,
     modelProviderId: runParams.modelProviderId,
+    modelProviderCredentialScope: runParams.modelProviderCredentialScope,
+    selectedModelOverride: runParams.selectedModelOverride,
     composeFramework,
     preferPersonalProvider: runParams.preferPersonalProvider,
   });
@@ -732,6 +743,9 @@ async function createZeroRunRecord(
       params.modelProvider,
       resolved.composeContent,
       runParams.preferPersonalProvider,
+      runParams.selectedModelOverride,
+      runParams.modelProviderId,
+      runParams.modelProviderCredentialScope,
     );
   });
   const round3Capture = timed(async () => {
@@ -981,6 +995,8 @@ async function updateZeroRunModelInfo(
   runId: string,
   contextResult: {
     resolvedModelProvider: string | undefined;
+    modelProviderId: string | null | undefined;
+    modelProviderCredentialScope: string | undefined;
     selectedModel: string | undefined;
   },
 ): Promise<void> {
@@ -988,6 +1004,9 @@ async function updateZeroRunModelInfo(
     .update(zeroRuns)
     .set({
       modelProvider: contextResult.resolvedModelProvider ?? undefined,
+      modelProviderId: contextResult.modelProviderId ?? undefined,
+      modelProviderCredentialScope:
+        contextResult.modelProviderCredentialScope ?? undefined,
       selectedModel: contextResult.selectedModel ?? undefined,
     })
     .where(eq(zeroRuns.id, runId));

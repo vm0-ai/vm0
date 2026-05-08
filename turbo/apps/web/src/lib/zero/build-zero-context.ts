@@ -199,6 +199,7 @@ interface BuildZeroContextParams {
   modelProvider?: string;
   // Per-agent or per-schedule model provider override (by provider ID + model)
   modelProviderId?: string;
+  modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
   /**
    * Personal-tier preference (Epic #11868). Threaded into the resolver so
@@ -243,6 +244,7 @@ async function resolveSecretsAndEnvironment(
   allowedConnectorTypes?: ConnectorType[],
   allowedCustomConnectorIds?: string[],
   modelProviderId?: string,
+  modelProviderCredentialScope?: string,
   selectedModelOverride?: string,
   preferPersonalProvider?: boolean,
 ): Promise<{
@@ -255,6 +257,8 @@ async function resolveSecretsAndEnvironment(
   resolvedModelProvider: ModelProviderType | undefined;
   resolvedFramework: string;
   modelProviderConfig: ExpandedFirewallConfig | undefined;
+  modelProviderId: string | null | undefined;
+  modelProviderCredentialScope: string | undefined;
   selectedModel: string | undefined;
   connectorPermissionConfigs: ExpandedFirewallConfig[];
   mergedVars: Record<string, string> | undefined;
@@ -292,6 +296,7 @@ async function resolveSecretsAndEnvironment(
         modelProviderId,
         selectedModelOverride,
         preferPersonalProvider,
+        modelProviderCredentialScope,
       );
     }),
     captureDuration(() => {
@@ -476,6 +481,8 @@ async function resolveSecretsAndEnvironment(
     // framework. Source-of-truth for downstream framework-aware logic.
     resolvedFramework: resolvedModelProviderResult.framework ?? framework,
     modelProviderConfig,
+    modelProviderId: resolvedModelProviderResult.modelProviderId,
+    modelProviderCredentialScope: resolvedModelProviderResult.credentialScope,
     selectedModel: resolvedModelProviderResult.selectedModel,
     connectorPermissionConfigs,
     mergedVars,
@@ -501,6 +508,10 @@ interface BuildZeroContextResult {
   timings: BuildZeroContextTimings;
   /** The resolved model provider type, if provider resolution ran during context build. */
   resolvedModelProvider: ModelProviderType | undefined;
+  /** Org-scoped model provider row used by model-first API-key routes. */
+  modelProviderId: string | null | undefined;
+  /** Model-first credential scope, if provider resolution used model policy. */
+  modelProviderCredentialScope: string | undefined;
   /** Provider-derived framework, source-of-truth for downstream. */
   resolvedFramework: string;
   /** The logical model name selected by the user, for model usage billing. */
@@ -624,6 +635,7 @@ interface ResolveCliRunContextParams {
   volumeVersions?: Record<string, string>;
   // Model provider selection
   modelProviderId?: string;
+  modelProviderCredentialScope?: string;
   selectedModelOverride?: string;
   /**
    * Personal-tier preference (Epic #11868). Mirrors `BuildZeroContextParams`
@@ -657,6 +669,8 @@ interface ResolvedCliContext {
 
   // Model provider metadata (for zero_runs upsert)
   resolvedModelProvider?: ModelProviderType;
+  modelProviderId?: string | null;
+  modelProviderCredentialScope?: string;
   selectedModel?: string;
 
   billableFirewalls: string[];
@@ -780,6 +794,7 @@ export async function resolveCliRunContext(
       params.allowedConnectorTypes,
       params.allowedCustomConnectorIds,
       params.modelProviderId,
+      params.modelProviderCredentialScope,
       params.selectedModelOverride,
       params.preferPersonalProvider,
     ),
@@ -806,6 +821,8 @@ export async function resolveCliRunContext(
     resolvedModelProvider,
     resolvedFramework,
     modelProviderConfig,
+    modelProviderId,
+    modelProviderCredentialScope,
     selectedModel,
     connectorPermissionConfigs,
     mergedVars,
@@ -842,6 +859,8 @@ export async function resolveCliRunContext(
     networkPolicies: permissionResult?.networkPolicies,
     userTimezone,
     resolvedModelProvider,
+    modelProviderId,
+    modelProviderCredentialScope,
     selectedModel,
     billableFirewalls,
     modelUsageProvider,
@@ -953,6 +972,7 @@ export async function buildZeroExecutionContext(
           params.allowedConnectorTypes,
           params.allowedCustomConnectorIds,
           params.modelProviderId,
+          params.modelProviderCredentialScope,
           params.selectedModelOverride,
           params.preferPersonalProvider,
         );
@@ -991,6 +1011,8 @@ export async function buildZeroExecutionContext(
     resolvedModelProvider,
     resolvedFramework,
     modelProviderConfig,
+    modelProviderId,
+    modelProviderCredentialScope,
     selectedModel,
     connectorPermissionConfigs,
     mergedVars,
@@ -1084,6 +1106,8 @@ export async function buildZeroExecutionContext(
       diagnosticSpans: buildDiagnosticSpans(timingDetails),
     },
     resolvedModelProvider,
+    modelProviderId,
+    modelProviderCredentialScope,
     resolvedFramework,
     selectedModel,
   };
