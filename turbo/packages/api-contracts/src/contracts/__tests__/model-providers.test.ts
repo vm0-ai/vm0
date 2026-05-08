@@ -544,6 +544,26 @@ describe("codex-oauth-token codex provider", () => {
     ]);
   });
 
+  it.each([
+    ["GET", "/"],
+    ["POST", "/oauth/token"],
+    ["DELETE", "/sessions/abc"],
+  ] as const)(
+    "auth.openai.com matches no allow permission for %s %s",
+    (method, path) => {
+      // The `ANY /*` rule on apis[1] is a literal-segment match on "*" and
+      // never matches real traffic — that's intentional. The deny is
+      // delivered by defaultPolicies.unknownPolicy: "deny" (asserted just
+      // above), so traffic to auth.openai.com must NOT resolve to any
+      // permission name on apis[1]. This pins behavior so a future edit
+      // to `apis[1].permissions` (e.g. adding an allow rule) breaks the
+      // test rather than silently widening auth.openai.com.
+      const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
+      const fwConfig = { name: config.name, apis: [config.apis[1]!] };
+      expect(findMatchingPermissions(method, path, fwConfig)).toEqual([]);
+    },
+  );
+
   it("CHATGPT_ACCESS_TOKEN placeholder is an opaque marker (not a JWT)", () => {
     // Codex doesn't read this env var in ChatGPT mode — it reads the real
     // JWT from ~/.codex/auth.json (written by guest-agent #11877). The
