@@ -84,14 +84,10 @@ export function registerVoiceChatRelayRoute(
         };
       }
       const claims = verifyResult.claims;
+      // OPENAI_API_KEY is required by the env zod schema (z.string().min(1))
+      // — `env()` throws on boot if it is unset, so it is always defined
+      // here.
       const apiKey = env("OPENAI_API_KEY");
-      if (apiKey === undefined) {
-        return {
-          onOpen: (_evt, ws) => {
-            ws.close(1011, "openai api key missing");
-          },
-        };
-      }
 
       let pending: string[] = [];
       let dispatch: ((data: string) => void) | null = null;
