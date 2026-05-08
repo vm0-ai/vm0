@@ -80,7 +80,7 @@ function stripeSubscription(
   subscriptionId: string,
   options: {
     status: string;
-    periodEnd: Date;
+    periodEnd?: Date | null;
     priceId?: string;
     cancelAtPeriodEnd?: boolean;
   },
@@ -93,7 +93,13 @@ function stripeSubscription(
       data: [
         {
           price: { id: options.priceId ?? TEST_PRICE_PRO },
-          current_period_end: Math.floor(options.periodEnd.getTime() / 1000),
+          ...(options.periodEnd
+            ? {
+                current_period_end: Math.floor(
+                  options.periodEnd.getTime() / 1000,
+                ),
+              }
+            : {}),
         },
       ],
     },
@@ -151,6 +157,42 @@ describe("GET /api/cron/reconcile-billing-entitlements", () => {
     expect(billing?.tier).toBe("free");
     expect(billing?.subscriptionStatus).toBe("past_due");
     expect(billing?.stripeSubscriptionId).toBe(subId);
+  });
+
+  it("downgrades payment-failed subscriptions when Stripe has no paid-through", async () => {
+    const subId = uniqueId("sub-no-stripe-paid-through");
+
+    stripeMocks.subscriptionsRetrieve.mockImplementation(
+      async (subscriptionId: string) => {
+        if (subscriptionId === subId) {
+          return stripeSubscription(subscriptionId, {
+            status: "past_due",
+            periodEnd: null,
+          });
+        }
+        return stripeSubscription(subscriptionId, {
+          status: "past_due",
+          periodEnd: hoursAgo(48),
+        });
+      },
+    );
+
+    await updateOrgStripeFields(user.orgId, {
+      stripeCustomerId: uniqueId("cus-no-stripe-paid-through"),
+      stripeSubscriptionId: subId,
+      subscriptionStatus: "past_due",
+      currentPeriodEnd: null,
+      tier: "pro",
+      updatedAt: hoursAgo(48),
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+
+    expect(response.status).toBe(200);
+
+    const billing = await getOrgBillingFields(user.orgId);
+    expect(billing?.tier).toBe("free");
+    expect(billing?.subscriptionStatus).toBe("past_due");
   });
 
   it("repairs missing local paid-through from Stripe instead of downgrading", async () => {

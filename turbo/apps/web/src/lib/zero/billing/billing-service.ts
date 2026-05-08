@@ -747,19 +747,15 @@ export async function downgradeStalePaymentFailedSubscriptions(options?: {
     }
 
     if (!stripePeriodEnd) {
-      await db.update(orgMetadata).set(syncedFields).where(currentCandidate);
       log.warn(
-        "payment-failed subscription missing paid-through in Stripe; skipping downgrade",
+        "payment-failed subscription missing paid-through in Stripe; downgrading",
         {
           orgId: candidate.orgId,
           subscriptionId: candidate.stripeSubscriptionId,
           status: subscription.status,
         },
       );
-      continue;
-    }
-
-    if (stripePeriodEnd > staleBefore) {
+    } else if (stripePeriodEnd > staleBefore) {
       await db.update(orgMetadata).set(syncedFields).where(currentCandidate);
       continue;
     }
