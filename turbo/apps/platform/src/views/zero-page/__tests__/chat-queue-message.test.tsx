@@ -7,7 +7,7 @@ import {
   type PendingMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill, click } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { changeChatPendingMessage } from "../../../mocks/mock-helpers.ts";
 import { server } from "../../../mocks/server.ts";
@@ -426,4 +426,133 @@ describe("chat pending message queue", () => {
       expect(screen.getByLabelText("Recall queued message")).not.toBeDisabled();
     });
   });
+
+  describe("send button queues during active run when input has content", () => {
+    it("shows Send button (not Stop) during active run when composer has content and clicking queues", async () => {
+      const user = userEvent.setup({ delay: null });
+      const appendedContents: (string | undefined)[] = [];
+      mockChatLifecycle({
+        onPendingMessageAppend: (body) => {
+          appendedContents.push(body.content);
+        },
+      });
+
+      detachedSetupPage({
+        context,
+        path: CHAT_PATH,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      const textarea = await startActiveRun(user);
+
+      // With content in the input, the Send button should be visible (not Stop)
+      await fill(textarea, "queued by button");
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+
+      // Clicking the Send button during an active run should queue the message
+      click(screen.getByLabelText("Send"));
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+        expect(screen.getByText("queued by button")).toBeInTheDocument();
+      });
+      expect(textarea.value).toBe("");
+      expect(appendedContents).toStrictEqual(["queued by button"]);
+    });
+
+    it("shows Stop button during active run when composer is empty", async () => {
+      const user = userEvent.setup({ delay: null });
+      mockChatLifecycle();
+
+      detachedSetupPage({
+        context,
+        path: CHAT_PATH,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      // After sendMessageInUI, the composer is cleared, so Stop should be visible
+      const textarea = await startActiveRun(user);
+
+      // Empty composer → Stop button
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
+      expect(textarea.value).toBe("");
+    });
+
+    it("clicking Stop with a queued message recalls it to draft and cancels the run", async () => {
+      const user = userEvent.setup({ delay: null });
+      const ctrl = mockChatLifecycle();
+
+      detachedSetupPage({
+        context,
+        path: CHAT_PATH,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      let textarea = await startActiveRun(user);
+
+      // Queue a message first
+      await fill(textarea, "message to be recalled");
+      await user.keyboard("{Enter}");
+
+      await waitFor(() => {
+        expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+      });
+
+      // Now the composer is empty, Stop button should be visible
+      textarea = await getActiveRunTextarea();
+      expect(textarea.value).toBe("");
+
+      // Click Stop — should recall the queued message AND cancel the run
+      click(screen.getByLabelText("Stop"));
+      ctrl.cancelRun();
+
+      // The queued message should be recalled into the draft
+      await waitFor(() => {
+        expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
+      });
+
+      textarea = await getActiveRunTextarea();
+      await waitFor(() => {
+        expect(textarea.value).toBe("message to be recalled");
+      });
+
+      // After cancel, the run ends and Send button returns
+      await waitFor(() => {
+        expect(screen.getByLabelText("Send")).toBeInTheDocument();
+        expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      });
+    });
+
+    it("clicking Stop with no queued message only cancels the run", async () => {
+      const user = userEvent.setup({ delay: null });
+      const ctrl = mockChatLifecycle();
+
+      detachedSetupPage({
+        context,
+        path: CHAT_PATH,
+        featureSwitches: { [FeatureSwitchKey.QueueMessage]: true },
+      });
+
+      const textarea = await startActiveRun(user);
+
+      // No queued message, just click Stop
+      click(screen.getByLabelText("Stop"));
+      ctrl.cancelRun();
+
+      // After cancel, the run ends and Send button returns
+      await waitFor(() => {
+        expect(screen.getByLabelText("Send")).toBeInTheDocument();
+        expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+      });
+
+      // Draft should still be empty (nothing to recall)
+      await waitFor(() => {
+        expect(textarea.value).toBe("");
+      });
+    });
+  });
+
+
 });

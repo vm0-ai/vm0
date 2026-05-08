@@ -1079,14 +1079,28 @@ export function ZeroChatComposer({
     setSavingType(null);
   };
 
-  const handleSend = () => {
-    if (!canSend || sending) {
-      return;
-    }
-    // Fire-and-forget: request push permission on first send, never blocks
-    detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
-    onSend(input.trim());
-  };
+	const handleSend = () => {
+		if (!canSend) {
+			return;
+		}
+		if (sending) {
+			return;
+		}
+		// Fire-and-forget: request push permission on first send, never blocks
+		detach(ensurePushSubscription(rootSignal), Reason.DomCallback);
+		onSend(input.trim());
+	};
+
+	const handleButtonClick = () => {
+		if (!canSend) {
+			return;
+		}
+		if (sending && queueWhileSending && onQueue) {
+			onQueue(input.trim());
+			return;
+		}
+		handleSend();
+	};
 
   const handleKeyboardSend = () => {
     const handlers: Record<KeyboardSendAction, (() => void) | undefined> = {
@@ -1309,7 +1323,7 @@ export function ZeroChatComposer({
                         onDraftChange?.();
                       }}
                     />
-                    {sending && onCancel ? (
+                    {sending && onCancel && !canSend ? (
                       <Button
                         size="sm"
                         variant="destructive"
@@ -1323,8 +1337,8 @@ export function ZeroChatComposer({
                       <Button
                         size="sm"
                         className="rounded-lg h-9 w-9 p-0 shrink-0"
-                        onClick={handleSend}
-                        disabled={!canSend || !!sending}
+                        onClick={handleButtonClick}
+                        disabled={!canSend || (sending && (!queueWhileSending || !onQueue))}
                         aria-label="Send"
                       >
                         <IconArrowUp size={18} stroke={2} />

@@ -1885,6 +1885,7 @@ function ChatThreadComposer({
   const input = useGet(thread.draft.input$);
   const setInput = useSet(thread.draft.setInput$);
   const cancelRun = useSet(thread.cancelRun$);
+  const recallPendingMessage = useSet(thread.recallPendingMessage$);
   const setInputRef = useSet(thread.setInputRef$);
   const scheduleDraftSync = useSet(thread.scheduleDraftSync$);
   const pageSignal = useGet(pageSignal$);
@@ -1957,7 +1958,13 @@ function ChatThreadComposer({
             onCancel={
               allFinishedResolved
                 ? () => {
-                    detach(cancelRun(pageSignal), Reason.DomCallback);
+                    detach(
+                      (async () => {
+                        await recallPendingMessage(rootSignal);
+                        await cancelRun(rootSignal);
+                      })(),
+                      Reason.DomCallback,
+                    );
                   }
                 : undefined
             }

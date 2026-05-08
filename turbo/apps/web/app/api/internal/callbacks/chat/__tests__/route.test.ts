@@ -1873,5 +1873,59 @@ describe("POST /api/internal/callbacks/chat", () => {
         null,
       );
     });
+
+    it("should not auto-send when run is cancelled and pending message was already recalled", async () => {
+      // Simulate the frontend flow: user clicks Stop with a queued message.
+      // 1. Frontend recalls the pending message (clears it on server)
+      // 2. Frontend cancels the run
+      // 3. Callback fires for the cancelled run → no pending message to auto-send
+
+      const { threadId, runId, secret } = await setupRunAndThread();
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      // Seed a pending message, then immediately clear it (simulating recall before cancel)
+      await setTestChatThreadPendingMessage(threadId, {
+        content: "queued message",
+        attachments: [],
+      });
+
+      // Recall: clear pending message (frontend does this before cancel)
+      const recalled = await getTestChatThreadPendingMessage(threadId);
+      expect(recalled?.pendingMessageContent).toBe("queued message");
+
+      // Now clear it (simulating recall API call)
+      await setTestChatThreadPendingMessage(threadId, null);
+
+      // Verify pending is gone
+      const afterRecall = await getTestChatThreadPendingMessage(threadId);
+      expect(afterRecall).toBeUndefined();
+
+      // Now the cancel callback fires (as "failed" because cancelled maps to failed)
+      const response = await POST(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
+          {
+            runId,
+            status: "failed",
+            error: "Run cancelled",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+      expect(response.status).toBe(200);
+
+      // No auto-sent row should appear — pending was already recalled
+      const messages = await getTestChatMessagesByThread(threadId);
+      const userMessages = messages.filter((m) => {
+        return m.role === "user";
+      });
+      // Only the original user message from setupRunAndThread
+      expect(userMessages).toHaveLength(1);
+
+      // No pending-message-change signal since nothing was queued
+      // (the pending was already cleared before the callback fired)
+    });
+
   });
 });
