@@ -3670,6 +3670,7 @@ name = "vsock-guest"
 version = "0.10.15"
 dependencies = [
  "libc",
+ "tempfile",
  "vsock-proto",
 ]
 

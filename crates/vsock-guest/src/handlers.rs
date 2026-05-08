@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 #[cfg(debug_assertions)]
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use vsock_proto::{
@@ -31,7 +31,7 @@ const THREAD_WRITE_STDIN: &str = "vsock-write-stdin";
 const WRITE_TIMEOUT_MS: u32 = 30_000;
 const GUEST_WRITE_FILE_PATH: &str = "/sbin/guest-write-file";
 #[cfg(debug_assertions)]
-static DEBUG_GUEST_WRITE_FILE_PATH: OnceLock<PathBuf> = OnceLock::new();
+static DEBUG_GUEST_WRITE_FILE_PATH: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 pub(crate) enum MessageOutcome {
     Response(Vec<u8>),
@@ -238,8 +238,9 @@ fn guest_write_file_path() -> PathBuf {
     #[cfg(debug_assertions)]
     {
         DEBUG_GUEST_WRITE_FILE_PATH
-            .get()
-            .cloned()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
             .unwrap_or_else(|| PathBuf::from(GUEST_WRITE_FILE_PATH))
     }
 
@@ -251,7 +252,10 @@ fn guest_write_file_path() -> PathBuf {
 
 #[cfg(debug_assertions)]
 pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) -> Result<(), PathBuf> {
-    DEBUG_GUEST_WRITE_FILE_PATH.set(path)
+    *DEBUG_GUEST_WRITE_FILE_PATH
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(path);
+    Ok(())
 }
 
 /// Handle incoming message and return the connection-loop outcome.
@@ -293,23 +297,25 @@ pub(crate) fn handle_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
 mod tests {
     use super::*;
     use crate::threading::test_support::FailingThreadSpawner;
-    use std::sync::{Mutex, Once};
+    use std::sync::Mutex;
 
-    static TEST_HELPER: Once = Once::new();
     static TEST_HELPER_EXEC: Mutex<()> = Mutex::new(());
 
-    fn install_sleeping_write_file_helper() {
-        TEST_HELPER.call_once(|| {
-            let path =
-                std::env::temp_dir().join(format!("vm0-guest-write-file-{}", std::process::id()));
-            std::fs::write(&path, "#!/bin/sh\nsleep 60\ncat >/dev/null\n").unwrap();
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-            }
-            set_debug_guest_write_file_path(path).unwrap();
-        });
+    struct TestHelper {
+        _dir: tempfile::TempDir,
+    }
+
+    fn install_sleeping_write_file_helper() -> TestHelper {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("guest-write-file");
+        std::fs::write(&path, "#!/bin/sh\nsleep 60\ncat >/dev/null\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        set_debug_guest_write_file_path(path).unwrap();
+        TestHelper { _dir: dir }
     }
 
     fn pid_alive(pid: u32) -> bool {
@@ -321,7 +327,7 @@ mod tests {
     #[test]
     fn write_file_command_starts_as_process_group_leader() {
         let _guard = TEST_HELPER_EXEC.lock().unwrap();
-        install_sleeping_write_file_helper();
+        let _helper = install_sleeping_write_file_helper();
         let mut child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
         let pid = child.id();
 
@@ -335,7 +341,7 @@ mod tests {
     #[test]
     fn write_file_stderr_drain_spawn_failure_kills_and_reaps_child() {
         let _guard = TEST_HELPER_EXEC.lock().unwrap();
-        install_sleeping_write_file_helper();
+        let _helper = install_sleeping_write_file_helper();
         let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
         let pid = child.id();
 
@@ -353,7 +359,7 @@ mod tests {
     #[test]
     fn write_file_timeout_kills_child_while_stdin_writer_is_blocked() {
         let _guard = TEST_HELPER_EXEC.lock().unwrap();
-        install_sleeping_write_file_helper();
+        let _helper = install_sleeping_write_file_helper();
         let child = spawn_write_file_command("/tmp/out.txt", false, false).unwrap();
         let pid = child.id();
         let content = vec![b'x'; 1024 * 1024];

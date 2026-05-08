@@ -7,5 +7,8 @@ edition.workspace = true
 libc.workspace = true
 vsock-proto.workspace = true
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [lints]
 workspace = true
