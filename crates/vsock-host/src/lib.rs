@@ -129,11 +129,11 @@ impl BoundedOutputRegistration {
 
 /// Connection lifecycle, expressed as data rather than a separate atomic flag.
 ///
-/// The three registration tables (`pending`, `pending_stdout`, `stdout_senders`)
-/// live inside the `Connected` variant so they are structurally unreachable
-/// once the reader task has exited. `exits` lives in BOTH variants because it
-/// is an observation log — a cached exit event remains a valid answer to
-/// `wait_for_exit` after the connection closes.
+/// The request and stream registration maps live inside the `Connected`
+/// variant so they are structurally unreachable once the reader task has
+/// exited. `exits` lives in BOTH variants because it is an observation log —
+/// a cached exit event remains a valid answer to `wait_for_exit` after the
+/// connection closes.
 ///
 /// The invariant "connection is closed ⇔ registrations are impossible" is
 /// enforced by the type: every code path that cares about liveness must
