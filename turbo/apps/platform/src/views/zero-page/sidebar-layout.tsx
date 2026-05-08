@@ -46,6 +46,11 @@ import {
   setAgentActiveTab$,
   type AgentTabKey,
 } from "../../signals/zero-page/zero-job-detail.ts";
+import {
+  scheduleDetailTab$,
+  setScheduleDetailTab$,
+  type ScheduleDetailTab,
+} from "../../signals/schedule-page/schedule-detail-tab.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -504,6 +509,26 @@ function BackToAgentOverviewButton() {
   );
 }
 
+function BackToScheduleOverviewButton() {
+  const setActiveTab = useSet(setScheduleDetailTab$);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setActiveTab(null);
+      }}
+      aria-label="Back to overview"
+      data-testid="mobile-back-to-schedule-overview"
+      className={cn(
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-foreground",
+        TOPBAR_GLASS,
+      )}
+    >
+      <IconArrowLeft size={20} stroke={1.8} />
+    </button>
+  );
+}
+
 function agentDetailSectionLabel(tab: AgentTabKey): string {
   switch (tab) {
     case "authorization": {
@@ -517,6 +542,20 @@ function agentDetailSectionLabel(tab: AgentTabKey): string {
     }
     case "instructions": {
       return "Instructions";
+    }
+  }
+}
+
+function scheduleDetailSectionLabel(tab: ScheduleDetailTab): string {
+  switch (tab) {
+    case "settings": {
+      return "Settings";
+    }
+    case "instructions": {
+      return "Instructions";
+    }
+    case "history": {
+      return "Run History";
     }
   }
 }
@@ -555,10 +594,12 @@ function MobileTopBarLeftSlot({
   activeId,
   mobileNativeOn,
   agentSectionTab,
+  scheduleSectionTab,
 }: {
   activeId: RouteKey | null;
   mobileNativeOn: boolean;
   agentSectionTab: AgentTabKey | null;
+  scheduleSectionTab: ScheduleDetailTab | null;
 }) {
   if (!mobileNativeOn) {
     return <HamburgerButton />;
@@ -590,6 +631,9 @@ function MobileTopBarLeftSlot({
       />
     );
   }
+  if (activeId === "scheduleDetail" && scheduleSectionTab !== null) {
+    return <BackToScheduleOverviewButton />;
+  }
   if (activeId === "scheduleDetail") {
     return (
       <BackButton
@@ -618,6 +662,7 @@ function resolveTopBarSurface(
   breadcrumb: { name?: string } | null,
   mobileNativeOn: boolean,
   agentSectionTab: AgentTabKey | null,
+  scheduleSectionTab: ScheduleDetailTab | null,
 ): { showBreadcrumb: boolean; centeredTitle: string | undefined } {
   const isChatPage = isChatRoute(activeId);
   // Detail pages that render as "back arrow + name title" instead of a
@@ -635,6 +680,16 @@ function resolveTopBarSurface(
     return {
       showBreadcrumb: false,
       centeredTitle: agentDetailSectionLabel(agentSectionTab),
+    };
+  }
+  if (
+    mobileNativeOn &&
+    activeId === "scheduleDetail" &&
+    scheduleSectionTab !== null
+  ) {
+    return {
+      showBreadcrumb: false,
+      centeredTitle: scheduleDetailSectionLabel(scheduleSectionTab),
     };
   }
   if (mobileNativeOn && isBackTitleRoute && breadcrumb?.name) {
@@ -659,12 +714,16 @@ function MobileTopBar() {
   const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
   const rawAgentTab = useGet(agentActiveTab$);
   const agentSectionTab = activeId === "agentDetail" ? rawAgentTab : null;
+  const rawScheduleTab = useGet(scheduleDetailTab$);
+  const scheduleSectionTab =
+    activeId === "scheduleDetail" ? rawScheduleTab : null;
 
   const { showBreadcrumb, centeredTitle } = resolveTopBarSurface(
     activeId,
     breadcrumb,
     mobileNativeOn,
     agentSectionTab,
+    scheduleSectionTab,
   );
 
   return (
@@ -685,6 +744,7 @@ function MobileTopBar() {
         activeId={activeId}
         mobileNativeOn={mobileNativeOn}
         agentSectionTab={agentSectionTab}
+        scheduleSectionTab={scheduleSectionTab}
       />
       {showBreadcrumb && breadcrumb && (
         <div

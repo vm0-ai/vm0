@@ -11,13 +11,13 @@ const context = testContext();
 
 describe("schedule-detail-tab", () => {
   describe("initScheduleDetailTab$", () => {
-    it("defaults to settings when URL has no tab param", () => {
+    it("defaults to null (mobile-native index view) when URL has no tab param", () => {
       const { store, signal } = context;
       mockLocation({ pathname: "/schedules/abc", search: "" }, signal);
 
       store.set(initScheduleDetailTab$);
 
-      expect(store.get(scheduleDetailTab$)).toBe("settings");
+      expect(store.get(scheduleDetailTab$)).toBeNull();
     });
 
     it("reads tab from URL search params", () => {
@@ -44,7 +44,7 @@ describe("schedule-detail-tab", () => {
       expect(store.get(scheduleDetailTab$)).toBe("instructions");
     });
 
-    it("falls back to settings for invalid tab value", () => {
+    it("falls back to null for invalid tab value", () => {
       const { store, signal } = context;
       mockLocation(
         { pathname: "/schedules/abc", search: "?tab=bogus" },
@@ -53,7 +53,7 @@ describe("schedule-detail-tab", () => {
 
       store.set(initScheduleDetailTab$);
 
-      expect(store.get(scheduleDetailTab$)).toBe("settings");
+      expect(store.get(scheduleDetailTab$)).toBeNull();
     });
   });
 
@@ -87,7 +87,7 @@ describe("schedule-detail-tab", () => {
       expect(calls[0]).toContain("tab=history");
     });
 
-    it("removes tab param from URL when switching to default (settings)", () => {
+    it("removes tab param from URL when switching to null (back to index)", () => {
       const { store, signal } = context;
       mockLocation(
         { pathname: "/schedules/abc", search: "?tab=history" },
@@ -104,7 +104,7 @@ describe("schedule-detail-tab", () => {
         signal,
       );
 
-      store.set(setScheduleDetailTab$, "settings");
+      store.set(setScheduleDetailTab$, null);
 
       expect(calls).toHaveLength(1);
       expect(calls[0]).not.toContain("tab=");

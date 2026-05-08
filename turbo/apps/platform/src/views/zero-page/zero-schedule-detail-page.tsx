@@ -7,9 +7,12 @@ import {
   useLastResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { isMobileViewport$ } from "../../signals/zero-page/mobile-viewport.ts";
 import {
   IconCalendar,
+  IconChevronRight,
   IconCircleDot,
   IconFileText,
   IconPlayerPlay,
@@ -59,6 +62,7 @@ import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
 import {
   scheduleDetailTab$,
   setScheduleDetailTab$,
+  type ScheduleDetailTab,
 } from "../../signals/schedule-page/schedule-detail-tab.ts";
 import { LogTable, STATUS_LABELS } from "./components/log-views/log-table.tsx";
 import { Pagination } from "../components/pagination.tsx";
@@ -103,7 +107,10 @@ import {
   type ScheduleSettingsSnapshot,
 } from "../../signals/schedule-page/schedule-form.ts";
 import { orgModelProviders$ } from "../../signals/external/org-model-providers.ts";
-import { personalModelProviderEnabled$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  personalModelProviderEnabled$,
+} from "../../signals/external/feature-switch.ts";
 import {
   ModelProviderPicker,
   type ModelProviderSelection,
@@ -145,6 +152,21 @@ function firstSentenceFromInstruction(text: string): string {
   }
   const firstLine = t.split(/\r?\n/)[0]?.trim() ?? t;
   return firstLine;
+}
+
+/** Long-form title used in the schedule hero (description if set, else first
+ *  sentence of the prompt, else "No instruction"). */
+function scheduleSummaryTitle(entry: CombinedEntry): string {
+  const desc = entry.description?.trim();
+  if (desc && desc.length > 0) {
+    return desc;
+  }
+  const promptTrim = entry.prompt.trim();
+  if (promptTrim.length === 0) {
+    return "No instruction";
+  }
+  const first = firstSentenceFromInstruction(promptTrim);
+  return first.length === 0 ? "No instruction" : first;
 }
 
 /** Short label for breadcrumb when the full instruction summary is long. */
@@ -787,6 +809,222 @@ function ScheduleRunHistoryTab() {
 // Detail view
 // ---------------------------------------------------------------------------
 
+function MobileScheduleSectionRow({
+  icon,
+  label,
+  onClick,
+  testId,
+  isLast,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  testId: string;
+  isLast?: boolean;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid={testId}
+        className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors hover:bg-muted/50 active:bg-muted"
+      >
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gray-200 text-foreground/70">
+          {icon}
+        </span>
+        <span className="flex-1 min-w-0 text-[16px] font-medium text-foreground">
+          {label}
+        </span>
+        <IconChevronRight
+          size={18}
+          stroke={1.5}
+          className="text-muted-foreground/50 shrink-0"
+        />
+      </button>
+      {!isLast && <div className="mx-5 border-b border-border/50" />}
+    </>
+  );
+}
+
+function MobileScheduleIndexView({
+  entry,
+  running,
+  onRunNow,
+}: {
+  entry: CombinedEntry;
+  running: boolean;
+  onRunNow: () => Promise<void>;
+}) {
+  const setActiveTab = useSet(setScheduleDetailTab$);
+  const summaryTitle = scheduleSummaryTitle(entry);
+  const nextRunLabel = formatRunAt(entry.nextRunAt);
+  const isActive = entry.enabled !== false;
+  const canRunNow = !running && entry.prompt.trim().length > 0;
+
+  return (
+    <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
+      <main className="flex-1 px-4 pt-2 pb-16">
+        <div className="mx-auto max-w-[600px] flex flex-col gap-6">
+          <div className="flex flex-col items-center text-center gap-3 pt-4">
+            <div
+              className="h-24 w-24 flex items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground"
+              aria-hidden
+            >
+              <IconCalendar size={36} stroke={1.25} />
+            </div>
+            <div className="min-w-0 w-full">
+              <h1
+                className="text-[22px] font-semibold tracking-tight text-foreground line-clamp-2"
+                data-testid="mobile-schedule-display-title"
+              >
+                {summaryTitle}
+              </h1>
+              <div className="mt-2 flex flex-wrap justify-center items-center gap-x-2 gap-y-0.5 text-[15px] text-muted-foreground leading-tight">
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
+                      isActive ? "bg-emerald-500" : "bg-muted-foreground/50",
+                    )}
+                    aria-hidden
+                  />
+                  <span
+                    className={cn(
+                      "font-medium",
+                      isActive ? "text-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    {isActive ? "Active" : "Paused"}
+                  </span>
+                </span>
+                <span
+                  className="text-muted-foreground/40 select-none"
+                  aria-hidden
+                >
+                  ·
+                </span>
+                <span className="text-foreground/80 whitespace-nowrap">
+                  {entry.time}
+                </span>
+              </div>
+              <p className="mt-1 text-[14px] text-muted-foreground">
+                <span className="font-medium text-foreground/70">Next run</span>{" "}
+                <span className="tabular-nums">{nextRunLabel}</span>
+              </p>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="default"
+            className="zero-btn-morandi w-full gap-2 h-12 text-[16px]"
+            disabled={!canRunNow}
+            onClick={() => {
+              detach(onRunNow(), Reason.DomCallback);
+            }}
+            aria-label="Run schedule now"
+            data-testid="mobile-schedule-run-now"
+          >
+            <IconPlayerPlay size={18} stroke={2} />
+            {running ? "Starting…" : "Run now"}
+          </Button>
+
+          <div className="zero-card overflow-hidden">
+            <MobileScheduleSectionRow
+              icon={<IconSettings size={18} stroke={1.5} />}
+              label="Settings"
+              testId="mobile-schedule-section-settings"
+              onClick={() => {
+                setActiveTab("settings");
+              }}
+            />
+            <MobileScheduleSectionRow
+              icon={<IconFileText size={18} stroke={1.5} />}
+              label="Instructions"
+              testId="mobile-schedule-section-instructions"
+              onClick={() => {
+                setActiveTab("instructions");
+              }}
+            />
+            <MobileScheduleSectionRow
+              icon={<IconRotateClockwise2 size={18} stroke={1.5} />}
+              label="Run History"
+              testId="mobile-schedule-section-history"
+              onClick={() => {
+                setActiveTab("history");
+              }}
+              isLast
+            />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function MobileScheduleSectionView({
+  entry,
+  dimmed,
+  toggling,
+  saving,
+  agents,
+  rawTab,
+  onSettingsSave,
+  onToggle,
+  onDelete,
+  onInstructionSavePrompt,
+}: {
+  entry: CombinedEntry;
+  dimmed: boolean;
+  toggling: boolean;
+  saving: boolean;
+  agents: ScheduleAgentOption[];
+  rawTab: ScheduleDetailTab;
+  onSettingsSave: (
+    params: ZeroScheduleSaveParams & { agentId: string },
+  ) => Promise<void>;
+  onToggle: (enabled: boolean) => Promise<void>;
+  onDelete: () => void;
+  onInstructionSavePrompt: (prompt: string) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable] transition-opacity",
+        dimmed && "opacity-90",
+      )}
+      data-testid="mobile-schedule-section-view"
+    >
+      <main className="shrink-0 flex-1 px-4 pt-4 pb-16">
+        <div className="mx-auto max-w-[900px] flex flex-col gap-4">
+          {rawTab === "settings" && (
+            <ScheduleSettingsForm
+              key={entry.id}
+              entry={entry}
+              agents={agents}
+              saving={saving}
+              toggling={toggling}
+              onSave={onSettingsSave}
+              onToggle={onToggle}
+              onDelete={onDelete}
+            />
+          )}
+          {rawTab === "instructions" && (
+            <ScheduleInstructionEditorBlock
+              key={`${entry.id} ${entry.prompt}`}
+              entry={entry}
+              saving={saving}
+              onSavePrompt={onInstructionSavePrompt}
+            />
+          )}
+          {rawTab === "history" && <ScheduleRunHistoryTab />}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function ScheduleDetailView({
   entry,
   dimmed,
@@ -814,27 +1052,47 @@ function ScheduleDetailView({
   onDelete: () => void;
   onInstructionSavePrompt: (prompt: string) => void;
 }) {
-  const promptTrim = entry.prompt.trim();
-  const summaryTitle = (() => {
-    const desc = entry.description?.trim();
-    if (desc && desc.length > 0) {
-      return desc;
-    }
-    if (promptTrim.length === 0) {
-      return "No instruction";
-    }
-    const first = firstSentenceFromInstruction(promptTrim);
-    if (first.length === 0) {
-      return "No instruction";
-    }
-    return first;
-  })();
+  const summaryTitle = scheduleSummaryTitle(entry);
   const breadcrumbLabel = scheduleDetailBreadcrumbLabel(entry);
   const nextRunLabel = formatRunAt(entry.nextRunAt);
   const isActive = entry.enabled !== false;
 
-  const activeTab = useGet(scheduleDetailTab$);
+  const rawTab = useGet(scheduleDetailTab$);
   const setActiveTab = useSet(setScheduleDetailTab$);
+  const activeTab: ScheduleDetailTab = rawTab ?? "settings";
+
+  const features = useLastResolved(featureSwitch$);
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const isMobile = useGet(isMobileViewport$);
+  const mobileRedesign = mobileNativeOn && isMobile;
+
+  if (mobileRedesign && rawTab === null) {
+    return (
+      <MobileScheduleIndexView
+        entry={entry}
+        running={running}
+        onRunNow={onRunNow}
+      />
+    );
+  }
+
+  if (mobileRedesign && rawTab !== null) {
+    return (
+      <MobileScheduleSectionView
+        entry={entry}
+        dimmed={dimmed}
+        toggling={toggling}
+        saving={saving}
+        agents={agents}
+        rawTab={rawTab}
+        onSettingsSave={onSettingsSave}
+        onToggle={onToggle}
+        onDelete={onDelete}
+        onInstructionSavePrompt={onInstructionSavePrompt}
+      />
+
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">

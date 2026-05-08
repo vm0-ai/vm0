@@ -1,31 +1,32 @@
 import { command, computed, state } from "ccstate";
 import { search, replaceState, pathname } from "../location.ts";
 
-type ScheduleDetailTab = "settings" | "instructions" | "history";
-
-const DEFAULT_TAB: ScheduleDetailTab = "settings";
+// `null` is the mobile-native "index" view — no tab selected, render the
+// schedule overview with a grouped list of section rows. Desktop coerces
+// null to "settings" for the tab list so the existing layout is unchanged.
+export type ScheduleDetailTab = "settings" | "instructions" | "history";
 
 function isValidTab(tab: string): tab is ScheduleDetailTab {
   return tab === "settings" || tab === "instructions" || tab === "history";
 }
 
-function getInitialTab(): ScheduleDetailTab {
+function getInitialTab(): ScheduleDetailTab | null {
   const params = new URLSearchParams(search());
   const tab = params.get("tab") ?? "";
-  return isValidTab(tab) ? tab : DEFAULT_TAB;
+  return isValidTab(tab) ? tab : null;
 }
 
-const internalTab$ = state<ScheduleDetailTab>(DEFAULT_TAB);
+const internalTab$ = state<ScheduleDetailTab | null>(null);
 
 export const scheduleDetailTab$ = computed((get) => {
   return get(internalTab$);
 });
 
 export const setScheduleDetailTab$ = command(
-  ({ set }, tab: ScheduleDetailTab) => {
+  ({ set }, tab: ScheduleDetailTab | null) => {
     set(internalTab$, tab);
     const url = new URL(pathname() + search(), location.origin);
-    if (tab === DEFAULT_TAB) {
+    if (tab === null) {
       url.searchParams.delete("tab");
     } else {
       url.searchParams.set("tab", tab);
