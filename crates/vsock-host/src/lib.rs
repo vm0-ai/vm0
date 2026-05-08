@@ -647,8 +647,10 @@ impl VsockHost {
             return self.write_file_chunk(path, content, sudo, false).await;
         }
 
-        // Write chunks to a temp file, then atomic rename.
-        let tmp = format!("{path}.vm0tmp");
+        // Write chunks to a per-call temp file, then atomic rename. The
+        // suffix prevents concurrent large writes to the same destination
+        // from appending to or cleaning up each other's staging file.
+        let tmp = format!("{path}.vm0tmp-{}", self.shared.next_seq());
         let escaped_tmp = tmp.replace('\'', "'\\''");
         let rm_tmp = format!("rm -f -- '{escaped_tmp}'");
 
@@ -1115,6 +1117,7 @@ mod tests {
             mock_handshake(&mut guest, &mut decoder).await;
 
             let mut chunks_received = Vec::new();
+            let mut temp_path = None::<String>;
             let mut buf = vec![0u8; chunk_limit + 4096];
 
             // Read write_file chunks + final exec (mv) message
@@ -1129,7 +1132,12 @@ mod tests {
                         let (path, chunk, _sudo, append) =
                             vsock_proto::decode_write_file(&msg.payload).unwrap();
                         // Chunks go to temp file
-                        assert_eq!(path, "/tmp/big.bin.vm0tmp");
+                        if let Some(temp_path) = &temp_path {
+                            assert_eq!(path, temp_path);
+                        } else {
+                            assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                            temp_path = Some(path.to_string());
+                        }
                         chunks_received.push((append, chunk.to_vec()));
 
                         let payload = vsock_proto::encode_write_file_result(true, "");
@@ -1139,8 +1147,9 @@ mod tests {
                     } else if msg.msg_type == MSG_EXEC {
                         // Atomic rename: mv temp → target
                         let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
+                        let temp_path = temp_path.as_ref().expect("temp path");
                         assert!(decoded.command.contains("mv -f --"));
-                        assert!(decoded.command.contains("/tmp/big.bin.vm0tmp"));
+                        assert!(decoded.command.contains(temp_path));
                         assert!(decoded.command.contains("/tmp/big.bin"));
 
                         let payload = vsock_proto::encode_exec_result(0, &[], &[]);
@@ -1181,6 +1190,7 @@ mod tests {
 
             let mut buf = vec![0u8; chunk_limit + 4096];
             let mut chunk_count = 0u32;
+            let mut temp_path = None::<String>;
             loop {
                 let n = guest.read(&mut buf).await.unwrap();
                 if n == 0 {
@@ -1190,6 +1200,14 @@ mod tests {
                 for msg in msgs {
                     if msg.msg_type == MSG_WRITE_FILE {
                         chunk_count += 1;
+                        let (path, _chunk, _sudo, _append) =
+                            vsock_proto::decode_write_file(&msg.payload).unwrap();
+                        if let Some(temp_path) = &temp_path {
+                            assert_eq!(path, temp_path);
+                        } else {
+                            assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                            temp_path = Some(path.to_string());
+                        }
                         let (success, err) = if chunk_count == 2 {
                             (false, "disk full")
                         } else {
@@ -1202,7 +1220,9 @@ mod tests {
                     } else if msg.msg_type == MSG_EXEC {
                         // Cleanup: rm -f temp file
                         let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
+                        let temp_path = temp_path.as_ref().expect("temp path");
                         assert!(decoded.command.contains("rm -f --"));
+                        assert!(decoded.command.contains(temp_path));
                         let payload = vsock_proto::encode_exec_result(0, &[], &[]);
                         let resp = vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
                         guest.write_all(&resp).await.unwrap();
@@ -1233,6 +1253,7 @@ mod tests {
 
             let mut buf = vec![0u8; chunk_limit + 4096];
             let mut exec_count = 0u32;
+            let mut temp_path = None::<String>;
             loop {
                 let n = guest.read(&mut buf).await.unwrap();
                 if n == 0 {
@@ -1241,6 +1262,14 @@ mod tests {
                 let msgs = decoder.decode(&buf[..n]).unwrap();
                 for msg in msgs {
                     if msg.msg_type == MSG_WRITE_FILE {
+                        let (path, _chunk, _sudo, _append) =
+                            vsock_proto::decode_write_file(&msg.payload).unwrap();
+                        if let Some(temp_path) = &temp_path {
+                            assert_eq!(path, temp_path);
+                        } else {
+                            assert!(path.starts_with("/tmp/big.bin.vm0tmp-"));
+                            temp_path = Some(path.to_string());
+                        }
                         let payload = vsock_proto::encode_write_file_result(true, "");
                         let resp =
                             vsock_proto::encode(MSG_WRITE_FILE_RESULT, msg.seq, &payload).unwrap();
@@ -1248,8 +1277,10 @@ mod tests {
                     } else if msg.msg_type == MSG_EXEC {
                         exec_count += 1;
                         let decoded = vsock_proto::decode_exec(&msg.payload).unwrap();
-                        if decoded.command.contains("mv -f") {
+                        let temp_path = temp_path.as_ref().expect("temp path");
+                        if decoded.command.contains("mv -f --") {
                             // mv fails
+                            assert!(decoded.command.contains(temp_path));
                             let payload =
                                 vsock_proto::encode_exec_result(1, &[], b"permission denied");
                             let resp =
@@ -1258,6 +1289,7 @@ mod tests {
                         } else {
                             // cleanup rm
                             assert!(decoded.command.contains("rm -f --"));
+                            assert!(decoded.command.contains(temp_path));
                             let payload = vsock_proto::encode_exec_result(0, &[], &[]);
                             let resp =
                                 vsock_proto::encode(MSG_EXEC_RESULT, msg.seq, &payload).unwrap();
