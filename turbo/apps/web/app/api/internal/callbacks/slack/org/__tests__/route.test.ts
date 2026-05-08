@@ -302,7 +302,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     const blocksStr = JSON.stringify(call.blocks);
     expect(call.text).toBe("I am okay.");
     expect(call.text).not.toBe("Task completed successfully.");
-    expect(blocksStr).toContain("gpt-5.5");
+    expect(blocksStr).toContain("GPT-5.5");
   });
 
   it("posts error message for failed status", async () => {
