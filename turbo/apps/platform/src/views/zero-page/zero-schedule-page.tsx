@@ -1,6 +1,11 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable, useLastResolved } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -188,7 +193,10 @@ export function ScheduleEditFields({
           Time
         </label>
         <Select value={freq} onValueChange={setFreq}>
-          <SelectTrigger id="schedule-dialog-freq" className="h-9 max-md:h-11 w-full max-md:text-[16px]">
+          <SelectTrigger
+            id="schedule-dialog-freq"
+            className="h-9 max-md:h-11 w-full max-md:text-[16px]"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -216,7 +224,10 @@ export function ScheduleEditFields({
               return setLoopMinutes(Number(v));
             }}
           >
-            <SelectTrigger id="schedule-dialog-loop" className="h-9 max-md:h-11 w-full max-md:text-[16px]">
+            <SelectTrigger
+              id="schedule-dialog-loop"
+              className="h-9 max-md:h-11 w-full max-md:text-[16px]"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -309,7 +320,10 @@ export function ScheduleEditFields({
             Timezone
           </label>
           <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger id="schedule-dialog-tz" className="h-9 max-md:h-11 w-full max-md:text-[16px]">
+            <SelectTrigger
+              id="schedule-dialog-tz"
+              className="h-9 max-md:h-11 w-full max-md:text-[16px]"
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -554,8 +568,7 @@ export function ZeroSchedulePage() {
   const setPendingDelete = useSet(setPagePendingDelete$);
 
   const features = useLastResolved(featureSwitch$);
-  const mobileNativeOn =
-    features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
+  const mobileNativeOn = features?.[FeatureSwitchKey.MobileNativeV1] ?? false;
   const isMobile = useGet(isMobileViewport$);
   const mobileRedesign = mobileNativeOn && isMobile;
   // Mobile-native: top bar owns "+ Add schedule"; force list view (calendar
@@ -680,7 +693,11 @@ export function ZeroSchedulePage() {
         }`}
       >
         <div className="mx-auto w-full max-w-[900px] max-md:flex-1 max-md:flex max-md:flex-col">
-          <div className="zero-card overflow-hidden pb-3 max-md:flex-1 max-md:flex max-md:flex-col">
+          <div
+            className={`overflow-hidden pb-3 max-md:flex-1 max-md:flex max-md:flex-col ${
+              mobileRedesign ? "" : "zero-card"
+            }`}
+          >
             {isInitialLoading ? (
               effectiveListTab === "calendar" ? (
                 <ScheduleCalendarSkeleton />

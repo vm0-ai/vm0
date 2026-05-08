@@ -795,7 +795,7 @@ function AgentHeader({
             )}
           </div>
           <div className="min-w-0 w-full sm:w-auto">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
+            <h1 className="hidden sm:block text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
               {displayName}
             </h1>
             <p className="text-[16px] sm:text-sm text-muted-foreground mt-1 sm:mt-1.5 leading-snug line-clamp-2">
