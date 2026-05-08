@@ -29,6 +29,7 @@ const STATE_COOKIE_NAME = "connector_oauth_state";
 const SESSION_COOKIE_NAME = "connector_oauth_session";
 const PKCE_COOKIE_NAME = "connector_oauth_pkce";
 const COOKIE_MAX_AGE = 15 * 60; // 15 minutes
+const REFRESH_ONLY_CONNECTOR_TYPES = new Set<string>(["codex-oauth"]);
 
 /**
  * Generate a random state string for CSRF protection
@@ -99,6 +100,16 @@ export async function GET(
   if (connectorType === "computer") {
     return NextResponse.json(
       { error: "Computer connector does not use OAuth" },
+      { status: 400 },
+    );
+  }
+
+  if (REFRESH_ONLY_CONNECTOR_TYPES.has(connectorType)) {
+    return NextResponse.json(
+      {
+        error:
+          "codex-oauth does not use browser OAuth authorization; use the codex auth.json paste flow",
+      },
       { status: 400 },
     );
   }
