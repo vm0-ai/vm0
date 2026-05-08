@@ -1542,6 +1542,25 @@ jobs:
             local REMOTE="${METAL_USER}@${HOST}"
             echo "=== Preparing ${HOST} (runner: ${RUNNER_NAME}) ==="
 
+            # Stop the old service before deleting its runner directory. A live
+            # runner can keep claiming jobs after its base_dir disappears.
+            if ! ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${RUNNER_NAME}" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          BIN_DIR=$1
+          RUNNER_NAME=$2
+          UNIT="vm0-runner-${RUNNER_NAME}.service"
+
+          if [ -x "${BIN_DIR}/runner" ]; then
+            sudo "${BIN_DIR}/runner" service stop --name "${RUNNER_NAME}" --force
+          else
+            sudo systemctl stop "${UNIT}" 2>/dev/null || true
+            sudo systemctl reset-failed "${UNIT}" 2>/dev/null || true
+          fi
+          REMOTE_SCRIPT
+            then
+              return 1
+            fi
+
             # Clean previous run artifacts and upload runner (guests are embedded)
             # shellcheck disable=SC2029
             if ! ssh "$REMOTE" "sudo rm -rf ${BIN_DIR} ${RUNNER_DIR} && sudo mkdir -p ${BIN_DIR}"; then
